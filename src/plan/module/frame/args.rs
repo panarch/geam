@@ -5,6 +5,7 @@ impl FrameLayout {
     pub(in crate::plan::module::frame) fn include_call_args(&mut self, args: &[CallArg]) {
         for arg in args {
             match arg.kind() {
+                CallArgKind::Parametric { value, .. } => self.include_expr(value),
                 CallArgKind::Int { value, .. } => self.include_int_expr(value),
                 CallArgKind::String { value, .. } => self.include_string_expr(value),
                 CallArgKind::BitArray { value, .. } => self.include_bit_array_expr(value),
@@ -50,6 +51,7 @@ impl FrameLayout {
                 CallArgKind::FunctionFunction { value, .. } => {
                     self.include_function_function_expr(value.expression());
                 }
+                CallArgKind::GenericFunction { value, .. } => self.include_function_expr(value),
             }
         }
     }
@@ -57,6 +59,7 @@ impl FrameLayout {
     pub(in crate::plan::module::frame) fn include_capture_args(&mut self, args: &[CaptureArg]) {
         for arg in args {
             match arg.kind() {
+                CaptureArgKind::Generic { value, .. } => self.include_generic_expr(value),
                 CaptureArgKind::Int { value, .. } => self.include_int_expr(value),
                 CaptureArgKind::String { value, .. } => self.include_string_expr(value),
                 CaptureArgKind::BitArray { value, .. } => self.include_bit_array_expr(value),
@@ -104,6 +107,9 @@ impl FrameLayout {
                 CaptureArgKind::FunctionFunction { value, .. } => {
                     self.include_function_function_expr(value.expression());
                 }
+                CaptureArgKind::GenericFunction { value, .. } => {
+                    self.include_generic_function_expr(value.expression());
+                }
             }
         }
     }
@@ -115,11 +121,11 @@ mod tests {
     use crate::plan::{
         BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, CallArg, CaptureArg, Expr, FloatExpr,
         FloatFunctionExpr, FloatFunctionLocalId, FloatLocalId, FunctionExpr, FunctionFunctionExpr,
-        FunctionFunctionId, FunctionFunctionLocal, FunctionFunctionLocalId, IntExpr,
-        IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntListLocalId, ListExpr,
-        ListFunctionExpr, ListLocal, ParamLocal, ReturnExpr, Step, StringExpr, StringFunctionExpr,
-        StringFunctionLocalId, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId,
-        TupleLocalId, ValueType,
+        FunctionFunctionLocal, FunctionFunctionLocalId, FunctionShape, IntExpr, IntFunctionLocalId,
+        IntListLocalId, ListExpr, ListFunctionExpr, ListLocal, ParamLocal, ReturnBody, ReturnExpr,
+        Step, StringExpr, StringFunctionExpr, StringFunctionLocalId, StringLocalId, TupleExpr,
+        TupleFunctionExpr, TupleFunctionLocalId, TupleLocalId, ValueShape, ValueType,
+        monomorphic_function_instantiation,
     };
 
     #[test]
@@ -129,111 +135,116 @@ mod tests {
         let int_function_type = super::super::test_helpers::int_function_expr()
             .type_()
             .clone();
+        let call_args = vec![
+            CallArg::string_function(
+                StringFunctionLocalId(1),
+                StringFunctionExpr::local_get(
+                    StringFunctionLocalId(7),
+                    "string_function_arg".into(),
+                    super::super::test_helpers::string_function_expr()
+                        .type_()
+                        .clone(),
+                ),
+            ),
+            CallArg::float_function(
+                FloatFunctionLocalId(1),
+                FloatFunctionExpr::local_get(
+                    FloatFunctionLocalId(19),
+                    "float_function_arg".into(),
+                    super::super::test_helpers::float_function_expr()
+                        .type_()
+                        .clone(),
+                ),
+            ),
+            CallArg::bool_function(
+                BoolFunctionLocalId(1),
+                BoolFunctionExpr::local_get(
+                    BoolFunctionLocalId(8),
+                    "bool_function_arg".into(),
+                    super::super::test_helpers::bool_function_expr()
+                        .type_()
+                        .clone(),
+                ),
+            ),
+            CallArg::nil_function(
+                crate::plan::NilFunctionLocalId(1),
+                crate::plan::NilFunctionExpr::local_get(
+                    crate::plan::NilFunctionLocalId(9),
+                    "nil_function_arg".into(),
+                    super::super::test_helpers::nil_function_expr()
+                        .type_()
+                        .clone(),
+                ),
+            ),
+            CallArg::tuple(
+                TupleLocalId(1),
+                TupleExpr::local_get(TupleLocalId(1), "tuple_arg".into(), tuple_type()),
+            ),
+            CallArg::tuple_function(
+                TupleFunctionLocalId(1),
+                TupleFunctionExpr::local_get(
+                    TupleFunctionLocalId(1),
+                    "tuple_function_arg".into(),
+                    tuple_function_type(),
+                ),
+            ),
+            CallArg::list(crate::plan::ListLocalExpr::Int {
+                local: IntListLocalId(1),
+                value: ListExpr::local_get(ListLocal::int(IntListLocalId(4)), "list_arg".into())
+                    .into_int()
+                    .expect("expected int list"),
+            }),
+            CallArg::list_function(
+                crate::plan::ListFunctionLocal::from_item_type(
+                    1,
+                    crate::plan::FunctionType::new(
+                        Vec::new(),
+                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
+                    ),
+                    crate::plan::ValueType::Int,
+                ),
+                ListFunctionExpr::local_get(
+                    crate::plan::ListFunctionLocal::from_item_type(
+                        4,
+                        crate::plan::FunctionType::new(
+                            Vec::new(),
+                            crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
+                        ),
+                        crate::plan::ValueType::Int,
+                    ),
+                    "list_function_arg".into(),
+                ),
+            ),
+            Expr::function(FunctionExpr::function(FunctionFunctionExpr::local_get(
+                FunctionFunctionLocal::new(
+                    FunctionFunctionLocalId(10),
+                    returning_function_type.clone(),
+                ),
+                "function_function_arg".into(),
+            )))
+            .into_call_arg(&ParamLocal::function_function(FunctionFunctionLocal::new(
+                FunctionFunctionLocalId(1),
+                returning_function_type.clone(),
+            )))
+            .expect("matching function-returning-function argument"),
+        ];
+        let call_shape = FunctionShape::new(
+            call_args.iter().map(CallArg::parameter_shape).collect(),
+            ValueShape::Int,
+        );
         let steps = vec![
             Step::evaluate(Expr::int(IntExpr::call(
-                IntFunctionId(0),
-                vec![
-                    CallArg::string_function(
-                        StringFunctionLocalId(1),
-                        StringFunctionExpr::local_get(
-                            StringFunctionLocalId(7),
-                            "string_function_arg".into(),
-                            super::super::test_helpers::string_function_expr()
-                                .type_()
-                                .clone(),
-                        ),
-                    ),
-                    CallArg::float_function(
-                        FloatFunctionLocalId(1),
-                        FloatFunctionExpr::local_get(
-                            FloatFunctionLocalId(19),
-                            "float_function_arg".into(),
-                            super::super::test_helpers::float_function_expr()
-                                .type_()
-                                .clone(),
-                        ),
-                    ),
-                    CallArg::bool_function(
-                        BoolFunctionLocalId(1),
-                        BoolFunctionExpr::local_get(
-                            BoolFunctionLocalId(8),
-                            "bool_function_arg".into(),
-                            super::super::test_helpers::bool_function_expr()
-                                .type_()
-                                .clone(),
-                        ),
-                    ),
-                    CallArg::nil_function(
-                        crate::plan::NilFunctionLocalId(1),
-                        crate::plan::NilFunctionExpr::local_get(
-                            crate::plan::NilFunctionLocalId(9),
-                            "nil_function_arg".into(),
-                            super::super::test_helpers::nil_function_expr()
-                                .type_()
-                                .clone(),
-                        ),
-                    ),
-                    CallArg::tuple(
-                        TupleLocalId(1),
-                        TupleExpr::local_get(TupleLocalId(1), "tuple_arg".into(), tuple_type()),
-                    ),
-                    CallArg::tuple_function(
-                        TupleFunctionLocalId(1),
-                        TupleFunctionExpr::local_get(
-                            TupleFunctionLocalId(1),
-                            "tuple_function_arg".into(),
-                            tuple_function_type(),
-                        ),
-                    ),
-                    CallArg::list(crate::plan::ListLocalExpr::Int {
-                        local: IntListLocalId(1),
-                        value: ListExpr::local_get(
-                            ListLocal::int(IntListLocalId(4)),
-                            "list_arg".into(),
-                        )
-                        .into_int()
-                        .expect("expected int list"),
-                    }),
-                    CallArg::list_function(
-                        crate::plan::ListFunctionLocal::from_item_type(
-                            1,
-                            crate::plan::FunctionType::new(
-                                Vec::new(),
-                                crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
-                            ),
-                            crate::plan::ValueType::Int,
-                        ),
-                        ListFunctionExpr::local_get(
-                            crate::plan::ListFunctionLocal::from_item_type(
-                                4,
-                                crate::plan::FunctionType::new(
-                                    Vec::new(),
-                                    crate::plan::ValueType::List(Box::new(
-                                        crate::plan::ValueType::Int,
-                                    )),
-                                ),
-                                crate::plan::ValueType::Int,
-                            ),
-                            "list_function_arg".into(),
-                        ),
-                    ),
-                    Expr::function(FunctionExpr::function(FunctionFunctionExpr::local_get(
-                        FunctionFunctionLocal::new(
-                            FunctionFunctionLocalId(10),
-                            returning_function_type.clone(),
-                        ),
-                        "function_function_arg".into(),
-                    )))
-                    .into_call_arg(&ParamLocal::function_function(FunctionFunctionLocal::new(
-                        FunctionFunctionLocalId(1),
-                        returning_function_type.clone(),
-                    )))
-                    .expect("matching function-returning-function argument"),
-                ],
+                monomorphic_function_instantiation(0, call_shape),
+                call_args,
             ))),
             Step::evaluate(Expr::function(FunctionExpr::function(
                 FunctionFunctionExpr::closure(
-                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                    monomorphic_function_instantiation(
+                        0,
+                        FunctionShape::from_function_type(
+                            returning_function_type.to_function_type(),
+                        ),
+                    ),
                     Vec::new(),
                     vec![
                         CaptureArg::string(
@@ -371,7 +382,7 @@ mod tests {
                 ),
             ))),
         ];
-        let return_ = ReturnExpr::int(IntFunctionId(1), IntExpr::value(0.into()));
+        let return_ = ReturnExpr::int_body(ReturnBody::expr(IntExpr::value(0.into())));
 
         let layout = FrameLayout::from_function_parts(&[], &steps, &return_);
 

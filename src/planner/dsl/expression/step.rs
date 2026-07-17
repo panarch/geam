@@ -54,6 +54,11 @@ pub(crate) fn let_tuple_step(local: usize, name: impl Into<EcoString>, value: Tu
 
 pub(crate) fn let_list_step(local: usize, name: impl Into<EcoString>, value: List) -> Step {
     let value = match value.0 {
+        ListExpr::Generic(value) => ListLocalExpr::Generic {
+            local: crate::plan::GenericListLocalId(local),
+            parameter: value.item().parameter(),
+            value,
+        },
         ListExpr::Int(value) => ListLocalExpr::Int {
             local: IntListLocalId(local),
             value,
@@ -183,11 +188,11 @@ mod tests {
         BitArrayExpr, BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
         BoolFunctionLocalId, BoolListLocalId, BoolLocalId, CustomListLocalId, CustomType,
         CustomTypeName, Expr, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
-        FunctionListLocalId, FunctionType, IntFunctionLocalId, IntListLocalId, IntLocalId,
-        ListExpr, ListListLocalId, ListLocalExpr, NilFunctionLocalId, NilListLocalId, NilLocalId,
-        Step, StringFunctionLocalId, StringListLocalId, StringLocalId, TupleListLocalId,
-        TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
-        ValueType,
+        FunctionListLocalId, FunctionType, GenericListLocalId, IntFunctionLocalId, IntListLocalId,
+        IntLocalId, ListExpr, ListListLocalId, ListLocalExpr, NilFunctionLocalId, NilListLocalId,
+        NilLocalId, Step, StringFunctionLocalId, StringListLocalId, StringLocalId,
+        TupleListLocalId, TupleLocalId, TypeParameterId, UtfCodepointFunctionLocalId,
+        UtfCodepointListLocalId, UtfCodepointLocalId, ValueType,
     };
     use crate::planner::dsl::expression::{
         bit_array, bit_array_function_ref, bool_, bool_function_ref, float, float_function_ref,
@@ -247,6 +252,26 @@ mod tests {
                 TupleLocalId(5),
                 "pair".into(),
                 tuple([Expr::from(int(1)), Expr::from(string("one"))]).into(),
+            ),
+        );
+        assert_eq!(
+            let_list_step(
+                16,
+                "generic_values",
+                list(Vec::<Expr>::new(), ValueType::Parameter(TypeParameterId(0))),
+            ),
+            Step::let_list_expr(
+                "generic_values".into(),
+                ListLocalExpr::Generic {
+                    local: GenericListLocalId(16),
+                    parameter: TypeParameterId(0),
+                    value: ListExpr::from(list(
+                        Vec::<Expr>::new(),
+                        ValueType::Parameter(TypeParameterId(0)),
+                    ))
+                    .into_generic()
+                    .expect("expected generic list"),
+                },
             ),
         );
         assert_eq!(

@@ -18,22 +18,25 @@ use super::super::value_shape::{
     CustomValueShapeDescriptor, ValueShapeDescriptor, ValueShapeTable,
 };
 use super::super::value_type::ListTypeTable;
+use super::specialization::{
+    ConcreteCustomConstructor, ConcreteCustomValueShape, ConcreteFunctionShape, ConcreteValueShape,
+};
 
 pub(super) struct TypeInterner {
     types: Vec<ListStorageTypeId>,
-    ids: HashMap<plan::ValueType, ListTypeId>,
-    tuple_ids: HashMap<plan::ValueType, TupleListTypeId>,
-    list_ids: HashMap<plan::ValueType, ListListTypeId>,
-    function_ids: HashMap<plan::ValueType, FunctionListTypeId>,
-    custom_list_ids: HashMap<plan::ValueType, CustomListTypeId>,
+    ids: HashMap<ConcreteValueShape, ListTypeId>,
+    tuple_ids: HashMap<ConcreteValueShape, TupleListTypeId>,
+    list_ids: HashMap<ConcreteValueShape, ListListTypeId>,
+    function_ids: HashMap<ConcreteValueShape, FunctionListTypeId>,
+    custom_list_ids: HashMap<plan::CustomType, CustomListTypeId>,
     tuple_items: Vec<Vec<ValueType>>,
     function_items: Vec<FunctionType>,
     custom_ids: HashMap<plan::CustomType, CustomTypeId>,
     custom_types: Vec<CustomTypeDescriptor>,
-    shape_ids: HashMap<plan::ValueShape, ValueShapeId>,
+    shape_ids: HashMap<ConcreteValueShape, ValueShapeId>,
     shapes: Vec<ValueShapeDescriptor>,
     shape_types: Vec<ValueType>,
-    custom_shape_ids: HashMap<plan::CustomValueShape, CustomValueShapeId>,
+    custom_shape_ids: HashMap<ConcreteCustomValueShape, CustomValueShapeId>,
     custom_shapes: Vec<CustomValueShapeDescriptor>,
 }
 
@@ -58,67 +61,65 @@ impl TypeInterner {
         }
     }
 
-    pub(super) fn value_type(&mut self, value: plan::ValueType) -> ValueType {
+    pub(super) fn value_type(&mut self, value: &ConcreteValueShape) -> ValueType {
         match value {
-            plan::ValueType::Int => ValueType::Int,
-            plan::ValueType::Float => ValueType::Float,
-            plan::ValueType::String => ValueType::String,
-            plan::ValueType::BitArray => ValueType::BitArray,
-            plan::ValueType::UtfCodepoint => ValueType::UtfCodepoint,
-            plan::ValueType::Bool => ValueType::Bool,
-            plan::ValueType::Nil => ValueType::Nil,
-            plan::ValueType::Tuple(elements) => ValueType::Tuple(
+            ConcreteValueShape::Int => ValueType::Int,
+            ConcreteValueShape::Float => ValueType::Float,
+            ConcreteValueShape::String => ValueType::String,
+            ConcreteValueShape::BitArray => ValueType::BitArray,
+            ConcreteValueShape::UtfCodepoint => ValueType::UtfCodepoint,
+            ConcreteValueShape::Bool => ValueType::Bool,
+            ConcreteValueShape::Nil => ValueType::Nil,
+            ConcreteValueShape::Tuple(elements) => ValueType::Tuple(
                 elements
-                    .into_iter()
+                    .iter()
                     .map(|element| self.value_type(element))
                     .collect(),
             ),
-            plan::ValueType::List(item) => ValueType::List(self.list_type(*item)),
-            plan::ValueType::Function(type_) => {
-                ValueType::Function(Box::new(self.function_type(*type_)))
+            ConcreteValueShape::List(item) => ValueType::List(self.list_type(item)),
+            ConcreteValueShape::Function(type_) => {
+                ValueType::Function(Box::new(self.function_type(type_)))
             }
-            plan::ValueType::Custom(type_) => ValueType::Custom(self.custom_type(type_)),
+            ConcreteValueShape::Custom(shape) => ValueType::Custom(self.custom_type(shape)),
         }
     }
 
-    pub(super) fn value_shape(&mut self, shape: plan::ValueShape) -> ValueShapeId {
-        if let Some(id) = self.shape_ids.get(&shape) {
+    pub(super) fn value_shape(&mut self, shape: &ConcreteValueShape) -> ValueShapeId {
+        if let Some(id) = self.shape_ids.get(shape) {
             return *id;
         }
 
         let key = shape.clone();
         let descriptor = match shape {
-            plan::ValueShape::Int => ValueShapeDescriptor::Int,
-            plan::ValueShape::Float => ValueShapeDescriptor::Float,
-            plan::ValueShape::String => ValueShapeDescriptor::String,
-            plan::ValueShape::BitArray => ValueShapeDescriptor::BitArray,
-            plan::ValueShape::UtfCodepoint => ValueShapeDescriptor::UtfCodepoint,
-            plan::ValueShape::Bool => ValueShapeDescriptor::Bool,
-            plan::ValueShape::Nil => ValueShapeDescriptor::Nil,
-            plan::ValueShape::Tuple(elements) => ValueShapeDescriptor::Tuple(
+            ConcreteValueShape::Int => ValueShapeDescriptor::Int,
+            ConcreteValueShape::Float => ValueShapeDescriptor::Float,
+            ConcreteValueShape::String => ValueShapeDescriptor::String,
+            ConcreteValueShape::BitArray => ValueShapeDescriptor::BitArray,
+            ConcreteValueShape::UtfCodepoint => ValueShapeDescriptor::UtfCodepoint,
+            ConcreteValueShape::Bool => ValueShapeDescriptor::Bool,
+            ConcreteValueShape::Nil => ValueShapeDescriptor::Nil,
+            ConcreteValueShape::Tuple(elements) => ValueShapeDescriptor::Tuple(
                 elements
-                    .into_vec()
-                    .into_iter()
+                    .iter()
                     .map(|element| self.value_shape(element))
                     .collect::<Vec<_>>()
                     .into_boxed_slice(),
             ),
-            plan::ValueShape::List(item) => ValueShapeDescriptor::List(self.value_shape(*item)),
-            plan::ValueShape::Function(type_) => ValueShapeDescriptor::Function {
+            ConcreteValueShape::List(item) => ValueShapeDescriptor::List(self.value_shape(item)),
+            ConcreteValueShape::Function(type_) => ValueShapeDescriptor::Function {
                 arguments: type_
-                    .argument_shapes()
+                    .arguments()
                     .iter()
-                    .cloned()
                     .map(|argument| self.value_shape(argument))
                     .collect::<Vec<_>>()
                     .into_boxed_slice(),
-                return_: self.value_shape(type_.return_shape().clone()),
+                return_: self.value_shape(type_.return_()),
             },
-            plan::ValueShape::Custom(shape) => {
+            ConcreteValueShape::Custom(shape) => {
                 ValueShapeDescriptor::Custom(self.custom_shape_id(shape))
             }
         };
-        let nominal = self.value_type(key.value_type());
+        let nominal = self.value_type(&key);
         let id = ValueShapeId::new(self.shapes.len());
         self.shapes.push(descriptor);
         self.shape_types.push(nominal);
@@ -126,29 +127,31 @@ impl TypeInterner {
         id
     }
 
-    pub(super) fn custom_value_shape(&mut self, shape: plan::CustomValueShape) -> CustomValueShape {
-        let type_id = self.custom_type(shape.type_().clone());
+    pub(super) fn custom_value_shape(
+        &mut self,
+        shape: &ConcreteCustomValueShape,
+    ) -> CustomValueShape {
+        let type_id = self.custom_type(shape);
         let shape_id = self.custom_shape_id(shape);
         CustomValueShape::new(type_id, shape_id)
     }
 
-    pub(super) fn function_shape(&mut self, shape: plan::FunctionShape) -> FunctionShape {
-        let type_ = self.function_type(shape.type_());
-        let shape_id = self.value_shape(plan::ValueShape::Function(Box::new(shape)));
+    pub(super) fn function_shape(&mut self, shape: &ConcreteFunctionShape) -> FunctionShape {
+        let type_ = self.function_type(shape);
+        let shape_id = self.value_shape(&ConcreteValueShape::Function(Box::new(shape.clone())));
         FunctionShape::new(shape_id, type_)
     }
 
-    fn custom_shape_id(&mut self, shape: plan::CustomValueShape) -> CustomValueShapeId {
-        if let Some(id) = self.custom_shape_ids.get(&shape) {
+    fn custom_shape_id(&mut self, shape: &ConcreteCustomValueShape) -> CustomValueShapeId {
+        if let Some(id) = self.custom_shape_ids.get(shape) {
             return *id;
         }
 
         let key = shape.clone();
-        let type_id = self.custom_type(shape.type_().clone());
+        let type_id = self.custom_type(shape);
         let arguments = shape
             .arguments()
             .iter()
-            .cloned()
             .map(|argument| self.value_shape(argument))
             .collect::<Vec<_>>()
             .into_boxed_slice();
@@ -168,74 +171,79 @@ impl TypeInterner {
         id
     }
 
-    pub(super) fn function_type(&mut self, type_: plan::FunctionType) -> FunctionType {
+    pub(super) fn function_type(&mut self, type_: &ConcreteFunctionShape) -> FunctionType {
         FunctionType::new(
             type_
-                .argument_types()
+                .arguments()
                 .iter()
-                .cloned()
                 .map(|argument| self.value_type(argument))
                 .collect(),
-            self.value_type(type_.return_().clone()),
+            self.value_type(type_.return_()),
         )
     }
 
     pub(super) fn custom_function_type(
         &mut self,
-        type_: plan::CustomFunctionType,
+        arguments: &[ConcreteValueShape],
+        return_: &ConcreteCustomValueShape,
     ) -> CustomFunctionType {
-        let nominal = self.function_type(type_.to_function_type());
+        let shape = ConcreteFunctionShape::new(
+            arguments.to_vec(),
+            ConcreteValueShape::Custom(return_.clone()),
+        );
+        let nominal = self.function_type(&shape);
         CustomFunctionType::from_shapes(
             nominal,
-            type_
-                .argument_shapes()
+            arguments
                 .iter()
-                .cloned()
                 .map(|argument| self.value_shape(argument))
                 .collect(),
-            self.custom_value_shape(type_.return_().clone()),
+            self.custom_value_shape(return_),
         )
     }
 
     pub(super) fn function_function_type(
         &mut self,
-        type_: plan::FunctionFunctionType,
+        arguments: &[ConcreteValueShape],
+        return_: &ConcreteFunctionShape,
     ) -> FunctionFunctionType {
-        let nominal = self.function_type(type_.to_function_type());
+        let shape = ConcreteFunctionShape::new(
+            arguments.to_vec(),
+            ConcreteValueShape::Function(Box::new(return_.clone())),
+        );
+        let nominal = self.function_type(&shape);
         FunctionFunctionType::from_shapes(
             nominal,
-            type_
-                .argument_shapes()
+            arguments
                 .iter()
-                .cloned()
                 .map(|argument| self.value_shape(argument))
                 .collect(),
-            self.function_shape(type_.return_shape().clone()),
+            self.function_shape(return_),
         )
     }
 
-    pub(super) fn list_type(&mut self, item: plan::ValueType) -> ListTypeId {
+    pub(super) fn list_type(&mut self, item: &ConcreteValueShape) -> ListTypeId {
         match item {
-            plan::ValueType::Int => self.int_list_type().list_type(),
-            plan::ValueType::String => self.string_list_type().list_type(),
-            plan::ValueType::BitArray => self.bit_array_list_type().list_type(),
-            plan::ValueType::UtfCodepoint => self.utf_codepoint_list_type().list_type(),
-            plan::ValueType::Float => self.float_list_type().list_type(),
-            plan::ValueType::Bool => self.bool_list_type().list_type(),
-            plan::ValueType::Nil => self.nil_list_type().list_type(),
-            plan::ValueType::Tuple(item) => self.tuple_list_type(item).list_type(),
-            plan::ValueType::List(item) => self.list_list_type(*item).list_type(),
-            plan::ValueType::Function(item) => self.function_list_type(*item).list_type(),
-            plan::ValueType::Custom(item) => self.custom_list_type(item).list_type(),
+            ConcreteValueShape::Int => self.int_list_type().list_type(),
+            ConcreteValueShape::String => self.string_list_type().list_type(),
+            ConcreteValueShape::BitArray => self.bit_array_list_type().list_type(),
+            ConcreteValueShape::UtfCodepoint => self.utf_codepoint_list_type().list_type(),
+            ConcreteValueShape::Float => self.float_list_type().list_type(),
+            ConcreteValueShape::Bool => self.bool_list_type().list_type(),
+            ConcreteValueShape::Nil => self.nil_list_type().list_type(),
+            ConcreteValueShape::Tuple(item) => self.tuple_list_type(item).list_type(),
+            ConcreteValueShape::List(item) => self.list_list_type(item).list_type(),
+            ConcreteValueShape::Function(item) => self.function_list_type(item).list_type(),
+            ConcreteValueShape::Custom(item) => self.custom_list_type(item).list_type(),
         }
     }
 
     fn intern_primitive(
         &mut self,
-        plan_item: plan::ValueType,
+        item: ConcreteValueShape,
         storage: impl FnOnce(ListTypeId) -> ListStorageTypeId,
     ) -> ListTypeId {
-        let type_ = plan::ValueType::List(Box::new(plan_item));
+        let type_ = ConcreteValueShape::List(Box::new(item));
         if let Some(id) = self.ids.get(&type_) {
             return *id;
         }
@@ -247,62 +255,64 @@ impl TypeInterner {
     }
 
     pub(super) fn int_list_type(&mut self) -> IntListTypeId {
-        let list_type = self.intern_primitive(plan::ValueType::Int, |list_type| {
+        let list_type = self.intern_primitive(ConcreteValueShape::Int, |list_type| {
             ListStorageTypeId::Int(IntListTypeId::new(list_type))
         });
         IntListTypeId::new(list_type)
     }
 
     pub(super) fn string_list_type(&mut self) -> StringListTypeId {
-        let list_type = self.intern_primitive(plan::ValueType::String, |list_type| {
+        let list_type = self.intern_primitive(ConcreteValueShape::String, |list_type| {
             ListStorageTypeId::String(StringListTypeId::new(list_type))
         });
         StringListTypeId::new(list_type)
     }
 
     pub(super) fn bit_array_list_type(&mut self) -> BitArrayListTypeId {
-        let list_type = self.intern_primitive(plan::ValueType::BitArray, |list_type| {
+        let list_type = self.intern_primitive(ConcreteValueShape::BitArray, |list_type| {
             ListStorageTypeId::BitArray(BitArrayListTypeId::new(list_type))
         });
         BitArrayListTypeId::new(list_type)
     }
 
     pub(super) fn utf_codepoint_list_type(&mut self) -> UtfCodepointListTypeId {
-        let list_type = self.intern_primitive(plan::ValueType::UtfCodepoint, |list_type| {
+        let list_type = self.intern_primitive(ConcreteValueShape::UtfCodepoint, |list_type| {
             ListStorageTypeId::UtfCodepoint(UtfCodepointListTypeId::new(list_type))
         });
         UtfCodepointListTypeId::new(list_type)
     }
 
     pub(super) fn float_list_type(&mut self) -> FloatListTypeId {
-        let list_type = self.intern_primitive(plan::ValueType::Float, |list_type| {
+        let list_type = self.intern_primitive(ConcreteValueShape::Float, |list_type| {
             ListStorageTypeId::Float(FloatListTypeId::new(list_type))
         });
         FloatListTypeId::new(list_type)
     }
 
     pub(super) fn bool_list_type(&mut self) -> BoolListTypeId {
-        let list_type = self.intern_primitive(plan::ValueType::Bool, |list_type| {
+        let list_type = self.intern_primitive(ConcreteValueShape::Bool, |list_type| {
             ListStorageTypeId::Bool(BoolListTypeId::new(list_type))
         });
         BoolListTypeId::new(list_type)
     }
 
     pub(super) fn nil_list_type(&mut self) -> NilListTypeId {
-        let list_type = self.intern_primitive(plan::ValueType::Nil, |list_type| {
+        let list_type = self.intern_primitive(ConcreteValueShape::Nil, |list_type| {
             ListStorageTypeId::Nil(NilListTypeId::new(list_type))
         });
         NilListTypeId::new(list_type)
     }
 
-    pub(super) fn tuple_list_type(&mut self, item: Vec<plan::ValueType>) -> TupleListTypeId {
-        let type_ = plan::ValueType::List(Box::new(plan::ValueType::Tuple(item.clone())));
+    pub(super) fn tuple_list_type(&mut self, item: &[ConcreteValueShape]) -> TupleListTypeId {
+        let type_ = ConcreteValueShape::List(Box::new(ConcreteValueShape::Tuple(
+            item.to_vec().into_boxed_slice(),
+        )));
         if let Some(id) = self.tuple_ids.get(&type_) {
             return *id;
         }
 
         let item = item
-            .into_iter()
+            .iter()
             .map(|type_| self.value_type(type_))
             .collect::<Vec<_>>();
         let list_type = ListTypeId::new(self.types.len());
@@ -314,8 +324,9 @@ impl TypeInterner {
         id
     }
 
-    pub(super) fn list_list_type(&mut self, item: plan::ValueType) -> ListListTypeId {
-        let type_ = plan::ValueType::List(Box::new(plan::ValueType::List(Box::new(item.clone()))));
+    pub(super) fn list_list_type(&mut self, item: &ConcreteValueShape) -> ListListTypeId {
+        let type_ =
+            ConcreteValueShape::List(Box::new(ConcreteValueShape::List(Box::new(item.clone()))));
         if let Some(id) = self.list_ids.get(&type_) {
             return *id;
         }
@@ -329,9 +340,13 @@ impl TypeInterner {
         id
     }
 
-    pub(super) fn function_list_type(&mut self, item: plan::FunctionType) -> FunctionListTypeId {
-        let type_ =
-            plan::ValueType::List(Box::new(plan::ValueType::Function(Box::new(item.clone()))));
+    pub(super) fn function_list_type(
+        &mut self,
+        item: &ConcreteFunctionShape,
+    ) -> FunctionListTypeId {
+        let type_ = ConcreteValueShape::List(Box::new(ConcreteValueShape::Function(Box::new(
+            item.clone(),
+        ))));
         if let Some(id) = self.function_ids.get(&type_) {
             return *id;
         }
@@ -346,8 +361,8 @@ impl TypeInterner {
         id
     }
 
-    pub(super) fn custom_list_type(&mut self, item: plan::CustomType) -> CustomListTypeId {
-        let type_ = plan::ValueType::List(Box::new(plan::ValueType::Custom(item.clone())));
+    pub(super) fn custom_list_type(&mut self, item: &ConcreteCustomValueShape) -> CustomListTypeId {
+        let type_ = item.to_module_shape().type_().clone();
         if let Some(id) = self.custom_list_ids.get(&type_) {
             return *id;
         }
@@ -356,12 +371,12 @@ impl TypeInterner {
         let list_type = ListTypeId::new(self.types.len());
         let id = CustomListTypeId::new(list_type, item_type);
         self.types.push(ListStorageTypeId::Custom(id));
-        self.ids.insert(type_.clone(), list_type);
         self.custom_list_ids.insert(type_, id);
         id
     }
 
-    pub(super) fn custom_type(&mut self, type_: plan::CustomType) -> CustomTypeId {
+    pub(super) fn custom_type(&mut self, shape: &ConcreteCustomValueShape) -> CustomTypeId {
+        let type_ = shape.to_module_shape().type_().clone();
         if let Some(id) = self.custom_ids.get(&type_) {
             return *id;
         }
@@ -374,10 +389,10 @@ impl TypeInterner {
 
     pub(super) fn custom_constructor(
         &mut self,
-        constructor: plan::CustomConstructor,
+        constructor: ConcreteCustomConstructor,
     ) -> CustomConstructorId {
         let (type_, name, index, fields) = constructor.into_parts();
-        let type_id = self.custom_type(type_);
+        let type_id = self.custom_type(&type_);
         let id = CustomConstructorId::new(type_id, index);
         if self.custom_types[type_id.index()].has_constructor(index) {
             return id;
@@ -387,7 +402,7 @@ impl TypeInterner {
             .into_iter()
             .map(|field| {
                 let (label, type_) = field.into_parts();
-                CustomFieldDescriptor::new(label, self.value_type(type_))
+                CustomFieldDescriptor::new(label, self.value_type(&type_))
             })
             .collect();
         self.custom_types[type_id.index()]

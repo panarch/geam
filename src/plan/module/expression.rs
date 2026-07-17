@@ -6,6 +6,7 @@ mod custom;
 mod custom_field;
 mod float;
 mod function;
+mod generic;
 mod int;
 mod list;
 mod nil;
@@ -53,18 +54,20 @@ pub(crate) use self::{
     function::{
         BitArrayFunctionExprKind, BoolFunctionExprKind, CustomFunctionExprKind,
         FloatFunctionExprKind, FunctionExprKind, FunctionFunctionCallMismatch,
-        FunctionFunctionExprKind, IntFunctionExprKind, ListFunctionExprKind, NilFunctionExprKind,
-        StringFunctionExprKind, TupleFunctionExprKind, TypedFunctionExprKind,
-        UtfCodepointFunctionExprKind,
+        FunctionFunctionExprKind, GenericFunctionExpr, GenericFunctionExprKind,
+        IntFunctionExprKind, ListFunctionExprKind, NilFunctionExprKind, StringFunctionExprKind,
+        TupleFunctionExprKind, TypedFunctionExprKind, UtfCodepointFunctionExprKind,
     },
+    generic::{GenericExpr, GenericExprKind},
     int::IntExprKind,
     list::{
         BitArrayListExpr, BitArrayListItem, BoolListCaseBranches, BoolListExpr, BoolListItem,
         CustomListExpr, CustomListItem, FloatListExpr, FloatListItem, FunctionListExpr,
-        FunctionListItem, IntListExpr, IntListItem, ListCaseBranches, ListElements, ListExpr,
-        ListItem, ListListExpr, ListListItem, ListLocalExpr, ListSpreadElements, NilListExpr,
-        NilListItem, StringListExpr, StringListItem, TupleListExpr, TupleListItem, TypedListExpr,
-        TypedListExprKind, TypedListReturnKind, UtfCodepointListExpr, UtfCodepointListItem,
+        FunctionListItem, GenericListExpr, GenericListItem, IntListExpr, IntListItem,
+        ListCaseBranches, ListElements, ListExpr, ListItem, ListListExpr, ListListItem,
+        ListLocalExpr, ListSpreadElements, NilListExpr, NilListItem, StringListExpr,
+        StringListItem, TupleListExpr, TupleListItem, TypedListExpr, TypedListExprKind,
+        TypedListReturnKind, UtfCodepointListExpr, UtfCodepointListItem,
     },
     nil::NilExprKind,
     panic::{PanicExpr, PanicExprKind},
@@ -81,6 +84,7 @@ pub struct Expr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ExprKind {
+    Generic(GenericExpr),
     Int(IntExpr),
     String(StringExpr),
     BitArray(BitArrayExpr),
@@ -128,6 +132,11 @@ impl Expr {
 
     pub(crate) fn with_resolved_shape(self, shape: crate::plan::ValueShape) -> Option<Self> {
         let kind = match (shape.clone(), self.kind) {
+            (crate::plan::ValueShape::Parameter(parameter), ExprKind::Generic(expression))
+                if expression.parameter() == parameter =>
+            {
+                ExprKind::Generic(expression)
+            }
             (crate::plan::ValueShape::Int, ExprKind::Int(expression)) => ExprKind::Int(expression),
             (crate::plan::ValueShape::String, ExprKind::String(expression)) => {
                 ExprKind::String(expression)
@@ -166,6 +175,13 @@ impl Expr {
         Self {
             shape: crate::plan::ValueShape::Int,
             kind: ExprKind::Int(expression),
+        }
+    }
+
+    pub(crate) fn generic(expression: GenericExpr) -> Self {
+        Self {
+            shape: crate::plan::ValueShape::Parameter(expression.parameter()),
+            kind: ExprKind::Generic(expression),
         }
     }
 
@@ -243,9 +259,43 @@ impl Expr {
         }
     }
 
+    pub(crate) fn call(function: crate::plan::FunctionInstantiation, args: Vec<CallArg>) -> Self {
+        match function.shape().return_shape().clone() {
+            ValueShape::Parameter(parameter) => {
+                Self::generic(GenericExpr::call(parameter, function, args))
+            }
+            ValueShape::Int => Self::int(IntExpr::call(function, args)),
+            ValueShape::String => Self::string(StringExpr::call(function, args)),
+            ValueShape::BitArray => Self::bit_array(BitArrayExpr::call(function, args)),
+            ValueShape::UtfCodepoint => Self::utf_codepoint(UtfCodepointExpr::call(function, args)),
+            ValueShape::Custom(shape) => Self::custom(CustomExpr::call(function, args, shape)),
+            ValueShape::Float => Self::float(FloatExpr::call(function, args)),
+            ValueShape::Bool => Self::bool(BoolExpr::call(function, args)),
+            ValueShape::Nil => Self::nil(NilExpr::call(function, args)),
+            ValueShape::Tuple(shape) => {
+                let expression = TupleExpr::call(
+                    function,
+                    args,
+                    shape.iter().map(ValueShape::value_type).collect(),
+                );
+                Self {
+                    shape: ValueShape::Tuple(shape),
+                    kind: ExprKind::Tuple(expression),
+                }
+            }
+            ValueShape::List(item_shape) => {
+                Self::list(ListExpr::call(function, args, (*item_shape).clone()))
+            }
+            ValueShape::Function(shape) => {
+                Self::function(FunctionExpr::call(function, args, (*shape).clone()))
+            }
+        }
+    }
+
     pub(crate) fn block(steps: Vec<Step>, return_: Self) -> Self {
         let Self { shape, kind } = return_;
         let kind = match kind {
+            ExprKind::Generic(return_) => ExprKind::Generic(GenericExpr::block(steps, return_)),
             ExprKind::Int(return_) => ExprKind::Int(IntExpr::block(steps, return_)),
             ExprKind::String(return_) => ExprKind::String(StringExpr::block(steps, return_)),
             ExprKind::BitArray(return_) => ExprKind::BitArray(BitArrayExpr::block(steps, return_)),
@@ -265,6 +315,9 @@ impl Expr {
 
     pub(crate) fn custom_field_shape(access: CustomFieldAccess, shape: ValueShape) -> Self {
         match shape {
+            ValueShape::Parameter(parameter) => {
+                Self::generic(GenericExpr::custom_field(parameter, access))
+            }
             ValueShape::Int => Self::int(IntExpr::custom_field(access)),
             ValueShape::String => Self::string(StringExpr::custom_field(access)),
             ValueShape::BitArray => Self::bit_array(BitArrayExpr::custom_field(access)),
@@ -581,10 +634,6 @@ impl Expr {
         self.kind
     }
 
-    pub(crate) fn into_parts(self) -> (crate::plan::ValueShape, ExprKind) {
-        (self.shape, self.kind)
-    }
-
     pub(crate) fn into_int(self) -> Option<IntExpr> {
         match self.kind {
             ExprKind::Int(expression) => Some(expression),
@@ -665,6 +714,7 @@ impl Expr {
 
     pub fn value_type(&self) -> ValueType {
         match self.kind() {
+            ExprKind::Generic(expression) => ValueType::Parameter(expression.parameter()),
             ExprKind::Int(_) => ValueType::Int,
             ExprKind::String(_) => ValueType::String,
             ExprKind::BitArray(_) => ValueType::BitArray,
@@ -698,14 +748,13 @@ mod tests {
         UtfCodepointExpr,
     };
     use crate::plan::{
-        BoolFunctionId, BoolFunctionReference, BoolLocalId, CustomConstructorRefinement,
-        CustomLocal, CustomType, CustomTypeName, CustomValueShape, FloatFunctionId,
-        FloatFunctionReference, FloatLocalId, FunctionFunctionId, FunctionFunctionReference,
-        FunctionReference, FunctionType, IntFunctionFunctionId, IntFunctionId,
-        IntFunctionReference, IntListLocalId, IntLocalId, ListFunctionId, ListFunctionReference,
-        ListLocal, NilFunctionId, NilFunctionReference, NilLocalId, ParamLocal, RuntimeFunctionId,
-        StringFunctionId, StringFunctionReference, StringLocalId, UtfCodepointLocalId, ValueShape,
-        ValueType,
+        BoolFunctionReference, BoolLocalId, CustomConstructorRefinement, CustomLocal, CustomType,
+        CustomTypeName, CustomValueShape, FloatFunctionReference, FloatLocalId,
+        FunctionFunctionReference, FunctionInstantiation, FunctionReference, FunctionShape,
+        FunctionType, IntFunctionReference, IntListLocalId, IntLocalId, ListFunctionReference,
+        ListLocal, NilFunctionReference, NilLocalId, ParamLocal, StringFunctionReference,
+        StringLocalId, UtfCodepointLocalId, ValueShape, ValueType,
+        monomorphic_function_instantiation,
     };
     use num_bigint::BigInt;
 
@@ -745,6 +794,17 @@ mod tests {
         assert_eq!(
             expression.clone().with_resolved_shape(shape.clone()),
             Some(expression),
+        );
+
+        let expression = Expr::function(FunctionExpr::int(int_function_expr()));
+        assert_eq!(
+            expression.with_shape(ValueShape::Function(Box::new(
+                crate::plan::FunctionShape::from_function_type(FunctionType::new(
+                    vec![ValueType::String],
+                    ValueType::String,
+                )),
+            ))),
+            None,
         );
     }
 
@@ -1465,42 +1525,45 @@ mod tests {
 
     fn function_value() -> FunctionReference {
         FunctionReference::new(
-            RuntimeFunctionId::Int(IntFunctionId(0)),
+            instantiation(function_type()),
             vec![ParamLocal::int(IntLocalId(0))],
         )
     }
 
     fn int_function_expr() -> IntFunctionExpr {
         IntFunctionExpr::reference(IntFunctionReference::new(
-            IntFunctionId(0),
+            instantiation(function_type()),
             vec![ParamLocal::int(IntLocalId(0))],
         ))
     }
 
     fn string_function_expr() -> StringFunctionExpr {
         StringFunctionExpr::reference(StringFunctionReference::new(
-            StringFunctionId(0),
+            instantiation(FunctionType::new(
+                vec![ValueType::String],
+                ValueType::String,
+            )),
             vec![ParamLocal::string(StringLocalId(0))],
         ))
     }
 
     fn float_function_expr() -> FloatFunctionExpr {
         FloatFunctionExpr::reference(FloatFunctionReference::new(
-            FloatFunctionId(0),
+            instantiation(FunctionType::new(vec![ValueType::Float], ValueType::Float)),
             vec![ParamLocal::float(FloatLocalId(0))],
         ))
     }
 
     fn bool_function_expr() -> BoolFunctionExpr {
         BoolFunctionExpr::reference(BoolFunctionReference::new(
-            BoolFunctionId(0),
+            instantiation(FunctionType::new(vec![ValueType::Bool], ValueType::Bool)),
             vec![ParamLocal::bool(BoolLocalId(0))],
         ))
     }
 
     fn nil_function_expr() -> NilFunctionExpr {
         NilFunctionExpr::reference(NilFunctionReference::new(
-            NilFunctionId(0),
+            instantiation(FunctionType::new(vec![ValueType::Nil], ValueType::Nil)),
             vec![ParamLocal::nil(NilLocalId(0))],
         ))
     }
@@ -1513,20 +1576,33 @@ mod tests {
     }
 
     fn list_function_expr() -> ListFunctionExpr {
-        ListFunctionExpr::reference(ListFunctionReference::new(
-            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-            vec![ParamLocal::list(ListLocal::int(IntListLocalId(0)))],
-        ))
+        ListFunctionExpr::reference(
+            ListFunctionReference::new(
+                instantiation(FunctionType::new(
+                    vec![ValueType::List(Box::new(ValueType::Int))],
+                    ValueType::List(Box::new(ValueType::Int)),
+                )),
+                vec![ParamLocal::list(ListLocal::int(IntListLocalId(0)))],
+            ),
+            ValueType::Int,
+        )
     }
 
     fn function_function_expr() -> FunctionFunctionExpr {
         FunctionFunctionExpr::reference(
             FunctionFunctionReference::new(
-                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                instantiation(FunctionType::new(
+                    Vec::new(),
+                    ValueType::Function(Box::new(function_type())),
+                )),
                 Vec::new(),
             ),
             function_type(),
         )
+    }
+
+    fn instantiation(type_: FunctionType) -> FunctionInstantiation {
+        monomorphic_function_instantiation(0, FunctionShape::from_function_type(type_))
     }
 
     fn function_type() -> FunctionType {

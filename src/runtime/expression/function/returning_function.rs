@@ -177,11 +177,11 @@ pub(in crate::runtime) fn eval_function_function_expr_kind(
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExpr, CaptureArg, Expr, FloatExpr, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionLocal, FunctionFunctionLocalId, FunctionFunctionReference,
-        FunctionFunctionType, FunctionId, FunctionPlan, FunctionType, IntExpr,
-        IntFunctionFunctionId, IntLocalId, ListExpr, ModulePlan, PanicExpr, PanicSite, ParamLocal,
-        ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
+        BoolExpr, CaptureArg, Expr, FloatExpr, FunctionFunctionExpr, FunctionFunctionLocal,
+        FunctionFunctionLocalId, FunctionFunctionReference, FunctionFunctionType, FunctionTemplate,
+        FunctionTemplateId, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
+        IntLocalId, ListExpr, ModulePlan, PanicExpr, PanicSite, Param, ParamLocal, ReturnExpr,
+        Step, StringExpr, TupleExpr, ValueType,
     };
     use crate::runtime::{ExecutionError, run_main};
 
@@ -244,7 +244,10 @@ pub fn main() {
         let expressions = [
             (
                 FunctionFunctionExpr::closure(
-                    FunctionFunctionId::Int(IntFunctionFunctionId(1)),
+                    crate::plan::monomorphic_function_instantiation(
+                        1,
+                        crate::plan::FunctionShape::from_function_type(type_.to_function_type()),
+                    ),
                     Vec::new(),
                     vec![CaptureArg::int(
                         IntLocalId(0),
@@ -271,7 +274,7 @@ pub fn main() {
                         panic("list"),
                         ValueType::Function(Box::new(type_.to_function_type())),
                     )),
-                    0,
+                    2,
                     type_.clone(),
                 ),
                 "list",
@@ -332,7 +335,10 @@ pub fn main() {
         let actual_type = FunctionFunctionType::new(vec![ValueType::Int], returned.clone());
         let actual = FunctionFunctionExpr::reference(
             FunctionFunctionReference::new(
-                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                crate::plan::monomorphic_function_instantiation(
+                    2,
+                    crate::plan::FunctionShape::from_function_type(actual_type.to_function_type()),
+                ),
                 vec![ParamLocal::int(IntLocalId(0))],
             ),
             returned,
@@ -355,12 +361,39 @@ pub fn main() {
     }
 
     fn run_module_function_function_expression(expression: FunctionFunctionExpr) -> ExecutionError {
+        let returned = FunctionType::new(Vec::new(), ValueType::Int);
+        let closure_target = FunctionTemplate::new(
+            FunctionTemplateId::new(1),
+            "closure_target".into(),
+            Vec::new(),
+            vec![Step::evaluate(Expr::int(IntExpr::local_get(
+                IntLocalId(0),
+                "capture".into(),
+            )))],
+            ReturnExpr::int_function(
+                IntFunctionFunctionId(0),
+                IntFunctionExpr::panic(
+                    PanicExpr::panic_at(None, PanicSite::unknown()),
+                    returned.clone(),
+                ),
+            ),
+        );
+        let argument_target = FunctionTemplate::new(
+            FunctionTemplateId::new(2),
+            "argument_target".into(),
+            vec![Param::named(ParamLocal::int(IntLocalId(0)), "value".into())],
+            Vec::new(),
+            ReturnExpr::int_function(
+                IntFunctionFunctionId(0),
+                IntFunctionExpr::panic(PanicExpr::panic_at(None, PanicSite::unknown()), returned),
+            ),
+        );
         let local = FunctionFunctionLocal::new(
             FunctionFunctionLocalId(0),
             expression.function_function_type().clone(),
         );
-        let main = FunctionPlan::new(
-            FunctionId::new(0),
+        let main = FunctionTemplate::new(
+            FunctionTemplateId::new(0),
             "main".into(),
             Vec::new(),
             vec![Step::let_function_function(
@@ -373,7 +406,7 @@ pub fn main() {
                 FunctionFunctionExpr::local_get(local, "value".into()),
             ),
         );
-        let module = ModulePlan::new("main".into(), main, Vec::new());
+        let module = ModulePlan::new("main".into(), main, vec![closure_target, argument_target]);
         let plan = crate::ExecutionPlan::from_module_plan(module);
 
         run_main(&plan).expect_err("module expression should fail at runtime")

@@ -14,11 +14,11 @@ impl CustomPattern {
         }
     }
 
-    pub(crate) fn into_parts(self) -> (CustomConstructor, Vec<AssertPattern>) {
-        (self.constructor, self.fields)
-    }
-
     pub(crate) fn fields(&self) -> &[AssertPattern] {
         &self.fields
+    }
+
+    pub(crate) fn constructor(&self) -> &CustomConstructor {
+        &self.constructor
     }
 }

@@ -1053,10 +1053,10 @@ mod tests {
     };
     use crate::plan::execution::{ReturnBody, ReturnBodyKind};
     use crate::plan::{
-        BoolExpr, BoolListCaseBranches, Expr, FloatExpr, FunctionId, FunctionPlan, FunctionType,
-        IntExpr, IntListExpr, IntListFunctionId, ListCaseBranches, ListExpr as ModuleListExpr,
-        ModulePlan, NilExpr, NilListExpr, NilListFunctionId, PanicExpr, PanicSite, ReturnExpr,
-        Step, StringExpr, TupleExpr, ValueType,
+        BoolExpr, BoolListCaseBranches, Expr, FloatExpr, FunctionTemplate, FunctionTemplateId,
+        FunctionType, IntExpr, IntListExpr, ListCaseBranches, ListExpr as ModuleListExpr,
+        ModulePlan, NilExpr, NilListExpr, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr,
+        TupleExpr, ValueType,
     };
     use crate::runtime::EvaluatedValue;
     use crate::runtime::frame::Frame;
@@ -1839,15 +1839,12 @@ pub fn main() { Nil }
     }
 
     fn run_module_int_list_expression(expression: IntListExpr) -> ExecutionError {
-        let main = FunctionPlan::new(
-            FunctionId::new(0),
+        let main = FunctionTemplate::new(
+            FunctionTemplateId::new(0),
             "main".into(),
             Vec::new(),
             Vec::new(),
-            ReturnExpr::int_list_body(
-                IntListFunctionId(0),
-                crate::plan::IntListReturn::expr(expression),
-            ),
+            ReturnExpr::int_list_body(crate::plan::IntListReturn::expr(expression)),
         );
         let module = ModulePlan::new("main".into(), main, Vec::new());
         let plan = crate::ExecutionPlan::from_module_plan(module);
@@ -1857,15 +1854,12 @@ pub fn main() { Nil }
     }
 
     fn run_module_nil_list_expression(expression: NilListExpr) -> ExecutionError {
-        let main = FunctionPlan::new(
-            FunctionId::new(0),
+        let main = FunctionTemplate::new(
+            FunctionTemplateId::new(0),
             "main".into(),
             Vec::new(),
             Vec::new(),
-            ReturnExpr::nil_list_body(
-                NilListFunctionId(0),
-                crate::plan::NilListReturn::expr(expression),
-            ),
+            ReturnExpr::nil_list_body(crate::plan::NilListReturn::expr(expression)),
         );
         let module = ModulePlan::new("main".into(), main, Vec::new());
         let plan = crate::ExecutionPlan::from_module_plan(module);

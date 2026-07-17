@@ -1,11 +1,16 @@
 use super::{
-    BitArrayListExpr, BoolListExpr, CustomListExpr, FloatListExpr, FunctionListExpr, IntListExpr,
-    ListExpr, ListListExpr, NilListExpr, StringListExpr, TupleListExpr, UtfCodepointListExpr,
+    BitArrayListExpr, BoolListExpr, CustomListExpr, FloatListExpr, FunctionListExpr,
+    GenericListExpr, IntListExpr, ListExpr, ListListExpr, NilListExpr, StringListExpr,
+    TupleListExpr, UtfCodepointListExpr,
 };
 use crate::plan::ValueType;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum BoolListCaseBranches {
+    Generic {
+        true_: GenericListExpr,
+        false_: GenericListExpr,
+    },
     Int {
         true_: IntListExpr,
         false_: IntListExpr,
@@ -54,6 +59,10 @@ pub(crate) enum BoolListCaseBranches {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ListCaseBranches<Pattern> {
+    Generic {
+        clauses: Vec<(Pattern, GenericListExpr)>,
+        fallback: GenericListExpr,
+    },
     Int {
         clauses: Vec<(Pattern, IntListExpr)>,
         fallback: IntListExpr,
@@ -112,6 +121,10 @@ impl<Pattern> ListCaseBranches<Pattern> {
         fallback: ListExpr,
     ) -> Result<Self, ListCaseBranchTypeMismatch> {
         match fallback {
+            ListExpr::Generic(fallback) => Ok(Self::Generic {
+                clauses: typed_generic_clauses(clauses, fallback.element_type())?,
+                fallback,
+            }),
             ListExpr::Int(fallback) => Ok(Self::Int {
                 clauses: typed_int_clauses(clauses)?,
                 fallback,
@@ -158,6 +171,27 @@ impl<Pattern> ListCaseBranches<Pattern> {
             }),
         }
     }
+}
+
+fn typed_generic_clauses<Pattern>(
+    clauses: Vec<(Pattern, ListExpr)>,
+    expected: ValueType,
+) -> Result<Vec<(Pattern, GenericListExpr)>, ListCaseBranchTypeMismatch> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (pattern, branch) in clauses {
+        let actual = branch.element_type();
+        let Some(branch) = branch.into_generic() else {
+            return Err(list_case_branch_type_mismatch(expected, actual));
+        };
+        if branch.element_type() != expected {
+            return Err(list_case_branch_type_mismatch(
+                expected,
+                branch.element_type(),
+            ));
+        }
+        typed_clauses.push((pattern, branch));
+    }
+    Ok(typed_clauses)
 }
 
 fn list_case_branch_type_mismatch(
@@ -356,8 +390,8 @@ fn typed_function_clauses<Pattern>(
 mod tests {
     use super::{BoolListCaseBranches, ListCaseBranchTypeMismatch, ListCaseBranches};
     use crate::plan::{
-        BoolExpr, Expr, FunctionExpr, FunctionReference, FunctionType, IntExpr, ListExpr, NilExpr,
-        RuntimeFunctionId, StringExpr, TupleExpr, ValueType,
+        BoolExpr, Expr, FunctionExpr, FunctionReference, FunctionShape, FunctionType, IntExpr,
+        ListExpr, NilExpr, StringExpr, TupleExpr, ValueType, monomorphic_function_instantiation,
     };
     use num_bigint::BigInt;
 
@@ -676,7 +710,13 @@ mod tests {
                     ListExpr::value(
                         vec![Expr::function(FunctionExpr::reference(
                             FunctionReference::new(
-                                RuntimeFunctionId::Bool(crate::plan::BoolFunctionId(0)),
+                                monomorphic_function_instantiation(
+                                    0,
+                                    FunctionShape::from_function_type(FunctionType::new(
+                                        Vec::new(),
+                                        ValueType::Bool,
+                                    )),
+                                ),
                                 Vec::new(),
                             )
                         ))],
@@ -697,7 +737,13 @@ mod tests {
                     ListExpr::value(
                         vec![Expr::function(FunctionExpr::reference(
                             FunctionReference::new(
-                                RuntimeFunctionId::Bool(crate::plan::BoolFunctionId(0)),
+                                monomorphic_function_instantiation(
+                                    0,
+                                    FunctionShape::from_function_type(FunctionType::new(
+                                        Vec::new(),
+                                        ValueType::Bool,
+                                    )),
+                                ),
                                 Vec::new(),
                             )
                         ))],
@@ -723,6 +769,32 @@ mod tests {
         let int_to_string = FunctionType::new(vec![ValueType::Int], ValueType::String);
         let first_custom = custom_type("First");
         let second_custom = custom_type("Second");
+        let first_parameter = crate::plan::TypeParameterId(0);
+        let second_parameter = crate::plan::TypeParameterId(1);
+
+        assert_eq!(
+            ListCaseBranches::from_exprs(
+                vec![(BigInt::from(1), ListExpr::value(Vec::new(), ValueType::Int),)],
+                ListExpr::value(Vec::new(), ValueType::Parameter(first_parameter)),
+            ),
+            Err(ListCaseBranchTypeMismatch {
+                expected: ValueType::Parameter(first_parameter),
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ListCaseBranches::from_exprs(
+                vec![(
+                    BigInt::from(1),
+                    ListExpr::value(Vec::new(), ValueType::Parameter(second_parameter)),
+                )],
+                ListExpr::value(Vec::new(), ValueType::Parameter(first_parameter)),
+            ),
+            Err(ListCaseBranchTypeMismatch {
+                expected: ValueType::Parameter(first_parameter),
+                actual: ValueType::Parameter(second_parameter),
+            }),
+        );
 
         assert_eq!(
             ListCaseBranches::from_exprs(

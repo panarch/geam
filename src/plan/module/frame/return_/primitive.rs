@@ -1,6 +1,62 @@
 use crate::plan::{FrameLayout, ListItem, ReturnBody, ReturnBodyKind, TypedListExpr};
 
 impl FrameLayout {
+    pub(in crate::plan::module::frame) fn include_generic_return(
+        &mut self,
+        body: &crate::plan::GenericReturn,
+    ) {
+        match body.kind() {
+            ReturnBodyKind::Expr(expression) => self.include_generic_expr(expression),
+            ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
+            ReturnBodyKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_generic_return(true_);
+                self.include_generic_return(false_);
+            }
+            ReturnBodyKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_generic_return(branch);
+                }
+                self.include_generic_return(fallback);
+            }
+            ReturnBodyKind::FloatCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_float_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_generic_return(branch);
+                }
+                self.include_generic_return(fallback);
+            }
+            ReturnBodyKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_generic_return(branch);
+                }
+                self.include_generic_return(fallback);
+            }
+            ReturnBodyKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_generic_return(return_);
+            }
+        }
+    }
+
     pub(in crate::plan::module::frame) fn include_int_return(
         &mut self,
         body: &crate::plan::IntReturn,
@@ -402,7 +458,10 @@ impl FrameLayout {
 
     fn include_custom_return_body(
         &mut self,
-        body: &crate::plan::ReturnBody<crate::plan::CustomExprKind, usize>,
+        body: &crate::plan::ReturnBody<
+            crate::plan::CustomExprKind,
+            crate::plan::FunctionInstantiation,
+        >,
     ) {
         match body.kind() {
             ReturnBodyKind::Expr(expression) => self.include_custom_expr_kind(expression),
@@ -575,40 +634,40 @@ impl FrameLayout {
 mod tests {
     use crate::plan::{
         BoolExpr, BoolLocalId, CallArg, CustomExpr, CustomLocalId, CustomType, CustomTypeName,
-        Expr, FloatExpr, FloatLocalId, FrameLayout, IntExpr, IntFunctionId, IntLocalId, NilExpr,
+        Expr, FloatExpr, FloatLocalId, FrameLayout, FunctionShape, IntExpr, IntLocalId, NilExpr,
         NilLocalId, ReturnBody, ReturnExpr, Step, StringExpr, StringLocalId, TupleExpr,
-        TupleFunctionId, TupleLocalId,
+        TupleLocalId, ValueShape, monomorphic_function_instantiation,
     };
 
     #[test]
     fn frame_layout_includes_primitive_return_body_locals() {
-        let return_ = ReturnExpr::int_body(
-            IntFunctionId(0),
-            ReturnBody::block(
-                vec![Step::evaluate(Expr::int(IntExpr::local_get(
-                    IntLocalId(1),
-                    "step".into(),
-                )))],
-                ReturnBody::bool_case(
-                    BoolExpr::local_get(BoolLocalId(2), "flag".into()),
-                    ReturnBody::int_case(
-                        IntExpr::local_get(IntLocalId(3), "subject".into()),
-                        vec![(
-                            1.into(),
-                            ReturnBody::tail_call(
-                                IntFunctionId(1),
-                                vec![CallArg::int(
-                                    IntLocalId(4),
-                                    IntExpr::local_get(IntLocalId(5), "arg".into()),
-                                )],
+        let return_ = ReturnExpr::int_body(ReturnBody::block(
+            vec![Step::evaluate(Expr::int(IntExpr::local_get(
+                IntLocalId(1),
+                "step".into(),
+            )))],
+            ReturnBody::bool_case(
+                BoolExpr::local_get(BoolLocalId(2), "flag".into()),
+                ReturnBody::int_case(
+                    IntExpr::local_get(IntLocalId(3), "subject".into()),
+                    vec![(
+                        1.into(),
+                        ReturnBody::tail_call(
+                            monomorphic_function_instantiation(
+                                1,
+                                FunctionShape::new(vec![ValueShape::Int], ValueShape::Int),
                             ),
-                        )],
-                        ReturnBody::expr(IntExpr::local_get(IntLocalId(6), "fallback".into())),
-                    ),
-                    ReturnBody::expr(IntExpr::local_get(IntLocalId(7), "false".into())),
+                            vec![CallArg::int(
+                                IntLocalId(4),
+                                IntExpr::local_get(IntLocalId(5), "arg".into()),
+                            )],
+                        ),
+                    )],
+                    ReturnBody::expr(IntExpr::local_get(IntLocalId(6), "fallback".into())),
                 ),
+                ReturnBody::expr(IntExpr::local_get(IntLocalId(7), "false".into())),
             ),
-        );
+        ));
 
         let layout = FrameLayout::from_function_parts(&[], &[], &return_);
 
@@ -618,190 +677,166 @@ mod tests {
 
     #[test]
     fn frame_layout_includes_primitive_return_body_families() {
-        let string_return = ReturnExpr::string_body(
-            crate::plan::StringFunctionId(0),
-            ReturnBody::block(
-                vec![Step::evaluate(Expr::int(IntExpr::local_get(
-                    IntLocalId(20),
-                    "string_step".into(),
-                )))],
-                ReturnBody::bool_case(
-                    BoolExpr::local_get(BoolLocalId(20), "string_flag".into()),
-                    ReturnBody::int_case(
-                        IntExpr::local_get(IntLocalId(21), "string_subject".into()),
-                        vec![(
-                            1.into(),
-                            ReturnBody::expr(StringExpr::local_get(
-                                StringLocalId(20),
-                                "string_hit".into(),
-                            )),
-                        )],
+        let string_return = ReturnExpr::string_body(ReturnBody::block(
+            vec![Step::evaluate(Expr::int(IntExpr::local_get(
+                IntLocalId(20),
+                "string_step".into(),
+            )))],
+            ReturnBody::bool_case(
+                BoolExpr::local_get(BoolLocalId(20), "string_flag".into()),
+                ReturnBody::int_case(
+                    IntExpr::local_get(IntLocalId(21), "string_subject".into()),
+                    vec![(
+                        1.into(),
                         ReturnBody::expr(StringExpr::local_get(
-                            StringLocalId(21),
-                            "string_fallback".into(),
+                            StringLocalId(20),
+                            "string_hit".into(),
                         )),
-                    ),
+                    )],
                     ReturnBody::expr(StringExpr::local_get(
-                        StringLocalId(22),
-                        "string_false".into(),
+                        StringLocalId(21),
+                        "string_fallback".into(),
                     )),
                 ),
+                ReturnBody::expr(StringExpr::local_get(
+                    StringLocalId(22),
+                    "string_false".into(),
+                )),
             ),
-        );
+        ));
         let layout = FrameLayout::from_function_parts(&[], &[], &string_return);
         assert_eq!(layout.ints(), 22);
         assert_eq!(layout.bools(), 21);
         assert_eq!(layout.strings(), 23);
 
-        let float_return = ReturnExpr::float_body(
-            crate::plan::FloatFunctionId(0),
-            ReturnBody::block(
-                vec![Step::evaluate(Expr::int(IntExpr::local_get(
-                    IntLocalId(26),
-                    "float_step".into(),
-                )))],
-                ReturnBody::bool_case(
-                    BoolExpr::local_get(BoolLocalId(26), "float_flag".into()),
-                    ReturnBody::int_case(
-                        IntExpr::local_get(IntLocalId(27), "float_subject".into()),
-                        vec![(
-                            1.into(),
-                            ReturnBody::expr(FloatExpr::local_get(
-                                FloatLocalId(20),
-                                "float_hit".into(),
-                            )),
-                        )],
+        let float_return = ReturnExpr::float_body(ReturnBody::block(
+            vec![Step::evaluate(Expr::int(IntExpr::local_get(
+                IntLocalId(26),
+                "float_step".into(),
+            )))],
+            ReturnBody::bool_case(
+                BoolExpr::local_get(BoolLocalId(26), "float_flag".into()),
+                ReturnBody::int_case(
+                    IntExpr::local_get(IntLocalId(27), "float_subject".into()),
+                    vec![(
+                        1.into(),
                         ReturnBody::expr(FloatExpr::local_get(
-                            FloatLocalId(21),
-                            "float_fallback".into(),
+                            FloatLocalId(20),
+                            "float_hit".into(),
                         )),
-                    ),
-                    ReturnBody::string_case(
-                        StringExpr::local_get(StringLocalId(23), "float_string_subject".into()),
-                        vec![(
-                            "one".into(),
-                            ReturnBody::expr(FloatExpr::local_get(
-                                FloatLocalId(22),
-                                "float_string_hit".into(),
-                            )),
-                        )],
+                    )],
+                    ReturnBody::expr(FloatExpr::local_get(
+                        FloatLocalId(21),
+                        "float_fallback".into(),
+                    )),
+                ),
+                ReturnBody::string_case(
+                    StringExpr::local_get(StringLocalId(23), "float_string_subject".into()),
+                    vec![(
+                        "one".into(),
                         ReturnBody::expr(FloatExpr::local_get(
-                            FloatLocalId(23),
-                            "float_string_fallback".into(),
+                            FloatLocalId(22),
+                            "float_string_hit".into(),
                         )),
-                    ),
+                    )],
+                    ReturnBody::expr(FloatExpr::local_get(
+                        FloatLocalId(23),
+                        "float_string_fallback".into(),
+                    )),
                 ),
             ),
-        );
+        ));
         let layout = FrameLayout::from_function_parts(&[], &[], &float_return);
         assert_eq!(layout.ints(), 28);
         assert_eq!(layout.floats(), 24);
         assert_eq!(layout.bools(), 27);
         assert_eq!(layout.strings(), 24);
 
-        let int_float_case_return = ReturnExpr::int_body(
-            IntFunctionId(2),
-            ReturnBody::float_case(
-                FloatExpr::local_get(FloatLocalId(24), "int_float_subject".into()),
-                vec![(
-                    1.0,
-                    ReturnBody::expr(IntExpr::local_get(IntLocalId(28), "int_float_hit".into())),
-                )],
-                ReturnBody::expr(IntExpr::local_get(
-                    IntLocalId(29),
-                    "int_float_fallback".into(),
-                )),
-            ),
-        );
+        let int_float_case_return = ReturnExpr::int_body(ReturnBody::float_case(
+            FloatExpr::local_get(FloatLocalId(24), "int_float_subject".into()),
+            vec![(
+                1.0,
+                ReturnBody::expr(IntExpr::local_get(IntLocalId(28), "int_float_hit".into())),
+            )],
+            ReturnBody::expr(IntExpr::local_get(
+                IntLocalId(29),
+                "int_float_fallback".into(),
+            )),
+        ));
         let layout = FrameLayout::from_function_parts(&[], &[], &int_float_case_return);
         assert_eq!(layout.ints(), 30);
         assert_eq!(layout.floats(), 25);
 
-        let float_case_return = ReturnExpr::float_body(
-            crate::plan::FloatFunctionId(1),
-            ReturnBody::float_case(
-                FloatExpr::local_get(FloatLocalId(24), "float_case_subject".into()),
-                vec![(
-                    1.0,
-                    ReturnBody::expr(FloatExpr::local_get(
-                        FloatLocalId(25),
-                        "float_case_hit".into(),
-                    )),
-                )],
+        let float_case_return = ReturnExpr::float_body(ReturnBody::float_case(
+            FloatExpr::local_get(FloatLocalId(24), "float_case_subject".into()),
+            vec![(
+                1.0,
                 ReturnBody::expr(FloatExpr::local_get(
-                    FloatLocalId(26),
-                    "float_case_fallback".into(),
+                    FloatLocalId(25),
+                    "float_case_hit".into(),
                 )),
-            ),
-        );
+            )],
+            ReturnBody::expr(FloatExpr::local_get(
+                FloatLocalId(26),
+                "float_case_fallback".into(),
+            )),
+        ));
         let layout = FrameLayout::from_function_parts(&[], &[], &float_case_return);
         assert_eq!(layout.floats(), 27);
 
-        let float_tail_return = ReturnExpr::float_body(
-            crate::plan::FloatFunctionId(2),
-            ReturnBody::tail_call(
-                crate::plan::FloatFunctionId(3),
-                vec![CallArg::float(
-                    FloatLocalId(27),
-                    FloatExpr::local_get(FloatLocalId(28), "float_tail_arg".into()),
-                )],
+        let float_tail_return = ReturnExpr::float_body(ReturnBody::tail_call(
+            monomorphic_function_instantiation(
+                3,
+                FunctionShape::new(vec![ValueShape::Float], ValueShape::Float),
             ),
-        );
+            vec![CallArg::float(
+                FloatLocalId(27),
+                FloatExpr::local_get(FloatLocalId(28), "float_tail_arg".into()),
+            )],
+        ));
         let layout = FrameLayout::from_function_parts(&[], &[], &float_tail_return);
         assert_eq!(layout.floats(), 29);
 
-        let bool_return = ReturnExpr::bool_body(
-            crate::plan::BoolFunctionId(0),
-            ReturnBody::block(
-                vec![Step::evaluate(Expr::int(IntExpr::local_get(
-                    IntLocalId(22),
-                    "bool_step".into(),
-                )))],
-                ReturnBody::bool_case(
-                    BoolExpr::local_get(BoolLocalId(21), "bool_flag".into()),
-                    ReturnBody::int_case(
-                        IntExpr::local_get(IntLocalId(23), "bool_subject".into()),
-                        vec![(
-                            1.into(),
-                            ReturnBody::expr(BoolExpr::local_get(
-                                BoolLocalId(22),
-                                "bool_hit".into(),
-                            )),
-                        )],
-                        ReturnBody::expr(BoolExpr::local_get(
-                            BoolLocalId(23),
-                            "bool_fallback".into(),
-                        )),
-                    ),
-                    ReturnBody::expr(BoolExpr::local_get(BoolLocalId(24), "bool_false".into())),
+        let bool_return = ReturnExpr::bool_body(ReturnBody::block(
+            vec![Step::evaluate(Expr::int(IntExpr::local_get(
+                IntLocalId(22),
+                "bool_step".into(),
+            )))],
+            ReturnBody::bool_case(
+                BoolExpr::local_get(BoolLocalId(21), "bool_flag".into()),
+                ReturnBody::int_case(
+                    IntExpr::local_get(IntLocalId(23), "bool_subject".into()),
+                    vec![(
+                        1.into(),
+                        ReturnBody::expr(BoolExpr::local_get(BoolLocalId(22), "bool_hit".into())),
+                    )],
+                    ReturnBody::expr(BoolExpr::local_get(BoolLocalId(23), "bool_fallback".into())),
                 ),
+                ReturnBody::expr(BoolExpr::local_get(BoolLocalId(24), "bool_false".into())),
             ),
-        );
+        ));
         let layout = FrameLayout::from_function_parts(&[], &[], &bool_return);
         assert_eq!(layout.ints(), 24);
         assert_eq!(layout.bools(), 25);
 
-        let nil_return = ReturnExpr::nil_body(
-            crate::plan::NilFunctionId(0),
-            ReturnBody::block(
-                vec![Step::evaluate(Expr::int(IntExpr::local_get(
-                    IntLocalId(24),
-                    "nil_step".into(),
-                )))],
-                ReturnBody::bool_case(
-                    BoolExpr::local_get(BoolLocalId(25), "nil_flag".into()),
-                    ReturnBody::int_case(
-                        IntExpr::local_get(IntLocalId(25), "nil_subject".into()),
-                        vec![(
-                            1.into(),
-                            ReturnBody::expr(NilExpr::local_get(NilLocalId(20), "nil_hit".into())),
-                        )],
-                        ReturnBody::expr(NilExpr::local_get(NilLocalId(21), "nil_fallback".into())),
-                    ),
-                    ReturnBody::expr(NilExpr::local_get(NilLocalId(22), "nil_false".into())),
+        let nil_return = ReturnExpr::nil_body(ReturnBody::block(
+            vec![Step::evaluate(Expr::int(IntExpr::local_get(
+                IntLocalId(24),
+                "nil_step".into(),
+            )))],
+            ReturnBody::bool_case(
+                BoolExpr::local_get(BoolLocalId(25), "nil_flag".into()),
+                ReturnBody::int_case(
+                    IntExpr::local_get(IntLocalId(25), "nil_subject".into()),
+                    vec![(
+                        1.into(),
+                        ReturnBody::expr(NilExpr::local_get(NilLocalId(20), "nil_hit".into())),
+                    )],
+                    ReturnBody::expr(NilExpr::local_get(NilLocalId(21), "nil_fallback".into())),
                 ),
+                ReturnBody::expr(NilExpr::local_get(NilLocalId(22), "nil_false".into())),
             ),
-        );
+        ));
         let layout = FrameLayout::from_function_parts(&[], &[], &nil_return);
         assert_eq!(layout.ints(), 26);
         assert_eq!(layout.bools(), 26);
@@ -811,7 +846,6 @@ mod tests {
     #[test]
     fn frame_layout_includes_tuple_return_blocks() {
         let return_ = ReturnExpr::tuple_body(
-            TupleFunctionId(0),
             vec![crate::plan::ValueType::Int],
             ReturnBody::block(
                 vec![Step::evaluate(Expr::int(IntExpr::local_get(
@@ -838,19 +872,16 @@ mod tests {
             CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
             Vec::new(),
         );
-        let return_ = ReturnExpr::custom_body(
-            0,
-            crate::plan::CustomReturn::block(
-                vec![Step::evaluate(Expr::int(IntExpr::local_get(
-                    IntLocalId(2),
-                    "step".into(),
-                )))],
-                crate::plan::CustomReturn::expr(CustomExpr::local_get(
-                    crate::plan::CustomLocal::new(CustomLocalId(3), type_.clone()),
-                    "return".into(),
-                )),
-            ),
-        );
+        let return_ = ReturnExpr::custom_body(crate::plan::CustomReturn::block(
+            vec![Step::evaluate(Expr::int(IntExpr::local_get(
+                IntLocalId(2),
+                "step".into(),
+            )))],
+            crate::plan::CustomReturn::expr(CustomExpr::local_get(
+                crate::plan::CustomLocal::new(CustomLocalId(3), type_.clone()),
+                "return".into(),
+            )),
+        ));
 
         let layout = FrameLayout::from_function_parts(&[], &[], &return_);
 

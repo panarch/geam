@@ -2,7 +2,7 @@ use super::{
     BoolExpr, CallArg, CustomFieldAccess, FloatExpr, IntExpr, PanicExpr, StringFunctionExpr,
     StringListExpr, TupleExpr,
 };
-use crate::plan::{Step, StringFunctionId, StringLocalId};
+use crate::plan::{FunctionInstantiation, Step, StringLocalId};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -19,7 +19,7 @@ pub(crate) enum StringExprKind {
         name: EcoString,
     },
     Call {
-        function: StringFunctionId,
+        function: FunctionInstantiation,
         args: Vec<CallArg>,
     },
     FunctionCall {
@@ -83,7 +83,7 @@ impl StringExpr {
         }
     }
 
-    pub(crate) fn call(function: StringFunctionId, args: Vec<CallArg>) -> Self {
+    pub(crate) fn call(function: FunctionInstantiation, args: Vec<CallArg>) -> Self {
         Self {
             kind: StringExprKind::Call { function, args },
         }
@@ -210,18 +210,15 @@ impl StringExpr {
     pub(crate) fn kind(&self) -> &StringExprKind {
         &self.kind
     }
-
-    pub(crate) fn into_kind(self) -> StringExprKind {
-        self.kind
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{StringExpr, StringExprKind};
     use crate::plan::{
-        BoolExpr, Expr, IntExpr, Step, StringFunctionId, StringFunctionReference, StringLocalId,
-        TupleExpr, ValueType,
+        BoolExpr, Expr, FunctionInstantiation, FunctionShape, IntExpr, Step,
+        StringFunctionReference, StringLocalId, TupleExpr, ValueShape, ValueType,
+        monomorphic_function_instantiation,
     };
     use num_bigint::BigInt;
 
@@ -239,9 +236,9 @@ mod tests {
             },
         );
         assert_eq!(
-            StringExpr::call(StringFunctionId(0), Vec::new()).kind(),
+            StringExpr::call(function_instantiation(), Vec::new()).kind(),
             &StringExprKind::Call {
-                function: StringFunctionId(0),
+                function: function_instantiation(),
                 args: Vec::new(),
             },
         );
@@ -341,9 +338,13 @@ mod tests {
 
     fn function_expr() -> crate::plan::StringFunctionExpr {
         crate::plan::StringFunctionExpr::reference(StringFunctionReference::new(
-            StringFunctionId(0),
+            function_instantiation(),
             Vec::new(),
         ))
+    }
+
+    fn function_instantiation() -> FunctionInstantiation {
+        monomorphic_function_instantiation(0, FunctionShape::new(Vec::new(), ValueShape::String))
     }
 
     fn tuple_expr() -> TupleExpr {

@@ -2,9 +2,9 @@ use crate::plan::CustomFieldAccess;
 #[cfg(test)]
 use crate::plan::ParamLocal;
 use crate::plan::{
-    BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionListExpr, FunctionType, IntExpr,
-    NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilFunctionReference, PanicExpr,
-    ParamSlot, Step, StringExpr, TupleExpr,
+    BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionInstantiation, FunctionListExpr,
+    FunctionType, IntExpr, NilFunctionLocalId, NilFunctionReference, PanicExpr, ParamSlot, Step,
+    StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -19,7 +19,7 @@ pub struct NilFunctionExpr {
 pub(crate) enum NilFunctionExprKind {
     Reference(NilFunctionReference),
     Closure {
-        runtime_id: NilFunctionId,
+        function: FunctionInstantiation,
         params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
     },
@@ -28,7 +28,7 @@ pub(crate) enum NilFunctionExprKind {
         name: EcoString,
     },
     Call {
-        function: NilFunctionFunctionId,
+        function: FunctionInstantiation,
         args: Vec<crate::plan::CallArg>,
         type_: FunctionType,
     },
@@ -77,14 +77,7 @@ pub(crate) enum NilFunctionExprKind {
 
 impl NilFunctionExpr {
     pub(crate) fn reference(value: NilFunctionReference) -> Self {
-        let type_ = FunctionType::new(
-            value
-                .params()
-                .iter()
-                .map(crate::plan::ParamSlot::value_type)
-                .collect(),
-            crate::plan::ValueType::Nil,
-        );
+        let type_ = value.instantiation().shape().type_();
         Self {
             type_,
             kind: NilFunctionExprKind::Reference(value),
@@ -92,7 +85,7 @@ impl NilFunctionExpr {
     }
 
     pub(crate) fn closure_slots(
-        runtime_id: NilFunctionId,
+        function: FunctionInstantiation,
         params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
         type_: FunctionType,
@@ -100,7 +93,7 @@ impl NilFunctionExpr {
         Self {
             type_,
             kind: NilFunctionExprKind::Closure {
-                runtime_id,
+                function,
                 params,
                 captures,
             },
@@ -109,13 +102,13 @@ impl NilFunctionExpr {
 
     #[cfg(test)]
     pub(crate) fn closure(
-        runtime_id: NilFunctionId,
+        function: FunctionInstantiation,
         params: Vec<ParamLocal>,
         captures: Vec<CaptureArg>,
         type_: FunctionType,
     ) -> Self {
         Self::closure_slots(
-            runtime_id,
+            function,
             params.into_iter().map(ParamSlot::from_local).collect(),
             captures,
             type_,
@@ -134,7 +127,7 @@ impl NilFunctionExpr {
     }
 
     pub(crate) fn call(
-        function: NilFunctionFunctionId,
+        function: FunctionInstantiation,
         args: Vec<crate::plan::CallArg>,
         type_: FunctionType,
     ) -> Self {
@@ -280,19 +273,15 @@ impl NilFunctionExpr {
     pub(crate) fn kind(&self) -> &NilFunctionExprKind {
         &self.kind
     }
-
-    pub(crate) fn into_parts(self) -> (FunctionType, NilFunctionExprKind) {
-        (self.type_, self.kind)
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{NilFunctionExpr, NilFunctionExprKind};
     use crate::plan::{
-        BoolExpr, Expr, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionReference,
-        FunctionType, IntExpr, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId,
-        NilFunctionReference, NilLocalId, ParamLocal, Step, StringExpr, ValueType,
+        BoolExpr, Expr, FunctionFunctionExpr, FunctionFunctionReference, FunctionInstantiation,
+        FunctionShape, FunctionType, IntExpr, NilFunctionLocalId, NilFunctionReference, NilLocalId,
+        ParamLocal, Step, StringExpr, ValueShape, ValueType, monomorphic_function_instantiation,
     };
 
     #[test]
@@ -300,20 +289,20 @@ mod tests {
         assert_eq!(
             function_value().kind(),
             &NilFunctionExprKind::Reference(NilFunctionReference::new(
-                NilFunctionId(0),
+                function_instantiation(),
                 vec![ParamLocal::nil(NilLocalId(0))],
             )),
         );
         assert_eq!(
             NilFunctionExpr::closure(
-                NilFunctionId(0),
+                function_instantiation(),
                 vec![ParamLocal::nil(NilLocalId(0))],
                 Vec::new(),
                 function_type(),
             )
             .kind(),
             &NilFunctionExprKind::Closure {
-                runtime_id: NilFunctionId(0),
+                function: function_instantiation(),
                 params: vec![crate::plan::ParamSlot::from_local(ParamLocal::nil(
                     NilLocalId(0)
                 ))],
@@ -328,9 +317,14 @@ mod tests {
             },
         );
         assert_eq!(
-            NilFunctionExpr::call(NilFunctionFunctionId(0), Vec::new(), function_type()).kind(),
+            NilFunctionExpr::call(
+                function_returning_function_instantiation(),
+                Vec::new(),
+                function_type(),
+            )
+            .kind(),
             &NilFunctionExprKind::Call {
-                function: NilFunctionFunctionId(0),
+                function: function_returning_function_instantiation(),
                 args: Vec::new(),
                 type_: function_type(),
             },
@@ -420,7 +414,7 @@ mod tests {
 
     fn function_value() -> NilFunctionExpr {
         NilFunctionExpr::reference(NilFunctionReference::new(
-            NilFunctionId(0),
+            function_instantiation(),
             vec![ParamLocal::nil(NilLocalId(0))],
         ))
     }
@@ -431,11 +425,22 @@ mod tests {
 
     fn function_function_value() -> FunctionFunctionExpr {
         FunctionFunctionExpr::reference(
-            FunctionFunctionReference::new(
-                FunctionFunctionId::Nil(NilFunctionFunctionId(0)),
-                Vec::new(),
-            ),
+            FunctionFunctionReference::new(function_returning_function_instantiation(), Vec::new()),
             function_type(),
+        )
+    }
+
+    fn function_instantiation() -> FunctionInstantiation {
+        monomorphic_function_instantiation(0, FunctionShape::from_function_type(function_type()))
+    }
+
+    fn function_returning_function_instantiation() -> FunctionInstantiation {
+        monomorphic_function_instantiation(
+            1,
+            FunctionShape::new(
+                Vec::new(),
+                ValueShape::Function(Box::new(FunctionShape::from_function_type(function_type()))),
+            ),
         )
     }
 

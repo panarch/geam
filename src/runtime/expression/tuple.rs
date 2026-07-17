@@ -160,8 +160,8 @@ pub(in crate::runtime) fn project_tuple_expr(
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExpr, Expr, FloatExpr, FunctionId, FunctionPlan, IntExpr, ModulePlan, PanicExpr,
-        PanicSite, ReturnExpr, Step, StringExpr, TupleExpr, TupleFunctionId, ValueType,
+        BoolExpr, Expr, FloatExpr, FunctionTemplate, FunctionTemplateId, IntExpr, ModulePlan,
+        PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr, TupleFunctionId, ValueType,
     };
     use crate::runtime::{ExecutionError, run_main};
 
@@ -291,8 +291,8 @@ pub fn main() -> #(Int) {{ {expression} }}
     }
 
     fn run_module_tuple_expression(expression: TupleExpr) -> ExecutionError {
-        let main = FunctionPlan::new(
-            FunctionId::new(0),
+        let main = FunctionTemplate::new(
+            FunctionTemplateId::new(0),
             "main".into(),
             Vec::new(),
             Vec::new(),

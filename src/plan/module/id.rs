@@ -1,5 +1,6 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LocalId {
+    Generic(GenericLocal),
     Int(IntLocalId),
     Float(FloatLocalId),
     String(StringLocalId),
@@ -7,6 +8,15 @@ pub enum LocalId {
     UtfCodepoint(UtfCodepointLocalId),
     Bool(BoolLocalId),
     Nil(NilLocalId),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct GenericLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct GenericLocal {
+    id: GenericLocalId,
+    parameter: crate::plan::TypeParameterId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,8 +85,15 @@ pub struct ListListLocalId(pub(crate) usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FunctionListLocalId(pub(crate) usize);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct GenericListLocalId(pub(crate) usize);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ListLocal {
+    Generic {
+        local: GenericListLocalId,
+        parameter: crate::plan::TypeParameterId,
+    },
     Int(IntListLocalId),
     String(StringListLocalId),
     BitArray(BitArrayListLocalId),
@@ -168,8 +185,16 @@ pub struct ListListFunctionLocalId(pub(crate) usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FunctionListFunctionLocalId(pub(crate) usize);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct GenericListFunctionLocalId(pub(crate) usize);
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ListFunctionLocal {
+    Generic {
+        local: GenericListFunctionLocalId,
+        type_: crate::plan::FunctionType,
+        parameter: crate::plan::TypeParameterId,
+    },
     Int {
         local: IntListFunctionLocalId,
         type_: crate::plan::FunctionType,
@@ -223,15 +248,25 @@ pub enum ListFunctionLocal {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FunctionFunctionLocalId(pub(crate) usize);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct GenericFunctionLocalId(pub(crate) usize);
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct FunctionFunctionLocal {
     id: FunctionFunctionLocalId,
     type_: crate::plan::FunctionFunctionType,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FunctionId(usize);
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct GenericFunctionLocal {
+    id: GenericFunctionLocalId,
+    type_: crate::plan::GenericFunctionType,
+}
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct FunctionTemplateId(usize);
+
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RuntimeFunctionId {
     Int(IntFunctionId),
@@ -253,71 +288,96 @@ pub(crate) enum RuntimeFunctionId {
     },
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IntFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FloatFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StringFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BitArrayFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UtfCodepointFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CustomFunctionId {
     index: usize,
     return_shape: crate::plan::CustomValueShape,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoolFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NilFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TupleFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IntListFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StringListFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BitArrayListFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UtfCodepointListFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CustomListFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FloatListFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoolListFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NilListFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TupleListFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ListListFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FunctionListFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ListFunctionId {
+    Generic {
+        id: GenericListFunctionId,
+        parameter: crate::plan::TypeParameterId,
+    },
     Int(IntListFunctionId),
     String(StringListFunctionId),
     BitArray(BitArrayListFunctionId),
@@ -343,6 +403,7 @@ pub enum ListFunctionId {
     },
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum FunctionFunctionId {
     Int(IntFunctionFunctionId),
@@ -360,6 +421,7 @@ pub(crate) enum FunctionFunctionId {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FunctionReturnFamily {
+    Generic,
     Int,
     Float,
     String,
@@ -373,71 +435,105 @@ pub enum FunctionReturnFamily {
     Function,
 }
 
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GenericListFunctionId(pub(crate) usize);
+
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IntFunctionFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FloatFunctionFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StringFunctionFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BitArrayFunctionFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UtfCodepointFunctionFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CustomFunctionFunctionId {
     index: usize,
     type_: crate::plan::CustomFunctionType,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoolFunctionFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NilFunctionFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TupleFunctionFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IntListFunctionFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StringListFunctionFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BitArrayListFunctionFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UtfCodepointListFunctionFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CustomListFunctionFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FloatListFunctionFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoolListFunctionFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NilListFunctionFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TupleListFunctionFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ListListFunctionFunctionId(pub(crate) usize);
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FunctionListFunctionFunctionId(pub(crate) usize);
 
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GenericListFunctionFunctionId(pub(crate) usize);
+
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ListFunctionFunctionId {
+    Generic {
+        id: GenericListFunctionFunctionId,
+        type_: crate::plan::FunctionType,
+        parameter: crate::plan::TypeParameterId,
+    },
     Int {
         id: IntListFunctionFunctionId,
         type_: crate::plan::FunctionType,
@@ -488,6 +584,7 @@ pub enum ListFunctionFunctionId {
     },
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionFunctionFunctionId {
     index: usize,
@@ -506,9 +603,33 @@ impl CustomFunctionLocal {
     pub(crate) fn type_(&self) -> &crate::plan::CustomFunctionType {
         &self.type_
     }
+}
 
-    pub(crate) fn into_parts(self) -> (CustomFunctionLocalId, crate::plan::CustomFunctionType) {
-        (self.id, self.type_)
+impl GenericLocal {
+    pub(crate) fn new(id: GenericLocalId, parameter: crate::plan::TypeParameterId) -> Self {
+        Self { id, parameter }
+    }
+
+    pub fn id(self) -> GenericLocalId {
+        self.id
+    }
+
+    pub fn parameter(self) -> crate::plan::TypeParameterId {
+        self.parameter
+    }
+}
+
+impl GenericFunctionLocal {
+    pub(crate) fn new(id: GenericFunctionLocalId, type_: crate::plan::GenericFunctionType) -> Self {
+        Self { id, type_ }
+    }
+
+    pub(crate) fn id(&self) -> GenericFunctionLocalId {
+        self.id
+    }
+
+    pub(crate) fn type_(&self) -> &crate::plan::GenericFunctionType {
+        &self.type_
     }
 }
 
@@ -533,14 +654,10 @@ impl CustomLocal {
     pub(crate) fn shape(&self) -> &crate::plan::CustomValueShape {
         &self.shape
     }
-
-    pub(crate) fn into_parts(self) -> (CustomLocalId, crate::plan::CustomValueShape) {
-        (self.id, self.shape)
-    }
 }
 
+#[cfg(test)]
 impl CustomFunctionId {
-    #[cfg(test)]
     pub(crate) fn new(index: usize, return_type: crate::plan::CustomType) -> Self {
         Self::from_shape(index, crate::plan::CustomValueShape::any(return_type))
     }
@@ -584,12 +701,9 @@ impl FunctionFunctionLocal {
     pub(crate) fn type_(&self) -> &crate::plan::FunctionFunctionType {
         &self.type_
     }
-
-    pub(crate) fn into_parts(self) -> (FunctionFunctionLocalId, crate::plan::FunctionFunctionType) {
-        (self.id, self.type_)
-    }
 }
 
+#[cfg(test)]
 impl CustomFunctionFunctionId {
     pub(crate) fn new(index: usize, type_: crate::plan::CustomFunctionType) -> Self {
         Self { index, type_ }
@@ -598,12 +712,9 @@ impl CustomFunctionFunctionId {
     pub(crate) fn index(&self) -> usize {
         self.index
     }
-
-    pub(crate) fn type_(&self) -> &crate::plan::CustomFunctionType {
-        &self.type_
-    }
 }
 
+#[cfg(test)]
 impl FunctionFunctionFunctionId {
     pub(crate) fn new(index: usize, type_: crate::plan::FunctionFunctionType) -> Self {
         Self { index, type_ }
@@ -612,15 +723,12 @@ impl FunctionFunctionFunctionId {
     pub(crate) fn index(&self) -> usize {
         self.index
     }
-
-    pub(crate) fn type_(&self) -> &crate::plan::FunctionFunctionType {
-        &self.type_
-    }
 }
 
 impl LocalId {
     pub(crate) fn value_type(self) -> crate::plan::ValueType {
         match self {
+            Self::Generic(local) => crate::plan::ValueType::Parameter(local.parameter),
             Self::Int(_) => crate::plan::ValueType::Int,
             Self::Float(_) => crate::plan::ValueType::Float,
             Self::String(_) => crate::plan::ValueType::String,
@@ -632,12 +740,11 @@ impl LocalId {
     }
 }
 
-impl FunctionId {
+impl FunctionTemplateId {
     pub(crate) fn new(index: usize) -> Self {
         Self(index)
     }
 
-    #[cfg(test)]
     pub(crate) fn index(self) -> usize {
         self.0
     }
@@ -746,6 +853,11 @@ impl ListFunctionLocal {
         item_type: crate::plan::ValueType,
     ) -> Self {
         match item_type {
+            crate::plan::ValueType::Parameter(parameter) => Self::Generic {
+                local: GenericListFunctionLocalId(index),
+                type_,
+                parameter,
+            },
             crate::plan::ValueType::Int => Self::int(IntListFunctionLocalId(index), type_),
             crate::plan::ValueType::String => Self::string(StringListFunctionLocalId(index), type_),
             crate::plan::ValueType::BitArray => {
@@ -859,7 +971,8 @@ impl ListFunctionLocal {
 
     pub(crate) fn type_(&self) -> &crate::plan::FunctionType {
         match self {
-            Self::Int { type_, .. }
+            Self::Generic { type_, .. }
+            | Self::Int { type_, .. }
             | Self::String { type_, .. }
             | Self::BitArray { type_, .. }
             | Self::UtfCodepoint { type_, .. }
@@ -879,6 +992,7 @@ impl ListFunctionLocal {
 
     pub(crate) fn item_type(&self) -> crate::plan::ValueType {
         match self {
+            Self::Generic { parameter, .. } => crate::plan::ValueType::Parameter(*parameter),
             Self::Int { .. } => crate::plan::ValueType::Int,
             Self::String { .. } => crate::plan::ValueType::String,
             Self::BitArray { .. } => crate::plan::ValueType::BitArray,
@@ -895,6 +1009,7 @@ impl ListFunctionLocal {
 
     pub(crate) fn index(&self) -> usize {
         match self {
+            Self::Generic { local, .. } => local.0,
             Self::Int { local, .. } => local.0,
             Self::String { local, .. } => local.0,
             Self::BitArray { local, .. } => local.0,
@@ -910,10 +1025,14 @@ impl ListFunctionLocal {
     }
 }
 
+#[cfg(test)]
 impl ListFunctionId {
-    #[cfg(test)]
     pub(crate) fn from_item_type(index: usize, item_type: crate::plan::ValueType) -> Self {
         match item_type {
+            crate::plan::ValueType::Parameter(parameter) => Self::Generic {
+                id: GenericListFunctionId(index),
+                parameter,
+            },
             crate::plan::ValueType::Int => Self::Int(IntListFunctionId(index)),
             crate::plan::ValueType::String => Self::String(StringListFunctionId(index)),
             crate::plan::ValueType::BitArray => Self::BitArray(BitArrayListFunctionId(index)),
@@ -944,6 +1063,7 @@ impl ListFunctionId {
 
     pub(crate) fn item_type(&self) -> crate::plan::ValueType {
         match self {
+            Self::Generic { parameter, .. } => crate::plan::ValueType::Parameter(*parameter),
             Self::Int(_) => crate::plan::ValueType::Int,
             Self::String(_) => crate::plan::ValueType::String,
             Self::BitArray(_) => crate::plan::ValueType::BitArray,
@@ -961,6 +1081,7 @@ impl ListFunctionId {
     }
 }
 
+#[cfg(test)]
 impl ListFunctionFunctionId {
     pub(crate) fn from_item_type(
         index: usize,
@@ -968,6 +1089,11 @@ impl ListFunctionFunctionId {
         item_type: crate::plan::ValueType,
     ) -> Self {
         match item_type {
+            crate::plan::ValueType::Parameter(parameter) => Self::Generic {
+                id: GenericListFunctionFunctionId(index),
+                type_,
+                parameter,
+            },
             crate::plan::ValueType::Int => Self::Int {
                 id: IntListFunctionFunctionId(index),
                 type_,
@@ -1021,7 +1147,8 @@ impl ListFunctionFunctionId {
 
     pub(crate) fn type_(&self) -> &crate::plan::FunctionType {
         match self {
-            Self::Int { type_, .. }
+            Self::Generic { type_, .. }
+            | Self::Int { type_, .. }
             | Self::String { type_, .. }
             | Self::BitArray { type_, .. }
             | Self::UtfCodepoint { type_, .. }
@@ -1035,8 +1162,10 @@ impl ListFunctionFunctionId {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn item_type(&self) -> crate::plan::ValueType {
         match self {
+            Self::Generic { parameter, .. } => crate::plan::ValueType::Parameter(*parameter),
             Self::Int { .. } => crate::plan::ValueType::Int,
             Self::String { .. } => crate::plan::ValueType::String,
             Self::BitArray { .. } => crate::plan::ValueType::BitArray,
@@ -1053,6 +1182,13 @@ impl ListFunctionFunctionId {
 }
 
 impl ListLocal {
+    pub(crate) fn generic(
+        local: GenericListLocalId,
+        parameter: crate::plan::TypeParameterId,
+    ) -> Self {
+        Self::Generic { local, parameter }
+    }
+
     pub(crate) fn int(local: IntListLocalId) -> Self {
         Self::Int(local)
     }
@@ -1105,6 +1241,7 @@ impl ListLocal {
 
     pub(crate) fn item_type(&self) -> crate::plan::ValueType {
         match self {
+            Self::Generic { parameter, .. } => crate::plan::ValueType::Parameter(*parameter),
             Self::Int(_) => crate::plan::ValueType::Int,
             Self::String(_) => crate::plan::ValueType::String,
             Self::BitArray(_) => crate::plan::ValueType::BitArray,
@@ -1127,6 +1264,7 @@ impl ListLocal {
 
     pub(crate) fn family_name(&self) -> &'static str {
         match self {
+            Self::Generic { .. } => "generic",
             Self::Int(_) => "int",
             Self::String(_) => "string",
             Self::BitArray(_) => "bit array",
@@ -1143,6 +1281,7 @@ impl ListLocal {
 
     pub(crate) fn index(&self) -> usize {
         match self {
+            Self::Generic { local, .. } => local.0,
             Self::Int(local) => local.0,
             Self::String(local) => local.0,
             Self::BitArray(local) => local.0,
@@ -1161,6 +1300,7 @@ impl ListLocal {
 impl std::fmt::Display for FunctionReturnFamily {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Generic => f.write_str("Generic"),
             Self::Int => f.write_str("Int"),
             Self::Float => f.write_str("Float"),
             Self::String => f.write_str("String"),
@@ -1180,22 +1320,27 @@ impl std::fmt::Display for FunctionReturnFamily {
 mod tests {
     use super::{
         BitArrayFunctionFunctionId, BitArrayFunctionLocalId, BitArrayListFunctionFunctionId,
-        BitArrayListFunctionLocalId, BitArrayListLocalId, BoolFunctionFunctionId,
-        BoolFunctionLocalId, BoolListFunctionFunctionId, BoolListFunctionLocalId,
-        CustomFunctionFunctionId, CustomFunctionId, CustomListFunctionFunctionId,
-        CustomListFunctionLocalId, CustomListLocalId, FloatFunctionFunctionId,
-        FloatFunctionLocalId, FloatListFunctionFunctionId, FloatListFunctionLocalId,
-        FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId, FunctionId,
-        FunctionListFunctionFunctionId, FunctionListFunctionLocalId, FunctionListLocalId,
-        IntFunctionFunctionId, IntFunctionLocalId, IntListFunctionFunctionId,
-        IntListFunctionLocalId, IntListLocalId, ListFunctionFunctionId, ListFunctionLocal,
-        ListListFunctionFunctionId, ListListFunctionLocalId, ListListLocalId, ListLocal,
-        NilFunctionFunctionId, NilFunctionLocalId, NilListFunctionFunctionId,
-        NilListFunctionLocalId, NilListLocalId, StringFunctionFunctionId, StringFunctionLocalId,
-        StringListFunctionFunctionId, StringListFunctionLocalId, StringListLocalId,
+        BitArrayListFunctionId, BitArrayListFunctionLocalId, BitArrayListLocalId,
+        BoolFunctionFunctionId, BoolFunctionLocalId, BoolListFunctionFunctionId,
+        BoolListFunctionId, BoolListFunctionLocalId, CustomFunctionFunctionId, CustomFunctionId,
+        CustomListFunctionFunctionId, CustomListFunctionId, CustomListFunctionLocalId,
+        CustomListLocalId, FloatFunctionFunctionId, FloatFunctionLocalId,
+        FloatListFunctionFunctionId, FloatListFunctionId, FloatListFunctionLocalId,
+        FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId,
+        FunctionListFunctionFunctionId, FunctionListFunctionId, FunctionListFunctionLocalId,
+        FunctionListLocalId, FunctionTemplateId, GenericListFunctionFunctionId,
+        GenericListFunctionId, GenericListFunctionLocalId, GenericListLocalId,
+        IntFunctionFunctionId, IntFunctionLocalId, IntListFunctionFunctionId, IntListFunctionId,
+        IntListFunctionLocalId, IntListLocalId, ListFunctionFunctionId, ListFunctionId,
+        ListFunctionLocal, ListListFunctionFunctionId, ListListFunctionId, ListListFunctionLocalId,
+        ListListLocalId, ListLocal, NilFunctionFunctionId, NilFunctionLocalId,
+        NilListFunctionFunctionId, NilListFunctionId, NilListFunctionLocalId, NilListLocalId,
+        StringFunctionFunctionId, StringFunctionLocalId, StringListFunctionFunctionId,
+        StringListFunctionId, StringListFunctionLocalId, StringListLocalId,
         TupleFunctionFunctionId, TupleFunctionLocalId, TupleListFunctionFunctionId,
-        TupleListFunctionLocalId, TupleListLocalId, UtfCodepointFunctionFunctionId,
-        UtfCodepointFunctionLocalId, UtfCodepointListFunctionFunctionId,
+        TupleListFunctionId, TupleListFunctionLocalId, TupleListLocalId,
+        UtfCodepointFunctionFunctionId, UtfCodepointFunctionLocalId,
+        UtfCodepointListFunctionFunctionId, UtfCodepointListFunctionId,
         UtfCodepointListFunctionLocalId, UtfCodepointListLocalId,
     };
     use crate::plan::{
@@ -1212,7 +1357,7 @@ mod tests {
 
     #[test]
     fn function_id_index() {
-        assert_eq!(FunctionId::new(5).index(), 5);
+        assert_eq!(FunctionTemplateId::new(5).index(), 5);
     }
 
     #[test]
@@ -1468,6 +1613,7 @@ mod tests {
 
     #[test]
     fn function_return_family_display() {
+        assert_eq!(super::FunctionReturnFamily::Generic.to_string(), "Generic");
         assert_eq!(super::FunctionReturnFamily::Int.to_string(), "Int");
         assert_eq!(super::FunctionReturnFamily::Float.to_string(), "Float");
         assert_eq!(super::FunctionReturnFamily::String.to_string(), "String");
@@ -1508,6 +1654,7 @@ mod tests {
                 FunctionListLocalId(3),
                 FunctionType::new(vec![ValueType::Int], ValueType::String),
             ),
+            ListLocal::generic(GenericListLocalId(3), crate::plan::TypeParameterId(0)),
         ];
 
         assert_eq!(
@@ -1516,7 +1663,7 @@ mod tests {
         );
         assert_eq!(
             locals.iter().map(ListLocal::index).collect::<Vec<_>>(),
-            vec![3; 11],
+            vec![3; 12],
         );
     }
 
@@ -1536,6 +1683,7 @@ mod tests {
             ListFunctionLocal::from_item_type(3, cases[8].clone(), item_types[8].clone()),
             ListFunctionLocal::from_item_type(3, cases[9].clone(), item_types[9].clone()),
             ListFunctionLocal::from_item_type(3, cases[10].clone(), item_types[10].clone()),
+            ListFunctionLocal::from_item_type(3, cases[11].clone(), item_types[11].clone()),
         ];
 
         assert_eq!(
@@ -1571,6 +1719,11 @@ mod tests {
                     cases[10].clone(),
                     FunctionType::new(vec![ValueType::Int], ValueType::String),
                 ),
+                ListFunctionLocal::Generic {
+                    local: GenericListFunctionLocalId(3),
+                    type_: cases[11].clone(),
+                    parameter: crate::plan::TypeParameterId(0),
+                },
             ],
         );
         assert_eq!(
@@ -1596,7 +1749,56 @@ mod tests {
                 .iter()
                 .map(ListFunctionLocal::index)
                 .collect::<Vec<_>>(),
-            vec![3; 11],
+            vec![3; 12],
+        );
+    }
+
+    #[test]
+    fn list_function_ids_preserve_item_family() {
+        let item_types = list_item_types();
+        let ids = item_types
+            .iter()
+            .cloned()
+            .map(|item_type| ListFunctionId::from_item_type(5, item_type))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            ids,
+            vec![
+                ListFunctionId::Int(IntListFunctionId(5)),
+                ListFunctionId::String(StringListFunctionId(5)),
+                ListFunctionId::BitArray(BitArrayListFunctionId(5)),
+                ListFunctionId::UtfCodepoint(UtfCodepointListFunctionId(5)),
+                ListFunctionId::Custom {
+                    id: CustomListFunctionId(5),
+                    item_type: custom_type(),
+                },
+                ListFunctionId::Float(FloatListFunctionId(5)),
+                ListFunctionId::Bool(BoolListFunctionId(5)),
+                ListFunctionId::Nil(NilListFunctionId(5)),
+                ListFunctionId::Tuple {
+                    id: TupleListFunctionId(5),
+                    item_type: vec![ValueType::Int, ValueType::String],
+                },
+                ListFunctionId::List {
+                    id: ListListFunctionId(5),
+                    item_type: Box::new(ValueType::Int),
+                },
+                ListFunctionId::Function {
+                    id: FunctionListFunctionId(5),
+                    item_type: FunctionType::new(vec![ValueType::Int], ValueType::String),
+                },
+                ListFunctionId::Generic {
+                    id: GenericListFunctionId(5),
+                    parameter: crate::plan::TypeParameterId(0),
+                },
+            ],
+        );
+        assert_eq!(
+            ids.iter()
+                .map(ListFunctionId::item_type)
+                .collect::<Vec<_>>(),
+            item_types,
         );
     }
 
@@ -1616,6 +1818,7 @@ mod tests {
             ListFunctionFunctionId::from_item_type(7, cases[8].clone(), item_types[8].clone()),
             ListFunctionFunctionId::from_item_type(7, cases[9].clone(), item_types[9].clone()),
             ListFunctionFunctionId::from_item_type(7, cases[10].clone(), item_types[10].clone()),
+            ListFunctionFunctionId::from_item_type(7, cases[11].clone(), item_types[11].clone()),
         ];
 
         assert_eq!(
@@ -1669,6 +1872,11 @@ mod tests {
                     type_: cases[10].clone(),
                     item_type: Box::new(FunctionType::new(vec![ValueType::Int], ValueType::String)),
                 },
+                ListFunctionFunctionId::Generic {
+                    id: GenericListFunctionFunctionId(7),
+                    type_: cases[11].clone(),
+                    parameter: crate::plan::TypeParameterId(0),
+                },
             ],
         );
         assert_eq!(
@@ -1681,11 +1889,11 @@ mod tests {
         );
     }
 
-    fn list_function_type_cases() -> [FunctionType; 11] {
+    fn list_function_type_cases() -> [FunctionType; 12] {
         list_item_types().map(list_function_type)
     }
 
-    fn list_item_types() -> [ValueType; 11] {
+    fn list_item_types() -> [ValueType; 12] {
         [
             ValueType::Int,
             ValueType::String,
@@ -1701,6 +1909,7 @@ mod tests {
                 vec![ValueType::Int],
                 ValueType::String,
             ))),
+            ValueType::Parameter(crate::plan::TypeParameterId(0)),
         ]
     }
 

@@ -130,8 +130,8 @@ pub(in crate::runtime) fn eval_string_expr(
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExpr, Expr, FloatExpr, FunctionId, FunctionPlan, IntExpr, ModulePlan, PanicExpr,
-        PanicSite, ReturnExpr, Step, StringExpr, StringFunctionId, TupleExpr, ValueType,
+        BoolExpr, Expr, FloatExpr, FunctionTemplate, FunctionTemplateId, IntExpr, ModulePlan,
+        PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, StringFunctionId, TupleExpr, ValueType,
     };
     use crate::runtime::{ExecutionError, run_main};
 
@@ -264,8 +264,8 @@ pub fn main() -> String {{ {expression} }}
     }
 
     fn run_module_string_expression(expression: StringExpr) -> ExecutionError {
-        let main = FunctionPlan::new(
-            FunctionId::new(0),
+        let main = FunctionTemplate::new(
+            FunctionTemplateId::new(0),
             "main".into(),
             Vec::new(),
             Vec::new(),

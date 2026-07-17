@@ -1,4 +1,3 @@
-use super::{invalid_expression_type, invalid_expression_type_for_value};
 use crate::plan::{
     BoolExpr, Expr, FloatExpr, FunctionExpr, IntExpr, ListExpr, NilExpr, StringExpr, TupleExpr,
     ValueType,
@@ -69,7 +68,12 @@ fn plan_string(
     let actual = expression.value_type();
     match expression.into_string() {
         Some(expression) => Ok(expression),
-        None => Err(invalid_expression_type_for_value(ValueType::String, actual)),
+        None => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionType {
+                expected: InvalidExpressionType::String,
+                actual: InvalidExpressionType::from_value_type(actual),
+            },
+        }),
     }
 }
 
@@ -89,24 +93,30 @@ fn plan_tuple(
     let expected_type = match ValueType::from_gleam(type_.as_ref()) {
         Some(ValueType::Tuple(type_)) => type_,
         Some(actual) => {
-            return Err(invalid_expression_type_for_value(
-                ValueType::Tuple(actual_type),
-                actual,
-            ));
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Tuple,
+                    actual: InvalidExpressionType::from_value_type(actual),
+                },
+            });
         }
         None => {
-            return Err(invalid_expression_type(
-                InvalidExpressionType::Tuple,
-                InvalidExpressionType::Unsupported,
-            ));
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Tuple,
+                    actual: InvalidExpressionType::Unsupported,
+                },
+            });
         }
     };
 
     if expected_type != actual_type {
-        return Err(invalid_expression_type_for_value(
-            ValueType::Tuple(expected_type),
-            ValueType::Tuple(actual_type),
-        ));
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionType {
+                expected: InvalidExpressionType::Tuple,
+                actual: InvalidExpressionType::Tuple,
+            },
+        });
     }
 
     Ok(Expr::tuple(TupleExpr::value(
@@ -128,14 +138,18 @@ fn plan_list(
 
     let Some(list_element_type) = type_.list_type() else {
         return match ValueType::from_gleam(type_.as_ref()) {
-            Some(actual) => Err(invalid_expression_type_for_value(
-                ValueType::List(Box::new(ValueType::Nil)),
-                actual,
-            )),
-            None => Err(invalid_expression_type(
-                InvalidExpressionType::List,
-                InvalidExpressionType::Unsupported,
-            )),
+            Some(actual) => Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::List,
+                    actual: InvalidExpressionType::from_value_type(actual),
+                },
+            }),
+            None => Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::List,
+                    actual: InvalidExpressionType::Unsupported,
+                },
+            }),
         };
     };
     let expected_element_type = match ValueType::from_gleam(list_element_type.as_ref()) {
@@ -151,10 +165,12 @@ fn plan_list(
         let list = match ListExpr::try_value(planned_elements, expected_element_type) {
             Ok(list) => list,
             Err(error) => {
-                return Err(invalid_expression_type_for_value(
-                    error.expected,
-                    error.actual,
-                ));
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionType {
+                        expected: InvalidExpressionType::from_value_type(error.expected),
+                        actual: InvalidExpressionType::from_value_type(error.actual),
+                    },
+                });
             }
         };
         return Ok(Expr::list(list));
@@ -162,10 +178,12 @@ fn plan_list(
     let tail = plan(tail, context)?;
     let actual = tail.value_type();
     let Some(tail) = tail.into_list() else {
-        return Err(invalid_expression_type_for_value(
-            ValueType::List(Box::new(expected_element_type.clone())),
-            actual,
-        ));
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionType {
+                expected: InvalidExpressionType::List,
+                actual: InvalidExpressionType::from_value_type(actual),
+            },
+        });
     };
     let elements = match crate::plan::ListElements::from_exprs(
         expected_element_type.clone(),
@@ -173,19 +191,23 @@ fn plan_list(
     ) {
         Ok(elements) => elements,
         Err(error) => {
-            return Err(invalid_expression_type_for_value(
-                error.expected,
-                error.actual,
-            ));
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::from_value_type(error.expected),
+                    actual: InvalidExpressionType::from_value_type(error.actual),
+                },
+            });
         }
     };
     let elements = match crate::plan::ListSpreadElements::from_parts(elements, tail) {
         Ok(elements) => elements,
-        Err(error) => {
-            return Err(invalid_expression_type_for_value(
-                ValueType::List(Box::new(error.expected)),
-                ValueType::List(Box::new(error.actual)),
-            ));
+        Err(_) => {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::List,
+                    actual: InvalidExpressionType::List,
+                },
+            });
         }
     };
     Ok(Expr::list(ListExpr::from_spread_elements(elements)))
@@ -220,7 +242,7 @@ fn plan_var(
             };
 
             Ok(Expr::function(FunctionExpr::reference(
-                function.reference(),
+                function.reference(function.signature.identity_instantiation()),
             )))
         }
         ValueConstructorVariant::ModuleConstant { .. }
@@ -243,19 +265,27 @@ fn plan_record(
         return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
     };
 
-    let ValueConstructorVariant::Record { arity, .. } = &constructor.variant else {
+    let ValueConstructorVariant::Record { .. } = &constructor.variant else {
         return invalid_expression_shape(InvalidExpressionShapeKind::Invalid);
     };
     let Some(arguments) = arguments else {
         return plan_record_constructor(constructor, context);
     };
-    if arguments.is_empty() {
+    if arguments.is_empty()
+        && matches!(
+            &constructor.variant,
+            ValueConstructorVariant::Record {
+                name,
+                module,
+                arity: 0,
+                ..
+            } if module == PRELUDE_MODULE_NAME
+                && matches!(name.as_str(), "True" | "False" | "Nil")
+        )
+    {
         return plan_record_constructor(constructor, context);
     }
     let constructor = context.custom_constructor(&constructor)?;
-    if usize::from(*arity) != arguments.len() {
-        return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
-    }
     let arguments = arguments
         .into_iter()
         .enumerate()
@@ -270,10 +300,12 @@ fn plan_record(
             }
             let argument = plan(argument.value, context)?;
             if argument.value_type() != *field.type_() {
-                return Err(invalid_expression_type_for_value(
-                    field.type_().clone(),
-                    argument.value_type(),
-                ));
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionType {
+                        expected: InvalidExpressionType::from_value_type(field.type_().clone()),
+                        actual: InvalidExpressionType::from_value_type(argument.value_type()),
+                    },
+                });
             }
             Ok(argument)
         })
@@ -345,12 +377,16 @@ fn invalid_expression_shape(kind: InvalidExpressionShapeKind) -> Result<Expr, Pl
 
 #[cfg(test)]
 mod tests {
-    use super::{plan, plan_record, plan_record_constructor};
+    use super::{plan, plan_record, plan_record_constructor, plan_var};
     use crate::plan::{
-        CustomConstructor, CustomConstructorField, CustomExpr, CustomReturn, CustomType,
-        CustomTypeName, Expr, IntLocalId, LocalId, ReturnExpr, ValueType,
+        ConstantFunction, ConstantTemplate, ConstantTemplateId, ConstantTemplateSignature,
+        ConstantTemplates, ConstantValue, CustomConstructor, CustomConstructorField, CustomExpr,
+        CustomReturn, CustomType, CustomTypeName, Expr, FunctionReference, FunctionShape,
+        FunctionTemplateId, FunctionTemplateSignature, IntLocalId, LocalId, ParamBinding,
+        ParamLocal, ParamSlot, ReturnExpr, TypeScheme, ValueShape, ValueType,
+        monomorphic_function_instantiation,
     };
-    use crate::planner::context::{AnonymousFunctions, PlanContext};
+    use crate::planner::context::{AnonymousFunctions, FunctionInfo, FunctionParam, PlanContext};
     use crate::planner::dsl::{
         bool_, call_int_function, float, function, int, int_function_call_arg, int_function_ref,
         list, list_spread, local_int, module, nil, string, tuple,
@@ -361,6 +397,7 @@ mod tests {
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
+    use ecow::EcoString;
     use gleam_core::analyse::Inferred;
     use gleam_core::ast::{
         BitArraySegment, Constant, Publicity, RecordBeingUpdated, Statement, TypedExpr,
@@ -387,6 +424,76 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
+        let pair_elements = vec![ValueShape::Int, ValueShape::String].into_boxed_slice();
+        let left = ConstantValue::string("ge".into())
+            .into_string()
+            .expect("a String value has String storage");
+        let right = ConstantValue::string("am".into())
+            .into_string()
+            .expect("a String value has String storage");
+        let entries = vec![
+            (
+                ConstantTemplate::new(
+                    ConstantTemplateSignature::nil(ConstantTemplateId(0), 0, TypeScheme::new(0)),
+                    "nothing".into(),
+                ),
+                ConstantValue::nil(),
+            ),
+            (
+                ConstantTemplate::new(
+                    ConstantTemplateSignature::bool(ConstantTemplateId(1), 0, TypeScheme::new(0)),
+                    "falsehood".into(),
+                ),
+                ConstantValue::bool(false),
+            ),
+            (
+                ConstantTemplate::new(
+                    ConstantTemplateSignature::bool(ConstantTemplateId(2), 1, TypeScheme::new(0)),
+                    "truth".into(),
+                ),
+                ConstantValue::bool(true),
+            ),
+            (
+                ConstantTemplate::new(
+                    ConstantTemplateSignature::tuple(
+                        ConstantTemplateId(3),
+                        0,
+                        TypeScheme::new(0),
+                        pair_elements.clone(),
+                    ),
+                    "pair".into(),
+                ),
+                ConstantValue::tuple(
+                    vec![ValueShape::Int, ValueShape::String].into_boxed_slice(),
+                    vec![
+                        ConstantValue::int(1.into()),
+                        ConstantValue::string("one".into()),
+                    ]
+                    .into_boxed_slice(),
+                ),
+            ),
+            (
+                ConstantTemplate::new(
+                    ConstantTemplateSignature::string(ConstantTemplateId(4), 0, TypeScheme::new(0)),
+                    "label".into(),
+                ),
+                ConstantValue::string_concatenation(left, right),
+            ),
+            (
+                ConstantTemplate::new(
+                    ConstantTemplateSignature::float(ConstantTemplateId(5), 0, TypeScheme::new(0)),
+                    "ratio".into(),
+                ),
+                ConstantValue::float(1.5),
+            ),
+            (
+                ConstantTemplate::new(
+                    ConstantTemplateSignature::int(ConstantTemplateId(6), 0, TypeScheme::new(0)),
+                    "number".into(),
+                ),
+                ConstantValue::int(1.into()),
+            ),
+        ];
         let expected = module(
             "main",
             function(
@@ -402,7 +509,8 @@ pub fn main() {
                 ]),
             ),
             [],
-        );
+        )
+        .with_constants(ConstantTemplates::from_entries(entries));
 
         assert_eq!(actual, expected);
     }
@@ -420,6 +528,33 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
+        let rest_signature = ConstantTemplateSignature::list(
+            ConstantTemplateId(0),
+            0,
+            TypeScheme::new(0),
+            ValueShape::Int,
+        );
+        let rest_instantiation = rest_signature
+            .try_instantiate(Vec::new())
+            .expect("a monomorphic constant signature should instantiate");
+        let values_signature = ConstantTemplateSignature::list(
+            ConstantTemplateId(1),
+            1,
+            TypeScheme::new(0),
+            ValueShape::Int,
+        );
+        let rest_value = ConstantValue::try_list(
+            ValueShape::Int,
+            vec![ConstantValue::int(2.into()), ConstantValue::int(3.into())],
+            None,
+        )
+        .expect("rest has matching Int list elements");
+        let values_value = ConstantValue::try_list(
+            ValueShape::Int,
+            vec![ConstantValue::int(1.into())],
+            Some(ConstantValue::reference(rest_instantiation)),
+        )
+        .expect("values has a matching Int list tail");
         let expected = module(
             "main",
             function(
@@ -431,7 +566,17 @@ pub fn main() {
                 ),
             ),
             [],
-        );
+        )
+        .with_constants(ConstantTemplates::from_entries(vec![
+            (
+                ConstantTemplate::new(rest_signature, "rest".into()),
+                rest_value,
+            ),
+            (
+                ConstantTemplate::new(values_signature, "values".into()),
+                values_value,
+            ),
+        ]));
 
         assert_eq!(actual, expected);
     }
@@ -452,6 +597,20 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
+        let function_shape = FunctionShape::new(vec![ValueShape::Int], ValueShape::Int);
+        let signature = ConstantTemplateSignature::function(
+            ConstantTemplateId(0),
+            0,
+            TypeScheme::new(0),
+            function_shape.clone(),
+        );
+        let value = ConstantValue::function(
+            function_shape.clone(),
+            ConstantFunction::Reference(FunctionReference::from_slots(
+                monomorphic_function_instantiation(1, function_shape),
+                vec![ParamSlot::from_local(ParamLocal::int(IntLocalId(0)))],
+            )),
+        );
         let expected = module(
             "main",
             function(
@@ -462,9 +621,207 @@ pub fn main() {
                 ),
             ),
             [function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value")],
-        );
+        )
+        .with_constants(ConstantTemplates::from_entries(vec![(
+            ConstantTemplate::new(signature, "f".into()),
+            value,
+        )]));
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_constant_segment_values_preserve_compound_and_reference_shapes() {
+        assert_eq!(
+            plan_constant_literal(Constant::StringConcatenation {
+                location: dummy_span(),
+                left: Box::new(Constant::String {
+                    location: dummy_span(),
+                    value: "ge".into(),
+                }),
+                right: Box::new(Constant::String {
+                    location: dummy_span(),
+                    value: "am".into(),
+                }),
+            }),
+            Ok(Expr::from(string("ge").concatenate(string("am")))),
+        );
+        assert_eq!(
+            plan_constant_literal(Constant::Tuple {
+                location: dummy_span(),
+                elements: vec![Constant::Int {
+                    location: dummy_span(),
+                    value: "1".into(),
+                    int_value: 1.into(),
+                }],
+                type_: type_::tuple(vec![type_::int()]),
+            }),
+            Ok(Expr::from(tuple([Expr::from(int(1))]))),
+        );
+        assert_eq!(
+            plan_constant_literal(Constant::List {
+                location: dummy_span(),
+                elements: vec![Constant::Int {
+                    location: dummy_span(),
+                    value: "1".into(),
+                    int_value: 1.into(),
+                }],
+                type_: type_::list(type_::int()),
+                tail: Some(Box::new(Constant::List {
+                    location: dummy_span(),
+                    elements: vec![Constant::Int {
+                        location: dummy_span(),
+                        value: "2".into(),
+                        int_value: 2.into(),
+                    }],
+                    type_: type_::list(type_::int()),
+                    tail: None,
+                })),
+            }),
+            Ok(Expr::from(list_spread(
+                [int(1)],
+                list([int(2)], ValueType::Int),
+                ValueType::Int,
+            ))),
+        );
+
+        let mut constant_module = compile(
+            r#"
+const answer = 1
+pub fn main() { answer }
+"#,
+        );
+        let constant = main_var_constructor_mut(&mut constant_module).clone();
+        assert_eq!(
+            plan_constant_literal(Constant::Var {
+                location: dummy_span(),
+                module: None,
+                name: "answer".into(),
+                constructor: Some(Box::new(constant)),
+                type_: type_::int(),
+            }),
+            Ok(Expr::from(int(1))),
+        );
+
+        let function_shape = FunctionShape::new(vec![ValueShape::Int], ValueShape::Int);
+        let mut function_module = function_constant_module();
+        let constructor = constant_definition_alias_constructor_mut(&mut function_module).clone();
+        let module_name = "main".into();
+        let functions = HashMap::from([(
+            "add_one".into(),
+            FunctionInfo {
+                signature: FunctionTemplateSignature::new(
+                    FunctionTemplateId::new(0),
+                    TypeScheme::new(0),
+                    function_shape.clone(),
+                ),
+                type_parameters: crate::planner::type_parameter::TypeParameterScope::default(),
+                return_shape: ValueShape::Int,
+                params: vec![FunctionParam::new(
+                    ParamLocal::int(IntLocalId(0)),
+                    ValueShape::Int,
+                    ParamBinding::Named("value".into()),
+                    None,
+                )],
+            },
+        )]);
+        let mut anonymous_functions = AnonymousFunctions::default();
+        let context = PlanContext::new(&module_name, &functions, &mut anonymous_functions);
+        assert_eq!(
+            plan_var(Some(constructor), &context),
+            Ok(Expr::function(crate::plan::FunctionExpr::reference(
+                FunctionReference::from_slots(
+                    monomorphic_function_instantiation(0, function_shape),
+                    vec![ParamSlot::from_local(ParamLocal::int(IntLocalId(0)))],
+                ),
+            ))),
+        );
+    }
+
+    #[test]
+    fn plan_constant_segment_record_preserves_concrete_result_payload() {
+        let module_name = "main".into();
+        let functions = HashMap::new();
+        let mut anonymous_functions = AnonymousFunctions::default();
+        let context = PlanContext::new(&module_name, &functions, &mut anonymous_functions);
+        let result_type = CustomType::new(
+            CustomTypeName::new("".into(), "gleam".into(), "Result".into()),
+            vec![ValueType::Int, ValueType::String],
+        );
+        let mut constructor = record_constructor("Ok", "gleam", 1);
+        constructor.type_ = type_::fn_(
+            vec![type_::int()],
+            type_::result(type_::int(), type_::string()),
+        );
+
+        assert_eq!(
+            plan_record(
+                Some(vec![gleam_core::ast::CallArg {
+                    label: None,
+                    location: dummy_span(),
+                    value: Constant::Int {
+                        location: dummy_span(),
+                        value: "1".into(),
+                        int_value: 1.into(),
+                    },
+                    implicit: None,
+                }]),
+                Some(constructor),
+                &context,
+            ),
+            Ok(Expr::custom(
+                CustomExpr::try_constructor(
+                    CustomConstructor::new(
+                        result_type,
+                        "Ok".into(),
+                        0,
+                        vec![CustomConstructorField::new(None, ValueType::Int)],
+                    ),
+                    vec![Expr::from(int(1))],
+                )
+                .expect("Result construction should match its descriptor"),
+            )),
+        );
+    }
+
+    #[test]
+    fn reject_margin_constant_function_and_constructor_shapes() {
+        let module_name = EcoString::from("main");
+        let functions = HashMap::new();
+        let mut anonymous_functions = AnonymousFunctions::default();
+        let context = PlanContext::new(&module_name, &functions, &mut anonymous_functions);
+        let mut function_module = function_constant_module();
+        let constructor = constant_definition_alias_constructor_mut(&mut function_module).clone();
+
+        assert_eq!(
+            plan_var(Some(constructor.clone()), &context),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::UnknownLocal {
+                    name: "add_one".into(),
+                },
+            }),
+        );
+
+        let mut external_module = function_constant_module();
+        *module_fn_constant_alias_module_mut(&mut external_module) = "other".into();
+        let external = constant_definition_alias_constructor_mut(&mut external_module).clone();
+        assert_eq!(
+            plan_var(Some(external), &context),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleSelect,
+                },
+            }),
+        );
+
+        let mut generic_constructor = record_constructor("Boxed", "main", 0);
+        generic_constructor.type_ = type_::generic_var(0);
+        assert_eq!(
+            plan_record_constructor(generic_constructor, &context),
+            Err(PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::GenericFunction,
+            }),
+        );
     }
 
     #[test]
@@ -506,13 +863,10 @@ pub fn main() { empty }
 
         assert_eq!(
             plan.main_function().return_(),
-            &ReturnExpr::custom_body(
-                0,
-                CustomReturn::expr(
-                    CustomExpr::try_constructor(constructor, Vec::new())
-                        .expect("test custom construction should be valid"),
-                ),
-            ),
+            &ReturnExpr::custom_body(CustomReturn::expr(
+                CustomExpr::try_constructor(constructor, Vec::new())
+                    .expect("test custom construction should be valid"),
+            ),),
         );
     }
 
@@ -547,16 +901,13 @@ pub fn main() { older_lucy }
 
         assert_eq!(
             plan.main_function().return_(),
-            &ReturnExpr::custom_body(
-                0,
-                CustomReturn::expr(
-                    CustomExpr::try_constructor(
-                        constructor,
-                        vec![Expr::from(string("Lucy")), Expr::from(int(31))],
-                    )
-                    .expect("test custom construction should be valid"),
-                ),
-            ),
+            &ReturnExpr::custom_body(CustomReturn::expr(
+                CustomExpr::try_constructor(
+                    constructor,
+                    vec![Expr::from(string("Lucy")), Expr::from(int(31))],
+                )
+                .expect("test custom construction should be valid"),
+            ),),
         );
     }
 
@@ -1154,6 +1505,18 @@ pub fn main() {
             plan_record(Some(Vec::new()), Some(true_constructor), &context),
             Ok(Expr::bool(crate::plan::BoolExpr::value(true))),
         );
+        let mut false_constructor = record_constructor("False", "gleam", 0);
+        false_constructor.type_ = type_::bool();
+        assert_eq!(
+            plan_record(Some(Vec::new()), Some(false_constructor), &context),
+            Ok(Expr::bool(crate::plan::BoolExpr::value(false))),
+        );
+        let mut nil_constructor = record_constructor("Nil", "gleam", 0);
+        nil_constructor.type_ = type_::nil();
+        assert_eq!(
+            plan_record(Some(Vec::new()), Some(nil_constructor), &context),
+            Ok(Expr::nil(crate::plan::NilExpr::value())),
+        );
 
         let result_constructor = || {
             let mut constructor = record_constructor("Ok", "gleam", 1);
@@ -1173,6 +1536,14 @@ pub fn main() {
             },
             implicit: None,
         };
+        assert_eq!(
+            plan_record(Some(Vec::new()), Some(result_constructor()), &context,),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                },
+            }),
+        );
         assert_eq!(
             plan_record(
                 Some(vec![int_argument(None), int_argument(None)]),
@@ -1321,7 +1692,7 @@ pub fn main() { pair }
         let custom_type = module.definitions.constants[0].type_.clone();
         let mut constructor = record_constructor("Pair", "main", 1);
         constructor.type_ = type_::fn_(vec![type_::int(), type_::int()], custom_type.clone());
-        *main_module_constant_literal_mut(&mut module) = Constant::Record {
+        *module.definitions.constants[0].value = Constant::Record {
             location: dummy_span(),
             module: None,
             name: "Pair".into(),
@@ -1404,20 +1775,18 @@ pub fn main() {
     #[test]
     fn reject_margin_module_constant_literal_shapes() {
         assert_eq!(
-            plan_module(module_with_main_constant_literal(
-                Constant::StringConcatenation {
+            plan_module(module_with_constant_value(Constant::StringConcatenation {
+                location: dummy_span(),
+                left: Box::new(Constant::Int {
                     location: dummy_span(),
-                    left: Box::new(Constant::Int {
-                        location: dummy_span(),
-                        value: "1".into(),
-                        int_value: 1.into(),
-                    }),
-                    right: Box::new(Constant::String {
-                        location: dummy_span(),
-                        value: "right".into(),
-                    }),
-                }
-            )),
+                    value: "1".into(),
+                    int_value: 1.into(),
+                }),
+                right: Box::new(Constant::String {
+                    location: dummy_span(),
+                    value: "right".into(),
+                }),
+            })),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionType {
                     expected: InvalidExpressionType::String,
@@ -1426,20 +1795,18 @@ pub fn main() {
             }),
         );
         assert_eq!(
-            plan_module(module_with_main_constant_literal(
-                Constant::StringConcatenation {
+            plan_module(module_with_constant_value(Constant::StringConcatenation {
+                location: dummy_span(),
+                left: Box::new(Constant::String {
                     location: dummy_span(),
-                    left: Box::new(Constant::String {
-                        location: dummy_span(),
-                        value: "left".into(),
-                    }),
-                    right: Box::new(Constant::Int {
-                        location: dummy_span(),
-                        value: "1".into(),
-                        int_value: 1.into(),
-                    }),
-                }
-            )),
+                    value: "left".into(),
+                }),
+                right: Box::new(Constant::Int {
+                    location: dummy_span(),
+                    value: "1".into(),
+                    int_value: 1.into(),
+                }),
+            })),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionType {
                     expected: InvalidExpressionType::String,
@@ -1448,7 +1815,7 @@ pub fn main() {
             }),
         );
         assert_eq!(
-            plan_module(module_with_main_constant_literal(Constant::Invalid {
+            plan_module(module_with_constant_value(Constant::Invalid {
                 location: dummy_span(),
                 type_: type_::int(),
                 extra_information: None,
@@ -1482,6 +1849,22 @@ pub fn main() {
     }
 
     #[test]
+    #[should_panic(expected = "expected constant definition alias")]
+    fn constant_definition_alias_fixture_guard_rejects_value_literal() {
+        let mut module = compile(
+            r#"
+const f = 1
+
+pub fn main() {
+  f
+}
+"#,
+        );
+
+        constant_definition_alias_constructor_mut(&mut module);
+    }
+
+    #[test]
     fn module_constant_module_mut_panics_on_function_reference() {
         let result = std::panic::catch_unwind(|| {
             let mut module = compile(
@@ -1497,67 +1880,6 @@ pub fn main() {
             );
 
             module_constant_module_mut(&mut module);
-        });
-
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn main_module_constant_literal_mut_panics_on_function_reference() {
-        let result = std::panic::catch_unwind(|| {
-            let mut module = compile(
-                r#"
-fn add_one(value: Int) {
-  value + 1
-}
-
-pub fn main() {
-  add_one
-}
-"#,
-            );
-
-            main_module_constant_literal_mut(&mut module);
-        });
-
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn constant_alias_constructor_mut_panics_on_function_reference() {
-        let result = std::panic::catch_unwind(|| {
-            let mut module = compile(
-                r#"
-fn add_one(value: Int) {
-  value + 1
-}
-
-pub fn main() {
-  add_one
-}
-"#,
-            );
-
-            constant_alias_constructor_mut(&mut module);
-        });
-
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn constant_alias_constructor_mut_panics_on_value_literal() {
-        let result = std::panic::catch_unwind(|| {
-            let mut module = compile(
-                r#"
-const answer = 1
-
-pub fn main() {
-  answer
-}
-"#,
-            );
-
-            constant_alias_constructor_mut(&mut module);
         });
 
         assert!(result.is_err());
@@ -1643,7 +1965,7 @@ pub fn main() {
         )
     }
 
-    fn module_with_main_constant_literal(
+    fn module_with_constant_value(
         literal: Constant<std::sync::Arc<type_::Type>>,
     ) -> gleam_core::ast::TypedModule {
         let mut module = compile(
@@ -1655,7 +1977,7 @@ pub fn main() {
 }
 "#,
         );
-        *main_module_constant_literal_mut(&mut module) = literal;
+        *module.definitions.constants[0].value = literal;
 
         module
     }
@@ -1664,7 +1986,7 @@ pub fn main() {
         module: &mut gleam_core::ast::TypedModule,
     ) -> &mut ecow::EcoString {
         let ValueConstructorVariant::ModuleFn { module, .. } =
-            &mut constant_alias_constructor_mut(module).variant
+            &mut constant_definition_alias_constructor_mut(module).variant
         else {
             panic!("expected module function constant alias");
         };
@@ -1684,32 +2006,21 @@ pub fn main() {
         module
     }
 
-    fn main_module_constant_literal_mut(
-        module: &mut gleam_core::ast::TypedModule,
-    ) -> &mut Constant<std::sync::Arc<type_::Type>> {
-        let ValueConstructorVariant::ModuleConstant { literal, .. } =
-            &mut main_var_constructor_mut(module).variant
-        else {
-            panic!("expected module constant constructor");
-        };
-
-        literal
-    }
-
-    fn constant_alias_constructor_mut(
+    fn constant_definition_alias_constructor_mut(
         module: &mut gleam_core::ast::TypedModule,
     ) -> &mut ValueConstructor {
-        let ValueConstructorVariant::ModuleConstant { literal, .. } =
-            &mut main_var_constructor_mut(module).variant
-        else {
-            panic!("expected module constant constructor");
-        };
+        let constant = module
+            .definitions
+            .constants
+            .iter_mut()
+            .find(|constant| constant.name == "f")
+            .expect("f constant should exist");
         let Constant::Var {
             constructor: Some(constructor),
             ..
-        } = literal
+        } = constant.value.as_mut()
         else {
-            panic!("expected constant alias");
+            panic!("expected constant definition alias");
         };
 
         constructor

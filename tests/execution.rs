@@ -1,5 +1,5 @@
 use geam::{
-    ExecutionError, FunctionType, SourceContext, Value, ValueType, compile_typed_module,
+    ExecutionError, FunctionType, ListValue, SourceContext, Value, ValueType, compile_typed_module,
     plan_module, plan_module_with_source, run_main,
 };
 use miette::{GraphicalReportHandler, GraphicalTheme};
@@ -100,6 +100,9 @@ mod module_items {
         constant_function_value,
         constant_custom_constructor,
         constant_result_constructor,
+        constant_list_families,
+        generic_constant_list_families,
+        generic_constant_specialization,
         custom_type,
         record_type,
         type_alias,
@@ -323,6 +326,12 @@ mod functions {
         result_argument,
         result_return,
         custom_function_paths,
+        generic_family_specialization,
+        generic_function,
+        generic_function_return_cases,
+        generic_custom_specialization,
+        generic_container_specialization,
+        generic_specialization,
     );
 
     mod basic {
@@ -602,9 +611,9 @@ mod rejection {
 
     mod functions {
         rejection_cases!("functions";
-            generic_function,
             unsupported_body_before_main,
             unsupported_body_after_main,
+            unresolved_generic_main,
         );
     }
 
@@ -627,6 +636,24 @@ mod rejection {
             echo,
         );
     }
+}
+
+#[test]
+fn public_empty_parameter_list_preserves_inspected_module_metadata() {
+    let typed = compile_typed_module(
+        "main",
+        "main.gleam",
+        "fn identity(value: value) { value } pub fn main() { identity(1) }",
+    )
+    .expect("source should compile");
+    let plan = plan_module(typed).expect("source should plan");
+    let parameter = plan.functions()[0].scheme().parameters()[0];
+    let list = ListValue::empty(ValueType::Parameter(parameter));
+
+    assert_eq!(list.item_type(), ValueType::Parameter(parameter));
+    assert_eq!(list.len(), 0);
+    assert!(list.is_empty());
+    assert_eq!(list.to_values(), Vec::<Value>::new());
 }
 
 fn run_fixture(file_name: &str) {
@@ -801,6 +828,7 @@ fn render_function_type(type_: &FunctionType) -> String {
 
 fn render_value_type(type_: &ValueType) -> String {
     match type_ {
+        ValueType::Parameter(parameter) => format!("Parameter({})", parameter.index()),
         ValueType::Int => "Int".into(),
         ValueType::Float => "Float".into(),
         ValueType::String => "String".into(),

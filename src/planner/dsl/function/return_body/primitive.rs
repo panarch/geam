@@ -1,8 +1,7 @@
-use super::FunctionReturn;
+use super::{FunctionReturn, tail_call_instantiation};
 use crate::plan::{
-    BoolFunctionId, BoolReturn, CallArg, FloatFunctionId, FloatReturn, IntFunctionId, IntReturn,
-    ListFunctionId, ListReturn, NilFunctionId, NilReturn, ReturnBody, Step, StringFunctionId,
-    StringReturn, UtfCodepointFunctionId, UtfCodepointReturn, ValueType,
+    BoolReturn, CallArg, FloatReturn, IntReturn, ListReturn, NilReturn, ReturnBody, Step,
+    StringReturn, UtfCodepointReturn, ValueShape, ValueType,
 };
 use crate::planner::dsl::expression::{Bool, Float, Int, List, Nil, String, UtfCodepoint};
 use num_bigint::BigInt;
@@ -19,7 +18,11 @@ pub(crate) fn utf_codepoint_return_tail_call(
     function: usize,
     args: impl IntoIterator<Item = CallArg>,
 ) -> UtfCodepointReturn {
-    ReturnBody::tail_call(UtfCodepointFunctionId(function), args.into_iter().collect())
+    let args = args.into_iter().collect::<Vec<_>>();
+    ReturnBody::tail_call(
+        tail_call_instantiation(function, &args, ValueShape::UtfCodepoint),
+        args,
+    )
 }
 
 pub(crate) fn utf_codepoint_return_bool_case(
@@ -79,7 +82,11 @@ pub(crate) fn int_return_tail_call(
     function: usize,
     args: impl IntoIterator<Item = CallArg>,
 ) -> IntReturn {
-    ReturnBody::tail_call(IntFunctionId(function), args.into_iter().collect())
+    let args = args.into_iter().collect::<Vec<_>>();
+    ReturnBody::tail_call(
+        tail_call_instantiation(function, &args, ValueShape::Int),
+        args,
+    )
 }
 
 pub(crate) fn int_return_bool_case(
@@ -139,7 +146,11 @@ pub(crate) fn bool_return_tail_call(
     function: usize,
     args: impl IntoIterator<Item = CallArg>,
 ) -> BoolReturn {
-    ReturnBody::tail_call(BoolFunctionId(function), args.into_iter().collect())
+    let args = args.into_iter().collect::<Vec<_>>();
+    ReturnBody::tail_call(
+        tail_call_instantiation(function, &args, ValueShape::Bool),
+        args,
+    )
 }
 
 pub(crate) fn bool_return_expr(expression: Bool) -> BoolReturn {
@@ -203,7 +214,11 @@ pub(crate) fn string_return_tail_call(
     function: usize,
     args: impl IntoIterator<Item = CallArg>,
 ) -> StringReturn {
-    ReturnBody::tail_call(StringFunctionId(function), args.into_iter().collect())
+    let args = args.into_iter().collect::<Vec<_>>();
+    ReturnBody::tail_call(
+        tail_call_instantiation(function, &args, ValueShape::String),
+        args,
+    )
 }
 
 pub(crate) fn string_return_expr(expression: String) -> StringReturn {
@@ -214,7 +229,11 @@ pub(crate) fn float_return_tail_call(
     function: usize,
     args: impl IntoIterator<Item = CallArg>,
 ) -> FloatReturn {
-    ReturnBody::tail_call(FloatFunctionId(function), args.into_iter().collect())
+    let args = args.into_iter().collect::<Vec<_>>();
+    ReturnBody::tail_call(
+        tail_call_instantiation(function, &args, ValueShape::Float),
+        args,
+    )
 }
 
 pub(crate) fn float_return_expr(expression: Float) -> FloatReturn {
@@ -332,10 +351,13 @@ pub(crate) fn list_return_tail_call(
     args: impl IntoIterator<Item = CallArg>,
     element_type: ValueType,
 ) -> ListReturn {
-    ListReturn::tail_call(
-        ListFunctionId::from_item_type(function, element_type),
-        args.into_iter().collect(),
-    )
+    let args = args.into_iter().collect::<Vec<_>>();
+    let function = tail_call_instantiation(
+        function,
+        &args,
+        ValueShape::List(Box::new(ValueShape::from_value_type(element_type.clone()))),
+    );
+    ListReturn::tail_call(function, element_type, args)
 }
 
 pub(crate) fn list_return_expr(expression: List) -> ListReturn {
@@ -407,7 +429,11 @@ pub(crate) fn nil_return_tail_call(
     function: usize,
     args: impl IntoIterator<Item = CallArg>,
 ) -> NilReturn {
-    ReturnBody::tail_call(NilFunctionId(function), args.into_iter().collect())
+    let args = args.into_iter().collect::<Vec<_>>();
+    ReturnBody::tail_call(
+        tail_call_instantiation(function, &args, ValueShape::Nil),
+        args,
+    )
 }
 
 pub(crate) fn nil_return_expr(expression: Nil) -> NilReturn {
@@ -486,13 +512,17 @@ mod tests {
         utf_codepoint_return_string_case, utf_codepoint_return_tail_call,
     };
     use crate::plan::{
-        BoolFunctionId, CallArg, FloatFunctionId, IntFunctionId, ListFunctionId, ListReturn,
-        NilFunctionId, ReturnBody, Step, StringFunctionId, UtfCodepointFunctionId,
+        CallArg, FunctionShape, ListReturn, ReturnBody, Step, ValueShape,
+        monomorphic_function_instantiation,
     };
     use crate::planner::dsl::expression::{
         bool_, float, int, list, local_utf_codepoint, nil, string,
     };
     use num_bigint::BigInt;
+
+    fn tail_call(template: usize, return_shape: ValueShape) -> crate::plan::FunctionInstantiation {
+        monomorphic_function_instantiation(template, FunctionShape::new(Vec::new(), return_shape))
+    }
 
     #[test]
     fn primitive_return_expr_helpers_build_expr_shapes() {
@@ -527,7 +557,7 @@ mod tests {
         );
         assert_eq!(
             utf_codepoint_return_tail_call(2, Vec::<CallArg>::new()),
-            ReturnBody::tail_call(UtfCodepointFunctionId(2), Vec::new()),
+            ReturnBody::tail_call(tail_call(2, ValueShape::UtfCodepoint), Vec::new()),
         );
         assert_eq!(
             utf_codepoint_return_bool_case(bool_(true), first.clone(), second.clone()),
@@ -571,30 +601,28 @@ mod tests {
     fn primitive_return_tail_call_helpers_build_tail_call_shapes() {
         assert_eq!(
             int_return_tail_call(0, Vec::<CallArg>::new()),
-            ReturnBody::tail_call(IntFunctionId(0), Vec::new()),
+            ReturnBody::tail_call(tail_call(0, ValueShape::Int), Vec::new()),
         );
         assert_eq!(
             string_return_tail_call(1, Vec::<CallArg>::new()),
-            ReturnBody::tail_call(StringFunctionId(1), Vec::new()),
+            ReturnBody::tail_call(tail_call(1, ValueShape::String), Vec::new()),
         );
         assert_eq!(
             float_return_tail_call(2, Vec::<CallArg>::new()),
-            ReturnBody::tail_call(FloatFunctionId(2), Vec::new()),
+            ReturnBody::tail_call(tail_call(2, ValueShape::Float), Vec::new()),
         );
         assert_eq!(
             bool_return_tail_call(3, Vec::<CallArg>::new()),
-            ReturnBody::tail_call(BoolFunctionId(3), Vec::new()),
+            ReturnBody::tail_call(tail_call(3, ValueShape::Bool), Vec::new()),
         );
         assert_eq!(
             nil_return_tail_call(4, Vec::<CallArg>::new()),
-            ReturnBody::tail_call(NilFunctionId(4), Vec::new()),
+            ReturnBody::tail_call(tail_call(4, ValueShape::Nil), Vec::new()),
         );
+        let list_function = tail_call(5, ValueShape::List(Box::new(ValueShape::Int)));
         assert_eq!(
             list_return_tail_call(5, Vec::<CallArg>::new(), crate::plan::ValueType::Int),
-            ListReturn::tail_call(
-                ListFunctionId::from_item_type(5, crate::plan::ValueType::Int),
-                Vec::new(),
-            ),
+            ListReturn::tail_call(list_function, crate::plan::ValueType::Int, Vec::new()),
         );
     }
 

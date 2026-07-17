@@ -10,9 +10,10 @@ use super::function::{Param, ParamLocal, ReturnExpr};
 use super::id::{
     BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
     BoolListLocalId, BoolLocalId, CustomListLocalId, CustomLocal, FloatFunctionLocalId,
-    FloatListLocalId, FloatLocalId, FunctionListLocalId, IntFunctionLocalId, IntListLocalId,
-    IntLocalId, ListFunctionLocal, ListListLocalId, ListLocal, NilFunctionLocalId, NilListLocalId,
-    NilLocalId, StringFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionLocalId,
+    FloatListLocalId, FloatLocalId, FunctionListLocalId, GenericFunctionLocal, GenericListLocalId,
+    GenericLocal, IntFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionLocal,
+    ListListLocalId, ListLocal, NilFunctionLocalId, NilListLocalId, NilLocalId,
+    StringFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionLocalId,
     TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
     UtfCodepointLocalId,
 };
@@ -22,6 +23,8 @@ use crate::plan::{CustomType, FunctionType, ValueType};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct FrameLayout {
+    generics: Vec<GenericLocal>,
+    generic_lists: Vec<(GenericListLocalId, crate::plan::TypeParameterId)>,
     ints: usize,
     floats: usize,
     strings: usize,
@@ -53,15 +56,18 @@ pub(crate) struct FrameLayout {
     tuple_functions: usize,
     list_functions: Vec<ListFunctionLocal>,
     function_functions: Vec<FunctionFunctionLocal>,
+    generic_functions: Vec<GenericFunctionLocal>,
 }
 
-pub(crate) struct FrameLayoutParts {
+pub(crate) struct FrameLayoutParts<'a> {
+    pub(crate) generics: &'a [GenericLocal],
+    pub(crate) generic_lists: &'a [(GenericListLocalId, crate::plan::TypeParameterId)],
     pub(crate) ints: usize,
     pub(crate) floats: usize,
     pub(crate) strings: usize,
     pub(crate) bit_arrays: usize,
     pub(crate) utf_codepoints: usize,
-    pub(crate) customs: Vec<CustomLocal>,
+    pub(crate) customs: &'a [CustomLocal],
     pub(crate) bools: usize,
     pub(crate) nils: usize,
     pub(crate) tuples: usize,
@@ -69,35 +75,38 @@ pub(crate) struct FrameLayoutParts {
     pub(crate) string_lists: usize,
     pub(crate) bit_array_lists: usize,
     pub(crate) utf_codepoint_lists: usize,
-    pub(crate) custom_lists: Vec<CustomType>,
+    pub(crate) custom_lists: &'a [CustomType],
     pub(crate) float_lists: usize,
     pub(crate) bool_lists: usize,
     pub(crate) nil_lists: usize,
-    pub(crate) tuple_lists: Vec<Vec<ValueType>>,
-    pub(crate) list_lists: Vec<ValueType>,
-    pub(crate) function_lists: Vec<FunctionType>,
+    pub(crate) tuple_lists: &'a [Vec<ValueType>],
+    pub(crate) list_lists: &'a [ValueType],
+    pub(crate) function_lists: &'a [FunctionType],
     pub(crate) int_functions: usize,
     pub(crate) float_functions: usize,
     pub(crate) string_functions: usize,
     pub(crate) bit_array_functions: usize,
     pub(crate) utf_codepoint_functions: usize,
-    pub(crate) custom_functions: Vec<CustomFunctionLocal>,
+    pub(crate) custom_functions: &'a [CustomFunctionLocal],
     pub(crate) bool_functions: usize,
     pub(crate) nil_functions: usize,
     pub(crate) tuple_functions: usize,
-    pub(crate) list_functions: Vec<ListFunctionLocal>,
-    pub(crate) function_functions: Vec<FunctionFunctionLocal>,
+    pub(crate) list_functions: &'a [ListFunctionLocal],
+    pub(crate) function_functions: &'a [FunctionFunctionLocal],
+    pub(crate) generic_functions: &'a [GenericFunctionLocal],
 }
 
 impl FrameLayout {
-    pub(crate) fn into_parts(self) -> FrameLayoutParts {
+    pub(crate) fn parts(&self) -> FrameLayoutParts<'_> {
         FrameLayoutParts {
+            generics: &self.generics,
+            generic_lists: &self.generic_lists,
             ints: self.ints,
             floats: self.floats,
             strings: self.strings,
             bit_arrays: self.bit_arrays,
             utf_codepoints: self.utf_codepoints,
-            customs: self.customs,
+            customs: &self.customs,
             bools: self.bools,
             nils: self.nils,
             tuples: self.tuples,
@@ -105,24 +114,25 @@ impl FrameLayout {
             string_lists: self.string_lists,
             bit_array_lists: self.bit_array_lists,
             utf_codepoint_lists: self.utf_codepoint_lists,
-            custom_lists: self.custom_lists,
+            custom_lists: &self.custom_lists,
             float_lists: self.float_lists,
             bool_lists: self.bool_lists,
             nil_lists: self.nil_lists,
-            tuple_lists: self.tuple_lists,
-            list_lists: self.list_lists,
-            function_lists: self.function_lists,
+            tuple_lists: &self.tuple_lists,
+            list_lists: &self.list_lists,
+            function_lists: &self.function_lists,
             int_functions: self.int_functions,
             float_functions: self.float_functions,
             string_functions: self.string_functions,
             bit_array_functions: self.bit_array_functions,
             utf_codepoint_functions: self.utf_codepoint_functions,
-            custom_functions: self.custom_functions,
+            custom_functions: &self.custom_functions,
             bool_functions: self.bool_functions,
             nil_functions: self.nil_functions,
             tuple_functions: self.tuple_functions,
-            list_functions: self.list_functions,
-            function_functions: self.function_functions,
+            list_functions: &self.list_functions,
+            function_functions: &self.function_functions,
+            generic_functions: &self.generic_functions,
         }
     }
 
@@ -144,6 +154,7 @@ impl FrameLayout {
 
     pub(crate) fn include_local(&mut self, local: &ParamLocal) {
         match local {
+            ParamLocal::Generic(local) => self.include_generic(*local),
             ParamLocal::Int(local) => self.include_int(*local),
             ParamLocal::Float(local) => self.include_float(*local),
             ParamLocal::String(local) => self.include_string(*local),
@@ -167,6 +178,13 @@ impl FrameLayout {
             ParamLocal::TupleFunction { local, .. } => self.include_tuple_function(*local),
             ParamLocal::ListFunction(local) => self.include_list_function(local.clone()),
             ParamLocal::FunctionFunction(local) => self.include_function_function(local.clone()),
+            ParamLocal::GenericFunction(local) => self.include_generic_function(local.clone()),
+        }
+    }
+
+    pub(crate) fn include_generic(&mut self, local: GenericLocal) {
+        if !self.generics.contains(&local) {
+            self.generics.push(local);
         }
     }
 
@@ -211,6 +229,12 @@ impl FrameLayout {
     pub(crate) fn include_list(&mut self, local: impl Borrow<ListLocal>) {
         let local = local.borrow();
         match local {
+            ListLocal::Generic { local, parameter } => {
+                let entry = (*local, *parameter);
+                if !self.generic_lists.contains(&entry) {
+                    self.generic_lists.push(entry);
+                }
+            }
             ListLocal::Int(local) => self.include_int_list(*local),
             ListLocal::String(local) => self.include_string_list(*local),
             ListLocal::BitArray(local) => self.include_bit_array_list(*local),
@@ -321,6 +345,12 @@ impl FrameLayout {
     pub(crate) fn include_custom_function(&mut self, local: CustomFunctionLocal) {
         if !self.custom_functions.contains(&local) {
             self.custom_functions.push(local);
+        }
+    }
+
+    pub(crate) fn include_generic_function(&mut self, local: GenericFunctionLocal) {
+        if !self.generic_functions.contains(&local) {
+            self.generic_functions.push(local);
         }
     }
 
@@ -462,44 +492,59 @@ impl FrameLayout {
 #[cfg(test)]
 pub(super) mod test_helpers {
     use crate::plan::{
-        BoolFunctionExpr, BoolFunctionId, BoolFunctionReference, BoolLocalId, FloatFunctionExpr,
-        FloatFunctionId, FloatFunctionReference, FloatLocalId, FunctionFunctionType,
-        IntFunctionExpr, IntFunctionId, IntFunctionReference, IntLocalId, NilFunctionExpr,
-        NilFunctionId, NilFunctionReference, NilLocalId, ParamLocal, StringFunctionExpr,
-        StringFunctionId, StringFunctionReference, StringLocalId,
+        BoolFunctionExpr, BoolFunctionReference, BoolLocalId, FloatFunctionExpr,
+        FloatFunctionReference, FloatLocalId, FunctionFunctionType, FunctionShape, IntFunctionExpr,
+        IntFunctionReference, IntLocalId, NilFunctionExpr, NilFunctionReference, NilLocalId,
+        ParamLocal, StringFunctionExpr, StringFunctionReference, StringLocalId, ValueShape,
+        monomorphic_function_instantiation,
     };
 
     pub(super) fn int_function_expr() -> IntFunctionExpr {
         IntFunctionExpr::reference(IntFunctionReference::new(
-            IntFunctionId(0),
+            monomorphic_function_instantiation(
+                0,
+                FunctionShape::new(vec![ValueShape::Int], ValueShape::Int),
+            ),
             vec![ParamLocal::int(IntLocalId(0))],
         ))
     }
 
     pub(super) fn string_function_expr() -> StringFunctionExpr {
         StringFunctionExpr::reference(StringFunctionReference::new(
-            StringFunctionId(0),
+            monomorphic_function_instantiation(
+                0,
+                FunctionShape::new(vec![ValueShape::String], ValueShape::String),
+            ),
             vec![ParamLocal::string(StringLocalId(0))],
         ))
     }
 
     pub(super) fn float_function_expr() -> FloatFunctionExpr {
         FloatFunctionExpr::reference(FloatFunctionReference::new(
-            FloatFunctionId(0),
+            monomorphic_function_instantiation(
+                0,
+                FunctionShape::new(vec![ValueShape::Float], ValueShape::Float),
+            ),
             vec![ParamLocal::float(FloatLocalId(0))],
         ))
     }
 
     pub(super) fn bool_function_expr() -> BoolFunctionExpr {
         BoolFunctionExpr::reference(BoolFunctionReference::new(
-            BoolFunctionId(0),
+            monomorphic_function_instantiation(
+                0,
+                FunctionShape::new(vec![ValueShape::Bool], ValueShape::Bool),
+            ),
             vec![ParamLocal::bool(BoolLocalId(0))],
         ))
     }
 
     pub(super) fn nil_function_expr() -> NilFunctionExpr {
         NilFunctionExpr::reference(NilFunctionReference::new(
-            NilFunctionId(0),
+            monomorphic_function_instantiation(
+                0,
+                FunctionShape::new(vec![ValueShape::Nil], ValueShape::Nil),
+            ),
             vec![ParamLocal::nil(NilLocalId(0))],
         ))
     }
@@ -526,7 +571,7 @@ mod tests {
         assert_eq!(layout, cloned);
         assert_eq!(
             format!("{layout:?}"),
-            "FrameLayout { ints: 0, floats: 0, strings: 0, bit_arrays: 0, utf_codepoints: 0, customs: [], bools: 0, nils: 0, tuples: 0, int_lists: 0, string_lists: 0, bit_array_lists: 0, utf_codepoint_lists: 0, custom_lists: [], float_lists: 0, bool_lists: 0, nil_lists: 0, tuple_lists: [], list_lists: [], function_lists: [], int_functions: 0, float_functions: 0, string_functions: 0, bit_array_functions: 0, utf_codepoint_functions: 0, custom_functions: [], bool_functions: 0, nil_functions: 0, tuple_functions: 0, list_functions: [], function_functions: [] }",
+            "FrameLayout { generics: [], generic_lists: [], ints: 0, floats: 0, strings: 0, bit_arrays: 0, utf_codepoints: 0, customs: [], bools: 0, nils: 0, tuples: 0, int_lists: 0, string_lists: 0, bit_array_lists: 0, utf_codepoint_lists: 0, custom_lists: [], float_lists: 0, bool_lists: 0, nil_lists: 0, tuple_lists: [], list_lists: [], function_lists: [], int_functions: 0, float_functions: 0, string_functions: 0, bit_array_functions: 0, utf_codepoint_functions: 0, custom_functions: [], bool_functions: 0, nil_functions: 0, tuple_functions: 0, list_functions: [], function_functions: [], generic_functions: [] }",
         );
     }
 

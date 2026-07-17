@@ -1149,7 +1149,7 @@ mod tests {
         IntFunctionId as RuntimeIntFunctionId, IntLocalId, ParamLocal, RuntimeFunctionId,
     };
     use crate::plan::{
-        BoolExpr, Expr, FloatExpr, FunctionId, FunctionPlan, FunctionType, IntExpr, IntFunctionId,
+        BoolExpr, Expr, FloatExpr, FunctionTemplate, FunctionTemplateId, FunctionType, IntExpr,
         ModulePlan, PanicExpr, PanicSite, ReturnBody, ReturnExpr, Step, StringExpr, ValueType,
     };
     use crate::runtime::{FunctionValue, ListValue, Value, run_main};
@@ -1201,12 +1201,12 @@ mod tests {
         ];
 
         for body in bodies {
-            let main = FunctionPlan::new(
-                FunctionId::new(0),
+            let main = FunctionTemplate::new(
+                FunctionTemplateId::new(0),
                 "main".into(),
                 Vec::new(),
                 Vec::new(),
-                ReturnExpr::int_body(IntFunctionId(0), body),
+                ReturnExpr::int_body(body),
             );
             let module = ModulePlan::new("main".into(), main, Vec::new());
             let plan = crate::ExecutionPlan::from_module_plan(module);

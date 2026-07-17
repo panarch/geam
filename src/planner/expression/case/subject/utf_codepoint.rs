@@ -1,6 +1,6 @@
 use super::super::super::plan_expr_with_expected_source_stop_type;
 use super::super::invalid_case_shape;
-use super::{CaseClause, OrderedCaseClauseInput, case_return_shape};
+use super::{CaseClause, OrderedCaseClauseInput};
 use crate::plan::{
     BoolExpr, Expr, ExprKind, Step, UtfCodepointExpr, UtfCodepointLocalId, ValueType,
 };
@@ -19,7 +19,7 @@ pub(super) fn plan(
 ) -> Result<Expr, PlanError> {
     let subject =
         plan_expr_with_expected_source_stop_type(subject, ValueType::UtfCodepoint, context)?;
-    let return_shape = case_return_shape(type_.as_ref())?;
+    let return_shape = context.value_shape(type_.as_ref());
     let ExprKind::UtfCodepoint(subject) = subject.into_kind() else {
         return Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
@@ -319,7 +319,7 @@ pub fn main() { 0 }
         let (type_, _, _) = super::super::super::expect_case_statement_mut(
             &mut invalid_return_type.definitions.functions[0].body[0],
         );
-        *type_ = super::super::invalid_case_return_type();
+        *type_ = super::super::mismatched_generic_case_return_type();
         assert_eq!(
             plan_module(invalid_return_type),
             Err(PlanError::InvalidTypedAst {

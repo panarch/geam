@@ -1,18 +1,18 @@
 use super::expression::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomExpr, CustomFunctionExpr,
-    CustomLocalExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr,
-    IntFunctionExpr, ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr,
-    StringFunctionExpr, TupleExpr, TupleFunctionExpr, TypedFunctionExpr, UtfCodepointExpr,
-    UtfCodepointFunctionExpr,
+    CustomLocalExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, GenericExpr,
+    GenericFunctionExpr, IntExpr, IntFunctionExpr, ListFunctionExpr, ListLocalExpr, NilExpr,
+    NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
+    TypedFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
 use super::function::{ParamLocal, ParamSlot};
 use super::id::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
     CustomFunctionLocal, CustomFunctionLocalId, CustomLocal, CustomLocalId, FloatFunctionLocalId,
-    FloatLocalId, FunctionFunctionLocal, FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId,
-    ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId, StringFunctionLocalId,
-    StringLocalId, TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId,
-    UtfCodepointLocalId,
+    FloatLocalId, FunctionFunctionLocal, FunctionFunctionLocalId, GenericFunctionLocal,
+    GenericLocal, IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId,
+    NilLocalId, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
 use crate::plan::{BitArrayPattern, CustomBindingPattern};
 use crate::plan::{PanicSite, SourceSpan, ValueType};
@@ -93,6 +93,11 @@ pub(crate) enum ListAssertTail {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum StepKind {
+    LetGeneric {
+        local: GenericLocal,
+        name: EcoString,
+        value: GenericExpr,
+    },
     LetInt {
         local: IntLocalId,
         name: EcoString,
@@ -196,6 +201,11 @@ pub(crate) enum StepKind {
         name: EcoString,
         value: TypedFunctionExpr<FunctionFunctionExpr>,
     },
+    LetGenericFunction {
+        local: GenericFunctionLocal,
+        name: EcoString,
+        value: TypedFunctionExpr<GenericFunctionExpr>,
+    },
     AssertPattern {
         subject: AssertSubject,
         pattern: AssertPattern,
@@ -227,8 +237,8 @@ impl AssertBinding {
         self.slot.local()
     }
 
-    pub(crate) fn into_parts(self) -> (ParamSlot, EcoString) {
-        (self.slot, self.name)
+    pub(crate) fn slot(&self) -> &ParamSlot {
+        &self.slot
     }
 }
 
@@ -239,10 +249,6 @@ impl StringAssertBinding {
 
     pub(crate) fn local(&self) -> StringLocalId {
         self.local
-    }
-
-    pub(crate) fn into_parts(self) -> (StringLocalId, EcoString) {
-        (self.local, self.name)
     }
 }
 
@@ -287,21 +293,11 @@ impl ListAssertPattern {
     pub(crate) fn tail(&self) -> Option<&ListAssertTail> {
         self.tail.as_ref()
     }
-
-    pub(crate) fn into_parts(self) -> (ValueType, Vec<AssertPattern>, Option<ListAssertTail>) {
-        (self.element_type, self.elements, self.tail)
-    }
 }
 
 impl ListAssertTail {
     pub(crate) fn bind(local: ListLocal, name: EcoString) -> Self {
         Self::Bind(ListAssertTailBinding { local, name })
-    }
-}
-
-impl ListAssertTailBinding {
-    pub(crate) fn into_parts(self) -> (ListLocal, EcoString) {
-        (self.local, self.name)
     }
 }
 
@@ -312,6 +308,12 @@ impl ListAssertTailBinding {
 }
 
 impl Step {
+    pub(crate) fn let_generic(local: GenericLocal, name: EcoString, value: GenericExpr) -> Self {
+        Self {
+            kind: StepKind::LetGeneric { local, name, value },
+        }
+    }
+
     pub(crate) fn let_int(local: IntLocalId, name: EcoString, value: IntExpr) -> Self {
         Self {
             kind: StepKind::LetInt { local, name, value },
@@ -497,6 +499,16 @@ impl Step {
         }
     }
 
+    pub(crate) fn let_generic_function_expr(
+        local: GenericFunctionLocal,
+        name: EcoString,
+        value: TypedFunctionExpr<GenericFunctionExpr>,
+    ) -> Self {
+        Self {
+            kind: StepKind::LetGenericFunction { local, name, value },
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn let_int_function(
         local: IntFunctionLocalId,
@@ -658,10 +670,6 @@ impl Step {
     pub(crate) fn kind(&self) -> &StepKind {
         &self.kind
     }
-
-    pub(crate) fn into_kind(self) -> StepKind {
-        self.kind
-    }
 }
 
 #[cfg(test)]
@@ -671,9 +679,9 @@ mod tests {
         AssertPattern, AssertSubject, BoolExpr, CustomFunctionExpr, CustomFunctionLocal,
         CustomFunctionLocalId, CustomFunctionType, CustomType, CustomTypeName, Expr,
         FunctionFunctionExpr, FunctionFunctionLocal, FunctionFunctionLocalId, FunctionFunctionType,
-        FunctionType, IntExpr, IntFunctionId, IntFunctionLocalId, IntFunctionReference,
-        IntListLocalId, IntLocalId, ListAssertPattern, ListAssertTail, ListLocal, PanicExpr,
-        PanicSite, ParamLocal, StringExpr, TypedFunctionExpr, ValueShape, ValueType,
+        FunctionType, IntExpr, IntFunctionLocalId, IntFunctionReference, IntListLocalId,
+        IntLocalId, ListAssertPattern, ListAssertTail, ListLocal, PanicExpr, PanicSite, ParamLocal,
+        StringExpr, TypedFunctionExpr, ValueShape, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -814,7 +822,13 @@ mod tests {
 
     fn function_expr() -> crate::plan::IntFunctionExpr {
         crate::plan::IntFunctionExpr::reference(IntFunctionReference::new(
-            IntFunctionId(0),
+            crate::plan::monomorphic_function_instantiation(
+                0,
+                crate::plan::FunctionShape::new(
+                    vec![crate::plan::ValueShape::Int],
+                    crate::plan::ValueShape::Int,
+                ),
+            ),
             vec![ParamLocal::int(IntLocalId(0))],
         ))
     }

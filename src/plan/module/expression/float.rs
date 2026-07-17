@@ -2,7 +2,7 @@ use super::{
     BoolExpr, CallArg, CustomFieldAccess, FloatFunctionExpr, FloatListExpr, IntExpr, PanicExpr,
     StringExpr, TupleExpr,
 };
-use crate::plan::{FloatFunctionId, FloatLocalId, Step};
+use crate::plan::{FloatLocalId, FunctionInstantiation, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -19,7 +19,7 @@ pub(crate) enum FloatExprKind {
         name: EcoString,
     },
     Call {
-        function: FloatFunctionId,
+        function: FunctionInstantiation,
         args: Vec<CallArg>,
     },
     FunctionCall {
@@ -91,7 +91,7 @@ impl FloatExpr {
         }
     }
 
-    pub(crate) fn call(function: FloatFunctionId, args: Vec<CallArg>) -> Self {
+    pub(crate) fn call(function: FunctionInstantiation, args: Vec<CallArg>) -> Self {
         Self {
             kind: FloatExprKind::Call { function, args },
         }
@@ -236,18 +236,14 @@ impl FloatExpr {
     pub(crate) fn kind(&self) -> &FloatExprKind {
         &self.kind
     }
-
-    pub(crate) fn into_kind(self) -> FloatExprKind {
-        self.kind
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{FloatExpr, FloatExprKind};
     use crate::plan::{
-        BoolExpr, Expr, FloatFunctionId, FloatFunctionReference, FloatLocalId, IntExpr, Step,
-        TupleExpr, ValueType,
+        BoolExpr, Expr, FloatFunctionReference, FloatLocalId, FunctionInstantiation, FunctionShape,
+        IntExpr, Step, TupleExpr, ValueShape, ValueType, monomorphic_function_instantiation,
     };
     use num_bigint::BigInt;
 
@@ -262,9 +258,9 @@ mod tests {
             },
         );
         assert_eq!(
-            FloatExpr::call(FloatFunctionId(0), Vec::new()).kind(),
+            FloatExpr::call(function_instantiation(), Vec::new()).kind(),
             &FloatExprKind::Call {
-                function: FloatFunctionId(0),
+                function: function_instantiation(),
                 args: Vec::new(),
             },
         );
@@ -377,9 +373,13 @@ mod tests {
 
     fn function_expr() -> crate::plan::FloatFunctionExpr {
         crate::plan::FloatFunctionExpr::reference(FloatFunctionReference::new(
-            FloatFunctionId(0),
+            function_instantiation(),
             Vec::new(),
         ))
+    }
+
+    fn function_instantiation() -> FunctionInstantiation {
+        monomorphic_function_instantiation(0, FunctionShape::new(Vec::new(), ValueShape::Float))
     }
 
     fn tuple_expr() -> TupleExpr {

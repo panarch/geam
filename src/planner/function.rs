@@ -2,8 +2,8 @@ mod return_body;
 
 use self::return_body::function_return_expr;
 use crate::plan::{
-    CaptureArg, CustomTypeDefinition, FunctionPlan, Param, ParamBinding, ReturnExpr,
-    RuntimeFunctionId, Step, ValueShape,
+    CaptureArg, CustomTypeDefinition, FunctionTemplate, Param, ParamBinding, ReturnExpr, Step,
+    ValueShape,
 };
 use crate::planner::context::{AnonymousFunctions, FunctionInfo, FunctionParam, PlanContext};
 use crate::planner::error::{
@@ -27,9 +27,10 @@ pub(super) fn plan_function(
     module_name: &EcoString,
     functions: &HashMap<EcoString, FunctionInfo>,
     custom_types: &[CustomTypeDefinition],
+    constants: &crate::planner::module::ConstantRegistry,
     function: TypedFunction,
     anonymous_functions: &mut AnonymousFunctions,
-) -> Result<FunctionPlan, PlanError> {
+) -> Result<FunctionTemplate, PlanError> {
     let name = function_name(&function)?;
 
     if function.external_erlang.is_some() || function.external_javascript.is_some() {
@@ -39,13 +40,15 @@ pub(super) fn plan_function(
         });
     }
 
-    let mut context = PlanContext::new_with_custom_types(
+    let mut context = PlanContext::new_with_module_items(
         module_name,
         functions,
         custom_types,
+        constants,
         anonymous_functions,
     );
     context.set_current_function(name.clone());
+    context.set_type_parameters(info.type_parameters.clone());
     let params = define_params(&info.params, &mut context)?;
     let return_shape = info.return_shape();
     let planned = plan_steps_and_return(
@@ -59,15 +62,10 @@ pub(super) fn plan_function(
         },
         Some(&return_shape),
     )?;
-    let return_ = function_return_expr(
-        &name,
-        &return_shape.value_type(),
-        &info.runtime_id,
-        planned.return_,
-    )?;
+    let return_ = function_return_expr(&name, &return_shape, planned.return_)?;
 
-    Ok(FunctionPlan::new(
-        info.id,
+    Ok(FunctionTemplate::from_signature(
+        info.signature,
         name,
         params,
         planned.steps,
@@ -78,7 +76,6 @@ pub(super) fn plan_function(
 pub(super) fn plan_anonymous_function_body(
     name: &EcoString,
     return_shape: &ValueShape,
-    runtime_id: &RuntimeFunctionId,
     params: &[FunctionParam],
     captures: Vec<crate::planner::context::CaptureBinding>,
     body: Vec1<TypedStatement>,
@@ -91,12 +88,7 @@ pub(super) fn plan_anonymous_function_body(
         context,
         Some(return_shape),
     )?;
-    let return_ = function_return_expr(
-        name,
-        &return_shape.value_type(),
-        runtime_id,
-        planned.return_,
-    )?;
+    let return_ = function_return_expr(name, return_shape, planned.return_)?;
 
     Ok(PlannedFunctionBody {
         params,
@@ -110,9 +102,9 @@ pub(super) fn anonymous_function_plan(
     info: FunctionInfo,
     name: EcoString,
     planned: PlannedFunctionBody,
-) -> FunctionPlan {
-    FunctionPlan::new(
-        info.id,
+) -> FunctionTemplate {
+    FunctionTemplate::from_signature(
+        info.signature,
         name,
         planned.params,
         planned.steps,
@@ -162,9 +154,9 @@ pub(super) fn function_name(function: &TypedFunction) -> Result<EcoString, PlanE
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolLocalId, FunctionFunctionId, FunctionId, FunctionType, IntFunctionFunctionId,
-        IntFunctionId, IntLocalId, LocalId, NilLocalId, RuntimeFunctionId, StringLocalId,
-        ValueType,
+        BoolLocalId, FunctionFunctionId, FunctionShape, FunctionTemplateId,
+        FunctionTemplateSignature, FunctionType, IntFunctionFunctionId, IntLocalId, LocalId,
+        NilLocalId, StringLocalId, TypeScheme, ValueType,
     };
     use crate::planner::context::FunctionInfo;
     use crate::planner::dsl::{
@@ -174,8 +166,8 @@ mod tests {
         call_bool, call_int, call_int_function, call_int_returning_function, function,
         function_function_ref, function_function_return_block, function_function_return_expr,
         function_function_return_int_case, function_function_return_string_case,
-        function_function_return_tail_call, function_ref, int, int_arg, int_function_arg,
-        int_function_call_arg, int_function_closure, int_function_ref, int_function_return_block,
+        function_function_return_tail_call, int, int_arg, int_function_arg, int_function_call_arg,
+        int_function_closure, int_function_ref, int_function_return_block,
         int_function_return_bool_case, int_function_return_expr, int_function_return_int_case,
         int_function_return_string_case, int_function_return_tail_call, int_return_block,
         int_return_bool_case, int_return_expr, int_return_int_case, int_return_tail_call,
@@ -357,7 +349,7 @@ pub fn main() {
             function(
                 "main",
                 call_int_function(
-                    call_int_returning_function(0, [int_arg(0, int(0))], int_to_int.clone()),
+                    call_int_returning_function(5, [int_arg(0, int(0))], int_to_int.clone()),
                     [int_function_call_arg(0, int(1))],
                 ),
             ),
@@ -382,7 +374,8 @@ pub fn main() {
                                     )),
                                 )],
                                 int_function_return_tail_call(
-                                    0,
+                                    5,
+                                    int_to_int.clone(),
                                     [int_arg(0, local_int(0, "n").sub_int(int(1)))],
                                 ),
                             ),
@@ -401,12 +394,13 @@ pub fn main() {
                                 [(
                                     0,
                                     string_function_return_expr(string_function_ref(
-                                        0,
+                                        2,
                                         [LocalId::String(StringLocalId(0))],
                                     )),
                                 )],
                                 string_function_return_tail_call(
-                                    0,
+                                    6,
+                                    string_to_string.clone(),
                                     [int_arg(0, local_int(0, "n").sub_int(int(1)))],
                                 ),
                             ),
@@ -425,12 +419,13 @@ pub fn main() {
                                 [(
                                     0,
                                     bool_function_return_expr(bool_function_ref(
-                                        0,
+                                        3,
                                         [LocalId::Bool(BoolLocalId(0))],
                                     )),
                                 )],
                                 bool_function_return_tail_call(
-                                    0,
+                                    7,
+                                    bool_to_bool.clone(),
                                     [int_arg(0, local_int(0, "n").sub_int(int(1)))],
                                 ),
                             ),
@@ -449,12 +444,13 @@ pub fn main() {
                                 [(
                                     0,
                                     nil_function_return_expr(nil_function_ref(
-                                        0,
+                                        4,
                                         [LocalId::Nil(NilLocalId(0))],
                                     )),
                                 )],
                                 nil_function_return_tail_call(
-                                    0,
+                                    8,
+                                    nil_to_nil.clone(),
                                     [int_arg(0, local_int(0, "n").sub_int(int(1)))],
                                 ),
                             ),
@@ -471,13 +467,13 @@ pub fn main() {
                             [(
                                 0,
                                 function_function_return_expr(function_function_ref(
-                                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                                    FunctionFunctionId::Int(IntFunctionFunctionId(5)),
                                     [LocalId::Int(IntLocalId(0))],
                                     int_to_int.clone(),
                                 )),
                             )],
                             function_function_return_tail_call(
-                                0,
+                                9,
                                 int_to_int_function.clone(),
                                 [int_arg(0, local_int(0, "n").sub_int(int(1)))],
                             ),
@@ -570,7 +566,7 @@ pub fn main() {
             function(
                 "main",
                 call_int_function(
-                    call_int_returning_function(0, [bool_arg(0, bool_(true))], int_to_int.clone()),
+                    call_int_returning_function(9, [bool_arg(0, bool_(true))], int_to_int.clone()),
                     [int_function_call_arg(0, int(1))],
                 ),
             ),
@@ -613,11 +609,11 @@ pub fn main() {
                         string_function_return_bool_case(
                             local_bool(0, "flag"),
                             string_function_return_expr(string_function_ref(
-                                0,
+                                3,
                                 [LocalId::String(StringLocalId(0))],
                             )),
                             string_function_return_expr(string_function_ref(
-                                1,
+                                4,
                                 [LocalId::String(StringLocalId(0))],
                             )),
                         ),
@@ -631,11 +627,11 @@ pub fn main() {
                         bool_function_return_bool_case(
                             local_bool(0, "flag"),
                             bool_function_return_expr(bool_function_ref(
-                                0,
+                                5,
                                 [LocalId::Bool(BoolLocalId(0))],
                             )),
                             bool_function_return_expr(bool_function_ref(
-                                1,
+                                6,
                                 [LocalId::Bool(BoolLocalId(0))],
                             )),
                         ),
@@ -649,11 +645,11 @@ pub fn main() {
                         nil_function_return_bool_case(
                             local_bool(0, "flag"),
                             nil_function_return_expr(nil_function_ref(
-                                0,
+                                7,
                                 [LocalId::Nil(NilLocalId(0))],
                             )),
                             nil_function_return_expr(nil_function_ref(
-                                1,
+                                8,
                                 [LocalId::Nil(NilLocalId(0))],
                             )),
                         ),
@@ -757,7 +753,7 @@ pub fn main() {
                 "main",
                 call_int_function(
                     call_int_returning_function(
-                        0,
+                        9,
                         [string_arg(0, string("one"))],
                         int_to_int.clone(),
                     ),
@@ -808,12 +804,12 @@ pub fn main() {
                             [(
                                 "one",
                                 string_function_return_expr(string_function_ref(
-                                    0,
+                                    3,
                                     [LocalId::String(StringLocalId(0))],
                                 )),
                             )],
                             string_function_return_expr(string_function_ref(
-                                1,
+                                4,
                                 [LocalId::String(StringLocalId(0))],
                             )),
                         ),
@@ -829,12 +825,12 @@ pub fn main() {
                             [(
                                 "one",
                                 bool_function_return_expr(bool_function_ref(
-                                    0,
+                                    5,
                                     [LocalId::Bool(BoolLocalId(0))],
                                 )),
                             )],
                             bool_function_return_expr(bool_function_ref(
-                                1,
+                                6,
                                 [LocalId::Bool(BoolLocalId(0))],
                             )),
                         ),
@@ -850,12 +846,12 @@ pub fn main() {
                             [(
                                 "one",
                                 nil_function_return_expr(nil_function_ref(
-                                    0,
+                                    7,
                                     [LocalId::Nil(NilLocalId(0))],
                                 )),
                             )],
                             nil_function_return_expr(nil_function_ref(
-                                1,
+                                8,
                                 [LocalId::Nil(NilLocalId(0))],
                             )),
                         ),
@@ -880,13 +876,13 @@ pub fn main() {
                         [(
                             "one",
                             function_function_return_expr(function_function_ref(
-                                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                                FunctionFunctionId::Int(IntFunctionFunctionId(9)),
                                 [LocalId::String(StringLocalId(0))],
                                 int_to_int.clone(),
                             )),
                         )],
                         function_function_return_expr(function_function_ref(
-                            FunctionFunctionId::Int(IntFunctionFunctionId(1)),
+                            FunctionFunctionId::Int(IntFunctionFunctionId(13)),
                             [LocalId::String(StringLocalId(0))],
                             int_to_int,
                         )),
@@ -1290,13 +1286,7 @@ pub fn main() {
         .expect("source should plan");
         let expected = module(
             "main",
-            function(
-                "main",
-                function_ref(
-                    RuntimeFunctionId::Int(IntFunctionId(0)),
-                    [LocalId::Int(IntLocalId(0))],
-                ),
-            ),
+            function("main", int_function_ref(1, [LocalId::Int(IntLocalId(0))])),
             [function("identity", local_int(0, "value")).param_int(0, "value")],
         );
 
@@ -1368,9 +1358,9 @@ pub fn nil_main() {
                 function("nil_id", local_nil(0, "value")).param_nil(0, "value"),
                 function(
                     "bool_main",
-                    bool_return_tail_call(0, [bool_arg(0, bool_(true))]),
+                    bool_return_tail_call(2, [bool_arg(0, bool_(true))]),
                 ),
-                function("nil_main", nil_return_tail_call(0, [nil_arg(0, nil())])),
+                function("nil_main", nil_return_tail_call(3, [nil_arg(0, nil())])),
             ],
         );
 
@@ -1466,19 +1456,34 @@ pub fn main() -> Int
         let mut function = module.definitions.functions.remove(0);
         function.name = None;
         let info = FunctionInfo {
-            id: FunctionId::new(0),
-            runtime_id: RuntimeFunctionId::Int(IntFunctionId(0)),
+            signature: FunctionTemplateSignature::new(
+                FunctionTemplateId::new(0),
+                TypeScheme::new(0),
+                FunctionShape::new(Vec::new(), crate::plan::ValueShape::Int),
+            ),
+            type_parameters: Default::default(),
             return_shape: crate::plan::ValueShape::Int,
             params: Vec::new(),
         };
         let mut anonymous = crate::planner::context::AnonymousFunctions::default();
+        let module_name = "main".into();
+        let functions = Default::default();
+        let constants = crate::planner::module::plan_constants(
+            Vec::new(),
+            &module_name,
+            &functions,
+            &[],
+            &mut anonymous,
+        )
+        .expect("empty constant table should plan");
 
         assert_eq!(
             super::plan_function(
                 info,
-                &"main".into(),
-                &Default::default(),
+                &module_name,
+                &functions,
                 &[],
+                &constants,
                 function,
                 &mut anonymous,
             ),
@@ -1508,18 +1513,36 @@ pub fn main() -> Int
         let mut named_module = compile_minimal_module();
         let named_function = named_module.definitions.functions.remove(0);
         let info = FunctionInfo {
-            id: FunctionId::new(0),
-            runtime_id: RuntimeFunctionId::Int(IntFunctionId(0)),
+            signature: FunctionTemplateSignature::new(
+                FunctionTemplateId::new(0),
+                TypeScheme::new(0),
+                FunctionShape::new(
+                    vec![crate::plan::ValueShape::String],
+                    crate::plan::ValueShape::Int,
+                ),
+            ),
+            type_parameters: Default::default(),
             return_shape: crate::plan::ValueShape::Int,
             params: vec![invalid_param.clone()],
         };
         let mut anonymous = crate::planner::context::AnonymousFunctions::default();
+        let module_name = "main".into();
+        let functions = Default::default();
+        let constants = crate::planner::module::plan_constants(
+            Vec::new(),
+            &module_name,
+            &functions,
+            &[],
+            &mut anonymous,
+        )
+        .expect("empty constant table should plan");
         assert_eq!(
             super::plan_function(
                 info,
-                &"main".into(),
-                &Default::default(),
+                &module_name,
+                &functions,
                 &[],
+                &constants,
                 named_function,
                 &mut anonymous,
             ),
@@ -1538,7 +1561,6 @@ pub fn main() -> Int
             super::plan_anonymous_function_body(
                 &"<anonymous:0>".into(),
                 &crate::plan::ValueShape::Int,
-                &RuntimeFunctionId::Int(IntFunctionId(0)),
                 &[invalid_param],
                 Vec::new(),
                 anonymous_body,

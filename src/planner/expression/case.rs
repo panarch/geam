@@ -3,9 +3,7 @@ mod subject;
 
 use crate::plan::Expr;
 use crate::planner::context::PlanContext;
-use crate::planner::error::{
-    InvalidCaseShapeReason, InvalidTypedAstReason, PlanError, UnsupportedCaseReason,
-};
+use crate::planner::error::{InvalidCaseShapeReason, InvalidTypedAstReason, PlanError};
 use gleam_core::ast::{TypedClause, TypedExpr};
 use gleam_core::type_::Type;
 use std::sync::Arc;
@@ -35,10 +33,6 @@ pub(super) fn plan_case(
     all_subjects.push(subject);
     all_subjects.extend(subjects);
     subject::plan_multi(type_, all_subjects, clauses, context)
-}
-
-pub(super) fn unsupported_case(reason: UnsupportedCaseReason) -> PlanError {
-    PlanError::UnsupportedCase { reason }
 }
 
 pub(super) fn invalid_case_shape(reason: InvalidCaseShapeReason) -> PlanError {

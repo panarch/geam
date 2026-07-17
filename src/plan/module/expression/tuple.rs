@@ -2,7 +2,7 @@ use super::{
     BoolExpr, CallArg, CustomFieldAccess, FloatExpr, IntExpr, PanicExpr, StringExpr,
     TupleFunctionExpr, TupleListExpr,
 };
-use crate::plan::{Step, TupleFunctionId, TupleLocalId, ValueType};
+use crate::plan::{FunctionInstantiation, Step, TupleLocalId, ValueType};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -21,7 +21,7 @@ pub(crate) enum TupleExprKind {
         name: EcoString,
     },
     Call {
-        function: TupleFunctionId,
+        function: FunctionInstantiation,
         args: Vec<CallArg>,
     },
     FunctionCall {
@@ -93,7 +93,7 @@ impl TupleExpr {
     }
 
     pub(crate) fn call(
-        function: TupleFunctionId,
+        function: FunctionInstantiation,
         args: Vec<CallArg>,
         type_: Vec<ValueType>,
     ) -> Self {
@@ -228,24 +228,15 @@ impl TupleExpr {
         self.shape = shape;
         self
     }
-
-    pub(crate) fn into_parts(
-        self,
-    ) -> (
-        Vec<ValueType>,
-        Box<[crate::plan::ValueShape]>,
-        TupleExprKind,
-    ) {
-        (self.type_, self.shape, self.kind)
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{TupleExpr, TupleExprKind};
     use crate::plan::{
-        BoolExpr, Expr, FunctionType, IntExpr, Step, TupleFunctionExpr, TupleFunctionId,
-        TupleFunctionReference, TupleLocalId, ValueType,
+        BoolExpr, Expr, FunctionInstantiation, FunctionShape, FunctionType, IntExpr, Step,
+        TupleFunctionExpr, TupleFunctionReference, TupleLocalId, ValueShape, ValueType,
+        monomorphic_function_instantiation,
     };
 
     #[test]
@@ -262,9 +253,9 @@ mod tests {
             },
         );
         assert_eq!(
-            TupleExpr::call(TupleFunctionId(0), Vec::new(), tuple_type()).kind(),
+            TupleExpr::call(function_instantiation(), Vec::new(), tuple_type()).kind(),
             &TupleExprKind::Call {
-                function: TupleFunctionId(0),
+                function: function_instantiation(),
                 args: Vec::new(),
             },
         );
@@ -394,9 +385,19 @@ mod tests {
     }
 
     fn tuple_function_expr() -> TupleFunctionExpr {
-        TupleFunctionExpr::reference(
-            TupleFunctionReference::new(TupleFunctionId(0), Vec::new()),
-            tuple_type(),
+        TupleFunctionExpr::reference(TupleFunctionReference::new(
+            function_instantiation(),
+            Vec::new(),
+        ))
+    }
+
+    fn function_instantiation() -> FunctionInstantiation {
+        monomorphic_function_instantiation(
+            0,
+            FunctionShape::new(
+                Vec::new(),
+                ValueShape::Tuple(vec![ValueShape::Int].into_boxed_slice()),
+            ),
         )
     }
 

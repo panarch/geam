@@ -1,6 +1,62 @@
 use crate::plan::{FrameLayout, ReturnBodyKind};
 
 impl FrameLayout {
+    pub(in crate::plan::module::frame) fn include_generic_function_return(
+        &mut self,
+        body: &crate::plan::GenericFunctionReturn,
+    ) {
+        match body.kind() {
+            ReturnBodyKind::Expr(expression) => self.include_generic_function_expr(expression),
+            ReturnBodyKind::TailCall { args, .. } => self.include_call_args(args),
+            ReturnBodyKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_generic_function_return(true_);
+                self.include_generic_function_return(false_);
+            }
+            ReturnBodyKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_generic_function_return(branch);
+                }
+                self.include_generic_function_return(fallback);
+            }
+            ReturnBodyKind::FloatCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_float_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_generic_function_return(branch);
+                }
+                self.include_generic_function_return(fallback);
+            }
+            ReturnBodyKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_generic_function_return(branch);
+                }
+                self.include_generic_function_return(fallback);
+            }
+            ReturnBodyKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_generic_function_return(return_);
+            }
+        }
+    }
+
     pub(in crate::plan::module::frame) fn include_int_function_return(
         &mut self,
         body: &crate::plan::IntFunctionReturn,
@@ -404,7 +460,10 @@ impl FrameLayout {
 
     fn include_custom_function_return_body(
         &mut self,
-        body: &ReturnBodyKind<crate::plan::CustomFunctionExprKind, usize>,
+        body: &ReturnBodyKind<
+            crate::plan::CustomFunctionExprKind,
+            crate::plan::FunctionInstantiation,
+        >,
     ) {
         match body {
             ReturnBodyKind::Expr(expression) => self.include_custom_function_expr_kind(expression),
@@ -579,7 +638,10 @@ impl FrameLayout {
 
     fn include_function_function_return_body(
         &mut self,
-        body: &ReturnBodyKind<crate::plan::FunctionFunctionExprKind, usize>,
+        body: &ReturnBodyKind<
+            crate::plan::FunctionFunctionExprKind,
+            crate::plan::FunctionInstantiation,
+        >,
     ) {
         match body {
             ReturnBodyKind::Expr(expression) => {
@@ -641,16 +703,28 @@ mod tests {
     use crate::plan::{
         BitArrayFunctionExpr, BitArrayFunctionFunctionId, BitArrayFunctionLocalId, BoolExpr,
         BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionLocalId, BoolLocalId, CallArg,
-        CustomFunctionExpr, CustomFunctionFunctionId, CustomFunctionLocal, CustomFunctionLocalId,
-        CustomFunctionReturn, CustomFunctionType, CustomType, CustomTypeName, Expr, FloatExpr,
-        FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionLocalId, FloatLocalId,
-        FrameLayout, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionLocal,
-        FunctionFunctionLocalId, FunctionFunctionReturn, FunctionFunctionType, FunctionType,
-        IntExpr, IntFunctionFunctionId, IntFunctionLocalId, IntLocalId, ListFunctionExpr,
-        ListFunctionFunctionId, ListFunctionLocal, NilFunctionExpr, NilFunctionFunctionId,
-        NilFunctionLocalId, ReturnBody, ReturnExpr, Step, StringExpr, StringFunctionExpr,
-        StringFunctionFunctionId, StringFunctionLocalId, StringLocalId, ValueType,
+        CustomFunctionExpr, CustomFunctionLocal, CustomFunctionLocalId, CustomFunctionReturn,
+        CustomFunctionType, CustomType, CustomTypeName, Expr, FloatExpr, FloatFunctionExpr,
+        FloatFunctionFunctionId, FloatFunctionLocalId, FloatLocalId, FrameLayout,
+        FunctionFunctionExpr, FunctionFunctionLocal, FunctionFunctionLocalId,
+        FunctionFunctionReturn, FunctionFunctionType, FunctionInstantiation, FunctionShape,
+        FunctionType, IntExpr, IntFunctionFunctionId, IntFunctionLocalId, IntLocalId,
+        ListFunctionExpr, ListFunctionFunctionId, ListFunctionLocal, NilFunctionExpr,
+        NilFunctionFunctionId, NilFunctionLocalId, ReturnBody, ReturnExpr, Step, StringExpr,
+        StringFunctionExpr, StringFunctionFunctionId, StringFunctionLocalId, StringLocalId,
+        ValueShape, ValueType, monomorphic_function_instantiation,
     };
+
+    fn returning_function_instantiation(
+        template: usize,
+        arguments: Vec<ValueShape>,
+        returned: FunctionShape,
+    ) -> FunctionInstantiation {
+        monomorphic_function_instantiation(
+            template,
+            FunctionShape::new(arguments, ValueShape::Function(Box::new(returned))),
+        )
+    }
 
     #[test]
     fn frame_layout_includes_function_return_body_families() {
@@ -670,7 +744,18 @@ mod tests {
                         IntExpr::local_get(IntLocalId(9), "function_subject".into()),
                         vec![(
                             1.into(),
-                            ReturnBody::tail_call(IntFunctionFunctionId(1), Vec::new()),
+                            ReturnBody::tail_call(
+                                returning_function_instantiation(
+                                    1,
+                                    Vec::new(),
+                                    FunctionShape::from_function_type(
+                                        super::super::super::test_helpers::int_function_expr()
+                                            .type_()
+                                            .clone(),
+                                    ),
+                                ),
+                                Vec::new(),
+                            ),
                         )],
                         ReturnBody::expr(crate::plan::IntFunctionExpr::local_get(
                             IntFunctionLocalId(6),
@@ -713,7 +798,18 @@ mod tests {
                         IntExpr::local_get(IntLocalId(14), "string_function_subject".into()),
                         vec![(
                             1.into(),
-                            ReturnBody::tail_call(StringFunctionFunctionId(1), Vec::new()),
+                            ReturnBody::tail_call(
+                                returning_function_instantiation(
+                                    1,
+                                    Vec::new(),
+                                    FunctionShape::from_function_type(
+                                        super::super::super::test_helpers::string_function_expr()
+                                            .type_()
+                                            .clone(),
+                                    ),
+                                ),
+                                Vec::new(),
+                            ),
                         )],
                         ReturnBody::expr(StringFunctionExpr::local_get(
                             StringFunctionLocalId(4),
@@ -754,7 +850,18 @@ mod tests {
                         IntExpr::local_get(IntLocalId(28), "float_function_subject".into()),
                         vec![(
                             1.into(),
-                            ReturnBody::tail_call(FloatFunctionFunctionId(1), Vec::new()),
+                            ReturnBody::tail_call(
+                                returning_function_instantiation(
+                                    1,
+                                    Vec::new(),
+                                    FunctionShape::from_function_type(
+                                        super::super::super::test_helpers::float_function_expr()
+                                            .type_()
+                                            .clone(),
+                                    ),
+                                ),
+                                Vec::new(),
+                            ),
                         )],
                         ReturnBody::expr(FloatFunctionExpr::local_get(
                             FloatFunctionLocalId(4),
@@ -795,7 +902,18 @@ mod tests {
                         IntExpr::local_get(IntLocalId(15), "bool_function_subject".into()),
                         vec![(
                             1.into(),
-                            ReturnBody::tail_call(BoolFunctionFunctionId(1), Vec::new()),
+                            ReturnBody::tail_call(
+                                returning_function_instantiation(
+                                    1,
+                                    Vec::new(),
+                                    FunctionShape::from_function_type(
+                                        super::super::super::test_helpers::bool_function_expr()
+                                            .type_()
+                                            .clone(),
+                                    ),
+                                ),
+                                Vec::new(),
+                            ),
                         )],
                         ReturnBody::expr(BoolFunctionExpr::local_get(
                             BoolFunctionLocalId(4),
@@ -836,7 +954,18 @@ mod tests {
                         IntExpr::local_get(IntLocalId(16), "nil_function_subject".into()),
                         vec![(
                             1.into(),
-                            ReturnBody::tail_call(NilFunctionFunctionId(1), Vec::new()),
+                            ReturnBody::tail_call(
+                                returning_function_instantiation(
+                                    1,
+                                    Vec::new(),
+                                    FunctionShape::from_function_type(
+                                        super::super::super::test_helpers::nil_function_expr()
+                                            .type_()
+                                            .clone(),
+                                    ),
+                                ),
+                                Vec::new(),
+                            ),
                         )],
                         ReturnBody::expr(NilFunctionExpr::local_get(
                             NilFunctionLocalId(4),
@@ -881,8 +1010,15 @@ mod tests {
                         vec![(
                             1.into(),
                             FunctionFunctionExpr::call(
-                                FunctionFunctionFunctionId::new(1, function_function_type.clone()),
+                                returning_function_instantiation(
+                                    1,
+                                    Vec::new(),
+                                    FunctionShape::from_function_type(
+                                        function_function_type.to_function_type(),
+                                    ),
+                                ),
                                 Vec::new(),
+                                function_function_type.clone(),
                             ),
                         )],
                         FunctionFunctionExpr::local_get(
@@ -926,7 +1062,17 @@ mod tests {
                     IntLocalId(3),
                     "step".into(),
                 )))],
-                ReturnBody::tail_call(BitArrayFunctionFunctionId(1), Vec::new()),
+                ReturnBody::tail_call(
+                    returning_function_instantiation(
+                        1,
+                        Vec::new(),
+                        FunctionShape::from_function_type(FunctionType::new(
+                            Vec::new(),
+                            ValueType::BitArray,
+                        )),
+                    ),
+                    Vec::new(),
+                ),
             ),
         );
 
@@ -1217,8 +1363,16 @@ mod tests {
                         vec![(
                             "tail".into(),
                             CustomFunctionExpr::call(
-                                CustomFunctionFunctionId::new(1, type_.clone()),
+                                returning_function_instantiation(
+                                    1,
+                                    Vec::new(),
+                                    FunctionShape::new(
+                                        type_.argument_shapes().to_vec(),
+                                        ValueShape::Custom(type_.return_().clone()),
+                                    ),
+                                ),
                                 Vec::new(),
+                                type_.clone(),
                             ),
                         )],
                         CustomFunctionExpr::local_get(
@@ -1458,10 +1612,10 @@ mod tests {
                         vec![(
                             1.into(),
                             ReturnBody::tail_call(
-                                ListFunctionFunctionId::from_item_type(
+                                returning_function_instantiation(
                                     1,
-                                    type_.clone(),
-                                    ValueType::Int,
+                                    vec![ValueShape::Int],
+                                    FunctionShape::from_function_type(type_.clone()),
                                 ),
                                 vec![CallArg::int(
                                     IntLocalId(0),

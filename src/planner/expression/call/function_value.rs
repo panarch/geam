@@ -1,5 +1,5 @@
 use super::CaptureSubstitution;
-use crate::plan::{CallArg, Expr, FunctionExpr, FunctionFunctionExpr, ValueShape, ValueType};
+use crate::plan::{CallArg, Expr, FunctionExpr, FunctionFunctionExpr, ValueShape};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
     InvalidCallShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
@@ -29,27 +29,22 @@ pub(super) fn plan_function_value_call(
         match expression.into_function() {
             Some(function) => function,
             None => {
-                return Err(super::super::invalid_expression_type(
-                    InvalidExpressionType::Function,
-                    actual,
-                ));
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionType {
+                        expected: InvalidExpressionType::Function,
+                        actual,
+                    },
+                });
             }
         }
     };
     let function_shape = function.shape().clone();
     let function_type = function_shape.type_();
-    let return_type = ValueType::from_gleam(type_.as_ref()).ok_or(PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::CallShape {
-            reason: InvalidCallShapeReason::FunctionCallUnsupportedReturnType,
-        },
-    })?;
-    if &return_type != function_type.return_() {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::CallShape {
-                reason: InvalidCallShapeReason::FunctionCallReturnTypeMismatch,
-            },
-        });
-    }
+    let return_shape = context.value_shape(type_.as_ref());
+    let return_shape = function_shape
+        .return_shape()
+        .refine(&return_shape)
+        .ok_or_else(function_call_return_type_mismatch)?;
     if arguments.len() != function_type.argument_types().len() {
         return Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::CallShape {
@@ -65,7 +60,6 @@ pub(super) fn plan_function_value_call(
         capture,
     )?;
 
-    let return_shape = function_shape.return_shape().clone();
     function_call_expr(function, args, return_shape)
 }
 
@@ -75,6 +69,12 @@ fn function_call_expr(
     return_shape: ValueShape,
 ) -> Result<Expr, PlanError> {
     match return_shape {
+        ValueShape::Parameter(_) => match function.into_generic() {
+            Some(function) => Ok(Expr::generic(crate::plan::GenericExpr::function_call(
+                function, args,
+            ))),
+            None => Err(function_call_return_type_mismatch()),
+        },
         ValueShape::Int => match function.into_int() {
             Some(function) => Ok(Expr::int(crate::plan::IntExpr::function_call(
                 function, args,
@@ -165,6 +165,17 @@ fn function_returning_function_value_call_expr(
     let return_shape = function.function_function_type().return_shape().clone();
     let return_type = return_shape.type_();
     Ok(match return_shape.return_shape().clone() {
+        ValueShape::Parameter(parameter) => Expr::function(FunctionExpr::generic_with_shape(
+            crate::plan::GenericFunctionExpr::function_call(
+                function,
+                args,
+                crate::plan::GenericFunctionType::new(
+                    return_shape.argument_shapes().to_vec(),
+                    parameter,
+                ),
+            ),
+            return_shape,
+        )),
         ValueShape::Int => Expr::function(FunctionExpr::int_with_shape(
             crate::plan::IntFunctionExpr::function_call(function, args, return_type),
             return_shape,
@@ -248,11 +259,12 @@ mod tests {
         CustomConstructor, CustomConstructorField, CustomFunctionExpr, CustomFunctionFunctionId,
         CustomFunctionType, CustomType, CustomTypeName, Expr, FloatFunctionFunctionId,
         FloatFunctionId, FunctionExpr, FunctionFunctionExpr, FunctionFunctionFunctionId,
-        FunctionFunctionId, FunctionType, IntFunctionFunctionId, IntLocalId, LocalId,
-        NilFunctionFunctionId, NilFunctionId, ParamLocal, RuntimeFunctionId,
+        FunctionFunctionId, FunctionFunctionType, FunctionShape, FunctionType, GenericExpr,
+        GenericFunctionExpr, GenericFunctionType, IntFunctionFunctionId, IntLocalId, LocalId,
+        NilFunctionFunctionId, NilFunctionId, PanicExpr, PanicSite, ParamLocal, RuntimeFunctionId,
         StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId, TupleFunctionId,
-        TupleLocalId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, ValueShape,
-        ValueType,
+        TupleLocalId, TypeParameterId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+        ValueShape, ValueType,
     };
     use crate::planner::dsl::{
         block_int_function, bool_, bool_case_int_function, call_int_function, function,
@@ -270,6 +282,46 @@ mod tests {
         UnsupportedExpressionKind,
     };
     use gleam_core::type_;
+
+    #[test]
+    fn generic_function_value_calls_preserve_parameter_returns() {
+        let parameter = TypeParameterId(0);
+        let type_ = GenericFunctionType::new(vec![ValueShape::Int], parameter);
+        let function = GenericFunctionExpr::panic(
+            PanicExpr::panic_at(None, PanicSite::unknown()),
+            type_.clone(),
+        );
+        assert_eq!(
+            function_call_expr(
+                FunctionExpr::generic(function.clone()),
+                Vec::new(),
+                ValueShape::Parameter(parameter),
+            ),
+            Ok(Expr::generic(GenericExpr::function_call(
+                function,
+                Vec::new(),
+            ))),
+        );
+
+        let returned_shape =
+            FunctionShape::new(vec![ValueShape::String], ValueShape::Parameter(parameter));
+        let function_type = FunctionFunctionType::from_shapes(Vec::new(), returned_shape.clone());
+        let provider = FunctionFunctionExpr::panic(
+            PanicExpr::panic_at(None, PanicSite::unknown()),
+            function_type,
+        );
+        assert_eq!(
+            function_returning_function_value_call_expr(provider.clone(), Vec::new()),
+            Ok(Expr::function(FunctionExpr::generic_with_shape(
+                GenericFunctionExpr::function_call(
+                    provider,
+                    Vec::new(),
+                    GenericFunctionType::new(vec![ValueShape::String], parameter),
+                ),
+                returned_shape,
+            ))),
+        );
+    }
 
     #[test]
     fn plan_immediate_anonymous_function_call() {
@@ -639,7 +691,7 @@ pub fn main() {
             plan_module(unsupported_return_type_call),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::FunctionCallUnsupportedReturnType,
+                    reason: InvalidCallShapeReason::FunctionCallReturnTypeMismatch,
                 },
             }),
         );
@@ -1102,6 +1154,14 @@ pub fn main() {
 
     #[test]
     fn reject_margin_function_call_expr_return_family_mismatch() {
+        assert_eq!(
+            function_call_expr(
+                FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
+                Vec::new(),
+                ValueShape::Parameter(crate::plan::TypeParameterId(0)),
+            ),
+            Err(function_call_return_type_mismatch()),
+        );
         assert_eq!(
             function_call_expr(
                 FunctionExpr::from(function_ref(

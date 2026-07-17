@@ -1,12 +1,11 @@
-use super::{
-    invalid_expression_type_for_value, plan_expr, plan_expr_with_expected_source_stop_type,
-    record_access,
-};
+use super::{plan_expr, plan_expr_with_expected_source_stop_type, record_access};
 use crate::plan::{
     CustomConstructor, CustomExpr, CustomLocalId, CustomType, Expr, Step, ValueType,
 };
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidRecordUpdateShapeReason, InvalidTypedAstReason, PlanError};
+use crate::planner::error::{
+    InvalidExpressionType, InvalidRecordUpdateShapeReason, InvalidTypedAstReason, PlanError,
+};
 use ecow::EcoString;
 use gleam_core::ast::{CallArg, ImplicitCallArgOrigin, TypedExpr};
 use gleam_core::type_::error::VariableOrigin;
@@ -22,14 +21,14 @@ pub(super) fn plan(
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let source_type = updated_record.type_();
-    let source_custom_type = custom_type(source_type.as_ref())?;
+    let source_custom_type = custom_type(source_type.as_ref(), context)?;
     let implicit_target = implicit_target(
         &updated_record,
         updated_record_assigned_name,
         &source_custom_type,
     )?;
     let constructor = record_constructor(constructor, context)?;
-    let result_type = custom_type(type_.as_ref())?;
+    let result_type = custom_type(type_.as_ref(), context)?;
     if constructor.type_() != &result_type {
         return Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::RecordUpdateShape {
@@ -40,10 +39,12 @@ pub(super) fn plan(
     let source = plan_expr(updated_record, context)?;
     let actual = source.value_type();
     let Some(source) = source.into_custom() else {
-        return Err(invalid_expression_type_for_value(
-            ValueType::Custom(source_custom_type.clone()),
-            actual,
-        ));
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionType {
+                expected: InvalidExpressionType::Custom,
+                actual: InvalidExpressionType::from_value_type(actual),
+            },
+        });
     };
     if source.type_() != &source_custom_type {
         return Err(PlanError::InvalidTypedAst {
@@ -125,10 +126,12 @@ fn plan_arguments(
             }
         };
         if expression.value_type() != *field.type_() {
-            return Err(invalid_expression_type_for_value(
-                field.type_().clone(),
-                expression.value_type(),
-            ));
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::from_value_type(field.type_().clone()),
+                    actual: InvalidExpressionType::from_value_type(expression.value_type()),
+                },
+            });
         }
         planned.push(expression);
     }
@@ -168,7 +171,7 @@ fn plan_implicit_argument(
     };
     if index != expected_index as u64
         || label != expected_label
-        || ValueType::from_gleam(type_.as_ref()).as_ref() != Some(expected_type)
+        || context.value_type(type_.as_ref()) != *expected_type
     {
         return Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::RecordUpdateShape {
@@ -176,7 +179,7 @@ fn plan_implicit_argument(
             },
         });
     }
-    if !implicit_target.matches(&record) {
+    if !implicit_target.matches(&record, context) {
         return Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::RecordUpdateShape {
                 reason: InvalidRecordUpdateShapeReason::ImplicitFieldTarget,
@@ -207,9 +210,9 @@ fn record_constructor(
     context.custom_constructor(&constructor)
 }
 
-fn custom_type(type_: &Type) -> Result<CustomType, PlanError> {
-    match ValueType::from_gleam(type_) {
-        Some(ValueType::Custom(type_)) => Ok(type_),
+fn custom_type(type_: &Type, context: &mut PlanContext<'_>) -> Result<CustomType, PlanError> {
+    match context.value_type(type_) {
+        ValueType::Custom(type_) => Ok(type_),
         _ => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::RecordUpdateShape {
                 reason: InvalidRecordUpdateShapeReason::Type,
@@ -230,7 +233,7 @@ enum ImplicitTarget {
 }
 
 impl ImplicitTarget {
-    fn matches(&self, expression: &TypedExpr) -> bool {
+    fn matches(&self, expression: &TypedExpr, context: &PlanContext<'_>) -> bool {
         let TypedExpr::Var {
             name, constructor, ..
         } = expression
@@ -247,8 +250,10 @@ impl ImplicitTarget {
                 type_: expected_type,
             } => {
                 name == expected_name
-                    && ValueType::from_gleam(constructor.type_.as_ref()).as_ref()
-                        == Some(expected_type)
+                    && context
+                        .value_shape_in_scope(constructor.type_.as_ref())
+                        .value_type()
+                        == *expected_type
                     && is_generated_local_variable(constructor)
             }
         }
@@ -410,13 +415,10 @@ pub fn main() {
 
         assert_eq!(
             plan.main_function().return_(),
-            &ReturnExpr::custom_body(
-                0,
-                CustomReturn::block(
-                    vec![Step::let_custom(local, local_name, source)],
-                    CustomReturn::expr(updated),
-                ),
-            ),
+            &ReturnExpr::custom_body(CustomReturn::block(
+                vec![Step::let_custom(local, local_name, source)],
+                CustomReturn::expr(updated),
+            )),
         );
     }
 
@@ -469,13 +471,10 @@ pub fn main() {
 
         assert_eq!(
             plan.main_function().return_(),
-            &ReturnExpr::custom_body(
-                0,
-                CustomReturn::block(
-                    vec![Step::let_custom(local, local_name, source)],
-                    CustomReturn::expr(updated),
-                ),
-            ),
+            &ReturnExpr::custom_body(CustomReturn::block(
+                vec![Step::let_custom(local, local_name, source)],
+                CustomReturn::expr(updated),
+            )),
         );
     }
 
@@ -520,13 +519,10 @@ pub fn main() {
 
         assert_eq!(
             plan.main_function().return_(),
-            &ReturnExpr::custom_body(
-                0,
-                CustomReturn::block(
-                    vec![Step::let_custom(local, local_name, source)],
-                    CustomReturn::expr(updated),
-                ),
-            ),
+            &ReturnExpr::custom_body(CustomReturn::block(
+                vec![Step::let_custom(local, local_name, source)],
+                CustomReturn::expr(updated),
+            )),
         );
     }
 

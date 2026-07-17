@@ -220,8 +220,6 @@ pub fn main() {
                 ValueShapeDescriptor::Custom(CustomValueShapeId::new(0)),
                 ValueShapeDescriptor::Custom(CustomValueShapeId::new(1)),
                 ValueShapeDescriptor::List(ValueShapeId::new(0)),
-                ValueShapeDescriptor::Custom(CustomValueShapeId::new(2)),
-                ValueShapeDescriptor::List(ValueShapeId::new(3)),
                 ValueShapeDescriptor::Function {
                     arguments: Vec::new().into_boxed_slice(),
                     return_: ValueShapeId::new(0),
@@ -230,8 +228,24 @@ pub fn main() {
                     vec![
                         ValueShapeId::new(1),
                         ValueShapeId::new(2),
-                        ValueShapeId::new(4),
-                        ValueShapeId::new(5),
+                        ValueShapeId::new(2),
+                        ValueShapeId::new(3),
+                    ]
+                    .into_boxed_slice(),
+                ),
+                ValueShapeDescriptor::Custom(CustomValueShapeId::new(3)),
+                ValueShapeDescriptor::Custom(CustomValueShapeId::new(4)),
+                ValueShapeDescriptor::List(ValueShapeId::new(5)),
+                ValueShapeDescriptor::Function {
+                    arguments: Vec::new().into_boxed_slice(),
+                    return_: ValueShapeId::new(5),
+                },
+                ValueShapeDescriptor::Tuple(
+                    vec![
+                        ValueShapeId::new(6),
+                        ValueShapeId::new(7),
+                        ValueShapeId::new(2),
+                        ValueShapeId::new(8),
                     ]
                     .into_boxed_slice(),
                 ),
@@ -243,21 +257,31 @@ pub fn main() {
                 CustomValueShapeDescriptor::new(
                     CustomTypeId::new(2),
                     Vec::new().into_boxed_slice(),
-                    CustomConstructorRefinement::Exact(0),
+                    CustomConstructorRefinement::Any,
                 ),
                 CustomValueShapeDescriptor::new(
                     CustomTypeId::new(1),
                     vec![ValueShapeId::new(0)].into_boxed_slice(),
-                    CustomConstructorRefinement::Exact(0),
-                ),
-                CustomValueShapeDescriptor::new(
-                    CustomTypeId::new(2),
-                    Vec::new().into_boxed_slice(),
                     CustomConstructorRefinement::Any,
                 ),
                 CustomValueShapeDescriptor::new(
                     CustomTypeId::new(0),
-                    vec![ValueShapeId::new(6)].into_boxed_slice(),
+                    vec![ValueShapeId::new(4)].into_boxed_slice(),
+                    CustomConstructorRefinement::Any,
+                ),
+                CustomValueShapeDescriptor::new(
+                    CustomTypeId::new(2),
+                    Vec::new().into_boxed_slice(),
+                    CustomConstructorRefinement::Exact(0),
+                ),
+                CustomValueShapeDescriptor::new(
+                    CustomTypeId::new(1),
+                    vec![ValueShapeId::new(5)].into_boxed_slice(),
+                    CustomConstructorRefinement::Exact(0),
+                ),
+                CustomValueShapeDescriptor::new(
+                    CustomTypeId::new(0),
+                    vec![ValueShapeId::new(9)].into_boxed_slice(),
                     CustomConstructorRefinement::Exact(0),
                 ),
                 CustomValueShapeDescriptor::new(
@@ -302,24 +326,25 @@ pub fn main() {
             plan.value_shapes.shapes,
             vec![
                 ValueShapeDescriptor::Custom(CustomValueShapeId::new(0)),
+                ValueShapeDescriptor::Tuple(vec![ValueShapeId::new(0); 6].into_boxed_slice(),),
+                ValueShapeDescriptor::Custom(CustomValueShapeId::new(2)),
                 ValueShapeDescriptor::Int,
                 ValueShapeDescriptor::Function {
                     arguments: Vec::new().into_boxed_slice(),
-                    return_: ValueShapeId::new(0),
+                    return_: ValueShapeId::new(2),
                 },
                 ValueShapeDescriptor::Function {
-                    arguments: vec![ValueShapeId::new(1)].into_boxed_slice(),
-                    return_: ValueShapeId::new(0),
+                    arguments: vec![ValueShapeId::new(3)].into_boxed_slice(),
+                    return_: ValueShapeId::new(2),
                 },
-                ValueShapeDescriptor::Custom(CustomValueShapeId::new(3)),
                 ValueShapeDescriptor::Tuple(
                     vec![
+                        ValueShapeId::new(2),
+                        ValueShapeId::new(2),
                         ValueShapeId::new(0),
-                        ValueShapeId::new(0),
-                        ValueShapeId::new(4),
-                        ValueShapeId::new(0),
-                        ValueShapeId::new(0),
-                        ValueShapeId::new(0),
+                        ValueShapeId::new(2),
+                        ValueShapeId::new(2),
+                        ValueShapeId::new(2),
                     ]
                     .into_boxed_slice(),
                 ),
@@ -329,28 +354,33 @@ pub fn main() {
             plan.value_shapes.custom_shapes,
             vec![
                 CustomValueShapeDescriptor::new(
-                    CustomTypeId::new(0),
-                    Vec::new().into_boxed_slice(),
-                    CustomConstructorRefinement::Exact(0),
-                ),
-                CustomValueShapeDescriptor::new(
                     CustomTypeId::new(1),
-                    vec![ValueShapeId::new(0)].into_boxed_slice(),
-                    CustomConstructorRefinement::Exact(0),
-                ),
-                CustomValueShapeDescriptor::new(
-                    CustomTypeId::new(2),
-                    vec![ValueShapeId::new(0)].into_boxed_slice(),
-                    CustomConstructorRefinement::Exact(0),
-                ),
-                CustomValueShapeDescriptor::new(
-                    CustomTypeId::new(0),
                     Vec::new().into_boxed_slice(),
                     CustomConstructorRefinement::Any,
                 ),
                 CustomValueShapeDescriptor::new(
+                    CustomTypeId::new(0),
+                    vec![ValueShapeId::new(1)].into_boxed_slice(),
+                    CustomConstructorRefinement::Any,
+                ),
+                CustomValueShapeDescriptor::new(
+                    CustomTypeId::new(1),
+                    Vec::new().into_boxed_slice(),
+                    CustomConstructorRefinement::Exact(0),
+                ),
+                CustomValueShapeDescriptor::new(
+                    CustomTypeId::new(2),
+                    vec![ValueShapeId::new(2)].into_boxed_slice(),
+                    CustomConstructorRefinement::Exact(0),
+                ),
+                CustomValueShapeDescriptor::new(
                     CustomTypeId::new(3),
-                    vec![ValueShapeId::new(5)].into_boxed_slice(),
+                    vec![ValueShapeId::new(2)].into_boxed_slice(),
+                    CustomConstructorRefinement::Exact(0),
+                ),
+                CustomValueShapeDescriptor::new(
+                    CustomTypeId::new(0),
+                    vec![ValueShapeId::new(6)].into_boxed_slice(),
                     CustomConstructorRefinement::Exact(0),
                 ),
             ],
@@ -402,6 +432,14 @@ pub fn main() { Boxed(fn() { fn() { First(1) } }).value }
         );
 
         let _ = custom_shape(&table, ValueShapeId::new(0));
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a custom main function")]
+    fn main_custom_shape_fixture_guard_rejects_int_main() {
+        let plan = execution_plan("pub fn main() { 1 }");
+
+        let _ = main_custom_shape(&plan);
     }
 
     #[test]
@@ -493,8 +531,9 @@ pub fn main() -> Wrapper(#(
     }
 
     fn main_custom_shape(plan: &ExecutionPlan) -> super::CustomValueShapeId {
-        let id = plan.custom_function_id(0);
-        assert_eq!(plan.main_runtime(), RuntimeFunctionId::Custom(id));
+        let RuntimeFunctionId::Custom(id) = plan.main_runtime() else {
+            panic!("expected a custom main function");
+        };
         plan.custom_function(id).return_().shape().shape_id()
     }
 

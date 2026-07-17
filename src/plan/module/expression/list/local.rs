@@ -1,15 +1,22 @@
 use super::{
-    BitArrayListExpr, BoolListExpr, CustomListExpr, FloatListExpr, FunctionListExpr, IntListExpr,
-    ListListExpr, NilListExpr, StringListExpr, TupleListExpr, UtfCodepointListExpr,
+    BitArrayListExpr, BoolListExpr, CustomListExpr, FloatListExpr, FunctionListExpr,
+    GenericListExpr, IntListExpr, ListListExpr, NilListExpr, StringListExpr, TupleListExpr,
+    UtfCodepointListExpr,
 };
 use crate::plan::{
     BitArrayListLocalId, BoolListLocalId, CustomListLocalId, CustomType, FloatListLocalId,
-    FunctionListLocalId, FunctionType, IntListLocalId, ListListLocalId, NilListLocalId,
-    StringListLocalId, TupleListLocalId, UtfCodepointListLocalId, ValueType,
+    FunctionListLocalId, FunctionType, GenericListLocalId, IntListLocalId, ListListLocalId,
+    NilListLocalId, StringListLocalId, TupleListLocalId, TypeParameterId, UtfCodepointListLocalId,
+    ValueType,
 };
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ListLocalExpr {
+    Generic {
+        local: GenericListLocalId,
+        parameter: TypeParameterId,
+        value: GenericListExpr,
+    },
     Int {
         local: IntListLocalId,
         value: IntListExpr,
@@ -58,4 +65,23 @@ pub(crate) enum ListLocalExpr {
         item_type: FunctionType,
         value: FunctionListExpr,
     },
+}
+
+impl ListLocalExpr {
+    pub(crate) fn item_shape(&self) -> &crate::plan::ValueShape {
+        match self {
+            Self::Generic { value, .. } => value.item_shape(),
+            Self::Int { value, .. } => value.item_shape(),
+            Self::String { value, .. } => value.item_shape(),
+            Self::BitArray { value, .. } => value.item_shape(),
+            Self::UtfCodepoint { value, .. } => value.item_shape(),
+            Self::Custom { value, .. } => value.item_shape(),
+            Self::Float { value, .. } => value.item_shape(),
+            Self::Bool { value, .. } => value.item_shape(),
+            Self::Nil { value, .. } => value.item_shape(),
+            Self::Tuple { value, .. } => value.item_shape(),
+            Self::List { value, .. } => value.item_shape(),
+            Self::Function { value, .. } => value.item_shape(),
+        }
+    }
 }

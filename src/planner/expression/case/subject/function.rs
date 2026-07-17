@@ -1,6 +1,6 @@
 use super::super::super::plan_expr_with_expected_source_stop_shape;
 use super::super::invalid_case_shape;
-use super::{CaseClause, OrderedCaseClauseInput, case_return_shape};
+use super::{CaseClause, OrderedCaseClauseInput};
 use crate::plan::{
     BitArrayFunctionExpr, BoolExpr, CustomFunctionExpr, Expr, ExprKind, FunctionExpr,
     FunctionFunctionExpr, FunctionType, IntFunctionExpr, IntFunctionLocalId, Step,
@@ -23,7 +23,7 @@ pub(super) fn plan(
 ) -> Result<Expr, PlanError> {
     let subject_value_type = ValueType::Function(Box::new(subject_type));
     let subject = plan_expr_with_expected_source_stop_shape(subject, subject_shape, context)?;
-    let return_shape = case_return_shape(type_.as_ref())?;
+    let return_shape = context.value_shape(type_.as_ref());
 
     let ExprKind::Function(subject) = subject.into_kind() else {
         return Err(invalid_case_shape(
@@ -34,7 +34,7 @@ pub(super) fn plan(
     let mut ordered_clauses = Vec::new();
     for clause in clauses {
         for pattern in clause.patterns() {
-            let pattern = plan_function_case_pattern(pattern, &subject_value_type)?;
+            let pattern = plan_function_case_pattern(pattern, &subject_value_type, context)?;
             let bindings = super::branch_bindings(pattern.bound_names(), subject.clone());
             let is_total = clause.guard.is_none();
             ordered_clauses.push(super::plan_ordered_case_clause(
@@ -74,9 +74,12 @@ impl FunctionCasePattern {
 fn plan_function_case_pattern(
     pattern: Pattern<Arc<Type>>,
     subject_type: &ValueType,
+    context: &mut PlanContext<'_>,
 ) -> Result<FunctionCasePattern, PlanError> {
     match pattern {
-        Pattern::Variable { name, type_, .. } if matches_type(type_.as_ref(), subject_type) => {
+        Pattern::Variable { name, type_, .. }
+            if matches_type(type_.as_ref(), subject_type, context) =>
+        {
             Ok(FunctionCasePattern {
                 bound_names: vec![name],
             })
@@ -84,7 +87,7 @@ fn plan_function_case_pattern(
         Pattern::Variable { .. } => Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
         )),
-        Pattern::Discard { type_, .. } if matches_type(type_.as_ref(), subject_type) => {
+        Pattern::Discard { type_, .. } if matches_type(type_.as_ref(), subject_type, context) => {
             Ok(FunctionCasePattern {
                 bound_names: Vec::new(),
             })
@@ -93,7 +96,7 @@ fn plan_function_case_pattern(
             InvalidCaseShapeReason::PatternTypeMismatch,
         )),
         Pattern::Assign { name, pattern, .. } => {
-            let mut pattern = plan_function_case_pattern(*pattern, subject_type)?;
+            let mut pattern = plan_function_case_pattern(*pattern, subject_type, context)?;
             pattern.add_bound_name(name);
             Ok(pattern)
         }
@@ -112,8 +115,8 @@ fn plan_function_case_pattern(
     }
 }
 
-fn matches_type(type_: &Type, subject_type: &ValueType) -> bool {
-    ValueType::from_gleam(type_) == Some(subject_type.clone())
+fn matches_type(type_: &Type, subject_type: &ValueType, context: &mut PlanContext<'_>) -> bool {
+    context.value_shape(type_).value_type() == *subject_type
 }
 
 fn bind_function_case_subject(
@@ -121,6 +124,19 @@ fn bind_function_case_subject(
     context: &mut PlanContext<'_>,
 ) -> (Step, Expr) {
     let (step, subject) = match subject.into_typed_kind() {
+        TypedFunctionExprKind::Generic(subject) => {
+            let shape = subject.shape().clone();
+            let local = context
+                .define_internal_generic_function_local(subject.expression().type_().clone());
+            let name = internal_generic_function_case_subject_name(&local);
+            (
+                Step::let_generic_function_expr(local.clone(), name.clone(), subject),
+                FunctionExpr::generic_with_shape(
+                    crate::plan::GenericFunctionExpr::local_get(local, name),
+                    shape,
+                ),
+            )
+        }
         TypedFunctionExprKind::Int(subject) => {
             let shape = subject.shape().clone();
             let local = context.define_internal_int_function_local();
@@ -270,6 +286,12 @@ fn internal_int_function_case_subject_name(local: IntFunctionLocalId) -> EcoStri
     format!("<case:int_function:{}>", local.0).into()
 }
 
+fn internal_generic_function_case_subject_name(
+    local: &crate::plan::GenericFunctionLocal,
+) -> EcoString {
+    format!("<case:generic_function:{}>", local.id().0).into()
+}
+
 fn internal_string_function_case_subject_name(
     local: crate::plan::StringFunctionLocalId,
 ) -> EcoString {
@@ -331,7 +353,9 @@ mod tests {
         BitArrayFunctionExpr, BitArrayFunctionLocalId, CustomConstructorRefinement,
         CustomFunctionExpr, CustomFunctionLocalId, CustomType, CustomTypeName, CustomValueShape,
         Expr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
-        FunctionFunctionLocalId, FunctionType, IntLocalId, LocalId, Step, ValueType,
+        FunctionFunctionLocalId, FunctionType, GenericFunctionExpr, GenericFunctionLocal,
+        GenericFunctionLocalId, GenericFunctionType, IntLocalId, LocalId, Step, TypeParameterId,
+        TypedFunctionExpr, ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
     use crate::planner::dsl::{
@@ -453,6 +477,31 @@ pub fn main() {
         let mut context = PlanContext::new(&module, &functions, &mut anonymous);
         let int_param = LocalId::Int(IntLocalId(0));
         let empty_function_type = FunctionType::new(Vec::new(), ValueType::Int);
+
+        let generic_type = GenericFunctionType::new(vec![ValueShape::Int], TypeParameterId(0));
+        let generic_shape = generic_type.shape();
+        let source_generic_local =
+            GenericFunctionLocal::new(GenericFunctionLocalId(7), generic_type.clone());
+        let source_generic = GenericFunctionExpr::local_get(source_generic_local, "source".into());
+        let target_generic_local =
+            GenericFunctionLocal::new(GenericFunctionLocalId(0), generic_type);
+        assert_eq!(
+            bind_function_case_subject(FunctionExpr::generic(source_generic.clone()), &mut context,),
+            (
+                Step::let_generic_function_expr(
+                    target_generic_local.clone(),
+                    "<case:generic_function:0>".into(),
+                    TypedFunctionExpr::new(generic_shape.clone(), source_generic),
+                ),
+                Expr::function(FunctionExpr::generic_with_shape(
+                    GenericFunctionExpr::local_get(
+                        target_generic_local,
+                        "<case:generic_function:0>".into(),
+                    ),
+                    generic_shape,
+                )),
+            ),
+        );
 
         assert_eq!(
             bind_function_case_subject(int_function_ref(0, [int_param]).into(), &mut context),
@@ -772,7 +821,7 @@ pub fn main() {
         let (case_type, _, _) = super::super::super::expect_case_statement_mut(
             &mut unsupported_case_type.definitions.functions[1].body[0],
         );
-        *case_type = super::super::invalid_case_return_type();
+        *case_type = super::super::mismatched_generic_case_return_type();
         assert_eq!(
             plan_module(unsupported_case_type),
             Err(PlanError::InvalidTypedAst {
@@ -872,6 +921,10 @@ pub fn main() {
 
     #[test]
     fn reject_margin_function_case_pattern_mismatched_and_invalid_shapes() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
         let function_type = ValueType::Function(Box::new(FunctionType::new(
             vec![ValueType::Int],
             ValueType::Int,
@@ -885,6 +938,7 @@ pub fn main() {
                     origin: VariableOrigin::generated(),
                 },
                 &function_type,
+                &mut context,
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
@@ -905,6 +959,7 @@ pub fn main() {
                     }),
                 },
                 &function_type,
+                &mut context,
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
@@ -920,6 +975,7 @@ pub fn main() {
                     type_: gleam_core::type_::int(),
                 },
                 &function_type,
+                &mut context,
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
@@ -935,6 +991,7 @@ pub fn main() {
                     int_value: num_bigint::BigInt::from(1),
                 },
                 &function_type,
+                &mut context,
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
@@ -952,6 +1009,7 @@ pub fn main() {
                     ),
                 },
                 &function_type,
+                &mut context,
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {

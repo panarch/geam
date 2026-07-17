@@ -590,6 +590,7 @@ impl CustomFunctionFunctionId {
         self.index
     }
 
+    #[cfg(test)]
     pub(crate) fn type_(&self) -> &super::CustomFunctionType {
         &self.type_
     }
@@ -607,6 +608,7 @@ impl FunctionFunctionFunctionId {
         self.index
     }
 
+    #[cfg(test)]
     pub(crate) fn type_(&self) -> &super::FunctionFunctionType {
         &self.type_
     }
@@ -780,6 +782,7 @@ impl ListFunctionId {
     }
 }
 
+#[cfg(test)]
 impl ListFunctionFunctionId {
     pub(crate) fn type_(&self) -> &FunctionType {
         match self {
@@ -819,11 +822,14 @@ impl std::fmt::Display for FunctionReturnFamily {
 #[cfg(test)]
 mod tests {
     use super::{
-        BitArrayFunctionFunctionId, BitArrayListLocalId, BoolListLocalId, CustomFunctionFunctionId,
-        CustomListLocalId, FloatListLocalId, FunctionFunctionId, FunctionListLocalId,
-        FunctionReturnFamily, IntFunctionFunctionId, IntListLocalId, ListFunctionFunctionId,
-        ListListLocalId, ListLocal, NilListLocalId, RuntimeFunctionId, StringListLocalId,
-        TupleListLocalId, UtfCodepointFunctionFunctionId, UtfCodepointListLocalId,
+        BitArrayFunctionFunctionId, BitArrayListLocalId, BoolListFunctionFunctionId,
+        BoolListLocalId, CustomFunctionFunctionId, CustomListLocalId, FloatListFunctionFunctionId,
+        FloatListLocalId, FunctionFunctionId, FunctionListFunctionFunctionId, FunctionListLocalId,
+        FunctionReturnFamily, IntFunctionFunctionId, IntListFunctionFunctionId, IntListLocalId,
+        ListFunctionFunctionId, ListListFunctionFunctionId, ListListLocalId, ListLocal,
+        NilListFunctionFunctionId, NilListLocalId, RuntimeFunctionId, StringListFunctionFunctionId,
+        StringListLocalId, TupleListFunctionFunctionId, TupleListLocalId,
+        UtfCodepointFunctionFunctionId, UtfCodepointListLocalId,
     };
     use crate::plan::{CustomType, CustomTypeName, ValueType};
 
@@ -1187,6 +1193,75 @@ pub fn main() { Nil }
                 Vec::new(),
                 ValueType::List(Box::new(ValueType::Custom(custom_type()))),
             ),
+        );
+    }
+
+    #[test]
+    fn list_function_function_ids_preserve_every_exact_return_type() {
+        let plan = execution_plan(
+            r#"
+fn ints() -> List(Int) { [] }
+fn strings() -> List(String) { [] }
+fn floats() -> List(Float) { [] }
+fn bools() -> List(Bool) { [] }
+fn nils() -> List(Nil) { [] }
+fn tuples() -> List(#(Int)) { [] }
+fn lists() -> List(List(Int)) { [] }
+fn functions() -> List(fn() -> Int) { [] }
+
+pub fn main() { Nil }
+"#,
+        );
+        let type_ = crate::plan::execution::FunctionType::new(
+            Vec::new(),
+            crate::plan::execution::ValueType::Nil,
+        );
+        let ids = [
+            ListFunctionFunctionId::Int {
+                id: IntListFunctionFunctionId(0),
+                type_: type_.clone(),
+                list_type: plan.int_list_function_id(0).type_id(),
+            },
+            ListFunctionFunctionId::String {
+                id: StringListFunctionFunctionId(0),
+                type_: type_.clone(),
+                list_type: plan.string_list_function_id(0).type_id(),
+            },
+            ListFunctionFunctionId::Float {
+                id: FloatListFunctionFunctionId(0),
+                type_: type_.clone(),
+                list_type: plan.float_list_function_id(0).type_id(),
+            },
+            ListFunctionFunctionId::Bool {
+                id: BoolListFunctionFunctionId(0),
+                type_: type_.clone(),
+                list_type: plan.bool_list_function_id(0).type_id(),
+            },
+            ListFunctionFunctionId::Nil {
+                id: NilListFunctionFunctionId(0),
+                type_: type_.clone(),
+                list_type: plan.nil_list_function_id(0).type_id(),
+            },
+            ListFunctionFunctionId::Tuple {
+                id: TupleListFunctionFunctionId(0),
+                type_: type_.clone(),
+                list_type: plan.tuple_list_function_id(0).type_id(),
+            },
+            ListFunctionFunctionId::List {
+                id: ListListFunctionFunctionId(0),
+                type_: type_.clone(),
+                list_type: plan.list_list_function_id(0).type_id(),
+            },
+            ListFunctionFunctionId::Function {
+                id: FunctionListFunctionFunctionId(0),
+                type_: type_.clone(),
+                list_type: plan.function_list_function_id(0).type_id(),
+            },
+        ];
+
+        assert_eq!(
+            ids.map(|id| id.type_().clone()),
+            std::array::from_fn(|_| type_.clone()),
         );
     }
 

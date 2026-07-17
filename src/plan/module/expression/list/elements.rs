@@ -1,16 +1,22 @@
 use super::{
     BitArrayListExpr, BitArrayListItem, BoolListExpr, BoolListItem, CustomListExpr, CustomListItem,
-    FloatListExpr, FloatListItem, FunctionListExpr, FunctionListItem, IntListExpr, IntListItem,
-    ListExpr, ListItem, ListListExpr, ListListItem, NilListExpr, NilListItem, StringListExpr,
-    StringListItem, TupleListExpr, TupleListItem, UtfCodepointListExpr, UtfCodepointListItem,
+    FloatListExpr, FloatListItem, FunctionListExpr, FunctionListItem, GenericListExpr,
+    GenericListItem, IntListExpr, IntListItem, ListExpr, ListItem, ListListExpr, ListListItem,
+    NilListExpr, NilListItem, StringListExpr, StringListItem, TupleListExpr, TupleListItem,
+    UtfCodepointListExpr, UtfCodepointListItem,
 };
 use crate::plan::{
     BitArrayExpr, BoolExpr, CustomExpr, CustomType, Expr, FloatExpr, FunctionExpr, FunctionType,
-    IntExpr, NilExpr, StringExpr, TupleExpr, UtfCodepointExpr, ValueType,
+    GenericExpr, IntExpr, NilExpr, StringExpr, TupleExpr, TypeParameterId, UtfCodepointExpr,
+    ValueType,
 };
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ListElements {
+    Generic {
+        parameter: TypeParameterId,
+        values: Vec<GenericExpr>,
+    },
     Int(Vec<IntExpr>),
     String(Vec<StringExpr>),
     BitArray(Vec<BitArrayExpr>),
@@ -38,6 +44,10 @@ pub(crate) enum ListElements {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ListSpreadElements {
+    Generic {
+        values: Vec<GenericExpr>,
+        tail: GenericListExpr,
+    },
     Int {
         values: Vec<IntExpr>,
         tail: IntListExpr,
@@ -96,6 +106,9 @@ impl ListElements {
         values: Vec<Expr>,
     ) -> Result<Self, ListElementTypeMismatch> {
         match item_type {
+            ValueType::Parameter(parameter) => {
+                list_elements_from_exprs(GenericListItem::new(parameter), values)
+            }
             ValueType::Int => list_elements_from_exprs(IntListItem, values),
             ValueType::String => list_elements_from_exprs(StringListItem, values),
             ValueType::BitArray => list_elements_from_exprs(BitArrayListItem, values),
@@ -123,6 +136,7 @@ impl ListElements {
 
     pub(crate) fn item_type(&self) -> ValueType {
         match self {
+            Self::Generic { parameter, .. } => ValueType::Parameter(*parameter),
             Self::Int(_) => ValueType::Int,
             Self::String(_) => ValueType::String,
             Self::BitArray(_) => ValueType::BitArray,
@@ -147,6 +161,21 @@ impl ListSpreadElements {
         let actual = tail.element_type();
 
         match elements {
+            ListElements::Generic {
+                parameter: _,
+                values,
+            } => {
+                let Some(tail) = tail.into_generic() else {
+                    return Err(ListElementTypeMismatch { expected, actual });
+                };
+                if tail.element_type() != expected {
+                    return Err(ListElementTypeMismatch {
+                        expected,
+                        actual: tail.element_type(),
+                    });
+                }
+                Ok(Self::Generic { values, tail })
+            }
             ListElements::Int(values) => {
                 let Some(tail) = tail.into_int() else {
                     return Err(ListElementTypeMismatch { expected, actual });
@@ -266,8 +295,10 @@ mod tests {
     use super::{ListElementTypeMismatch, ListElements, ListSpreadElements};
     use crate::plan::{
         BitArrayExpr, BoolExpr, CustomExpr, CustomLocalId, CustomType, CustomTypeName, Expr,
-        FloatExpr, FunctionExpr, FunctionReference, FunctionType, IntExpr, ListExpr, NilExpr,
-        RuntimeFunctionId, StringExpr, TupleExpr, UtfCodepointExpr, UtfCodepointLocalId, ValueType,
+        FloatExpr, FunctionExpr, FunctionReference, FunctionShape, FunctionType, GenericExpr,
+        GenericLocal, GenericLocalId, IntExpr, ListExpr, NilExpr, StringExpr, TupleExpr,
+        TypeParameterId, UtfCodepointExpr, UtfCodepointLocalId, ValueType,
+        monomorphic_function_instantiation,
     };
 
     fn custom_type(name: &str) -> CustomType {
@@ -278,9 +309,149 @@ mod tests {
     }
 
     #[test]
+    fn from_exprs_preserves_every_item_family() {
+        let parameter = TypeParameterId(0);
+        let generic = GenericExpr::local_get(
+            GenericLocal::new(GenericLocalId(0), parameter),
+            "generic".into(),
+        );
+        assert_eq!(
+            ListElements::from_exprs(
+                ValueType::Parameter(parameter),
+                vec![Expr::generic(generic.clone())],
+            ),
+            Ok(ListElements::Generic {
+                parameter,
+                values: vec![generic],
+            }),
+        );
+
+        let int = IntExpr::value(1.into());
+        assert_eq!(
+            ListElements::from_exprs(ValueType::Int, vec![Expr::int(int.clone())]),
+            Ok(ListElements::Int(vec![int])),
+        );
+        let string = StringExpr::value("one".into());
+        assert_eq!(
+            ListElements::from_exprs(ValueType::String, vec![Expr::string(string.clone())]),
+            Ok(ListElements::String(vec![string])),
+        );
+        let bit_array = BitArrayExpr::value(Vec::new());
+        assert_eq!(
+            ListElements::from_exprs(
+                ValueType::BitArray,
+                vec![Expr::bit_array(bit_array.clone())],
+            ),
+            Ok(ListElements::BitArray(vec![bit_array])),
+        );
+        let utf_codepoint = UtfCodepointExpr::local_get(UtfCodepointLocalId(0), "codepoint".into());
+        assert_eq!(
+            ListElements::from_exprs(
+                ValueType::UtfCodepoint,
+                vec![Expr::utf_codepoint(utf_codepoint.clone())],
+            ),
+            Ok(ListElements::UtfCodepoint(vec![utf_codepoint])),
+        );
+
+        let custom_type = custom_type("Token");
+        let custom = CustomExpr::local_get(
+            crate::plan::CustomLocal::new(CustomLocalId(0), custom_type.clone()),
+            "token".into(),
+        );
+        assert_eq!(
+            ListElements::from_exprs(
+                ValueType::Custom(custom_type.clone()),
+                vec![Expr::custom(custom.clone())],
+            ),
+            Ok(ListElements::Custom {
+                item_type: custom_type,
+                values: vec![custom],
+            }),
+        );
+
+        let float = FloatExpr::value(1.5);
+        assert_eq!(
+            ListElements::from_exprs(ValueType::Float, vec![Expr::float(float.clone())]),
+            Ok(ListElements::Float(vec![float])),
+        );
+        let bool_ = BoolExpr::value(true);
+        assert_eq!(
+            ListElements::from_exprs(ValueType::Bool, vec![Expr::bool(bool_.clone())]),
+            Ok(ListElements::Bool(vec![bool_])),
+        );
+        let nil = NilExpr::value();
+        assert_eq!(
+            ListElements::from_exprs(ValueType::Nil, vec![Expr::nil(nil.clone())]),
+            Ok(ListElements::Nil(vec![nil])),
+        );
+
+        let tuple = TupleExpr::value(
+            vec![Expr::int(IntExpr::value(2.into()))],
+            vec![ValueType::Int],
+        );
+        assert_eq!(
+            ListElements::from_exprs(
+                ValueType::Tuple(vec![ValueType::Int]),
+                vec![Expr::tuple(tuple.clone())],
+            ),
+            Ok(ListElements::Tuple {
+                item_type: vec![ValueType::Int],
+                values: vec![tuple],
+            }),
+        );
+
+        let nested = ListExpr::value(Vec::new(), ValueType::String);
+        assert_eq!(
+            ListElements::from_exprs(
+                ValueType::List(Box::new(ValueType::String)),
+                vec![Expr::list(nested.clone())],
+            ),
+            Ok(ListElements::List {
+                item_type: Box::new(ValueType::String),
+                values: vec![nested],
+            }),
+        );
+
+        let function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
+        let function = FunctionExpr::reference(FunctionReference::new(
+            monomorphic_function_instantiation(
+                0,
+                FunctionShape::from_function_type(function_type.clone()),
+            ),
+            Vec::new(),
+        ));
+        assert_eq!(
+            ListElements::from_exprs(
+                ValueType::Function(Box::new(function_type.clone())),
+                vec![Expr::function(function.clone())],
+            ),
+            Ok(ListElements::Function {
+                item_type: function_type,
+                values: vec![function],
+            }),
+        );
+    }
+
+    #[test]
     fn from_exprs_rejects_wrong_item_family_and_nested_metadata() {
         let first_custom = custom_type("First");
         let second_custom = custom_type("Second");
+        let first_parameter = TypeParameterId(0);
+        let second_parameter = TypeParameterId(1);
+
+        assert_eq!(
+            ListElements::from_exprs(
+                ValueType::Parameter(first_parameter),
+                vec![Expr::generic(GenericExpr::local_get(
+                    GenericLocal::new(GenericLocalId(0), second_parameter),
+                    "value".into(),
+                ))],
+            ),
+            Err(ListElementTypeMismatch {
+                expected: ValueType::Parameter(first_parameter),
+                actual: ValueType::Parameter(second_parameter),
+            }),
+        );
 
         assert_eq!(
             ListElements::from_exprs(
@@ -337,7 +508,10 @@ mod tests {
         );
 
         let function = FunctionExpr::reference(FunctionReference::new(
-            RuntimeFunctionId::Int(crate::plan::IntFunctionId(0)),
+            monomorphic_function_instantiation(
+                0,
+                FunctionShape::from_function_type(FunctionType::new(Vec::new(), ValueType::Int)),
+            ),
             Vec::new(),
         ));
         assert_eq!(
@@ -360,6 +534,14 @@ mod tests {
 
     #[test]
     fn item_type_reports_typed_element_family() {
+        assert_eq!(
+            ListElements::Generic {
+                parameter: TypeParameterId(0),
+                values: Vec::new(),
+            }
+            .item_type(),
+            ValueType::Parameter(TypeParameterId(0)),
+        );
         assert_eq!(
             ListElements::Int(vec![IntExpr::value(1.into())]).item_type(),
             ValueType::Int,
@@ -414,6 +596,35 @@ mod tests {
     fn spread_parts_reject_wrong_tail_family_and_nested_metadata() {
         let first_custom = custom_type("First");
         let second_custom = custom_type("Second");
+        let first_parameter = TypeParameterId(0);
+        let second_parameter = TypeParameterId(1);
+
+        assert_eq!(
+            ListSpreadElements::from_parts(
+                ListElements::Generic {
+                    parameter: first_parameter,
+                    values: Vec::new(),
+                },
+                ListExpr::value(Vec::new(), ValueType::Int),
+            ),
+            Err(ListElementTypeMismatch {
+                expected: ValueType::Parameter(first_parameter),
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ListSpreadElements::from_parts(
+                ListElements::Generic {
+                    parameter: first_parameter,
+                    values: Vec::new(),
+                },
+                ListExpr::value(Vec::new(), ValueType::Parameter(second_parameter)),
+            ),
+            Err(ListElementTypeMismatch {
+                expected: ValueType::Parameter(first_parameter),
+                actual: ValueType::Parameter(second_parameter),
+            }),
+        );
 
         assert_eq!(
             ListSpreadElements::from_parts(

@@ -19,16 +19,15 @@ pub(in crate::runtime) fn eval_custom_field(
 mod tests {
     use crate::plan::{
         CustomConstructor, CustomConstructorDefinition, CustomConstructorField, CustomExpr,
-        CustomFieldAccess, CustomFieldDefinition, CustomType, CustomTypeDefinition, CustomTypeName,
-        CustomTypePublicity, CustomTypeTemplate, Expr, FunctionExpr, FunctionFunctionExpr,
-        FunctionFunctionId, FunctionFunctionReference, FunctionPlan, FunctionReference,
-        FunctionType, IntExpr, IntFunctionFunctionId, IntFunctionId, IntLocalId, ListExpr,
-        ModulePlan, ParamLocal, ReturnBody, ReturnExpr, RuntimeFunctionId, StringExpr,
-        StringFunctionId, TupleExpr, ValueType,
+        CustomFieldAccess, CustomFieldDefinition, CustomReturn, CustomType, CustomTypeDefinition,
+        CustomTypeName, CustomTypePublicity, CustomTypeTemplate, CustomValueShape, Expr,
+        FunctionExpr, FunctionFunctionExpr, FunctionFunctionReference, FunctionReference,
+        FunctionShape, FunctionTemplate, FunctionType, IntExpr, IntFunctionExpr,
+        IntFunctionFunctionId, IntLocalId, ListExpr, ModulePlan, PanicExpr, PanicSite, Param,
+        ParamLocal, ReturnBody, ReturnExpr, StringExpr, TupleExpr, ValueType,
+        monomorphic_function_instantiation,
     };
-    use crate::plan::{
-        CustomFunctionExpr, CustomFunctionId, CustomFunctionReference, FunctionId, TupleFunctionId,
-    };
+    use crate::plan::{CustomFunctionExpr, CustomFunctionReference, FunctionTemplateId};
     use crate::runtime::{
         BitArrayValue, CustomFieldValue, CustomValue, ExecutionError, ListValue, Value,
     };
@@ -112,6 +111,7 @@ mod tests {
                         )],
                     )],
                 )],
+                Vec::new(),
             )
             .expect_err("direct-mutated tuple field should fail"),
             ExecutionError::TupleIndexFamilyMismatch {
@@ -193,14 +193,26 @@ mod tests {
                 ValueType::Function(function) if function.return_() == &ValueType::Int => (
                     ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::String))),
                     Expr::function(FunctionExpr::reference(FunctionReference::new(
-                        RuntimeFunctionId::String(StringFunctionId(0)),
+                        monomorphic_function_instantiation(
+                            0,
+                            FunctionShape::from_function_type(FunctionType::new(
+                                Vec::new(),
+                                ValueType::String,
+                            )),
+                        ),
                         Vec::new(),
                     ))),
                 ),
                 ValueType::Function(_) => (
                     ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
                     Expr::function(FunctionExpr::reference(FunctionReference::new(
-                        RuntimeFunctionId::Int(IntFunctionId(0)),
+                        monomorphic_function_instantiation(
+                            0,
+                            FunctionShape::from_function_type(FunctionType::new(
+                                Vec::new(),
+                                ValueType::Int,
+                            )),
+                        ),
                         Vec::new(),
                     ))),
                 ),
@@ -228,6 +240,7 @@ mod tests {
                         crate::plan::ValueShape::from_value_type(expected.clone()),
                     ),
                     field_projection_definitions(&expected),
+                    Vec::new(),
                 ),
                 Err(ExecutionError::CustomFieldFamilyMismatch {
                     custom_type: boxed_type(),
@@ -245,7 +258,10 @@ mod tests {
                     let function_type = FunctionType::new(Vec::new(), ValueType::Int);
                     (
                         Expr::function(FunctionExpr::reference(FunctionReference::new(
-                            RuntimeFunctionId::Int(IntFunctionId(0)),
+                            monomorphic_function_instantiation(
+                                0,
+                                FunctionShape::from_function_type(function_type.clone()),
+                            ),
                             Vec::new(),
                         ))),
                         ValueType::Function(Box::new(function_type)),
@@ -274,6 +290,7 @@ mod tests {
                         crate::plan::ValueShape::from_value_type(expected.clone()),
                     ),
                     field_projection_definitions(&expected),
+                    Vec::new(),
                 ),
                 Err(ExecutionError::CustomFieldFamilyMismatch {
                     custom_type: boxed_type(),
@@ -302,6 +319,7 @@ mod tests {
                         crate::plan::ValueShape::from_value_type(expected.clone()),
                     ),
                     field_projection_definitions(&expected),
+                    Vec::new(),
                 ),
                 Err(ExecutionError::TupleIndexFamilyMismatch {
                     expected: ValueType::Custom(boxed_type()),
@@ -329,15 +347,29 @@ mod tests {
         );
         let actual_value = Expr::function(FunctionExpr::custom(CustomFunctionExpr::reference(
             CustomFunctionReference::new(
-                CustomFunctionId::new(0, inner_type),
+                monomorphic_function_instantiation(
+                    1,
+                    FunctionShape::from_function_type(actual_function.clone()),
+                ),
                 vec![ParamLocal::int(IntLocalId(0))],
             ),
+            CustomValueShape::any(inner_type.clone()),
         )));
         let access = CustomFieldAccess::new(
             CustomExpr::try_constructor(constructor.clone(), vec![actual_value])
                 .expect("test custom construction should be valid"),
             0,
             Some("value".into()),
+        );
+        let target = FunctionTemplate::new(
+            FunctionTemplateId::new(1),
+            "custom_target".into(),
+            vec![Param::named(ParamLocal::int(IntLocalId(0)), "value".into())],
+            Vec::new(),
+            ReturnExpr::custom_body(CustomReturn::expr(CustomExpr::panic(
+                PanicExpr::panic_at(None, PanicSite::unknown()),
+                inner_type,
+            ))),
         );
 
         assert_eq!(
@@ -351,6 +383,7 @@ mod tests {
                 field_projection_definitions(&ValueType::Function(Box::new(
                     expected_function.clone(),
                 ))),
+                vec![target],
             ),
             Err(ExecutionError::CustomFieldFamilyMismatch {
                 custom_type: boxed_type(),
@@ -382,16 +415,29 @@ mod tests {
         );
         let actual_value = Expr::function(FunctionExpr::function(FunctionFunctionExpr::reference(
             FunctionFunctionReference::new(
-                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                monomorphic_function_instantiation(
+                    1,
+                    FunctionShape::from_function_type(actual_function.clone()),
+                ),
                 vec![ParamLocal::int(IntLocalId(0))],
             ),
-            returned,
+            returned.clone(),
         )));
         let access = CustomFieldAccess::new(
             CustomExpr::try_constructor(constructor.clone(), vec![actual_value])
                 .expect("test custom construction should be valid"),
             0,
             Some("value".into()),
+        );
+        let target = FunctionTemplate::new(
+            FunctionTemplateId::new(1),
+            "function_target".into(),
+            vec![Param::named(ParamLocal::int(IntLocalId(0)), "value".into())],
+            Vec::new(),
+            ReturnExpr::int_function(
+                IntFunctionFunctionId(0),
+                IntFunctionExpr::panic(PanicExpr::panic_at(None, PanicSite::unknown()), returned),
+            ),
         );
 
         assert_eq!(
@@ -405,6 +451,7 @@ mod tests {
                 field_projection_definitions(&ValueType::Function(Box::new(
                     expected_function.clone(),
                 ))),
+                vec![target],
             ),
             Err(ExecutionError::CustomFieldFamilyMismatch {
                 custom_type: boxed_type(),
@@ -449,21 +496,20 @@ mod tests {
     fn run_field_projection_module(
         expression: Expr,
         definitions: Vec<CustomTypeDefinition>,
+        functions: Vec<FunctionTemplate>,
     ) -> Result<Value, ExecutionError> {
         let return_type = expression.value_type();
-        let main = FunctionPlan::new(
-            FunctionId::new(0),
+        let main = FunctionTemplate::new(
+            FunctionTemplateId::new(0),
             "main".into(),
             Vec::new(),
             Vec::new(),
             ReturnExpr::tuple_body(
-                TupleFunctionId(0),
                 vec![return_type.clone()],
                 ReturnBody::expr(TupleExpr::value(vec![expression], vec![return_type])),
             ),
         );
-        let module =
-            ModulePlan::new("main".into(), main, Vec::new()).with_custom_types(definitions);
+        let module = ModulePlan::new("main".into(), main, functions).with_custom_types(definitions);
         let plan = crate::ExecutionPlan::from_module_plan(module);
 
         crate::run_main(&plan)
@@ -471,6 +517,9 @@ mod tests {
 
     fn custom_type_template(type_: &ValueType) -> CustomTypeTemplate {
         match type_ {
+            ValueType::Parameter(parameter) => {
+                CustomTypeTemplate::Parameter(crate::plan::CustomTypeParameterId(parameter.0))
+            }
             ValueType::Int => CustomTypeTemplate::Int,
             ValueType::Float => CustomTypeTemplate::Float,
             ValueType::String => CustomTypeTemplate::String,
@@ -499,6 +548,14 @@ mod tests {
                     .collect(),
             },
         }
+    }
+
+    #[test]
+    fn custom_type_template_preserves_type_parameters() {
+        assert_eq!(
+            custom_type_template(&ValueType::Parameter(crate::plan::TypeParameterId(3))),
+            CustomTypeTemplate::Parameter(crate::plan::CustomTypeParameterId(3)),
+        );
     }
 
     fn boxed_name() -> CustomTypeName {

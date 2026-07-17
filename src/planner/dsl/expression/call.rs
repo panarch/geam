@@ -1,42 +1,54 @@
 use super::{Bool, Float, Int, IntFunction, List, Nil, String};
 use crate::plan::{
-    BoolExpr, BoolFunctionId, CallArg, FloatExpr, FloatFunctionId, FunctionType, IntExpr,
-    IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, ListExpr, ListFunctionId, NilExpr,
-    NilFunctionId, StringExpr, StringFunctionId, ValueType,
+    BoolExpr, CallArg, FloatExpr, FunctionInstantiation, FunctionShape, FunctionType, IntExpr,
+    IntFunctionExpr, ListExpr, NilExpr, StringExpr, ValueShape, ValueType,
+    monomorphic_function_instantiation,
 };
 
+fn instantiation(template: usize, args: &[CallArg], return_: ValueShape) -> FunctionInstantiation {
+    monomorphic_function_instantiation(
+        template,
+        FunctionShape::new(args.iter().map(CallArg::parameter_shape).collect(), return_),
+    )
+}
+
 pub(crate) fn call_int(function: usize, args: impl IntoIterator<Item = CallArg>) -> Int {
+    let args = args.into_iter().collect::<Vec<_>>();
     Int(IntExpr::call(
-        IntFunctionId(function),
-        args.into_iter().collect(),
+        instantiation(function, &args, ValueShape::Int),
+        args,
     ))
 }
 
 pub(crate) fn call_string(function: usize, args: impl IntoIterator<Item = CallArg>) -> String {
+    let args = args.into_iter().collect::<Vec<_>>();
     String(StringExpr::call(
-        StringFunctionId(function),
-        args.into_iter().collect(),
+        instantiation(function, &args, ValueShape::String),
+        args,
     ))
 }
 
 pub(crate) fn call_float(function: usize, args: impl IntoIterator<Item = CallArg>) -> Float {
+    let args = args.into_iter().collect::<Vec<_>>();
     Float(FloatExpr::call(
-        FloatFunctionId(function),
-        args.into_iter().collect(),
+        instantiation(function, &args, ValueShape::Float),
+        args,
     ))
 }
 
 pub(crate) fn call_bool(function: usize, args: impl IntoIterator<Item = CallArg>) -> Bool {
+    let args = args.into_iter().collect::<Vec<_>>();
     Bool(BoolExpr::call(
-        BoolFunctionId(function),
-        args.into_iter().collect(),
+        instantiation(function, &args, ValueShape::Bool),
+        args,
     ))
 }
 
 pub(crate) fn call_nil(function: usize, args: impl IntoIterator<Item = CallArg>) -> Nil {
+    let args = args.into_iter().collect::<Vec<_>>();
     Nil(NilExpr::call(
-        NilFunctionId(function),
-        args.into_iter().collect(),
+        instantiation(function, &args, ValueShape::Nil),
+        args,
     ))
 }
 
@@ -45,9 +57,15 @@ pub(crate) fn call_list(
     args: impl IntoIterator<Item = CallArg>,
     element_type: ValueType,
 ) -> List {
+    let args = args.into_iter().collect::<Vec<_>>();
     List(ListExpr::call(
-        ListFunctionId::from_item_type(function, element_type),
-        args.into_iter().collect(),
+        instantiation(
+            function,
+            &args,
+            ValueShape::List(Box::new(ValueShape::from_value_type(element_type.clone()))),
+        ),
+        args,
+        ValueShape::from_value_type(element_type),
     ))
 }
 
@@ -56,9 +74,16 @@ pub(crate) fn call_int_returning_function(
     args: impl IntoIterator<Item = CallArg>,
     return_type: FunctionType,
 ) -> IntFunction {
+    let args = args.into_iter().collect::<Vec<_>>();
     IntFunction(IntFunctionExpr::call(
-        IntFunctionFunctionId(function),
-        args.into_iter().collect(),
+        instantiation(
+            function,
+            &args,
+            ValueShape::Function(Box::new(FunctionShape::from_function_type(
+                return_type.clone(),
+            ))),
+        ),
+        args,
         return_type,
     ))
 }
@@ -77,12 +102,11 @@ pub(crate) fn call_int_function(
 mod tests {
     use super::{
         call_bool, call_float, call_int, call_int_function, call_int_returning_function, call_list,
-        call_nil, call_string,
+        call_nil, call_string, instantiation,
     };
     use crate::plan::{
-        BoolExpr, BoolFunctionId, FloatExpr, FloatFunctionId, FunctionType, IntExpr,
-        IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, ListExpr, ListFunctionId, NilExpr,
-        NilFunctionId, ParamLocal, StringExpr, StringFunctionId, ValueType,
+        BoolExpr, FloatExpr, FunctionShape, FunctionType, IntExpr, IntFunctionExpr, ListExpr,
+        NilExpr, ParamLocal, StringExpr, ValueShape, ValueType,
     };
     use crate::planner::dsl::expression::{int, int_arg, int_function_ref, string, string_arg};
 
@@ -90,29 +114,36 @@ mod tests {
     fn direct_call_helpers_build_call_shapes() {
         assert_eq!(
             call_int(0, [int_arg(0, int(1))]).0,
-            IntExpr::call(IntFunctionId(0), vec![int_arg(0, int(1))]),
+            IntExpr::call(
+                instantiation(0, &[int_arg(0, int(1))], ValueShape::Int),
+                vec![int_arg(0, int(1))]
+            ),
         );
         assert_eq!(
             call_string(1, [string_arg(0, string("a"))]).0,
-            StringExpr::call(StringFunctionId(1), vec![string_arg(0, string("a"))]),
+            StringExpr::call(
+                instantiation(1, &[string_arg(0, string("a"))], ValueShape::String),
+                vec![string_arg(0, string("a"))]
+            ),
         );
         assert_eq!(
             call_float(2, []).0,
-            FloatExpr::call(FloatFunctionId(2), Vec::new()),
+            FloatExpr::call(instantiation(2, &[], ValueShape::Float), Vec::new()),
         );
         assert_eq!(
             call_bool(3, []).0,
-            BoolExpr::call(BoolFunctionId(3), Vec::new()),
+            BoolExpr::call(instantiation(3, &[], ValueShape::Bool), Vec::new()),
         );
         assert_eq!(
             call_nil(4, []).0,
-            NilExpr::call(NilFunctionId(4), Vec::new()),
+            NilExpr::call(instantiation(4, &[], ValueShape::Nil), Vec::new()),
         );
         assert_eq!(
             call_list(5, [], ValueType::Int).0,
             ListExpr::call(
-                ListFunctionId::from_item_type(5, crate::plan::ValueType::Int),
-                Vec::new()
+                instantiation(5, &[], ValueShape::List(Box::new(ValueShape::Int)),),
+                Vec::new(),
+                ValueShape::Int,
             ),
         );
     }
@@ -124,7 +155,13 @@ mod tests {
         assert_eq!(
             call_int_returning_function(6, [int_arg(0, int(1))], return_type.clone()).0,
             IntFunctionExpr::call(
-                IntFunctionFunctionId(6),
+                instantiation(
+                    6,
+                    &[int_arg(0, int(1))],
+                    ValueShape::Function(Box::new(FunctionShape::from_function_type(
+                        return_type.clone(),
+                    ))),
+                ),
                 vec![int_arg(0, int(1))],
                 return_type,
             ),

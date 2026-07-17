@@ -120,8 +120,9 @@ pub(in crate::runtime) fn eval_nil_expr(
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExpr, Expr, FloatExpr, FunctionId, FunctionPlan, IntExpr, ModulePlan, NilExpr,
-        NilFunctionId, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
+        BoolExpr, Expr, FloatExpr, FunctionTemplate, FunctionTemplateId, IntExpr, ModulePlan,
+        NilExpr, NilFunctionId, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr,
+        ValueType,
     };
     use crate::runtime::{ExecutionError, run_main};
 
@@ -212,8 +213,8 @@ pub fn main() -> Nil {{ {expression} }}
     }
 
     fn run_module_nil_expression(expression: NilExpr) -> ExecutionError {
-        let main = FunctionPlan::new(
-            FunctionId::new(0),
+        let main = FunctionTemplate::new(
+            FunctionTemplateId::new(0),
             "main".into(),
             Vec::new(),
             Vec::new(),

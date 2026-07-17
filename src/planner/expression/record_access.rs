@@ -1,9 +1,7 @@
-use super::{expression_type, invalid_expression_type, plan_expr};
-use crate::plan::{Expr, ValueShape};
+use super::{expression_type, plan_expr};
+use crate::plan::Expr;
 use crate::planner::context::PlanContext;
-#[cfg(not(target_pointer_width = "64"))]
-use crate::planner::error::InvalidTypedAstReason;
-use crate::planner::error::{InvalidExpressionType, PlanError};
+use crate::planner::error::{InvalidExpressionType, InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
 use gleam_core::ast::TypedExpr;
 use gleam_core::type_::Type;
@@ -38,20 +36,25 @@ pub(super) fn plan_from_expr(
     })?;
 
     let actual = expression_type(&record);
-    let record = record
-        .into_custom()
-        .ok_or_else(|| invalid_expression_type(InvalidExpressionType::Custom, actual))?;
-    let expected_shape = ValueShape::from_gleam(type_.as_ref()).ok_or_else(|| {
-        invalid_expression_type(
-            InvalidExpressionType::Unsupported,
-            InvalidExpressionType::Custom,
-        )
-    })?;
+    let Some(record) = record.into_custom() else {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionType {
+                expected: InvalidExpressionType::Custom,
+                actual,
+            },
+        });
+    };
+    let expected_shape = context.value_shape(type_.as_ref());
     let expected = expected_shape.value_type();
     let (access, source_shape) = context.custom_field_access(record, index, label, &expected)?;
-    let resolved_shape = source_shape.refine(&expected_shape).ok_or_else(|| {
-        super::invalid_expression_type_for_value(expected.clone(), source_shape.value_type())
-    })?;
+    let Some(resolved_shape) = source_shape.refine(&expected_shape) else {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionType {
+                expected: InvalidExpressionType::from_value_type(expected),
+                actual: InvalidExpressionType::from_value_type(source_shape.value_type()),
+            },
+        });
+    };
 
     Ok(Expr::custom_field_shape(access, resolved_shape))
 }
@@ -135,9 +138,9 @@ mod tests {
                 &mut context,
             ),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Unsupported,
-                    actual: InvalidExpressionType::Custom,
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Generic".into(),
+                    reason: InvalidCustomTypeReason::FieldType,
                 },
             }),
         );
@@ -482,10 +485,12 @@ mod tests {
 
         assert_eq!(
             plan_from_expr(expected, Some("value".into()), 0, source, &mut context,),
-            Err(super::super::invalid_expression_type_for_value(
-                ValueType::Custom(choice.clone()),
-                ValueType::Custom(choice),
-            )),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Custom,
+                    actual: InvalidExpressionType::Custom,
+                },
+            }),
         );
     }
 

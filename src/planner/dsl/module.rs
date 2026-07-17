@@ -1,5 +1,4 @@
-use crate::plan::{FunctionId, ModulePlan};
-use crate::planner::context::FunctionRuntimeIds;
+use crate::plan::{FunctionTemplateId, ModulePlan};
 use crate::planner::dsl::function::FunctionDsl;
 use ecow::EcoString;
 
@@ -17,23 +16,18 @@ pub(crate) fn module_with_anonymous(
     functions: impl IntoIterator<Item = FunctionDsl>,
     anonymous_functions: impl IntoIterator<Item = FunctionDsl>,
 ) -> ModulePlan {
-    let mut runtime_ids = FunctionRuntimeIds::default();
-
-    let main = main.build(FunctionId::new(0), &mut runtime_ids);
+    let main = main.build(FunctionTemplateId::new(0));
     let functions = functions
         .into_iter()
         .enumerate()
-        .map(|(index, function)| function.build(FunctionId::new(index + 1), &mut runtime_ids))
+        .map(|(index, function)| function.build(FunctionTemplateId::new(index + 1)))
         .collect::<Vec<_>>();
     let next_function_index = functions.len() + 1;
     let anonymous_functions = anonymous_functions
         .into_iter()
         .enumerate()
         .map(|(index, function)| {
-            function.build(
-                FunctionId::new(next_function_index + index),
-                &mut runtime_ids,
-            )
+            function.build(FunctionTemplateId::new(next_function_index + index))
         })
         .collect();
 

@@ -159,6 +159,7 @@ fn render_function_type(type_: &FunctionType) -> String {
 
 fn render_value_type(type_: &ValueType) -> String {
     match type_ {
+        ValueType::Parameter(parameter) => format!("Parameter({})", parameter.index()),
         ValueType::Int => "Int".into(),
         ValueType::Float => "Float".into(),
         ValueType::String => "String".into(),
@@ -380,6 +381,10 @@ mod tests {
 
     #[test]
     fn render_value_type_preserves_compound_shapes() {
+        assert_eq!(
+            render_value_type(&ValueType::Parameter(crate::plan::TypeParameterId(2))),
+            "Parameter(2)",
+        );
         assert_eq!(render_value_type(&ValueType::BitArray), "BitArray");
         assert_eq!(render_value_type(&ValueType::UtfCodepoint), "UtfCodepoint");
         assert_eq!(

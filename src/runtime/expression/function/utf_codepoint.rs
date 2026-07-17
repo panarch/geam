@@ -171,10 +171,10 @@ pub(in crate::runtime) fn eval_utf_codepoint_function_expr(
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExpr, CaptureArg, Expr, FloatExpr, FunctionId, FunctionPlan, FunctionType, IntExpr,
-        IntLocalId, ListExpr, ModulePlan, PanicExpr, PanicSite, ReturnBody, ReturnExpr, Step,
-        StringExpr, TupleExpr, UtfCodepointFunctionExpr, UtfCodepointFunctionFunctionId,
-        UtfCodepointFunctionId, ValueType,
+        BoolExpr, CaptureArg, Expr, FloatExpr, FunctionTemplate, FunctionTemplateId, FunctionType,
+        IntExpr, IntLocalId, ListExpr, ModulePlan, PanicExpr, PanicSite, ReturnBody, ReturnExpr,
+        Step, StringExpr, TupleExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
+        UtfCodepointFunctionFunctionId, ValueType,
     };
     use crate::runtime::{BitArrayValue, ExecutionError, Value, run_main};
 
@@ -211,7 +211,10 @@ mod tests {
         let expressions = [
             (
                 UtfCodepointFunctionExpr::closure(
-                    UtfCodepointFunctionId(1),
+                    crate::plan::monomorphic_function_instantiation(
+                        1,
+                        crate::plan::FunctionShape::from_function_type(type_.clone()),
+                    ),
                     Vec::new(),
                     vec![CaptureArg::int(
                         IntLocalId(0),
@@ -295,9 +298,21 @@ mod tests {
     fn run_module_utf_codepoint_function_expression(
         expression: UtfCodepointFunctionExpr,
     ) -> ExecutionError {
+        let target = FunctionTemplate::new(
+            FunctionTemplateId::new(1),
+            "target".into(),
+            Vec::new(),
+            vec![Step::evaluate(Expr::int(IntExpr::local_get(
+                IntLocalId(0),
+                "capture".into(),
+            )))],
+            ReturnExpr::utf_codepoint_body(ReturnBody::expr(UtfCodepointExpr::panic(
+                PanicExpr::panic_at(None, PanicSite::unknown()),
+            ))),
+        );
         let type_ = FunctionType::new(Vec::new(), ValueType::UtfCodepoint);
-        let main = FunctionPlan::new(
-            FunctionId::new(0),
+        let main = FunctionTemplate::new(
+            FunctionTemplateId::new(0),
             "main".into(),
             Vec::new(),
             Vec::new(),
@@ -307,7 +322,7 @@ mod tests {
                 ReturnBody::expr(expression),
             ),
         );
-        let module = ModulePlan::new("main".into(), main, Vec::new());
+        let module = ModulePlan::new("main".into(), main, vec![target]);
         let plan = crate::ExecutionPlan::from_module_plan(module);
 
         run_main(&plan).expect_err("module expression should fail at runtime")

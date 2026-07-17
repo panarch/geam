@@ -586,7 +586,7 @@ fn identity_nil(value: Nil) {
                     "bool_main",
                     bool_return_block(
                         [let_bool_step(0, "_pipe", bool_(true))],
-                        bool_return_tail_call(0, [bool_arg(0, local_bool(0, "_pipe"))]),
+                        bool_return_tail_call(2, [bool_arg(0, local_bool(0, "_pipe"))]),
                     ),
                 ),
                 function("identity_nil", local_nil(0, "value")).param_nil(0, "value"),
@@ -594,7 +594,7 @@ fn identity_nil(value: Nil) {
                     "nil_main",
                     nil_return_block(
                         [let_nil_step(0, "_pipe", nil())],
-                        nil_return_tail_call(0, [nil_arg(0, local_nil(0, "_pipe"))]),
+                        nil_return_tail_call(4, [nil_arg(0, local_nil(0, "_pipe"))]),
                     ),
                 ),
             ],

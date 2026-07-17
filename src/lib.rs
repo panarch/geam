@@ -7,9 +7,9 @@ pub use frontend::{FrontendError, compile_typed_module};
 pub use plan::execution::ExecutionPlan;
 pub use plan::{
     BitArrayExpr, BitArrayLocalId, BoolExpr, BoolLocalId, CustomType, CustomTypeName, Expr,
-    FunctionId, FunctionPlan, FunctionType, IntExpr, IntLocalId, LocalId, ModulePlan, NilExpr,
-    NilLocalId, PanicSite, Param, ParamBinding, SourceContext, SourceSpan, Step, StringExpr,
-    StringLocalId, ValueType,
+    FunctionTemplate, FunctionTemplateId, FunctionType, IntExpr, IntLocalId, LocalId, ModulePlan,
+    NilExpr, NilLocalId, PanicSite, Param, ParamBinding, SourceContext, SourceSpan, Step,
+    StringExpr, StringLocalId, ValueType,
 };
 pub use planner::{PlanError, plan_module, plan_module_with_source};
 pub use runtime::{

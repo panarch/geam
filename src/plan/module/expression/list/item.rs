@@ -1,13 +1,10 @@
 use super::{ListElementTypeMismatch, ListElements, ListExpr, TypedListExpr};
 use crate::plan::{
-    BitArrayExpr, BitArrayListFunctionId, BitArrayListLocalId, BoolExpr, BoolListFunctionId,
-    BoolListLocalId, CustomExpr, CustomListFunctionId, CustomListLocalId, CustomType, Expr,
-    ExprKind, FloatExpr, FloatListFunctionId, FloatListLocalId, FunctionExpr,
-    FunctionListFunctionId, FunctionListLocalId, FunctionType, IntExpr, IntListFunctionId,
-    IntListLocalId, ListListFunctionId, ListListLocalId, ListLocal, NilExpr, NilListFunctionId,
-    NilListLocalId, StringExpr, StringListFunctionId, StringListLocalId, TupleExpr,
-    TupleListFunctionId, TupleListLocalId, UtfCodepointExpr, UtfCodepointListFunctionId,
-    UtfCodepointListLocalId, ValueType,
+    BitArrayExpr, BitArrayListLocalId, BoolExpr, BoolListLocalId, CustomExpr, CustomListLocalId,
+    CustomType, Expr, ExprKind, FloatExpr, FloatListLocalId, FunctionExpr, FunctionInstantiation,
+    FunctionListLocalId, FunctionType, GenericExpr, GenericListLocalId, IntExpr, IntListLocalId,
+    ListListLocalId, ListLocal, NilExpr, NilListLocalId, StringExpr, StringListLocalId, TupleExpr,
+    TupleListLocalId, TypeParameterId, UtfCodepointExpr, UtfCodepointListLocalId, ValueType,
 };
 use std::fmt::Debug;
 
@@ -34,6 +31,21 @@ pub(crate) trait ListItem: Debug + Clone + PartialEq {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct IntListItem;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GenericListItem {
+    parameter: TypeParameterId,
+}
+
+impl GenericListItem {
+    pub(crate) fn new(parameter: TypeParameterId) -> Self {
+        Self { parameter }
+    }
+
+    pub(crate) fn parameter(&self) -> TypeParameterId {
+        self.parameter
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct StringListItem;
@@ -74,7 +86,6 @@ pub(crate) struct FunctionListItem {
 }
 
 impl TupleListItem {
-    #[cfg(test)]
     pub(crate) fn new(item_type: Vec<ValueType>) -> Self {
         Self { item_type }
     }
@@ -82,14 +93,9 @@ impl TupleListItem {
     pub(crate) fn item_type(&self) -> Vec<ValueType> {
         self.item_type.clone()
     }
-
-    pub(crate) fn into_item_type(self) -> Vec<ValueType> {
-        self.item_type
-    }
 }
 
 impl ListListItem {
-    #[cfg(test)]
     pub(crate) fn new(item_type: Box<ValueType>) -> Self {
         Self { item_type }
     }
@@ -97,14 +103,9 @@ impl ListListItem {
     pub(crate) fn item_type(&self) -> Box<ValueType> {
         self.item_type.clone()
     }
-
-    pub(crate) fn into_item_type(self) -> Box<ValueType> {
-        self.item_type
-    }
 }
 
 impl FunctionListItem {
-    #[cfg(test)]
     pub(crate) fn new(item_type: FunctionType) -> Self {
         Self { item_type }
     }
@@ -112,19 +113,59 @@ impl FunctionListItem {
     pub(crate) fn item_type(&self) -> FunctionType {
         self.item_type.clone()
     }
-
-    pub(crate) fn into_item_type(self) -> FunctionType {
-        self.item_type
-    }
 }
 
 impl CustomListItem {
+    pub(in crate::plan::module) fn new(item_type: CustomType) -> Self {
+        Self { item_type }
+    }
+
     pub(crate) fn item_type(&self) -> CustomType {
         self.item_type.clone()
     }
+}
 
-    pub(crate) fn into_item_type(self) -> CustomType {
-        self.item_type
+impl ListItem for GenericListItem {
+    type ElementExpr = GenericExpr;
+    type Local = GenericListLocalId;
+    type Function = FunctionInstantiation;
+
+    fn value_type(&self) -> ValueType {
+        ValueType::Parameter(self.parameter)
+    }
+
+    fn local_to_facade(&self, local: Self::Local) -> ListLocal {
+        ListLocal::generic(local, self.parameter)
+    }
+
+    fn elements_from_exprs(
+        item: &Self,
+        values: Vec<Expr>,
+    ) -> Result<Vec<Self::ElementExpr>, ListElementTypeMismatch> {
+        values
+            .into_iter()
+            .map(|value| match value {
+                Expr {
+                    kind: ExprKind::Generic(value),
+                    ..
+                } if value.parameter() == item.parameter => Ok(value),
+                value => Err(ListElementTypeMismatch {
+                    expected: item.value_type(),
+                    actual: value.value_type(),
+                }),
+            })
+            .collect()
+    }
+
+    fn elements_to_facade(item: Self, values: Vec<Self::ElementExpr>) -> ListElements {
+        ListElements::Generic {
+            parameter: item.parameter,
+            values,
+        }
+    }
+
+    fn expr_to_facade(expression: TypedListExpr<Self>) -> ListExpr {
+        ListExpr::Generic(expression)
     }
 }
 
@@ -143,7 +184,7 @@ macro_rules! primitive_list_item {
         impl ListItem for $item {
             type ElementExpr = $expr;
             type Local = $local;
-            type Function = $function;
+            type Function = FunctionInstantiation;
 
             fn value_type(&self) -> ValueType {
                 $value_type
@@ -270,7 +311,7 @@ primitive_list_item!(
 impl ListItem for TupleListItem {
     type ElementExpr = TupleExpr;
     type Local = TupleListLocalId;
-    type Function = TupleListFunctionId;
+    type Function = FunctionInstantiation;
 
     fn value_type(&self) -> ValueType {
         ValueType::Tuple(self.item_type.clone())
@@ -314,7 +355,7 @@ impl ListItem for TupleListItem {
 impl ListItem for CustomListItem {
     type ElementExpr = CustomExpr;
     type Local = CustomListLocalId;
-    type Function = CustomListFunctionId;
+    type Function = FunctionInstantiation;
 
     fn value_type(&self) -> ValueType {
         ValueType::Custom(self.item_type.clone())
@@ -358,7 +399,7 @@ impl ListItem for CustomListItem {
 impl ListItem for ListListItem {
     type ElementExpr = ListExpr;
     type Local = ListListLocalId;
-    type Function = ListListFunctionId;
+    type Function = FunctionInstantiation;
 
     fn value_type(&self) -> ValueType {
         ValueType::List(self.item_type.clone())
@@ -402,7 +443,7 @@ impl ListItem for ListListItem {
 impl ListItem for FunctionListItem {
     type ElementExpr = FunctionExpr;
     type Local = FunctionListLocalId;
-    type Function = FunctionListFunctionId;
+    type Function = FunctionInstantiation;
 
     fn value_type(&self) -> ValueType {
         ValueType::Function(Box::new(self.item_type.clone()))

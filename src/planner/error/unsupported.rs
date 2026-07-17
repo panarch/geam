@@ -46,8 +46,6 @@ pub enum UnsupportedExpressionKind {
     GenericFunction,
     #[error("list element type is not supported")]
     UnsupportedListElementType,
-    #[error("function literal type is not supported")]
-    UnsupportedFunctionLiteralType,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]

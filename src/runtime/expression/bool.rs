@@ -206,8 +206,8 @@ mod tests {
     use crate::plan::{
         AssertPattern, BitArrayExpr, BitArrayPattern, BoolExpr, BoolFunctionId, CustomExpr,
         CustomType, CustomTypeDefinition, CustomTypeName, CustomTypePublicity, Expr, FloatExpr,
-        FunctionId, FunctionPlan, IntExpr, ListExpr, ModulePlan, PanicExpr, PanicSite, ReturnExpr,
-        Step, StringExpr, TupleExpr, ValueType,
+        FunctionTemplate, FunctionTemplateId, IntExpr, ListExpr, ModulePlan, PanicExpr, PanicSite,
+        ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
     };
     use crate::runtime::{ExecutionError, run_main};
 
@@ -401,8 +401,8 @@ pub fn main() -> Bool {{ {expression} }}
         expression: BoolExpr,
         custom_types: Vec<CustomTypeDefinition>,
     ) -> ExecutionError {
-        let main = FunctionPlan::new(
-            FunctionId::new(0),
+        let main = FunctionTemplate::new(
+            FunctionTemplateId::new(0),
             "main".into(),
             Vec::new(),
             Vec::new(),

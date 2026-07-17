@@ -1,15 +1,14 @@
 mod free_variables;
 
-use crate::plan::{
-    CaptureArg, Expr, FunctionExpr, FunctionShape, FunctionType, RuntimeFunctionId, ValueShape,
-};
+use crate::plan::{CaptureArg, Expr, FunctionExpr, FunctionShape, FunctionType, ValueShape};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
     InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
-    InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+    InvalidTypedAstReason, PlanError,
 };
 use crate::planner::function::{anonymous_function_plan, plan_anonymous_function_body};
-use crate::planner::module::{ParamLabelPolicy, function_params};
+use crate::planner::module::function_params_in;
+use crate::planner::type_parameter::TypeParameterScope;
 use gleam_core::ast::{
     CAPTURE_VARIABLE, CallArg as GleamCallArg, FunctionLiteralKind, Statement, TypedArg, TypedExpr,
     TypedStatement,
@@ -35,12 +34,20 @@ pub(super) fn plan_anonymous(
         }
     }
 
-    let function_shape = anonymous_function_shape(type_.as_ref())?;
+    let mut type_parameters = context.type_parameters().clone();
+    let function_shape = anonymous_function_shape(type_.as_ref(), &mut type_parameters)?;
     let function_type = function_shape.type_();
     let error_name = context.anonymous_function_error_name();
-    let params = function_params(error_name.clone(), &arguments, ParamLabelPolicy::Reject)?;
+    let params = function_params_in(error_name.clone(), &arguments, &mut type_parameters)?;
     validate_argument_types(&error_name, &function_type, &params)?;
-    plan_anonymous_with_valid_arguments(function_shape, params, arguments, body, context)
+    plan_anonymous_with_valid_arguments(
+        function_shape,
+        params,
+        arguments,
+        body,
+        type_parameters,
+        context,
+    )
 }
 
 fn plan_anonymous_with_valid_arguments(
@@ -48,11 +55,19 @@ fn plan_anonymous_with_valid_arguments(
     params: Vec<crate::planner::context::FunctionParam>,
     arguments: Vec<TypedArg>,
     body: Vec1<TypedStatement>,
+    type_parameters: TypeParameterScope,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let free_names = free_variables::anonymous_free_variables(&arguments, &body);
     let captures = context.capture_bindings(&free_names)?;
-    plan_anonymous_with_captures(function_shape, params, captures, body, context)
+    plan_anonymous_with_captures(
+        function_shape,
+        params,
+        captures,
+        body,
+        type_parameters,
+        context,
+    )
 }
 
 fn plan_anonymous_with_captures(
@@ -60,18 +75,23 @@ fn plan_anonymous_with_captures(
     params: Vec<crate::planner::context::FunctionParam>,
     captures: Vec<crate::planner::context::CaptureBinding>,
     body: Vec1<TypedStatement>,
+    type_parameters: TypeParameterScope,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let return_shape = function_shape.return_shape().clone();
-    let runtime_id = context.allocate_anonymous_runtime_id_shape(&return_shape);
     let name = context.reserve_anonymous_function_name();
+    let (name, info) = context.allocate_anonymous_function_shape(
+        name,
+        return_shape.clone(),
+        params.clone(),
+        type_parameters.clone(),
+    );
 
     let planned = {
-        let mut body_context = context.anonymous_function_context(name.clone());
+        let mut body_context = context.anonymous_function_context(name.clone(), type_parameters);
         plan_anonymous_function_body(
             &name,
             &return_shape,
-            &runtime_id,
             &params,
             captures,
             body,
@@ -80,10 +100,9 @@ fn plan_anonymous_with_captures(
     };
 
     let planned = planned?;
-    let (name, info) =
-        context.allocate_anonymous_function_shape(name, return_shape, params, runtime_id);
+    let instantiation = info.signature.identity_instantiation();
     let value = closure_expr(
-        &info.runtime_id,
+        instantiation,
         info.param_slots(),
         planned.captures.clone(),
         &function_shape,
@@ -158,147 +177,113 @@ fn invalid_capture_literal_shape() -> PlanError {
 }
 
 fn closure_expr(
-    runtime_id: &RuntimeFunctionId,
+    function: crate::plan::FunctionInstantiation,
     params: Vec<crate::plan::ParamSlot>,
     captures: Vec<CaptureArg>,
     shape: &FunctionShape,
 ) -> FunctionExpr {
     let type_ = shape.type_();
-    match runtime_id {
-        RuntimeFunctionId::Int(runtime_id) => FunctionExpr::int(
-            crate::plan::IntFunctionExpr::closure_slots(*runtime_id, params, captures, type_),
-        ),
-        RuntimeFunctionId::String(runtime_id) => FunctionExpr::string(
-            crate::plan::StringFunctionExpr::closure_slots(*runtime_id, params, captures, type_),
-        ),
-        RuntimeFunctionId::BitArray(runtime_id) => FunctionExpr::bit_array(
-            crate::plan::BitArrayFunctionExpr::closure_slots(*runtime_id, params, captures, type_),
-        ),
-        RuntimeFunctionId::UtfCodepoint(runtime_id) => {
-            FunctionExpr::utf_codepoint(crate::plan::UtfCodepointFunctionExpr::closure_slots(
-                *runtime_id,
+    match shape.return_shape() {
+        ValueShape::Parameter(parameter) => {
+            FunctionExpr::generic(crate::plan::GenericFunctionExpr::closure(
+                function,
                 params,
                 captures,
-                type_,
+                crate::plan::GenericFunctionType::new(shape.argument_shapes().to_vec(), *parameter),
             ))
         }
-        RuntimeFunctionId::Custom(id) => FunctionExpr::custom(
-            crate::plan::CustomFunctionExpr::closure_slots(id.clone(), params, captures),
+        ValueShape::Int => FunctionExpr::int(crate::plan::IntFunctionExpr::closure_slots(
+            function, params, captures, type_,
+        )),
+        ValueShape::String => FunctionExpr::string(crate::plan::StringFunctionExpr::closure_slots(
+            function, params, captures, type_,
+        )),
+        ValueShape::BitArray => FunctionExpr::bit_array(
+            crate::plan::BitArrayFunctionExpr::closure_slots(function, params, captures, type_),
         ),
-        RuntimeFunctionId::Float(runtime_id) => FunctionExpr::float(
-            crate::plan::FloatFunctionExpr::closure_slots(*runtime_id, params, captures, type_),
+        ValueShape::UtfCodepoint => FunctionExpr::utf_codepoint(
+            crate::plan::UtfCodepointFunctionExpr::closure_slots(function, params, captures, type_),
         ),
-        RuntimeFunctionId::Bool(runtime_id) => FunctionExpr::bool(
-            crate::plan::BoolFunctionExpr::closure_slots(*runtime_id, params, captures, type_),
-        ),
-        RuntimeFunctionId::Nil(runtime_id) => FunctionExpr::nil(
-            crate::plan::NilFunctionExpr::closure_slots(*runtime_id, params, captures, type_),
-        ),
-        RuntimeFunctionId::Tuple { id, return_type } => {
+        ValueShape::Custom(return_shape) => {
+            FunctionExpr::custom(crate::plan::CustomFunctionExpr::closure_slots(
+                function,
+                params,
+                captures,
+                crate::plan::CustomFunctionType::from_shapes(
+                    shape.argument_shapes().to_vec(),
+                    return_shape.clone(),
+                ),
+            ))
+        }
+        ValueShape::Float => FunctionExpr::float(crate::plan::FloatFunctionExpr::closure_slots(
+            function, params, captures, type_,
+        )),
+        ValueShape::Bool => FunctionExpr::bool(crate::plan::BoolFunctionExpr::closure_slots(
+            function, params, captures, type_,
+        )),
+        ValueShape::Nil => FunctionExpr::nil(crate::plan::NilFunctionExpr::closure_slots(
+            function, params, captures, type_,
+        )),
+        ValueShape::Tuple(return_shape) => {
             FunctionExpr::tuple(crate::plan::TupleFunctionExpr::closure_slots(
-                *id,
+                function,
                 params,
                 captures,
                 type_,
-                return_type.clone(),
+                return_shape.iter().map(ValueShape::value_type).collect(),
             ))
         }
-        RuntimeFunctionId::List(id) => FunctionExpr::list(
-            crate::plan::ListFunctionExpr::closure_slots(id.clone(), params, captures),
-        ),
-        RuntimeFunctionId::Function { id, return_type } => {
-            let callable_type = crate::plan::FunctionFunctionType::from_shapes(
-                shape.argument_shapes().to_vec(),
-                FunctionShape::from_function_type(return_type.clone()),
-            );
+        ValueShape::List(item) => FunctionExpr::list(crate::plan::ListFunctionExpr::closure_slots(
+            function,
+            params,
+            captures,
+            item.value_type(),
+        )),
+        ValueShape::Function(return_shape) => {
             FunctionExpr::function(crate::plan::FunctionFunctionExpr::closure_slots(
-                id.clone(),
+                function,
                 params,
                 captures,
-                callable_type,
+                crate::plan::FunctionFunctionType::from_shapes(
+                    shape.argument_shapes().to_vec(),
+                    (**return_shape).clone(),
+                ),
             ))
         }
     }
 }
 
-fn anonymous_function_shape(type_: &Type) -> Result<FunctionShape, PlanError> {
-    match ValueShape::from_gleam(type_) {
-        Some(ValueShape::Function(shape)) => Ok(*shape),
-        Some(ValueShape::Int) => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Function,
-                actual: InvalidExpressionType::Int,
-            },
-        }),
-        Some(ValueShape::String) => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Function,
-                actual: InvalidExpressionType::String,
-            },
-        }),
-        Some(ValueShape::BitArray) => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Function,
-                actual: InvalidExpressionType::BitArray,
-            },
-        }),
-        Some(ValueShape::UtfCodepoint) => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Function,
-                actual: InvalidExpressionType::UtfCodepoint,
-            },
-        }),
-        Some(ValueShape::Custom(_)) => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Function,
-                actual: InvalidExpressionType::Custom,
-            },
-        }),
-        Some(ValueShape::Float) => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Function,
-                actual: InvalidExpressionType::Float,
-            },
-        }),
-        Some(ValueShape::Bool) => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Function,
-                actual: InvalidExpressionType::Bool,
-            },
-        }),
-        Some(ValueShape::Nil) => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Function,
-                actual: InvalidExpressionType::Nil,
-            },
-        }),
-        Some(ValueShape::Tuple(_)) => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Function,
-                actual: InvalidExpressionType::Tuple,
-            },
-        }),
-        Some(ValueShape::List(_)) => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Function,
-                actual: InvalidExpressionType::List,
-            },
-        }),
-        None => Err(anonymous_function_type_error(type_)),
-    }
-}
-
-fn anonymous_function_type_error(type_: &Type) -> PlanError {
-    match type_.fn_types() {
-        Some(_) => PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::UnsupportedFunctionLiteralType,
+fn anonymous_function_shape(
+    type_: &Type,
+    parameters: &mut TypeParameterScope,
+) -> Result<FunctionShape, PlanError> {
+    let shape = ValueShape::from_gleam_in(type_, parameters);
+    let actual = match shape {
+        ValueShape::Function(shape) => return Ok(*shape),
+        ValueShape::Int => InvalidExpressionType::Int,
+        ValueShape::Float => InvalidExpressionType::Float,
+        ValueShape::String => InvalidExpressionType::String,
+        ValueShape::BitArray => InvalidExpressionType::BitArray,
+        ValueShape::UtfCodepoint => InvalidExpressionType::UtfCodepoint,
+        ValueShape::Custom(_) => InvalidExpressionType::Custom,
+        ValueShape::Bool => InvalidExpressionType::Bool,
+        ValueShape::Nil => InvalidExpressionType::Nil,
+        ValueShape::Tuple(_) => InvalidExpressionType::Tuple,
+        ValueShape::List(_) => InvalidExpressionType::List,
+        ValueShape::Parameter(_) => {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::Invalid,
+                },
+            });
+        }
+    };
+    Err(PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::ExpressionType {
+            expected: InvalidExpressionType::Function,
+            actual,
         },
-        None => PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::Invalid,
-            },
-        },
-    }
+    })
 }
 
 fn validate_argument_types(
@@ -328,7 +313,7 @@ mod tests {
     use crate::plan::{
         Expr, FunctionFunctionId, FunctionShape, FunctionType, IntExpr, IntFunctionFunctionId,
         IntFunctionId, IntLocalId, LocalId, PanicExpr, PanicSite, ParamLocal, ReturnExpr,
-        RuntimeFunctionId, SourceSpan, StringExpr, TupleFunctionId, ValueType,
+        SourceSpan, StringExpr, ValueType,
     };
     use crate::planner::dsl::{
         call_int_function, capture_int, capture_tuple, function, function_function_closure, int,
@@ -466,7 +451,7 @@ pub fn main() {
             function(
                 "main",
                 int_function_closure(
-                    0,
+                    1,
                     [LocalId::Int(IntLocalId(0))],
                     Vec::<crate::plan::CaptureArg>::new(),
                 ),
@@ -497,7 +482,7 @@ pub fn main() {
             function(
                 "main",
                 function_function_closure(
-                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                    FunctionFunctionId::Int(IntFunctionFunctionId(1)),
                     Vec::<ParamLocal>::new(),
                     Vec::<crate::plan::CaptureArg>::new(),
                     returned_function_type.clone(),
@@ -505,16 +490,16 @@ pub fn main() {
             ),
             [],
             [
-                function("<anonymous:1>", local_int(0, "value").add_int(int(1)))
-                    .param_int(0, "value"),
                 function(
                     "<anonymous:0>",
                     int_function_closure(
-                        0,
+                        2,
                         [LocalId::Int(IntLocalId(0))],
                         Vec::<crate::plan::CaptureArg>::new(),
                     ),
                 ),
+                function("<anonymous:1>", local_int(0, "value").add_int(int(1)))
+                    .param_int(0, "value"),
             ],
         );
 
@@ -536,8 +521,8 @@ pub fn main() -> Int {
         ))
         .expect("source should plan");
         let anonymous_functions = actual.anonymous_functions();
-        let inner_function = &anonymous_functions[0];
-        let outer_function = &anonymous_functions[1];
+        let outer_function = &anonymous_functions[0];
+        let inner_function = &anonymous_functions[1];
 
         assert_eq!(inner_function.name(), "<anonymous:1>");
         assert_eq!(outer_function.name(), "<anonymous:0>");
@@ -604,22 +589,22 @@ pub fn main() {
             function("main", int(1))
                 .step(let_int_step(0, "value", int(1)))
                 .evaluate(function_function_closure(
-                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                    FunctionFunctionId::Int(IntFunctionFunctionId(1)),
                     Vec::<ParamLocal>::new(),
                     [capture_int(0, local_int(0, "value"))],
                     returned_function_type.clone(),
                 )),
             [],
             [
-                function("<anonymous:1>", local_int(0, "value")),
                 function(
                     "<anonymous:0>",
                     int_function_closure(
-                        1,
+                        2,
                         Vec::<LocalId>::new(),
                         [capture_int(0, local_int(0, "value"))],
                     ),
                 ),
+                function("<anonymous:1>", local_int(0, "value")),
             ],
         );
 
@@ -629,17 +614,15 @@ pub fn main() {
     #[test]
     fn closure_expr_preserves_tuple_return_family() {
         let return_type = vec![ValueType::Int];
+        let shape = FunctionShape::from_function_type(FunctionType::new(
+            Vec::new(),
+            ValueType::Tuple(return_type.clone()),
+        ));
         let expression = super::closure_expr(
-            &RuntimeFunctionId::Tuple {
-                id: TupleFunctionId(0),
-                return_type: return_type.clone(),
-            },
+            crate::plan::monomorphic_function_instantiation(0, shape.clone()),
             Vec::<crate::plan::ParamSlot>::new(),
             Vec::new(),
-            &FunctionShape::from_function_type(FunctionType::new(
-                Vec::new(),
-                ValueType::Tuple(return_type.clone()),
-            )),
+            &shape,
         );
 
         assert_eq!(
@@ -665,7 +648,7 @@ pub fn main() {
             function(
                 "main",
                 tuple_function_closure(
-                    0,
+                    1,
                     Vec::<LocalId>::new(),
                     [capture_tuple(0, local_tuple(0, "pair", pair_type.clone()))],
                     pair_type.clone(),
@@ -839,7 +822,7 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_unsupported_anonymous_function_type() {
+    fn reject_profile_anonymous_function_with_unresolved_generic_return() {
         assert_eq!(
             plan_module(compile(
                 r#"
@@ -850,7 +833,7 @@ pub fn main() {
 "#,
             )),
             Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::UnsupportedFunctionLiteralType,
+                kind: UnsupportedExpressionKind::GenericFunction,
             }),
         );
     }

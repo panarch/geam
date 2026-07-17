@@ -288,6 +288,13 @@ fn plan_local(name: EcoString, context: &PlanContext<'_>) -> Result<Expr, PlanEr
 
 fn local_get(local: LocalId, name: EcoString, type_: ValueType) -> Result<Expr, PlanError> {
     match (local, type_) {
+        (LocalId::Generic(local), ValueType::Parameter(parameter))
+            if local.parameter() == parameter =>
+        {
+            Ok(Expr::generic(crate::plan::GenericExpr::local_get(
+                local, name,
+            )))
+        }
         (LocalId::Int(local), ValueType::Int) => Ok(Expr::int(IntExpr::local_get(local, name))),
         (LocalId::Float(local), ValueType::Float) => {
             Ok(Expr::float(FloatExpr::local_get(local, name)))
@@ -313,6 +320,9 @@ fn function_local_get(
     shape: crate::plan::FunctionShape,
 ) -> Result<Expr, PlanError> {
     let expression = match binding {
+        FunctionLocalBinding::Generic(local) => {
+            FunctionExpr::generic(crate::plan::GenericFunctionExpr::local_get(local, name))
+        }
         FunctionLocalBinding::Int { local, type_ } => {
             FunctionExpr::int(IntFunctionExpr::local_get(local, name, type_))
         }
@@ -368,6 +378,7 @@ fn invalid_expression_type_for_value(expected: ValueType, actual: ValueType) -> 
 
 fn invalid_expression_type(type_: ValueType) -> InvalidExpressionType {
     match type_ {
+        ValueType::Parameter(_) => InvalidExpressionType::TypeParameter,
         ValueType::Int => InvalidExpressionType::Int,
         ValueType::Float => InvalidExpressionType::Float,
         ValueType::String => InvalidExpressionType::String,
@@ -398,12 +409,13 @@ mod tests {
         CustomFunctionLocal, CustomFunctionLocalId, CustomFunctionType, CustomLocal, CustomType,
         CustomTypeName, CustomValueShape, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionLocalId,
         FunctionExpr, FunctionFunctionExpr, FunctionFunctionLocal, FunctionFunctionLocalId,
-        FunctionFunctionType, FunctionShape, FunctionType, IntExpr, IntFunctionExpr,
-        IntFunctionLocalId, IntLocalId, ListExpr, ListFunctionExpr, ListLocal, LocalId, NilExpr,
-        NilFunctionExpr, NilFunctionLocalId, NilLocalId, StringExpr, StringFunctionExpr,
-        StringFunctionLocalId, StringListLocalId, TupleExpr, TupleFunctionExpr,
-        TupleFunctionLocalId, TupleLocalId, UtfCodepointExpr, UtfCodepointFunctionExpr,
-        UtfCodepointFunctionLocalId, UtfCodepointLocalId, ValueType,
+        FunctionFunctionType, FunctionShape, FunctionType, GenericExpr, GenericFunctionExpr,
+        GenericFunctionType, IntExpr, IntFunctionExpr, IntFunctionLocalId, IntLocalId, ListExpr,
+        ListFunctionExpr, ListLocal, LocalId, NilExpr, NilFunctionExpr, NilFunctionLocalId,
+        NilLocalId, StringExpr, StringFunctionExpr, StringFunctionLocalId, StringListLocalId,
+        TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleLocalId, TypeParameterId,
+        UtfCodepointExpr, UtfCodepointFunctionExpr, UtfCodepointFunctionLocalId,
+        UtfCodepointLocalId, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionLocalBinding, PlanContext};
     use crate::planner::support::dummy_span;
@@ -1189,11 +1201,33 @@ mod tests {
         context.define_nil_local("none".into());
         context.define_tuple_local("pair".into(), vec![ValueType::Int]);
         context.define_list_local("values".into(), ValueType::String);
+        let parameter = TypeParameterId(0);
+        let generic_local = context.define_generic_local("generic".into(), parameter);
+        let generic_function_type = GenericFunctionType::new(Vec::new(), parameter);
+        let generic_function_local = context.define_generic_function_local_shape(
+            "generic_callback".into(),
+            generic_function_type.clone(),
+            generic_function_type.shape(),
+        );
         context.define_int_function_local(
             "callback".into(),
             FunctionType::new(vec![ValueType::Int], ValueType::Int),
         );
 
+        assert_eq!(
+            super::plan_local("generic".into(), &context),
+            Ok(Expr::generic(GenericExpr::local_get(
+                generic_local,
+                "generic".into(),
+            ))),
+        );
+        assert_eq!(
+            super::plan_local("generic_callback".into(), &context),
+            Ok(Expr::function(FunctionExpr::generic_with_shape(
+                GenericFunctionExpr::local_get(generic_function_local, "generic_callback".into(),),
+                generic_function_type.shape(),
+            ))),
+        );
         assert_eq!(
             super::plan_local("bits".into(), &context),
             Ok(Expr::bit_array(BitArrayExpr::local_get(
@@ -1448,6 +1482,7 @@ mod tests {
     fn invalid_expression_type_classification_is_exact() {
         assert_eq!(
             [
+                ValueType::Parameter(TypeParameterId(0)),
                 ValueType::Int,
                 ValueType::Float,
                 ValueType::String,
@@ -1465,6 +1500,7 @@ mod tests {
             ]
             .map(invalid_expression_type),
             [
+                InvalidExpressionType::TypeParameter,
                 InvalidExpressionType::Int,
                 InvalidExpressionType::Float,
                 InvalidExpressionType::String,

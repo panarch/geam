@@ -139,9 +139,9 @@ mod tests {
     use crate::plan::{
         BoolExpr, CustomConstructor, CustomConstructorDefinition, CustomConstructorField,
         CustomExpr, CustomFieldDefinition, CustomReturn, CustomType, CustomTypeDefinition,
-        CustomTypeName, CustomTypePublicity, CustomTypeTemplate, Expr, FloatExpr, FunctionId,
-        FunctionPlan, IntExpr, ModulePlan, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr,
-        TupleExpr, ValueType,
+        CustomTypeName, CustomTypePublicity, CustomTypeTemplate, Expr, FloatExpr, FunctionTemplate,
+        FunctionTemplateId, IntExpr, ModulePlan, PanicExpr, PanicSite, ReturnExpr, Step,
+        StringExpr, TupleExpr, ValueType,
     };
     use crate::runtime::{ExecutionError, run_main};
 
@@ -307,12 +307,12 @@ pub fn main() {
     }
 
     fn run_module_custom_expression(expression: crate::plan::CustomExpr) -> ExecutionError {
-        let main = FunctionPlan::new(
-            FunctionId::new(0),
+        let main = FunctionTemplate::new(
+            FunctionTemplateId::new(0),
             "main".into(),
             Vec::new(),
             Vec::new(),
-            ReturnExpr::custom_body(0, CustomReturn::expr(expression)),
+            ReturnExpr::custom_body(CustomReturn::expr(expression)),
         );
         let module = ModulePlan::new("main".into(), main, Vec::new())
             .with_custom_types(vec![boxed_definition(), wrapper_definition()]);

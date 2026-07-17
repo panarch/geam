@@ -2,9 +2,9 @@ use crate::plan::CustomFieldAccess;
 #[cfg(test)]
 use crate::plan::ParamLocal;
 use crate::plan::{
-    BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionListExpr, FunctionType, IntExpr,
-    PanicExpr, ParamSlot, Step, StringExpr, TupleExpr, UtfCodepointFunctionFunctionId,
-    UtfCodepointFunctionId, UtfCodepointFunctionLocalId, UtfCodepointFunctionReference,
+    BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionInstantiation, FunctionListExpr,
+    FunctionType, IntExpr, PanicExpr, ParamSlot, Step, StringExpr, TupleExpr,
+    UtfCodepointFunctionLocalId, UtfCodepointFunctionReference,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -19,7 +19,7 @@ pub struct UtfCodepointFunctionExpr {
 pub(crate) enum UtfCodepointFunctionExprKind {
     Reference(UtfCodepointFunctionReference),
     Closure {
-        runtime_id: UtfCodepointFunctionId,
+        function: FunctionInstantiation,
         params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
     },
@@ -28,7 +28,7 @@ pub(crate) enum UtfCodepointFunctionExprKind {
         name: EcoString,
     },
     Call {
-        function: UtfCodepointFunctionFunctionId,
+        function: FunctionInstantiation,
         args: Vec<crate::plan::CallArg>,
         type_: FunctionType,
     },
@@ -77,14 +77,7 @@ pub(crate) enum UtfCodepointFunctionExprKind {
 
 impl UtfCodepointFunctionExpr {
     pub(crate) fn reference(value: UtfCodepointFunctionReference) -> Self {
-        let type_ = FunctionType::new(
-            value
-                .params()
-                .iter()
-                .map(crate::plan::ParamSlot::value_type)
-                .collect(),
-            crate::plan::ValueType::UtfCodepoint,
-        );
+        let type_ = value.instantiation().shape().type_();
         Self {
             type_,
             kind: UtfCodepointFunctionExprKind::Reference(value),
@@ -92,7 +85,7 @@ impl UtfCodepointFunctionExpr {
     }
 
     pub(crate) fn closure_slots(
-        runtime_id: UtfCodepointFunctionId,
+        function: FunctionInstantiation,
         params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
         type_: FunctionType,
@@ -100,7 +93,7 @@ impl UtfCodepointFunctionExpr {
         Self {
             type_,
             kind: UtfCodepointFunctionExprKind::Closure {
-                runtime_id,
+                function,
                 params,
                 captures,
             },
@@ -109,13 +102,13 @@ impl UtfCodepointFunctionExpr {
 
     #[cfg(test)]
     pub(crate) fn closure(
-        runtime_id: UtfCodepointFunctionId,
+        function: FunctionInstantiation,
         params: Vec<ParamLocal>,
         captures: Vec<CaptureArg>,
         type_: FunctionType,
     ) -> Self {
         Self::closure_slots(
-            runtime_id,
+            function,
             params.into_iter().map(ParamSlot::from_local).collect(),
             captures,
             type_,
@@ -134,7 +127,7 @@ impl UtfCodepointFunctionExpr {
     }
 
     pub(crate) fn call(
-        function: UtfCodepointFunctionFunctionId,
+        function: FunctionInstantiation,
         args: Vec<crate::plan::CallArg>,
         type_: FunctionType,
     ) -> Self {
@@ -280,20 +273,16 @@ impl UtfCodepointFunctionExpr {
     pub(crate) fn kind(&self) -> &UtfCodepointFunctionExprKind {
         &self.kind
     }
-
-    pub(crate) fn into_parts(self) -> (FunctionType, UtfCodepointFunctionExprKind) {
-        (self.type_, self.kind)
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{UtfCodepointFunctionExpr, UtfCodepointFunctionExprKind};
     use crate::plan::{
-        BoolExpr, Expr, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionReference,
-        FunctionType, IntExpr, ParamLocal, Step, StringExpr, UtfCodepointFunctionFunctionId,
-        UtfCodepointFunctionId, UtfCodepointFunctionLocalId, UtfCodepointFunctionReference,
-        UtfCodepointLocalId, ValueType,
+        BoolExpr, Expr, FunctionFunctionExpr, FunctionFunctionReference, FunctionInstantiation,
+        FunctionShape, FunctionType, IntExpr, ParamLocal, Step, StringExpr,
+        UtfCodepointFunctionLocalId, UtfCodepointFunctionReference, UtfCodepointLocalId,
+        ValueShape, ValueType, monomorphic_function_instantiation,
     };
 
     #[test]
@@ -301,20 +290,20 @@ mod tests {
         assert_eq!(
             function_value().kind(),
             &UtfCodepointFunctionExprKind::Reference(UtfCodepointFunctionReference::new(
-                UtfCodepointFunctionId(0),
+                function_instantiation(),
                 vec![ParamLocal::utf_codepoint(UtfCodepointLocalId(0))],
             )),
         );
         assert_eq!(
             UtfCodepointFunctionExpr::closure(
-                UtfCodepointFunctionId(0),
+                function_instantiation(),
                 vec![ParamLocal::utf_codepoint(UtfCodepointLocalId(0))],
                 Vec::new(),
                 function_type(),
             )
             .kind(),
             &UtfCodepointFunctionExprKind::Closure {
-                runtime_id: UtfCodepointFunctionId(0),
+                function: function_instantiation(),
                 params: vec![crate::plan::ParamSlot::from_local(
                     ParamLocal::utf_codepoint(UtfCodepointLocalId(0))
                 )],
@@ -335,13 +324,13 @@ mod tests {
         );
         assert_eq!(
             UtfCodepointFunctionExpr::call(
-                UtfCodepointFunctionFunctionId(0),
+                function_returning_function_instantiation(),
                 Vec::new(),
                 function_type(),
             )
             .kind(),
             &UtfCodepointFunctionExprKind::Call {
-                function: UtfCodepointFunctionFunctionId(0),
+                function: function_returning_function_instantiation(),
                 args: Vec::new(),
                 type_: function_type(),
             },
@@ -439,7 +428,7 @@ mod tests {
 
     fn function_value() -> UtfCodepointFunctionExpr {
         UtfCodepointFunctionExpr::reference(UtfCodepointFunctionReference::new(
-            UtfCodepointFunctionId(0),
+            function_instantiation(),
             vec![ParamLocal::utf_codepoint(UtfCodepointLocalId(0))],
         ))
     }
@@ -450,11 +439,22 @@ mod tests {
 
     fn function_function_value() -> FunctionFunctionExpr {
         FunctionFunctionExpr::reference(
-            FunctionFunctionReference::new(
-                FunctionFunctionId::UtfCodepoint(UtfCodepointFunctionFunctionId(0)),
-                Vec::new(),
-            ),
+            FunctionFunctionReference::new(function_returning_function_instantiation(), Vec::new()),
             function_type(),
+        )
+    }
+
+    fn function_instantiation() -> FunctionInstantiation {
+        monomorphic_function_instantiation(0, FunctionShape::from_function_type(function_type()))
+    }
+
+    fn function_returning_function_instantiation() -> FunctionInstantiation {
+        monomorphic_function_instantiation(
+            1,
+            FunctionShape::new(
+                Vec::new(),
+                ValueShape::Function(Box::new(FunctionShape::from_function_type(function_type()))),
+            ),
         )
     }
 

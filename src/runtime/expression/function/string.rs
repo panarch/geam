@@ -158,9 +158,10 @@ pub(in crate::runtime) fn eval_string_function_expr(
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExpr, CaptureArg, Expr, FloatExpr, FunctionId, FunctionPlan, FunctionType, IntExpr,
-        IntLocalId, ListExpr, ModulePlan, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr,
-        StringFunctionExpr, StringFunctionFunctionId, StringFunctionId, TupleExpr, ValueType,
+        BoolExpr, CaptureArg, Expr, FloatExpr, FunctionTemplate, FunctionTemplateId, FunctionType,
+        IntExpr, IntLocalId, ListExpr, ModulePlan, PanicExpr, PanicSite, ReturnExpr, Step,
+        StringExpr, StringFunctionExpr, StringFunctionFunctionId, StringFunctionId, TupleExpr,
+        ValueType,
     };
     use crate::runtime::{ExecutionError, run_main};
 
@@ -224,7 +225,10 @@ pub fn main() {
         let expressions = [
             (
                 StringFunctionExpr::closure(
-                    StringFunctionId(1),
+                    crate::plan::monomorphic_function_instantiation(
+                        1,
+                        crate::plan::FunctionShape::from_function_type(type_.clone()),
+                    ),
                     Vec::new(),
                     vec![CaptureArg::int(
                         IntLocalId(0),
@@ -306,14 +310,27 @@ pub fn main() {
     }
 
     fn run_module_string_function_expression(expression: StringFunctionExpr) -> ExecutionError {
-        let main = FunctionPlan::new(
-            FunctionId::new(0),
+        let target = FunctionTemplate::new(
+            FunctionTemplateId::new(1),
+            "target".into(),
+            Vec::new(),
+            vec![Step::evaluate(Expr::int(IntExpr::local_get(
+                IntLocalId(0),
+                "capture".into(),
+            )))],
+            ReturnExpr::string(
+                StringFunctionId(0),
+                StringExpr::panic(PanicExpr::panic_at(None, PanicSite::unknown())),
+            ),
+        );
+        let main = FunctionTemplate::new(
+            FunctionTemplateId::new(0),
             "main".into(),
             Vec::new(),
             Vec::new(),
             ReturnExpr::string_function(StringFunctionFunctionId(0), expression),
         );
-        let module = ModulePlan::new("main".into(), main, Vec::new());
+        let module = ModulePlan::new("main".into(), main, vec![target]);
         let plan = crate::ExecutionPlan::from_module_plan(module);
 
         run_main(&plan).expect_err("module expression should fail at runtime")

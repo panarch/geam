@@ -2,9 +2,9 @@ use crate::plan::CustomFieldAccess;
 #[cfg(test)]
 use crate::plan::ParamLocal;
 use crate::plan::{
-    BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionLocalId,
-    BitArrayFunctionReference, BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr,
-    FunctionListExpr, FunctionType, IntExpr, PanicExpr, ParamSlot, Step, StringExpr, TupleExpr,
+    BitArrayFunctionLocalId, BitArrayFunctionReference, BoolExpr, CaptureArg, FloatExpr,
+    FunctionFunctionExpr, FunctionInstantiation, FunctionListExpr, FunctionType, IntExpr,
+    PanicExpr, ParamSlot, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -19,7 +19,7 @@ pub struct BitArrayFunctionExpr {
 pub(crate) enum BitArrayFunctionExprKind {
     Reference(BitArrayFunctionReference),
     Closure {
-        runtime_id: BitArrayFunctionId,
+        function: FunctionInstantiation,
         params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
     },
@@ -28,7 +28,7 @@ pub(crate) enum BitArrayFunctionExprKind {
         name: EcoString,
     },
     Call {
-        function: BitArrayFunctionFunctionId,
+        function: FunctionInstantiation,
         args: Vec<crate::plan::CallArg>,
         type_: FunctionType,
     },
@@ -77,14 +77,7 @@ pub(crate) enum BitArrayFunctionExprKind {
 
 impl BitArrayFunctionExpr {
     pub(crate) fn reference(value: BitArrayFunctionReference) -> Self {
-        let type_ = FunctionType::new(
-            value
-                .params()
-                .iter()
-                .map(crate::plan::ParamSlot::value_type)
-                .collect(),
-            crate::plan::ValueType::BitArray,
-        );
+        let type_ = value.instantiation().shape().type_();
         Self {
             type_,
             kind: BitArrayFunctionExprKind::Reference(value),
@@ -92,7 +85,7 @@ impl BitArrayFunctionExpr {
     }
 
     pub(crate) fn closure_slots(
-        runtime_id: BitArrayFunctionId,
+        function: FunctionInstantiation,
         params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
         type_: FunctionType,
@@ -100,7 +93,7 @@ impl BitArrayFunctionExpr {
         Self {
             type_,
             kind: BitArrayFunctionExprKind::Closure {
-                runtime_id,
+                function,
                 params,
                 captures,
             },
@@ -109,13 +102,13 @@ impl BitArrayFunctionExpr {
 
     #[cfg(test)]
     pub(crate) fn closure(
-        runtime_id: BitArrayFunctionId,
+        function: FunctionInstantiation,
         params: Vec<ParamLocal>,
         captures: Vec<CaptureArg>,
         type_: FunctionType,
     ) -> Self {
         Self::closure_slots(
-            runtime_id,
+            function,
             params.into_iter().map(ParamSlot::from_local).collect(),
             captures,
             type_,
@@ -134,7 +127,7 @@ impl BitArrayFunctionExpr {
     }
 
     pub(crate) fn call(
-        function: BitArrayFunctionFunctionId,
+        function: FunctionInstantiation,
         args: Vec<crate::plan::CallArg>,
         type_: FunctionType,
     ) -> Self {
@@ -280,20 +273,16 @@ impl BitArrayFunctionExpr {
     pub(crate) fn kind(&self) -> &BitArrayFunctionExprKind {
         &self.kind
     }
-
-    pub(crate) fn into_parts(self) -> (FunctionType, BitArrayFunctionExprKind) {
-        (self.type_, self.kind)
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{BitArrayFunctionExpr, BitArrayFunctionExprKind};
     use crate::plan::{
-        BitArrayExpr, BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionLocalId,
-        BitArrayFunctionReference, BitArrayLocalId, BoolExpr, Expr, FunctionFunctionExpr,
-        FunctionFunctionId, FunctionFunctionReference, FunctionType, IntExpr, ParamLocal, Step,
-        StringExpr, ValueType,
+        BitArrayExpr, BitArrayFunctionLocalId, BitArrayFunctionReference, BitArrayLocalId,
+        BoolExpr, Expr, FunctionFunctionExpr, FunctionFunctionReference, FunctionInstantiation,
+        FunctionShape, FunctionType, IntExpr, ParamLocal, Step, StringExpr, ValueShape, ValueType,
+        monomorphic_function_instantiation,
     };
 
     #[test]
@@ -301,20 +290,20 @@ mod tests {
         assert_eq!(
             function_value().kind(),
             &BitArrayFunctionExprKind::Reference(BitArrayFunctionReference::new(
-                BitArrayFunctionId(0),
+                function_instantiation(),
                 vec![ParamLocal::bit_array(BitArrayLocalId(0))],
             )),
         );
         assert_eq!(
             BitArrayFunctionExpr::closure(
-                BitArrayFunctionId(0),
+                function_instantiation(),
                 vec![ParamLocal::bit_array(BitArrayLocalId(0))],
                 Vec::new(),
                 function_type(),
             )
             .kind(),
             &BitArrayFunctionExprKind::Closure {
-                runtime_id: BitArrayFunctionId(0),
+                function: function_instantiation(),
                 params: vec![crate::plan::ParamSlot::from_local(ParamLocal::bit_array(
                     BitArrayLocalId(0)
                 ))],
@@ -334,10 +323,14 @@ mod tests {
             },
         );
         assert_eq!(
-            BitArrayFunctionExpr::call(BitArrayFunctionFunctionId(0), Vec::new(), function_type(),)
-                .kind(),
+            BitArrayFunctionExpr::call(
+                function_returning_function_instantiation(),
+                Vec::new(),
+                function_type(),
+            )
+            .kind(),
             &BitArrayFunctionExprKind::Call {
-                function: BitArrayFunctionFunctionId(0),
+                function: function_returning_function_instantiation(),
                 args: Vec::new(),
                 type_: function_type(),
             },
@@ -439,7 +432,7 @@ mod tests {
 
     fn function_value() -> BitArrayFunctionExpr {
         BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(
-            BitArrayFunctionId(0),
+            function_instantiation(),
             vec![ParamLocal::bit_array(BitArrayLocalId(0))],
         ))
     }
@@ -450,11 +443,22 @@ mod tests {
 
     fn function_function_value() -> FunctionFunctionExpr {
         FunctionFunctionExpr::reference(
-            FunctionFunctionReference::new(
-                FunctionFunctionId::BitArray(BitArrayFunctionFunctionId(0)),
-                Vec::new(),
-            ),
+            FunctionFunctionReference::new(function_returning_function_instantiation(), Vec::new()),
             function_type(),
+        )
+    }
+
+    fn function_instantiation() -> FunctionInstantiation {
+        monomorphic_function_instantiation(0, FunctionShape::from_function_type(function_type()))
+    }
+
+    fn function_returning_function_instantiation() -> FunctionInstantiation {
+        monomorphic_function_instantiation(
+            1,
+            FunctionShape::new(
+                Vec::new(),
+                ValueShape::Function(Box::new(FunctionShape::from_function_type(function_type()))),
+            ),
         )
     }
 

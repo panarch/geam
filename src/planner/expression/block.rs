@@ -161,28 +161,28 @@ pub fn main() {
                 .evaluate(block_function(
                     vec![],
                     function_ref(
-                        RuntimeFunctionId::String(crate::plan::StringFunctionId(0)),
+                        RuntimeFunctionId::String(crate::plan::StringFunctionId(2)),
                         [LocalId::String(crate::plan::StringLocalId(0))],
                     ),
                 ))
                 .evaluate(block_function(
                     vec![],
                     function_ref(
-                        RuntimeFunctionId::Float(crate::plan::FloatFunctionId(0)),
+                        RuntimeFunctionId::Float(crate::plan::FloatFunctionId(3)),
                         [LocalId::Float(crate::plan::FloatLocalId(0))],
                     ),
                 ))
                 .evaluate(block_function(
                     vec![],
                     function_ref(
-                        RuntimeFunctionId::Bool(crate::plan::BoolFunctionId(0)),
+                        RuntimeFunctionId::Bool(crate::plan::BoolFunctionId(4)),
                         [LocalId::Bool(crate::plan::BoolLocalId(0))],
                     ),
                 ))
                 .evaluate(block_function(
                     vec![],
                     function_ref(
-                        RuntimeFunctionId::Nil(crate::plan::NilFunctionId(0)),
+                        RuntimeFunctionId::Nil(crate::plan::NilFunctionId(5)),
                         [LocalId::Nil(crate::plan::NilLocalId(0))],
                     ),
                 ))
@@ -190,7 +190,7 @@ pub fn main() {
                     vec![],
                     function_ref(
                         RuntimeFunctionId::Function {
-                            id: FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                            id: FunctionFunctionId::Int(IntFunctionFunctionId(6)),
                             return_type: FunctionType::new(vec![ValueType::Int], ValueType::Int),
                         },
                         Vec::<LocalId>::new(),
@@ -200,7 +200,7 @@ pub fn main() {
                     vec![],
                     function_ref(
                         RuntimeFunctionId::List(crate::plan::ListFunctionId::from_item_type(
-                            0,
+                            7,
                             crate::plan::ValueType::Int,
                         )),
                         [LocalId::Int(crate::plan::IntLocalId(0))],

@@ -167,9 +167,10 @@ pub(in crate::runtime) fn eval_bit_array_function_expr(
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BitArrayFunctionExpr, BitArrayFunctionFunctionId, BitArrayFunctionId, BoolExpr, CaptureArg,
-        Expr, FloatExpr, FunctionId, FunctionPlan, FunctionType, IntExpr, IntLocalId, ListExpr,
-        ModulePlan, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
+        BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionFunctionId, BitArrayFunctionId,
+        BoolExpr, CaptureArg, Expr, FloatExpr, FunctionTemplate, FunctionTemplateId, FunctionType,
+        IntExpr, IntLocalId, ListExpr, ModulePlan, PanicExpr, PanicSite, ReturnExpr, Step,
+        StringExpr, TupleExpr, ValueType,
     };
     use crate::runtime::{BitArrayValue, ExecutionError, Value, run_main};
 
@@ -186,7 +187,10 @@ mod tests {
         let expressions = [
             (
                 BitArrayFunctionExpr::closure(
-                    BitArrayFunctionId(1),
+                    crate::plan::monomorphic_function_instantiation(
+                        1,
+                        crate::plan::FunctionShape::from_function_type(type_.clone()),
+                    ),
                     Vec::new(),
                     vec![CaptureArg::int(
                         IntLocalId(0),
@@ -273,7 +277,10 @@ mod tests {
         let tuple = TupleExpr::value(
             vec![Expr::function(crate::plan::FunctionExpr::int(
                 crate::plan::IntFunctionExpr::reference(crate::plan::IntFunctionReference::new(
-                    crate::plan::IntFunctionId(0),
+                    crate::plan::monomorphic_function_instantiation(
+                        0,
+                        crate::plan::FunctionShape::new(Vec::new(), crate::plan::ValueShape::Int),
+                    ),
                     Vec::new(),
                 )),
             ))],
@@ -340,14 +347,27 @@ mod tests {
     fn run_module_bit_array_function_expression(
         expression: BitArrayFunctionExpr,
     ) -> ExecutionError {
-        let main = FunctionPlan::new(
-            FunctionId::new(0),
+        let target = FunctionTemplate::new(
+            FunctionTemplateId::new(1),
+            "target".into(),
+            Vec::new(),
+            vec![Step::evaluate(Expr::int(IntExpr::local_get(
+                IntLocalId(0),
+                "capture".into(),
+            )))],
+            ReturnExpr::bit_array(
+                BitArrayFunctionId(0),
+                BitArrayExpr::panic(PanicExpr::panic_at(None, PanicSite::unknown())),
+            ),
+        );
+        let main = FunctionTemplate::new(
+            FunctionTemplateId::new(0),
             "main".into(),
             Vec::new(),
             Vec::new(),
             ReturnExpr::bit_array_function(BitArrayFunctionFunctionId(0), expression),
         );
-        let module = ModulePlan::new("main".into(), main, Vec::new());
+        let module = ModulePlan::new("main".into(), main, vec![target]);
         let plan = crate::ExecutionPlan::from_module_plan(module);
 
         run_main(&plan).expect_err("module expression should fail at runtime")

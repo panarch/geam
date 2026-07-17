@@ -3,6 +3,7 @@ use ecow::EcoString;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ValueType {
+    Parameter(TypeParameterId),
     Int,
     Float,
     String,
@@ -14,6 +15,15 @@ pub enum ValueType {
     List(Box<ValueType>),
     Function(Box<FunctionType>),
     Custom(CustomType),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct TypeParameterId(pub(crate) usize);
+
+impl TypeParameterId {
+    pub fn index(self) -> usize {
+        self.0
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -45,6 +55,29 @@ pub(crate) struct CustomFunctionType {
 pub(crate) struct FunctionFunctionType {
     arguments: Box<[ValueShape]>,
     return_: Box<super::FunctionShape>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct GenericFunctionType {
+    arguments: Box<[ValueShape]>,
+    return_: TypeParameterId,
+}
+
+impl GenericFunctionType {
+    pub(crate) fn new(arguments: Vec<ValueShape>, return_: TypeParameterId) -> Self {
+        Self {
+            arguments: arguments.into_boxed_slice(),
+            return_,
+        }
+    }
+
+    pub(crate) fn return_parameter(&self) -> TypeParameterId {
+        self.return_
+    }
+
+    pub(crate) fn shape(&self) -> super::FunctionShape {
+        super::FunctionShape::new(self.arguments.to_vec(), ValueShape::Parameter(self.return_))
+    }
 }
 
 impl FunctionType {
