@@ -2,7 +2,7 @@ use super::{
     BoolExpr, CallArg, CustomFieldAccess, FloatExpr, IntExpr, NilFunctionExpr, NilListExpr,
     PanicExpr, StringExpr, TupleExpr,
 };
-use crate::plan::{NilFunctionId, NilLocalId, Step};
+use crate::plan::{FunctionInstantiation, NilLocalId, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -19,7 +19,7 @@ pub(crate) enum NilExprKind {
         name: EcoString,
     },
     Call {
-        function: NilFunctionId,
+        function: FunctionInstantiation,
         args: Vec<CallArg>,
     },
     FunctionCall {
@@ -75,7 +75,7 @@ impl NilExpr {
         }
     }
 
-    pub(crate) fn call(function: NilFunctionId, args: Vec<CallArg>) -> Self {
+    pub(crate) fn call(function: FunctionInstantiation, args: Vec<CallArg>) -> Self {
         Self {
             kind: NilExprKind::Call { function, args },
         }
@@ -184,18 +184,14 @@ impl NilExpr {
     pub(crate) fn kind(&self) -> &NilExprKind {
         &self.kind
     }
-
-    pub(crate) fn into_kind(self) -> NilExprKind {
-        self.kind
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{NilExpr, NilExprKind};
     use crate::plan::{
-        BoolExpr, Expr, IntExpr, NilFunctionId, NilFunctionReference, NilLocalId, Step, TupleExpr,
-        ValueType,
+        BoolExpr, Expr, FunctionInstantiation, FunctionShape, IntExpr, NilFunctionReference,
+        NilLocalId, Step, TupleExpr, ValueShape, ValueType, monomorphic_function_instantiation,
     };
     use num_bigint::BigInt;
 
@@ -210,9 +206,9 @@ mod tests {
             },
         );
         assert_eq!(
-            NilExpr::call(NilFunctionId(0), Vec::new()).kind(),
+            NilExpr::call(function_instantiation(), Vec::new()).kind(),
             &NilExprKind::Call {
-                function: NilFunctionId(0),
+                function: function_instantiation(),
                 args: Vec::new(),
             },
         );
@@ -292,9 +288,13 @@ mod tests {
 
     fn function_expr() -> crate::plan::NilFunctionExpr {
         crate::plan::NilFunctionExpr::reference(NilFunctionReference::new(
-            NilFunctionId(0),
+            function_instantiation(),
             Vec::new(),
         ))
+    }
+
+    fn function_instantiation() -> FunctionInstantiation {
+        monomorphic_function_instantiation(0, FunctionShape::new(Vec::new(), ValueShape::Nil))
     }
 
     fn tuple_expr() -> TupleExpr {

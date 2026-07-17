@@ -2,7 +2,7 @@ use super::{
     BoolExpr, CallArg, CustomFieldAccess, FloatExpr, IntExpr, PanicExpr, StringExpr, TupleExpr,
     UtfCodepointFunctionExpr, UtfCodepointListExpr,
 };
-use crate::plan::{Step, UtfCodepointFunctionId, UtfCodepointLocalId};
+use crate::plan::{FunctionInstantiation, Step, UtfCodepointLocalId};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -18,7 +18,7 @@ pub(crate) enum UtfCodepointExprKind {
         name: EcoString,
     },
     Call {
-        function: UtfCodepointFunctionId,
+        function: FunctionInstantiation,
         args: Vec<CallArg>,
     },
     FunctionCall {
@@ -66,7 +66,7 @@ impl UtfCodepointExpr {
         Self::new(UtfCodepointExprKind::LocalGet { local, name })
     }
 
-    pub(crate) fn call(function: UtfCodepointFunctionId, args: Vec<CallArg>) -> Self {
+    pub(crate) fn call(function: FunctionInstantiation, args: Vec<CallArg>) -> Self {
         Self::new(UtfCodepointExprKind::Call { function, args })
     }
 
@@ -150,10 +150,6 @@ impl UtfCodepointExpr {
         &self.kind
     }
 
-    pub(crate) fn into_kind(self) -> UtfCodepointExprKind {
-        self.kind
-    }
-
     fn new(kind: UtfCodepointExprKind) -> Self {
         Self { kind }
     }
@@ -163,10 +159,11 @@ impl UtfCodepointExpr {
 mod tests {
     use super::{UtfCodepointExpr, UtfCodepointExprKind};
     use crate::plan::{
-        BoolExpr, Expr, IntExpr, PanicExpr, PanicSite, ParamLocal, Step, StringExpr, TupleExpr,
-        TupleLocalId, UtfCodepointFunctionExpr, UtfCodepointFunctionId,
+        BoolExpr, Expr, FunctionInstantiation, FunctionShape, IntExpr, PanicExpr, PanicSite,
+        ParamLocal, Step, StringExpr, TupleExpr, TupleLocalId, UtfCodepointFunctionExpr,
         UtfCodepointFunctionReference, UtfCodepointListExpr, UtfCodepointListItem,
-        UtfCodepointListLocalId, UtfCodepointLocalId, ValueType,
+        UtfCodepointListLocalId, UtfCodepointLocalId, ValueShape, ValueType,
+        monomorphic_function_instantiation,
     };
 
     #[test]
@@ -179,9 +176,9 @@ mod tests {
             },
         );
         assert_eq!(
-            UtfCodepointExpr::call(UtfCodepointFunctionId(0), Vec::new()).kind(),
+            UtfCodepointExpr::call(function_instantiation(), Vec::new()).kind(),
             &UtfCodepointExprKind::Call {
-                function: UtfCodepointFunctionId(0),
+                function: function_instantiation(),
                 args: Vec::new(),
             },
         );
@@ -277,9 +274,16 @@ mod tests {
 
     fn function() -> UtfCodepointFunctionExpr {
         UtfCodepointFunctionExpr::reference(UtfCodepointFunctionReference::new(
-            UtfCodepointFunctionId(0),
+            function_instantiation(),
             vec![ParamLocal::utf_codepoint(UtfCodepointLocalId(0))],
         ))
+    }
+
+    fn function_instantiation() -> FunctionInstantiation {
+        monomorphic_function_instantiation(
+            0,
+            FunctionShape::new(vec![ValueShape::UtfCodepoint], ValueShape::UtfCodepoint),
+        )
     }
 
     fn tuple() -> TupleExpr {

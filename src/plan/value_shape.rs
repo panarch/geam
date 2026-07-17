@@ -1,4 +1,4 @@
-use super::{CustomType, CustomTypeName, FunctionType, ValueType};
+use super::{CustomType, CustomTypeName, FunctionType, TypeParameterId, ValueType};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum CustomConstructorRefinement {
@@ -21,6 +21,7 @@ pub(crate) struct FunctionShape {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum ValueShape {
+    Parameter(TypeParameterId),
     Int,
     Float,
     String,
@@ -124,6 +125,17 @@ impl CustomValueShape {
             constructor,
         ))
     }
+
+    pub(crate) fn substitute(&self, substitution: &crate::plan::TypeSubstitution) -> Self {
+        Self::new(
+            self.type_name().clone(),
+            self.arguments
+                .iter()
+                .map(|shape| shape.substitute(substitution))
+                .collect(),
+            self.constructor,
+        )
+    }
 }
 
 impl FunctionShape {
@@ -199,11 +211,73 @@ impl FunctionShape {
                 .all(|(source, target)| target.can_flow_to(source))
             && self.return_.can_flow_to(&target.return_)
     }
+
+    pub(crate) fn substitute(&self, substitution: &crate::plan::TypeSubstitution) -> Self {
+        Self::new(
+            self.arguments
+                .iter()
+                .map(|shape| shape.substitute(substitution))
+                .collect(),
+            self.return_.substitute(substitution),
+        )
+    }
 }
 
 impl ValueShape {
+    pub(crate) fn parameters_are_scoped(&self, count: usize) -> bool {
+        match self {
+            Self::Parameter(parameter) => parameter.index() < count,
+            Self::Int
+            | Self::Float
+            | Self::String
+            | Self::BitArray
+            | Self::UtfCodepoint
+            | Self::Bool
+            | Self::Nil => true,
+            Self::Tuple(elements) => elements
+                .iter()
+                .all(|element| element.parameters_are_scoped(count)),
+            Self::List(item) => item.parameters_are_scoped(count),
+            Self::Function(function) => {
+                function
+                    .argument_shapes()
+                    .iter()
+                    .all(|argument| argument.parameters_are_scoped(count))
+                    && function.return_shape().parameters_are_scoped(count)
+            }
+            Self::Custom(custom) => custom
+                .arguments()
+                .iter()
+                .all(|argument| argument.parameters_are_scoped(count)),
+        }
+    }
+
+    pub(crate) fn substitute(&self, substitution: &crate::plan::TypeSubstitution) -> Self {
+        match self {
+            Self::Parameter(parameter) => substitution.get(*parameter).clone(),
+            Self::Int => Self::Int,
+            Self::Float => Self::Float,
+            Self::String => Self::String,
+            Self::BitArray => Self::BitArray,
+            Self::UtfCodepoint => Self::UtfCodepoint,
+            Self::Bool => Self::Bool,
+            Self::Nil => Self::Nil,
+            Self::Tuple(elements) => Self::Tuple(
+                elements
+                    .iter()
+                    .map(|shape| shape.substitute(substitution))
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            ),
+            Self::List(item) => Self::List(Box::new(item.substitute(substitution))),
+            Self::Function(function) => Self::Function(Box::new(function.substitute(substitution))),
+            Self::Custom(custom) => Self::Custom(custom.substitute(substitution)),
+        }
+    }
+
     pub(crate) fn from_value_type(type_: ValueType) -> Self {
         match type_ {
+            ValueType::Parameter(parameter) => Self::Parameter(parameter),
             ValueType::Int => Self::Int,
             ValueType::Float => Self::Float,
             ValueType::String => Self::String,
@@ -228,6 +302,7 @@ impl ValueShape {
 
     pub(crate) fn value_type(&self) -> ValueType {
         match self {
+            Self::Parameter(parameter) => ValueType::Parameter(*parameter),
             Self::Int => ValueType::Int,
             Self::Float => ValueType::Float,
             Self::String => ValueType::String,
@@ -246,6 +321,9 @@ impl ValueShape {
 
     pub(crate) fn merge(&self, other: &Self) -> Option<Self> {
         match (self, other) {
+            (Self::Parameter(left), Self::Parameter(right)) if left == right => {
+                Some(Self::Parameter(*left))
+            }
             (Self::Int, Self::Int) => Some(Self::Int),
             (Self::Float, Self::Float) => Some(Self::Float),
             (Self::String, Self::String) => Some(Self::String),
@@ -273,6 +351,9 @@ impl ValueShape {
 
     pub(crate) fn refine(&self, other: &Self) -> Option<Self> {
         match (self, other) {
+            (Self::Parameter(left), Self::Parameter(right)) if left == right => {
+                Some(Self::Parameter(*left))
+            }
             (Self::Int, Self::Int) => Some(Self::Int),
             (Self::Float, Self::Float) => Some(Self::Float),
             (Self::String, Self::String) => Some(Self::String),
@@ -302,6 +383,7 @@ impl ValueShape {
 
     pub(crate) fn can_flow_to(&self, target: &Self) -> bool {
         match (self, target) {
+            (Self::Parameter(source), Self::Parameter(target)) => source == target,
             (Self::Int, Self::Int)
             | (Self::Float, Self::Float)
             | (Self::String, Self::String)
@@ -340,7 +422,7 @@ impl ValueShape {
 #[cfg(test)]
 mod tests {
     use super::{CustomConstructorRefinement, CustomValueShape, FunctionShape, ValueShape};
-    use crate::plan::{CustomTypeName, ValueType};
+    use crate::plan::{CustomTypeName, TypeScheme, TypeSubstitution, ValueType};
 
     fn custom(index: Option<usize>, argument: ValueShape) -> ValueShape {
         ValueShape::Custom(CustomValueShape::new(
@@ -386,6 +468,26 @@ mod tests {
                 ))]),
             ))),
         );
+    }
+
+    #[test]
+    fn primitive_and_parameter_shapes_survive_identity_operations() {
+        let substitution = TypeSubstitution::identity(&TypeScheme::new(0));
+
+        for shape in [
+            ValueShape::Int,
+            ValueShape::Float,
+            ValueShape::String,
+            ValueShape::BitArray,
+            ValueShape::UtfCodepoint,
+            ValueShape::Bool,
+            ValueShape::Nil,
+        ] {
+            assert_eq!(shape.substitute(&substitution), shape);
+        }
+
+        let parameter = ValueShape::Parameter(crate::plan::TypeParameterId(0));
+        assert_eq!(parameter.merge(&parameter), Some(parameter));
     }
 
     #[test]

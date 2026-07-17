@@ -5,6 +5,8 @@ use crate::plan::{
 use gleam_core::type_::{Type, TypeVar};
 use std::ops::Deref;
 
+use super::type_parameter::TypeParameterScope;
+
 impl ValueType {
     pub(super) fn from_gleam(type_: &Type) -> Option<Self> {
         ValueShape::from_gleam(type_).map(|shape| shape.value_type())
@@ -68,6 +70,69 @@ impl ValueShape {
                                 CustomConstructorRefinement::Exact(usize::from(index))
                             }),
                     )))
+                }
+            }
+        }
+    }
+
+    pub(super) fn from_gleam_in(type_: &Type, parameters: &mut TypeParameterScope) -> Self {
+        match type_ {
+            Type::Var { type_ } => match type_.borrow().deref() {
+                TypeVar::Link { type_ } => Self::from_gleam_in(type_.as_ref(), parameters),
+                TypeVar::Unbound { id } | TypeVar::Generic { id } => {
+                    Self::Parameter(parameters.resolve(*id))
+                }
+            },
+            Type::Tuple { elements } => Self::Tuple(
+                elements
+                    .iter()
+                    .map(|element| Self::from_gleam_in(element.as_ref(), parameters))
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            ),
+            Type::Fn { arguments, return_ } => Self::Function(Box::new(FunctionShape::new(
+                arguments
+                    .iter()
+                    .map(|argument| Self::from_gleam_in(argument.as_ref(), parameters))
+                    .collect(),
+                Self::from_gleam_in(return_.as_ref(), parameters),
+            ))),
+            Type::Named {
+                package,
+                module,
+                name,
+                arguments,
+                ..
+            } => {
+                if type_.is_int() {
+                    Self::Int
+                } else if type_.is_float() {
+                    Self::Float
+                } else if type_.is_string() {
+                    Self::String
+                } else if type_.is_bit_array() {
+                    Self::BitArray
+                } else if type_.is_utf_codepoint() {
+                    Self::UtfCodepoint
+                } else if type_.is_bool() {
+                    Self::Bool
+                } else if type_.is_nil() {
+                    Self::Nil
+                } else if let Some(element) = type_.list_type() {
+                    Self::List(Box::new(Self::from_gleam_in(element.as_ref(), parameters)))
+                } else {
+                    Self::Custom(CustomValueShape::new(
+                        CustomTypeName::new(package.clone(), module.clone(), name.clone()),
+                        arguments
+                            .iter()
+                            .map(|argument| Self::from_gleam_in(argument.as_ref(), parameters))
+                            .collect(),
+                        type_
+                            .custom_type_inferred_variant()
+                            .map_or(CustomConstructorRefinement::Any, |index| {
+                                CustomConstructorRefinement::Exact(usize::from(index))
+                            }),
+                    ))
                 }
             }
         }

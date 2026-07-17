@@ -21,7 +21,7 @@ impl CustomFieldAccess {
         &self.source
     }
 
-    pub(crate) fn into_parts(self) -> (CustomExpr, usize, Option<EcoString>) {
-        (*self.source, self.index, self.label)
+    pub(crate) fn index(&self) -> usize {
+        self.index
     }
 }

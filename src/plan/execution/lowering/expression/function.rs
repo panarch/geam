@@ -2,6 +2,7 @@ mod bit_array;
 mod bool;
 mod custom;
 mod float;
+mod generic;
 mod int;
 mod list;
 mod nil;
@@ -13,14 +14,23 @@ mod utf_codepoint;
 pub(in crate::plan::execution::lowering) use bit_array::bit_array_function_expr;
 pub(in crate::plan::execution::lowering) use bool::bool_function_expr;
 pub(in crate::plan::execution::lowering) use custom::{
-    custom_function_expr, custom_function_expr_kind,
+    custom_function_expr, custom_function_expr_kind, generic_custom_function_expr,
+    generic_custom_function_expr_kind,
 };
 pub(in crate::plan::execution::lowering) use float::float_function_expr;
+pub(in crate::plan::execution::lowering) use generic::{
+    generic_bit_array_function_expr, generic_bool_function_expr, generic_float_function_expr,
+    generic_int_function_expr, generic_nil_function_expr, generic_string_function_expr,
+    generic_tuple_function_expr, generic_utf_codepoint_function_expr,
+};
 pub(in crate::plan::execution::lowering) use int::int_function_expr;
-pub(in crate::plan::execution::lowering) use list::list_function_expr;
+pub(in crate::plan::execution::lowering) use list::{
+    generic_list_function_expr, list_function_expr,
+};
 pub(in crate::plan::execution::lowering) use nil::nil_function_expr;
 pub(in crate::plan::execution::lowering) use returning_function::{
-    function_function_expr, function_function_expr_kind,
+    function_function_expr, function_function_expr_kind, generic_function_function_expr,
+    generic_function_function_expr_kind,
 };
 pub(in crate::plan::execution::lowering) use string::string_function_expr;
 pub(in crate::plan::execution::lowering) use tuple::tuple_function_expr;
@@ -28,57 +38,359 @@ pub(in crate::plan::execution::lowering) use utf_codepoint::utf_codepoint_functi
 
 use crate::plan::{execution, module};
 
+pub(super) enum SpecializedFunctionBinding {
+    Int {
+        local: execution::IntFunctionLocalId,
+        value: execution::TypedFunctionExpr<execution::IntFunctionExpr>,
+    },
+    Float {
+        local: execution::FloatFunctionLocalId,
+        value: execution::TypedFunctionExpr<execution::FloatFunctionExpr>,
+    },
+    String {
+        local: execution::StringFunctionLocalId,
+        value: execution::TypedFunctionExpr<execution::StringFunctionExpr>,
+    },
+    BitArray {
+        local: execution::BitArrayFunctionLocalId,
+        value: execution::TypedFunctionExpr<execution::BitArrayFunctionExpr>,
+    },
+    UtfCodepoint {
+        local: execution::UtfCodepointFunctionLocalId,
+        value: execution::TypedFunctionExpr<execution::UtfCodepointFunctionExpr>,
+    },
+    Custom {
+        local: execution::CustomFunctionLocal,
+        value: execution::TypedFunctionExpr<execution::CustomFunctionExpr>,
+    },
+    Bool {
+        local: execution::BoolFunctionLocalId,
+        value: execution::TypedFunctionExpr<execution::BoolFunctionExpr>,
+    },
+    Nil {
+        local: execution::NilFunctionLocalId,
+        value: execution::TypedFunctionExpr<execution::NilFunctionExpr>,
+    },
+    Tuple {
+        local: execution::TupleFunctionLocalId,
+        value: execution::TypedFunctionExpr<execution::TupleFunctionExpr>,
+    },
+    List {
+        local: execution::ListFunctionLocal,
+        value: execution::TypedFunctionExpr<execution::ListFunctionExpr>,
+    },
+    Function {
+        local: execution::FunctionFunctionLocal,
+        value: execution::TypedFunctionExpr<execution::FunctionFunctionExpr>,
+    },
+}
+
 pub(in crate::plan::execution::lowering) fn typed_function_expr<ModuleExpr, ExecutionExpr>(
-    expression: module::TypedFunctionExpr<ModuleExpr>,
+    expression: &module::TypedFunctionExpr<ModuleExpr>,
     context: &mut super::super::LoweringContext,
-    lower: impl FnOnce(ModuleExpr, &mut super::super::LoweringContext) -> ExecutionExpr,
+    lower: impl FnOnce(&ModuleExpr, &mut super::super::LoweringContext) -> ExecutionExpr,
 ) -> execution::TypedFunctionExpr<ExecutionExpr> {
-    let (shape, expression) = expression.into_parts();
-    let shape = context.function_shape(shape);
-    execution::TypedFunctionExpr::new(shape, lower(expression, context))
+    let shape = context.function_shape(expression.shape().clone());
+    execution::TypedFunctionExpr::new(shape, lower(expression.expression(), context))
+}
+
+pub(super) fn specialized_function_binding(
+    index: usize,
+    expression: &module::FunctionExpr,
+    context: &mut super::super::LoweringContext,
+) -> SpecializedFunctionBinding {
+    let concrete = context.concrete_function_shape(expression.shape());
+    specialized_function_binding_for_shape(index, expression, concrete, context)
+}
+
+pub(super) fn specialized_function_binding_for_shape(
+    index: usize,
+    expression: &module::FunctionExpr,
+    concrete: super::super::specialization::ConcreteFunctionShape,
+    context: &mut super::super::LoweringContext,
+) -> SpecializedFunctionBinding {
+    let shape = context.lower_concrete_function_shape(&concrete);
+
+    match expression.kind() {
+        module::FunctionExprKind::Generic(expression) => {
+            specialized_generic_function_binding_for_shape(index, expression, concrete, context)
+        }
+        module::FunctionExprKind::Int(expression) => SpecializedFunctionBinding::Int {
+            local: execution::IntFunctionLocalId(index),
+            value: execution::TypedFunctionExpr::new(shape, int_function_expr(expression, context)),
+        },
+        module::FunctionExprKind::Float(expression) => SpecializedFunctionBinding::Float {
+            local: execution::FloatFunctionLocalId(index),
+            value: execution::TypedFunctionExpr::new(
+                shape,
+                float_function_expr(expression, context),
+            ),
+        },
+        module::FunctionExprKind::String(expression) => SpecializedFunctionBinding::String {
+            local: execution::StringFunctionLocalId(index),
+            value: execution::TypedFunctionExpr::new(
+                shape,
+                string_function_expr(expression, context),
+            ),
+        },
+        module::FunctionExprKind::BitArray(expression) => SpecializedFunctionBinding::BitArray {
+            local: execution::BitArrayFunctionLocalId(index),
+            value: execution::TypedFunctionExpr::new(
+                shape,
+                bit_array_function_expr(expression, context),
+            ),
+        },
+        module::FunctionExprKind::UtfCodepoint(expression) => {
+            SpecializedFunctionBinding::UtfCodepoint {
+                local: execution::UtfCodepointFunctionLocalId(index),
+                value: execution::TypedFunctionExpr::new(
+                    shape,
+                    utf_codepoint_function_expr(expression, context),
+                ),
+            }
+        }
+        module::FunctionExprKind::Custom(expression) => {
+            let value = custom_function_expr(expression, context);
+            let local = execution::CustomFunctionLocal::new(
+                execution::CustomFunctionLocalId(index),
+                value.custom_function_type().clone(),
+            );
+            SpecializedFunctionBinding::Custom {
+                local,
+                value: execution::TypedFunctionExpr::new(shape, value),
+            }
+        }
+        module::FunctionExprKind::Bool(expression) => SpecializedFunctionBinding::Bool {
+            local: execution::BoolFunctionLocalId(index),
+            value: execution::TypedFunctionExpr::new(
+                shape,
+                bool_function_expr(expression, context),
+            ),
+        },
+        module::FunctionExprKind::Nil(expression) => SpecializedFunctionBinding::Nil {
+            local: execution::NilFunctionLocalId(index),
+            value: execution::TypedFunctionExpr::new(shape, nil_function_expr(expression, context)),
+        },
+        module::FunctionExprKind::Tuple(expression) => SpecializedFunctionBinding::Tuple {
+            local: execution::TupleFunctionLocalId(index),
+            value: execution::TypedFunctionExpr::new(
+                shape,
+                tuple_function_expr(expression, context),
+            ),
+        },
+        module::FunctionExprKind::List(expression) => {
+            let item = context.concrete_value_shape(&crate::plan::ValueShape::from_value_type(
+                expression.return_item_type(),
+            ));
+            let type_ = shape.type_().clone();
+            SpecializedFunctionBinding::List {
+                local: super::super::frame::list_function_local_at(&item, type_, index, context),
+                value: execution::TypedFunctionExpr::new(
+                    shape,
+                    list_function_expr(expression, context),
+                ),
+            }
+        }
+        module::FunctionExprKind::Function(expression) => {
+            let value = function_function_expr(expression, context);
+            let local = execution::FunctionFunctionLocal::new(
+                execution::FunctionFunctionLocalId(index),
+                value.function_function_type().clone(),
+            );
+            SpecializedFunctionBinding::Function {
+                local,
+                value: execution::TypedFunctionExpr::new(shape, value),
+            }
+        }
+    }
+}
+
+pub(super) fn specialized_typed_generic_function_binding(
+    index: usize,
+    expression: &module::TypedFunctionExpr<module::GenericFunctionExpr>,
+    context: &mut super::super::LoweringContext,
+) -> SpecializedFunctionBinding {
+    specialized_generic_function_binding(index, expression.expression(), context)
+}
+
+pub(super) fn specialized_typed_generic_function_binding_for_shape(
+    index: usize,
+    expression: &module::TypedFunctionExpr<module::GenericFunctionExpr>,
+    concrete: super::super::specialization::ConcreteFunctionShape,
+    context: &mut super::super::LoweringContext,
+) -> SpecializedFunctionBinding {
+    specialized_generic_function_binding_for_shape(
+        index,
+        expression.expression(),
+        concrete,
+        context,
+    )
+}
+
+fn specialized_generic_function_binding(
+    index: usize,
+    expression: &module::GenericFunctionExpr,
+    context: &mut super::super::LoweringContext,
+) -> SpecializedFunctionBinding {
+    let concrete = context.concrete_function_shape(&expression.shape());
+    specialized_generic_function_binding_for_shape(index, expression, concrete, context)
+}
+
+fn specialized_generic_function_binding_for_shape(
+    index: usize,
+    expression: &module::GenericFunctionExpr,
+    concrete: super::super::specialization::ConcreteFunctionShape,
+    context: &mut super::super::LoweringContext,
+) -> SpecializedFunctionBinding {
+    use super::super::specialization::ConcreteValueShape as S;
+
+    let shape = context.lower_concrete_function_shape(&concrete);
+    match concrete.return_() {
+        S::Int => SpecializedFunctionBinding::Int {
+            local: execution::IntFunctionLocalId(index),
+            value: execution::TypedFunctionExpr::new(
+                shape,
+                generic_int_function_expr(expression, context),
+            ),
+        },
+        S::Float => SpecializedFunctionBinding::Float {
+            local: execution::FloatFunctionLocalId(index),
+            value: execution::TypedFunctionExpr::new(
+                shape,
+                generic_float_function_expr(expression, context),
+            ),
+        },
+        S::String => SpecializedFunctionBinding::String {
+            local: execution::StringFunctionLocalId(index),
+            value: execution::TypedFunctionExpr::new(
+                shape,
+                generic_string_function_expr(expression, context),
+            ),
+        },
+        S::BitArray => SpecializedFunctionBinding::BitArray {
+            local: execution::BitArrayFunctionLocalId(index),
+            value: execution::TypedFunctionExpr::new(
+                shape,
+                generic_bit_array_function_expr(expression, context),
+            ),
+        },
+        S::UtfCodepoint => SpecializedFunctionBinding::UtfCodepoint {
+            local: execution::UtfCodepointFunctionLocalId(index),
+            value: execution::TypedFunctionExpr::new(
+                shape,
+                generic_utf_codepoint_function_expr(expression, context),
+            ),
+        },
+        S::Custom(return_) => {
+            let value = generic_custom_function_expr(expression, return_, context);
+            let local = execution::CustomFunctionLocal::new(
+                execution::CustomFunctionLocalId(index),
+                value.custom_function_type().clone(),
+            );
+            SpecializedFunctionBinding::Custom {
+                local,
+                value: execution::TypedFunctionExpr::new(shape, value),
+            }
+        }
+        S::Bool => SpecializedFunctionBinding::Bool {
+            local: execution::BoolFunctionLocalId(index),
+            value: execution::TypedFunctionExpr::new(
+                shape,
+                generic_bool_function_expr(expression, context),
+            ),
+        },
+        S::Nil => SpecializedFunctionBinding::Nil {
+            local: execution::NilFunctionLocalId(index),
+            value: execution::TypedFunctionExpr::new(
+                shape,
+                generic_nil_function_expr(expression, context),
+            ),
+        },
+        S::Tuple(_) => SpecializedFunctionBinding::Tuple {
+            local: execution::TupleFunctionLocalId(index),
+            value: execution::TypedFunctionExpr::new(
+                shape,
+                generic_tuple_function_expr(expression, context),
+            ),
+        },
+        S::List(item) => {
+            let type_ = shape.type_().clone();
+            SpecializedFunctionBinding::List {
+                local: super::super::frame::list_function_local_at(item, type_, index, context),
+                value: execution::TypedFunctionExpr::new(
+                    shape,
+                    generic_list_function_expr(expression, item, context),
+                ),
+            }
+        }
+        S::Function(return_) => {
+            let value = generic_function_function_expr(expression, return_, context);
+            let local = execution::FunctionFunctionLocal::new(
+                execution::FunctionFunctionLocalId(index),
+                value.function_function_type().clone(),
+            );
+            SpecializedFunctionBinding::Function {
+                local,
+                value: execution::TypedFunctionExpr::new(shape, value),
+            }
+        }
+    }
 }
 
 fn function_reference<ModuleFunction, ExecutionFunction>(
-    reference: module::TypedFunctionReference<ModuleFunction>,
+    reference: &module::TypedFunctionReference<ModuleFunction>,
     context: &mut super::super::LoweringContext,
-    lower_function: impl FnOnce(ModuleFunction, &mut super::super::LoweringContext) -> ExecutionFunction,
+    lower_function: impl FnOnce(
+        &module::FunctionInstantiation,
+        &mut super::super::LoweringContext,
+    ) -> ExecutionFunction,
 ) -> execution::FunctionReference<ExecutionFunction> {
-    let (function, params) = reference.into_parts();
     execution::FunctionReference::new(
-        lower_function(function, context),
-        params
-            .into_iter()
-            .map(|param| crate::plan::execution::lowering::param::param_slot(param, context))
+        lower_function(reference.instantiation(), context),
+        reference
+            .params()
+            .iter()
+            .map(|param| {
+                crate::plan::execution::lowering::param::target_param_slot(
+                    reference.instantiation(),
+                    param,
+                    context,
+                )
+            })
             .collect(),
     )
 }
 
-fn closure_template<ModuleFunction, ExecutionFunction>(
-    function: ModuleFunction,
-    params: Vec<module::ParamSlot>,
-    captures: Vec<module::CaptureArg>,
+fn closure_template<ExecutionFunction>(
+    function: &module::FunctionInstantiation,
+    params: &[module::ParamSlot],
+    captures: &[module::CaptureArg],
     context: &mut super::super::LoweringContext,
-    lower_function: impl FnOnce(ModuleFunction, &mut super::super::LoweringContext) -> ExecutionFunction,
+    lower_function: impl FnOnce(
+        &module::FunctionInstantiation,
+        &mut super::super::LoweringContext,
+    ) -> ExecutionFunction,
 ) -> execution::ClosureTemplate<ExecutionFunction> {
     execution::ClosureTemplate::new(
         lower_function(function, context),
         params
-            .into_iter()
-            .map(|param| crate::plan::execution::lowering::param::param_slot(param, context))
+            .iter()
+            .map(|param| {
+                crate::plan::execution::lowering::param::target_param_slot(function, param, context)
+            })
             .collect(),
-        super::capture_args(captures, context),
+        super::capture_args(function, captures, context),
     )
 }
 
 pub(in crate::plan::execution::lowering) fn function_expr(
-    expression: module::FunctionExpr,
+    expression: &module::FunctionExpr,
     context: &mut super::super::LoweringContext,
 ) -> execution::FunctionExpr {
-    let (shape, kind) = expression.into_parts();
-    let shape = context.function_shape(shape);
+    let shape = context.function_shape(expression.shape().clone());
     execution::FunctionExpr::from_parts(
         shape,
-        match kind {
+        match expression.kind() {
             module::FunctionExprKind::Int(expression) => {
                 execution::FunctionExprKind::Int(int_function_expr(expression, context))
             }
@@ -114,8 +426,67 @@ pub(in crate::plan::execution::lowering) fn function_expr(
             module::FunctionExprKind::Function(expression) => {
                 execution::FunctionExprKind::Function(function_function_expr(expression, context))
             }
+            module::FunctionExprKind::Generic(expression) => {
+                return lower_generic_function_expr(expression, context);
+            }
         },
     )
+}
+
+fn lower_generic_function_expr(
+    expression: &module::GenericFunctionExpr,
+    context: &mut super::super::LoweringContext,
+) -> execution::FunctionExpr {
+    let shape = context.concrete_function_shape(&expression.shape());
+    let lowered_shape = context.function_shape(shape.to_module_shape());
+    let kind = match shape.return_() {
+        super::super::specialization::ConcreteValueShape::Int => {
+            execution::FunctionExprKind::Int(generic_int_function_expr(expression, context))
+        }
+        super::super::specialization::ConcreteValueShape::String => {
+            execution::FunctionExprKind::String(generic_string_function_expr(expression, context))
+        }
+        super::super::specialization::ConcreteValueShape::BitArray => {
+            execution::FunctionExprKind::BitArray(generic_bit_array_function_expr(
+                expression, context,
+            ))
+        }
+        super::super::specialization::ConcreteValueShape::UtfCodepoint => {
+            execution::FunctionExprKind::UtfCodepoint(generic_utf_codepoint_function_expr(
+                expression, context,
+            ))
+        }
+        super::super::specialization::ConcreteValueShape::Custom(return_shape) => {
+            execution::FunctionExprKind::Custom(generic_custom_function_expr(
+                expression,
+                return_shape,
+                context,
+            ))
+        }
+        super::super::specialization::ConcreteValueShape::Float => {
+            execution::FunctionExprKind::Float(generic_float_function_expr(expression, context))
+        }
+        super::super::specialization::ConcreteValueShape::Bool => {
+            execution::FunctionExprKind::Bool(generic_bool_function_expr(expression, context))
+        }
+        super::super::specialization::ConcreteValueShape::Nil => {
+            execution::FunctionExprKind::Nil(generic_nil_function_expr(expression, context))
+        }
+        super::super::specialization::ConcreteValueShape::Tuple(_) => {
+            execution::FunctionExprKind::Tuple(generic_tuple_function_expr(expression, context))
+        }
+        super::super::specialization::ConcreteValueShape::List(item) => {
+            execution::FunctionExprKind::List(generic_list_function_expr(expression, item, context))
+        }
+        super::super::specialization::ConcreteValueShape::Function(return_shape) => {
+            execution::FunctionExprKind::Function(generic_function_function_expr(
+                expression,
+                return_shape,
+                context,
+            ))
+        }
+    };
+    execution::FunctionExpr::from_parts(lowered_shape, kind)
 }
 
 #[cfg(test)]

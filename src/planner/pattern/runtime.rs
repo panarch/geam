@@ -91,7 +91,7 @@ pub(in crate::planner) fn plan_runtime_pattern(
 ) -> Result<PlannedRuntimePattern, PlanError> {
     match pattern {
         Pattern::Variable { name, type_, .. } => {
-            let binding = define_binding(name, type_.as_ref(), context)?;
+            let binding = define_binding(name, type_.as_ref(), context);
             Ok(PlannedRuntimePattern {
                 pattern: AssertPattern::Bind(binding.clone()),
                 is_total: true,
@@ -100,7 +100,7 @@ pub(in crate::planner) fn plan_runtime_pattern(
             })
         }
         Pattern::Discard { type_, .. } => {
-            let type_ = ValueType::from_gleam(type_.as_ref()).ok_or_else(invalid_pattern)?;
+            let type_ = context.value_type(type_.as_ref());
             Ok(PlannedRuntimePattern {
                 pattern: AssertPattern::Discard,
                 is_total: true,
@@ -182,8 +182,7 @@ pub(in crate::planner) fn plan_runtime_pattern(
             type_,
             ..
         } => {
-            let Some(ValueShape::Custom(source_shape)) = ValueShape::from_gleam(type_.as_ref())
-            else {
+            let ValueShape::Custom(source_shape) = context.value_shape(type_.as_ref()) else {
                 return Err(invalid_pattern());
             };
             plan_custom_pattern(arguments, constructor, type_, source_shape, context)
@@ -211,7 +210,7 @@ pub(in crate::planner) fn plan_runtime_pattern(
             })
         }
         Pattern::Assign { name, pattern, .. } => {
-            let shape = pattern_value_shape(&pattern)?;
+            let shape = pattern_value_shape(&pattern, context)?;
             let planned = plan_runtime_pattern(*pattern, context)?;
             let binding = define_value_binding(name, shape, context);
             Ok(PlannedRuntimePattern {
@@ -250,7 +249,7 @@ fn plan_list_pattern(
     type_: Arc<Type>,
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedRuntimePattern, PlanError> {
-    let Some(ValueShape::List(item_shape)) = ValueShape::from_gleam(type_.as_ref()) else {
+    let ValueShape::List(item_shape) = context.value_shape(type_.as_ref()) else {
         return Err(invalid_pattern());
     };
     let element_type = item_shape.value_type();
@@ -284,8 +283,8 @@ fn plan_list_tail(
 ) -> Result<ListAssertTail, PlanError> {
     match tail.pattern {
         Pattern::Variable { name, type_, .. }
-            if ValueShape::from_gleam(type_.as_ref())
-                == Some(ValueShape::List(Box::new(item_shape.clone()))) =>
+            if context.value_shape(type_.as_ref())
+                == ValueShape::List(Box::new(item_shape.clone())) =>
         {
             Ok(ListAssertTail::bind(
                 context.define_list_local_shape(name.clone(), item_shape.clone()),
@@ -293,8 +292,8 @@ fn plan_list_tail(
             ))
         }
         Pattern::Discard { type_, .. }
-            if ValueShape::from_gleam(type_.as_ref())
-                == Some(ValueShape::List(Box::new(item_shape.clone()))) =>
+            if context.value_shape(type_.as_ref())
+                == ValueShape::List(Box::new(item_shape.clone())) =>
         {
             Ok(ListAssertTail::Ignore)
         }
@@ -355,7 +354,7 @@ fn plan_custom_pattern(
     };
     let field_types = arguments
         .iter()
-        .map(|argument| pattern_value_type(&argument.value))
+        .map(|argument| pattern_value_type(&argument.value, context))
         .collect::<Result<Vec<_>, _>>()?;
     let resolved_constructor =
         context.custom_pattern_constructor(type_.as_ref(), &constructor, field_types)?;
@@ -432,13 +431,9 @@ fn total_bits_binding(
     }
 }
 
-fn define_binding(
-    name: EcoString,
-    type_: &Type,
-    context: &mut PlanContext<'_>,
-) -> Result<AssertBinding, PlanError> {
-    let shape = ValueShape::from_gleam(type_).ok_or_else(invalid_pattern)?;
-    Ok(define_value_binding(name, shape, context))
+fn define_binding(name: EcoString, type_: &Type, context: &mut PlanContext<'_>) -> AssertBinding {
+    let shape = context.value_shape(type_);
+    define_value_binding(name, shape, context)
 }
 
 fn define_value_binding(
@@ -462,11 +457,32 @@ fn define_string_binding(
 
 pub(in crate::planner) fn pattern_value_type(
     pattern: &TypedPattern,
+    context: &mut PlanContext<'_>,
 ) -> Result<ValueType, PlanError> {
-    pattern_value_shape(pattern).map(|shape| shape.value_type())
+    let mut value_shape = |type_: &Type| context.value_shape(type_);
+    pattern_value_shape_with(pattern, &mut value_shape).map(|shape| shape.value_type())
 }
 
-fn pattern_value_shape(pattern: &TypedPattern) -> Result<ValueShape, PlanError> {
+fn pattern_value_shape(
+    pattern: &TypedPattern,
+    context: &mut PlanContext<'_>,
+) -> Result<ValueShape, PlanError> {
+    let mut value_shape = |type_: &Type| context.value_shape(type_);
+    pattern_value_shape_with(pattern, &mut value_shape)
+}
+
+pub(in crate::planner) fn pattern_value_type_in_context(
+    pattern: &TypedPattern,
+    context: &PlanContext<'_>,
+) -> Result<ValueType, PlanError> {
+    let mut value_shape = |type_: &Type| context.value_shape_in_scope(type_);
+    pattern_value_shape_with(pattern, &mut value_shape).map(|shape| shape.value_type())
+}
+
+fn pattern_value_shape_with(
+    pattern: &TypedPattern,
+    value_shape: &mut impl FnMut(&Type) -> ValueShape,
+) -> Result<ValueShape, PlanError> {
     let shape = match pattern {
         Pattern::Int { .. } => ValueShape::Int,
         Pattern::Float { .. } => ValueShape::Float,
@@ -475,18 +491,16 @@ fn pattern_value_shape(pattern: &TypedPattern) -> Result<ValueShape, PlanError> 
         | Pattern::Discard { type_, .. }
         | Pattern::List { type_, .. }
         | Pattern::Constructor { type_, .. }
-        | Pattern::Invalid { type_, .. } => {
-            ValueShape::from_gleam(type_.as_ref()).ok_or_else(invalid_pattern)?
-        }
+        | Pattern::Invalid { type_, .. } => value_shape(type_.as_ref()),
         Pattern::Tuple { elements, .. } => ValueShape::Tuple(
             elements
                 .iter()
-                .map(pattern_value_shape)
+                .map(|element| pattern_value_shape_with(element, value_shape))
                 .collect::<Result<Vec<_>, _>>()?
                 .into_boxed_slice(),
         ),
         Pattern::BitArray { .. } => ValueShape::BitArray,
-        Pattern::Assign { pattern, .. } => pattern_value_shape(pattern)?,
+        Pattern::Assign { pattern, .. } => pattern_value_shape_with(pattern, value_shape)?,
         Pattern::BitArraySize(_) => return Err(invalid_pattern()),
     };
     Ok(shape)
@@ -507,8 +521,9 @@ mod tests {
         total_bit_array_binding,
     };
     use crate::plan::{
-        AssertPattern, BitArrayPattern, CustomBindingPattern, CustomTypeName, TotalBindingPattern,
-        ValueShape, ValueType,
+        AssertBinding, AssertPattern, BitArrayPattern, CustomBindingPattern, CustomTypeName,
+        GenericLocal, GenericLocalId, ParamLocal, TotalBindingPattern, TypeParameterId, ValueShape,
+        ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
     use crate::planner::{InvalidCustomTypeReason, InvalidTypedAstReason, PlanError};
@@ -542,7 +557,8 @@ mod tests {
             }),
             &mut context,
         ));
-        assert_invalid(plan_runtime_pattern(
+        let parameter = TypeParameterId(0);
+        let generic_binding = plan_runtime_pattern(
             Pattern::Variable {
                 location: span,
                 name: "value".into(),
@@ -550,15 +566,42 @@ mod tests {
                 origin: VariableOrigin::generated(),
             },
             &mut context,
-        ));
-        assert_invalid(plan_runtime_pattern(
+        )
+        .expect("generic variable pattern should plan");
+        let binding = AssertBinding::new(
+            ParamLocal::generic(GenericLocal::new(GenericLocalId(0), parameter)),
+            "value".into(),
+            ValueShape::Parameter(parameter),
+        );
+        assert_eq!(
+            generic_binding.pattern,
+            AssertPattern::Bind(binding.clone())
+        );
+        assert!(generic_binding.is_total);
+        assert_eq!(
+            generic_binding.total_binding,
+            Some(TotalBindingPattern::bind(binding)),
+        );
+        assert!(generic_binding.custom_binding.is_none());
+
+        let generic_discard = plan_runtime_pattern(
             Pattern::Discard {
                 name: "_".into(),
                 location: span,
                 type_: type_::generic_var(0),
             },
             &mut context,
-        ));
+        )
+        .expect("generic discard pattern should plan");
+        assert_eq!(generic_discard.pattern, AssertPattern::Discard);
+        assert!(generic_discard.is_total);
+        assert_eq!(
+            generic_discard.total_binding,
+            Some(TotalBindingPattern::discard(ValueType::Parameter(
+                parameter
+            ))),
+        );
+        assert!(generic_discard.custom_binding.is_none());
         assert_invalid(plan_runtime_pattern(
             Pattern::Tuple {
                 location: span,
@@ -748,50 +791,65 @@ mod tests {
             None
         );
         assert_eq!(
-            pattern_value_type(&Pattern::Variable {
-                location: span,
-                name: "value".into(),
-                type_: type_::generic_var(0),
-                origin: VariableOrigin::generated(),
-            }),
-            Err(invalid_pattern()),
+            pattern_value_type(
+                &Pattern::Variable {
+                    location: span,
+                    name: "value".into(),
+                    type_: type_::generic_var(0),
+                    origin: VariableOrigin::generated(),
+                },
+                &mut context
+            ),
+            Ok(ValueType::Parameter(parameter)),
         );
         assert_eq!(
-            pattern_value_type(&Pattern::Invalid {
-                location: span,
-                type_: type_::int(),
-            }),
+            pattern_value_type(
+                &Pattern::Invalid {
+                    location: span,
+                    type_: type_::int(),
+                },
+                &mut context
+            ),
             Ok(ValueType::Int),
         );
         assert_eq!(
-            pattern_value_type(&Pattern::BitArraySize(BitArraySize::Int {
-                location: span,
-                value: "1".into(),
-                int_value: BigInt::from(1),
-            })),
-            Err(invalid_pattern()),
-        );
-        assert_eq!(
-            pattern_value_type(&Pattern::Tuple {
-                location: span,
-                elements: vec![Pattern::BitArraySize(BitArraySize::Int {
+            pattern_value_type(
+                &Pattern::BitArraySize(BitArraySize::Int {
                     location: span,
                     value: "1".into(),
                     int_value: BigInt::from(1),
-                })],
-            }),
+                }),
+                &mut context
+            ),
             Err(invalid_pattern()),
         );
         assert_eq!(
-            pattern_value_type(&Pattern::Assign {
-                location: span,
-                name: "alias".into(),
-                pattern: Box::new(Pattern::BitArraySize(BitArraySize::Int {
+            pattern_value_type(
+                &Pattern::Tuple {
                     location: span,
-                    value: "1".into(),
-                    int_value: BigInt::from(1),
-                })),
-            }),
+                    elements: vec![Pattern::BitArraySize(BitArraySize::Int {
+                        location: span,
+                        value: "1".into(),
+                        int_value: BigInt::from(1),
+                    })],
+                },
+                &mut context
+            ),
+            Err(invalid_pattern()),
+        );
+        assert_eq!(
+            pattern_value_type(
+                &Pattern::Assign {
+                    location: span,
+                    name: "alias".into(),
+                    pattern: Box::new(Pattern::BitArraySize(BitArraySize::Int {
+                        location: span,
+                        value: "1".into(),
+                        int_value: BigInt::from(1),
+                    })),
+                },
+                &mut context
+            ),
             Err(invalid_pattern()),
         );
     }

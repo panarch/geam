@@ -3,6 +3,7 @@ mod bool_;
 mod custom;
 mod float;
 mod function;
+mod generic;
 mod int;
 mod list;
 mod nil;
@@ -16,7 +17,7 @@ use crate::plan::{
     ValueShape, ValueType,
 };
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidCaseShapeReason, PlanError, UnsupportedCaseReason};
+use crate::planner::error::{InvalidCaseShapeReason, PlanError};
 use crate::planner::statement::plan_variable_runtime_step;
 use ecow::EcoString;
 use gleam_core::ast::{Pattern, SrcSpan, TypedClause, TypedClauseGuard, TypedExpr};
@@ -67,6 +68,7 @@ impl CaseSubjectVariants {
     #[cfg(test)]
     fn from_value_type(value_type: &ValueType) -> Self {
         match value_type {
+            ValueType::Parameter(_) => Self::Other,
             ValueType::Custom(_) => Self::Custom,
             ValueType::Tuple(elements) => {
                 Self::Tuple(elements.iter().map(Self::from_value_type).collect())
@@ -106,14 +108,13 @@ pub(super) fn plan(
 ) -> Result<Expr, PlanError> {
     let clauses = case_clauses(clauses)?;
     let source_type = subject.type_();
-    let Some(subject_shape) = ValueShape::from_gleam(source_type.as_ref()) else {
-        return Err(super::unsupported_case(
-            UnsupportedCaseReason::UnsupportedSubjectType,
-        ));
-    };
+    let subject_shape = context.value_shape(source_type.as_ref());
     let subject_type = subject_shape.value_type();
     let subject_variants = CaseSubjectVariants::from_gleam(source_type.as_ref());
     match subject_type {
+        ValueType::Parameter(parameter) => {
+            generic::plan(type_, subject, parameter, clauses, context)
+        }
         ValueType::Bool => bool_::plan(type_, subject, clauses, context),
         ValueType::Int => int::plan(type_, subject, clauses, context),
         ValueType::String => string::plan(type_, subject, clauses, context),
@@ -162,11 +163,7 @@ pub(super) fn plan_multi(
     let mut subject_variants = Vec::with_capacity(subjects.len());
     for subject in &subjects {
         let source_type = subject.type_();
-        let Some(shape) = ValueShape::from_gleam(source_type.as_ref()) else {
-            return Err(super::unsupported_case(
-                UnsupportedCaseReason::UnsupportedSubjectType,
-            ));
-        };
+        let shape = context.value_shape(source_type.as_ref());
         subject_variants.push(CaseSubjectVariants::from_gleam(source_type.as_ref()));
         subject_types.push(shape.value_type());
         subject_shapes.push(shape);
@@ -324,8 +321,12 @@ fn pattern_group_location(patterns: &[Pattern<Arc<Type>>]) -> SrcSpan {
     SrcSpan::new(start, end)
 }
 
-fn validate_case_branch_type(case_type: &Type, branch: &Expr) -> Result<(), PlanError> {
-    if ValueType::from_gleam(case_type) == Some(branch.value_type()) {
+fn validate_case_branch_type(
+    _case_type: &Type,
+    expected: &ValueShape,
+    branch: &Expr,
+) -> Result<(), PlanError> {
+    if expected.value_type() == branch.value_type() {
         return Ok(());
     }
 
@@ -335,6 +336,32 @@ fn validate_case_branch_type(case_type: &Type, branch: &Expr) -> Result<(), Plan
 }
 
 fn bool_case_expr(subject: BoolExpr, true_: Expr, false_: Expr) -> Result<Expr, PlanError> {
+    if let (ExprKind::Generic(true_), ExprKind::Generic(false_)) = (true_.kind(), false_.kind()) {
+        let Some(expression) =
+            crate::plan::GenericExpr::bool_case(subject, true_.clone(), false_.clone())
+        else {
+            return Err(super::invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
+        };
+        return Ok(Expr::generic(expression));
+    }
+    if let (ExprKind::Function(true_), ExprKind::Function(false_)) = (true_.kind(), false_.kind())
+        && let (FunctionExprKind::Generic(true_), FunctionExprKind::Generic(false_)) =
+            (true_.kind(), false_.kind())
+    {
+        let Some(expression) =
+            crate::plan::GenericFunctionExpr::bool_case(subject, true_.clone(), false_.clone())
+        else {
+            return Err(super::invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
+        };
+        return Ok(Expr::function(crate::plan::FunctionExpr::generic(
+            expression,
+        )));
+    }
+
     let true_shape = true_.value_shape().clone();
     let false_shape = false_.value_shape().clone();
     let branches = match (true_.into_kind(), false_.into_kind()) {
@@ -348,11 +375,14 @@ fn bool_case_expr(subject: BoolExpr, true_: Expr, false_: Expr) -> Result<Expr, 
         (ExprKind::UtfCodepoint(true_), ExprKind::UtfCodepoint(false_)) => {
             BoolCaseBranches::UtfCodepoint { true_, false_ }
         }
-        (ExprKind::Custom(true_), ExprKind::Custom(false_)) => BoolCaseBranches::Custom(
-            crate::plan::CustomBoolCaseBranches::try_new(true_, false_).ok_or_else(|| {
-                super::invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch)
-            })?,
-        ),
+        (ExprKind::Custom(true_), ExprKind::Custom(false_)) => {
+            let Some(branches) = crate::plan::CustomBoolCaseBranches::try_new(true_, false_) else {
+                return Err(super::invalid_case_shape(
+                    InvalidCaseShapeReason::BranchReturnTypeMismatch,
+                ));
+            };
+            BoolCaseBranches::Custom(branches)
+        }
         (ExprKind::Float(true_), ExprKind::Float(false_)) => {
             BoolCaseBranches::Float { true_, false_ }
         }
@@ -373,22 +403,74 @@ fn bool_case_expr(subject: BoolExpr, true_: Expr, false_: Expr) -> Result<Expr, 
             ));
         }
     };
-    let shape = case_result_shape(std::iter::once(&true_shape), &false_shape)?;
-
-    Expr::bool_case(subject, branches)
-        .with_resolved_shape(shape)
-        .ok_or_else(|| super::invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch))
+    let shape = case_result_shape(std::slice::from_ref(&true_shape), &false_shape)?;
+    match Expr::bool_case(subject, branches).with_resolved_shape(shape) {
+        Some(expression) => Ok(expression),
+        None => Err(super::invalid_case_shape(
+            InvalidCaseShapeReason::BranchReturnTypeMismatch,
+        )),
+    }
 }
 
-fn case_result_shape<'a>(
-    branches: impl IntoIterator<Item = &'a crate::plan::ValueShape>,
+fn generic_case_clauses<Pattern>(
+    clauses: Vec<(Pattern, Expr)>,
+) -> Result<Vec<(Pattern, crate::plan::GenericExpr)>, PlanError> {
+    let (patterns, clauses): (Vec<_>, Vec<_>) = clauses.into_iter().unzip();
+    generic_case_bodies(clauses).map(|clauses| patterns.into_iter().zip(clauses).collect())
+}
+
+fn generic_case_bodies(clauses: Vec<Expr>) -> Result<Vec<crate::plan::GenericExpr>, PlanError> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for clause in clauses {
+        let ExprKind::Generic(clause) = clause.into_kind() else {
+            return Err(super::invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
+        };
+        typed_clauses.push(clause);
+    }
+    Ok(typed_clauses)
+}
+
+fn generic_function_case_clauses<Pattern>(
+    clauses: Vec<(Pattern, Expr)>,
+) -> Result<Vec<(Pattern, crate::plan::GenericFunctionExpr)>, PlanError> {
+    let (patterns, clauses): (Vec<_>, Vec<_>) = clauses.into_iter().unzip();
+    generic_function_case_bodies(clauses).map(|clauses| patterns.into_iter().zip(clauses).collect())
+}
+
+fn generic_function_case_bodies(
+    clauses: Vec<Expr>,
+) -> Result<Vec<crate::plan::GenericFunctionExpr>, PlanError> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for clause in clauses {
+        let ExprKind::Function(clause) = clause.into_kind() else {
+            return Err(super::invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
+        };
+        let Some(clause) = clause.into_generic() else {
+            return Err(super::invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
+        };
+        typed_clauses.push(clause);
+    }
+    Ok(typed_clauses)
+}
+
+fn case_result_shape(
+    branches: &[crate::plan::ValueShape],
     fallback: &crate::plan::ValueShape,
 ) -> Result<crate::plan::ValueShape, PlanError> {
     let mut shape = fallback.clone();
     for branch in branches {
-        shape = branch.merge(&shape).ok_or_else(|| {
-            super::invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch)
-        })?;
+        let Some(merged) = branch.merge(&shape) else {
+            return Err(super::invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
+        };
+        shape = merged;
     }
     Ok(shape)
 }
@@ -398,6 +480,9 @@ fn bool_list_case_branches(
     false_: ListExpr,
 ) -> Result<BoolListCaseBranches, PlanError> {
     Ok(match (true_, false_) {
+        (ListExpr::Generic(true_), ListExpr::Generic(false_)) if true_.item() == false_.item() => {
+            BoolListCaseBranches::Generic { true_, false_ }
+        }
         (ListExpr::Int(true_), ListExpr::Int(false_)) => {
             BoolListCaseBranches::Int { true_, false_ }
         }
@@ -489,13 +574,8 @@ fn bool_function_case_branches(
     })
 }
 
-fn case_return_shape(case_type: &Type) -> Result<ValueShape, PlanError> {
-    ValueShape::from_gleam(case_type)
-        .ok_or_else(|| super::invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch))
-}
-
 #[cfg(test)]
-fn invalid_case_return_type() -> Arc<Type> {
+fn mismatched_generic_case_return_type() -> Arc<Type> {
     gleam_core::type_::generic_var(0)
 }
 
@@ -513,7 +593,7 @@ fn plan_case_branch(
             return_shape.clone(),
             context,
         )?;
-        validate_case_branch_type(case_type, &branch)?;
+        validate_case_branch_type(case_type, return_shape, &branch)?;
 
         if steps.is_empty() {
             Ok(branch)
@@ -628,7 +708,7 @@ fn plan_ordered_case_candidate(
             return_shape.clone(),
             context,
         )?;
-        validate_case_branch_type(case_type, &branch)?;
+        validate_case_branch_type(case_type, return_shape, &branch)?;
         let mut binding_steps = if is_total && !is_guarded {
             total_branch_steps
         } else {
@@ -759,7 +839,9 @@ fn internal_bool_case_subject_name(local: BoolLocalId) -> EcoString {
 #[allow(clippy::arc_with_non_send_sync)]
 mod tests {
     use crate::plan::{
-        BoolExpr, BoolListCaseBranches, Expr, FunctionType, IntExpr, ListExpr, ValueType,
+        BoolExpr, BoolListCaseBranches, Expr, FunctionExpr, FunctionType, GenericExpr,
+        GenericFunctionExpr, GenericFunctionLocal, GenericFunctionLocalId, GenericFunctionType,
+        GenericLocal, GenericLocalId, IntExpr, ListExpr, TypeParameterId, ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
@@ -769,8 +851,7 @@ mod tests {
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span, expect_plan_error};
     use crate::planner::{
-        InvalidCaseShapeReason, InvalidTypedAstReason, PlanError, UnsupportedCaseReason,
-        UnsupportedExpressionKind,
+        InvalidCaseShapeReason, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
     };
     use ecow::EcoString;
     use gleam_core::ast::TypedExpr;
@@ -780,7 +861,176 @@ mod tests {
     use std::sync::Arc;
 
     #[test]
+    fn reject_margin_generic_bool_case_handoffs() {
+        let generic = |parameter, local| {
+            Expr::generic(crate::plan::GenericExpr::local_get(
+                crate::plan::GenericLocal::new(
+                    crate::plan::GenericLocalId(local),
+                    crate::plan::TypeParameterId(parameter),
+                ),
+                "generic".into(),
+            ))
+        };
+        let generic_function = |parameter, local| {
+            let type_ = crate::plan::GenericFunctionType::new(
+                vec![crate::plan::ValueShape::Int],
+                crate::plan::TypeParameterId(parameter),
+            );
+            Expr::function(crate::plan::FunctionExpr::generic(
+                crate::plan::GenericFunctionExpr::local_get(
+                    crate::plan::GenericFunctionLocal::new(
+                        crate::plan::GenericFunctionLocalId(local),
+                        type_,
+                    ),
+                    "generic_function".into(),
+                ),
+            ))
+        };
+        let branch_mismatch =
+            || super::super::invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch);
+
+        assert_eq!(
+            super::bool_case_expr(BoolExpr::value(true), generic(0, 0), generic(1, 1),),
+            Err(branch_mismatch()),
+        );
+        assert_eq!(
+            super::bool_case_expr(
+                BoolExpr::value(true),
+                generic_function(0, 0),
+                generic_function(1, 1),
+            ),
+            Err(branch_mismatch()),
+        );
+        assert_eq!(
+            super::bool_case_expr(
+                BoolExpr::value(true),
+                generic(0, 0),
+                Expr::int(IntExpr::value(0.into()))
+            ),
+            Err(branch_mismatch()),
+        );
+        assert_eq!(
+            super::generic_case_bodies(vec![Expr::int(IntExpr::value(0.into()))]),
+            Err(branch_mismatch()),
+        );
+        assert_eq!(
+            super::generic_function_case_bodies(vec![Expr::int(IntExpr::value(0.into()))]),
+            Err(branch_mismatch()),
+        );
+
+        let int_function = crate::plan::FunctionExpr::int(crate::plan::IntFunctionExpr::local_get(
+            crate::plan::IntFunctionLocalId(0),
+            "int_function".into(),
+            crate::plan::FunctionType::new(Vec::new(), crate::plan::ValueType::Int),
+        ));
+        assert_eq!(
+            super::generic_function_case_bodies(vec![Expr::function(int_function.clone())]),
+            Err(branch_mismatch()),
+        );
+        assert_eq!(
+            super::bool_function_case_branches(
+                generic_function(0, 0)
+                    .into_function()
+                    .expect("generic function expression"),
+                generic_function(0, 1)
+                    .into_function()
+                    .expect("generic function expression"),
+            ),
+            Err(branch_mismatch()),
+        );
+
+        let custom = |name: &str, local| {
+            Expr::custom(crate::plan::CustomExpr::local_get(
+                crate::plan::CustomLocal::new(
+                    crate::plan::CustomLocalId(local),
+                    crate::plan::CustomType::new(
+                        crate::plan::CustomTypeName::new("geam".into(), "main".into(), name.into()),
+                        Vec::new(),
+                    ),
+                ),
+                name.into(),
+            ))
+        };
+        assert_eq!(
+            super::bool_case_expr(
+                BoolExpr::value(true),
+                custom("First", 0),
+                custom("Second", 1),
+            ),
+            Err(branch_mismatch()),
+        );
+    }
+
+    #[test]
+    fn generic_bool_case_handoffs_preserve_parameter_owned_shapes() {
+        let parameter = TypeParameterId(0);
+        let subject = BoolExpr::value(true);
+        let true_ = GenericExpr::local_get(
+            GenericLocal::new(GenericLocalId(0), parameter),
+            "true_value".into(),
+        );
+        let false_ = GenericExpr::local_get(
+            GenericLocal::new(GenericLocalId(1), parameter),
+            "false_value".into(),
+        );
+        assert_eq!(
+            super::bool_case_expr(
+                subject.clone(),
+                Expr::generic(true_.clone()),
+                Expr::generic(false_.clone()),
+            ),
+            Ok(Expr::generic(
+                GenericExpr::bool_case(subject.clone(), true_, false_)
+                    .expect("matching parameter branches have one generic result shape"),
+            )),
+        );
+
+        let function_type = GenericFunctionType::new(vec![ValueShape::Int], parameter);
+        let true_ = GenericFunctionExpr::local_get(
+            GenericFunctionLocal::new(GenericFunctionLocalId(0), function_type.clone()),
+            "true_function".into(),
+        );
+        let false_ = GenericFunctionExpr::local_get(
+            GenericFunctionLocal::new(GenericFunctionLocalId(1), function_type),
+            "false_function".into(),
+        );
+        assert_eq!(
+            super::bool_case_expr(
+                subject.clone(),
+                Expr::function(FunctionExpr::generic(true_.clone())),
+                Expr::function(FunctionExpr::generic(false_.clone())),
+            ),
+            Ok(Expr::function(FunctionExpr::generic(
+                GenericFunctionExpr::bool_case(subject.clone(), true_, false_)
+                    .expect("matching generic callables have one function shape"),
+            ))),
+        );
+
+        let true_ = ListExpr::try_value(Vec::new(), ValueType::Parameter(parameter))
+            .expect("an empty parameter list has generic list storage")
+            .into_generic()
+            .expect("a parameter item list has generic list storage");
+        let false_ = ListExpr::try_value(Vec::new(), ValueType::Parameter(parameter))
+            .expect("an empty parameter list has generic list storage")
+            .into_generic()
+            .expect("a parameter item list has generic list storage");
+        assert_eq!(
+            super::bool_list_case_branches(
+                ListExpr::Generic(true_.clone()),
+                ListExpr::Generic(false_.clone()),
+            ),
+            Ok(BoolListCaseBranches::Generic { true_, false_ }),
+        );
+    }
+
+    #[test]
     fn case_subject_variants_follow_the_gleam_type_shape() {
+        assert_eq!(
+            super::CaseSubjectVariants::from_value_type(&ValueType::Parameter(
+                crate::plan::TypeParameterId(0),
+            )),
+            super::CaseSubjectVariants::Other,
+        );
         assert_eq!(
             super::CaseSubjectVariants::from_gleam(type_::int().as_ref()),
             super::CaseSubjectVariants::Other,
@@ -1190,7 +1440,7 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_multi_subject_with_unsupported_value_family() {
+    fn reject_profile_multi_subject_with_unresolved_generic_custom_type() {
         assert_eq!(
             expect_plan_error(
                 r#"
@@ -1201,12 +1451,14 @@ pub fn main() {
 }
 "#,
             ),
-            super::super::unsupported_case(UnsupportedCaseReason::UnsupportedSubjectType),
+            PlanError::UnsupportedExpression {
+                kind: crate::planner::UnsupportedExpressionKind::GenericFunction,
+            },
         );
     }
 
     #[test]
-    fn reject_profile_single_subject_with_unsupported_value_family() {
+    fn reject_profile_single_subject_with_unresolved_generic_custom_type() {
         assert_eq!(
             expect_plan_error(
                 r#"
@@ -1217,7 +1469,9 @@ pub fn main() {
 }
 "#,
             ),
-            super::super::unsupported_case(UnsupportedCaseReason::UnsupportedSubjectType),
+            PlanError::UnsupportedExpression {
+                kind: crate::planner::UnsupportedExpressionKind::GenericFunction,
+            },
         );
     }
 

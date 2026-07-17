@@ -2,9 +2,9 @@ use crate::plan::CustomFieldAccess;
 #[cfg(test)]
 use crate::plan::ParamLocal;
 use crate::plan::{
-    BoolExpr, CaptureArg, FloatExpr, FloatFunctionFunctionId, FloatFunctionId,
-    FloatFunctionLocalId, FloatFunctionReference, FunctionFunctionExpr, FunctionListExpr,
-    FunctionType, IntExpr, PanicExpr, ParamSlot, Step, StringExpr, TupleExpr,
+    BoolExpr, CaptureArg, FloatExpr, FloatFunctionLocalId, FloatFunctionReference,
+    FunctionFunctionExpr, FunctionInstantiation, FunctionListExpr, FunctionType, IntExpr,
+    PanicExpr, ParamSlot, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -19,7 +19,7 @@ pub struct FloatFunctionExpr {
 pub(crate) enum FloatFunctionExprKind {
     Reference(FloatFunctionReference),
     Closure {
-        runtime_id: FloatFunctionId,
+        function: FunctionInstantiation,
         params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
     },
@@ -28,7 +28,7 @@ pub(crate) enum FloatFunctionExprKind {
         name: EcoString,
     },
     Call {
-        function: FloatFunctionFunctionId,
+        function: FunctionInstantiation,
         args: Vec<crate::plan::CallArg>,
         type_: FunctionType,
     },
@@ -77,14 +77,7 @@ pub(crate) enum FloatFunctionExprKind {
 
 impl FloatFunctionExpr {
     pub(crate) fn reference(value: FloatFunctionReference) -> Self {
-        let type_ = FunctionType::new(
-            value
-                .params()
-                .iter()
-                .map(crate::plan::ParamSlot::value_type)
-                .collect(),
-            crate::plan::ValueType::Float,
-        );
+        let type_ = value.instantiation().shape().type_();
         Self {
             type_,
             kind: FloatFunctionExprKind::Reference(value),
@@ -92,7 +85,7 @@ impl FloatFunctionExpr {
     }
 
     pub(crate) fn closure_slots(
-        runtime_id: FloatFunctionId,
+        function: FunctionInstantiation,
         params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
         type_: FunctionType,
@@ -100,7 +93,7 @@ impl FloatFunctionExpr {
         Self {
             type_,
             kind: FloatFunctionExprKind::Closure {
-                runtime_id,
+                function,
                 params,
                 captures,
             },
@@ -109,13 +102,13 @@ impl FloatFunctionExpr {
 
     #[cfg(test)]
     pub(crate) fn closure(
-        runtime_id: FloatFunctionId,
+        function: FunctionInstantiation,
         params: Vec<ParamLocal>,
         captures: Vec<CaptureArg>,
         type_: FunctionType,
     ) -> Self {
         Self::closure_slots(
-            runtime_id,
+            function,
             params.into_iter().map(ParamSlot::from_local).collect(),
             captures,
             type_,
@@ -134,7 +127,7 @@ impl FloatFunctionExpr {
     }
 
     pub(crate) fn call(
-        function: FloatFunctionFunctionId,
+        function: FunctionInstantiation,
         args: Vec<crate::plan::CallArg>,
         type_: FunctionType,
     ) -> Self {
@@ -280,19 +273,16 @@ impl FloatFunctionExpr {
     pub(crate) fn kind(&self) -> &FloatFunctionExprKind {
         &self.kind
     }
-
-    pub(crate) fn into_parts(self) -> (FunctionType, FloatFunctionExprKind) {
-        (self.type_, self.kind)
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{FloatFunctionExpr, FloatFunctionExprKind};
     use crate::plan::{
-        BoolExpr, Expr, FloatExpr, FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId,
-        FloatFunctionReference, FloatLocalId, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionReference, FunctionType, IntExpr, ParamLocal, Step, StringExpr, ValueType,
+        BoolExpr, Expr, FloatExpr, FloatFunctionLocalId, FloatFunctionReference, FloatLocalId,
+        FunctionFunctionExpr, FunctionFunctionReference, FunctionInstantiation, FunctionShape,
+        FunctionType, IntExpr, ParamLocal, Step, StringExpr, ValueShape, ValueType,
+        monomorphic_function_instantiation,
     };
 
     #[test]
@@ -304,20 +294,20 @@ mod tests {
         assert_eq!(
             float_function_value().kind(),
             &FloatFunctionExprKind::Reference(FloatFunctionReference::new(
-                FloatFunctionId(0),
+                function_instantiation(),
                 vec![ParamLocal::float(FloatLocalId(0))],
             )),
         );
         assert_eq!(
             FloatFunctionExpr::closure(
-                FloatFunctionId(0),
+                function_instantiation(),
                 vec![ParamLocal::float(FloatLocalId(0))],
                 Vec::new(),
                 float_function_type(),
             )
             .kind(),
             &FloatFunctionExprKind::Closure {
-                runtime_id: FloatFunctionId(0),
+                function: function_instantiation(),
                 params: vec![crate::plan::ParamSlot::from_local(ParamLocal::float(
                     FloatLocalId(0)
                 ))],
@@ -338,13 +328,13 @@ mod tests {
         );
         assert_eq!(
             FloatFunctionExpr::call(
-                FloatFunctionFunctionId(0),
+                function_returning_function_instantiation(),
                 Vec::new(),
                 float_function_type()
             )
             .kind(),
             &FloatFunctionExprKind::Call {
-                function: FloatFunctionFunctionId(0),
+                function: function_returning_function_instantiation(),
                 args: Vec::new(),
                 type_: float_function_type(),
             },
@@ -464,7 +454,7 @@ mod tests {
 
     fn float_function_value() -> FloatFunctionExpr {
         FloatFunctionExpr::reference(FloatFunctionReference::new(
-            FloatFunctionId(0),
+            function_instantiation(),
             vec![ParamLocal::float(FloatLocalId(0))],
         ))
     }
@@ -475,11 +465,27 @@ mod tests {
 
     fn function_function_value() -> FunctionFunctionExpr {
         FunctionFunctionExpr::reference(
-            FunctionFunctionReference::new(
-                FunctionFunctionId::Float(FloatFunctionFunctionId(0)),
-                Vec::new(),
-            ),
+            FunctionFunctionReference::new(function_returning_function_instantiation(), Vec::new()),
             float_function_type(),
+        )
+    }
+
+    fn function_instantiation() -> FunctionInstantiation {
+        monomorphic_function_instantiation(
+            0,
+            FunctionShape::from_function_type(float_function_type()),
+        )
+    }
+
+    fn function_returning_function_instantiation() -> FunctionInstantiation {
+        monomorphic_function_instantiation(
+            1,
+            FunctionShape::new(
+                Vec::new(),
+                ValueShape::Function(Box::new(FunctionShape::from_function_type(
+                    float_function_type(),
+                ))),
+            ),
         )
     }
 

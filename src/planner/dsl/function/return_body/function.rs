@@ -1,9 +1,7 @@
-use super::FunctionReturn;
+use super::{FunctionReturn, tail_call_instantiation};
 use crate::plan::{
-    BoolFunctionFunctionId, BoolFunctionReturn, CallArg, FunctionFunctionFunctionId,
-    FunctionFunctionReturn, FunctionType, IntFunctionFunctionId, IntFunctionReturn,
-    NilFunctionFunctionId, NilFunctionReturn, ReturnBody, Step, StringFunctionFunctionId,
-    StringFunctionReturn,
+    BoolFunctionReturn, CallArg, FunctionFunctionReturn, FunctionShape, FunctionType,
+    IntFunctionReturn, NilFunctionReturn, ReturnBody, Step, StringFunctionReturn, ValueShape,
 };
 use crate::planner::dsl::expression::{
     Bool, BoolFunction, FunctionFunction, Int, IntFunction, NilFunction, String, StringFunction,
@@ -16,9 +14,10 @@ pub(crate) fn int_function_return_expr(expression: IntFunction) -> IntFunctionRe
 
 pub(crate) fn int_function_return_tail_call(
     function: usize,
+    type_: FunctionType,
     args: impl IntoIterator<Item = CallArg>,
 ) -> IntFunctionReturn {
-    ReturnBody::tail_call(IntFunctionFunctionId(function), args.into_iter().collect())
+    function_return_tail_call(function, type_, args)
 }
 
 pub(crate) fn int_function_return_bool_case(
@@ -76,12 +75,10 @@ pub(crate) fn string_function_return_expr(expression: StringFunction) -> StringF
 
 pub(crate) fn string_function_return_tail_call(
     function: usize,
+    type_: FunctionType,
     args: impl IntoIterator<Item = CallArg>,
 ) -> StringFunctionReturn {
-    ReturnBody::tail_call(
-        StringFunctionFunctionId(function),
-        args.into_iter().collect(),
-    )
+    function_return_tail_call(function, type_, args)
 }
 
 pub(crate) fn string_function_return_bool_case(
@@ -142,9 +139,10 @@ pub(crate) fn bool_function_return_expr(expression: BoolFunction) -> BoolFunctio
 
 pub(crate) fn bool_function_return_tail_call(
     function: usize,
+    type_: FunctionType,
     args: impl IntoIterator<Item = CallArg>,
 ) -> BoolFunctionReturn {
-    ReturnBody::tail_call(BoolFunctionFunctionId(function), args.into_iter().collect())
+    function_return_tail_call(function, type_, args)
 }
 
 pub(crate) fn bool_function_return_bool_case(
@@ -205,9 +203,10 @@ pub(crate) fn nil_function_return_expr(expression: NilFunction) -> NilFunctionRe
 
 pub(crate) fn nil_function_return_tail_call(
     function: usize,
+    type_: FunctionType,
     args: impl IntoIterator<Item = CallArg>,
 ) -> NilFunctionReturn {
-    ReturnBody::tail_call(NilFunctionFunctionId(function), args.into_iter().collect())
+    function_return_tail_call(function, type_, args)
 }
 
 pub(crate) fn nil_function_return_bool_case(
@@ -270,10 +269,31 @@ pub(crate) fn function_function_return_tail_call(
     type_: crate::plan::FunctionFunctionType,
     args: impl IntoIterator<Item = CallArg>,
 ) -> FunctionFunctionReturn {
-    FunctionFunctionReturn::tail_call(
-        FunctionFunctionFunctionId::new(function, type_),
-        args.into_iter().collect(),
-    )
+    let args = args.into_iter().collect::<Vec<_>>();
+    let function = tail_call_instantiation(
+        function,
+        &args,
+        ValueShape::Function(Box::new(FunctionShape::from_function_type(
+            type_.to_function_type(),
+        ))),
+    );
+    FunctionFunctionReturn::expr(crate::plan::FunctionFunctionExpr::call(
+        function, args, type_,
+    ))
+}
+
+fn function_return_tail_call<Expression>(
+    function: usize,
+    type_: FunctionType,
+    args: impl IntoIterator<Item = CallArg>,
+) -> ReturnBody<Expression, crate::plan::FunctionInstantiation> {
+    let args = args.into_iter().collect::<Vec<_>>();
+    let function = tail_call_instantiation(
+        function,
+        &args,
+        ValueShape::Function(Box::new(FunctionShape::from_function_type(type_))),
+    );
+    ReturnBody::tail_call(function, args)
 }
 
 pub(crate) fn function_function_return_int_case(
@@ -336,9 +356,9 @@ mod tests {
         string_function_return_string_case, string_function_return_tail_call,
     };
     use crate::plan::{
-        BoolFunctionFunctionId, CallArg, FunctionFunctionFunctionId, FunctionFunctionId,
-        FunctionFunctionReturn, FunctionType, IntFunctionFunctionId, NilFunctionFunctionId,
-        ParamLocal, ReturnBody, Step, StringFunctionFunctionId, ValueType,
+        CallArg, FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionReturn,
+        FunctionShape, FunctionType, IntFunctionFunctionId, ParamLocal, ReturnBody, Step,
+        ValueShape, ValueType, monomorphic_function_instantiation,
     };
     use crate::planner::dsl::expression::{
         bool_, bool_function_ref, function_function_ref, int, int_function_ref, nil_function_ref,
@@ -385,41 +405,51 @@ mod tests {
 
     #[test]
     fn function_return_tail_call_helpers_build_return_body_shapes() {
-        assert_eq!(
-            int_function_return_tail_call(0, Vec::<CallArg>::new()),
-            ReturnBody::tail_call(IntFunctionFunctionId(0), Vec::new()),
-        );
-        assert_eq!(
-            string_function_return_tail_call(1, Vec::<CallArg>::new()),
-            ReturnBody::tail_call(StringFunctionFunctionId(1), Vec::new()),
-        );
-        assert_eq!(
-            bool_function_return_tail_call(2, Vec::<CallArg>::new()),
-            ReturnBody::tail_call(BoolFunctionFunctionId(2), Vec::new()),
-        );
-        assert_eq!(
-            nil_function_return_tail_call(3, Vec::<CallArg>::new()),
-            ReturnBody::tail_call(NilFunctionFunctionId(3), Vec::new()),
-        );
-        assert_eq!(
-            function_function_return_tail_call(
-                4,
-                crate::plan::FunctionFunctionType::new(
+        fn returned_function(
+            template: usize,
+            type_: FunctionType,
+        ) -> crate::plan::FunctionInstantiation {
+            monomorphic_function_instantiation(
+                template,
+                FunctionShape::new(
                     Vec::new(),
-                    FunctionType::new(Vec::new(), ValueType::Int),
+                    ValueShape::Function(Box::new(FunctionShape::from_function_type(type_))),
                 ),
-                Vec::<CallArg>::new(),
-            ),
-            FunctionFunctionReturn::tail_call(
-                FunctionFunctionFunctionId::new(
-                    4,
-                    crate::plan::FunctionFunctionType::new(
-                        Vec::new(),
-                        FunctionType::new(Vec::new(), ValueType::Int),
-                    ),
-                ),
+            )
+        }
+
+        let int_type = FunctionType::new(Vec::new(), ValueType::Int);
+        assert_eq!(
+            int_function_return_tail_call(0, int_type.clone(), Vec::<CallArg>::new()),
+            ReturnBody::tail_call(returned_function(0, int_type), Vec::new()),
+        );
+        let string_type = FunctionType::new(Vec::new(), ValueType::String);
+        assert_eq!(
+            string_function_return_tail_call(1, string_type.clone(), Vec::<CallArg>::new()),
+            ReturnBody::tail_call(returned_function(1, string_type), Vec::new()),
+        );
+        let bool_type = FunctionType::new(Vec::new(), ValueType::Bool);
+        assert_eq!(
+            bool_function_return_tail_call(2, bool_type.clone(), Vec::<CallArg>::new()),
+            ReturnBody::tail_call(returned_function(2, bool_type), Vec::new()),
+        );
+        let nil_type = FunctionType::new(Vec::new(), ValueType::Nil);
+        assert_eq!(
+            nil_function_return_tail_call(3, nil_type.clone(), Vec::<CallArg>::new()),
+            ReturnBody::tail_call(returned_function(3, nil_type), Vec::new()),
+        );
+        let function_type = crate::plan::FunctionFunctionType::new(
+            Vec::new(),
+            FunctionType::new(Vec::new(), ValueType::Int),
+        );
+        let function = returned_function(4, function_type.to_function_type());
+        assert_eq!(
+            function_function_return_tail_call(4, function_type.clone(), Vec::<CallArg>::new(),),
+            FunctionFunctionReturn::expr(crate::plan::FunctionFunctionExpr::call(
+                function,
                 Vec::new(),
-            ),
+                function_type,
+            )),
         );
     }
 

@@ -1,10 +1,7 @@
 use super::super::super::plan_expr_with_expected_source_stop_shape;
 use super::super::super::tuple_index_expr;
 use super::super::invalid_case_shape;
-use super::{
-    CaseClause, CaseSubjectVariants, OrderedCaseCandidateInput, OrderedCasePattern,
-    case_return_shape,
-};
+use super::{CaseClause, CaseSubjectVariants, OrderedCaseCandidateInput, OrderedCasePattern};
 use crate::plan::{
     BoolExpr, CustomBindingPattern, CustomExpr, Expr, ExprKind, FloatExpr, IntExpr, Step,
     StringExpr, TupleExpr, TupleLocalId, ValueShape, ValueType,
@@ -28,7 +25,7 @@ pub(super) fn plan(
 ) -> Result<Expr, PlanError> {
     let subject_value_type = ValueType::Tuple(subject_type.clone());
     let subject = plan_expr_with_expected_source_stop_shape(subject, subject_shape, context)?;
-    let return_shape = case_return_shape(type_.as_ref())?;
+    let return_shape = context.value_shape(type_.as_ref());
 
     let ExprKind::Tuple(subject) = subject.into_kind() else {
         return Err(invalid_case_shape(
@@ -1374,7 +1371,7 @@ pub fn main() {
         let (case_type, _, _) = super::super::super::expect_case_statement_mut(
             &mut unsupported_case_type.definitions.functions[0].body[0],
         );
-        *case_type = super::super::invalid_case_return_type();
+        *case_type = super::super::mismatched_generic_case_return_type();
         assert_eq!(
             plan_module(unsupported_case_type),
             Err(PlanError::InvalidTypedAst {

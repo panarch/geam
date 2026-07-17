@@ -1,6 +1,6 @@
 use super::super::super::plan_string_expr;
 use super::super::invalid_case_shape;
-use super::{CaseClause, OrderedCaseClauseInput, case_return_shape};
+use super::{CaseClause, OrderedCaseClauseInput};
 use crate::plan::{BoolExpr, Expr, ExprKind, StringCaseBranches, StringExpr, ValueShape};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError};
@@ -16,7 +16,7 @@ pub(super) fn plan(
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let subject = plan_string_expr(subject, context)?;
-    let return_shape = case_return_shape(type_.as_ref())?;
+    let return_shape = context.value_shape(type_.as_ref());
     if clauses.iter().any(|clause| {
         clause.guard.is_some()
             || clause.has_alternative_patterns()
@@ -374,6 +374,15 @@ fn string_case_expr(
         .collect::<Vec<_>>();
     let fallback_shape = fallback.value_shape().clone();
     let branches = match fallback.into_kind() {
+        ExprKind::Generic(fallback) => {
+            let expression = crate::plan::GenericExpr::string_case(
+                subject,
+                super::generic_case_clauses(clauses)?,
+                fallback,
+            )
+            .ok_or_else(|| invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch))?;
+            return Ok(Expr::generic(expression));
+        }
         ExprKind::Int(fallback) => StringCaseBranches::Int {
             clauses: int_case_clauses(clauses)?,
             fallback,
@@ -415,10 +424,25 @@ fn string_case_expr(
         ExprKind::List(fallback) => {
             StringCaseBranches::List(list_case_branches(clauses, fallback)?)
         }
-        ExprKind::Function(fallback) => function_case_branches(clauses, fallback)?,
+        ExprKind::Function(fallback) => {
+            if let crate::plan::FunctionExprKind::Generic(generic_fallback) = fallback.kind() {
+                let expression = crate::plan::GenericFunctionExpr::string_case(
+                    subject,
+                    super::generic_function_case_clauses(clauses)?,
+                    generic_fallback.clone(),
+                )
+                .ok_or_else(|| {
+                    invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch)
+                })?;
+                return Ok(Expr::function(crate::plan::FunctionExpr::generic(
+                    expression,
+                )));
+            }
+            function_case_branches(clauses, fallback)?
+        }
     };
-    let shape = super::case_result_shape(clause_shapes.iter(), &fallback_shape)?;
 
+    let shape = super::case_result_shape(&clause_shapes, &fallback_shape)?;
     Expr::string_case(subject, branches)
         .with_resolved_shape(shape)
         .ok_or_else(|| invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch))
@@ -587,6 +611,9 @@ fn function_case_branches(
     fallback: crate::plan::FunctionExpr,
 ) -> Result<StringCaseBranches, PlanError> {
     match fallback.into_kind() {
+        crate::plan::FunctionExprKind::Generic(_) => Err(invalid_case_shape(
+            InvalidCaseShapeReason::BranchReturnTypeMismatch,
+        )),
         crate::plan::FunctionExprKind::Int(fallback) => Ok(StringCaseBranches::IntFunction {
             clauses: int_function_case_clauses(clauses)?,
             fallback,
@@ -1855,7 +1882,7 @@ fn return_value(value: String) {
         let (type_, _, _) = super::super::super::expect_case_statement_mut(
             &mut module.definitions.functions[0].body[0],
         );
-        *type_ = super::super::invalid_case_return_type();
+        *type_ = super::super::mismatched_generic_case_return_type();
         assert_eq!(plan_module(module), Err(case_branch_return_type_mismatch()));
 
         assert_eq!(
@@ -2205,7 +2232,167 @@ fn return_value(value: String) {
     }
 
     #[test]
+    fn generic_string_case_branches_preserve_parameter_shapes() {
+        let generic = |parameter, local| {
+            crate::plan::GenericExpr::local_get(
+                crate::plan::GenericLocal::new(
+                    crate::plan::GenericLocalId(local),
+                    crate::plan::TypeParameterId(parameter),
+                ),
+                "generic".into(),
+            )
+        };
+        let generic_function = |parameter, local| {
+            let type_ = crate::plan::GenericFunctionType::new(
+                vec![crate::plan::ValueShape::Int],
+                crate::plan::TypeParameterId(parameter),
+            );
+            crate::plan::GenericFunctionExpr::local_get(
+                crate::plan::GenericFunctionLocal::new(
+                    crate::plan::GenericFunctionLocalId(local),
+                    type_,
+                ),
+                "generic_function".into(),
+            )
+        };
+
+        let generic_branch = generic(0, 0);
+        let generic_fallback = generic(0, 1);
+        assert_eq!(
+            super::string_case_expr(
+                string("subject").into(),
+                vec![("match".into(), Expr::generic(generic_branch.clone()))],
+                Expr::generic(generic_fallback.clone()),
+            ),
+            Ok(Expr::generic(
+                crate::plan::GenericExpr::string_case(
+                    string("subject").into(),
+                    vec![("match".into(), generic_branch)],
+                    generic_fallback,
+                )
+                .expect("matching generic branches should form a String case"),
+            )),
+        );
+
+        let generic_function_branch = generic_function(0, 0);
+        let generic_function_fallback = generic_function(0, 1);
+        assert_eq!(
+            super::string_case_expr(
+                string("subject").into(),
+                vec![(
+                    "match".into(),
+                    Expr::function(crate::plan::FunctionExpr::generic(
+                        generic_function_branch.clone(),
+                    )),
+                )],
+                Expr::function(crate::plan::FunctionExpr::generic(
+                    generic_function_fallback.clone(),
+                )),
+            ),
+            Ok(Expr::function(crate::plan::FunctionExpr::generic(
+                crate::plan::GenericFunctionExpr::string_case(
+                    string("subject").into(),
+                    vec![("match".into(), generic_function_branch)],
+                    generic_function_fallback,
+                )
+                .expect("matching generic function branches should form a String case"),
+            ))),
+        );
+    }
+
+    #[test]
     fn reject_margin_string_case_function_clause_family_mismatch_direct() {
+        let generic = |parameter, local| {
+            Expr::generic(crate::plan::GenericExpr::local_get(
+                crate::plan::GenericLocal::new(
+                    crate::plan::GenericLocalId(local),
+                    crate::plan::TypeParameterId(parameter),
+                ),
+                "generic".into(),
+            ))
+        };
+        let generic_function = |parameter, local| {
+            let type_ = crate::plan::GenericFunctionType::new(
+                vec![crate::plan::ValueShape::Int],
+                crate::plan::TypeParameterId(parameter),
+            );
+            Expr::function(crate::plan::FunctionExpr::generic(
+                crate::plan::GenericFunctionExpr::local_get(
+                    crate::plan::GenericFunctionLocal::new(
+                        crate::plan::GenericFunctionLocalId(local),
+                        type_,
+                    ),
+                    "generic_function".into(),
+                ),
+            ))
+        };
+
+        assert_eq!(
+            super::string_case_expr(
+                string("subject").into(),
+                vec![("match".into(), generic(0, 0))],
+                generic(1, 1),
+            ),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::string_case_expr(
+                string("subject").into(),
+                vec![("match".into(), generic_function(0, 0))],
+                generic_function(1, 1),
+            ),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::string_case_expr(
+                string("subject").into(),
+                vec![("match".into(), Expr::from(int(1)))],
+                generic(0, 0),
+            ),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::string_case_expr(
+                string("subject").into(),
+                vec![("match".into(), int_function_ref_expr(0))],
+                generic_function(0, 0),
+            ),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::int_case_clauses(vec![("match".into(), generic(0, 0))]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::string_case_clauses(vec![("match".into(), generic(0, 0))]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::float_case_clauses(vec![("match".into(), generic(0, 0))]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::bool_case_clauses(vec![("match".into(), generic(0, 0))]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::nil_case_clauses(vec![("match".into(), generic(0, 0))]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::function_case_branches(
+                Vec::new(),
+                generic_function(0, 0)
+                    .into_function()
+                    .expect("generic function expression"),
+            ),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::int_function_case_clauses(vec![("match".into(), generic_function(0, 0),)]),
+            Err(case_branch_return_type_mismatch()),
+        );
+
         assert_eq!(
             super::custom_case_clauses(vec![("one".into(), Expr::from(int(1)))]),
             Err(case_branch_return_type_mismatch()),

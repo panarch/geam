@@ -89,6 +89,7 @@ impl CustomBindingPattern {
         &self.fields
     }
 
+    #[cfg(test)]
     pub(crate) fn into_parts(
         self,
     ) -> (
@@ -112,6 +113,7 @@ impl CustomBindingProof {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn into_source_shape(self) -> CustomValueShape {
         match self {
             Self::Exact(source) | Self::OnlyConstructor(source) => source,
@@ -169,8 +171,8 @@ impl TotalBindingPattern {
         &self.kind
     }
 
-    pub(crate) fn into_parts(self) -> (ValueType, TotalBindingPatternKind) {
-        (self.type_, self.kind)
+    pub(crate) fn type_(&self) -> &ValueType {
+        &self.type_
     }
 
     fn new(type_: ValueType, kind: TotalBindingPatternKind) -> Self {

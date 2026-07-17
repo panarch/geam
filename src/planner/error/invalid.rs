@@ -1,3 +1,4 @@
+use crate::plan::ValueType;
 use ecow::EcoString;
 use thiserror::Error;
 
@@ -128,6 +129,8 @@ pub enum InvalidRecordUpdateShapeReason {
 pub enum InvalidExpressionType {
     #[error("unsupported")]
     Unsupported,
+    #[error("type parameter")]
+    TypeParameter,
     #[error("Int")]
     Int,
     #[error("String")]
@@ -152,6 +155,25 @@ pub enum InvalidExpressionType {
     Function,
 }
 
+impl InvalidExpressionType {
+    pub(crate) fn from_value_type(type_: ValueType) -> Self {
+        match type_ {
+            ValueType::Parameter(_) => Self::TypeParameter,
+            ValueType::Int => Self::Int,
+            ValueType::String => Self::String,
+            ValueType::BitArray => Self::BitArray,
+            ValueType::UtfCodepoint => Self::UtfCodepoint,
+            ValueType::Custom(_) => Self::Custom,
+            ValueType::Float => Self::Float,
+            ValueType::Bool => Self::Bool,
+            ValueType::Nil => Self::Nil,
+            ValueType::Tuple(_) => Self::Tuple,
+            ValueType::List(_) => Self::List,
+            ValueType::Function(_) => Self::Function,
+        }
+    }
+}
+
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum InvalidCallShapeReason {
     #[error("function value call arity mismatch")]
@@ -160,16 +182,12 @@ pub enum InvalidCallShapeReason {
     FunctionCallArgumentTypeMismatch,
     #[error("function value call return type mismatch")]
     FunctionCallReturnTypeMismatch,
-    #[error("function value call return type is not supported")]
-    FunctionCallUnsupportedReturnType,
     #[error("implicit call arguments")]
     ImplicitArguments,
     #[error("labelled call arguments")]
     LabelledArguments,
     #[error("local function call arity mismatch")]
     LocalFunctionCallArityMismatch,
-    #[error("local function call return type is not supported")]
-    LocalFunctionCallUnsupportedReturnType,
     #[error("local function call return type does not match function table")]
     LocalFunctionCallReturnTypeMismatch,
     #[error("calling module constants is not supported")]

@@ -114,9 +114,9 @@ pub(in crate::runtime) fn eval_utf_codepoint_expr(
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExpr, Expr, FloatExpr, FunctionId, FunctionPlan, IntExpr, ModulePlan, PanicExpr,
-        PanicSite, ReturnBody, ReturnExpr, Step, StringExpr, TupleExpr, UtfCodepointExpr,
-        UtfCodepointFunctionId, ValueType,
+        BoolExpr, Expr, FloatExpr, FunctionTemplate, FunctionTemplateId, IntExpr, ModulePlan,
+        PanicExpr, PanicSite, ReturnBody, ReturnExpr, Step, StringExpr, TupleExpr,
+        UtfCodepointExpr, ValueType,
     };
     use crate::runtime::{BitArrayValue, ExecutionError, Value, run_main};
 
@@ -167,12 +167,12 @@ mod tests {
     }
 
     fn run_module_utf_codepoint_expression(expression: UtfCodepointExpr) -> ExecutionError {
-        let main = FunctionPlan::new(
-            FunctionId::new(0),
+        let main = FunctionTemplate::new(
+            FunctionTemplateId::new(0),
             "main".into(),
             Vec::new(),
             Vec::new(),
-            ReturnExpr::utf_codepoint_body(UtfCodepointFunctionId(0), ReturnBody::expr(expression)),
+            ReturnExpr::utf_codepoint_body(ReturnBody::expr(expression)),
         );
         let module = ModulePlan::new("main".into(), main, Vec::new());
         let plan = crate::ExecutionPlan::from_module_plan(module);

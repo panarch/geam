@@ -172,9 +172,9 @@ pub(in crate::runtime) fn eval_list_function_expr(
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExpr, CaptureArg, Expr, FloatExpr, FunctionId, FunctionPlan, FunctionType, IntExpr,
-        IntListFunctionId, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionFunctionId,
-        ListFunctionId, ModulePlan, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr,
+        BoolExpr, CaptureArg, Expr, FloatExpr, FunctionTemplate, FunctionTemplateId, FunctionType,
+        IntExpr, IntListExpr, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionFunctionId,
+        ModulePlan, PanicExpr, PanicSite, ReturnBody, ReturnExpr, Step, StringExpr, TupleExpr,
         ValueType,
     };
     use crate::runtime::{ExecutionError, run_main};
@@ -242,12 +242,16 @@ pub fn main() {
         let expressions = [
             (
                 ListFunctionExpr::closure(
-                    ListFunctionId::Int(IntListFunctionId(1)),
+                    crate::plan::monomorphic_function_instantiation(
+                        1,
+                        crate::plan::FunctionShape::from_function_type(type_.clone()),
+                    ),
                     Vec::new(),
                     vec![CaptureArg::int(
                         IntLocalId(0),
                         IntExpr::panic(panic("capture")),
                     )],
+                    item_type.clone(),
                 ),
                 "capture",
             ),
@@ -328,15 +332,28 @@ pub fn main() {
         expression: ListFunctionExpr,
         type_: FunctionType,
     ) -> ExecutionError {
+        let target = FunctionTemplate::new(
+            FunctionTemplateId::new(1),
+            "target".into(),
+            Vec::new(),
+            vec![Step::evaluate(Expr::int(IntExpr::local_get(
+                IntLocalId(0),
+                "capture".into(),
+            )))],
+            ReturnExpr::int_list_body(ReturnBody::expr(IntListExpr::from(ListExpr::panic(
+                PanicExpr::panic_at(None, PanicSite::unknown()),
+                ValueType::Int,
+            )))),
+        );
         let runtime_id = ListFunctionFunctionId::from_item_type(0, type_, ValueType::Int);
-        let main = FunctionPlan::new(
-            FunctionId::new(0),
+        let main = FunctionTemplate::new(
+            FunctionTemplateId::new(0),
             "main".into(),
             Vec::new(),
             Vec::new(),
             ReturnExpr::list_function(runtime_id, expression),
         );
-        let module = ModulePlan::new("main".into(), main, Vec::new());
+        let module = ModulePlan::new("main".into(), main, vec![target]);
         let plan = crate::ExecutionPlan::from_module_plan(module);
 
         run_main(&plan).expect_err("module expression should fail at runtime")

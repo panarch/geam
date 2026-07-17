@@ -101,10 +101,6 @@ impl BitArrayPattern {
     pub(crate) fn segments(&self) -> &[BitArrayPatternSegment] {
         &self.segments
     }
-
-    pub(crate) fn into_segments(self) -> Vec<BitArrayPatternSegment> {
-        self.segments
-    }
 }
 
 impl BitArrayPatternSize {
@@ -116,8 +112,8 @@ impl BitArrayPatternSize {
         &self.value
     }
 
-    pub(crate) fn into_parts(self) -> (BitArrayPatternSizeExpr, u8) {
-        (self.value, self.unit)
+    pub(crate) fn unit(&self) -> u8 {
+        self.unit
     }
 }
 

@@ -2,7 +2,7 @@ use super::{
     BitArrayFunctionExpr, BitArrayListExpr, BoolExpr, CallArg, CustomFieldAccess, FloatExpr,
     IntExpr, PanicExpr, StringExpr, TupleExpr, UtfCodepointExpr,
 };
-use crate::plan::{BitArrayFunctionId, BitArrayLocalId, PanicSite, Step};
+use crate::plan::{BitArrayLocalId, FunctionInstantiation, PanicSite, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -47,8 +47,8 @@ impl BitArrayEvaluatedSize {
         &self.value
     }
 
-    pub(crate) fn into_parts(self) -> (IntExpr, u8) {
-        (self.value, self.unit)
+    pub(crate) fn unit(&self) -> u8 {
+        self.unit
     }
 }
 
@@ -105,7 +105,7 @@ pub(crate) enum BitArrayExprKind {
         name: EcoString,
     },
     Call {
-        function: BitArrayFunctionId,
+        function: FunctionInstantiation,
         args: Vec<CallArg>,
     },
     FunctionCall {
@@ -157,7 +157,7 @@ impl BitArrayExpr {
         Self::new(BitArrayExprKind::LocalGet { local, name })
     }
 
-    pub(crate) fn call(function: BitArrayFunctionId, args: Vec<CallArg>) -> Self {
+    pub(crate) fn call(function: FunctionInstantiation, args: Vec<CallArg>) -> Self {
         Self::new(BitArrayExprKind::Call { function, args })
     }
 
@@ -241,10 +241,6 @@ impl BitArrayExpr {
         &self.kind
     }
 
-    pub(crate) fn into_kind(self) -> BitArrayExprKind {
-        self.kind
-    }
-
     fn new(kind: BitArrayExprKind) -> Self {
         Self { kind }
     }
@@ -257,8 +253,9 @@ mod tests {
         Endianness,
     };
     use crate::plan::{
-        BitArrayFunctionId, BitArrayFunctionReference, BitArrayLocalId, BoolExpr, Expr, FloatExpr,
-        FloatLocalId, IntExpr, IntLocalId, PanicSite, Step, StringExpr, TupleExpr, ValueType,
+        BitArrayFunctionReference, BitArrayLocalId, BoolExpr, Expr, FloatExpr, FloatLocalId,
+        FunctionInstantiation, FunctionShape, IntExpr, IntLocalId, PanicSite, Step, StringExpr,
+        TupleExpr, ValueShape, ValueType, monomorphic_function_instantiation,
     };
     use num_bigint::BigInt;
 
@@ -281,9 +278,9 @@ mod tests {
             },
         );
         assert_eq!(
-            BitArrayExpr::call(BitArrayFunctionId(0), Vec::new()).kind(),
+            BitArrayExpr::call(function_instantiation(), Vec::new()).kind(),
             &BitArrayExprKind::Call {
-                function: BitArrayFunctionId(0),
+                function: function_instantiation(),
                 args: Vec::new(),
             },
         );
@@ -412,9 +409,9 @@ mod tests {
             int_size.value(),
             &IntExpr::local_get(IntLocalId(1), "int_size".into())
         );
-        assert_eq!(int_size.into_parts().1, 2);
-        assert_eq!(float_size.into_parts().1, 4);
-        assert_eq!(bits_size.into_parts().1, 8);
+        assert_eq!(int_size.unit(), 2);
+        assert_eq!(float_size.unit(), 4);
+        assert_eq!(bits_size.unit(), 8);
     }
 
     fn bit_array_value(value: u8) -> BitArrayExpr {
@@ -427,9 +424,13 @@ mod tests {
 
     fn function_expr() -> crate::plan::BitArrayFunctionExpr {
         crate::plan::BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(
-            BitArrayFunctionId(0),
+            function_instantiation(),
             Vec::new(),
         ))
+    }
+
+    fn function_instantiation() -> FunctionInstantiation {
+        monomorphic_function_instantiation(0, FunctionShape::new(Vec::new(), ValueShape::BitArray))
     }
 
     fn tuple_expr() -> TupleExpr {

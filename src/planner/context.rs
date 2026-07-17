@@ -1,35 +1,25 @@
 use crate::plan::{
-    BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionFunctionId, BitArrayFunctionId,
-    BitArrayFunctionLocalId, BitArrayListFunctionId, BitArrayListLocalId, BitArrayLocalId,
-    BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId,
-    BoolListFunctionId, BoolListLocalId, BoolLocalId, CaptureArg, CustomConstructor,
-    CustomConstructorField, CustomExpr, CustomFieldAccess, CustomFunctionExpr,
-    CustomFunctionFunctionId, CustomFunctionId, CustomFunctionLocal, CustomFunctionLocalId,
-    CustomFunctionType, CustomListFunctionId, CustomListLocalId, CustomLocalId,
-    CustomTypeDefinition, CustomTypeTemplate, FloatExpr, FloatFunctionExpr,
-    FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatListFunctionId,
-    FloatListLocalId, FloatLocalId, FunctionFunctionExpr, FunctionFunctionFunctionId,
-    FunctionFunctionId, FunctionFunctionLocal, FunctionFunctionLocalId, FunctionFunctionType,
-    FunctionId, FunctionListFunctionId, FunctionListLocalId, FunctionPlan, FunctionReference,
-    FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
-    IntFunctionLocalId, IntListFunctionId, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr,
-    ListFunctionFunctionId, ListFunctionId, ListFunctionLocal, ListListFunctionId, ListListLocalId,
-    ListLocal, ListLocalExpr, LocalId, NilExpr, NilFunctionExpr, NilFunctionFunctionId,
-    NilFunctionId, NilFunctionLocalId, NilListFunctionId, NilListLocalId, NilLocalId, PanicSite,
-    ParamBinding, ParamLocal, RuntimeFunctionId, StringExpr, StringFunctionExpr,
-    StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId, StringListFunctionId,
-    StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId,
-    TupleFunctionId, TupleFunctionLocalId, TupleListFunctionId, TupleListLocalId, TupleLocalId,
-    TypedFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr, UtfCodepointFunctionFunctionId,
-    UtfCodepointFunctionId, UtfCodepointFunctionLocalId, UtfCodepointListFunctionId,
-    UtfCodepointListLocalId, UtfCodepointLocalId, ValueType,
+    BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionLocalId, BitArrayListLocalId,
+    BitArrayLocalId, BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, BoolListLocalId, BoolLocalId,
+    CaptureArg, CustomConstructor, CustomConstructorField, CustomExpr, CustomFieldAccess,
+    CustomFunctionExpr, CustomFunctionLocal, CustomFunctionLocalId, CustomFunctionType,
+    CustomListLocalId, CustomLocalId, CustomTypeDefinition, CustomTypeTemplate, FloatExpr,
+    FloatFunctionExpr, FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionFunctionExpr,
+    FunctionFunctionLocal, FunctionFunctionLocalId, FunctionFunctionType, FunctionListLocalId,
+    FunctionReference, FunctionTemplate, FunctionTemplateSignature, FunctionType, IntExpr,
+    IntFunctionExpr, IntFunctionLocalId, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr,
+    ListFunctionLocal, ListListLocalId, ListLocal, ListLocalExpr, LocalId, NilExpr,
+    NilFunctionExpr, NilFunctionLocalId, NilListLocalId, NilLocalId, PanicSite, ParamBinding,
+    ParamLocal, StringExpr, StringFunctionExpr, StringFunctionLocalId, StringListLocalId,
+    StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleListLocalId,
+    TupleLocalId, TypedFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId, ValueType,
 };
 use crate::plan::{
     CustomConstructorRefinement, CustomType, CustomValueShape, FunctionShape, ValueShape,
 };
 use crate::planner::error::{
     InvalidCustomTypeReason, InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError,
-    UnsupportedExpressionKind,
 };
 use ecow::EcoString;
 use gleam_core::type_::{
@@ -39,8 +29,8 @@ use std::collections::HashMap;
 
 #[derive(Clone)]
 pub(super) struct FunctionInfo {
-    pub(super) id: FunctionId,
-    pub(super) runtime_id: RuntimeFunctionId,
+    pub(super) signature: FunctionTemplateSignature,
+    pub(super) type_parameters: super::type_parameter::TypeParameterScope,
     pub(super) return_shape: ValueShape,
     pub(super) params: Vec<FunctionParam>,
 }
@@ -100,8 +90,10 @@ pub(super) struct PlanContext<'a> {
     current_function: EcoString,
     functions: &'a HashMap<EcoString, FunctionInfo>,
     custom_types: &'a [CustomTypeDefinition],
+    constants: Option<&'a crate::planner::module::ConstantRegistry>,
     anonymous_functions: &'a mut AnonymousFunctions,
     bindings: HashMap<EcoString, LocalBinding>,
+    next_generic_local: usize,
     next_int_local: usize,
     next_float_local: usize,
     next_string_local: usize,
@@ -122,6 +114,7 @@ pub(super) struct PlanContext<'a> {
     next_tuple_list_local: usize,
     next_list_list_local: usize,
     next_function_list_local: usize,
+    next_generic_list_local: usize,
     next_int_function_local: usize,
     next_float_function_local: usize,
     next_string_function_local: usize,
@@ -133,6 +126,9 @@ pub(super) struct PlanContext<'a> {
     next_tuple_function_local: usize,
     next_list_function_local: usize,
     next_function_function_local: usize,
+    next_generic_function_local: usize,
+    type_parameter_count: usize,
+    type_parameters: super::type_parameter::TypeParameterScope,
 }
 
 #[derive(Clone)]
@@ -380,6 +376,7 @@ fn collect_parameter_shapes(
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum FunctionLocalBinding {
+    Generic(crate::plan::GenericFunctionLocal),
     Int {
         local: IntFunctionLocalId,
         type_: FunctionType,
@@ -438,8 +435,10 @@ impl<'a> PlanContext<'a> {
             current_function: "main".into(),
             functions,
             custom_types,
+            constants: None,
             anonymous_functions,
             bindings: HashMap::new(),
+            next_generic_local: 0,
             next_int_local: 0,
             next_float_local: 0,
             next_string_local: 0,
@@ -460,6 +459,7 @@ impl<'a> PlanContext<'a> {
             next_tuple_list_local: 0,
             next_list_list_local: 0,
             next_function_list_local: 0,
+            next_generic_list_local: 0,
             next_int_function_local: 0,
             next_float_function_local: 0,
             next_string_function_local: 0,
@@ -471,11 +471,56 @@ impl<'a> PlanContext<'a> {
             next_tuple_function_local: 0,
             next_list_function_local: 0,
             next_function_function_local: 0,
+            next_generic_function_local: 0,
+            type_parameter_count: 0,
+            type_parameters: super::type_parameter::TypeParameterScope::default(),
         }
+    }
+
+    pub(super) fn new_with_module_items(
+        module_name: &'a EcoString,
+        functions: &'a HashMap<EcoString, FunctionInfo>,
+        custom_types: &'a [CustomTypeDefinition],
+        constants: &'a crate::planner::module::ConstantRegistry,
+        anonymous_functions: &'a mut AnonymousFunctions,
+    ) -> Self {
+        let mut context =
+            Self::new_with_custom_types(module_name, functions, custom_types, anonymous_functions);
+        context.constants = Some(constants);
+        context
     }
 
     pub(super) fn set_current_function(&mut self, name: EcoString) {
         self.current_function = name;
+    }
+
+    pub(super) fn set_type_parameters(
+        &mut self,
+        type_parameters: super::type_parameter::TypeParameterScope,
+    ) {
+        self.type_parameter_count = type_parameters.scheme().parameters().len();
+        self.type_parameters = type_parameters;
+    }
+
+    pub(super) fn type_parameters(&self) -> &super::type_parameter::TypeParameterScope {
+        &self.type_parameters
+    }
+
+    pub(super) fn type_parameter_count(&self) -> usize {
+        self.type_parameter_count
+    }
+
+    pub(super) fn value_shape(&mut self, type_: &Type) -> ValueShape {
+        ValueShape::from_gleam_in(type_, &mut self.type_parameters)
+    }
+
+    pub(super) fn value_shape_in_scope(&self, type_: &Type) -> ValueShape {
+        let mut type_parameters = self.type_parameters.clone();
+        ValueShape::from_gleam_in(type_, &mut type_parameters)
+    }
+
+    pub(super) fn value_type(&mut self, type_: &Type) -> ValueType {
+        self.value_shape(type_).value_type()
     }
 
     pub(super) fn panic_site(&self, location: gleam_core::ast::SrcSpan) -> PanicSite {
@@ -488,6 +533,9 @@ impl<'a> PlanContext<'a> {
 
     pub(super) fn define_existing_local(&mut self, name: EcoString, local: LocalId) {
         match local {
+            LocalId::Generic(local) => {
+                self.next_generic_local = self.next_generic_local.max(local.id().0 + 1);
+            }
             LocalId::Int(local) => {
                 self.next_int_local = self.next_int_local.max(local.0 + 1);
             }
@@ -519,6 +567,9 @@ impl<'a> PlanContext<'a> {
         shape: ValueShape,
     ) -> ParamLocal {
         match shape {
+            ValueShape::Parameter(parameter) => {
+                ParamLocal::generic(self.define_generic_local(name, parameter))
+            }
             ValueShape::Int => ParamLocal::int(self.define_int_local(name)),
             ValueShape::Float => ParamLocal::float(self.define_float_local(name)),
             ValueShape::String => ParamLocal::string(self.define_string_local(name)),
@@ -544,6 +595,15 @@ impl<'a> PlanContext<'a> {
                 let type_ = shape.type_();
                 let return_shape = shape.return_shape().clone();
                 match return_shape {
+                    ValueShape::Parameter(parameter) => {
+                        let type_ = crate::plan::GenericFunctionType::new(
+                            shape.argument_shapes().to_vec(),
+                            parameter,
+                        );
+                        ParamLocal::generic_function(
+                            self.define_generic_function_local_shape(name, type_, shape),
+                        )
+                    }
                     ValueShape::Int => ParamLocal::int_function(
                         self.define_int_function_local_shape(name, type_.clone(), shape),
                         type_,
@@ -614,6 +674,11 @@ impl<'a> PlanContext<'a> {
         shape: ValueShape,
     ) -> Result<(), PlanError> {
         match (local, shape) {
+            (ParamLocal::Generic(local), ValueShape::Parameter(parameter))
+                if local.parameter() == parameter =>
+            {
+                self.define_existing_local(name, LocalId::Generic(*local));
+            }
             (ParamLocal::Int(local), ValueShape::Int) => {
                 self.define_existing_local(name, LocalId::Int(*local));
             }
@@ -824,6 +889,19 @@ impl<'a> PlanContext<'a> {
                     name,
                     LocalBinding::Function {
                         binding: FunctionLocalBinding::Function(local.clone()),
+                        shape: *shape,
+                    },
+                );
+            }
+            (ParamLocal::GenericFunction(local), ValueShape::Function(shape))
+                if local.type_().shape() == *shape =>
+            {
+                self.next_generic_function_local =
+                    self.next_generic_function_local.max(local.id().0 + 1);
+                self.bindings.insert(
+                    name,
+                    LocalBinding::Function {
+                        binding: FunctionLocalBinding::Generic(local.clone()),
                         shape: *shape,
                     },
                 );
@@ -1236,6 +1314,66 @@ impl<'a> PlanContext<'a> {
         local
     }
 
+    pub(super) fn define_generic_local(
+        &mut self,
+        name: EcoString,
+        parameter: crate::plan::TypeParameterId,
+    ) -> crate::plan::GenericLocal {
+        let local = crate::plan::GenericLocal::new(
+            crate::plan::GenericLocalId(self.next_generic_local),
+            parameter,
+        );
+        self.next_generic_local += 1;
+        self.bindings
+            .insert(name, LocalBinding::Primitive(LocalId::Generic(local)));
+        local
+    }
+
+    pub(super) fn define_internal_generic_local(
+        &mut self,
+        parameter: crate::plan::TypeParameterId,
+    ) -> crate::plan::GenericLocal {
+        let local = crate::plan::GenericLocal::new(
+            crate::plan::GenericLocalId(self.next_generic_local),
+            parameter,
+        );
+        self.next_generic_local += 1;
+        local
+    }
+
+    pub(super) fn define_generic_function_local_shape(
+        &mut self,
+        name: EcoString,
+        type_: crate::plan::GenericFunctionType,
+        shape: FunctionShape,
+    ) -> crate::plan::GenericFunctionLocal {
+        let local = crate::plan::GenericFunctionLocal::new(
+            crate::plan::GenericFunctionLocalId(self.next_generic_function_local),
+            type_,
+        );
+        self.next_generic_function_local += 1;
+        self.bindings.insert(
+            name,
+            LocalBinding::Function {
+                binding: FunctionLocalBinding::Generic(local.clone()),
+                shape,
+            },
+        );
+        local
+    }
+
+    pub(super) fn define_internal_generic_function_local(
+        &mut self,
+        type_: crate::plan::GenericFunctionType,
+    ) -> crate::plan::GenericFunctionLocal {
+        let local = crate::plan::GenericFunctionLocal::new(
+            crate::plan::GenericFunctionLocalId(self.next_generic_function_local),
+            type_,
+        );
+        self.next_generic_function_local += 1;
+        local
+    }
+
     pub(super) fn define_internal_int_local(&mut self) -> IntLocalId {
         let local = IntLocalId(self.next_int_local);
         self.next_int_local += 1;
@@ -1441,6 +1579,11 @@ impl<'a> PlanContext<'a> {
 
     fn next_list_local(&mut self, element_type: ValueType) -> ListLocal {
         match element_type {
+            ValueType::Parameter(parameter) => {
+                let local = crate::plan::GenericListLocalId(self.next_generic_list_local);
+                self.next_generic_list_local += 1;
+                ListLocal::generic(local, parameter)
+            }
             ValueType::Int => {
                 let local = IntListLocalId(self.next_int_list_local);
                 self.next_int_list_local += 1;
@@ -1501,6 +1644,19 @@ impl<'a> PlanContext<'a> {
 
     fn next_list_local_expr(&mut self, value: ListExpr) -> (ListLocal, ListLocalExpr) {
         match value {
+            ListExpr::Generic(value) => {
+                let local = crate::plan::GenericListLocalId(self.next_generic_list_local);
+                self.next_generic_list_local += 1;
+                let parameter = value.item().parameter();
+                (
+                    ListLocal::generic(local, parameter),
+                    ListLocalExpr::Generic {
+                        local,
+                        parameter,
+                        value,
+                    },
+                )
+            }
             ListExpr::Int(value) => {
                 let local = IntListLocalId(self.next_int_list_local);
                 self.next_int_list_local += 1;
@@ -1605,6 +1761,9 @@ impl<'a> PlanContext<'a> {
 
     fn bump_list_local(&mut self, local: &ListLocal) {
         match local {
+            ListLocal::Generic { local, .. } => {
+                self.next_generic_list_local = self.next_generic_list_local.max(local.0 + 1);
+            }
             ListLocal::Int(local) => {
                 self.next_int_list_local = self.next_int_list_local.max(local.0 + 1);
             }
@@ -1689,6 +1848,17 @@ impl<'a> PlanContext<'a> {
         self.functions.get(name).cloned()
     }
 
+    pub(super) fn constant_expr(
+        &self,
+        name: &EcoString,
+        shape: &ValueShape,
+    ) -> Option<crate::plan::Expr> {
+        let constants = self.constants?;
+        constants
+            .instantiate(name, shape)
+            .map(|instantiation| constants.materialize(&instantiation))
+    }
+
     pub(super) fn custom_constructor(
         &self,
         constructor: &ValueConstructor,
@@ -1711,14 +1881,10 @@ impl<'a> PlanContext<'a> {
             Some(signature) => signature,
             None => (Vec::new(), constructor.type_.clone()),
         };
-        let type_ = match ValueType::from_gleam(return_type.as_ref()) {
-            Some(ValueType::Custom(type_)) => type_,
-            None => {
-                return Err(PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::GenericFunction,
-                });
-            }
-            Some(_) => {
+        let mut type_parameters = self.type_parameters.clone();
+        let type_ = match ValueShape::from_gleam_in(return_type.as_ref(), &mut type_parameters) {
+            ValueShape::Custom(shape) => shape.type_().clone(),
+            _ => {
                 return Err(PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::CustomType {
                         name: name.clone(),
@@ -1727,18 +1893,12 @@ impl<'a> PlanContext<'a> {
                 });
             }
         };
-        let Some(field_types) = field_types
+        let field_types = field_types
             .into_iter()
-            .map(|field| ValueType::from_gleam(field.as_ref()))
-            .collect::<Option<Vec<_>>>()
-        else {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CustomType {
-                    name: name.clone(),
-                    reason: crate::planner::error::InvalidCustomTypeReason::FieldType,
-                },
-            });
-        };
+            .map(|field| {
+                ValueShape::from_gleam_in(field.as_ref(), &mut type_parameters).value_type()
+            })
+            .collect();
 
         self.custom_constructor_from_parts(
             type_,
@@ -1835,17 +1995,10 @@ impl<'a> PlanContext<'a> {
         constructor: &PatternConstructor,
         field_types: Vec<ValueType>,
     ) -> Result<ResolvedCustomConstructor, PlanError> {
-        let type_ = match ValueType::from_gleam(type_) {
-            Some(ValueType::Custom(type_)) => type_,
-            None => {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::CustomType {
-                        name: constructor.name.clone(),
-                        reason: InvalidCustomTypeReason::ConstructorType,
-                    },
-                });
-            }
-            Some(_) => {
+        let mut type_parameters = self.type_parameters.clone();
+        let type_ = match ValueShape::from_gleam_in(type_, &mut type_parameters) {
+            ValueShape::Custom(shape) => shape.type_().clone(),
+            _ => {
                 return Err(PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::CustomType {
                         name: constructor.name.clone(),
@@ -2070,35 +2223,31 @@ impl<'a> PlanContext<'a> {
         name: EcoString,
         return_shape: ValueShape,
         params: Vec<FunctionParam>,
-        runtime_id: RuntimeFunctionId,
+        type_parameters: super::type_parameter::TypeParameterScope,
     ) -> (EcoString, FunctionInfo) {
         self.anonymous_functions
-            .allocate(name, return_shape, params, runtime_id)
+            .allocate(name, return_shape, params, type_parameters)
     }
 
-    pub(super) fn allocate_anonymous_runtime_id_shape(
-        &mut self,
-        return_shape: &ValueShape,
-    ) -> RuntimeFunctionId {
-        self.anonymous_functions
-            .allocate_runtime_id_shape(return_shape)
-    }
-
-    pub(super) fn push_anonymous_function(&mut self, function: FunctionPlan) {
+    pub(super) fn push_anonymous_function(&mut self, function: FunctionTemplate) {
         self.anonymous_functions.push(function);
     }
 
     pub(super) fn anonymous_function_context(
         &mut self,
         function_name: EcoString,
+        type_parameters: super::type_parameter::TypeParameterScope,
     ) -> PlanContext<'_> {
+        let type_parameter_count = type_parameters.scheme().parameters().len();
         PlanContext {
             module_name: self.module_name,
             current_function: function_name,
             functions: self.functions,
             custom_types: self.custom_types,
+            constants: self.constants,
             anonymous_functions: self.anonymous_functions,
             bindings: HashMap::new(),
+            next_generic_local: 0,
             next_int_local: 0,
             next_float_local: 0,
             next_string_local: 0,
@@ -2119,6 +2268,7 @@ impl<'a> PlanContext<'a> {
             next_tuple_list_local: 0,
             next_list_list_local: 0,
             next_function_list_local: 0,
+            next_generic_list_local: 0,
             next_int_function_local: 0,
             next_float_function_local: 0,
             next_string_function_local: 0,
@@ -2130,6 +2280,9 @@ impl<'a> PlanContext<'a> {
             next_tuple_function_local: 0,
             next_list_function_local: 0,
             next_function_function_local: 0,
+            next_generic_function_local: 0,
+            type_parameter_count,
+            type_parameters,
         }
     }
 
@@ -2173,6 +2326,13 @@ impl<'a> PlanContext<'a> {
 
     fn define_capture(&mut self, capture: CaptureBinding) -> CaptureArg {
         match capture.binding {
+            LocalBinding::Primitive(LocalId::Generic(local)) => {
+                let target = self.define_generic_local(capture.name.clone(), local.parameter());
+                CaptureArg::generic(
+                    target,
+                    crate::plan::GenericExpr::local_get(local, capture.name),
+                )
+            }
             LocalBinding::Primitive(LocalId::Int(local)) => {
                 let target = self.define_int_local(capture.name.clone());
                 CaptureArg::int(target, IntExpr::local_get(local, capture.name))
@@ -2216,6 +2376,23 @@ impl<'a> PlanContext<'a> {
             }
             LocalBinding::List { local, item_shape } => {
                 CaptureArg::list(self.define_list_capture_value(capture.name, local, item_shape))
+            }
+            LocalBinding::Function {
+                binding: FunctionLocalBinding::Generic(local),
+                shape,
+            } => {
+                let target = self.define_generic_function_local_shape(
+                    capture.name.clone(),
+                    local.type_().clone(),
+                    shape.clone(),
+                );
+                CaptureArg::generic_function_expr(
+                    target,
+                    TypedFunctionExpr::new(
+                        shape,
+                        crate::plan::GenericFunctionExpr::local_get(local, capture.name),
+                    ),
+                )
             }
             LocalBinding::Function {
                 binding: FunctionLocalBinding::Int { local, type_ },
@@ -2409,24 +2586,20 @@ impl<'a> PlanContext<'a> {
 pub(in crate::planner) struct AnonymousFunctions {
     next_function_index: usize,
     next_anonymous_index: usize,
-    runtime_ids: FunctionRuntimeIds,
-    functions: Vec<FunctionPlan>,
+    functions: Vec<FunctionTemplate>,
 }
 
 impl AnonymousFunctions {
-    pub(in crate::planner) fn new(
-        next_function_index: usize,
-        runtime_ids: FunctionRuntimeIds,
-    ) -> Self {
+    pub(in crate::planner) fn new(next_function_index: usize) -> Self {
         Self {
             next_function_index,
             next_anonymous_index: 0,
-            runtime_ids,
             functions: Vec::new(),
         }
     }
 
-    pub(in crate::planner) fn into_functions(self) -> Vec<FunctionPlan> {
+    pub(in crate::planner) fn into_functions(mut self) -> Vec<FunctionTemplate> {
+        self.functions.sort_by_key(|function| function.id().index());
         self.functions
     }
 
@@ -2445,11 +2618,16 @@ impl AnonymousFunctions {
         name: EcoString,
         return_shape: ValueShape,
         params: Vec<FunctionParam>,
-        runtime_id: RuntimeFunctionId,
+        type_parameters: super::type_parameter::TypeParameterScope,
     ) -> (EcoString, FunctionInfo) {
+        let id = crate::plan::FunctionTemplateId::new(self.next_function_index);
+        let shape = FunctionShape::new(
+            params.iter().map(|param| param.shape().clone()).collect(),
+            return_shape.clone(),
+        );
         let info = FunctionInfo {
-            id: FunctionId::new(self.next_function_index),
-            runtime_id,
+            signature: FunctionTemplateSignature::new(id, type_parameters.scheme(), shape),
+            type_parameters,
             return_shape,
             params,
         };
@@ -2457,18 +2635,14 @@ impl AnonymousFunctions {
         (name, info)
     }
 
-    fn allocate_runtime_id_shape(&mut self, return_shape: &ValueShape) -> RuntimeFunctionId {
-        self.runtime_ids.next_shape(return_shape)
-    }
-
-    fn push(&mut self, function: FunctionPlan) {
+    fn push(&mut self, function: FunctionTemplate) {
         self.functions.push(function);
     }
 }
 
 impl Default for AnonymousFunctions {
     fn default() -> Self {
-        Self::new(0, FunctionRuntimeIds::default())
+        Self::new(0)
     }
 }
 
@@ -2481,18 +2655,21 @@ impl FunctionInfo {
         self.return_shape.clone()
     }
 
-    pub(super) fn shape(&self) -> FunctionShape {
-        FunctionShape::new(
-            self.params
-                .iter()
-                .map(|param| param.shape().clone())
-                .collect(),
-            self.return_shape.clone(),
-        )
+    pub(super) fn instantiate(
+        &self,
+        actual: &FunctionShape,
+    ) -> Result<
+        crate::plan::FunctionInstantiation,
+        super::type_parameter::FunctionInstantiationMismatch,
+    > {
+        super::type_parameter::instantiate(&self.signature, actual)
     }
 
-    pub(super) fn reference(&self) -> FunctionReference {
-        FunctionReference::from_slots(self.runtime_id.clone(), self.param_slots())
+    pub(super) fn reference(
+        &self,
+        instantiation: crate::plan::FunctionInstantiation,
+    ) -> FunctionReference {
+        FunctionReference::from_slots(instantiation, self.param_slots())
     }
 
     pub(super) fn param_slots(&self) -> Vec<crate::plan::ParamSlot> {
@@ -2503,485 +2680,36 @@ impl FunctionInfo {
     }
 }
 
-#[derive(Debug, Default)]
-pub(in crate::planner) struct FunctionRuntimeIds {
-    next_int: usize,
-    next_float: usize,
-    next_string: usize,
-    next_bit_array: usize,
-    next_utf_codepoint: usize,
-    next_custom: usize,
-    next_bool: usize,
-    next_nil: usize,
-    next_tuple: usize,
-    next_int_list: usize,
-    next_string_list: usize,
-    next_bit_array_list: usize,
-    next_utf_codepoint_list: usize,
-    next_custom_list: usize,
-    next_float_list: usize,
-    next_bool_list: usize,
-    next_nil_list: usize,
-    next_tuple_list: usize,
-    next_list_list: usize,
-    next_function_list: usize,
-    next_int_function: usize,
-    next_float_function: usize,
-    next_string_function: usize,
-    next_bit_array_function: usize,
-    next_utf_codepoint_function: usize,
-    next_custom_function: usize,
-    next_bool_function: usize,
-    next_nil_function: usize,
-    next_tuple_function: usize,
-    next_int_list_function: usize,
-    next_string_list_function: usize,
-    next_bit_array_list_function: usize,
-    next_utf_codepoint_list_function: usize,
-    next_custom_list_function: usize,
-    next_float_list_function: usize,
-    next_bool_list_function: usize,
-    next_nil_list_function: usize,
-    next_tuple_list_function: usize,
-    next_list_list_function: usize,
-    next_function_list_function: usize,
-    next_function_function: usize,
-}
-
-impl FunctionRuntimeIds {
-    #[cfg(test)]
-    pub(in crate::planner) fn next(&mut self, return_type: &ValueType) -> RuntimeFunctionId {
-        self.next_shape(&ValueShape::from_value_type(return_type.clone()))
-    }
-
-    pub(in crate::planner) fn next_shape(
-        &mut self,
-        return_shape: &ValueShape,
-    ) -> RuntimeFunctionId {
-        match return_shape {
-            ValueShape::Int => RuntimeFunctionId::Int(self.next_int_id()),
-            ValueShape::Float => RuntimeFunctionId::Float(self.next_float_id()),
-            ValueShape::String => RuntimeFunctionId::String(self.next_string_id()),
-            ValueShape::BitArray => RuntimeFunctionId::BitArray(self.next_bit_array_id()),
-            ValueShape::UtfCodepoint => {
-                RuntimeFunctionId::UtfCodepoint(self.next_utf_codepoint_id())
-            }
-            ValueShape::Custom(return_shape) => {
-                RuntimeFunctionId::Custom(self.next_custom_shape_id(return_shape.clone()))
-            }
-            ValueShape::Bool => RuntimeFunctionId::Bool(self.next_bool_id()),
-            ValueShape::Nil => RuntimeFunctionId::Nil(self.next_nil_id()),
-            ValueShape::Tuple(return_shape) => RuntimeFunctionId::Tuple {
-                id: self.next_tuple_id(),
-                return_type: return_shape.iter().map(ValueShape::value_type).collect(),
-            },
-            ValueShape::List(return_shape) => {
-                RuntimeFunctionId::List(self.next_list_id(return_shape.value_type()))
-            }
-            ValueShape::Function(return_shape) => self.next_function_shape(return_shape),
-        }
-    }
-
-    fn next_function_shape(&mut self, return_shape: &FunctionShape) -> RuntimeFunctionId {
-        let return_type = return_shape.type_();
-        let id = match return_shape.return_shape() {
-            ValueShape::Int => FunctionFunctionId::Int(self.next_int_function_id()),
-            ValueShape::Float => FunctionFunctionId::Float(self.next_float_function_id()),
-            ValueShape::String => FunctionFunctionId::String(self.next_string_function_id()),
-            ValueShape::BitArray => FunctionFunctionId::BitArray(self.next_bit_array_function_id()),
-            ValueShape::UtfCodepoint => {
-                FunctionFunctionId::UtfCodepoint(self.next_utf_codepoint_function_id())
-            }
-            ValueShape::Custom(return_) => FunctionFunctionId::Custom(
-                self.next_custom_function_id(crate::plan::CustomFunctionType::from_shapes(
-                    return_shape.argument_shapes().to_vec(),
-                    return_.clone(),
-                )),
-            ),
-            ValueShape::Bool => FunctionFunctionId::Bool(self.next_bool_function_id()),
-            ValueShape::Nil => FunctionFunctionId::Nil(self.next_nil_function_id()),
-            ValueShape::Tuple(_) => FunctionFunctionId::Tuple(self.next_tuple_function_id()),
-            ValueShape::List(item_shape) => FunctionFunctionId::List(
-                self.next_list_function_id(return_type.clone(), item_shape.value_type()),
-            ),
-            ValueShape::Function(return_) => FunctionFunctionId::Function(
-                self.next_function_function_id(crate::plan::FunctionFunctionType::from_shapes(
-                    return_shape.argument_shapes().to_vec(),
-                    return_.as_ref().clone(),
-                )),
-            ),
-        };
-
-        RuntimeFunctionId::Function { id, return_type }
-    }
-
-    pub(in crate::planner) fn next_int_id(&mut self) -> IntFunctionId {
-        let id = IntFunctionId(self.next_int);
-        self.next_int += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_string_id(&mut self) -> StringFunctionId {
-        let id = StringFunctionId(self.next_string);
-        self.next_string += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_bit_array_id(&mut self) -> BitArrayFunctionId {
-        let id = BitArrayFunctionId(self.next_bit_array);
-        self.next_bit_array += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_utf_codepoint_id(&mut self) -> UtfCodepointFunctionId {
-        let id = UtfCodepointFunctionId(self.next_utf_codepoint);
-        self.next_utf_codepoint += 1;
-        id
-    }
-
-    #[cfg(test)]
-    pub(in crate::planner) fn next_custom_id(
-        &mut self,
-        return_type: CustomType,
-    ) -> CustomFunctionId {
-        self.next_custom_shape_id(CustomValueShape::any(return_type))
-    }
-
-    pub(in crate::planner) fn next_custom_shape_id(
-        &mut self,
-        return_shape: CustomValueShape,
-    ) -> CustomFunctionId {
-        let id = CustomFunctionId::from_shape(self.next_custom, return_shape);
-        self.next_custom += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_float_id(&mut self) -> FloatFunctionId {
-        let id = FloatFunctionId(self.next_float);
-        self.next_float += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_bool_id(&mut self) -> BoolFunctionId {
-        let id = BoolFunctionId(self.next_bool);
-        self.next_bool += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_nil_id(&mut self) -> NilFunctionId {
-        let id = NilFunctionId(self.next_nil);
-        self.next_nil += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_tuple_id(&mut self) -> TupleFunctionId {
-        let id = TupleFunctionId(self.next_tuple);
-        self.next_tuple += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_list_id(&mut self, item_type: ValueType) -> ListFunctionId {
-        match item_type {
-            ValueType::Int => ListFunctionId::Int(self.next_int_list_id()),
-            ValueType::String => ListFunctionId::String(self.next_string_list_id()),
-            ValueType::BitArray => ListFunctionId::BitArray(self.next_bit_array_list_id()),
-            ValueType::UtfCodepoint => {
-                ListFunctionId::UtfCodepoint(self.next_utf_codepoint_list_id())
-            }
-            ValueType::Custom(item_type) => ListFunctionId::Custom {
-                id: self.next_custom_list_id(),
-                item_type,
-            },
-            ValueType::Float => ListFunctionId::Float(self.next_float_list_id()),
-            ValueType::Bool => ListFunctionId::Bool(self.next_bool_list_id()),
-            ValueType::Nil => ListFunctionId::Nil(self.next_nil_list_id()),
-            ValueType::Tuple(item_type) => ListFunctionId::Tuple {
-                id: self.next_tuple_list_id(),
-                item_type,
-            },
-            ValueType::List(item_type) => ListFunctionId::List {
-                id: self.next_list_list_id(),
-                item_type,
-            },
-            ValueType::Function(item_type) => ListFunctionId::Function {
-                id: self.next_function_list_id(),
-                item_type: *item_type,
-            },
-        }
-    }
-
-    pub(in crate::planner) fn next_int_list_id(&mut self) -> IntListFunctionId {
-        let id = IntListFunctionId(self.next_int_list);
-        self.next_int_list += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_string_list_id(&mut self) -> StringListFunctionId {
-        let id = StringListFunctionId(self.next_string_list);
-        self.next_string_list += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_bit_array_list_id(&mut self) -> BitArrayListFunctionId {
-        let id = BitArrayListFunctionId(self.next_bit_array_list);
-        self.next_bit_array_list += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_utf_codepoint_list_id(&mut self) -> UtfCodepointListFunctionId {
-        let id = UtfCodepointListFunctionId(self.next_utf_codepoint_list);
-        self.next_utf_codepoint_list += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_custom_list_id(&mut self) -> CustomListFunctionId {
-        let id = CustomListFunctionId(self.next_custom_list);
-        self.next_custom_list += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_float_list_id(&mut self) -> FloatListFunctionId {
-        let id = FloatListFunctionId(self.next_float_list);
-        self.next_float_list += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_bool_list_id(&mut self) -> BoolListFunctionId {
-        let id = BoolListFunctionId(self.next_bool_list);
-        self.next_bool_list += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_nil_list_id(&mut self) -> NilListFunctionId {
-        let id = NilListFunctionId(self.next_nil_list);
-        self.next_nil_list += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_tuple_list_id(&mut self) -> TupleListFunctionId {
-        let id = TupleListFunctionId(self.next_tuple_list);
-        self.next_tuple_list += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_list_list_id(&mut self) -> ListListFunctionId {
-        let id = ListListFunctionId(self.next_list_list);
-        self.next_list_list += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_function_list_id(&mut self) -> FunctionListFunctionId {
-        let id = FunctionListFunctionId(self.next_function_list);
-        self.next_function_list += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_int_function_id(&mut self) -> IntFunctionFunctionId {
-        let id = IntFunctionFunctionId(self.next_int_function);
-        self.next_int_function += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_string_function_id(&mut self) -> StringFunctionFunctionId {
-        let id = StringFunctionFunctionId(self.next_string_function);
-        self.next_string_function += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_bit_array_function_id(&mut self) -> BitArrayFunctionFunctionId {
-        let id = BitArrayFunctionFunctionId(self.next_bit_array_function);
-        self.next_bit_array_function += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_utf_codepoint_function_id(
-        &mut self,
-    ) -> UtfCodepointFunctionFunctionId {
-        let id = UtfCodepointFunctionFunctionId(self.next_utf_codepoint_function);
-        self.next_utf_codepoint_function += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_custom_function_id(
-        &mut self,
-        type_: crate::plan::CustomFunctionType,
-    ) -> CustomFunctionFunctionId {
-        let id = CustomFunctionFunctionId::new(self.next_custom_function, type_);
-        self.next_custom_function += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_float_function_id(&mut self) -> FloatFunctionFunctionId {
-        let id = FloatFunctionFunctionId(self.next_float_function);
-        self.next_float_function += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_bool_function_id(&mut self) -> BoolFunctionFunctionId {
-        let id = BoolFunctionFunctionId(self.next_bool_function);
-        self.next_bool_function += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_nil_function_id(&mut self) -> NilFunctionFunctionId {
-        let id = NilFunctionFunctionId(self.next_nil_function);
-        self.next_nil_function += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_tuple_function_id(&mut self) -> TupleFunctionFunctionId {
-        let id = TupleFunctionFunctionId(self.next_tuple_function);
-        self.next_tuple_function += 1;
-        id
-    }
-
-    pub(in crate::planner) fn next_list_function_id(
-        &mut self,
-        type_: FunctionType,
-        item_type: ValueType,
-    ) -> ListFunctionFunctionId {
-        match item_type {
-            ValueType::Int => {
-                let id = ListFunctionFunctionId::from_item_type(
-                    self.next_int_list_function,
-                    type_,
-                    ValueType::Int,
-                );
-                self.next_int_list_function += 1;
-                id
-            }
-            ValueType::String => {
-                let id = ListFunctionFunctionId::from_item_type(
-                    self.next_string_list_function,
-                    type_,
-                    ValueType::String,
-                );
-                self.next_string_list_function += 1;
-                id
-            }
-            ValueType::BitArray => {
-                let id = ListFunctionFunctionId::from_item_type(
-                    self.next_bit_array_list_function,
-                    type_,
-                    ValueType::BitArray,
-                );
-                self.next_bit_array_list_function += 1;
-                id
-            }
-            ValueType::UtfCodepoint => {
-                let id = ListFunctionFunctionId::from_item_type(
-                    self.next_utf_codepoint_list_function,
-                    type_,
-                    ValueType::UtfCodepoint,
-                );
-                self.next_utf_codepoint_list_function += 1;
-                id
-            }
-            ValueType::Custom(item_type) => {
-                let id = ListFunctionFunctionId::from_item_type(
-                    self.next_custom_list_function,
-                    type_,
-                    ValueType::Custom(item_type),
-                );
-                self.next_custom_list_function += 1;
-                id
-            }
-            ValueType::Float => {
-                let id = ListFunctionFunctionId::from_item_type(
-                    self.next_float_list_function,
-                    type_,
-                    ValueType::Float,
-                );
-                self.next_float_list_function += 1;
-                id
-            }
-            ValueType::Bool => {
-                let id = ListFunctionFunctionId::from_item_type(
-                    self.next_bool_list_function,
-                    type_,
-                    ValueType::Bool,
-                );
-                self.next_bool_list_function += 1;
-                id
-            }
-            ValueType::Nil => {
-                let id = ListFunctionFunctionId::from_item_type(
-                    self.next_nil_list_function,
-                    type_,
-                    ValueType::Nil,
-                );
-                self.next_nil_list_function += 1;
-                id
-            }
-            item_type @ ValueType::Tuple(_) => {
-                let id = ListFunctionFunctionId::from_item_type(
-                    self.next_tuple_list_function,
-                    type_,
-                    item_type,
-                );
-                self.next_tuple_list_function += 1;
-                id
-            }
-            item_type @ ValueType::List(_) => {
-                let id = ListFunctionFunctionId::from_item_type(
-                    self.next_list_list_function,
-                    type_,
-                    item_type,
-                );
-                self.next_list_list_function += 1;
-                id
-            }
-            item_type @ ValueType::Function(_) => {
-                let id = ListFunctionFunctionId::from_item_type(
-                    self.next_function_list_function,
-                    type_,
-                    item_type,
-                );
-                self.next_function_list_function += 1;
-                id
-            }
-        }
-    }
-
-    pub(in crate::planner) fn next_function_function_id(
-        &mut self,
-        type_: crate::plan::FunctionFunctionType,
-    ) -> FunctionFunctionFunctionId {
-        let id = FunctionFunctionFunctionId::new(self.next_function_function, type_);
-        self.next_function_function += 1;
-        id
-    }
-}
-
 #[cfg(test)]
 #[allow(clippy::arc_with_non_send_sync)]
 mod tests {
     use super::FunctionLocalBinding;
     use super::{
-        AnonymousFunctions, FunctionInfo, FunctionRuntimeIds, PlanContext,
-        ResolvedCustomConstructor, collect_parameter_shapes, instantiate_custom_shape_template,
+        AnonymousFunctions, FunctionInfo, PlanContext, ResolvedCustomConstructor,
+        collect_parameter_shapes, instantiate_custom_shape_template,
         instantiate_custom_type_template,
     };
     use crate::plan::{
-        BitArrayFunctionExpr, BitArrayFunctionId, BitArrayFunctionLocalId, BitArrayListExpr,
-        BitArrayListItem, BitArrayListLocalId, BitArrayLocalId, BoolFunctionExpr,
-        BoolFunctionLocalId, BoolListExpr, BoolListItem, BoolListLocalId, BoolLocalId, CaptureArg,
-        CustomConstruction, CustomConstructor, CustomConstructorDefinition, CustomConstructorField,
+        BitArrayFunctionExpr, BitArrayFunctionLocalId, BitArrayListExpr, BitArrayListItem,
+        BitArrayListLocalId, BitArrayLocalId, BoolFunctionExpr, BoolFunctionLocalId, BoolListExpr,
+        BoolListItem, BoolListLocalId, BoolLocalId, CaptureArg, CustomConstruction,
+        CustomConstructor, CustomConstructorDefinition, CustomConstructorField,
         CustomConstructorRefinement, CustomFieldDefinition, CustomFunctionLocal,
         CustomFunctionLocalId, CustomFunctionType, CustomLocal, CustomLocalId, CustomType,
         CustomTypeDefinition, CustomTypeName, CustomTypeParameterId, CustomTypePublicity,
-        CustomTypeTemplate, CustomValueShape, Expr, FloatFunctionExpr, FloatFunctionId,
-        FloatFunctionLocalId, FloatListExpr, FloatListItem, FloatListLocalId, FloatLocalId,
-        FunctionExpr, FunctionFunctionExpr, FunctionFunctionLocal, FunctionFunctionLocalId,
-        FunctionFunctionType, FunctionListExpr, FunctionListItem, FunctionListLocalId,
-        FunctionReference, FunctionShape, FunctionType, IntExpr, IntFunctionId, IntFunctionLocalId,
-        IntListExpr, IntListItem, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr,
-        ListListExpr, ListListItem, ListListLocalId, ListLocal, ListLocalExpr, LocalId,
-        NilFunctionExpr, NilFunctionLocalId, NilListExpr, NilListItem, NilListLocalId, NilLocalId,
-        ParamLocal, RuntimeFunctionId, StringExpr, StringFunctionExpr, StringFunctionLocalId,
-        StringListExpr, StringListItem, StringListLocalId, StringLocalId, TupleFunctionExpr,
-        TupleFunctionLocalId, TupleListExpr, TupleListItem, TupleListLocalId, TupleLocalId,
-        UtfCodepointListExpr, UtfCodepointListItem, UtfCodepointListLocalId, ValueShape, ValueType,
+        CustomTypeTemplate, CustomValueShape, Expr, FloatFunctionExpr, FloatFunctionLocalId,
+        FloatListExpr, FloatListItem, FloatListLocalId, FloatLocalId, FunctionExpr,
+        FunctionFunctionExpr, FunctionFunctionLocal, FunctionFunctionLocalId, FunctionFunctionType,
+        FunctionListExpr, FunctionListItem, FunctionListLocalId, FunctionReference, FunctionShape,
+        FunctionType, GenericFunctionLocal, GenericFunctionLocalId, GenericFunctionType,
+        GenericListLocalId, IntExpr, IntFunctionLocalId, IntListExpr, IntListItem, IntListLocalId,
+        IntLocalId, ListExpr, ListFunctionExpr, ListListExpr, ListListItem, ListListLocalId,
+        ListLocal, ListLocalExpr, LocalId, NilFunctionExpr, NilFunctionLocalId, NilListExpr,
+        NilListItem, NilListLocalId, NilLocalId, ParamLocal, StringExpr, StringFunctionExpr,
+        StringFunctionLocalId, StringListExpr, StringListItem, StringListLocalId, StringLocalId,
+        TupleFunctionExpr, TupleFunctionLocalId, TupleListExpr, TupleListItem, TupleListLocalId,
+        TupleLocalId, TypeParameterId, UtfCodepointListExpr, UtfCodepointListItem,
+        UtfCodepointListLocalId, ValueShape, ValueType,
     };
     use crate::planner::{InvalidCustomTypeReason, InvalidTypedAstReason, PlanError};
     use ecow::EcoString;
@@ -2997,6 +2725,19 @@ mod tests {
             CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
             Vec::new(),
         )
+    }
+
+    #[test]
+    fn constant_lookup_without_a_registry_returns_none() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let context = PlanContext::new(&module, &functions, &mut anonymous);
+
+        assert_eq!(
+            context.constant_expr(&EcoString::from("missing"), &ValueShape::Int),
+            None,
+        );
     }
 
     #[test]
@@ -3459,7 +3200,7 @@ mod tests {
             );
             Expr::function(
                 FunctionExpr::reference(FunctionReference::new(
-                    RuntimeFunctionId::Int(IntFunctionId(local)),
+                    crate::plan::monomorphic_function_instantiation(local, shape.clone()),
                     vec![ParamLocal::Custom(CustomLocal::from_shape(
                         CustomLocalId(0),
                         parameter_shape,
@@ -4023,7 +3764,7 @@ mod tests {
             context.custom_constructor(&invalid_field),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
-                    name: "Ok".into(),
+                    name: "Result".into(),
                     reason: InvalidCustomTypeReason::FieldType,
                 },
             }),
@@ -4137,6 +3878,53 @@ mod tests {
             ))
         );
         assert_eq!(context.lookup_local(&"f".into()), None);
+    }
+
+    #[test]
+    fn generic_function_params_preserve_parameter_shape_and_local_sequence() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let parameter = TypeParameterId(0);
+        let shape = FunctionShape::new(
+            vec![ValueShape::Parameter(parameter)],
+            ValueShape::Parameter(parameter),
+        );
+        let type_ = GenericFunctionType::new(vec![ValueShape::Parameter(parameter)], parameter);
+        let local = GenericFunctionLocal::new(GenericFunctionLocalId(0), type_.clone());
+
+        assert_eq!(
+            context.define_param_local_shape(
+                "function".into(),
+                ValueShape::Function(Box::new(shape.clone())),
+            ),
+            ParamLocal::generic_function(local.clone()),
+        );
+        assert_eq!(
+            context.lookup_function_local(&"function".into()),
+            Some((FunctionLocalBinding::Generic(local), shape.clone())),
+        );
+
+        let existing = GenericFunctionLocal::new(GenericFunctionLocalId(4), type_.clone());
+        context
+            .define_existing_param(
+                "existing".into(),
+                &ParamLocal::generic_function(existing.clone()),
+                ValueShape::Function(Box::new(shape.clone())),
+            )
+            .unwrap();
+        assert_eq!(
+            context.lookup_function_local(&"existing".into()),
+            Some((FunctionLocalBinding::Generic(existing), shape.clone())),
+        );
+        assert_eq!(
+            context.define_generic_function_local_shape("next".into(), type_, shape),
+            GenericFunctionLocal::new(
+                GenericFunctionLocalId(5),
+                GenericFunctionType::new(vec![ValueShape::Parameter(parameter)], parameter,),
+            ),
+        );
     }
 
     #[test]
@@ -4603,6 +4391,12 @@ mod tests {
         let mut context = PlanContext::new(&module, &functions, &mut anonymous);
         let tuple_type = vec![ValueType::Int, ValueType::String];
         let nested_function_type = FunctionType::new(vec![ValueType::Int], ValueType::String);
+        let parameter = TypeParameterId(0);
+
+        assert_eq!(
+            context.define_list_local("generic".into(), ValueType::Parameter(parameter)),
+            ListLocal::generic(GenericListLocalId(0), parameter),
+        );
 
         assert_eq!(
             context.define_list_local("strings".into(), ValueType::String),
@@ -4654,6 +4448,47 @@ mod tests {
                 ValueShape::Function(Box::new(FunctionShape::from_function_type(
                     nested_function_type,
                 ))),
+            )),
+        );
+        assert_eq!(
+            context.lookup_list_local(&"generic".into()),
+            Some((
+                ListLocal::generic(GenericListLocalId(0), parameter),
+                ValueShape::Parameter(parameter),
+            )),
+        );
+    }
+
+    #[test]
+    fn define_generic_list_value_preserves_parameter_and_typed_local_expression() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let parameter = TypeParameterId(0);
+        let value = ListExpr::try_value(Vec::new(), ValueType::Parameter(parameter))
+            .expect("an empty generic list has a sealed item parameter");
+        let typed_value = value
+            .clone()
+            .into_generic()
+            .expect("a parameter item list has generic list storage");
+
+        assert_eq!(
+            context.define_list_value("values".into(), value),
+            (
+                ListLocal::generic(GenericListLocalId(0), parameter),
+                ListLocalExpr::Generic {
+                    local: GenericListLocalId(0),
+                    parameter,
+                    value: typed_value,
+                },
+            ),
+        );
+        assert_eq!(
+            context.lookup_list_local(&"values".into()),
+            Some((
+                ListLocal::generic(GenericListLocalId(0), parameter),
+                ValueShape::Parameter(parameter),
             )),
         );
     }
@@ -5114,147 +4949,6 @@ mod tests {
                 ),
             ],
         );
-    }
-
-    #[test]
-    fn function_runtime_ids_allocate_by_return_type() {
-        let mut ids = FunctionRuntimeIds::default();
-
-        assert_eq!(
-            ids.next(&ValueType::Int),
-            RuntimeFunctionId::Int(IntFunctionId(0))
-        );
-        assert_eq!(
-            ids.next(&ValueType::Int),
-            RuntimeFunctionId::Int(IntFunctionId(1))
-        );
-        assert_eq!(
-            ids.next(&ValueType::Float),
-            RuntimeFunctionId::Float(FloatFunctionId(0))
-        );
-        assert_eq!(
-            ids.next(&ValueType::String),
-            RuntimeFunctionId::String(crate::plan::StringFunctionId(0))
-        );
-        assert_eq!(
-            ids.next(&ValueType::BitArray),
-            RuntimeFunctionId::BitArray(BitArrayFunctionId(0))
-        );
-        assert_eq!(
-            ids.next(&ValueType::Custom(custom_type())),
-            RuntimeFunctionId::Custom(crate::plan::CustomFunctionId::new(0, custom_type())),
-        );
-        assert_eq!(
-            ids.next(&ValueType::Bool),
-            RuntimeFunctionId::Bool(crate::plan::BoolFunctionId(0))
-        );
-        assert_eq!(
-            ids.next(&ValueType::Nil),
-            RuntimeFunctionId::Nil(crate::plan::NilFunctionId(0))
-        );
-    }
-
-    #[test]
-    fn function_runtime_ids_allocate_list_functions_by_item_family() {
-        let mut ids = FunctionRuntimeIds::default();
-
-        assert_eq!(
-            ids.next_list_id(ValueType::Int),
-            crate::plan::ListFunctionId::from_item_type(0, ValueType::Int),
-        );
-        assert_eq!(
-            ids.next_list_id(ValueType::String),
-            crate::plan::ListFunctionId::from_item_type(0, ValueType::String),
-        );
-        assert_eq!(
-            ids.next_list_id(ValueType::BitArray),
-            crate::plan::ListFunctionId::from_item_type(0, ValueType::BitArray),
-        );
-        assert_eq!(
-            ids.next_list_id(ValueType::Custom(custom_type())),
-            crate::plan::ListFunctionId::from_item_type(0, ValueType::Custom(custom_type()),),
-        );
-        assert_eq!(
-            ids.next_list_id(ValueType::Float),
-            crate::plan::ListFunctionId::from_item_type(0, ValueType::Float),
-        );
-        assert_eq!(
-            ids.next_list_id(ValueType::Bool),
-            crate::plan::ListFunctionId::from_item_type(0, ValueType::Bool),
-        );
-        assert_eq!(
-            ids.next_list_id(ValueType::Nil),
-            crate::plan::ListFunctionId::from_item_type(0, ValueType::Nil),
-        );
-        assert_eq!(
-            ids.next_list_id(ValueType::Tuple(vec![ValueType::Int])),
-            crate::plan::ListFunctionId::from_item_type(0, ValueType::Tuple(vec![ValueType::Int])),
-        );
-        assert_eq!(
-            ids.next_list_id(ValueType::List(Box::new(ValueType::Int))),
-            crate::plan::ListFunctionId::from_item_type(
-                0,
-                ValueType::List(Box::new(ValueType::Int))
-            ),
-        );
-        assert_eq!(
-            ids.next_list_id(ValueType::Function(Box::new(nested_function_type()))),
-            crate::plan::ListFunctionId::from_item_type(
-                0,
-                ValueType::Function(Box::new(nested_function_type()))
-            ),
-        );
-        assert_eq!(
-            ids.next_list_id(ValueType::Int),
-            crate::plan::ListFunctionId::from_item_type(1, ValueType::Int),
-        );
-    }
-
-    #[test]
-    fn function_runtime_ids_allocate_list_function_functions_by_item_family() {
-        let mut ids = FunctionRuntimeIds::default();
-
-        for item_type in list_item_types() {
-            let type_ = list_function_type(item_type.clone());
-
-            assert_eq!(
-                ids.next_list_function_id(type_.clone(), item_type.clone()),
-                crate::plan::ListFunctionFunctionId::from_item_type(0, type_, item_type),
-            );
-        }
-
-        assert_eq!(
-            ids.next_list_function_id(list_function_type(ValueType::Int), ValueType::Int),
-            crate::plan::ListFunctionFunctionId::from_item_type(
-                1,
-                list_function_type(ValueType::Int),
-                ValueType::Int,
-            ),
-        );
-    }
-
-    fn list_item_types() -> Vec<ValueType> {
-        vec![
-            ValueType::Int,
-            ValueType::String,
-            ValueType::BitArray,
-            ValueType::UtfCodepoint,
-            ValueType::Custom(custom_type()),
-            ValueType::Float,
-            ValueType::Bool,
-            ValueType::Nil,
-            ValueType::Tuple(vec![ValueType::Int, ValueType::String]),
-            ValueType::List(Box::new(ValueType::Int)),
-            ValueType::Function(Box::new(nested_function_type())),
-        ]
-    }
-
-    fn list_function_type(item_type: ValueType) -> FunctionType {
-        FunctionType::new(Vec::new(), ValueType::List(Box::new(item_type)))
-    }
-
-    fn nested_function_type() -> FunctionType {
-        FunctionType::new(vec![ValueType::Int], ValueType::String)
     }
 
     fn int_function_type() -> FunctionType {

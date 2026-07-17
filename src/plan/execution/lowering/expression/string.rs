@@ -5,91 +5,93 @@ use super::{
 use crate::plan::{execution, module};
 
 pub(in crate::plan::execution::lowering) fn string_expr(
-    expression: module::StringExpr,
+    expression: &module::StringExpr,
     context: &mut super::super::LoweringContext,
 ) -> execution::StringExpr {
     use execution::StringExprKind as E;
     use module::StringExprKind as M;
 
-    execution::StringExpr::from_kind(match expression.into_kind() {
-        M::Value(value) => E::Value(value),
+    execution::StringExpr::from_kind(match expression.kind() {
+        M::Value(value) => E::Value(value.clone()),
         M::LocalGet { local, name: _ } => E::LocalGet {
-            local: execution::StringLocalId(local.0),
+            local: execution::StringLocalId(
+                context.mapped_local(super::super::frame::LocalKind::String, local.0),
+            ),
         },
         M::Call { function, args } => E::Call {
-            function: execution::StringFunctionId(function.0),
-            args: call_args(args, context),
+            function: context.string_function_id(function),
+            args: super::direct_call_args(function, args, context),
         },
         M::FunctionCall { function, args } => E::FunctionCall {
-            function: Box::new(string_function_expr(*function, context)),
+            function: Box::new(string_function_expr(function, context)),
             args: call_args(args, context),
         },
         M::TupleIndex { tuple, index } => E::TupleIndex {
-            tuple: Box::new(tuple_expr(*tuple, context)),
-            index,
+            tuple: Box::new(tuple_expr(tuple, context)),
+            index: *index,
         },
         M::CustomField(access) => E::CustomField(custom_field_access(access, context)),
         M::ListIndex { list, index } => E::ListIndex {
-            list: Box::new(string_list_expr(*list, context)),
-            index,
+            list: Box::new(string_list_expr(list, context)),
+            index: *index,
         },
         M::Panic(value) => E::Panic(panic_expr(value, context)),
         M::Concatenate { left, right } => E::Concatenate {
-            left: Box::new(string_expr(*left, context)),
-            right: Box::new(string_expr(*right, context)),
+            left: Box::new(string_expr(left, context)),
+            right: Box::new(string_expr(right, context)),
         },
         M::DropPrefix { value, prefix } => E::DropPrefix {
-            value: Box::new(string_expr(*value, context)),
-            prefix,
+            value: Box::new(string_expr(value, context)),
+            prefix: prefix.clone(),
         },
         M::BoolCase {
             subject,
             true_,
             false_,
         } => E::BoolCase {
-            subject: Box::new(bool_expr(*subject, context)),
-            true_: Box::new(string_expr(*true_, context)),
-            false_: Box::new(string_expr(*false_, context)),
+            subject: Box::new(bool_expr(subject, context)),
+            true_: Box::new(string_expr(true_, context)),
+            false_: Box::new(string_expr(false_, context)),
         },
         M::IntCase {
             subject,
             clauses,
             fallback,
         } => E::IntCase {
-            subject: Box::new(int_expr(*subject, context)),
+            subject: Box::new(int_expr(subject, context)),
             clauses: clauses
-                .into_iter()
-                .map(|(pattern, branch)| (pattern, string_expr(branch, context)))
+                .iter()
+                .map(|(pattern, branch)| (pattern.clone(), string_expr(branch, context)))
                 .collect(),
-            fallback: Box::new(string_expr(*fallback, context)),
+            fallback: Box::new(string_expr(fallback, context)),
         },
         M::StringCase {
             subject,
             clauses,
             fallback,
         } => E::StringCase {
-            subject: Box::new(string_expr(*subject, context)),
+            subject: Box::new(string_expr(subject, context)),
             clauses: clauses
-                .into_iter()
-                .map(|(pattern, branch)| (pattern, string_expr(branch, context)))
+                .iter()
+                .map(|(pattern, branch)| (pattern.clone(), string_expr(branch, context)))
                 .collect(),
-            fallback: Box::new(string_expr(*fallback, context)),
+            fallback: Box::new(string_expr(fallback, context)),
         },
         M::FloatCase {
             subject,
             clauses,
             fallback,
         } => E::FloatCase {
-            subject: Box::new(float_expr(*subject, context)),
+            subject: Box::new(float_expr(subject, context)),
             clauses: clauses
-                .into_iter()
-                .map(|(pattern, branch)| (pattern, string_expr(branch, context)))
+                .iter()
+                .map(|(pattern, branch)| (*pattern, string_expr(branch, context)))
                 .collect(),
-            fallback: Box::new(string_expr(*fallback, context)),
+            fallback: Box::new(string_expr(fallback, context)),
         },
         M::Block { steps, return_ } => E::Block {
             steps: super::super::step::steps(steps, context),
-            return_: Box::new(string_expr(*return_, context)),
+            return_: Box::new(string_expr(return_, context)),
         },
     })
 }

@@ -2,9 +2,9 @@ use super::returning_function::FunctionFunctionCallMismatch;
 #[cfg(test)]
 use crate::plan::ParamLocal;
 use crate::plan::{
-    BoolExpr, CaptureArg, CustomConstructor, CustomFieldAccess, CustomFunctionFunctionId,
-    CustomFunctionId, CustomFunctionLocal, CustomFunctionReference, CustomFunctionType, FloatExpr,
-    FunctionFunctionExpr, FunctionListExpr, FunctionType, IntExpr, PanicExpr, ParamSlot, Step,
+    BoolExpr, CaptureArg, CustomConstructor, CustomFieldAccess, CustomFunctionLocal,
+    CustomFunctionReference, CustomFunctionType, FloatExpr, FunctionFunctionExpr,
+    FunctionInstantiation, FunctionListExpr, FunctionType, IntExpr, PanicExpr, ParamSlot, Step,
     StringExpr, TupleExpr,
 };
 use ecow::EcoString;
@@ -21,7 +21,7 @@ pub(crate) enum CustomFunctionExprKind {
     Constructor(CustomConstructor),
     Reference(CustomFunctionReference),
     Closure {
-        runtime_id: CustomFunctionId,
+        function: FunctionInstantiation,
         params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
     },
@@ -30,7 +30,7 @@ pub(crate) enum CustomFunctionExprKind {
         name: EcoString,
     },
     Call {
-        function: CustomFunctionFunctionId,
+        function: FunctionInstantiation,
         args: Vec<crate::plan::CallArg>,
     },
     FunctionCall {
@@ -89,14 +89,13 @@ impl CustomFunctionExpr {
         }
     }
 
-    pub(crate) fn reference(value: CustomFunctionReference) -> Self {
+    pub(crate) fn reference(
+        value: CustomFunctionReference,
+        return_shape: crate::plan::CustomValueShape,
+    ) -> Self {
         let type_ = CustomFunctionType::from_shapes(
-            value
-                .params()
-                .iter()
-                .map(|param| param.shape().clone())
-                .collect(),
-            value.function().return_shape().clone(),
+            value.instantiation().shape().argument_shapes().to_vec(),
+            return_shape,
         );
         Self {
             type_,
@@ -105,18 +104,15 @@ impl CustomFunctionExpr {
     }
 
     pub(crate) fn closure_slots(
-        runtime_id: CustomFunctionId,
+        function: FunctionInstantiation,
         params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
+        type_: CustomFunctionType,
     ) -> Self {
-        let type_ = CustomFunctionType::from_shapes(
-            params.iter().map(|param| param.shape().clone()).collect(),
-            runtime_id.return_shape().clone(),
-        );
         Self {
             type_,
             kind: CustomFunctionExprKind::Closure {
-                runtime_id,
+                function,
                 params,
                 captures,
             },
@@ -125,14 +121,16 @@ impl CustomFunctionExpr {
 
     #[cfg(test)]
     pub(crate) fn closure(
-        runtime_id: CustomFunctionId,
+        function: FunctionInstantiation,
         params: Vec<ParamLocal>,
         captures: Vec<CaptureArg>,
+        type_: CustomFunctionType,
     ) -> Self {
         Self::closure_slots(
-            runtime_id,
+            function,
             params.into_iter().map(ParamSlot::from_local).collect(),
             captures,
+            type_,
         )
     }
 
@@ -145,10 +143,10 @@ impl CustomFunctionExpr {
     }
 
     pub(crate) fn call(
-        function: CustomFunctionFunctionId,
+        function: FunctionInstantiation,
         args: Vec<crate::plan::CallArg>,
+        type_: CustomFunctionType,
     ) -> Self {
-        let type_ = function.type_().clone();
         Self {
             type_,
             kind: CustomFunctionExprKind::Call { function, args },
@@ -325,11 +323,11 @@ impl CustomFunctionExpr {
 mod tests {
     use super::{CustomFunctionExpr, CustomFunctionExprKind};
     use crate::plan::{
-        BoolExpr, CallArg, CustomConstructorRefinement, CustomFunctionFunctionId, CustomFunctionId,
-        CustomFunctionReference, CustomFunctionType, CustomLocalId, CustomType, CustomTypeName,
-        CustomValueShape, FunctionExpr, FunctionFunctionCallMismatch, FunctionFunctionExpr,
-        FunctionFunctionId, FunctionFunctionReference, FunctionShape, FunctionType, IntExpr,
-        IntFunctionFunctionId, IntLocalId, ParamLocal, ValueShape, ValueType,
+        BoolExpr, CallArg, CustomConstructorRefinement, CustomFunctionReference,
+        CustomFunctionType, CustomLocalId, CustomType, CustomTypeName, CustomValueShape,
+        FunctionExpr, FunctionFunctionCallMismatch, FunctionFunctionExpr,
+        FunctionFunctionReference, FunctionInstantiation, FunctionShape, FunctionType, IntExpr,
+        IntLocalId, ParamLocal, ValueShape, ValueType, monomorphic_function_instantiation,
     };
 
     #[test]
@@ -403,12 +401,15 @@ mod tests {
         );
         let expected_type = CustomFunctionType::from_shapes(
             requested_shape.argument_shapes().to_vec(),
-            return_shape,
+            return_shape.clone(),
         );
-        let function = CustomFunctionExpr::reference(CustomFunctionReference::new(
-            CustomFunctionId::new(0, custom_type()),
-            vec![ParamLocal::custom(CustomLocalId(0), custom_type())],
-        ));
+        let function = CustomFunctionExpr::reference(
+            CustomFunctionReference::new(
+                custom_function_instantiation_with_param(),
+                vec![ParamLocal::custom(CustomLocalId(0), custom_type())],
+            ),
+            return_shape.clone(),
+        );
 
         assert_eq!(
             FunctionExpr::custom(function.clone()).with_resolved_shape(requested_shape),
@@ -445,11 +446,13 @@ mod tests {
             vec![ValueShape::Custom(exact.clone())],
             ValueShape::Custom(exact.clone()),
         );
-        let function =
-            FunctionExpr::custom(CustomFunctionExpr::reference(CustomFunctionReference::new(
-                CustomFunctionId::new(0, custom_type()),
+        let function = FunctionExpr::custom(CustomFunctionExpr::reference(
+            CustomFunctionReference::new(
+                custom_function_instantiation_with_param(),
                 vec![ParamLocal::custom(CustomLocalId(0), custom_type())],
-            )));
+            ),
+            exact.clone(),
+        ));
 
         let resolved = function
             .clone()
@@ -474,10 +477,13 @@ mod tests {
             vec![ValueShape::Custom(CustomValueShape::any(custom_type()))],
             ValueShape::Custom(return_shape.clone()),
         );
-        let function = CustomFunctionExpr::reference(CustomFunctionReference::new(
-            CustomFunctionId::new(0, custom_type()),
-            vec![ParamLocal::custom(CustomLocalId(0), custom_type())],
-        ));
+        let function = CustomFunctionExpr::reference(
+            CustomFunctionReference::new(
+                custom_function_instantiation_with_param(),
+                vec![ParamLocal::custom(CustomLocalId(0), custom_type())],
+            ),
+            return_shape.clone(),
+        );
         let expression = FunctionExpr::custom(function)
             .with_resolved_shape(shape.clone())
             .expect("custom callable shape should match");
@@ -497,17 +503,17 @@ mod tests {
     }
 
     fn function_value() -> CustomFunctionExpr {
-        CustomFunctionExpr::reference(function_reference())
+        CustomFunctionExpr::reference(function_reference(), custom_shape())
     }
 
     fn function_reference() -> CustomFunctionReference {
-        CustomFunctionReference::new(CustomFunctionId::new(0, custom_type()), Vec::new())
+        CustomFunctionReference::new(custom_function_instantiation(), Vec::new())
     }
 
     fn function_call_callee() -> FunctionFunctionExpr {
         FunctionFunctionExpr::reference(
             FunctionFunctionReference::new(
-                FunctionFunctionId::Custom(CustomFunctionFunctionId::new(0, function_type())),
+                function_call_callee_instantiation(),
                 vec![ParamLocal::int(IntLocalId(0))],
             ),
             function_type().to_function_type(),
@@ -517,7 +523,7 @@ mod tests {
     fn wrong_return_family_callee() -> FunctionFunctionExpr {
         FunctionFunctionExpr::reference(
             FunctionFunctionReference::new(
-                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                wrong_return_family_instantiation(),
                 vec![ParamLocal::int(IntLocalId(0))],
             ),
             FunctionType::new(Vec::new(), ValueType::Int),
@@ -526,6 +532,48 @@ mod tests {
 
     fn function_type() -> CustomFunctionType {
         CustomFunctionType::new(Vec::new(), custom_type())
+    }
+
+    fn custom_shape() -> CustomValueShape {
+        CustomValueShape::any(custom_type())
+    }
+
+    fn custom_function_shape() -> FunctionShape {
+        FunctionShape::new(Vec::new(), ValueShape::Custom(custom_shape()))
+    }
+
+    fn custom_function_instantiation() -> FunctionInstantiation {
+        monomorphic_function_instantiation(0, custom_function_shape())
+    }
+
+    fn custom_function_instantiation_with_param() -> FunctionInstantiation {
+        monomorphic_function_instantiation(
+            0,
+            FunctionShape::new(
+                vec![ValueShape::Custom(custom_shape())],
+                ValueShape::Custom(custom_shape()),
+            ),
+        )
+    }
+
+    fn function_call_callee_instantiation() -> FunctionInstantiation {
+        monomorphic_function_instantiation(
+            1,
+            FunctionShape::new(
+                vec![ValueShape::Int],
+                ValueShape::Function(Box::new(custom_function_shape())),
+            ),
+        )
+    }
+
+    fn wrong_return_family_instantiation() -> FunctionInstantiation {
+        monomorphic_function_instantiation(
+            2,
+            FunctionShape::new(
+                vec![ValueShape::Int],
+                ValueShape::Function(Box::new(FunctionShape::new(Vec::new(), ValueShape::Int))),
+            ),
+        )
     }
 
     fn custom_type() -> CustomType {

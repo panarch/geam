@@ -1,4 +1,3 @@
-use super::FrameLayout;
 use super::expression::{
     BitArrayExpr, BitArrayListExpr, BoolExpr, BoolListExpr, CallArg, CustomExpr, CustomListExpr,
     FloatExpr, FloatListExpr, FunctionListExpr, IntExpr, IntListExpr, ListListExpr, NilExpr,
@@ -6,22 +5,15 @@ use super::expression::{
     UtfCodepointListExpr,
 };
 use super::id::{
-    BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionLocalId,
-    BitArrayListFunctionId, BitArrayLocalId, BoolFunctionFunctionId, BoolFunctionId,
-    BoolFunctionLocalId, BoolListFunctionId, BoolLocalId, CustomFunctionFunctionId,
-    CustomFunctionId, CustomFunctionLocal, CustomListFunctionId, CustomLocal, CustomLocalId,
-    FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatListFunctionId,
-    FloatLocalId, FunctionFunctionFunctionId, FunctionFunctionLocal, FunctionId,
-    FunctionListFunctionId, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
-    IntListFunctionId, IntLocalId, ListFunctionFunctionId, ListFunctionLocal, ListListFunctionId,
-    ListLocal, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilListFunctionId,
-    NilLocalId, StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId,
-    StringListFunctionId, StringLocalId, TupleFunctionFunctionId, TupleFunctionId,
-    TupleFunctionLocalId, TupleListFunctionId, TupleLocalId, UtfCodepointFunctionFunctionId,
-    UtfCodepointFunctionId, UtfCodepointFunctionLocalId, UtfCodepointListFunctionId,
-    UtfCodepointLocalId,
+    BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
+    CustomFunctionLocal, CustomLocal, CustomLocalId, FloatFunctionLocalId, FloatLocalId,
+    FunctionFunctionLocal, FunctionTemplateId, GenericFunctionLocal, GenericLocal,
+    IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId,
+    StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
 use super::step::Step;
+use super::{FrameLayout, FunctionInstantiation, FunctionTemplateSignature, TypeScheme};
 use crate::plan::{CustomFunctionType, CustomType, FunctionFunctionType, FunctionType, ValueType};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -29,11 +21,16 @@ use num_bigint::BigInt;
 #[cfg(test)]
 use super::expression::ListExpr;
 #[cfg(test)]
-use super::id::{FunctionFunctionId, ListFunctionId, RuntimeFunctionId};
+use super::id::{
+    BitArrayFunctionFunctionId, BitArrayFunctionId, BoolFunctionFunctionId, BoolFunctionId,
+    FloatFunctionFunctionId, FloatFunctionId, IntFunctionFunctionId, IntFunctionId,
+    ListFunctionFunctionId, NilFunctionFunctionId, NilFunctionId, StringFunctionFunctionId,
+    StringFunctionId, TupleFunctionFunctionId, TupleFunctionId, UtfCodepointFunctionFunctionId,
+};
 
 #[derive(Debug, PartialEq)]
-pub struct FunctionPlan {
-    id: FunctionId,
+pub struct FunctionTemplate {
+    signature: FunctionTemplateSignature,
     name: EcoString,
     params: Vec<Param>,
     steps: Vec<Step>,
@@ -62,6 +59,7 @@ pub enum ParamBinding {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ParamLocal {
+    Generic(GenericLocal),
     Int(IntLocalId),
     Float(FloatLocalId),
     String(StringLocalId),
@@ -110,65 +108,66 @@ pub(crate) enum ParamLocal {
     },
     ListFunction(ListFunctionLocal),
     FunctionFunction(FunctionFunctionLocal),
+    GenericFunction(GenericFunctionLocal),
 }
 
-pub(crate) struct FunctionExecutionParts {
-    pub(crate) frame_layout: FrameLayout,
-    pub(crate) steps: Vec<Step>,
-    pub(crate) return_: ReturnExpr,
-}
-
-pub(crate) type IntReturn = ReturnBody<IntExpr, IntFunctionId>;
-pub(crate) type FloatReturn = ReturnBody<FloatExpr, FloatFunctionId>;
-pub(crate) type StringReturn = ReturnBody<StringExpr, StringFunctionId>;
-pub(crate) type BitArrayReturn = ReturnBody<BitArrayExpr, BitArrayFunctionId>;
-pub(crate) type UtfCodepointReturn = ReturnBody<UtfCodepointExpr, UtfCodepointFunctionId>;
+pub(crate) type GenericReturn = ReturnBody<super::GenericExpr, FunctionInstantiation>;
+pub(crate) type IntReturn = ReturnBody<IntExpr, FunctionInstantiation>;
+pub(crate) type FloatReturn = ReturnBody<FloatExpr, FunctionInstantiation>;
+pub(crate) type StringReturn = ReturnBody<StringExpr, FunctionInstantiation>;
+pub(crate) type BitArrayReturn = ReturnBody<BitArrayExpr, FunctionInstantiation>;
+pub(crate) type UtfCodepointReturn = ReturnBody<UtfCodepointExpr, FunctionInstantiation>;
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct CustomReturn {
     shape: crate::plan::CustomValueShape,
-    body: ReturnBody<super::CustomExprKind, usize>,
+    body: ReturnBody<super::CustomExprKind, FunctionInstantiation>,
 }
-pub(crate) type BoolReturn = ReturnBody<BoolExpr, BoolFunctionId>;
-pub(crate) type NilReturn = ReturnBody<NilExpr, NilFunctionId>;
-pub(crate) type TupleReturn = ReturnBody<TupleExpr, TupleFunctionId>;
-pub(crate) type IntListReturn = ReturnBody<IntListExpr, IntListFunctionId>;
-pub(crate) type FloatListReturn = ReturnBody<FloatListExpr, FloatListFunctionId>;
-pub(crate) type StringListReturn = ReturnBody<StringListExpr, StringListFunctionId>;
-pub(crate) type BitArrayListReturn = ReturnBody<BitArrayListExpr, BitArrayListFunctionId>;
-pub(crate) type UtfCodepointListReturn =
-    ReturnBody<UtfCodepointListExpr, UtfCodepointListFunctionId>;
-pub(crate) type CustomListReturn = ReturnBody<CustomListExpr, CustomListFunctionId>;
-pub(crate) type BoolListReturn = ReturnBody<BoolListExpr, BoolListFunctionId>;
-pub(crate) type NilListReturn = ReturnBody<NilListExpr, NilListFunctionId>;
-pub(crate) type TupleListReturn = ReturnBody<TupleListExpr, TupleListFunctionId>;
-pub(crate) type ListListReturn = ReturnBody<ListListExpr, ListListFunctionId>;
-pub(crate) type FunctionListReturn = ReturnBody<FunctionListExpr, FunctionListFunctionId>;
-pub(crate) type IntFunctionReturn = ReturnBody<super::IntFunctionExpr, IntFunctionFunctionId>;
-pub(crate) type FloatFunctionReturn = ReturnBody<super::FloatFunctionExpr, FloatFunctionFunctionId>;
-pub(crate) type StringFunctionReturn =
-    ReturnBody<super::StringFunctionExpr, StringFunctionFunctionId>;
+pub(crate) type BoolReturn = ReturnBody<BoolExpr, FunctionInstantiation>;
+pub(crate) type NilReturn = ReturnBody<NilExpr, FunctionInstantiation>;
+pub(crate) type TupleReturn = ReturnBody<TupleExpr, FunctionInstantiation>;
+pub(crate) type GenericListReturn = ReturnBody<super::GenericListExpr, FunctionInstantiation>;
+pub(crate) type IntListReturn = ReturnBody<IntListExpr, FunctionInstantiation>;
+pub(crate) type FloatListReturn = ReturnBody<FloatListExpr, FunctionInstantiation>;
+pub(crate) type StringListReturn = ReturnBody<StringListExpr, FunctionInstantiation>;
+pub(crate) type BitArrayListReturn = ReturnBody<BitArrayListExpr, FunctionInstantiation>;
+pub(crate) type UtfCodepointListReturn = ReturnBody<UtfCodepointListExpr, FunctionInstantiation>;
+pub(crate) type CustomListReturn = ReturnBody<CustomListExpr, FunctionInstantiation>;
+pub(crate) type BoolListReturn = ReturnBody<BoolListExpr, FunctionInstantiation>;
+pub(crate) type NilListReturn = ReturnBody<NilListExpr, FunctionInstantiation>;
+pub(crate) type TupleListReturn = ReturnBody<TupleListExpr, FunctionInstantiation>;
+pub(crate) type ListListReturn = ReturnBody<ListListExpr, FunctionInstantiation>;
+pub(crate) type FunctionListReturn = ReturnBody<FunctionListExpr, FunctionInstantiation>;
+pub(crate) type GenericFunctionReturn =
+    ReturnBody<super::GenericFunctionExpr, FunctionInstantiation>;
+pub(crate) type IntFunctionReturn = ReturnBody<super::IntFunctionExpr, FunctionInstantiation>;
+pub(crate) type FloatFunctionReturn = ReturnBody<super::FloatFunctionExpr, FunctionInstantiation>;
+pub(crate) type StringFunctionReturn = ReturnBody<super::StringFunctionExpr, FunctionInstantiation>;
 pub(crate) type BitArrayFunctionReturn =
-    ReturnBody<super::BitArrayFunctionExpr, BitArrayFunctionFunctionId>;
+    ReturnBody<super::BitArrayFunctionExpr, FunctionInstantiation>;
 pub(crate) type UtfCodepointFunctionReturn =
-    ReturnBody<super::UtfCodepointFunctionExpr, UtfCodepointFunctionFunctionId>;
+    ReturnBody<super::UtfCodepointFunctionExpr, FunctionInstantiation>;
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct CustomFunctionReturn {
     type_: CustomFunctionType,
-    body: ReturnBody<super::CustomFunctionExprKind, usize>,
+    body: ReturnBody<super::CustomFunctionExprKind, FunctionInstantiation>,
 }
-pub(crate) type BoolFunctionReturn = ReturnBody<super::BoolFunctionExpr, BoolFunctionFunctionId>;
-pub(crate) type NilFunctionReturn = ReturnBody<super::NilFunctionExpr, NilFunctionFunctionId>;
-pub(crate) type TupleFunctionReturn = ReturnBody<super::TupleFunctionExpr, TupleFunctionFunctionId>;
-pub(crate) type ListFunctionReturn = ReturnBody<super::ListFunctionExpr, ListFunctionFunctionId>;
+pub(crate) type BoolFunctionReturn = ReturnBody<super::BoolFunctionExpr, FunctionInstantiation>;
+pub(crate) type NilFunctionReturn = ReturnBody<super::NilFunctionExpr, FunctionInstantiation>;
+pub(crate) type TupleFunctionReturn = ReturnBody<super::TupleFunctionExpr, FunctionInstantiation>;
+pub(crate) type ListFunctionReturn = ReturnBody<super::ListFunctionExpr, FunctionInstantiation>;
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct FunctionFunctionReturn {
     type_: FunctionFunctionType,
-    body: ReturnBody<super::FunctionFunctionExprKind, usize>,
+    body: ReturnBody<super::FunctionFunctionExprKind, FunctionInstantiation>,
 }
 
 #[cfg(test)]
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ListReturn {
+    Generic {
+        item_parameter: crate::plan::TypeParameterId,
+        body: GenericListReturn,
+    },
     Int(IntListReturn),
     Float(FloatListReturn),
     String(StringListReturn),
@@ -196,9 +195,12 @@ pub(crate) enum ListReturn {
 
 #[cfg(test)]
 impl ListReturn {
-    #[cfg(test)]
     pub(crate) fn expr(expression: ListExpr) -> Self {
         match expression {
+            ListExpr::Generic(expression) => Self::Generic {
+                item_parameter: expression.item().parameter(),
+                body: GenericListReturn::expr(expression),
+            },
             ListExpr::Int(expression) => Self::Int(IntListReturn::expr(expression)),
             ListExpr::Float(expression) => Self::Float(FloatListReturn::expr(expression)),
             ListExpr::String(expression) => Self::String(StringListReturn::expr(expression)),
@@ -227,46 +229,59 @@ impl ListReturn {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn tail_call(function: ListFunctionId, args: Vec<CallArg>) -> Self {
-        match function {
-            ListFunctionId::Int(function) => Self::Int(IntListReturn::tail_call(function, args)),
-            ListFunctionId::Float(function) => {
-                Self::Float(FloatListReturn::tail_call(function, args))
-            }
-            ListFunctionId::String(function) => {
-                Self::String(StringListReturn::tail_call(function, args))
-            }
-            ListFunctionId::BitArray(function) => {
-                Self::BitArray(BitArrayListReturn::tail_call(function, args))
-            }
-            ListFunctionId::UtfCodepoint(function) => {
+    pub(crate) fn tail_call(
+        function: FunctionInstantiation,
+        item_type: ValueType,
+        args: Vec<CallArg>,
+    ) -> Self {
+        match item_type {
+            ValueType::Parameter(item_parameter) => Self::Generic {
+                item_parameter,
+                body: GenericListReturn::tail_call(function, args),
+            },
+            ValueType::Int => Self::Int(IntListReturn::tail_call(function, args)),
+            ValueType::Float => Self::Float(FloatListReturn::tail_call(function, args)),
+            ValueType::String => Self::String(StringListReturn::tail_call(function, args)),
+            ValueType::BitArray => Self::BitArray(BitArrayListReturn::tail_call(function, args)),
+            ValueType::UtfCodepoint => {
                 Self::UtfCodepoint(UtfCodepointListReturn::tail_call(function, args))
             }
-            ListFunctionId::Custom { id, item_type } => Self::Custom {
+            ValueType::Custom(item_type) => Self::Custom {
                 item_type,
-                body: CustomListReturn::tail_call(id, args),
+                body: CustomListReturn::tail_call(function, args),
             },
-            ListFunctionId::Bool(function) => Self::Bool(BoolListReturn::tail_call(function, args)),
-            ListFunctionId::Nil(function) => Self::Nil(NilListReturn::tail_call(function, args)),
-            ListFunctionId::Tuple { id, item_type } => Self::Tuple {
+            ValueType::Bool => Self::Bool(BoolListReturn::tail_call(function, args)),
+            ValueType::Nil => Self::Nil(NilListReturn::tail_call(function, args)),
+            ValueType::Tuple(item_type) => Self::Tuple {
                 item_type,
-                body: TupleListReturn::tail_call(id, args),
+                body: TupleListReturn::tail_call(function, args),
             },
-            ListFunctionId::List { id, item_type } => Self::List {
+            ValueType::List(item_type) => Self::List {
                 item_type,
-                body: ListListReturn::tail_call(id, args),
+                body: ListListReturn::tail_call(function, args),
             },
-            ListFunctionId::Function { id, item_type } => Self::Function {
-                item_type,
-                body: FunctionListReturn::tail_call(id, args),
+            ValueType::Function(item_type) => Self::Function {
+                item_type: *item_type,
+                body: FunctionListReturn::tail_call(function, args),
             },
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn try_bool_case(subject: BoolExpr, true_: Self, false_: Self) -> Option<Self> {
         Some(match (true_, false_) {
+            (
+                Self::Generic {
+                    item_parameter: true_parameter,
+                    body: true_,
+                },
+                Self::Generic {
+                    item_parameter: false_parameter,
+                    body: false_,
+                },
+            ) if true_parameter == false_parameter => Self::Generic {
+                item_parameter: true_parameter,
+                body: GenericListReturn::bool_case(subject, true_, false_),
+            },
             (Self::Int(true_), Self::Int(false_)) => {
                 Self::Int(IntListReturn::bool_case(subject, true_, false_))
             }
@@ -344,13 +359,28 @@ impl ListReturn {
         })
     }
 
-    #[cfg(test)]
     pub(crate) fn try_int_case(
         subject: IntExpr,
         clauses: Vec<(BigInt, Self)>,
         fallback: Self,
     ) -> Option<Self> {
         match fallback {
+            Self::Generic {
+                item_parameter,
+                body: fallback,
+            } => {
+                let clauses = into_list_return_clauses(clauses, |branch| match branch {
+                    Self::Generic {
+                        item_parameter: branch_parameter,
+                        body,
+                    } if branch_parameter == item_parameter => Some(body),
+                    _ => None,
+                })?;
+                Some(Self::Generic {
+                    item_parameter,
+                    body: GenericListReturn::int_case(subject, clauses, fallback),
+                })
+            }
             Self::Int(fallback) => Some(Self::Int(IntListReturn::int_case(
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
@@ -476,13 +506,28 @@ impl ListReturn {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn try_float_case(
         subject: FloatExpr,
         clauses: Vec<(f64, Self)>,
         fallback: Self,
     ) -> Option<Self> {
         match fallback {
+            Self::Generic {
+                item_parameter,
+                body: fallback,
+            } => {
+                let clauses = into_list_return_clauses(clauses, |branch| match branch {
+                    Self::Generic {
+                        item_parameter: branch_parameter,
+                        body,
+                    } if branch_parameter == item_parameter => Some(body),
+                    _ => None,
+                })?;
+                Some(Self::Generic {
+                    item_parameter,
+                    body: GenericListReturn::float_case(subject, clauses, fallback),
+                })
+            }
             Self::Int(fallback) => Some(Self::Int(IntListReturn::float_case(
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
@@ -608,13 +653,28 @@ impl ListReturn {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn try_string_case(
         subject: StringExpr,
         clauses: Vec<(EcoString, Self)>,
         fallback: Self,
     ) -> Option<Self> {
         match fallback {
+            Self::Generic {
+                item_parameter,
+                body: fallback,
+            } => {
+                let clauses = into_list_return_clauses(clauses, |branch| match branch {
+                    Self::Generic {
+                        item_parameter: branch_parameter,
+                        body,
+                    } if branch_parameter == item_parameter => Some(body),
+                    _ => None,
+                })?;
+                Some(Self::Generic {
+                    item_parameter,
+                    body: GenericListReturn::string_case(subject, clauses, fallback),
+                })
+            }
             Self::Int(fallback) => Some(Self::Int(IntListReturn::string_case(
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
@@ -740,9 +800,15 @@ impl ListReturn {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn try_block(steps: Vec<Step>, return_: Self) -> Self {
         match return_ {
+            Self::Generic {
+                item_parameter,
+                body,
+            } => Self::Generic {
+                item_parameter,
+                body: GenericListReturn::block(steps, body),
+            },
             Self::Int(return_) => Self::Int(IntListReturn::block(steps, return_)),
             Self::Float(return_) => Self::Float(FloatListReturn::block(steps, return_)),
             Self::String(return_) => Self::String(StringListReturn::block(steps, return_)),
@@ -828,151 +894,152 @@ pub struct ReturnExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ReturnExprKind {
+    Generic {
+        parameter: crate::plan::TypeParameterId,
+        body: GenericReturn,
+    },
     Int {
-        runtime_id: IntFunctionId,
         body: IntReturn,
     },
     Float {
-        runtime_id: FloatFunctionId,
         body: FloatReturn,
     },
     String {
-        runtime_id: StringFunctionId,
         body: StringReturn,
     },
     BitArray {
-        runtime_id: BitArrayFunctionId,
         body: BitArrayReturn,
     },
     UtfCodepoint {
-        runtime_id: UtfCodepointFunctionId,
         body: UtfCodepointReturn,
     },
     Custom {
-        runtime_id: CustomFunctionId,
         body: CustomReturn,
     },
     Bool {
-        runtime_id: BoolFunctionId,
         body: BoolReturn,
     },
     Nil {
-        runtime_id: NilFunctionId,
         body: NilReturn,
     },
     Tuple {
-        runtime_id: TupleFunctionId,
         type_: Vec<ValueType>,
         body: TupleReturn,
     },
+    GenericList {
+        parameter: crate::plan::TypeParameterId,
+        body: GenericListReturn,
+    },
     IntList {
-        runtime_id: IntListFunctionId,
         body: IntListReturn,
     },
     StringList {
-        runtime_id: StringListFunctionId,
         body: StringListReturn,
     },
     BitArrayList {
-        runtime_id: BitArrayListFunctionId,
         body: BitArrayListReturn,
     },
     UtfCodepointList {
-        runtime_id: UtfCodepointListFunctionId,
         body: UtfCodepointListReturn,
     },
     CustomList {
-        runtime_id: CustomListFunctionId,
         item_type: CustomType,
         body: CustomListReturn,
     },
     FloatList {
-        runtime_id: FloatListFunctionId,
         body: FloatListReturn,
     },
     BoolList {
-        runtime_id: BoolListFunctionId,
         body: BoolListReturn,
     },
     NilList {
-        runtime_id: NilListFunctionId,
         body: NilListReturn,
     },
     TupleList {
-        runtime_id: TupleListFunctionId,
         item_type: Vec<ValueType>,
         body: TupleListReturn,
     },
     ListList {
-        runtime_id: ListListFunctionId,
         item_type: Box<ValueType>,
         body: ListListReturn,
     },
     FunctionList {
-        runtime_id: FunctionListFunctionId,
         item_type: FunctionType,
         body: FunctionListReturn,
     },
+    GenericFunction {
+        shape: crate::plan::FunctionShape,
+        body: GenericFunctionReturn,
+    },
     IntFunction {
-        runtime_id: IntFunctionFunctionId,
         shape: crate::plan::FunctionShape,
         body: IntFunctionReturn,
     },
     FloatFunction {
-        runtime_id: FloatFunctionFunctionId,
         shape: crate::plan::FunctionShape,
         body: FloatFunctionReturn,
     },
     StringFunction {
-        runtime_id: StringFunctionFunctionId,
         shape: crate::plan::FunctionShape,
         body: StringFunctionReturn,
     },
     BitArrayFunction {
-        runtime_id: BitArrayFunctionFunctionId,
         shape: crate::plan::FunctionShape,
         body: BitArrayFunctionReturn,
     },
     UtfCodepointFunction {
-        runtime_id: UtfCodepointFunctionFunctionId,
         shape: crate::plan::FunctionShape,
         body: UtfCodepointFunctionReturn,
     },
     CustomFunction {
-        runtime_id: CustomFunctionFunctionId,
         shape: crate::plan::FunctionShape,
         body: CustomFunctionReturn,
     },
     BoolFunction {
-        runtime_id: BoolFunctionFunctionId,
         shape: crate::plan::FunctionShape,
         body: BoolFunctionReturn,
     },
     NilFunction {
-        runtime_id: NilFunctionFunctionId,
         shape: crate::plan::FunctionShape,
         body: NilFunctionReturn,
     },
     TupleFunction {
-        runtime_id: TupleFunctionFunctionId,
         shape: crate::plan::FunctionShape,
         body: TupleFunctionReturn,
     },
     ListFunction {
-        runtime_id: ListFunctionFunctionId,
         shape: crate::plan::FunctionShape,
+        item_type: ValueType,
         body: ListFunctionReturn,
     },
     FunctionFunction {
-        runtime_id: FunctionFunctionFunctionId,
         shape: crate::plan::FunctionShape,
         body: FunctionFunctionReturn,
     },
 }
 
-impl FunctionPlan {
+impl FunctionTemplate {
+    #[cfg(test)]
     pub(crate) fn new(
-        id: FunctionId,
+        id: FunctionTemplateId,
+        name: EcoString,
+        params: Vec<Param>,
+        steps: Vec<Step>,
+        return_: ReturnExpr,
+    ) -> Self {
+        let signature = FunctionTemplateSignature::new(
+            id,
+            TypeScheme::new(0),
+            crate::plan::FunctionShape::new(
+                params.iter().map(|param| param.shape().clone()).collect(),
+                crate::plan::ValueShape::from_value_type(return_.value_type()),
+            ),
+        );
+        Self::from_signature(signature, name, params, steps, return_)
+    }
+
+    pub(crate) fn from_signature(
+        signature: FunctionTemplateSignature,
         name: EcoString,
         params: Vec<Param>,
         steps: Vec<Step>,
@@ -981,7 +1048,7 @@ impl FunctionPlan {
         let frame_layout = FrameLayout::from_function_parts(&params, &steps, &return_);
 
         Self {
-            id,
+            signature,
             name,
             params,
             steps,
@@ -990,8 +1057,16 @@ impl FunctionPlan {
         }
     }
 
-    pub fn id(&self) -> FunctionId {
-        self.id
+    pub fn id(&self) -> FunctionTemplateId {
+        self.signature.id()
+    }
+
+    pub fn scheme(&self) -> &TypeScheme {
+        self.signature.scheme()
+    }
+
+    pub(crate) fn signature(&self) -> &FunctionTemplateSignature {
+        &self.signature
     }
 
     pub fn name(&self) -> &EcoString {
@@ -1015,328 +1090,273 @@ impl FunctionPlan {
         self.frame_layout.clone()
     }
 
-    pub(crate) fn into_execution_parts(self) -> FunctionExecutionParts {
-        FunctionExecutionParts {
-            frame_layout: self.frame_layout,
-            steps: self.steps,
-            return_: self.return_,
-        }
+    pub(crate) fn execution_frame_layout(&self) -> &FrameLayout {
+        &self.frame_layout
     }
 }
 
 impl ReturnExpr {
-    #[cfg(test)]
-    pub(crate) fn int(runtime_id: IntFunctionId, expression: IntExpr) -> Self {
-        Self::int_body(runtime_id, ReturnBody::expr(expression))
-    }
-
-    pub(crate) fn int_body(runtime_id: IntFunctionId, body: IntReturn) -> Self {
+    pub(crate) fn generic_body(
+        parameter: crate::plan::TypeParameterId,
+        body: GenericReturn,
+    ) -> Self {
         Self {
-            kind: ReturnExprKind::Int { runtime_id, body },
+            kind: ReturnExprKind::Generic { parameter, body },
         }
     }
 
     #[cfg(test)]
-    pub(crate) fn float(runtime_id: FloatFunctionId, expression: FloatExpr) -> Self {
-        Self::float_body(runtime_id, ReturnBody::expr(expression))
+    pub(crate) fn int(_runtime_id: IntFunctionId, expression: IntExpr) -> Self {
+        Self::int_body(ReturnBody::expr(expression))
     }
 
-    pub(crate) fn float_body(runtime_id: FloatFunctionId, body: FloatReturn) -> Self {
+    pub(crate) fn int_body(body: IntReturn) -> Self {
         Self {
-            kind: ReturnExprKind::Float { runtime_id, body },
+            kind: ReturnExprKind::Int { body },
         }
     }
 
     #[cfg(test)]
-    pub(crate) fn string(runtime_id: StringFunctionId, expression: StringExpr) -> Self {
-        Self::string_body(runtime_id, ReturnBody::expr(expression))
+    pub(crate) fn float(_runtime_id: FloatFunctionId, expression: FloatExpr) -> Self {
+        Self::float_body(ReturnBody::expr(expression))
     }
 
-    pub(crate) fn string_body(runtime_id: StringFunctionId, body: StringReturn) -> Self {
+    pub(crate) fn float_body(body: FloatReturn) -> Self {
         Self {
-            kind: ReturnExprKind::String { runtime_id, body },
+            kind: ReturnExprKind::Float { body },
         }
     }
 
     #[cfg(test)]
-    pub(crate) fn bit_array(runtime_id: BitArrayFunctionId, expression: BitArrayExpr) -> Self {
-        Self::bit_array_body(runtime_id, ReturnBody::expr(expression))
+    pub(crate) fn string(_runtime_id: StringFunctionId, expression: StringExpr) -> Self {
+        Self::string_body(ReturnBody::expr(expression))
     }
 
-    pub(crate) fn bit_array_body(runtime_id: BitArrayFunctionId, body: BitArrayReturn) -> Self {
+    pub(crate) fn string_body(body: StringReturn) -> Self {
         Self {
-            kind: ReturnExprKind::BitArray { runtime_id, body },
-        }
-    }
-
-    pub(crate) fn utf_codepoint_body(
-        runtime_id: UtfCodepointFunctionId,
-        body: UtfCodepointReturn,
-    ) -> Self {
-        Self {
-            kind: ReturnExprKind::UtfCodepoint { runtime_id, body },
-        }
-    }
-
-    pub(crate) fn custom_body(runtime_index: usize, body: CustomReturn) -> Self {
-        let runtime_id = CustomFunctionId::from_shape(runtime_index, body.shape().clone());
-        Self {
-            kind: ReturnExprKind::Custom { runtime_id, body },
+            kind: ReturnExprKind::String { body },
         }
     }
 
     #[cfg(test)]
-    pub(crate) fn bool(runtime_id: BoolFunctionId, expression: BoolExpr) -> Self {
-        Self::bool_body(runtime_id, ReturnBody::expr(expression))
+    pub(crate) fn bit_array(_runtime_id: BitArrayFunctionId, expression: BitArrayExpr) -> Self {
+        Self::bit_array_body(ReturnBody::expr(expression))
     }
 
-    pub(crate) fn bool_body(runtime_id: BoolFunctionId, body: BoolReturn) -> Self {
+    pub(crate) fn bit_array_body(body: BitArrayReturn) -> Self {
         Self {
-            kind: ReturnExprKind::Bool { runtime_id, body },
+            kind: ReturnExprKind::BitArray { body },
+        }
+    }
+
+    pub(crate) fn utf_codepoint_body(body: UtfCodepointReturn) -> Self {
+        Self {
+            kind: ReturnExprKind::UtfCodepoint { body },
+        }
+    }
+
+    pub(crate) fn custom_body(body: CustomReturn) -> Self {
+        Self {
+            kind: ReturnExprKind::Custom { body },
         }
     }
 
     #[cfg(test)]
-    pub(crate) fn nil(runtime_id: NilFunctionId, expression: NilExpr) -> Self {
-        Self::nil_body(runtime_id, ReturnBody::expr(expression))
+    pub(crate) fn bool(_runtime_id: BoolFunctionId, expression: BoolExpr) -> Self {
+        Self::bool_body(ReturnBody::expr(expression))
     }
 
-    pub(crate) fn nil_body(runtime_id: NilFunctionId, body: NilReturn) -> Self {
+    pub(crate) fn bool_body(body: BoolReturn) -> Self {
         Self {
-            kind: ReturnExprKind::Nil { runtime_id, body },
+            kind: ReturnExprKind::Bool { body },
         }
     }
 
     #[cfg(test)]
-    pub(crate) fn tuple(runtime_id: TupleFunctionId, expression: TupleExpr) -> Self {
-        let type_ = expression.type_().to_vec();
-        Self::tuple_body(runtime_id, type_, ReturnBody::expr(expression))
+    pub(crate) fn nil(_runtime_id: NilFunctionId, expression: NilExpr) -> Self {
+        Self::nil_body(ReturnBody::expr(expression))
     }
 
-    pub(crate) fn tuple_body(
-        runtime_id: TupleFunctionId,
-        type_: Vec<ValueType>,
-        body: TupleReturn,
+    pub(crate) fn nil_body(body: NilReturn) -> Self {
+        Self {
+            kind: ReturnExprKind::Nil { body },
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn tuple(_runtime_id: TupleFunctionId, expression: TupleExpr) -> Self {
+        Self::tuple_body(expression.type_().to_vec(), ReturnBody::expr(expression))
+    }
+
+    pub(crate) fn tuple_body(type_: Vec<ValueType>, body: TupleReturn) -> Self {
+        Self {
+            kind: ReturnExprKind::Tuple { type_, body },
+        }
+    }
+
+    pub(crate) fn int_list_body(body: IntListReturn) -> Self {
+        Self {
+            kind: ReturnExprKind::IntList { body },
+        }
+    }
+
+    pub(crate) fn generic_list_body(
+        parameter: crate::plan::TypeParameterId,
+        body: GenericListReturn,
     ) -> Self {
         Self {
-            kind: ReturnExprKind::Tuple {
-                runtime_id,
-                type_,
-                body,
-            },
+            kind: ReturnExprKind::GenericList { parameter, body },
         }
     }
 
-    pub(crate) fn int_list_body(runtime_id: IntListFunctionId, body: IntListReturn) -> Self {
+    pub(crate) fn string_list_body(body: StringListReturn) -> Self {
         Self {
-            kind: ReturnExprKind::IntList { runtime_id, body },
+            kind: ReturnExprKind::StringList { body },
         }
     }
 
-    pub(crate) fn string_list_body(
-        runtime_id: StringListFunctionId,
-        body: StringListReturn,
-    ) -> Self {
+    pub(crate) fn bit_array_list_body(body: BitArrayListReturn) -> Self {
         Self {
-            kind: ReturnExprKind::StringList { runtime_id, body },
+            kind: ReturnExprKind::BitArrayList { body },
         }
     }
 
-    pub(crate) fn bit_array_list_body(
-        runtime_id: BitArrayListFunctionId,
-        body: BitArrayListReturn,
-    ) -> Self {
+    pub(crate) fn utf_codepoint_list_body(body: UtfCodepointListReturn) -> Self {
         Self {
-            kind: ReturnExprKind::BitArrayList { runtime_id, body },
+            kind: ReturnExprKind::UtfCodepointList { body },
         }
     }
 
-    pub(crate) fn utf_codepoint_list_body(
-        runtime_id: UtfCodepointListFunctionId,
-        body: UtfCodepointListReturn,
-    ) -> Self {
+    pub(crate) fn custom_list_body(item_type: CustomType, body: CustomListReturn) -> Self {
         Self {
-            kind: ReturnExprKind::UtfCodepointList { runtime_id, body },
+            kind: ReturnExprKind::CustomList { item_type, body },
         }
     }
 
-    pub(crate) fn custom_list_body(
-        runtime_id: CustomListFunctionId,
-        item_type: CustomType,
-        body: CustomListReturn,
-    ) -> Self {
+    pub(crate) fn float_list_body(body: FloatListReturn) -> Self {
         Self {
-            kind: ReturnExprKind::CustomList {
-                runtime_id,
-                item_type,
-                body,
-            },
+            kind: ReturnExprKind::FloatList { body },
         }
     }
 
-    pub(crate) fn float_list_body(runtime_id: FloatListFunctionId, body: FloatListReturn) -> Self {
+    pub(crate) fn bool_list_body(body: BoolListReturn) -> Self {
         Self {
-            kind: ReturnExprKind::FloatList { runtime_id, body },
+            kind: ReturnExprKind::BoolList { body },
         }
     }
 
-    pub(crate) fn bool_list_body(runtime_id: BoolListFunctionId, body: BoolListReturn) -> Self {
+    pub(crate) fn nil_list_body(body: NilListReturn) -> Self {
         Self {
-            kind: ReturnExprKind::BoolList { runtime_id, body },
+            kind: ReturnExprKind::NilList { body },
         }
     }
 
-    pub(crate) fn nil_list_body(runtime_id: NilListFunctionId, body: NilListReturn) -> Self {
+    pub(crate) fn tuple_list_body(item_type: Vec<ValueType>, body: TupleListReturn) -> Self {
         Self {
-            kind: ReturnExprKind::NilList { runtime_id, body },
+            kind: ReturnExprKind::TupleList { item_type, body },
         }
     }
 
-    pub(crate) fn tuple_list_body(
-        runtime_id: TupleListFunctionId,
-        item_type: Vec<ValueType>,
-        body: TupleListReturn,
-    ) -> Self {
+    pub(crate) fn list_list_body(item_type: Box<ValueType>, body: ListListReturn) -> Self {
         Self {
-            kind: ReturnExprKind::TupleList {
-                runtime_id,
-                item_type,
-                body,
-            },
+            kind: ReturnExprKind::ListList { item_type, body },
         }
     }
 
-    pub(crate) fn list_list_body(
-        runtime_id: ListListFunctionId,
-        item_type: Box<ValueType>,
-        body: ListListReturn,
-    ) -> Self {
+    pub(crate) fn function_list_body(item_type: FunctionType, body: FunctionListReturn) -> Self {
         Self {
-            kind: ReturnExprKind::ListList {
-                runtime_id,
-                item_type,
-                body,
-            },
-        }
-    }
-
-    pub(crate) fn function_list_body(
-        runtime_id: FunctionListFunctionId,
-        item_type: FunctionType,
-        body: FunctionListReturn,
-    ) -> Self {
-        Self {
-            kind: ReturnExprKind::FunctionList {
-                runtime_id,
-                item_type,
-                body,
-            },
+            kind: ReturnExprKind::FunctionList { item_type, body },
         }
     }
 
     #[cfg(test)]
     pub(crate) fn int_function(
-        runtime_id: IntFunctionFunctionId,
+        _runtime_id: IntFunctionFunctionId,
         expression: super::IntFunctionExpr,
     ) -> Self {
         let shape = crate::plan::FunctionShape::from_function_type(expression.type_().clone());
-        Self::int_function_shape_body(runtime_id, shape, ReturnBody::expr(expression))
+        Self::int_function_shape_body(shape, ReturnBody::expr(expression))
     }
 
     pub(crate) fn int_function_shape_body(
-        runtime_id: IntFunctionFunctionId,
         shape: crate::plan::FunctionShape,
         body: IntFunctionReturn,
     ) -> Self {
         Self {
-            kind: ReturnExprKind::IntFunction {
-                runtime_id,
-                shape,
-                body,
-            },
+            kind: ReturnExprKind::IntFunction { shape, body },
+        }
+    }
+
+    pub(crate) fn generic_function_shape_body(
+        shape: crate::plan::FunctionShape,
+        body: GenericFunctionReturn,
+    ) -> Self {
+        Self {
+            kind: ReturnExprKind::GenericFunction { shape, body },
         }
     }
 
     #[cfg(test)]
     pub(crate) fn int_function_body(
-        runtime_id: IntFunctionFunctionId,
+        _runtime_id: IntFunctionFunctionId,
         type_: FunctionType,
         body: IntFunctionReturn,
     ) -> Self {
-        Self::int_function_shape_body(
-            runtime_id,
-            crate::plan::FunctionShape::from_function_type(type_),
-            body,
-        )
+        Self::int_function_shape_body(crate::plan::FunctionShape::from_function_type(type_), body)
     }
 
     #[cfg(test)]
     pub(crate) fn float_function(
-        runtime_id: FloatFunctionFunctionId,
+        _runtime_id: FloatFunctionFunctionId,
         expression: super::FloatFunctionExpr,
     ) -> Self {
         let shape = crate::plan::FunctionShape::from_function_type(expression.type_().clone());
-        Self::float_function_shape_body(runtime_id, shape, ReturnBody::expr(expression))
+        Self::float_function_shape_body(shape, ReturnBody::expr(expression))
     }
 
     pub(crate) fn float_function_shape_body(
-        runtime_id: FloatFunctionFunctionId,
         shape: crate::plan::FunctionShape,
         body: FloatFunctionReturn,
     ) -> Self {
         Self {
-            kind: ReturnExprKind::FloatFunction {
-                runtime_id,
-                shape,
-                body,
-            },
+            kind: ReturnExprKind::FloatFunction { shape, body },
         }
     }
 
     #[cfg(test)]
     pub(crate) fn float_function_body(
-        runtime_id: FloatFunctionFunctionId,
+        _runtime_id: FloatFunctionFunctionId,
         type_: FunctionType,
         body: FloatFunctionReturn,
     ) -> Self {
-        Self::float_function_shape_body(
-            runtime_id,
-            crate::plan::FunctionShape::from_function_type(type_),
-            body,
-        )
+        Self::float_function_shape_body(crate::plan::FunctionShape::from_function_type(type_), body)
     }
 
     #[cfg(test)]
     pub(crate) fn string_function(
-        runtime_id: StringFunctionFunctionId,
+        _runtime_id: StringFunctionFunctionId,
         expression: super::StringFunctionExpr,
     ) -> Self {
         let shape = crate::plan::FunctionShape::from_function_type(expression.type_().clone());
-        Self::string_function_shape_body(runtime_id, shape, ReturnBody::expr(expression))
+        Self::string_function_shape_body(shape, ReturnBody::expr(expression))
     }
 
     pub(crate) fn string_function_shape_body(
-        runtime_id: StringFunctionFunctionId,
         shape: crate::plan::FunctionShape,
         body: StringFunctionReturn,
     ) -> Self {
         Self {
-            kind: ReturnExprKind::StringFunction {
-                runtime_id,
-                shape,
-                body,
-            },
+            kind: ReturnExprKind::StringFunction { shape, body },
         }
     }
 
     #[cfg(test)]
     pub(crate) fn string_function_body(
-        runtime_id: StringFunctionFunctionId,
+        _runtime_id: StringFunctionFunctionId,
         type_: FunctionType,
         body: StringFunctionReturn,
     ) -> Self {
         Self::string_function_shape_body(
-            runtime_id,
             crate::plan::FunctionShape::from_function_type(type_),
             body,
         )
@@ -1344,217 +1364,164 @@ impl ReturnExpr {
 
     #[cfg(test)]
     pub(crate) fn bit_array_function(
-        runtime_id: BitArrayFunctionFunctionId,
+        _runtime_id: BitArrayFunctionFunctionId,
         expression: super::BitArrayFunctionExpr,
     ) -> Self {
         let shape = crate::plan::FunctionShape::from_function_type(expression.type_().clone());
-        Self::bit_array_function_shape_body(runtime_id, shape, ReturnBody::expr(expression))
+        Self::bit_array_function_shape_body(shape, ReturnBody::expr(expression))
     }
 
     pub(crate) fn bit_array_function_shape_body(
-        runtime_id: BitArrayFunctionFunctionId,
         shape: crate::plan::FunctionShape,
         body: BitArrayFunctionReturn,
     ) -> Self {
         Self {
-            kind: ReturnExprKind::BitArrayFunction {
-                runtime_id,
-                shape,
-                body,
-            },
+            kind: ReturnExprKind::BitArrayFunction { shape, body },
         }
     }
 
     #[cfg(test)]
     pub(crate) fn bit_array_function_body(
-        runtime_id: BitArrayFunctionFunctionId,
+        _runtime_id: BitArrayFunctionFunctionId,
         type_: FunctionType,
         body: BitArrayFunctionReturn,
     ) -> Self {
         Self::bit_array_function_shape_body(
-            runtime_id,
             crate::plan::FunctionShape::from_function_type(type_),
             body,
         )
     }
 
     pub(crate) fn utf_codepoint_function_shape_body(
-        runtime_id: UtfCodepointFunctionFunctionId,
         shape: crate::plan::FunctionShape,
         body: UtfCodepointFunctionReturn,
     ) -> Self {
         Self {
-            kind: ReturnExprKind::UtfCodepointFunction {
-                runtime_id,
-                shape,
-                body,
-            },
+            kind: ReturnExprKind::UtfCodepointFunction { shape, body },
         }
     }
 
     #[cfg(test)]
     pub(crate) fn utf_codepoint_function_body(
-        runtime_id: UtfCodepointFunctionFunctionId,
+        _runtime_id: UtfCodepointFunctionFunctionId,
         type_: FunctionType,
         body: UtfCodepointFunctionReturn,
     ) -> Self {
         Self::utf_codepoint_function_shape_body(
-            runtime_id,
             crate::plan::FunctionShape::from_function_type(type_),
             body,
         )
     }
 
     pub(crate) fn custom_function_shape_body(
-        runtime_index: usize,
         shape: crate::plan::FunctionShape,
         body: CustomFunctionReturn,
     ) -> Self {
-        let runtime_id = CustomFunctionFunctionId::new(runtime_index, body.type_().clone());
         Self {
-            kind: ReturnExprKind::CustomFunction {
-                runtime_id,
-                shape,
-                body,
-            },
+            kind: ReturnExprKind::CustomFunction { shape, body },
         }
     }
 
     #[cfg(test)]
-    pub(crate) fn custom_function_body(runtime_index: usize, body: CustomFunctionReturn) -> Self {
+    pub(crate) fn custom_function_body(_runtime_index: usize, body: CustomFunctionReturn) -> Self {
         let shape = crate::plan::FunctionShape::new(
             body.type_().argument_shapes().to_vec(),
             crate::plan::ValueShape::Custom(body.type_().return_().clone()),
         );
-        Self::custom_function_shape_body(runtime_index, shape, body)
+        Self::custom_function_shape_body(shape, body)
     }
 
     #[cfg(test)]
     pub(crate) fn bool_function(
-        runtime_id: BoolFunctionFunctionId,
+        _runtime_id: BoolFunctionFunctionId,
         expression: super::BoolFunctionExpr,
     ) -> Self {
         let shape = crate::plan::FunctionShape::from_function_type(expression.type_().clone());
-        Self::bool_function_shape_body(runtime_id, shape, ReturnBody::expr(expression))
+        Self::bool_function_shape_body(shape, ReturnBody::expr(expression))
     }
 
     pub(crate) fn bool_function_shape_body(
-        runtime_id: BoolFunctionFunctionId,
         shape: crate::plan::FunctionShape,
         body: BoolFunctionReturn,
     ) -> Self {
         Self {
-            kind: ReturnExprKind::BoolFunction {
-                runtime_id,
-                shape,
-                body,
-            },
+            kind: ReturnExprKind::BoolFunction { shape, body },
         }
     }
 
     #[cfg(test)]
     pub(crate) fn bool_function_body(
-        runtime_id: BoolFunctionFunctionId,
+        _runtime_id: BoolFunctionFunctionId,
         type_: FunctionType,
         body: BoolFunctionReturn,
     ) -> Self {
-        Self::bool_function_shape_body(
-            runtime_id,
-            crate::plan::FunctionShape::from_function_type(type_),
-            body,
-        )
+        Self::bool_function_shape_body(crate::plan::FunctionShape::from_function_type(type_), body)
     }
 
     #[cfg(test)]
     pub(crate) fn nil_function(
-        runtime_id: NilFunctionFunctionId,
+        _runtime_id: NilFunctionFunctionId,
         expression: super::NilFunctionExpr,
     ) -> Self {
         let shape = crate::plan::FunctionShape::from_function_type(expression.type_().clone());
-        Self::nil_function_shape_body(runtime_id, shape, ReturnBody::expr(expression))
+        Self::nil_function_shape_body(shape, ReturnBody::expr(expression))
     }
 
     pub(crate) fn nil_function_shape_body(
-        runtime_id: NilFunctionFunctionId,
         shape: crate::plan::FunctionShape,
         body: NilFunctionReturn,
     ) -> Self {
         Self {
-            kind: ReturnExprKind::NilFunction {
-                runtime_id,
-                shape,
-                body,
-            },
+            kind: ReturnExprKind::NilFunction { shape, body },
         }
     }
 
     #[cfg(test)]
     pub(crate) fn nil_function_body(
-        runtime_id: NilFunctionFunctionId,
+        _runtime_id: NilFunctionFunctionId,
         type_: FunctionType,
         body: NilFunctionReturn,
     ) -> Self {
-        Self::nil_function_shape_body(
-            runtime_id,
-            crate::plan::FunctionShape::from_function_type(type_),
-            body,
-        )
+        Self::nil_function_shape_body(crate::plan::FunctionShape::from_function_type(type_), body)
     }
 
     #[cfg(test)]
     pub(crate) fn tuple_function(
-        runtime_id: TupleFunctionFunctionId,
+        _runtime_id: TupleFunctionFunctionId,
         expression: super::TupleFunctionExpr,
     ) -> Self {
         let shape = crate::plan::FunctionShape::from_function_type(expression.type_().clone());
-        Self::tuple_function_shape_body(runtime_id, shape, ReturnBody::expr(expression))
+        Self::tuple_function_shape_body(shape, ReturnBody::expr(expression))
     }
 
     pub(crate) fn tuple_function_shape_body(
-        runtime_id: TupleFunctionFunctionId,
         shape: crate::plan::FunctionShape,
         body: TupleFunctionReturn,
     ) -> Self {
         Self {
-            kind: ReturnExprKind::TupleFunction {
-                runtime_id,
-                shape,
-                body,
-            },
+            kind: ReturnExprKind::TupleFunction { shape, body },
         }
     }
 
     #[cfg(test)]
-    pub(crate) fn tuple_function_body(
-        runtime_id: TupleFunctionFunctionId,
-        type_: FunctionType,
-        body: TupleFunctionReturn,
-    ) -> Self {
-        Self::tuple_function_shape_body(
-            runtime_id,
-            crate::plan::FunctionShape::from_function_type(type_),
-            body,
-        )
-    }
-
-    #[cfg(test)]
     pub(crate) fn list_function(
-        runtime_id: ListFunctionFunctionId,
+        _runtime_id: ListFunctionFunctionId,
         expression: super::ListFunctionExpr,
     ) -> Self {
+        let item_type = expression.return_item_type();
         let shape = crate::plan::FunctionShape::from_function_type(expression.type_().clone());
-        Self::list_function_shape_body(runtime_id, shape, ReturnBody::expr(expression))
+        Self::list_function_shape_body(shape, item_type, ReturnBody::expr(expression))
     }
 
     pub(crate) fn list_function_shape_body(
-        runtime_id: ListFunctionFunctionId,
         shape: crate::plan::FunctionShape,
+        item_type: ValueType,
         body: ListFunctionReturn,
     ) -> Self {
         Self {
             kind: ReturnExprKind::ListFunction {
-                runtime_id,
                 shape,
+                item_type,
                 body,
             },
         }
@@ -1566,67 +1533,55 @@ impl ReturnExpr {
         body: ListFunctionReturn,
     ) -> Self {
         let shape = crate::plan::FunctionShape::from_function_type(runtime_id.type_().clone());
-        Self::list_function_shape_body(runtime_id, shape, body)
+        Self::list_function_shape_body(shape, runtime_id.item_type(), body)
     }
 
     #[cfg(test)]
     pub(crate) fn function_function(
-        runtime_index: usize,
+        _runtime_index: usize,
         expression: super::FunctionFunctionExpr,
     ) -> Self {
         let shape = crate::plan::FunctionShape::from_function_type(expression.type_().clone());
-        Self::function_function_shape_body(
-            runtime_index,
-            shape,
-            FunctionFunctionReturn::expr(expression),
-        )
+        Self::function_function_shape_body(shape, FunctionFunctionReturn::expr(expression))
     }
 
     pub(crate) fn function_function_shape_body(
-        runtime_index: usize,
         shape: crate::plan::FunctionShape,
         body: FunctionFunctionReturn,
     ) -> Self {
-        let runtime_id = FunctionFunctionFunctionId::new(runtime_index, body.type_().clone());
         Self {
-            kind: ReturnExprKind::FunctionFunction {
-                runtime_id,
-                shape,
-                body,
-            },
+            kind: ReturnExprKind::FunctionFunction { shape, body },
         }
     }
 
     #[cfg(test)]
     pub(crate) fn function_function_body(
-        runtime_index: usize,
+        _runtime_index: usize,
         body: FunctionFunctionReturn,
     ) -> Self {
         let shape = crate::plan::FunctionShape::from_function_type(body.type_().to_function_type());
-        Self::function_function_shape_body(runtime_index, shape, body)
+        Self::function_function_shape_body(shape, body)
     }
 
     pub(crate) fn kind(&self) -> &ReturnExprKind {
         &self.kind
     }
 
-    pub(crate) fn into_kind(self) -> ReturnExprKind {
-        self.kind
-    }
-
     pub fn value_type(&self) -> ValueType {
         match self.kind() {
+            ReturnExprKind::Generic { parameter, .. } => ValueType::Parameter(*parameter),
             ReturnExprKind::Int { .. } => ValueType::Int,
             ReturnExprKind::Float { .. } => ValueType::Float,
             ReturnExprKind::String { .. } => ValueType::String,
             ReturnExprKind::BitArray { .. } => ValueType::BitArray,
             ReturnExprKind::UtfCodepoint { .. } => ValueType::UtfCodepoint,
-            ReturnExprKind::Custom { runtime_id, .. } => {
-                ValueType::Custom(runtime_id.return_type().clone())
-            }
+            ReturnExprKind::Custom { body } => ValueType::Custom(body.shape().type_().clone()),
             ReturnExprKind::Bool { .. } => ValueType::Bool,
             ReturnExprKind::Nil { .. } => ValueType::Nil,
             ReturnExprKind::Tuple { type_, .. } => ValueType::Tuple(type_.clone()),
+            ReturnExprKind::GenericList { parameter, .. } => {
+                ValueType::List(Box::new(ValueType::Parameter(*parameter)))
+            }
             ReturnExprKind::IntList { .. } => ValueType::List(Box::new(ValueType::Int)),
             ReturnExprKind::StringList { .. } => ValueType::List(Box::new(ValueType::String)),
             ReturnExprKind::BitArrayList { .. } => ValueType::List(Box::new(ValueType::BitArray)),
@@ -1648,7 +1603,8 @@ impl ReturnExpr {
             ReturnExprKind::FunctionList { item_type, .. } => {
                 ValueType::List(Box::new(ValueType::Function(Box::new(item_type.clone()))))
             }
-            ReturnExprKind::IntFunction { shape, .. }
+            ReturnExprKind::GenericFunction { shape, .. }
+            | ReturnExprKind::IntFunction { shape, .. }
             | ReturnExprKind::FloatFunction { shape, .. }
             | ReturnExprKind::StringFunction { shape, .. }
             | ReturnExprKind::BitArrayFunction { shape, .. }
@@ -1661,149 +1617,6 @@ impl ReturnExpr {
             | ReturnExprKind::FunctionFunction { shape, .. } => {
                 ValueType::Function(Box::new(shape.type_()))
             }
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn runtime_id(&self) -> RuntimeFunctionId {
-        match self.kind() {
-            ReturnExprKind::Int { runtime_id, .. } => RuntimeFunctionId::Int(*runtime_id),
-            ReturnExprKind::Float { runtime_id, .. } => RuntimeFunctionId::Float(*runtime_id),
-            ReturnExprKind::String { runtime_id, .. } => RuntimeFunctionId::String(*runtime_id),
-            ReturnExprKind::BitArray { runtime_id, .. } => RuntimeFunctionId::BitArray(*runtime_id),
-            ReturnExprKind::UtfCodepoint { runtime_id, .. } => {
-                RuntimeFunctionId::UtfCodepoint(*runtime_id)
-            }
-            ReturnExprKind::Custom { runtime_id, .. } => {
-                RuntimeFunctionId::Custom(runtime_id.clone())
-            }
-            ReturnExprKind::Bool { runtime_id, .. } => RuntimeFunctionId::Bool(*runtime_id),
-            ReturnExprKind::Nil { runtime_id, .. } => RuntimeFunctionId::Nil(*runtime_id),
-            ReturnExprKind::Tuple {
-                runtime_id, type_, ..
-            } => RuntimeFunctionId::Tuple {
-                id: *runtime_id,
-                return_type: type_.clone(),
-            },
-            ReturnExprKind::IntList { runtime_id, .. } => {
-                RuntimeFunctionId::List(ListFunctionId::Int(*runtime_id))
-            }
-            ReturnExprKind::StringList { runtime_id, .. } => {
-                RuntimeFunctionId::List(ListFunctionId::String(*runtime_id))
-            }
-            ReturnExprKind::BitArrayList { runtime_id, .. } => {
-                RuntimeFunctionId::List(ListFunctionId::BitArray(*runtime_id))
-            }
-            ReturnExprKind::UtfCodepointList { runtime_id, .. } => {
-                RuntimeFunctionId::List(ListFunctionId::UtfCodepoint(*runtime_id))
-            }
-            ReturnExprKind::CustomList {
-                runtime_id,
-                item_type,
-                ..
-            } => RuntimeFunctionId::List(ListFunctionId::Custom {
-                id: *runtime_id,
-                item_type: item_type.clone(),
-            }),
-            ReturnExprKind::FloatList { runtime_id, .. } => {
-                RuntimeFunctionId::List(ListFunctionId::Float(*runtime_id))
-            }
-            ReturnExprKind::BoolList { runtime_id, .. } => {
-                RuntimeFunctionId::List(ListFunctionId::Bool(*runtime_id))
-            }
-            ReturnExprKind::NilList { runtime_id, .. } => {
-                RuntimeFunctionId::List(ListFunctionId::Nil(*runtime_id))
-            }
-            ReturnExprKind::TupleList {
-                runtime_id,
-                item_type,
-                ..
-            } => RuntimeFunctionId::List(ListFunctionId::Tuple {
-                id: *runtime_id,
-                item_type: item_type.clone(),
-            }),
-            ReturnExprKind::ListList {
-                runtime_id,
-                item_type,
-                ..
-            } => RuntimeFunctionId::List(ListFunctionId::List {
-                id: *runtime_id,
-                item_type: item_type.clone(),
-            }),
-            ReturnExprKind::FunctionList {
-                runtime_id,
-                item_type,
-                ..
-            } => RuntimeFunctionId::List(ListFunctionId::Function {
-                id: *runtime_id,
-                item_type: item_type.clone(),
-            }),
-            ReturnExprKind::IntFunction {
-                runtime_id, shape, ..
-            } => RuntimeFunctionId::Function {
-                id: FunctionFunctionId::Int(*runtime_id),
-                return_type: shape.type_(),
-            },
-            ReturnExprKind::FloatFunction {
-                runtime_id, shape, ..
-            } => RuntimeFunctionId::Function {
-                id: FunctionFunctionId::Float(*runtime_id),
-                return_type: shape.type_(),
-            },
-            ReturnExprKind::StringFunction {
-                runtime_id, shape, ..
-            } => RuntimeFunctionId::Function {
-                id: FunctionFunctionId::String(*runtime_id),
-                return_type: shape.type_(),
-            },
-            ReturnExprKind::BitArrayFunction {
-                runtime_id, shape, ..
-            } => RuntimeFunctionId::Function {
-                id: FunctionFunctionId::BitArray(*runtime_id),
-                return_type: shape.type_(),
-            },
-            ReturnExprKind::UtfCodepointFunction {
-                runtime_id, shape, ..
-            } => RuntimeFunctionId::Function {
-                id: FunctionFunctionId::UtfCodepoint(*runtime_id),
-                return_type: shape.type_(),
-            },
-            ReturnExprKind::CustomFunction {
-                runtime_id, shape, ..
-            } => RuntimeFunctionId::Function {
-                id: FunctionFunctionId::Custom(runtime_id.clone()),
-                return_type: shape.type_(),
-            },
-            ReturnExprKind::BoolFunction {
-                runtime_id, shape, ..
-            } => RuntimeFunctionId::Function {
-                id: FunctionFunctionId::Bool(*runtime_id),
-                return_type: shape.type_(),
-            },
-            ReturnExprKind::NilFunction {
-                runtime_id, shape, ..
-            } => RuntimeFunctionId::Function {
-                id: FunctionFunctionId::Nil(*runtime_id),
-                return_type: shape.type_(),
-            },
-            ReturnExprKind::TupleFunction {
-                runtime_id, shape, ..
-            } => RuntimeFunctionId::Function {
-                id: FunctionFunctionId::Tuple(*runtime_id),
-                return_type: shape.type_(),
-            },
-            ReturnExprKind::ListFunction {
-                runtime_id, shape, ..
-            } => RuntimeFunctionId::Function {
-                id: FunctionFunctionId::List(runtime_id.clone()),
-                return_type: shape.type_(),
-            },
-            ReturnExprKind::FunctionFunction {
-                runtime_id, shape, ..
-            } => RuntimeFunctionId::Function {
-                id: FunctionFunctionId::Function(runtime_id.clone()),
-                return_type: shape.type_(),
-            },
         }
     }
 }
@@ -1825,34 +1638,22 @@ impl CustomReturn {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn type_(&self) -> &CustomType {
-        self.shape.type_()
-    }
-
     pub(crate) fn shape(&self) -> &crate::plan::CustomValueShape {
         &self.shape
     }
 
-    pub(crate) fn body(&self) -> &ReturnBody<super::CustomExprKind, usize> {
+    pub(crate) fn body(&self) -> &ReturnBody<super::CustomExprKind, FunctionInstantiation> {
         &self.body
-    }
-
-    pub(crate) fn into_parts(
-        self,
-    ) -> (
-        crate::plan::CustomValueShape,
-        ReturnBody<super::CustomExprKind, usize>,
-    ) {
-        (self.shape, self.body)
     }
 }
 
-fn custom_return_body(kind: super::CustomExprKind) -> ReturnBody<super::CustomExprKind, usize> {
+fn custom_return_body(
+    kind: super::CustomExprKind,
+) -> ReturnBody<super::CustomExprKind, FunctionInstantiation> {
     use super::CustomExprKind as K;
 
     match kind {
-        K::Call { function, args } => ReturnBody::tail_call(function.index(), args),
+        K::Call { function, args } => ReturnBody::tail_call(function, args),
         K::BoolCase {
             subject,
             true_,
@@ -1916,27 +1717,24 @@ impl CustomFunctionReturn {
         &self.type_
     }
 
-    pub(crate) fn kind(&self) -> &ReturnBodyKind<super::CustomFunctionExprKind, usize> {
+    pub(crate) fn kind(
+        &self,
+    ) -> &ReturnBodyKind<super::CustomFunctionExprKind, FunctionInstantiation> {
         self.body.kind()
     }
 
-    pub(crate) fn into_parts(
-        self,
-    ) -> (
-        CustomFunctionType,
-        ReturnBody<super::CustomFunctionExprKind, usize>,
-    ) {
-        (self.type_, self.body)
+    pub(crate) fn body(&self) -> &ReturnBody<super::CustomFunctionExprKind, FunctionInstantiation> {
+        &self.body
     }
 }
 
 fn custom_function_return_body(
     kind: super::CustomFunctionExprKind,
-) -> ReturnBody<super::CustomFunctionExprKind, usize> {
+) -> ReturnBody<super::CustomFunctionExprKind, FunctionInstantiation> {
     use super::CustomFunctionExprKind as K;
 
     match kind {
-        K::Call { function, args } => ReturnBody::tail_call(function.index(), args),
+        K::Call { function, args } => ReturnBody::tail_call(function, args),
         K::BoolCase {
             subject,
             true_,
@@ -1999,14 +1797,6 @@ impl FunctionFunctionReturn {
     }
 
     #[cfg(test)]
-    pub(crate) fn tail_call(function: FunctionFunctionFunctionId, args: Vec<CallArg>) -> Self {
-        Self {
-            type_: function.type_().clone(),
-            body: ReturnBody::tail_call(function.index(), args),
-        }
-    }
-
-    #[cfg(test)]
     pub(crate) fn int_case(subject: IntExpr, clauses: Vec<(BigInt, Self)>, fallback: Self) -> Self {
         let clauses = clauses
             .into_iter()
@@ -2046,27 +1836,26 @@ impl FunctionFunctionReturn {
         &self.type_
     }
 
-    pub(crate) fn kind(&self) -> &ReturnBodyKind<super::FunctionFunctionExprKind, usize> {
+    pub(crate) fn kind(
+        &self,
+    ) -> &ReturnBodyKind<super::FunctionFunctionExprKind, FunctionInstantiation> {
         self.body.kind()
     }
 
-    pub(crate) fn into_parts(
-        self,
-    ) -> (
-        FunctionFunctionType,
-        ReturnBody<super::FunctionFunctionExprKind, usize>,
-    ) {
-        (self.type_, self.body)
+    pub(crate) fn body(
+        &self,
+    ) -> &ReturnBody<super::FunctionFunctionExprKind, FunctionInstantiation> {
+        &self.body
     }
 }
 
 fn function_function_return_body(
     kind: super::FunctionFunctionExprKind,
-) -> ReturnBody<super::FunctionFunctionExprKind, usize> {
+) -> ReturnBody<super::FunctionFunctionExprKind, FunctionInstantiation> {
     use super::FunctionFunctionExprKind as K;
 
     match kind {
-        K::Call { function, args } => ReturnBody::tail_call(function.index(), args),
+        K::Call { function, args } => ReturnBody::tail_call(function, args),
         K::BoolCase {
             subject,
             true_,
@@ -2192,10 +1981,6 @@ impl<Expression, Function> ReturnBody<Expression, Function> {
     pub(crate) fn kind(&self) -> &ReturnBodyKind<Expression, Function> {
         &self.kind
     }
-
-    pub(crate) fn into_kind(self) -> ReturnBodyKind<Expression, Function> {
-        self.kind
-    }
 }
 
 impl Param {
@@ -2245,6 +2030,10 @@ impl Param {
     pub(crate) fn local(&self) -> &ParamLocal {
         &self.local
     }
+
+    pub(crate) fn shape(&self) -> &crate::plan::ValueShape {
+        &self.shape
+    }
 }
 
 impl ParamSlot {
@@ -2264,10 +2053,6 @@ impl ParamSlot {
         self.shape.value_type()
     }
 
-    pub(crate) fn into_parts(self) -> (ParamLocal, crate::plan::ValueShape) {
-        (self.local, self.shape)
-    }
-
     #[cfg(test)]
     pub(crate) fn from_local(local: ParamLocal) -> Self {
         let shape = local.value_shape();
@@ -2276,6 +2061,10 @@ impl ParamSlot {
 }
 
 impl ParamLocal {
+    pub(crate) fn generic(local: GenericLocal) -> Self {
+        Self::Generic(local)
+    }
+
     pub(crate) fn int(local: IntLocalId) -> Self {
         Self::Int(local)
     }
@@ -2368,8 +2157,13 @@ impl ParamLocal {
         Self::FunctionFunction(local)
     }
 
+    pub(crate) fn generic_function(local: GenericFunctionLocal) -> Self {
+        Self::GenericFunction(local)
+    }
+
     pub(crate) fn value_type(&self) -> ValueType {
         match self {
+            Self::Generic(local) => ValueType::Parameter(local.parameter()),
             Self::Int(_) => ValueType::Int,
             Self::Float(_) => ValueType::Float,
             Self::String(_) => ValueType::String,
@@ -2395,18 +2189,25 @@ impl ParamLocal {
             Self::FunctionFunction(local) => {
                 ValueType::Function(Box::new(local.type_().to_function_type()))
             }
+            Self::GenericFunction(local) => {
+                ValueType::Function(Box::new(local.type_().shape().type_()))
+            }
         }
     }
 
     #[cfg(test)]
     pub(crate) fn value_shape(&self) -> crate::plan::ValueShape {
         match self {
+            Self::Generic(local) => crate::plan::ValueShape::Parameter(local.parameter()),
             Self::Custom(local) => crate::plan::ValueShape::Custom(local.shape().clone()),
             Self::CustomFunction(local) => {
                 crate::plan::ValueShape::Function(Box::new(crate::plan::FunctionShape::new(
                     local.type_().argument_shapes().to_vec(),
                     crate::plan::ValueShape::Custom(local.type_().return_().clone()),
                 )))
+            }
+            Self::GenericFunction(local) => {
+                crate::plan::ValueShape::Function(Box::new(local.type_().shape()))
             }
             _ => crate::plan::ValueShape::from_value_type(self.value_type()),
         }
@@ -2417,34 +2218,22 @@ impl ParamLocal {
 mod tests {
     use super::{
         BitArrayListReturn, BoolListReturn, CustomFunctionReturn, CustomListReturn, CustomReturn,
-        FloatListReturn, FunctionFunctionReturn, FunctionListReturn, FunctionPlan, IntListReturn,
-        ListListReturn, ListReturn, NilListReturn, Param, ParamBinding, ParamLocal, ReturnBody,
-        ReturnBodyKind, ReturnExpr, StringListReturn, TupleListReturn,
+        FloatListReturn, FunctionFunctionReturn, FunctionListReturn, FunctionTemplate,
+        GenericFunctionReturn, GenericListReturn, GenericReturn, IntListReturn, ListListReturn,
+        ListReturn, NilListReturn, Param, ParamBinding, ParamLocal, ReturnBody, ReturnBodyKind,
+        ReturnExpr, StringListReturn, TupleListReturn,
     };
     use crate::plan::{
-        BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionFunctionId, BitArrayFunctionId,
-        BitArrayFunctionReference, BitArrayListFunctionId, BoolExpr, BoolFunctionExpr,
-        BoolFunctionFunctionId, BoolFunctionId, BoolFunctionLocalId, BoolFunctionReference,
-        BoolLocalId, CustomConstructorRefinement, CustomExpr, CustomFunctionExpr,
-        CustomFunctionFunctionId, CustomFunctionId, CustomFunctionLocal, CustomFunctionLocalId,
-        CustomFunctionReference, CustomFunctionType, CustomListFunctionId, CustomLocalId,
-        CustomType, CustomTypeName, CustomValueShape, Expr, FloatExpr, FloatFunctionExpr,
-        FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatFunctionReference,
-        FloatListFunctionId, FloatLocalId, FunctionFunctionExpr, FunctionFunctionFunctionId,
-        FunctionFunctionId, FunctionFunctionLocal, FunctionFunctionLocalId,
-        FunctionFunctionReference, FunctionFunctionType, FunctionId, FunctionListFunctionId,
-        FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
-        IntFunctionLocalId, IntFunctionReference, IntListFunctionId, IntListLocalId, IntLocalId,
-        ListExpr, ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionReference,
-        ListListFunctionId, ListLocal, NilExpr, NilFunctionExpr, NilFunctionFunctionId,
-        NilFunctionId, NilFunctionLocalId, NilFunctionReference, NilListFunctionId,
-        RuntimeFunctionId, StringExpr, StringFunctionExpr, StringFunctionFunctionId,
-        StringFunctionId, StringFunctionLocalId, StringFunctionReference, StringListFunctionId,
-        TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
-        TupleFunctionLocalId, TupleFunctionReference, TupleListFunctionId, UtfCodepointExpr,
-        UtfCodepointFunctionExpr, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
-        UtfCodepointFunctionReference, UtfCodepointFunctionReturn, UtfCodepointListFunctionId,
-        UtfCodepointListReturn, UtfCodepointLocalId, UtfCodepointReturn, ValueShape, ValueType,
+        BitArrayExpr, BoolExpr, BoolFunctionLocalId, BoolLocalId, CustomConstructorRefinement,
+        CustomExpr, CustomFunctionExpr, CustomFunctionLocal, CustomFunctionLocalId,
+        CustomFunctionType, CustomType, CustomTypeName, CustomValueShape, FloatExpr,
+        FloatFunctionLocalId, FloatLocalId, FunctionFunctionExpr, FunctionFunctionLocal,
+        FunctionFunctionLocalId, FunctionFunctionType, FunctionTemplateId, FunctionType,
+        GenericFunctionLocal, GenericFunctionLocalId, GenericFunctionType, GenericLocal,
+        GenericLocalId, IntExpr, IntFunctionLocalId, IntListLocalId, IntLocalId, ListExpr,
+        ListLocal, NilExpr, NilFunctionLocalId, StringExpr, StringFunctionLocalId, TupleExpr,
+        TupleFunctionLocalId, TypeParameterId, UtfCodepointExpr, UtfCodepointListReturn,
+        UtfCodepointLocalId, ValueShape, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -2482,11 +2271,23 @@ mod tests {
     #[test]
     fn callable_returns_own_exact_type_around_itemless_bodies() {
         let custom_function_type = CustomFunctionType::new(vec![ValueType::Int], custom_type());
+        let custom_function_shape = crate::plan::FunctionShape::new(
+            custom_function_type.argument_shapes().to_vec(),
+            ValueShape::Custom(custom_function_type.return_().clone()),
+        );
+        let custom_instantiation = crate::plan::monomorphic_function_instantiation(
+            7,
+            crate::plan::FunctionShape::new(
+                Vec::new(),
+                ValueShape::Function(Box::new(custom_function_shape)),
+            ),
+        );
         let custom_return = CustomFunctionReturn::expr(CustomFunctionExpr::block(
             Vec::new(),
             CustomFunctionExpr::call(
-                CustomFunctionFunctionId::new(7, custom_function_type.clone()),
+                custom_instantiation.clone(),
                 Vec::new(),
+                custom_function_type.clone(),
             ),
         ));
 
@@ -2499,7 +2300,7 @@ mod tests {
                         steps: Vec::new(),
                         return_: Box::new(ReturnBody {
                             kind: ReturnBodyKind::TailCall {
-                                function: 7,
+                                function: custom_instantiation,
                                 args: Vec::new(),
                             },
                         }),
@@ -2510,9 +2311,19 @@ mod tests {
 
         let returned = FunctionType::new(vec![ValueType::String], ValueType::Int);
         let function_function_type = FunctionFunctionType::new(vec![ValueType::Bool], returned);
+        let function_instantiation = crate::plan::monomorphic_function_instantiation(
+            9,
+            crate::plan::FunctionShape::new(
+                Vec::new(),
+                ValueShape::Function(Box::new(crate::plan::FunctionShape::from_function_type(
+                    function_function_type.to_function_type(),
+                ))),
+            ),
+        );
         let function_return = FunctionFunctionReturn::expr(FunctionFunctionExpr::call(
-            FunctionFunctionFunctionId::new(9, function_function_type.clone()),
+            function_instantiation.clone(),
             Vec::new(),
+            function_function_type.clone(),
         ));
 
         assert_eq!(
@@ -2521,7 +2332,7 @@ mod tests {
                 type_: function_function_type,
                 body: ReturnBody {
                     kind: ReturnBodyKind::TailCall {
-                        function: 9,
+                        function: function_instantiation,
                         args: Vec::new(),
                     },
                 },
@@ -2532,14 +2343,18 @@ mod tests {
     #[test]
     fn custom_returns_own_one_type_around_itemless_tail_calls() {
         let type_ = custom_type();
-        let function = CustomFunctionId::new(7, type_.clone());
+        let custom_shape = CustomValueShape::any(type_.clone());
+        let function = crate::plan::monomorphic_function_instantiation(
+            7,
+            crate::plan::FunctionShape::new(Vec::new(), ValueShape::Custom(custom_shape.clone())),
+        );
         let body = CustomReturn::expr(CustomExpr::block(
             Vec::new(),
             CustomExpr::bool_case(
                 BoolExpr::value(true),
                 crate::plan::CustomBoolCaseBranches::try_new(
-                    CustomExpr::call(function.clone(), Vec::new()),
-                    CustomExpr::call(function, Vec::new()),
+                    CustomExpr::call(function.clone(), Vec::new(), custom_shape.clone()),
+                    CustomExpr::call(function.clone(), Vec::new(), custom_shape.clone()),
                 )
                 .expect("matching custom branches should be valid"),
             ),
@@ -2548,7 +2363,7 @@ mod tests {
         assert_eq!(
             body,
             CustomReturn {
-                shape: crate::plan::CustomValueShape::any(type_),
+                shape: custom_shape,
                 body: ReturnBody {
                     kind: ReturnBodyKind::Block {
                         steps: Vec::new(),
@@ -2557,13 +2372,13 @@ mod tests {
                                 subject: BoolExpr::value(true),
                                 true_: Box::new(ReturnBody {
                                     kind: ReturnBodyKind::TailCall {
-                                        function: 7,
+                                        function: function.clone(),
                                         args: Vec::new(),
                                     },
                                 }),
                                 false_: Box::new(ReturnBody {
                                     kind: ReturnBodyKind::TailCall {
-                                        function: 7,
+                                        function,
                                         args: Vec::new(),
                                     },
                                 }),
@@ -2578,635 +2393,105 @@ mod tests {
     #[test]
     fn function_plan_accessors() {
         let param = Param::named(ParamLocal::int(IntLocalId(0)), "x".into());
-        let return_ = ReturnExpr::int(IntFunctionId(0), IntExpr::value(BigInt::from(1)));
-        let function = FunctionPlan::new(
-            FunctionId::new(0),
+        let return_ = ReturnExpr::int_body(ReturnBody::expr(IntExpr::value(BigInt::from(1))));
+        let function = FunctionTemplate::new(
+            FunctionTemplateId::new(0),
             "main".into(),
             vec![param],
             Vec::new(),
             return_,
         );
 
-        assert_eq!(function.id(), FunctionId::new(0));
+        assert_eq!(function.id(), FunctionTemplateId::new(0));
         assert_eq!(function.name(), "main");
         assert_eq!(function.params().len(), 1);
         assert_eq!(function.params()[0].name(), Some(&"x".into()));
         assert_eq!(function.steps(), &[]);
         assert_eq!(
             function.return_(),
-            &ReturnExpr::int(IntFunctionId(0), IntExpr::value(BigInt::from(1)))
+            &ReturnExpr::int_body(ReturnBody::expr(IntExpr::value(BigInt::from(1))))
         );
         assert_eq!(function.frame_layout().ints(), 1);
     }
 
     #[test]
-    fn return_expr_value_type() {
-        assert_eq!(
-            ReturnExpr::int(IntFunctionId(0), IntExpr::value(BigInt::from(1))).value_type(),
-            ValueType::Int,
+    fn return_expr_value_type_preserves_parametric_and_compound_families() {
+        let parameter = TypeParameterId(0);
+        let custom = custom_type();
+        let tuple = vec![ValueType::Int, ValueType::String];
+        let nested = Box::new(ValueType::List(Box::new(ValueType::Bool)));
+        let function = FunctionType::new(vec![ValueType::Int], ValueType::String);
+        let function_shape = crate::plan::FunctionShape::new(
+            vec![ValueShape::Parameter(parameter)],
+            ValueShape::Parameter(parameter),
         );
-        assert_eq!(
-            ReturnExpr::string(
-                crate::plan::StringFunctionId(0),
-                StringExpr::value("geam".into()),
-            )
-            .value_type(),
-            ValueType::String,
+        let tail_call = crate::plan::monomorphic_function_instantiation(
+            0,
+            crate::plan::FunctionShape::new(Vec::new(), ValueShape::Nil),
         );
-        assert_eq!(
-            ReturnExpr::bit_array(BitArrayFunctionId(0), BitArrayExpr::value(Vec::new()))
-                .value_type(),
-            ValueType::BitArray,
-        );
-        assert_eq!(
-            ReturnExpr::utf_codepoint_body(
-                UtfCodepointFunctionId(0),
-                UtfCodepointReturn::expr(UtfCodepointExpr::local_get(
-                    UtfCodepointLocalId(0),
-                    "codepoint".into(),
-                )),
-            )
-            .value_type(),
-            ValueType::UtfCodepoint,
-        );
-        assert_eq!(
-            ReturnExpr::float(FloatFunctionId(0), FloatExpr::value(1.0)).value_type(),
-            ValueType::Float,
-        );
-        assert_eq!(
-            ReturnExpr::bool(crate::plan::BoolFunctionId(0), BoolExpr::value(true)).value_type(),
-            ValueType::Bool,
-        );
-        assert_eq!(
-            ReturnExpr::nil(crate::plan::NilFunctionId(0), NilExpr::value()).value_type(),
-            ValueType::Nil,
-        );
-        assert_eq!(
-            ReturnExpr::tuple(
-                TupleFunctionId(0),
-                TupleExpr::value(
-                    vec![crate::plan::Expr::int(IntExpr::value(BigInt::from(1)))],
-                    vec![ValueType::Int],
-                ),
-            )
-            .value_type(),
-            ValueType::Tuple(vec![ValueType::Int]),
-        );
-        assert_eq!(
-            ReturnExpr::int_list_body(
-                IntListFunctionId(0),
-                IntListReturn::expr(
-                    ListExpr::value(
-                        vec![crate::plan::Expr::int(IntExpr::value(BigInt::from(1)))],
-                        ValueType::Int,
-                    )
-                    .into_int()
-                    .expect("expression should be List(Int)"),
-                ),
-            )
-            .value_type(),
-            ValueType::List(Box::new(ValueType::Int)),
-        );
-        assert_eq!(
-            ReturnExpr::int_function(
-                IntFunctionFunctionId(0),
-                IntFunctionExpr::reference(IntFunctionReference::new(IntFunctionId(0), Vec::new())),
-            )
-            .value_type(),
-            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
-        );
-        assert_eq!(
-            ReturnExpr::string_function(
-                StringFunctionFunctionId(0),
-                StringFunctionExpr::reference(StringFunctionReference::new(
-                    StringFunctionId(0),
-                    Vec::new(),
-                )),
-            )
-            .value_type(),
-            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::String))),
-        );
-        assert_eq!(
-            ReturnExpr::bit_array_function(
-                BitArrayFunctionFunctionId(0),
-                BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(
-                    BitArrayFunctionId(0),
-                    Vec::new(),
-                )),
-            )
-            .value_type(),
-            ValueType::Function(Box::new(
-                FunctionType::new(Vec::new(), ValueType::BitArray,)
+
+        let returns = [
+            ReturnExpr::generic_body(
+                parameter,
+                GenericReturn::tail_call(tail_call.clone(), Vec::new()),
+            ),
+            ReturnExpr::generic_list_body(
+                parameter,
+                GenericListReturn::tail_call(tail_call.clone(), Vec::new()),
+            ),
+            ReturnExpr::string_list_body(StringListReturn::tail_call(
+                tail_call.clone(),
+                Vec::new(),
             )),
-        );
-        assert_eq!(
-            ReturnExpr::utf_codepoint_function_body(
-                UtfCodepointFunctionFunctionId(0),
-                FunctionType::new(Vec::new(), ValueType::UtfCodepoint),
-                UtfCodepointFunctionReturn::expr(UtfCodepointFunctionExpr::reference(
-                    UtfCodepointFunctionReference::new(UtfCodepointFunctionId(0), Vec::new()),
-                )),
-            )
-            .value_type(),
-            ValueType::Function(Box::new(FunctionType::new(
+            ReturnExpr::bit_array_list_body(BitArrayListReturn::tail_call(
+                tail_call.clone(),
                 Vec::new(),
-                ValueType::UtfCodepoint,
-            ))),
-        );
-        assert_eq!(
-            ReturnExpr::float_function(
-                FloatFunctionFunctionId(0),
-                FloatFunctionExpr::reference(FloatFunctionReference::new(
-                    FloatFunctionId(0),
-                    Vec::new()
-                )),
-            )
-            .value_type(),
-            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Float))),
-        );
-        assert_eq!(
-            ReturnExpr::bool_function(
-                BoolFunctionFunctionId(0),
-                BoolFunctionExpr::reference(BoolFunctionReference::new(
-                    BoolFunctionId(0),
-                    Vec::new()
-                )),
-            )
-            .value_type(),
-            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Bool))),
-        );
-        assert_eq!(
-            ReturnExpr::nil_function(
-                NilFunctionFunctionId(0),
-                NilFunctionExpr::reference(NilFunctionReference::new(NilFunctionId(0), Vec::new())),
-            )
-            .value_type(),
-            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Nil))),
-        );
-        assert_eq!(
-            ReturnExpr::tuple_function(
-                TupleFunctionFunctionId(0),
-                TupleFunctionExpr::reference(
-                    TupleFunctionReference::new(TupleFunctionId(0), Vec::new()),
-                    vec![ValueType::Int],
-                ),
-            )
-            .value_type(),
-            ValueType::Function(Box::new(FunctionType::new(
+            )),
+            ReturnExpr::utf_codepoint_list_body(UtfCodepointListReturn::tail_call(
+                tail_call.clone(),
                 Vec::new(),
-                ValueType::Tuple(vec![ValueType::Int]),
-            ))),
-        );
-        assert_eq!(
-            ReturnExpr::list_function(
-                ListFunctionFunctionId::from_item_type(
-                    0,
-                    crate::plan::FunctionType::new(
-                        Vec::new(),
-                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
-                    ),
-                    crate::plan::ValueType::Int
-                ),
-                ListFunctionExpr::reference(ListFunctionReference::new(
-                    ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-                    Vec::new()
-                )),
-            )
-            .value_type(),
-            ValueType::Function(Box::new(FunctionType::new(
-                Vec::new(),
-                ValueType::List(Box::new(ValueType::Int)),
-            ))),
-        );
-        let return_type = FunctionType::new(Vec::new(), ValueType::Int);
-        assert_eq!(
-            ReturnExpr::function_function(
-                0,
-                FunctionFunctionExpr::reference(
-                    FunctionFunctionReference::new(
-                        FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                        Vec::new(),
-                    ),
-                    return_type.clone(),
-                ),
-            )
-            .value_type(),
-            ValueType::Function(Box::new(FunctionType::new(
-                Vec::new(),
-                ValueType::Function(Box::new(return_type)),
-            ))),
-        );
-    }
-
-    #[test]
-    fn list_return_expr_preserves_value_type_and_runtime_id_by_item_family() {
-        let tuple_item = vec![ValueType::Int];
-        let list_item = Box::new(ValueType::Int);
-        let function_item = FunctionType::new(Vec::new(), ValueType::Int);
-        let custom_item = custom_type();
-        let expressions = vec![
-            (
-                ReturnExpr::int_list_body(
-                    IntListFunctionId(1),
-                    IntListReturn::expr(
-                        ListExpr::value(Vec::new(), ValueType::Int)
-                            .into_int()
-                            .expect("expression should be List(Int)"),
-                    ),
-                ),
-                ValueType::Int,
-                ListFunctionId::Int(IntListFunctionId(1)),
+            )),
+            ReturnExpr::custom_list_body(
+                custom.clone(),
+                CustomListReturn::tail_call(tail_call.clone(), Vec::new()),
             ),
-            (
-                ReturnExpr::string_list_body(
-                    StringListFunctionId(2),
-                    StringListReturn::expr(
-                        ListExpr::value(Vec::new(), ValueType::String)
-                            .into_string()
-                            .expect("expression should be List(String)"),
-                    ),
-                ),
-                ValueType::String,
-                ListFunctionId::String(StringListFunctionId(2)),
+            ReturnExpr::float_list_body(FloatListReturn::tail_call(tail_call.clone(), Vec::new())),
+            ReturnExpr::bool_list_body(BoolListReturn::tail_call(tail_call.clone(), Vec::new())),
+            ReturnExpr::tuple_list_body(
+                tuple.clone(),
+                TupleListReturn::tail_call(tail_call.clone(), Vec::new()),
             ),
-            (
-                ReturnExpr::bit_array_list_body(
-                    BitArrayListFunctionId(9),
-                    BitArrayListReturn::expr(
-                        ListExpr::value(Vec::new(), ValueType::BitArray)
-                            .into_bit_array()
-                            .expect("expression should be List(BitArray)"),
-                    ),
-                ),
-                ValueType::BitArray,
-                ListFunctionId::BitArray(BitArrayListFunctionId(9)),
+            ReturnExpr::list_list_body(
+                nested.clone(),
+                ListListReturn::tail_call(tail_call.clone(), Vec::new()),
             ),
-            (
-                ReturnExpr::utf_codepoint_list_body(
-                    UtfCodepointListFunctionId(10),
-                    UtfCodepointListReturn::expr(
-                        ListExpr::value(Vec::new(), ValueType::UtfCodepoint)
-                            .into_utf_codepoint()
-                            .expect("expression should be List(UtfCodepoint)"),
-                    ),
-                ),
-                ValueType::UtfCodepoint,
-                ListFunctionId::UtfCodepoint(UtfCodepointListFunctionId(10)),
+            ReturnExpr::function_list_body(
+                function.clone(),
+                FunctionListReturn::tail_call(tail_call.clone(), Vec::new()),
             ),
-            (
-                ReturnExpr::custom_list_body(
-                    CustomListFunctionId(11),
-                    custom_item.clone(),
-                    CustomListReturn::expr(
-                        ListExpr::value(Vec::new(), ValueType::Custom(custom_item.clone()))
-                            .into_custom()
-                            .expect("expression should be List(Custom)"),
-                    ),
-                ),
-                ValueType::Custom(custom_item.clone()),
-                ListFunctionId::Custom {
-                    id: CustomListFunctionId(11),
-                    item_type: custom_item,
-                },
-            ),
-            (
-                ReturnExpr::float_list_body(
-                    FloatListFunctionId(3),
-                    FloatListReturn::expr(
-                        ListExpr::value(Vec::new(), ValueType::Float)
-                            .into_float()
-                            .expect("expression should be List(Float)"),
-                    ),
-                ),
-                ValueType::Float,
-                ListFunctionId::Float(FloatListFunctionId(3)),
-            ),
-            (
-                ReturnExpr::bool_list_body(
-                    crate::plan::BoolListFunctionId(4),
-                    BoolListReturn::expr(
-                        ListExpr::value(Vec::new(), ValueType::Bool)
-                            .into_bool()
-                            .expect("expression should be List(Bool)"),
-                    ),
-                ),
-                ValueType::Bool,
-                ListFunctionId::Bool(crate::plan::BoolListFunctionId(4)),
-            ),
-            (
-                ReturnExpr::nil_list_body(
-                    NilListFunctionId(5),
-                    NilListReturn::expr(
-                        ListExpr::value(Vec::new(), ValueType::Nil)
-                            .into_nil()
-                            .expect("expression should be List(Nil)"),
-                    ),
-                ),
-                ValueType::Nil,
-                ListFunctionId::Nil(NilListFunctionId(5)),
-            ),
-            (
-                ReturnExpr::tuple_list_body(
-                    TupleListFunctionId(6),
-                    tuple_item.clone(),
-                    TupleListReturn::expr(
-                        ListExpr::value(Vec::new(), ValueType::Tuple(tuple_item.clone()))
-                            .into_tuple()
-                            .expect("expression should be List(Tuple)"),
-                    ),
-                ),
-                ValueType::Tuple(tuple_item.clone()),
-                ListFunctionId::Tuple {
-                    id: TupleListFunctionId(6),
-                    item_type: tuple_item,
-                },
-            ),
-            (
-                ReturnExpr::list_list_body(
-                    ListListFunctionId(7),
-                    list_item.clone(),
-                    ListListReturn::expr(
-                        ListExpr::value(Vec::new(), ValueType::List(list_item.clone()))
-                            .into_list()
-                            .expect("expression should be List(List)"),
-                    ),
-                ),
-                ValueType::List(list_item.clone()),
-                ListFunctionId::List {
-                    id: ListListFunctionId(7),
-                    item_type: list_item,
-                },
-            ),
-            (
-                ReturnExpr::function_list_body(
-                    FunctionListFunctionId(8),
-                    function_item.clone(),
-                    FunctionListReturn::expr(
-                        ListExpr::value(
-                            Vec::new(),
-                            ValueType::Function(Box::new(function_item.clone())),
-                        )
-                        .into_function()
-                        .expect("expression should be List(Function)"),
-                    ),
-                ),
-                ValueType::Function(Box::new(function_item.clone())),
-                ListFunctionId::Function {
-                    id: FunctionListFunctionId(8),
-                    item_type: function_item,
-                },
+            ReturnExpr::generic_function_shape_body(
+                function_shape.clone(),
+                GenericFunctionReturn::tail_call(tail_call, Vec::new()),
             ),
         ];
 
-        for (expression, item_type, runtime_id) in expressions {
-            assert_eq!(
-                expression.value_type(),
-                ValueType::List(Box::new(item_type)),
-            );
-            assert_eq!(expression.runtime_id(), RuntimeFunctionId::List(runtime_id),);
-        }
-    }
-
-    #[test]
-    fn return_expr_preserves_runtime_id_for_non_list_families() {
-        let tuple_type = vec![ValueType::Int];
-        let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
-        let custom_type = custom_type();
-        let custom_function_type = CustomFunctionType::new(Vec::new(), custom_type.clone());
-        let expressions = vec![
-            (
-                ReturnExpr::int(IntFunctionId(0), IntExpr::value(1.into())),
-                RuntimeFunctionId::Int(IntFunctionId(0)),
-            ),
-            (
-                ReturnExpr::float(FloatFunctionId(1), FloatExpr::value(1.0)),
-                RuntimeFunctionId::Float(FloatFunctionId(1)),
-            ),
-            (
-                ReturnExpr::string(StringFunctionId(2), StringExpr::value("value".into())),
-                RuntimeFunctionId::String(StringFunctionId(2)),
-            ),
-            (
-                ReturnExpr::bit_array(BitArrayFunctionId(11), BitArrayExpr::value(Vec::new())),
-                RuntimeFunctionId::BitArray(BitArrayFunctionId(11)),
-            ),
-            (
-                ReturnExpr::utf_codepoint_body(
-                    UtfCodepointFunctionId(12),
-                    UtfCodepointReturn::expr(UtfCodepointExpr::local_get(
-                        UtfCodepointLocalId(0),
-                        "codepoint".into(),
-                    )),
-                ),
-                RuntimeFunctionId::UtfCodepoint(UtfCodepointFunctionId(12)),
-            ),
-            (
-                ReturnExpr::custom_body(
-                    14,
-                    CustomReturn::expr(CustomExpr::local_get(
-                        crate::plan::CustomLocal::new(CustomLocalId(0), custom_type.clone()),
-                        "custom".into(),
-                    )),
-                ),
-                RuntimeFunctionId::Custom(CustomFunctionId::new(14, custom_type.clone())),
-            ),
-            (
-                ReturnExpr::bool(BoolFunctionId(3), BoolExpr::value(true)),
-                RuntimeFunctionId::Bool(BoolFunctionId(3)),
-            ),
-            (
-                ReturnExpr::nil(NilFunctionId(4), NilExpr::value()),
-                RuntimeFunctionId::Nil(NilFunctionId(4)),
-            ),
-            (
-                ReturnExpr::tuple(
-                    TupleFunctionId(5),
-                    TupleExpr::value(
-                        vec![Expr::int(IntExpr::value(1.into()))],
-                        tuple_type.clone(),
-                    ),
-                ),
-                RuntimeFunctionId::Tuple {
-                    id: TupleFunctionId(5),
-                    return_type: tuple_type,
-                },
-            ),
-            (
-                ReturnExpr::int_function(
-                    IntFunctionFunctionId(6),
-                    IntFunctionExpr::reference(IntFunctionReference::new(
-                        IntFunctionId(0),
-                        Vec::new(),
-                    )),
-                ),
-                RuntimeFunctionId::Function {
-                    id: FunctionFunctionId::Int(IntFunctionFunctionId(6)),
-                    return_type: int_function_type.clone(),
-                },
-            ),
-            (
-                ReturnExpr::float_function(
-                    FloatFunctionFunctionId(7),
-                    FloatFunctionExpr::reference(FloatFunctionReference::new(
-                        FloatFunctionId(0),
-                        Vec::new(),
-                    )),
-                ),
-                RuntimeFunctionId::Function {
-                    id: FunctionFunctionId::Float(FloatFunctionFunctionId(7)),
-                    return_type: FunctionType::new(Vec::new(), ValueType::Float),
-                },
-            ),
-            (
-                ReturnExpr::string_function(
-                    StringFunctionFunctionId(8),
-                    StringFunctionExpr::reference(StringFunctionReference::new(
-                        StringFunctionId(0),
-                        Vec::new(),
-                    )),
-                ),
-                RuntimeFunctionId::Function {
-                    id: FunctionFunctionId::String(StringFunctionFunctionId(8)),
-                    return_type: FunctionType::new(Vec::new(), ValueType::String),
-                },
-            ),
-            (
-                ReturnExpr::bit_array_function(
-                    BitArrayFunctionFunctionId(12),
-                    BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(
-                        BitArrayFunctionId(0),
-                        Vec::new(),
-                    )),
-                ),
-                RuntimeFunctionId::Function {
-                    id: FunctionFunctionId::BitArray(BitArrayFunctionFunctionId(12)),
-                    return_type: FunctionType::new(Vec::new(), ValueType::BitArray),
-                },
-            ),
-            (
-                ReturnExpr::utf_codepoint_function_body(
-                    UtfCodepointFunctionFunctionId(13),
-                    FunctionType::new(Vec::new(), ValueType::UtfCodepoint),
-                    UtfCodepointFunctionReturn::expr(UtfCodepointFunctionExpr::reference(
-                        UtfCodepointFunctionReference::new(UtfCodepointFunctionId(0), Vec::new()),
-                    )),
-                ),
-                RuntimeFunctionId::Function {
-                    id: FunctionFunctionId::UtfCodepoint(UtfCodepointFunctionFunctionId(13)),
-                    return_type: FunctionType::new(Vec::new(), ValueType::UtfCodepoint),
-                },
-            ),
-            (
-                ReturnExpr::custom_function_body(
-                    14,
-                    CustomFunctionReturn::expr(CustomFunctionExpr::reference(
-                        CustomFunctionReference::new(
-                            CustomFunctionId::new(0, custom_type),
-                            Vec::new(),
-                        ),
-                    )),
-                ),
-                RuntimeFunctionId::Function {
-                    id: FunctionFunctionId::Custom(CustomFunctionFunctionId::new(
-                        14,
-                        custom_function_type.clone(),
-                    )),
-                    return_type: custom_function_type.to_function_type(),
-                },
-            ),
-            (
-                ReturnExpr::bool_function(
-                    BoolFunctionFunctionId(9),
-                    BoolFunctionExpr::reference(BoolFunctionReference::new(
-                        BoolFunctionId(0),
-                        Vec::new(),
-                    )),
-                ),
-                RuntimeFunctionId::Function {
-                    id: FunctionFunctionId::Bool(BoolFunctionFunctionId(9)),
-                    return_type: FunctionType::new(Vec::new(), ValueType::Bool),
-                },
-            ),
-            (
-                ReturnExpr::nil_function(
-                    NilFunctionFunctionId(10),
-                    NilFunctionExpr::reference(NilFunctionReference::new(
-                        NilFunctionId(0),
-                        Vec::new(),
-                    )),
-                ),
-                RuntimeFunctionId::Function {
-                    id: FunctionFunctionId::Nil(NilFunctionFunctionId(10)),
-                    return_type: FunctionType::new(Vec::new(), ValueType::Nil),
-                },
-            ),
-            (
-                ReturnExpr::tuple_function(
-                    TupleFunctionFunctionId(11),
-                    TupleFunctionExpr::reference(
-                        TupleFunctionReference::new(TupleFunctionId(0), Vec::new()),
-                        vec![ValueType::Int],
-                    ),
-                ),
-                RuntimeFunctionId::Function {
-                    id: FunctionFunctionId::Tuple(TupleFunctionFunctionId(11)),
-                    return_type: FunctionType::new(
-                        Vec::new(),
-                        ValueType::Tuple(vec![ValueType::Int]),
-                    ),
-                },
-            ),
-            (
-                ReturnExpr::list_function(
-                    ListFunctionFunctionId::from_item_type(
-                        12,
-                        FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
-                        ValueType::Int,
-                    ),
-                    ListFunctionExpr::reference(ListFunctionReference::new(
-                        ListFunctionId::Int(IntListFunctionId(0)),
-                        Vec::new(),
-                    )),
-                ),
-                RuntimeFunctionId::Function {
-                    id: FunctionFunctionId::List(ListFunctionFunctionId::from_item_type(
-                        12,
-                        FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int))),
-                        ValueType::Int,
-                    )),
-                    return_type: FunctionType::new(
-                        Vec::new(),
-                        ValueType::List(Box::new(ValueType::Int)),
-                    ),
-                },
-            ),
-            (
-                ReturnExpr::function_function(
-                    13,
-                    FunctionFunctionExpr::reference(
-                        FunctionFunctionReference::new(
-                            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                            Vec::new(),
-                        ),
-                        int_function_type.clone(),
-                    ),
-                ),
-                RuntimeFunctionId::Function {
-                    id: FunctionFunctionId::Function(FunctionFunctionFunctionId::new(
-                        13,
-                        FunctionFunctionType::new(Vec::new(), int_function_type.clone()),
-                    )),
-                    return_type: FunctionType::new(
-                        Vec::new(),
-                        ValueType::Function(Box::new(int_function_type)),
-                    ),
-                },
-            ),
-        ];
-
-        for (expression, runtime_id) in expressions {
-            assert_eq!(expression.runtime_id(), runtime_id);
-        }
+        assert_eq!(
+            returns.map(|return_| return_.value_type()),
+            [
+                ValueType::Parameter(parameter),
+                ValueType::List(Box::new(ValueType::Parameter(parameter))),
+                ValueType::List(Box::new(ValueType::String)),
+                ValueType::List(Box::new(ValueType::BitArray)),
+                ValueType::List(Box::new(ValueType::UtfCodepoint)),
+                ValueType::List(Box::new(ValueType::Custom(custom))),
+                ValueType::List(Box::new(ValueType::Float)),
+                ValueType::List(Box::new(ValueType::Bool)),
+                ValueType::List(Box::new(ValueType::Tuple(tuple))),
+                ValueType::List(Box::new(ValueType::List(nested))),
+                ValueType::List(Box::new(ValueType::Function(Box::new(function)))),
+                ValueType::Function(Box::new(function_shape.type_())),
+            ],
+        );
     }
 
     #[test]
@@ -3222,6 +2507,28 @@ mod tests {
 
     #[test]
     fn param_local_value_type() {
+        let parameter = TypeParameterId(0);
+        let generic = ParamLocal::generic(GenericLocal::new(GenericLocalId(0), parameter));
+        assert_eq!(generic.value_type(), ValueType::Parameter(parameter));
+        assert_eq!(generic.value_shape(), ValueShape::Parameter(parameter));
+
+        let generic_function_type = GenericFunctionType::new(vec![ValueShape::Int], parameter);
+        let generic_function = ParamLocal::generic_function(GenericFunctionLocal::new(
+            GenericFunctionLocalId(0),
+            generic_function_type.clone(),
+        ));
+        assert_eq!(
+            generic_function.value_type(),
+            ValueType::Function(Box::new(FunctionType::new(
+                vec![ValueType::Int],
+                ValueType::Parameter(parameter),
+            ))),
+        );
+        assert_eq!(
+            generic_function.value_shape(),
+            ValueShape::Function(Box::new(generic_function_type.shape())),
+        );
+
         assert_eq!(ParamLocal::int(IntLocalId(0)).value_type(), ValueType::Int);
         assert_eq!(
             ParamLocal::string(crate::plan::StringLocalId(0)).value_type(),
@@ -3360,6 +2667,16 @@ mod tests {
 
     #[test]
     fn list_return_expr_preserves_item_family() {
+        let parameter = crate::plan::TypeParameterId(0);
+        let generic = ListExpr::value(Vec::new(), ValueType::Parameter(parameter));
+        assert_eq!(
+            ListReturn::expr(generic.clone()),
+            ListReturn::Generic {
+                item_parameter: parameter,
+                body: super::GenericListReturn::expr(generic.into_generic().expect("generic list"),),
+            },
+        );
+
         let int = ListExpr::value(
             vec![crate::plan::Expr::int(IntExpr::value(1.into()))],
             ValueType::Int,
@@ -3478,10 +2795,14 @@ mod tests {
         );
 
         let function_type = FunctionType::new(Vec::new(), ValueType::Int);
+        let function_instantiation = crate::plan::monomorphic_function_instantiation(
+            0,
+            crate::plan::FunctionShape::from_function_type(function_type.clone()),
+        );
         let function = ListExpr::value(
             vec![crate::plan::Expr::function(
                 crate::plan::FunctionExpr::reference(crate::plan::FunctionReference::new(
-                    crate::plan::RuntimeFunctionId::Int(IntFunctionId(0)),
+                    function_instantiation,
                     Vec::new(),
                 )),
             )],
@@ -3498,110 +2819,125 @@ mod tests {
 
     #[test]
     fn list_return_tail_call_preserves_item_family() {
-        assert_eq!(
-            ListReturn::tail_call(ListFunctionId::Int(IntListFunctionId(0)), Vec::new()),
-            ListReturn::Int(IntListReturn::tail_call(IntListFunctionId(0), Vec::new())),
-        );
-        assert_eq!(
-            ListReturn::tail_call(ListFunctionId::Float(FloatListFunctionId(0)), Vec::new()),
-            ListReturn::Float(FloatListReturn::tail_call(
-                FloatListFunctionId(0),
-                Vec::new()
-            )),
-        );
-        assert_eq!(
-            ListReturn::tail_call(ListFunctionId::String(StringListFunctionId(0)), Vec::new()),
-            ListReturn::String(StringListReturn::tail_call(
-                StringListFunctionId(0),
-                Vec::new(),
-            )),
-        );
+        fn tail_call_function(item_type: ValueType) -> crate::plan::FunctionInstantiation {
+            crate::plan::monomorphic_function_instantiation(
+                0,
+                crate::plan::FunctionShape::new(
+                    Vec::new(),
+                    ValueShape::List(Box::new(ValueShape::from_value_type(item_type))),
+                ),
+            )
+        }
+
+        let parameter = crate::plan::TypeParameterId(0);
+        let function = tail_call_function(ValueType::Parameter(parameter));
         assert_eq!(
             ListReturn::tail_call(
-                ListFunctionId::BitArray(BitArrayListFunctionId(0)),
+                function.clone(),
+                ValueType::Parameter(parameter),
                 Vec::new(),
             ),
-            ListReturn::BitArray(BitArrayListReturn::tail_call(
-                BitArrayListFunctionId(0),
-                Vec::new(),
-            )),
+            ListReturn::Generic {
+                item_parameter: parameter,
+                body: super::GenericListReturn::tail_call(function, Vec::new()),
+            },
         );
+
+        let function = tail_call_function(ValueType::Int);
         assert_eq!(
-            ListReturn::tail_call(
-                ListFunctionId::UtfCodepoint(UtfCodepointListFunctionId(0)),
-                Vec::new(),
-            ),
-            ListReturn::UtfCodepoint(UtfCodepointListReturn::tail_call(
-                UtfCodepointListFunctionId(0),
-                Vec::new(),
-            )),
+            ListReturn::tail_call(function.clone(), ValueType::Int, Vec::new()),
+            ListReturn::Int(IntListReturn::tail_call(function, Vec::new())),
         );
+
+        let function = tail_call_function(ValueType::Float);
+        assert_eq!(
+            ListReturn::tail_call(function.clone(), ValueType::Float, Vec::new()),
+            ListReturn::Float(FloatListReturn::tail_call(function, Vec::new())),
+        );
+
+        let function = tail_call_function(ValueType::String);
+        assert_eq!(
+            ListReturn::tail_call(function.clone(), ValueType::String, Vec::new()),
+            ListReturn::String(StringListReturn::tail_call(function, Vec::new())),
+        );
+
+        let function = tail_call_function(ValueType::BitArray);
+        assert_eq!(
+            ListReturn::tail_call(function.clone(), ValueType::BitArray, Vec::new()),
+            ListReturn::BitArray(BitArrayListReturn::tail_call(function, Vec::new())),
+        );
+
+        let function = tail_call_function(ValueType::UtfCodepoint);
+        assert_eq!(
+            ListReturn::tail_call(function.clone(), ValueType::UtfCodepoint, Vec::new()),
+            ListReturn::UtfCodepoint(UtfCodepointListReturn::tail_call(function, Vec::new())),
+        );
+
         let custom_type = custom_type();
+        let function = tail_call_function(ValueType::Custom(custom_type.clone()));
         assert_eq!(
             ListReturn::tail_call(
-                ListFunctionId::Custom {
-                    id: CustomListFunctionId(0),
-                    item_type: custom_type.clone(),
-                },
+                function.clone(),
+                ValueType::Custom(custom_type.clone()),
                 Vec::new(),
             ),
             ListReturn::Custom {
                 item_type: custom_type,
-                body: CustomListReturn::tail_call(CustomListFunctionId(0), Vec::new()),
+                body: CustomListReturn::tail_call(function, Vec::new()),
             },
         );
+
+        let function = tail_call_function(ValueType::Bool);
+        assert_eq!(
+            ListReturn::tail_call(function.clone(), ValueType::Bool, Vec::new()),
+            ListReturn::Bool(BoolListReturn::tail_call(function, Vec::new())),
+        );
+
+        let function = tail_call_function(ValueType::Nil);
+        assert_eq!(
+            ListReturn::tail_call(function.clone(), ValueType::Nil, Vec::new()),
+            ListReturn::Nil(NilListReturn::tail_call(function, Vec::new())),
+        );
+
+        let tuple_type = vec![ValueType::Int];
+        let function = tail_call_function(ValueType::Tuple(tuple_type.clone()));
         assert_eq!(
             ListReturn::tail_call(
-                ListFunctionId::Bool(crate::plan::BoolListFunctionId(0)),
-                Vec::new()
-            ),
-            ListReturn::Bool(BoolListReturn::tail_call(
-                crate::plan::BoolListFunctionId(0),
-                Vec::new(),
-            )),
-        );
-        assert_eq!(
-            ListReturn::tail_call(ListFunctionId::Nil(NilListFunctionId(0)), Vec::new()),
-            ListReturn::Nil(NilListReturn::tail_call(NilListFunctionId(0), Vec::new())),
-        );
-        assert_eq!(
-            ListReturn::tail_call(
-                ListFunctionId::Tuple {
-                    id: TupleListFunctionId(0),
-                    item_type: vec![ValueType::Int],
-                },
+                function.clone(),
+                ValueType::Tuple(tuple_type.clone()),
                 Vec::new(),
             ),
             ListReturn::Tuple {
-                item_type: vec![ValueType::Int],
-                body: TupleListReturn::tail_call(TupleListFunctionId(0), Vec::new()),
+                item_type: tuple_type,
+                body: TupleListReturn::tail_call(function, Vec::new()),
             },
         );
+
+        let list_type = Box::new(ValueType::Int);
+        let function = tail_call_function(ValueType::List(list_type.clone()));
         assert_eq!(
             ListReturn::tail_call(
-                ListFunctionId::List {
-                    id: ListListFunctionId(0),
-                    item_type: Box::new(ValueType::Int),
-                },
+                function.clone(),
+                ValueType::List(list_type.clone()),
                 Vec::new(),
             ),
             ListReturn::List {
-                item_type: Box::new(ValueType::Int),
-                body: ListListReturn::tail_call(ListListFunctionId(0), Vec::new()),
+                item_type: list_type,
+                body: ListListReturn::tail_call(function, Vec::new()),
             },
         );
+
         let function_type = FunctionType::new(Vec::new(), ValueType::Int);
+        let function = tail_call_function(ValueType::Function(Box::new(function_type.clone())));
         assert_eq!(
             ListReturn::tail_call(
-                ListFunctionId::Function {
-                    id: FunctionListFunctionId(0),
-                    item_type: function_type.clone(),
-                },
+                function.clone(),
+                ValueType::Function(Box::new(function_type.clone())),
                 Vec::new(),
             ),
             ListReturn::Function {
                 item_type: function_type,
-                body: FunctionListReturn::tail_call(FunctionListFunctionId(0), Vec::new()),
+                body: FunctionListReturn::tail_call(function, Vec::new()),
             },
         );
     }
@@ -3852,6 +3188,7 @@ mod tests {
     #[test]
     fn list_return_case_helpers_preserve_all_item_families() {
         let item_types = vec![
+            ValueType::Parameter(crate::plan::TypeParameterId(0)),
             ValueType::Int,
             ValueType::Float,
             ValueType::String,
@@ -3922,6 +3259,7 @@ mod tests {
         }
 
         let item_types = vec![
+            ValueType::Parameter(crate::plan::TypeParameterId(0)),
             ValueType::Int,
             ValueType::Float,
             ValueType::String,
@@ -4026,6 +3364,7 @@ mod tests {
 
     fn list_return_item_type(return_: &ListReturn) -> ValueType {
         match return_ {
+            ListReturn::Generic { item_parameter, .. } => ValueType::Parameter(*item_parameter),
             ListReturn::Int(_) => ValueType::Int,
             ListReturn::Float(_) => ValueType::Float,
             ListReturn::String(_) => ValueType::String,

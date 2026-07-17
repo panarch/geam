@@ -1,16 +1,13 @@
 use super::super::super::plan_expr_with_expected_source_stop_shape;
 use super::super::super::{list_index_expr, tuple_index_expr};
 use super::super::invalid_case_shape;
-use super::{
-    CaseClause, CaseSubjectVariants, OrderedCaseCandidateInput, OrderedCasePattern,
-    case_return_shape,
-};
+use super::{CaseClause, CaseSubjectVariants, OrderedCaseCandidateInput, OrderedCasePattern};
 use crate::plan::{
     BoolExpr, CustomBindingPattern, CustomExpr, Expr, ExprKind, FloatExpr, IntExpr, ListExpr,
     ListLocal, Step, StringExpr, ValueShape, ValueType,
 };
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidCaseShapeReason, PlanError, UnsupportedExpressionKind};
+use crate::planner::error::{InvalidCaseShapeReason, PlanError};
 use crate::planner::pattern::plan_custom_subject_pattern;
 use ecow::EcoString;
 use gleam_core::ast::{AssignName, Pattern, SrcSpan, TailPattern, TypedExpr};
@@ -28,7 +25,7 @@ pub(super) fn plan(
 ) -> Result<Expr, PlanError> {
     let subject_value_type = ValueType::List(Box::new(element_type.clone()));
     let subject = plan_expr_with_expected_source_stop_shape(subject, subject_shape, context)?;
-    let return_shape = case_return_shape(type_.as_ref())?;
+    let return_shape = context.value_shape(type_.as_ref());
 
     let ExprKind::List(subject) = subject.into_kind() else {
         return Err(invalid_case_shape(
@@ -194,13 +191,15 @@ pub(super) fn plan_list_case_pattern_with_context(
     context: &mut PlanContext<'_>,
 ) -> Result<ListCasePattern, PlanError> {
     match pattern {
-        Pattern::Variable { name, type_, .. } if matches_type(type_.as_ref(), &subject_type) => {
+        Pattern::Variable { name, type_, .. }
+            if matches_type(type_.as_ref(), &subject_type, context) =>
+        {
             Ok(ListCasePattern::any().with_binding(name, value))
         }
         Pattern::Variable { .. } => Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
         )),
-        Pattern::Discard { type_, .. } if matches_type(type_.as_ref(), &subject_type) => {
+        Pattern::Discard { type_, .. } if matches_type(type_.as_ref(), &subject_type, context) => {
             Ok(ListCasePattern::any())
         }
         Pattern::Discard { .. } => Err(invalid_case_shape(
@@ -282,7 +281,7 @@ pub(super) fn plan_list_case_pattern_with_context(
             type_: ref pattern_type,
             ..
         } if matches!(&subject_type, ValueType::Custom(_))
-            && matches_type(pattern_type.as_ref(), &subject_type) =>
+            && matches_type(pattern_type.as_ref(), &subject_type, context) =>
         {
             let Some(value) = value.into_custom() else {
                 return Err(invalid_case_shape(
@@ -349,10 +348,7 @@ fn plan_list_structural_case_pattern(
     subject_variants: CaseSubjectVariants,
     context: &mut PlanContext<'_>,
 ) -> Result<ListCasePattern, PlanError> {
-    let pattern_type =
-        ValueType::from_gleam(type_.as_ref()).ok_or(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::UnsupportedListElementType,
-        })?;
+    let pattern_type = context.value_type(type_.as_ref());
     if pattern_type != subject_type {
         return Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
@@ -395,7 +391,8 @@ fn plan_list_structural_case_pattern(
     );
     pattern.is_total = tail.is_some() && element_count == 0 && pattern.is_total;
     if let Some(tail) = tail
-        && let Some(binding) = plan_list_tail_binding(tail, &element_type, list, element_count)?
+        && let Some(binding) =
+            plan_list_tail_binding(tail, &element_type, list, element_count, context)?
     {
         pattern.branch_bindings.push(binding);
     }
@@ -457,17 +454,18 @@ fn plan_list_tail_binding(
     element_type: &ValueType,
     list: ListExpr,
     element_count: usize,
+    context: &mut PlanContext<'_>,
 ) -> Result<Option<(EcoString, Expr)>, PlanError> {
     match tail.pattern {
         Pattern::Variable { name, type_, .. } => {
-            assert_list_tail_type_matches(type_.as_ref(), element_type)?;
+            assert_list_tail_type_matches(type_.as_ref(), element_type, context)?;
             Ok(Some((
                 name,
                 Expr::list(ListExpr::drop_first(list, element_count)),
             )))
         }
         Pattern::Discard { type_, .. } => {
-            assert_list_tail_type_matches(type_.as_ref(), element_type)?;
+            assert_list_tail_type_matches(type_.as_ref(), element_type, context)?;
             Ok(None)
         }
         Pattern::Invalid { .. } => Err(invalid_case_shape(InvalidCaseShapeReason::InvalidPattern)),
@@ -477,8 +475,12 @@ fn plan_list_tail_binding(
     }
 }
 
-fn assert_list_tail_type_matches(type_: &Type, element_type: &ValueType) -> Result<(), PlanError> {
-    if ValueType::from_gleam(type_) == Some(ValueType::List(Box::new(element_type.clone()))) {
+fn assert_list_tail_type_matches(
+    type_: &Type,
+    element_type: &ValueType,
+    context: &mut PlanContext<'_>,
+) -> Result<(), PlanError> {
+    if context.value_type(type_) == ValueType::List(Box::new(element_type.clone())) {
         Ok(())
     } else {
         Err(invalid_case_shape(
@@ -518,8 +520,8 @@ fn list_length_condition(list: ListExpr, length: usize, has_tail: bool) -> Optio
     }
 }
 
-fn matches_type(type_: &Type, subject_type: &ValueType) -> bool {
-    ValueType::from_gleam(type_) == Some(subject_type.clone())
+fn matches_type(type_: &Type, subject_type: &ValueType, context: &mut PlanContext<'_>) -> bool {
+    context.value_type(type_) == *subject_type
 }
 
 fn bind_list_case_subject(subject: ListExpr, context: &mut PlanContext<'_>) -> (Step, Expr) {
@@ -937,7 +939,7 @@ pub fn main() {
         let (case_type, _, _) = super::super::super::expect_case_statement_mut(
             &mut unsupported_case_type.definitions.functions[0].body[0],
         );
-        *case_type = super::super::invalid_case_return_type();
+        *case_type = super::super::mismatched_generic_case_return_type();
         assert_eq!(
             plan_module(unsupported_case_type),
             Err(PlanError::InvalidTypedAst {
@@ -1362,8 +1364,10 @@ pub fn main() {
                 list_subject.clone(),
                 list_type.clone(),
             ),
-            Err(PlanError::UnsupportedExpression {
-                kind: crate::planner::UnsupportedExpressionKind::UnsupportedListElementType,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
+                },
             }),
         );
         assert_eq!(

@@ -1,6 +1,6 @@
 use super::super::super::plan_expr_with_expected_source_stop_shape;
 use super::super::invalid_case_shape;
-use super::{CaseClause, OrderedCaseCandidateInput, OrderedCasePattern, case_return_shape};
+use super::{CaseClause, OrderedCaseCandidateInput, OrderedCasePattern};
 use crate::plan::{BoolExpr, CustomExpr, CustomLocalId, Expr, Step, ValueShape, ValueType};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError};
@@ -21,7 +21,7 @@ pub(super) fn plan(
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let subject = plan_expr_with_expected_source_stop_shape(subject, subject_shape, context)?;
-    let return_shape = case_return_shape(type_.as_ref())?;
+    let return_shape = context.value_shape(type_.as_ref());
     let Some(subject) = subject.into_custom() else {
         return Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
@@ -117,7 +117,7 @@ fn plan_pattern(
     subject: CustomExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedCustomPattern, PlanError> {
-    if pattern_value_type(&pattern)? != ValueType::Custom(subject.type_().clone()) {
+    if pattern_value_type(&pattern, context)? != ValueType::Custom(subject.type_().clone()) {
         return Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
         ));
@@ -394,7 +394,7 @@ pub fn main() { 0 }
         let (type_, _, _) = super::super::super::expect_case_statement_mut(
             &mut invalid_return_type.definitions.functions[0].body[0],
         );
-        *type_ = super::super::invalid_case_return_type();
+        *type_ = super::super::mismatched_generic_case_return_type();
         assert_eq!(
             plan_module(invalid_return_type),
             Err(PlanError::InvalidTypedAst {

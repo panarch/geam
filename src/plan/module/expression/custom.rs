@@ -3,8 +3,8 @@ use super::{
     PanicExpr, StringExpr, TupleExpr,
 };
 use crate::plan::{
-    CustomConstructor, CustomConstructorRefinement, CustomFunctionId, CustomLocal, CustomLocalId,
-    CustomType, CustomValueShape, Step, ValueShape,
+    CustomConstructor, CustomConstructorRefinement, CustomLocal, CustomLocalId, CustomType,
+    CustomValueShape, FunctionInstantiation, Step, ValueShape,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -66,7 +66,7 @@ pub(crate) enum CustomExprKind {
         name: EcoString,
     },
     Call {
-        function: CustomFunctionId,
+        function: FunctionInstantiation,
         args: Vec<CallArg>,
     },
     FunctionCall(CustomFunctionCall),
@@ -148,11 +148,12 @@ impl CustomExpr {
         )
     }
 
-    pub(crate) fn call(function: CustomFunctionId, args: Vec<CallArg>) -> Self {
-        Self::new(
-            function.return_shape().clone(),
-            CustomExprKind::Call { function, args },
-        )
+    pub(crate) fn call(
+        function: FunctionInstantiation,
+        args: Vec<CallArg>,
+        shape: CustomValueShape,
+    ) -> Self {
+        Self::new(shape, CustomExprKind::Call { function, args })
     }
 
     pub(crate) fn try_function_call(
@@ -290,6 +291,18 @@ impl CustomExpr {
     }
 }
 
+impl CustomConstruction {
+    pub(in crate::plan::module) fn from_constant(
+        construction: crate::plan::module::constant::MaterializedConstantCustomConstruction,
+    ) -> Self {
+        let (constructor, fields) = construction.into_parts();
+        Self {
+            constructor,
+            fields,
+        }
+    }
+}
+
 impl CustomLocalExpr {
     pub(crate) fn from_value(local: CustomLocalId, value: CustomExpr) -> Self {
         let local = CustomLocal::from_shape(local, value.shape().clone());
@@ -306,10 +319,6 @@ impl CustomLocalExpr {
 
     pub(crate) fn value(&self) -> &CustomExpr {
         &self.value
-    }
-
-    pub(crate) fn into_parts(self) -> (CustomLocal, CustomExpr) {
-        (self.local, self.value)
     }
 }
 
@@ -396,10 +405,6 @@ impl CustomConstruction {
     pub(crate) fn constructor(&self) -> &CustomConstructor {
         &self.constructor
     }
-
-    pub(crate) fn into_parts(self) -> (CustomConstructor, Box<[super::Expr]>) {
-        (self.constructor, self.fields)
-    }
 }
 
 impl CustomFunctionCall {
@@ -429,10 +434,6 @@ impl CustomFunctionCall {
 
     pub(crate) fn arguments(&self) -> &[CallArg] {
         &self.arguments.values
-    }
-
-    pub(crate) fn into_parts(self) -> (CustomFunctionExpr, Box<[CallArg]>) {
-        (*self.function, self.arguments.values)
     }
 }
 

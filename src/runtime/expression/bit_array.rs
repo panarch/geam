@@ -365,9 +365,9 @@ mod tests {
 
     use crate::plan::{
         BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayExpr, BitArrayFunctionId, BitArraySegment,
-        BoolExpr, Endianness, Expr, FloatBitSize, FloatExpr, FunctionId, FunctionPlan, IntExpr,
-        ListExpr, ModulePlan, PanicExpr, PanicSite, ReturnExpr, SourceSpan, Step, StringEncoding,
-        StringExpr, TupleExpr, UtfCodepointExpr, ValueType,
+        BoolExpr, Endianness, Expr, FloatBitSize, FloatExpr, FunctionTemplate, FunctionTemplateId,
+        IntExpr, ListExpr, ModulePlan, PanicExpr, PanicSite, ReturnExpr, SourceSpan, Step,
+        StringEncoding, StringExpr, TupleExpr, UtfCodepointExpr, ValueType,
     };
     use crate::runtime::BitArraySegmentPanicReason;
     use crate::runtime::{BitArrayValue, ExecutionError, ListValue, Value, run_main};
@@ -642,8 +642,8 @@ mod tests {
     }
 
     fn run_module_bit_array_expression(expression: BitArrayExpr) -> ExecutionError {
-        let main = FunctionPlan::new(
-            FunctionId::new(0),
+        let main = FunctionTemplate::new(
+            FunctionTemplateId::new(0),
             "main".into(),
             Vec::new(),
             Vec::new(),

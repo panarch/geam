@@ -2,7 +2,7 @@ use super::{
     BoolExpr, CallArg, CustomFieldAccess, FloatExpr, IntFunctionExpr, IntListExpr, PanicExpr,
     StringExpr, TupleExpr,
 };
-use crate::plan::{IntFunctionId, IntLocalId, Step};
+use crate::plan::{FunctionInstantiation, IntLocalId, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -19,7 +19,7 @@ pub(crate) enum IntExprKind {
         name: EcoString,
     },
     Call {
-        function: IntFunctionId,
+        function: FunctionInstantiation,
         args: Vec<CallArg>,
     },
     FunctionCall {
@@ -96,7 +96,7 @@ impl IntExpr {
         }
     }
 
-    pub(crate) fn call(function: IntFunctionId, args: Vec<CallArg>) -> Self {
+    pub(crate) fn call(function: FunctionInstantiation, args: Vec<CallArg>) -> Self {
         Self {
             kind: IntExprKind::Call { function, args },
         }
@@ -256,17 +256,14 @@ impl IntExpr {
     pub(crate) fn kind(&self) -> &IntExprKind {
         &self.kind
     }
-
-    pub(crate) fn into_kind(self) -> IntExprKind {
-        self.kind
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{IntExpr, IntExprKind};
     use crate::plan::{
-        BoolExpr, Expr, IntFunctionId, IntFunctionReference, IntLocalId, Step, TupleExpr, ValueType,
+        BoolExpr, Expr, FunctionInstantiation, FunctionShape, IntFunctionReference, IntLocalId,
+        Step, TupleExpr, ValueShape, ValueType, monomorphic_function_instantiation,
     };
     use num_bigint::BigInt;
 
@@ -284,9 +281,9 @@ mod tests {
             },
         );
         assert_eq!(
-            IntExpr::call(IntFunctionId(0), Vec::new()).kind(),
+            IntExpr::call(function_instantiation(), Vec::new()).kind(),
             &IntExprKind::Call {
-                function: IntFunctionId(0),
+                function: function_instantiation(),
                 args: Vec::new(),
             },
         );
@@ -410,9 +407,13 @@ mod tests {
 
     fn function_expr() -> crate::plan::IntFunctionExpr {
         crate::plan::IntFunctionExpr::reference(IntFunctionReference::new(
-            IntFunctionId(0),
+            function_instantiation(),
             Vec::new(),
         ))
+    }
+
+    fn function_instantiation() -> FunctionInstantiation {
+        monomorphic_function_instantiation(0, FunctionShape::new(Vec::new(), ValueShape::Int))
     }
 
     fn tuple_expr() -> TupleExpr {

@@ -64,6 +64,9 @@ pub(crate) fn local_list(
 
 pub(super) fn list_local(index: usize, element_type: ValueType) -> ListLocal {
     match element_type {
+        ValueType::Parameter(parameter) => {
+            ListLocal::generic(crate::plan::GenericListLocalId(index), parameter)
+        }
         ValueType::Int => ListLocal::int(IntListLocalId(index)),
         ValueType::String => ListLocal::string(StringListLocalId(index)),
         ValueType::BitArray => ListLocal::bit_array(crate::plan::BitArrayListLocalId(index)),
@@ -91,10 +94,10 @@ mod tests {
     use crate::plan::{
         BitArrayExpr, BitArrayListLocalId, BitArrayLocalId, BoolExpr, BoolListLocalId, BoolLocalId,
         CustomListLocalId, CustomType, CustomTypeName, FloatExpr, FloatListLocalId, FloatLocalId,
-        FunctionListLocalId, FunctionType, IntExpr, IntListLocalId, IntLocalId, ListExpr,
-        ListListLocalId, ListLocal, NilExpr, NilListLocalId, NilLocalId, StringExpr,
+        FunctionListLocalId, FunctionType, GenericListLocalId, IntExpr, IntListLocalId, IntLocalId,
+        ListExpr, ListListLocalId, ListLocal, NilExpr, NilListLocalId, NilLocalId, StringExpr,
         StringListLocalId, StringLocalId, TupleExpr, TupleListLocalId, TupleLocalId,
-        UtfCodepointExpr, UtfCodepointListLocalId, UtfCodepointLocalId, ValueType,
+        TypeParameterId, UtfCodepointExpr, UtfCodepointListLocalId, UtfCodepointLocalId, ValueType,
     };
 
     #[test]
@@ -133,6 +136,18 @@ mod tests {
                 TupleLocalId(5),
                 "pair".into(),
                 vec![ValueType::Int, ValueType::String],
+            ),
+        );
+        assert_eq!(
+            local_list(
+                17,
+                "generic_values",
+                ValueType::Parameter(TypeParameterId(0)),
+            )
+            .0,
+            ListExpr::local_get(
+                ListLocal::generic(GenericListLocalId(17), TypeParameterId(0)),
+                "generic_values".into(),
             ),
         );
         assert_eq!(

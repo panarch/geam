@@ -4,9 +4,9 @@ use super::{
 };
 use crate::plan::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomFunctionExpr, FloatExpr,
-    FloatFunctionExpr, FunctionExpr, FunctionExprKind, FunctionFunctionExpr, IntExpr,
-    IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr, NilFunctionExpr, Step, StringExpr,
-    StringFunctionExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    FloatFunctionExpr, FunctionExpr, FunctionExprKind, FunctionFunctionExpr, GenericFunctionExpr,
+    IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr, NilFunctionExpr, Step,
+    StringExpr, StringFunctionExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
 
 pub(crate) fn block_int(steps: impl IntoIterator<Item = Step>, return_: Int) -> Int {
@@ -61,6 +61,9 @@ pub(crate) fn block_list(steps: impl IntoIterator<Item = Step>, return_: List) -
 
 pub(crate) fn block_function(steps: Vec<Step>, return_: Function) -> Function {
     Function(match FunctionExpr::from(return_).into_kind() {
+        FunctionExprKind::Generic(return_) => {
+            FunctionExpr::generic(GenericFunctionExpr::block(steps, return_))
+        }
         FunctionExprKind::Int(return_) => FunctionExpr::int(IntFunctionExpr::block(steps, return_)),
         FunctionExprKind::String(return_) => {
             FunctionExpr::string(StringFunctionExpr::block(steps, return_))
@@ -141,22 +144,21 @@ mod tests {
         block_tuple_function, block_utf_codepoint,
     };
     use crate::plan::{
-        BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionId, BitArrayFunctionReference,
-        BoolExpr, BoolFunctionId, BoolFunctionReference, CustomFunctionExpr, CustomFunctionId,
-        CustomFunctionReference, CustomType, CustomTypeName, FloatExpr, FloatFunctionId,
-        FloatFunctionReference, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionReference, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
-        IntFunctionId, IntFunctionReference, ListExpr, ListFunctionExpr, ListFunctionReference,
-        NilExpr, NilFunctionId, NilFunctionReference, ParamLocal, RuntimeFunctionId, StringExpr,
-        StringFunctionId, StringFunctionReference, TupleFunctionExpr, TupleFunctionReference,
-        UtfCodepointExpr, UtfCodepointFunctionExpr, UtfCodepointFunctionId,
-        UtfCodepointFunctionReference, ValueType,
+        BitArrayExpr, BoolExpr, CustomFunctionExpr, CustomFunctionReference, CustomType,
+        CustomTypeName, CustomValueShape, FloatExpr, FunctionExpr, FunctionFunctionExpr,
+        FunctionFunctionId, FunctionShape, FunctionType, GenericFunctionExpr,
+        GenericFunctionReference, GenericFunctionType, IntExpr, IntFunctionExpr,
+        IntFunctionFunctionId, ListExpr, ListFunctionExpr, NilExpr, ParamLocal, StringExpr,
+        TupleFunctionExpr, TypeParameterId, UtfCodepointExpr, ValueShape, ValueType,
+        monomorphic_function_instantiation,
     };
     use crate::planner::dsl::expression::{
-        Function, bit_array, bool_, float, function_function_ref, function_ref, int,
-        int_function_ref, let_bit_array_step, let_bool_step, let_int_step, let_nil_step,
-        let_string_step, list, list_function_ref, local_bit_array, local_bool, local_int,
-        local_nil, local_string, local_utf_codepoint, nil, string, tuple_function_ref,
+        Function, bit_array, bit_array_function_ref, bool_, bool_function_ref, float,
+        float_function_ref, function_function_ref, int, int_function_ref, let_bit_array_step,
+        let_bool_step, let_int_step, let_nil_step, let_string_step, list, list_function_ref,
+        local_bit_array, local_bool, local_int, local_nil, local_string, local_utf_codepoint, nil,
+        nil_function_ref, string, string_function_ref, tuple_function_ref,
+        utf_codepoint_function_ref,
     };
 
     fn custom_type() -> CustomType {
@@ -217,182 +219,61 @@ mod tests {
 
     #[test]
     fn function_block_helpers_preserve_return_family() {
-        assert_eq!(
-            FunctionExpr::from(block_function(
-                vec![],
-                function_ref(
-                    RuntimeFunctionId::Int(crate::plan::IntFunctionId(0)),
-                    [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
-                ),
-            )),
-            FunctionExpr::int(IntFunctionExpr::block(
+        let parameter = TypeParameterId(0);
+        let generic_type = GenericFunctionType::new(Vec::new(), parameter);
+        let generic_shape = generic_type.shape();
+        let generic = GenericFunctionExpr::reference(
+            GenericFunctionReference::new(
+                monomorphic_function_instantiation(0, generic_shape),
                 Vec::new(),
-                IntFunctionExpr::reference(IntFunctionReference::new(
-                    IntFunctionId(0),
-                    vec![ParamLocal::int(crate::plan::IntLocalId(0))],
-                )),
-            )),
+            ),
+            generic_type,
         );
-        assert_eq!(
-            FunctionExpr::from(block_function(
-                vec![],
-                function_ref(
-                    RuntimeFunctionId::BitArray(BitArrayFunctionId(0)),
-                    [crate::plan::LocalId::BitArray(
-                        crate::plan::BitArrayLocalId(0)
-                    )],
-                ),
-            )),
-            FunctionExpr::bit_array(BitArrayFunctionExpr::block(
-                Vec::new(),
-                BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(
-                    BitArrayFunctionId(0),
-                    vec![ParamLocal::bit_array(crate::plan::BitArrayLocalId(0))],
-                )),
-            )),
-        );
-        assert_eq!(
-            FunctionExpr::from(block_function(
-                vec![],
-                function_ref(
-                    RuntimeFunctionId::UtfCodepoint(UtfCodepointFunctionId(0)),
-                    [crate::plan::LocalId::UtfCodepoint(
-                        crate::plan::UtfCodepointLocalId(0),
-                    )],
-                ),
-            )),
-            FunctionExpr::utf_codepoint(UtfCodepointFunctionExpr::block(
-                Vec::new(),
-                UtfCodepointFunctionExpr::reference(UtfCodepointFunctionReference::new(
-                    UtfCodepointFunctionId(0),
-                    vec![ParamLocal::utf_codepoint(crate::plan::UtfCodepointLocalId(
-                        0
-                    ),)],
-                )),
-            )),
-        );
-        assert_eq!(
-            FunctionExpr::from(block_function(
-                vec![],
-                function_ref(
-                    RuntimeFunctionId::String(crate::plan::StringFunctionId(0)),
-                    [crate::plan::LocalId::String(crate::plan::StringLocalId(0))],
-                ),
-            )),
-            FunctionExpr::string(crate::plan::StringFunctionExpr::block(
-                Vec::new(),
-                crate::plan::StringFunctionExpr::reference(StringFunctionReference::new(
-                    StringFunctionId(0),
-                    vec![ParamLocal::string(crate::plan::StringLocalId(0))],
-                )),
-            )),
-        );
-        assert_eq!(
-            FunctionExpr::from(block_function(
-                vec![],
-                function_ref(
-                    RuntimeFunctionId::Float(crate::plan::FloatFunctionId(0)),
-                    [crate::plan::LocalId::Float(crate::plan::FloatLocalId(0))],
-                ),
-            )),
-            FunctionExpr::float(crate::plan::FloatFunctionExpr::block(
-                Vec::new(),
-                crate::plan::FloatFunctionExpr::reference(FloatFunctionReference::new(
-                    FloatFunctionId(0),
-                    vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
-                )),
-            )),
-        );
-        assert_eq!(
-            FunctionExpr::from(block_function(
-                vec![],
-                function_ref(
-                    RuntimeFunctionId::Bool(crate::plan::BoolFunctionId(0)),
-                    [crate::plan::LocalId::Bool(crate::plan::BoolLocalId(0))],
-                ),
-            )),
-            FunctionExpr::bool(crate::plan::BoolFunctionExpr::block(
-                Vec::new(),
-                crate::plan::BoolFunctionExpr::reference(BoolFunctionReference::new(
-                    BoolFunctionId(0),
-                    vec![ParamLocal::bool(crate::plan::BoolLocalId(0))],
-                )),
-            )),
-        );
-        assert_eq!(
-            FunctionExpr::from(block_function(
-                vec![],
-                function_ref(
-                    RuntimeFunctionId::Nil(crate::plan::NilFunctionId(0)),
-                    [crate::plan::LocalId::Nil(crate::plan::NilLocalId(0))],
-                ),
-            )),
-            FunctionExpr::nil(crate::plan::NilFunctionExpr::block(
-                Vec::new(),
-                crate::plan::NilFunctionExpr::reference(NilFunctionReference::new(
-                    NilFunctionId(0),
-                    vec![ParamLocal::nil(crate::plan::NilLocalId(0))],
-                )),
-            )),
-        );
-        assert_eq!(
-            FunctionExpr::from(block_function(
-                vec![],
-                Function::from(tuple_function_ref(
+        let custom_shape = CustomValueShape::any(custom_type());
+        let custom = CustomFunctionExpr::reference(
+            CustomFunctionReference::new(
+                monomorphic_function_instantiation(
                     0,
-                    [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
-                    [ValueType::Int, ValueType::String],
-                )),
-            )),
-            FunctionExpr::tuple(TupleFunctionExpr::block(
-                Vec::new(),
-                TupleFunctionExpr::reference(
-                    TupleFunctionReference::new(
-                        crate::plan::TupleFunctionId(0),
-                        vec![ParamLocal::int(crate::plan::IntLocalId(0))],
-                    ),
-                    vec![ValueType::Int, ValueType::String],
+                    FunctionShape::new(Vec::new(), ValueShape::Custom(custom_shape.clone())),
                 ),
-            )),
-        );
-        assert_eq!(
-            FunctionExpr::from(block_function(
-                vec![],
-                Function::from(list_function_ref(
-                    0,
-                    Vec::<ParamLocal>::new(),
-                    ValueType::Int
-                )),
-            )),
-            FunctionExpr::list(ListFunctionExpr::block(
                 Vec::new(),
-                ListFunctionExpr::reference(ListFunctionReference::new(
-                    crate::plan::ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-                    Vec::new()
-                )),
-            )),
+            ),
+            custom_shape,
         );
         let returned_function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
-        assert_eq!(
-            FunctionExpr::from(block_function(
-                vec![],
-                Function::from(function_function_ref(
-                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                    Vec::<ParamLocal>::new(),
-                    returned_function_type.clone(),
-                )),
+        let expressions = vec![
+            FunctionExpr::generic(generic),
+            FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
+            FunctionExpr::string(string_function_ref(0, Vec::<ParamLocal>::new()).0),
+            FunctionExpr::from(bit_array_function_ref(0, Vec::<ParamLocal>::new())),
+            FunctionExpr::from(utf_codepoint_function_ref(0, Vec::<ParamLocal>::new())),
+            FunctionExpr::custom(custom),
+            FunctionExpr::from(float_function_ref(0, Vec::<ParamLocal>::new())),
+            FunctionExpr::bool(bool_function_ref(0, Vec::<ParamLocal>::new()).0),
+            FunctionExpr::nil(nil_function_ref(0, Vec::<ParamLocal>::new()).0),
+            FunctionExpr::from(tuple_function_ref(
+                0,
+                Vec::<ParamLocal>::new(),
+                [ValueType::Int],
             )),
-            FunctionExpr::function(FunctionFunctionExpr::block(
-                Vec::new(),
-                FunctionFunctionExpr::reference(
-                    FunctionFunctionReference::new(
-                        FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                        Vec::new(),
-                    ),
-                    returned_function_type.clone(),
-                ),
+            FunctionExpr::from(list_function_ref(
+                0,
+                Vec::<ParamLocal>::new(),
+                ValueType::Int,
             )),
-        );
+            FunctionExpr::from(function_function_ref(
+                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                Vec::<ParamLocal>::new(),
+                returned_function_type.clone(),
+            )),
+        ];
+        for expression in expressions {
+            assert_eq!(
+                FunctionExpr::from(block_function(Vec::new(), Function(expression.clone()))),
+                FunctionExpr::block(Vec::new(), expression),
+            );
+        }
+
         assert_eq!(
             block_int_function(
                 [],
@@ -454,23 +335,6 @@ mod tests {
                 )
                 .into(),
             ),
-        );
-    }
-
-    #[test]
-    fn function_block_helper_preserves_custom_return_family() {
-        let runtime_id = RuntimeFunctionId::Custom(CustomFunctionId::new(0, custom_type()));
-        let value = CustomFunctionExpr::reference(CustomFunctionReference::new(
-            CustomFunctionId::new(0, custom_type()),
-            Vec::new(),
-        ));
-
-        assert_eq!(
-            FunctionExpr::from(block_function(
-                Vec::new(),
-                function_ref(runtime_id, Vec::<ParamLocal>::new()),
-            )),
-            FunctionExpr::custom(CustomFunctionExpr::block(Vec::new(), value)),
         );
     }
 }

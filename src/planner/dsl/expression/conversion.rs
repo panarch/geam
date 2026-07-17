@@ -344,6 +344,7 @@ impl IntoValueType for ValueType {
 impl IntoValueType for LocalId {
     fn into_value_type(self) -> ValueType {
         match self {
+            LocalId::Generic(local) => ValueType::Parameter(local.parameter()),
             LocalId::Int(_) => ValueType::Int,
             LocalId::String(_) => ValueType::String,
             LocalId::BitArray(_) => ValueType::BitArray,
@@ -364,6 +365,7 @@ impl IntoValueType for ParamLocal {
 impl IntoParamLocal for LocalId {
     fn into_param_local(self) -> ParamLocal {
         match self {
+            LocalId::Generic(local) => ParamLocal::generic(local),
             LocalId::Int(local) => ParamLocal::int(local),
             LocalId::String(local) => ParamLocal::string(local),
             LocalId::BitArray(local) => ParamLocal::bit_array(local),
@@ -385,13 +387,9 @@ impl IntoParamLocal for ParamLocal {
 mod tests {
     use super::{IntoParamLocal, IntoValueType};
     use crate::plan::{
-        BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionId, BitArrayFunctionReference,
-        BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionReference, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
-        IntFunctionId, IntFunctionReference, ListExpr, ListFunctionExpr, ListFunctionId,
-        ListFunctionReference, NilExpr, ParamLocal, StringExpr, TupleExpr, TupleFunctionExpr,
-        TupleFunctionId, TupleFunctionReference, UtfCodepointExpr, UtfCodepointFunctionExpr,
-        UtfCodepointFunctionId, UtfCodepointFunctionReference, ValueType,
+        BitArrayExpr, BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionFunctionId, FunctionType,
+        GenericLocal, GenericLocalId, IntExpr, IntFunctionFunctionId, ListExpr, NilExpr,
+        ParamLocal, StringExpr, TupleExpr, TypeParameterId, UtfCodepointExpr, ValueType,
     };
     use crate::planner::dsl::expression::{
         Function, bit_array, bit_array_function_ref, bool_, float, float_function_ref,
@@ -408,6 +406,13 @@ mod tests {
             ValueType::Int,
         );
 
+        assert_eq!(
+            crate::plan::LocalId::Generic(
+                GenericLocal::new(GenericLocalId(7), TypeParameterId(0),)
+            )
+            .into_value_type(),
+            ValueType::Parameter(TypeParameterId(0)),
+        );
         assert_eq!(
             crate::plan::LocalId::Int(crate::plan::IntLocalId(0)).into_value_type(),
             ValueType::Int,
@@ -438,6 +443,13 @@ mod tests {
             ValueType::Nil,
         );
 
+        assert_eq!(
+            crate::plan::LocalId::Generic(
+                GenericLocal::new(GenericLocalId(7), TypeParameterId(0),)
+            )
+            .into_param_local(),
+            ParamLocal::generic(GenericLocal::new(GenericLocalId(7), TypeParameterId(0),)),
+        );
         assert_eq!(
             crate::plan::LocalId::Int(crate::plan::IntLocalId(0)).into_param_local(),
             ParamLocal::int(crate::plan::IntLocalId(0)),
@@ -507,54 +519,43 @@ mod tests {
 
         assert_eq!(
             Expr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
-            Expr::function(FunctionExpr::int(IntFunctionExpr::reference(
-                IntFunctionReference::new(IntFunctionId(0), Vec::new()),
-            ))),
+            Expr::function(FunctionExpr::int(
+                int_function_ref(0, Vec::<ParamLocal>::new()).0,
+            )),
         );
         assert_eq!(
             Expr::from(bit_array_function_ref(0, Vec::<ParamLocal>::new())),
-            Expr::function(FunctionExpr::bit_array(BitArrayFunctionExpr::reference(
-                BitArrayFunctionReference::new(BitArrayFunctionId(0), Vec::new()),
-            ))),
+            Expr::function(FunctionExpr::bit_array(
+                bit_array_function_ref(0, Vec::<ParamLocal>::new()).0,
+            )),
         );
         assert_eq!(
             FunctionExpr::from(bit_array_function_ref(0, Vec::<ParamLocal>::new())),
-            FunctionExpr::bit_array(BitArrayFunctionExpr::reference(
-                BitArrayFunctionReference::new(BitArrayFunctionId(0), Vec::new()),
-            )),
+            FunctionExpr::bit_array(bit_array_function_ref(0, Vec::<ParamLocal>::new()).0),
         );
         assert_eq!(
             FunctionExpr::from(Function::from(bit_array_function_ref(
                 0,
                 Vec::<ParamLocal>::new(),
             ))),
-            FunctionExpr::bit_array(BitArrayFunctionExpr::reference(
-                BitArrayFunctionReference::new(BitArrayFunctionId(0), Vec::new()),
-            )),
+            FunctionExpr::bit_array(bit_array_function_ref(0, Vec::<ParamLocal>::new()).0),
         );
         assert_eq!(
             Expr::from(utf_codepoint_function_ref(0, Vec::<ParamLocal>::new())),
             Expr::function(FunctionExpr::utf_codepoint(
-                UtfCodepointFunctionExpr::reference(UtfCodepointFunctionReference::new(
-                    UtfCodepointFunctionId(0),
-                    Vec::new(),
-                )),
+                utf_codepoint_function_ref(0, Vec::<ParamLocal>::new()).0,
             )),
         );
         assert_eq!(
             FunctionExpr::from(utf_codepoint_function_ref(0, Vec::<ParamLocal>::new(),)),
-            FunctionExpr::utf_codepoint(UtfCodepointFunctionExpr::reference(
-                UtfCodepointFunctionReference::new(UtfCodepointFunctionId(0), Vec::new()),
-            )),
+            FunctionExpr::utf_codepoint(utf_codepoint_function_ref(0, Vec::<ParamLocal>::new()).0,),
         );
         assert_eq!(
             FunctionExpr::from(Function::from(utf_codepoint_function_ref(
                 0,
                 Vec::<ParamLocal>::new(),
             ))),
-            FunctionExpr::utf_codepoint(UtfCodepointFunctionExpr::reference(
-                UtfCodepointFunctionReference::new(UtfCodepointFunctionId(0), Vec::new()),
-            )),
+            FunctionExpr::utf_codepoint(utf_codepoint_function_ref(0, Vec::<ParamLocal>::new()).0,),
         );
         assert_eq!(
             Expr::from(list_function_ref(
@@ -562,28 +563,17 @@ mod tests {
                 Vec::<ParamLocal>::new(),
                 ValueType::Int
             )),
-            Expr::function(FunctionExpr::list(ListFunctionExpr::reference(
-                ListFunctionReference::new(
-                    ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-                    Vec::new()
-                ),
-            ))),
+            Expr::function(FunctionExpr::list(
+                list_function_ref(0, Vec::<ParamLocal>::new(), ValueType::Int).0,
+            )),
         );
         assert_eq!(
             FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
-            FunctionExpr::int(IntFunctionExpr::reference(IntFunctionReference::new(
-                IntFunctionId(0),
-                Vec::new(),
-            ))),
+            FunctionExpr::int(int_function_ref(0, Vec::<ParamLocal>::new()).0),
         );
         assert_eq!(
             FunctionExpr::from(float_function_ref(0, Vec::<ParamLocal>::new())),
-            FunctionExpr::float(crate::plan::FloatFunctionExpr::reference(
-                crate::plan::FloatFunctionReference::new(
-                    crate::plan::FloatFunctionId(0),
-                    Vec::new()
-                ),
-            )),
+            FunctionExpr::float(float_function_ref(0, Vec::<ParamLocal>::new()).0),
         );
         assert_eq!(
             FunctionExpr::from(tuple_function_ref(
@@ -591,10 +581,9 @@ mod tests {
                 Vec::<ParamLocal>::new(),
                 [ValueType::Int]
             )),
-            FunctionExpr::tuple(TupleFunctionExpr::reference(
-                TupleFunctionReference::new(TupleFunctionId(0), Vec::new()),
-                vec![ValueType::Int],
-            )),
+            FunctionExpr::tuple(
+                tuple_function_ref(0, Vec::<ParamLocal>::new(), [ValueType::Int]).0,
+            ),
         );
         assert_eq!(
             FunctionExpr::from(list_function_ref(
@@ -602,22 +591,14 @@ mod tests {
                 Vec::<ParamLocal>::new(),
                 ValueType::Int
             )),
-            FunctionExpr::list(ListFunctionExpr::reference(ListFunctionReference::new(
-                ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-                Vec::new()
-            ))),
+            FunctionExpr::list(list_function_ref(0, Vec::<ParamLocal>::new(), ValueType::Int).0,),
         );
         assert_eq!(
             FunctionExpr::from(Function::from(float_function_ref(
                 0,
                 Vec::<ParamLocal>::new()
             ))),
-            FunctionExpr::float(crate::plan::FloatFunctionExpr::reference(
-                crate::plan::FloatFunctionReference::new(
-                    crate::plan::FloatFunctionId(0),
-                    Vec::new()
-                ),
-            )),
+            FunctionExpr::float(float_function_ref(0, Vec::<ParamLocal>::new()).0),
         );
         assert_eq!(
             FunctionExpr::from(Function::from(tuple_function_ref(
@@ -625,10 +606,9 @@ mod tests {
                 Vec::<ParamLocal>::new(),
                 [ValueType::Int],
             ))),
-            FunctionExpr::tuple(TupleFunctionExpr::reference(
-                TupleFunctionReference::new(TupleFunctionId(0), Vec::new()),
-                vec![ValueType::Int],
-            )),
+            FunctionExpr::tuple(
+                tuple_function_ref(0, Vec::<ParamLocal>::new(), [ValueType::Int]).0,
+            ),
         );
         assert_eq!(
             FunctionExpr::from(Function::from(list_function_ref(
@@ -636,10 +616,7 @@ mod tests {
                 Vec::<ParamLocal>::new(),
                 ValueType::Int,
             ))),
-            FunctionExpr::list(ListFunctionExpr::reference(ListFunctionReference::new(
-                ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-                Vec::new()
-            ))),
+            FunctionExpr::list(list_function_ref(0, Vec::<ParamLocal>::new(), ValueType::Int).0,),
         );
         assert_eq!(
             FunctionExpr::from(Function::from(function_function_ref(
@@ -647,13 +624,14 @@ mod tests {
                 Vec::<ParamLocal>::new(),
                 FunctionType::new(vec![ValueType::Int], ValueType::Int),
             ))),
-            FunctionExpr::function(FunctionFunctionExpr::reference(
-                FunctionFunctionReference::new(
+            FunctionExpr::function(
+                function_function_ref(
                     FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                    Vec::new(),
-                ),
-                FunctionType::new(vec![ValueType::Int], ValueType::Int),
-            )),
+                    Vec::<ParamLocal>::new(),
+                    FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                )
+                .0,
+            ),
         );
     }
 }

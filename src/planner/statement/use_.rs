@@ -65,7 +65,7 @@ mod tests {
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
     use crate::planner::{
-        InvalidExpressionType, InvalidFunctionShapeReason, InvalidTypedAstReason,
+        InvalidCallShapeReason, InvalidFunctionShapeReason, InvalidTypedAstReason,
         InvalidUseShapeReason, PlanError, UnsupportedExpressionKind,
     };
     use gleam_core::ast::{
@@ -364,14 +364,11 @@ pub fn main() {
         );
         assert_eq!(
             callback.return_(),
-            &ReturnExpr::int_list_body(
-                crate::plan::IntListFunctionId(2),
-                crate::plan::IntListReturn::expr(
-                    crate::plan::ListExpr::from(local_list(1, "rest", ValueType::Int))
-                        .into_int()
-                        .expect("expression should be List(Int)"),
-                ),
-            ),
+            &ReturnExpr::int_list_body(crate::plan::IntListReturn::expr(
+                crate::plan::ListExpr::from(local_list(1, "rest", ValueType::Int))
+                    .into_int()
+                    .expect("expression should be List(Int)"),
+            ),),
         );
     }
 
@@ -671,9 +668,8 @@ pub fn main() {
         assert_eq!(
             plan_module(callback_non_function_type),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Function,
-                    actual: InvalidExpressionType::Int,
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::FunctionCallArgumentTypeMismatch,
                 },
             }),
         );
@@ -685,9 +681,8 @@ pub fn main() {
         assert_eq!(
             plan_module(callback_unsupported_function_type),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Function,
-                    actual: InvalidExpressionType::List,
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::FunctionCallArgumentTypeMismatch,
                 },
             }),
         );

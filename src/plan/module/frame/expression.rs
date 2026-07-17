@@ -1,15 +1,16 @@
 use super::FrameLayout;
 use crate::plan::{
     BitArrayExpr, BitArrayExprKind, BitArraySegment, BoolExpr, BoolExprKind, CustomExpr,
-    CustomExprKind, Expr, ExprKind, FloatExpr, FloatExprKind, IntExpr, IntExprKind, ListElements,
-    ListExpr, ListItem, ListLocalExpr, NilExpr, NilExprKind, PanicExpr, StringExpr, StringExprKind,
-    TupleExpr, TupleExprKind, TypedListExpr, TypedListExprKind, UtfCodepointExpr,
-    UtfCodepointExprKind,
+    CustomExprKind, Expr, ExprKind, FloatExpr, FloatExprKind, GenericExpr, GenericExprKind,
+    IntExpr, IntExprKind, ListElements, ListExpr, ListItem, ListLocal, ListLocalExpr, NilExpr,
+    NilExprKind, PanicExpr, StringExpr, StringExprKind, TupleExpr, TupleExprKind, TypedListExpr,
+    TypedListExprKind, UtfCodepointExpr, UtfCodepointExprKind,
 };
 
 impl FrameLayout {
     pub(in crate::plan::module::frame) fn include_expr(&mut self, expression: &Expr) {
         match expression.kind() {
+            ExprKind::Generic(expression) => self.include_generic_expr(expression),
             ExprKind::Int(expression) => self.include_int_expr(expression),
             ExprKind::String(expression) => self.include_string_expr(expression),
             ExprKind::BitArray(expression) => self.include_bit_array_expr(expression),
@@ -21,6 +22,70 @@ impl FrameLayout {
             ExprKind::Tuple(expression) => self.include_tuple_expr(expression),
             ExprKind::List(expression) => self.include_list_expr(expression),
             ExprKind::Function(expression) => self.include_function_expr(expression),
+        }
+    }
+
+    pub(in crate::plan::module::frame) fn include_generic_expr(
+        &mut self,
+        expression: &GenericExpr,
+    ) {
+        match expression.kind() {
+            GenericExprKind::LocalGet { local, .. } => self.include_generic(*local),
+            GenericExprKind::Call { args, .. } => self.include_call_args(args),
+            GenericExprKind::FunctionCall { function, args } => {
+                self.include_generic_function_expr(function);
+                self.include_call_args(args);
+            }
+            GenericExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            GenericExprKind::CustomField(access) => self.include_custom_expr(access.source()),
+            GenericExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
+            GenericExprKind::Panic(panic) => self.include_panic_expr(panic),
+            GenericExprKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_generic_expr(true_);
+                self.include_generic_expr(false_);
+            }
+            GenericExprKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_generic_expr(branch);
+                }
+                self.include_generic_expr(fallback);
+            }
+            GenericExprKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_generic_expr(branch);
+                }
+                self.include_generic_expr(fallback);
+            }
+            GenericExprKind::FloatCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_float_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_generic_expr(branch);
+                }
+                self.include_generic_expr(fallback);
+            }
+            GenericExprKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_generic_expr(return_);
+            }
         }
     }
 
@@ -790,6 +855,7 @@ impl FrameLayout {
 
     pub(in crate::plan::module::frame) fn include_list_expr(&mut self, expression: &ListExpr) {
         match expression {
+            ListExpr::Generic(expression) => self.include_typed_list_expr(expression),
             ListExpr::Int(expression) => self.include_typed_list_expr(expression),
             ListExpr::String(expression) => self.include_typed_list_expr(expression),
             ListExpr::BitArray(expression) => self.include_typed_list_expr(expression),
@@ -809,6 +875,17 @@ impl FrameLayout {
         binding: &ListLocalExpr,
     ) {
         match binding {
+            ListLocalExpr::Generic {
+                local,
+                parameter,
+                value,
+            } => {
+                self.include_typed_list_expr(value);
+                self.include_list(ListLocal::Generic {
+                    local: *local,
+                    parameter: *parameter,
+                });
+            }
             ListLocalExpr::Int { local, value } => {
                 self.include_typed_list_expr(value);
                 self.include_int_list(*local);
@@ -965,6 +1042,11 @@ impl FrameLayout {
 
     fn include_list_elements(&mut self, elements: &ListElements) {
         match elements {
+            ListElements::Generic { values, .. } => {
+                for value in values {
+                    self.include_generic_expr(value);
+                }
+            }
             ListElements::Int(values) => {
                 for value in values {
                     self.include_int_expr(value);
@@ -1030,12 +1112,12 @@ mod tests {
     use crate::plan::{
         BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayExpr, BitArrayFunctionId, BitArrayLocalId,
         BitArraySegment, BoolExpr, BoolListCaseBranches, BoolListLocalId, BoolLocalId, CallArg,
-        Endianness, Expr, FloatExpr, FloatFunctionId, FloatFunctionLocalId, FloatListLocalId,
-        FloatLocalId, FunctionType, IntExpr, IntFunctionId, IntListLocalId, IntLocalId,
-        ListCaseBranches, ListExpr, ListFunctionExpr, ListFunctionId, ListListLocalId, ListLocal,
-        NilExpr, NilListLocalId, NilLocalId, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr,
-        StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionId,
-        TupleFunctionLocalId, TupleListLocalId, TupleLocalId, ValueType,
+        Endianness, Expr, FloatExpr, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
+        FunctionShape, FunctionType, IntExpr, IntFunctionId, IntListLocalId, IntLocalId,
+        ListCaseBranches, ListExpr, ListFunctionExpr, ListListLocalId, ListLocal, NilExpr,
+        NilListLocalId, NilLocalId, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr,
+        StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId,
+        TupleListLocalId, TupleLocalId, ValueShape, ValueType, monomorphic_function_instantiation,
     };
 
     #[test]
@@ -1076,7 +1158,8 @@ mod tests {
         ]);
         let return_ = ReturnExpr::bit_array(BitArrayFunctionId(0), expression);
 
-        let parts = FrameLayout::from_function_parts(&[], &[], &return_).into_parts();
+        let layout = FrameLayout::from_function_parts(&[], &[], &return_);
+        let parts = layout.parts();
 
         assert_eq!(parts.ints, 7);
         assert_eq!(parts.floats, 3);
@@ -1442,7 +1525,10 @@ mod tests {
                 ),
             ))),
             Step::evaluate(Expr::float(FloatExpr::call(
-                FloatFunctionId(0),
+                monomorphic_function_instantiation(
+                    0,
+                    FunctionShape::new(vec![ValueShape::Float], ValueShape::Float),
+                ),
                 vec![CallArg::float(
                     FloatLocalId(0),
                     FloatExpr::local_get(FloatLocalId(27), "float_call_arg".into()),
@@ -1543,7 +1629,13 @@ mod tests {
                 vec![ValueType::Int],
             ))),
             Step::evaluate(Expr::tuple(TupleExpr::call(
-                TupleFunctionId(0),
+                monomorphic_function_instantiation(
+                    0,
+                    FunctionShape::from_function_type(FunctionType::new(
+                        vec![ValueType::Tuple(tuple_type())],
+                        ValueType::Tuple(tuple_type()),
+                    )),
+                ),
                 vec![CallArg::tuple(
                     TupleLocalId(1),
                     TupleExpr::local_get(TupleLocalId(2), "tuple_call_arg".into(), tuple_type()),
@@ -1673,7 +1765,13 @@ mod tests {
                 "local".into(),
             ))),
             Step::evaluate(Expr::list(ListExpr::call(
-                ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
+                monomorphic_function_instantiation(
+                    0,
+                    FunctionShape::new(
+                        vec![ValueShape::List(Box::new(ValueShape::Int))],
+                        ValueShape::List(Box::new(ValueShape::Int)),
+                    ),
+                ),
                 vec![CallArg::list(crate::plan::ListLocalExpr::Int {
                     local: IntListLocalId(0),
                     value: ListExpr::local_get(
@@ -1683,6 +1781,7 @@ mod tests {
                     .into_int()
                     .expect("expected int list"),
                 })],
+                ValueShape::Int,
             ))),
             Step::evaluate(Expr::list(ListExpr::function_call(
                 ListFunctionExpr::local_get(

@@ -1,9 +1,9 @@
 use crate::plan::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomExpr, CustomFunctionExpr,
-    Expr, FloatExpr, FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, IntExpr,
-    IntFunctionExpr, ListExpr, ListFunctionExpr, LocalId, NilExpr, NilFunctionExpr, StringExpr,
-    StringFunctionExpr, TupleExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
-    ValueType,
+    Expr, FloatExpr, FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, GenericFunctionExpr,
+    IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, LocalId, NilExpr, NilFunctionExpr,
+    StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr, UtfCodepointExpr,
+    UtfCodepointFunctionExpr,
 };
 use crate::planner::context::{FunctionLocalBinding, PlanContext};
 use crate::planner::error::{
@@ -15,37 +15,38 @@ use gleam_core::type_::{PRELUDE_MODULE_NAME, ValueConstructor, ValueConstructorV
 pub(super) fn plan_var(
     name: EcoString,
     constructor: ValueConstructor,
-    context: &PlanContext<'_>,
+    constructor_shape: crate::plan::ValueShape,
+    parameter_count: usize,
+    context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
+    if !constructor_shape.parameters_are_scoped(parameter_count) {
+        return Err(PlanError::UnsupportedExpression {
+            kind: UnsupportedExpressionKind::GenericFunction,
+        });
+    }
     match constructor.variant {
         ValueConstructorVariant::LocalVariable { .. } => {
-            if let Some((local, type_)) = context.lookup_local(&name) {
-                return local_get(local, name, type_);
-            }
-            if let Some((local, shape)) = context.lookup_tuple_local(&name) {
+            let expression = if let Some((local, _)) = context.lookup_local(&name) {
+                local_get(local, name)
+            } else if let Some((local, shape)) = context.lookup_tuple_local(&name) {
                 let type_ = shape
                     .iter()
                     .map(crate::plan::ValueShape::value_type)
                     .collect();
-                return Ok(Expr::tuple(
-                    TupleExpr::local_get(local, name, type_).with_shape(shape),
-                ));
-            }
-            if let Some(local) = context.lookup_custom_local(&name) {
-                return Ok(Expr::custom(CustomExpr::local_get(local, name)));
-            }
-            if let Some((local, item_shape)) = context.lookup_list_local(&name) {
-                return Ok(Expr::list(
-                    ListExpr::local_get(local, name).with_item_shape(item_shape),
-                ));
-            }
-            if let Some((binding, shape)) = context.lookup_function_local(&name) {
-                return function_local_get(binding, name, shape);
-            }
+                Expr::tuple(TupleExpr::local_get(local, name, type_).with_shape(shape))
+            } else if let Some(local) = context.lookup_custom_local(&name) {
+                Expr::custom(CustomExpr::local_get(local, name))
+            } else if let Some((local, item_shape)) = context.lookup_list_local(&name) {
+                Expr::list(ListExpr::local_get(local, name).with_item_shape(item_shape))
+            } else if let Some((binding, shape)) = context.lookup_function_local(&name) {
+                function_local_get(binding, name, shape)?
+            } else {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::UnknownLocal { name },
+                });
+            };
 
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::UnknownLocal { name },
-            })
+            Ok(expression)
         }
         ValueConstructorVariant::Record {
             ref name,
@@ -65,11 +66,7 @@ pub(super) fn plan_var(
             if module == context.module_name
                 || (module == PRELUDE_MODULE_NAME && matches!(name.as_str(), "Ok" | "Error"))
             {
-                let shape = crate::plan::ValueShape::from_gleam(constructor.type_.as_ref()).ok_or(
-                    PlanError::UnsupportedExpression {
-                        kind: UnsupportedExpressionKind::GenericFunction,
-                    },
-                )?;
+                let shape = constructor_shape;
                 let constructor = context.custom_constructor(&constructor)?;
                 if usize::from(arity) != constructor.fields().len() {
                     return Err(PlanError::InvalidTypedAst {
@@ -114,11 +111,25 @@ pub(super) fn plan_var(
                         reason: InvalidTypedAstReason::UnknownLocal { name: name.clone() },
                     })?;
 
-            let shape = function.shape();
-            let reference = function.reference();
+            let crate::plan::ValueShape::Function(shape) = constructor_shape else {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::Invalid,
+                    },
+                });
+            };
+            let instantiation =
+                function
+                    .instantiate(&shape)
+                    .map_err(|_| PlanError::InvalidTypedAst {
+                        reason: InvalidTypedAstReason::ExpressionShape {
+                            kind: InvalidExpressionShapeKind::Invalid,
+                        },
+                    })?;
+            let reference = function.reference(instantiation);
 
             FunctionExpr::reference(reference)
-                .with_resolved_shape(shape)
+                .with_shape(*shape)
                 .map(Expr::function)
                 .ok_or(PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::ExpressionShape {
@@ -131,9 +142,15 @@ pub(super) fn plan_var(
                 kind: InvalidExpressionShapeKind::ModuleSelect,
             },
         }),
-        ValueConstructorVariant::ModuleConstant {
-            module, literal, ..
-        } if module == *context.module_name => super::constant::plan(literal, context),
+        ValueConstructorVariant::ModuleConstant { module, name, .. }
+            if module == *context.module_name =>
+        {
+            Ok(context
+                .constant_expr(&name, &constructor_shape)
+                .ok_or_else(|| PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::UnknownLocal { name },
+                })?)
+        }
         ValueConstructorVariant::ModuleConstant { .. } => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
                 kind: InvalidExpressionShapeKind::ModuleSelect,
@@ -148,6 +165,9 @@ fn function_local_get(
     shape: crate::plan::FunctionShape,
 ) -> Result<Expr, PlanError> {
     let expression = match binding {
+        FunctionLocalBinding::Generic(local) => {
+            FunctionExpr::generic(GenericFunctionExpr::local_get(local, name))
+        }
         FunctionLocalBinding::Int { local, type_ } => {
             FunctionExpr::int(IntFunctionExpr::local_get(local, name, type_))
         }
@@ -192,28 +212,18 @@ fn function_local_get(
         })
 }
 
-fn local_get(local: LocalId, name: EcoString, type_: ValueType) -> Result<Expr, PlanError> {
-    match (local, type_) {
-        (LocalId::Int(local), ValueType::Int) => Ok(Expr::int(IntExpr::local_get(local, name))),
-        (LocalId::Float(local), ValueType::Float) => {
-            Ok(Expr::float(FloatExpr::local_get(local, name)))
+fn local_get(local: LocalId, name: EcoString) -> Expr {
+    match local {
+        LocalId::Generic(local) => Expr::generic(crate::plan::GenericExpr::local_get(local, name)),
+        LocalId::Int(local) => Expr::int(IntExpr::local_get(local, name)),
+        LocalId::Float(local) => Expr::float(FloatExpr::local_get(local, name)),
+        LocalId::String(local) => Expr::string(StringExpr::local_get(local, name)),
+        LocalId::BitArray(local) => Expr::bit_array(BitArrayExpr::local_get(local, name)),
+        LocalId::UtfCodepoint(local) => {
+            Expr::utf_codepoint(UtfCodepointExpr::local_get(local, name))
         }
-        (LocalId::String(local), ValueType::String) => {
-            Ok(Expr::string(StringExpr::local_get(local, name)))
-        }
-        (LocalId::BitArray(local), ValueType::BitArray) => {
-            Ok(Expr::bit_array(BitArrayExpr::local_get(local, name)))
-        }
-        (LocalId::UtfCodepoint(local), ValueType::UtfCodepoint) => Ok(Expr::utf_codepoint(
-            UtfCodepointExpr::local_get(local, name),
-        )),
-        (LocalId::Bool(local), ValueType::Bool) => Ok(Expr::bool(BoolExpr::local_get(local, name))),
-        (LocalId::Nil(local), ValueType::Nil) => Ok(Expr::nil(NilExpr::local_get(local, name))),
-        _ => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::Invalid,
-            },
-        }),
+        LocalId::Bool(local) => Expr::bool(BoolExpr::local_get(local, name)),
+        LocalId::Nil(local) => Expr::nil(NilExpr::local_get(local, name)),
     }
 }
 
@@ -221,9 +231,10 @@ fn local_get(local: LocalId, name: EcoString, type_: ValueType) -> Result<Expr, 
 mod tests {
     use super::super::{module_returning_typed_expr, typed_int_expr, typed_prelude_constructor};
     use crate::plan::{
-        FunctionType, IntFunctionId, IntFunctionLocalId, IntLocalId, LocalId, ParamLocal,
-        RuntimeFunctionId, ValueType,
+        FunctionShape, FunctionType, IntFunctionId, IntFunctionLocalId, IntLocalId, LocalId,
+        ParamLocal, RuntimeFunctionId, ValueShape, ValueType,
     };
+    use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
     use crate::planner::dsl::{
         bool_, call_int_function, function, function_ref, int, int_function_call_arg, local_bool,
         local_float, local_int, local_int_function, local_nil, local_string, module, nil,
@@ -237,6 +248,7 @@ mod tests {
     use ecow::EcoString;
     use gleam_core::ast::{Publicity, Statement, TypedExpr, TypedStatement};
     use gleam_core::type_::{self, Deprecation, ValueConstructor, ValueConstructorVariant};
+    use std::collections::HashMap;
 
     #[test]
     fn plan_local_variables() {
@@ -478,6 +490,73 @@ pub fn main() {
             }),
         );
 
+        let mut invalid_function_shape = compile(
+            r#"
+fn identity(value: Int) {
+  value
+}
+
+pub fn main() {
+  identity
+}
+"#,
+        );
+        let (_, constructor) = expect_var_mut(expect_expression_statement_mut(
+            &mut invalid_function_shape.definitions.functions[1].body[0],
+        ));
+        constructor.type_ = type_::int();
+        assert_eq!(
+            plan_module(invalid_function_shape),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::Invalid,
+                },
+            }),
+        );
+
+        let mut function_return_shape_mismatch = compile(
+            r#"
+fn identity(value: Int) {
+  value
+}
+
+pub fn main() {
+  identity
+}
+"#,
+        );
+        let (_, constructor) = expect_var_mut(expect_expression_statement_mut(
+            &mut function_return_shape_mismatch.definitions.functions[1].body[0],
+        ));
+        constructor.type_ = type_::fn_(vec![type_::int()], type_::string());
+        assert_eq!(
+            plan_module(function_return_shape_mismatch),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::Invalid,
+                },
+            }),
+        );
+
+        let mut missing_constant = compile(
+            r#"
+const answer = 1
+
+pub fn main() {
+  answer
+}
+"#,
+        );
+        missing_constant.definitions.constants.clear();
+        assert_eq!(
+            plan_module(missing_constant),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::UnknownLocal {
+                    name: "answer".into(),
+                },
+            }),
+        );
+
         let mut record_constructor = compile(
             r#"
 pub type Boxed {
@@ -605,12 +684,30 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_margin_local_type_shape_mismatch() {
+    fn reject_margin_function_local_shape_mismatch_propagates_from_var_owner() {
+        let module_name = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
+        let function_type = FunctionType::new(Vec::new(), ValueType::Int);
+        context.define_int_function_local_shape(
+            "f".into(),
+            function_type,
+            FunctionShape::new(Vec::new(), ValueShape::String),
+        );
+        let constructor = ValueConstructor::local_variable(
+            dummy_span(),
+            type_::error::VariableOrigin::generated(),
+            type_::fn_(Vec::new(), type_::int()),
+        );
+
         assert_eq!(
-            super::local_get(
-                LocalId::Int(IntLocalId(0)),
-                "value".into(),
-                ValueType::String,
+            super::plan_var(
+                "f".into(),
+                constructor,
+                ValueShape::Function(Box::new(FunctionShape::new(Vec::new(), ValueShape::Int,))),
+                0,
+                &mut context,
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {

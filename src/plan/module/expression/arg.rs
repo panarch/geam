@@ -1,16 +1,16 @@
 use super::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomExpr, CustomFunctionExpr,
-    CustomLocalExpr, Expr, ExprKind, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr,
-    IntFunctionExpr, ListExpr, ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr,
-    StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr, TypedFunctionExpr,
-    UtfCodepointExpr, UtfCodepointFunctionExpr,
+    CustomLocalExpr, Expr, ExprKind, FloatExpr, FloatFunctionExpr, FunctionExpr,
+    FunctionFunctionExpr, GenericExpr, GenericFunctionExpr, IntExpr, IntFunctionExpr, ListExpr,
+    ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
+    TupleExpr, TupleFunctionExpr, TypedFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
 use crate::plan::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
     CustomFunctionLocal, CustomFunctionLocalId, CustomLocalId, FloatFunctionLocalId, FloatLocalId,
-    FunctionFunctionLocal, FunctionFunctionLocalId, IntFunctionLocalId, IntLocalId,
-    ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId, ParamLocal,
-    StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    FunctionFunctionLocal, FunctionFunctionLocalId, GenericFunctionLocal, GenericLocal,
+    IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId,
+    ParamLocal, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
     UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
 
@@ -21,6 +21,10 @@ pub struct CallArg {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum CallArgKind {
+    Parametric {
+        slot: crate::plan::ParamSlot,
+        value: Box<Expr>,
+    },
     Int {
         local: IntLocalId,
         value: IntExpr,
@@ -98,6 +102,10 @@ pub(crate) enum CallArgKind {
     FunctionFunction {
         local: FunctionFunctionLocal,
         value: TypedFunctionExpr<FunctionFunctionExpr>,
+    },
+    GenericFunction {
+        local: GenericFunctionLocal,
+        value: FunctionExpr,
     },
 }
 
@@ -108,6 +116,10 @@ pub(crate) struct CaptureArg {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum CaptureArgKind {
+    Generic {
+        local: GenericLocal,
+        value: GenericExpr,
+    },
     Int {
         local: IntLocalId,
         value: IntExpr,
@@ -186,11 +198,23 @@ pub(crate) enum CaptureArgKind {
         local: FunctionFunctionLocal,
         value: TypedFunctionExpr<FunctionFunctionExpr>,
     },
+    GenericFunction {
+        local: GenericFunctionLocal,
+        value: TypedFunctionExpr<GenericFunctionExpr>,
+    },
 }
 
 impl Expr {
     pub(crate) fn into_call_arg(self, local: &ParamLocal) -> Option<CallArg> {
-        match (local, self.kind) {
+        let Self { shape, kind } = self;
+        match (local, kind) {
+            (ParamLocal::Generic(local), kind) => Some(CallArg::parametric(
+                crate::plan::ParamSlot::new(
+                    ParamLocal::Generic(*local),
+                    crate::plan::ValueShape::Parameter(local.parameter()),
+                ),
+                Expr { shape, kind },
+            )),
             (ParamLocal::Int(local), ExprKind::Int(value)) => Some(CallArg::int(*local, value)),
             (ParamLocal::String(local), ExprKind::String(value)) => {
                 Some(CallArg::string(*local, value))
@@ -221,6 +245,16 @@ impl Expr {
                 },
                 ExprKind::Tuple(value),
             ) if value.type_() == expected => Some(CallArg::tuple(*local, value)),
+            (
+                ParamLocal::List(ListLocal::Generic { local, parameter }),
+                ExprKind::List(ListExpr::Generic(value)),
+            ) if value.item().parameter() == *parameter => {
+                Some(CallArg::list(ListLocalExpr::Generic {
+                    local: *local,
+                    parameter: *parameter,
+                    value,
+                }))
+            }
             (ParamLocal::List(ListLocal::Int(local)), ExprKind::List(ListExpr::Int(value))) => {
                 Some(CallArg::list(ListLocalExpr::Int {
                     local: *local,
@@ -399,12 +433,24 @@ impl Expr {
                     .into_typed_function()
                     .map(|value| CallArg::function_function_expr(local.clone(), value))
             }
+            (ParamLocal::GenericFunction(local), ExprKind::Function(value)) => {
+                Some(CallArg::generic_function_expr(local.clone(), value))
+            }
             _ => None,
         }
     }
 }
 
 impl CallArg {
+    pub(crate) fn parametric(slot: crate::plan::ParamSlot, value: Expr) -> Self {
+        Self {
+            kind: CallArgKind::Parametric {
+                slot,
+                value: Box::new(value),
+            },
+        }
+    }
+
     pub(crate) fn int(local: IntLocalId, value: IntExpr) -> Self {
         Self {
             kind: CallArgKind::Int { local, value },
@@ -564,6 +610,12 @@ impl CallArg {
         }
     }
 
+    fn generic_function_expr(local: GenericFunctionLocal, value: FunctionExpr) -> Self {
+        Self {
+            kind: CallArgKind::GenericFunction { local, value },
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn int_function(local: IntFunctionLocalId, value: IntFunctionExpr) -> Self {
         let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
@@ -637,12 +689,72 @@ impl CallArg {
         &self.kind
     }
 
-    pub(crate) fn into_kind(self) -> CallArgKind {
-        self.kind
+    pub(crate) fn parameter_shape(&self) -> crate::plan::ValueShape {
+        match &self.kind {
+            CallArgKind::Parametric { slot, .. } => slot.shape().clone(),
+            CallArgKind::Int { .. } => crate::plan::ValueShape::Int,
+            CallArgKind::Float { .. } => crate::plan::ValueShape::Float,
+            CallArgKind::String { .. } => crate::plan::ValueShape::String,
+            CallArgKind::BitArray { .. } => crate::plan::ValueShape::BitArray,
+            CallArgKind::UtfCodepoint { .. } => crate::plan::ValueShape::UtfCodepoint,
+            CallArgKind::Custom(value) => {
+                crate::plan::ValueShape::Custom(value.local().shape().clone())
+            }
+            CallArgKind::Bool { .. } => crate::plan::ValueShape::Bool,
+            CallArgKind::Nil { .. } => crate::plan::ValueShape::Nil,
+            CallArgKind::Tuple { value, .. } => {
+                crate::plan::ValueShape::Tuple(value.shape().to_vec().into_boxed_slice())
+            }
+            CallArgKind::List(value) => {
+                crate::plan::ValueShape::List(Box::new(value.item_shape().clone()))
+            }
+            CallArgKind::IntFunction { value, .. } => {
+                crate::plan::ValueShape::Function(Box::new(value.shape().clone()))
+            }
+            CallArgKind::StringFunction { value, .. } => {
+                crate::plan::ValueShape::Function(Box::new(value.shape().clone()))
+            }
+            CallArgKind::BitArrayFunction { value, .. } => {
+                crate::plan::ValueShape::Function(Box::new(value.shape().clone()))
+            }
+            CallArgKind::UtfCodepointFunction { value, .. } => {
+                crate::plan::ValueShape::Function(Box::new(value.shape().clone()))
+            }
+            CallArgKind::CustomFunction { value, .. } => {
+                crate::plan::ValueShape::Function(Box::new(value.shape().clone()))
+            }
+            CallArgKind::FloatFunction { value, .. } => {
+                crate::plan::ValueShape::Function(Box::new(value.shape().clone()))
+            }
+            CallArgKind::BoolFunction { value, .. } => {
+                crate::plan::ValueShape::Function(Box::new(value.shape().clone()))
+            }
+            CallArgKind::NilFunction { value, .. } => {
+                crate::plan::ValueShape::Function(Box::new(value.shape().clone()))
+            }
+            CallArgKind::TupleFunction { value, .. } => {
+                crate::plan::ValueShape::Function(Box::new(value.shape().clone()))
+            }
+            CallArgKind::ListFunction { value, .. } => {
+                crate::plan::ValueShape::Function(Box::new(value.shape().clone()))
+            }
+            CallArgKind::FunctionFunction { value, .. } => {
+                crate::plan::ValueShape::Function(Box::new(value.shape().clone()))
+            }
+            CallArgKind::GenericFunction { value, .. } => {
+                crate::plan::ValueShape::Function(Box::new(value.shape().clone()))
+            }
+        }
     }
 }
 
 impl CaptureArg {
+    pub(crate) fn generic(local: GenericLocal, value: GenericExpr) -> Self {
+        Self {
+            kind: CaptureArgKind::Generic { local, value },
+        }
+    }
+
     pub(crate) fn int(local: IntLocalId, value: IntExpr) -> Self {
         Self {
             kind: CaptureArgKind::Int { local, value },
@@ -806,6 +918,15 @@ impl CaptureArg {
         }
     }
 
+    pub(crate) fn generic_function_expr(
+        local: GenericFunctionLocal,
+        value: TypedFunctionExpr<GenericFunctionExpr>,
+    ) -> Self {
+        Self {
+            kind: CaptureArgKind::GenericFunction { local, value },
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn int_function(local: IntFunctionLocalId, value: IntFunctionExpr) -> Self {
         let shape = crate::plan::FunctionShape::from_function_type(value.type_().clone());
@@ -887,36 +1008,92 @@ impl CaptureArg {
     pub(crate) fn kind(&self) -> &CaptureArgKind {
         &self.kind
     }
-
-    pub(crate) fn into_kind(self) -> CaptureArgKind {
-        self.kind
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{CallArg, CaptureArg, CaptureArgKind, CustomLocalExpr, TypedFunctionExpr};
+    use crate::plan::module::{GenericListExpr, GenericListItem};
     use crate::plan::{
-        BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionId, BitArrayFunctionLocalId,
-        BitArrayFunctionReference, BitArrayListLocalId, BitArrayLocalId, BoolExpr,
-        BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionReference,
-        BoolListLocalId, BoolLocalId, CustomExpr, CustomFunctionExpr, CustomFunctionLocal,
-        CustomFunctionLocalId, CustomFunctionType, CustomLocal, CustomLocalId, CustomType,
-        CustomTypeName, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId,
+        BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionLocalId, BitArrayFunctionReference,
+        BitArrayListLocalId, BitArrayLocalId, BoolExpr, BoolFunctionExpr, BoolFunctionLocalId,
+        BoolFunctionReference, BoolListLocalId, BoolLocalId, CustomExpr, CustomFunctionExpr,
+        CustomFunctionLocal, CustomFunctionLocalId, CustomFunctionType, CustomLocal, CustomLocalId,
+        CustomType, CustomTypeName, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionLocalId,
         FloatFunctionReference, FloatListLocalId, FloatLocalId, FunctionExpr, FunctionFunctionExpr,
-        FunctionFunctionId, FunctionFunctionLocal, FunctionFunctionLocalId,
-        FunctionFunctionReference, FunctionFunctionType, FunctionListLocalId, FunctionReference,
-        FunctionShape, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
-        IntFunctionId, IntFunctionLocalId, IntFunctionReference, IntListLocalId, IntLocalId,
-        ListExpr, ListFunctionExpr, ListFunctionId, ListFunctionReference, ListListLocalId,
-        ListLocal, ListLocalExpr, NilExpr, NilFunctionExpr, NilFunctionId, NilFunctionLocalId,
-        NilFunctionReference, NilListLocalId, NilLocalId, PanicExpr, PanicSite, ParamLocal,
-        RuntimeFunctionId, StringExpr, StringFunctionExpr, StringFunctionId, StringFunctionLocalId,
-        StringFunctionReference, StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr,
-        TupleFunctionId, TupleFunctionLocalId, TupleFunctionReference, TupleListLocalId,
-        TupleLocalId, ValueShape, ValueType,
+        FunctionFunctionLocal, FunctionFunctionLocalId, FunctionFunctionReference,
+        FunctionFunctionType, FunctionListLocalId, FunctionReference, FunctionShape, FunctionType,
+        GenericExpr, GenericFunctionExpr, GenericFunctionLocal, GenericFunctionLocalId,
+        GenericFunctionType, GenericLocal, GenericLocalId, IntExpr, IntFunctionExpr,
+        IntFunctionLocalId, IntFunctionReference, IntListLocalId, IntLocalId, ListExpr,
+        ListFunctionExpr, ListFunctionReference, ListListLocalId, ListLocal, ListLocalExpr,
+        NilExpr, NilFunctionExpr, NilFunctionLocalId, NilFunctionReference, NilListLocalId,
+        NilLocalId, PanicExpr, PanicSite, ParamLocal, StringExpr, StringFunctionExpr,
+        StringFunctionLocalId, StringFunctionReference, StringListLocalId, StringLocalId,
+        TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleFunctionReference,
+        TupleListLocalId, TupleLocalId, TypeParameterId, ValueShape, ValueType,
+        monomorphic_function_instantiation,
     };
     use num_bigint::BigInt;
+
+    #[test]
+    fn generic_arguments_preserve_parameter_and_callable_shapes() {
+        let parameter = TypeParameterId(0);
+        let local = GenericLocal::new(GenericLocalId(0), parameter);
+        let value = GenericExpr::local_get(local, "value".into());
+        let call = Expr::generic(value.clone())
+            .into_call_arg(&ParamLocal::generic(local))
+            .expect("a generic parameter should accept its generic expression");
+        assert_eq!(
+            call,
+            CallArg::parametric(
+                crate::plan::ParamSlot::new(
+                    ParamLocal::generic(local),
+                    ValueShape::Parameter(parameter),
+                ),
+                Expr::generic(value.clone()),
+            ),
+        );
+        assert_eq!(call.parameter_shape(), ValueShape::Parameter(parameter));
+        assert_eq!(
+            CaptureArg::generic(local, value.clone()).kind(),
+            &CaptureArgKind::Generic { local, value },
+        );
+
+        let function_type = GenericFunctionType::new(vec![ValueShape::Int], parameter);
+        let function_local =
+            GenericFunctionLocal::new(GenericFunctionLocalId(0), function_type.clone());
+        let function = GenericFunctionExpr::panic(
+            PanicExpr::panic_at(None, PanicSite::unknown()),
+            function_type.clone(),
+        );
+        let function_facade = FunctionExpr::generic(function.clone());
+        let call = Expr::function(function_facade.clone())
+            .into_call_arg(&ParamLocal::generic_function(function_local.clone()))
+            .expect("a generic callable should accept its exact function expression");
+        assert_eq!(
+            call.kind(),
+            &super::CallArgKind::GenericFunction {
+                local: function_local.clone(),
+                value: function_facade,
+            },
+        );
+        assert_eq!(
+            call.parameter_shape(),
+            ValueShape::Function(Box::new(function_type.shape())),
+        );
+        assert_eq!(
+            CaptureArg::generic_function_expr(
+                function_local.clone(),
+                TypedFunctionExpr::new(function_type.shape(), function.clone()),
+            )
+            .kind(),
+            &CaptureArgKind::GenericFunction {
+                local: function_local,
+                value: TypedFunctionExpr::new(function_type.shape(), function),
+            },
+        );
+    }
 
     #[test]
     fn into_call_arg_preserves_param_family() {
@@ -1024,7 +1201,7 @@ mod tests {
         let bit_array_function_type =
             FunctionType::new(vec![ValueType::BitArray], ValueType::BitArray);
         let bit_array_function = BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(
-            BitArrayFunctionId(0),
+            instantiation(bit_array_function_type.clone()),
             vec![ParamLocal::bit_array(BitArrayLocalId(0))],
         ));
         assert_eq!(
@@ -1326,6 +1503,26 @@ mod tests {
 
     #[test]
     fn into_call_arg_preserves_list_param_family() {
+        let parameter = crate::plan::TypeParameterId(0);
+        let generic = GenericListExpr::local_get(
+            GenericListItem::new(parameter),
+            crate::plan::GenericListLocalId(0),
+            "generic".into(),
+        );
+        assert_eq!(
+            Expr::list(crate::plan::ListExpr::Generic(generic.clone())).into_call_arg(
+                &ParamLocal::list(ListLocal::generic(
+                    crate::plan::GenericListLocalId(1),
+                    parameter,
+                )),
+            ),
+            Some(CallArg::list(ListLocalExpr::Generic {
+                local: crate::plan::GenericListLocalId(1),
+                parameter,
+                value: generic,
+            })),
+        );
+
         let int = ListExpr::value(vec![Expr::int(IntExpr::value(1.into()))], ValueType::Int);
         assert_eq!(
             Expr::list(int.clone())
@@ -1436,7 +1633,10 @@ mod tests {
         let function_item_type = FunctionType::new(Vec::new(), ValueType::Int);
         let function = ListExpr::value(
             vec![Expr::function(FunctionExpr::reference(
-                FunctionReference::new(RuntimeFunctionId::Int(IntFunctionId(0)), Vec::new()),
+                FunctionReference::new(
+                    instantiation(FunctionType::new(Vec::new(), ValueType::Int)),
+                    Vec::new(),
+                ),
             ))],
             ValueType::Function(Box::new(function_item_type.clone())),
         );
@@ -1487,7 +1687,10 @@ mod tests {
 
         let function = ListExpr::value(
             vec![Expr::function(FunctionExpr::reference(
-                FunctionReference::new(RuntimeFunctionId::String(StringFunctionId(0)), Vec::new()),
+                FunctionReference::new(
+                    instantiation(FunctionType::new(Vec::new(), ValueType::String)),
+                    Vec::new(),
+                ),
             ))],
             ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::String))),
         );
@@ -1502,42 +1705,42 @@ mod tests {
 
     fn function_value() -> FunctionReference {
         FunctionReference::new(
-            RuntimeFunctionId::Int(IntFunctionId(0)),
+            instantiation(function_type()),
             vec![ParamLocal::int(IntLocalId(0))],
         )
     }
 
     fn int_function_expr() -> IntFunctionExpr {
         IntFunctionExpr::reference(IntFunctionReference::new(
-            IntFunctionId(0),
+            instantiation(function_type()),
             vec![ParamLocal::int(IntLocalId(0))],
         ))
     }
 
     fn string_function_expr() -> StringFunctionExpr {
         StringFunctionExpr::reference(StringFunctionReference::new(
-            StringFunctionId(0),
+            instantiation(string_function_type()),
             vec![ParamLocal::string(StringLocalId(0))],
         ))
     }
 
     fn float_function_expr() -> FloatFunctionExpr {
         FloatFunctionExpr::reference(FloatFunctionReference::new(
-            FloatFunctionId(0),
+            instantiation(FunctionType::new(vec![ValueType::Float], ValueType::Float)),
             vec![ParamLocal::float(FloatLocalId(0))],
         ))
     }
 
     fn bool_function_expr() -> BoolFunctionExpr {
         BoolFunctionExpr::reference(BoolFunctionReference::new(
-            BoolFunctionId(0),
+            instantiation(FunctionType::new(vec![ValueType::Bool], ValueType::Bool)),
             vec![ParamLocal::bool(BoolLocalId(0))],
         ))
     }
 
     fn nil_function_expr() -> NilFunctionExpr {
         NilFunctionExpr::reference(NilFunctionReference::new(
-            NilFunctionId(0),
+            instantiation(FunctionType::new(vec![ValueType::Nil], ValueType::Nil)),
             vec![ParamLocal::nil(NilLocalId(0))],
         ))
     }
@@ -1557,20 +1760,23 @@ mod tests {
     }
 
     fn tuple_function_expr() -> TupleFunctionExpr {
-        TupleFunctionExpr::reference(
-            TupleFunctionReference::new(
-                TupleFunctionId(0),
-                vec![ParamLocal::tuple(TupleLocalId(0), vec![ValueType::Int])],
-            ),
-            vec![ValueType::Int],
-        )
+        TupleFunctionExpr::reference(TupleFunctionReference::new(
+            instantiation(FunctionType::new(
+                vec![ValueType::Tuple(vec![ValueType::Int])],
+                ValueType::Tuple(vec![ValueType::Int]),
+            )),
+            vec![ParamLocal::tuple(TupleLocalId(0), vec![ValueType::Int])],
+        ))
     }
 
     fn list_function_expr() -> ListFunctionExpr {
-        ListFunctionExpr::reference(ListFunctionReference::new(
-            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-            vec![ParamLocal::list(ListLocal::int(IntListLocalId(0)))],
-        ))
+        ListFunctionExpr::reference(
+            ListFunctionReference::new(
+                instantiation(list_function_type()),
+                vec![ParamLocal::list(ListLocal::int(IntListLocalId(0)))],
+            ),
+            ValueType::Int,
+        )
     }
 
     fn list_function_type() -> FunctionType {
@@ -1583,7 +1789,10 @@ mod tests {
     fn function_function_expr() -> FunctionFunctionExpr {
         FunctionFunctionExpr::reference(
             FunctionFunctionReference::new(
-                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                instantiation(FunctionType::new(
+                    Vec::new(),
+                    ValueType::Function(Box::new(function_type())),
+                )),
                 Vec::new(),
             ),
             function_type(),
@@ -1612,6 +1821,10 @@ mod tests {
 
     fn string_function_type() -> FunctionType {
         FunctionType::new(vec![ValueType::String], ValueType::String)
+    }
+
+    fn instantiation(type_: FunctionType) -> crate::plan::FunctionInstantiation {
+        monomorphic_function_instantiation(0, FunctionShape::from_function_type(type_))
     }
 
     fn bool_function_type() -> FunctionType {

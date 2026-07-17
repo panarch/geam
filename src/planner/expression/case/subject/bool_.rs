@@ -1,6 +1,6 @@
 use super::super::super::plan_bool_expr;
 use super::super::invalid_case_shape;
-use super::{CaseClause, OrderedCaseClause, OrderedCaseClauseInput, case_return_shape};
+use super::{CaseClause, OrderedCaseClause, OrderedCaseClauseInput};
 use crate::plan::{BoolExpr, Expr, ValueShape};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, InvalidTypedAstReason, PlanError};
@@ -16,7 +16,7 @@ pub(super) fn plan(
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let subject = plan_bool_expr(subject, context)?;
-    let return_shape = case_return_shape(type_.as_ref())?;
+    let return_shape = context.value_shape(type_.as_ref());
     if clauses
         .iter()
         .any(|clause| clause.guard.is_some() || clause.has_alternative_patterns())
@@ -563,7 +563,7 @@ pub fn main() {
             function(
                 "main",
                 int_return_bool_case(
-                    call_bool(0, []),
+                    call_bool(1, []),
                     int_return_expr(int(1)),
                     int_return_expr(int(0)),
                 ),
@@ -1243,7 +1243,7 @@ pub fn main() {
         let (type_, _, _) = super::super::super::expect_case_statement_mut(
             &mut module.definitions.functions[0].body[0],
         );
-        *type_ = super::super::invalid_case_return_type();
+        *type_ = super::super::mismatched_generic_case_return_type();
 
         assert_eq!(
             plan_module(module),

@@ -180,14 +180,28 @@ pub(in crate::runtime) fn eval_custom_function_expr_kind(
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExpr, CaptureArg, CustomFunctionExpr, CustomFunctionId, CustomFunctionLocal,
-        CustomFunctionLocalId, CustomFunctionReference, CustomFunctionReturn, CustomFunctionType,
+        BoolExpr, CaptureArg, CustomFunctionExpr, CustomFunctionLocal, CustomFunctionLocalId,
+        CustomFunctionReference, CustomFunctionReturn, CustomFunctionType, CustomReturn,
         CustomType, CustomTypeDefinition, CustomTypeName, CustomTypePublicity, Expr, FloatExpr,
-        FunctionExpr, FunctionId, FunctionListExpr, FunctionPlan, FunctionType, IntExpr,
-        IntFunctionExpr, IntFunctionId, IntFunctionReference, IntLocalId, ListExpr, ModulePlan,
-        PanicExpr, PanicSite, ParamLocal, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
+        FunctionExpr, FunctionListExpr, FunctionShape, FunctionTemplate, FunctionTemplateId,
+        FunctionType, IntExpr, IntFunctionExpr, IntFunctionId, IntFunctionReference, IntLocalId,
+        ListExpr, ModulePlan, PanicExpr, PanicSite, Param, ParamLocal, ReturnExpr, Step,
+        StringExpr, TupleExpr, ValueShape, ValueType, monomorphic_function_instantiation,
     };
     use crate::runtime::{ExecutionError, run_main};
+
+    fn custom_function_instantiation(
+        template: usize,
+        type_: &CustomFunctionType,
+    ) -> crate::plan::FunctionInstantiation {
+        monomorphic_function_instantiation(
+            template,
+            FunctionShape::new(
+                type_.argument_shapes().to_vec(),
+                ValueShape::Custom(type_.return_().clone()),
+            ),
+        )
+    }
 
     #[test]
     fn source_custom_function_expression_variants_evaluate_exact_values() {
@@ -285,7 +299,16 @@ pub fn main() {
         let type_ = boxed_function_type();
         let tuple = TupleExpr::value(
             vec![Expr::function(FunctionExpr::int(
-                IntFunctionExpr::reference(IntFunctionReference::new(IntFunctionId(0), Vec::new())),
+                IntFunctionExpr::reference(IntFunctionReference::new(
+                    monomorphic_function_instantiation(
+                        2,
+                        FunctionShape::from_function_type(FunctionType::new(
+                            Vec::new(),
+                            ValueType::Int,
+                        )),
+                    ),
+                    Vec::new(),
+                )),
             ))],
             vec![ValueType::Function(Box::new(type_.to_function_type()))],
         );
@@ -319,10 +342,13 @@ pub fn main() {
         let actual_type = CustomFunctionType::new(vec![ValueType::Int], boxed_type());
         let tuple = TupleExpr::value(
             vec![Expr::function(FunctionExpr::custom(
-                CustomFunctionExpr::reference(CustomFunctionReference::new(
-                    CustomFunctionId::new(0, boxed_type()),
-                    vec![ParamLocal::int(IntLocalId(0))],
-                )),
+                CustomFunctionExpr::reference(
+                    CustomFunctionReference::new(
+                        custom_function_instantiation(3, &actual_type),
+                        vec![ParamLocal::int(IntLocalId(0))],
+                    ),
+                    actual_type.return_().clone(),
+                ),
             ))],
             vec![ValueType::Function(Box::new(type_.to_function_type()))],
         );
@@ -340,18 +366,19 @@ pub fn main() {
     #[test]
     fn module_child_errors_propagate_through_custom_function_wrappers() {
         let panic = || PanicExpr::panic_at(None, PanicSite::unknown());
-        let fallback = || {
-            CustomFunctionExpr::reference(CustomFunctionReference::new(
-                CustomFunctionId::new(0, boxed_type()),
-                Vec::new(),
-            ))
-        };
         let type_ = boxed_function_type();
+        let fallback = || {
+            CustomFunctionExpr::reference(
+                CustomFunctionReference::new(custom_function_instantiation(1, &type_), Vec::new()),
+                type_.return_().clone(),
+            )
+        };
         let expressions = [
             CustomFunctionExpr::closure(
-                CustomFunctionId::new(0, boxed_type()),
+                custom_function_instantiation(1, &type_),
                 Vec::new(),
                 vec![CaptureArg::int(IntLocalId(0), IntExpr::panic(panic()))],
+                type_.clone(),
             ),
             CustomFunctionExpr::tuple_index(
                 TupleExpr::panic(
@@ -388,12 +415,45 @@ pub fn main() {
     }
 
     fn run_module_custom_function_expression(expression: CustomFunctionExpr) -> ExecutionError {
+        let custom_target = FunctionTemplate::new(
+            FunctionTemplateId::new(1),
+            "custom_target".into(),
+            Vec::new(),
+            vec![Step::evaluate(Expr::int(IntExpr::local_get(
+                IntLocalId(0),
+                "capture".into(),
+            )))],
+            ReturnExpr::custom_body(CustomReturn::expr(crate::plan::CustomExpr::panic(
+                PanicExpr::panic_at(None, PanicSite::unknown()),
+                boxed_type(),
+            ))),
+        );
+        let int_target = FunctionTemplate::new(
+            FunctionTemplateId::new(2),
+            "int_target".into(),
+            Vec::new(),
+            Vec::new(),
+            ReturnExpr::int(
+                IntFunctionId(0),
+                IntExpr::panic(PanicExpr::panic_at(None, PanicSite::unknown())),
+            ),
+        );
+        let custom_argument_target = FunctionTemplate::new(
+            FunctionTemplateId::new(3),
+            "custom_argument_target".into(),
+            vec![Param::named(ParamLocal::int(IntLocalId(0)), "value".into())],
+            Vec::new(),
+            ReturnExpr::custom_body(CustomReturn::expr(crate::plan::CustomExpr::panic(
+                PanicExpr::panic_at(None, PanicSite::unknown()),
+                boxed_type(),
+            ))),
+        );
         let local = CustomFunctionLocal::new(
             CustomFunctionLocalId(0),
             expression.custom_function_type().clone(),
         );
-        let main = FunctionPlan::new(
-            FunctionId::new(0),
+        let main = FunctionTemplate::new(
+            FunctionTemplateId::new(0),
             "main".into(),
             Vec::new(),
             vec![Step::let_custom_function(
@@ -406,8 +466,12 @@ pub fn main() {
                 CustomFunctionReturn::expr(CustomFunctionExpr::local_get(local, "value".into())),
             ),
         );
-        let module = ModulePlan::new("main".into(), main, Vec::new())
-            .with_custom_types(vec![boxed_definition()]);
+        let module = ModulePlan::new(
+            "main".into(),
+            main,
+            vec![custom_target, int_target, custom_argument_target],
+        )
+        .with_custom_types(vec![boxed_definition()]);
         let plan = crate::ExecutionPlan::from_module_plan(module);
 
         run_main(&plan).expect_err("module expression should fail at runtime")

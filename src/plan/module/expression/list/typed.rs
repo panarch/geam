@@ -123,8 +123,8 @@ impl<Item: ListItem> ListIndexSource<Item> {
         &self.list
     }
 
-    pub(crate) fn into_parts(self) -> (ListListExpr, usize) {
-        (*self.list, self.index)
+    pub(crate) fn index(&self) -> usize {
+        self.index
     }
 }
 
@@ -166,7 +166,10 @@ impl<Item: ListItem> TypedListExpr<Item> {
         &self.item_shape
     }
 
-    pub(super) fn with_item_shape(mut self, item_shape: crate::plan::ValueShape) -> Self {
+    pub(in crate::plan::module) fn with_item_shape(
+        mut self,
+        item_shape: crate::plan::ValueShape,
+    ) -> Self {
         self.item_shape = item_shape;
         self
     }
@@ -269,11 +272,14 @@ impl<Item: ListItem> TypedListExpr<Item> {
         }
     }
 
-    pub(super) fn value(item: Item, elements: Vec<Item::ElementExpr>) -> Self {
+    pub(in crate::plan::module) fn value(item: Item, elements: Vec<Item::ElementExpr>) -> Self {
         Self::new(item, TypedListExprKind::Value(elements))
     }
 
-    pub(super) fn spread(elements: Vec<Item::ElementExpr>, tail: TypedListExpr<Item>) -> Self {
+    pub(in crate::plan::module) fn spread(
+        elements: Vec<Item::ElementExpr>,
+        tail: TypedListExpr<Item>,
+    ) -> Self {
         let (item_shape, item, tail) = tail.into_shape_item_and_kind();
         Self::from_shape_item_and_kind(
             item_shape,

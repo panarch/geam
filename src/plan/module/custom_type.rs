@@ -174,6 +174,33 @@ impl CustomConstructor {
         &self.fields
     }
 
+    pub(crate) fn substitute(&self, substitution: &crate::plan::TypeSubstitution) -> Self {
+        Self {
+            type_: crate::plan::CustomType::new(
+                self.type_.type_name().clone(),
+                self.type_
+                    .arguments()
+                    .iter()
+                    .cloned()
+                    .map(crate::plan::ValueShape::from_value_type)
+                    .map(|shape| shape.substitute(substitution).value_type())
+                    .collect(),
+            ),
+            name: self.name.clone(),
+            index: self.index,
+            fields: self
+                .fields
+                .iter()
+                .map(|field| CustomConstructorField {
+                    label: field.label.clone(),
+                    type_: crate::plan::ValueShape::from_value_type(field.type_.clone())
+                        .substitute(substitution)
+                        .value_type(),
+                })
+                .collect(),
+        }
+    }
+
     pub(crate) fn into_parts(
         self,
     ) -> (

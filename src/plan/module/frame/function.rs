@@ -3,9 +3,10 @@ use crate::plan::{
     BitArrayFunctionExpr, BitArrayFunctionExprKind, BoolFunctionExpr, BoolFunctionExprKind,
     CustomFunctionExpr, CustomFunctionExprKind, FloatFunctionExpr, FloatFunctionExprKind,
     FunctionExpr, FunctionExprKind, FunctionFunctionExpr, FunctionFunctionExprKind,
-    IntFunctionExpr, IntFunctionExprKind, ListFunctionExpr, ListFunctionExprKind, NilFunctionExpr,
-    NilFunctionExprKind, StringFunctionExpr, StringFunctionExprKind, TupleFunctionExpr,
-    TupleFunctionExprKind, UtfCodepointFunctionExpr, UtfCodepointFunctionExprKind,
+    GenericFunctionExpr, GenericFunctionExprKind, IntFunctionExpr, IntFunctionExprKind,
+    ListFunctionExpr, ListFunctionExprKind, NilFunctionExpr, NilFunctionExprKind,
+    StringFunctionExpr, StringFunctionExprKind, TupleFunctionExpr, TupleFunctionExprKind,
+    UtfCodepointFunctionExpr, UtfCodepointFunctionExprKind,
 };
 
 impl FrameLayout {
@@ -14,6 +15,7 @@ impl FrameLayout {
         expression: &FunctionExpr,
     ) {
         match expression.kind() {
+            FunctionExprKind::Generic(expression) => self.include_generic_function_expr(expression),
             FunctionExprKind::Int(expression) => self.include_int_function_expr(expression),
             FunctionExprKind::String(expression) => self.include_string_function_expr(expression),
             FunctionExprKind::BitArray(expression) => {
@@ -30,6 +32,78 @@ impl FrameLayout {
             FunctionExprKind::List(expression) => self.include_list_function_expr(expression),
             FunctionExprKind::Function(expression) => {
                 self.include_function_function_expr(expression);
+            }
+        }
+    }
+
+    pub(in crate::plan::module::frame) fn include_generic_function_expr(
+        &mut self,
+        expression: &GenericFunctionExpr,
+    ) {
+        match expression.kind() {
+            GenericFunctionExprKind::Reference(_) => {}
+            GenericFunctionExprKind::Closure { captures, .. } => {
+                self.include_capture_args(captures)
+            }
+            GenericFunctionExprKind::LocalGet { local, .. } => {
+                self.include_generic_function(local.clone())
+            }
+            GenericFunctionExprKind::Call { args, .. } => self.include_call_args(args),
+            GenericFunctionExprKind::FunctionCall { function, args } => {
+                self.include_function_function_expr(function);
+                self.include_call_args(args);
+            }
+            GenericFunctionExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
+            GenericFunctionExprKind::CustomField(access) => {
+                self.include_custom_expr(access.source())
+            }
+            GenericFunctionExprKind::ListIndex { list, .. } => self.include_typed_list_expr(list),
+            GenericFunctionExprKind::Panic(panic) => self.include_panic_expr(panic),
+            GenericFunctionExprKind::BoolCase {
+                subject,
+                true_,
+                false_,
+            } => {
+                self.include_bool_expr(subject);
+                self.include_generic_function_expr(true_);
+                self.include_generic_function_expr(false_);
+            }
+            GenericFunctionExprKind::IntCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_int_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_generic_function_expr(branch);
+                }
+                self.include_generic_function_expr(fallback);
+            }
+            GenericFunctionExprKind::StringCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_string_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_generic_function_expr(branch);
+                }
+                self.include_generic_function_expr(fallback);
+            }
+            GenericFunctionExprKind::FloatCase {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                self.include_float_expr(subject);
+                for (_, branch) in clauses {
+                    self.include_generic_function_expr(branch);
+                }
+                self.include_generic_function_expr(fallback);
+            }
+            GenericFunctionExprKind::Block { steps, return_ } => {
+                self.include_steps(steps);
+                self.include_generic_function_expr(return_);
             }
         }
     }
@@ -819,17 +893,34 @@ impl FrameLayout {
 mod tests {
     use super::FrameLayout;
     use crate::plan::{
-        BoolExpr, BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, CallArg, CaptureArg, Expr,
-        FloatExpr, FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FunctionExpr,
-        FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocal, FunctionFunctionLocalId,
-        FunctionFunctionType, FunctionListLocalId, FunctionType, IntExpr, IntFunctionExpr,
-        IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntLocalId, ListExpr,
-        ListFunctionExpr, ListFunctionFunctionId, ListFunctionId, ListLocal, NilFunctionExpr,
-        NilFunctionId, NilFunctionLocalId, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr,
-        StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringLocalId, TupleExpr,
-        TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId, TupleFunctionLocalId,
-        TupleLocalId, ValueType,
+        BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, CallArg, CaptureArg, Expr, FloatExpr,
+        FloatFunctionExpr, FloatFunctionLocalId, FunctionExpr, FunctionFunctionExpr,
+        FunctionFunctionLocal, FunctionFunctionLocalId, FunctionFunctionType,
+        FunctionInstantiation, FunctionListLocalId, FunctionShape, FunctionType, IntExpr,
+        IntFunctionExpr, IntFunctionId, IntFunctionLocalId, IntLocalId, ListExpr, ListFunctionExpr,
+        ListLocal, NilFunctionExpr, NilFunctionLocalId, PanicExpr, PanicSite, ReturnExpr, Step,
+        StringExpr, StringFunctionExpr, StringFunctionLocalId, StringLocalId, TupleExpr,
+        TupleFunctionExpr, TupleFunctionLocalId, TupleLocalId, ValueShape, ValueType,
+        monomorphic_function_instantiation,
     };
+
+    fn function_instantiation(template: usize, type_: FunctionType) -> FunctionInstantiation {
+        monomorphic_function_instantiation(template, FunctionShape::from_function_type(type_))
+    }
+
+    fn returning_function_instantiation(
+        template: usize,
+        arguments: Vec<ValueShape>,
+        return_type: FunctionType,
+    ) -> FunctionInstantiation {
+        monomorphic_function_instantiation(
+            template,
+            FunctionShape::new(
+                arguments,
+                ValueShape::Function(Box::new(FunctionShape::from_function_type(return_type))),
+            ),
+        )
+    }
 
     #[test]
     fn frame_layout_includes_function_expression_nested_locals() {
@@ -1143,7 +1234,7 @@ mod tests {
         let steps = vec![
             Step::evaluate(Expr::function(FunctionExpr::string(
                 StringFunctionExpr::closure(
-                    StringFunctionId(1),
+                    function_instantiation(1, string_type.clone()),
                     Vec::new(),
                     vec![CaptureArg::int(
                         IntLocalId(0),
@@ -1167,7 +1258,7 @@ mod tests {
             ))),
             Step::evaluate(Expr::function(FunctionExpr::float(
                 FloatFunctionExpr::closure(
-                    FloatFunctionId(1),
+                    function_instantiation(1, float_type.clone()),
                     Vec::new(),
                     vec![CaptureArg::int(
                         IntLocalId(0),
@@ -1191,7 +1282,7 @@ mod tests {
             ))),
             Step::evaluate(Expr::function(FunctionExpr::bool(
                 BoolFunctionExpr::closure(
-                    BoolFunctionId(1),
+                    function_instantiation(1, bool_type.clone()),
                     Vec::new(),
                     vec![CaptureArg::int(
                         IntLocalId(0),
@@ -1214,7 +1305,7 @@ mod tests {
                 ),
             ))),
             Step::evaluate(Expr::function(FunctionExpr::nil(NilFunctionExpr::closure(
-                NilFunctionId(1),
+                function_instantiation(1, nil_type.clone()),
                 Vec::new(),
                 vec![CaptureArg::int(
                     IntLocalId(0),
@@ -1237,7 +1328,7 @@ mod tests {
             ))),
             Step::evaluate(Expr::function(FunctionExpr::function(
                 FunctionFunctionExpr::closure(
-                    FunctionFunctionId::Int(IntFunctionFunctionId(1)),
+                    function_instantiation(1, function_type.to_function_type()),
                     Vec::new(),
                     vec![CaptureArg::int(
                         IntLocalId(0),
@@ -1293,7 +1384,7 @@ mod tests {
         let steps = vec![
             Step::evaluate(Expr::function(FunctionExpr::tuple(
                 TupleFunctionExpr::closure(
-                    TupleFunctionId(1),
+                    function_instantiation(1, tuple_function_type.clone()),
                     Vec::new(),
                     vec![CaptureArg::int(
                         IntLocalId(10),
@@ -1312,7 +1403,11 @@ mod tests {
             ))),
             Step::evaluate(Expr::function(FunctionExpr::tuple(
                 TupleFunctionExpr::call(
-                    TupleFunctionFunctionId(0),
+                    returning_function_instantiation(
+                        0,
+                        vec![ValueShape::Int],
+                        tuple_function_type.clone(),
+                    ),
                     vec![CallArg::int(
                         IntLocalId(0),
                         IntExpr::local_get(IntLocalId(11), "direct_arg".into()),
@@ -1454,12 +1549,13 @@ mod tests {
         let steps = vec![
             Step::evaluate(Expr::function(FunctionExpr::list(
                 ListFunctionExpr::closure(
-                    ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
+                    function_instantiation(0, list_function_type.clone()),
                     Vec::new(),
                     vec![CaptureArg::int(
                         IntLocalId(0),
                         IntExpr::local_get(IntLocalId(15), "closure_capture".into()),
                     )],
+                    ValueType::Int,
                 ),
             ))),
             Step::evaluate(Expr::function(FunctionExpr::list(
@@ -1476,18 +1572,17 @@ mod tests {
                 ),
             ))),
             Step::evaluate(Expr::function(FunctionExpr::list(ListFunctionExpr::call(
-                ListFunctionFunctionId::from_item_type(
+                returning_function_instantiation(
                     0,
-                    crate::plan::FunctionType::new(
-                        Vec::new(),
-                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int)),
-                    ),
-                    crate::plan::ValueType::Int,
+                    vec![ValueShape::Int],
+                    list_function_type.clone(),
                 ),
                 vec![CallArg::int(
                     IntLocalId(0),
                     IntExpr::local_get(IntLocalId(16), "direct_arg".into()),
                 )],
+                list_function_type.clone(),
+                ValueType::Int,
             )))),
             Step::evaluate(Expr::function(FunctionExpr::list(
                 ListFunctionExpr::function_call(

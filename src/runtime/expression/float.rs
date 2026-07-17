@@ -133,8 +133,8 @@ fn eval_div_float(left: f64, right: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExpr, Expr, FloatExpr, FloatFunctionId, FunctionId, FunctionPlan, IntExpr, ModulePlan,
-        PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
+        BoolExpr, Expr, FloatExpr, FloatFunctionId, FunctionTemplate, FunctionTemplateId, IntExpr,
+        ModulePlan, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
     };
     use crate::runtime::{ExecutionError, run_main};
 
@@ -253,8 +253,8 @@ pub fn main() -> Float {{ {expression} }}
     }
 
     fn run_module_float_expression(expression: FloatExpr) -> ExecutionError {
-        let main = FunctionPlan::new(
-            FunctionId::new(0),
+        let main = FunctionTemplate::new(
+            FunctionTemplateId::new(0),
             "main".into(),
             Vec::new(),
             Vec::new(),

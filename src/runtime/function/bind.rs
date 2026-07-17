@@ -705,20 +705,21 @@ mod tests {
         BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionLocalId, BitArrayListExpr,
         BitArrayListLocalId, BitArrayLocalId, BoolExpr, BoolFunctionExpr, BoolFunctionLocalId,
         BoolListExpr, BoolListLocalId, CaptureArg, CustomConstructorDefinition, CustomExpr,
-        CustomFieldDefinition, CustomFunctionExpr, CustomFunctionLocalId, CustomFunctionType,
-        CustomListLocalId, CustomLocalId, CustomType, CustomTypeDefinition, CustomTypeName,
-        CustomTypePublicity, CustomTypeTemplate, FloatExpr, FloatFunctionExpr,
-        FloatFunctionLocalId, FloatListExpr, FloatListLocalId, FunctionFunctionExpr,
-        FunctionFunctionLocalId, FunctionFunctionType, FunctionId, FunctionListLocalId,
-        FunctionPlan, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
+        CustomFieldDefinition, CustomFunctionExpr, CustomFunctionLocal, CustomFunctionLocalId,
+        CustomFunctionType, CustomListLocalId, CustomLocal, CustomLocalId, CustomType,
+        CustomTypeDefinition, CustomTypeName, CustomTypePublicity, CustomTypeTemplate, Expr,
+        FloatExpr, FloatFunctionExpr, FloatFunctionLocalId, FloatListExpr, FloatListLocalId,
+        FunctionExpr, FunctionFunctionExpr, FunctionFunctionLocal, FunctionFunctionLocalId,
+        FunctionFunctionType, FunctionListLocalId, FunctionTemplate, FunctionTemplateId,
+        FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
         IntFunctionLocalId, IntListExpr, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr,
-        ListFunctionLocal, ListListExpr, ListListLocalId, ListLocalExpr, ModulePlan, NilExpr,
-        NilFunctionExpr, NilFunctionLocalId, NilListExpr, NilListLocalId, NilLocalId, PanicExpr,
-        PanicSite, ReturnExpr, StringExpr, StringFunctionExpr, StringFunctionLocalId,
-        StringListExpr, StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr,
-        TupleFunctionLocalId, TupleListExpr, TupleListLocalId, TupleLocalId, UtfCodepointExpr,
-        UtfCodepointFunctionExpr, UtfCodepointFunctionLocalId, UtfCodepointListExpr,
-        UtfCodepointListLocalId, UtfCodepointLocalId, ValueType,
+        ListFunctionLocal, ListListExpr, ListListLocalId, ListLocal, ListLocalExpr, ModulePlan,
+        NilExpr, NilFunctionExpr, NilFunctionLocalId, NilListExpr, NilListLocalId, NilLocalId,
+        PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, StringFunctionExpr,
+        StringFunctionLocalId, StringListExpr, StringListLocalId, StringLocalId, TupleExpr,
+        TupleFunctionExpr, TupleFunctionLocalId, TupleListExpr, TupleListLocalId, TupleLocalId,
+        UtfCodepointExpr, UtfCodepointFunctionExpr, UtfCodepointFunctionLocalId,
+        UtfCodepointListExpr, UtfCodepointListLocalId, UtfCodepointLocalId, ValueType,
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{ExecutionError, run_main};
@@ -1241,17 +1242,174 @@ pub fn main() {
     }
 
     fn run_module_capture(capture: CaptureArg) -> ExecutionError {
+        let custom_type = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        );
         let function_type = FunctionType::new(Vec::new(), ValueType::Int);
-        let expression =
-            IntFunctionExpr::closure(IntFunctionId(1), Vec::new(), vec![capture], function_type);
-        let main = FunctionPlan::new(
-            FunctionId::new(0),
+        let list_function_type =
+            FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int)));
+        let custom_function_type = CustomFunctionType::new(Vec::new(), custom_type.clone());
+        let function_function_type = FunctionFunctionType::new(Vec::new(), function_type.clone());
+        let target_values = vec![
+            Expr::int(IntExpr::local_get(IntLocalId(0), "capture".into())),
+            Expr::string(StringExpr::local_get(StringLocalId(0), "capture".into())),
+            Expr::bit_array(BitArrayExpr::local_get(
+                BitArrayLocalId(0),
+                "capture".into(),
+            )),
+            Expr::utf_codepoint(UtfCodepointExpr::local_get(
+                UtfCodepointLocalId(0),
+                "capture".into(),
+            )),
+            Expr::custom(CustomExpr::local_get(
+                CustomLocal::new(CustomLocalId(0), custom_type.clone()),
+                "capture".into(),
+            )),
+            Expr::float(FloatExpr::local_get(
+                crate::plan::FloatLocalId(0),
+                "capture".into(),
+            )),
+            Expr::bool(BoolExpr::local_get(
+                crate::plan::BoolLocalId(0),
+                "capture".into(),
+            )),
+            Expr::nil(NilExpr::local_get(NilLocalId(0), "capture".into())),
+            Expr::tuple(TupleExpr::local_get(
+                TupleLocalId(0),
+                "capture".into(),
+                vec![ValueType::Int],
+            )),
+            Expr::list(ListExpr::local_get(
+                ListLocal::int(IntListLocalId(0)),
+                "capture".into(),
+            )),
+            Expr::list(ListExpr::local_get(
+                ListLocal::string(StringListLocalId(0)),
+                "capture".into(),
+            )),
+            Expr::list(ListExpr::local_get(
+                ListLocal::bit_array(BitArrayListLocalId(0)),
+                "capture".into(),
+            )),
+            Expr::list(ListExpr::local_get(
+                ListLocal::utf_codepoint(UtfCodepointListLocalId(0)),
+                "capture".into(),
+            )),
+            Expr::list(ListExpr::local_get(
+                ListLocal::custom(CustomListLocalId(0), custom_type.clone()),
+                "capture".into(),
+            )),
+            Expr::list(ListExpr::local_get(
+                ListLocal::float(FloatListLocalId(0)),
+                "capture".into(),
+            )),
+            Expr::list(ListExpr::local_get(
+                ListLocal::bool(BoolListLocalId(0)),
+                "capture".into(),
+            )),
+            Expr::list(ListExpr::local_get(
+                ListLocal::nil(NilListLocalId(0)),
+                "capture".into(),
+            )),
+            Expr::list(ListExpr::local_get(
+                ListLocal::tuple(TupleListLocalId(0), vec![ValueType::Int]),
+                "capture".into(),
+            )),
+            Expr::list(ListExpr::local_get(
+                ListLocal::list(ListListLocalId(0), ValueType::Int),
+                "capture".into(),
+            )),
+            Expr::list(ListExpr::local_get(
+                ListLocal::function(FunctionListLocalId(0), function_type.clone()),
+                "capture".into(),
+            )),
+            Expr::function(FunctionExpr::int(IntFunctionExpr::local_get(
+                IntFunctionLocalId(0),
+                "capture".into(),
+                function_type.clone(),
+            ))),
+            Expr::function(FunctionExpr::string(StringFunctionExpr::local_get(
+                StringFunctionLocalId(0),
+                "capture".into(),
+                FunctionType::new(Vec::new(), ValueType::String),
+            ))),
+            Expr::function(FunctionExpr::bit_array(BitArrayFunctionExpr::local_get(
+                BitArrayFunctionLocalId(0),
+                "capture".into(),
+                FunctionType::new(Vec::new(), ValueType::BitArray),
+            ))),
+            Expr::function(FunctionExpr::utf_codepoint(
+                UtfCodepointFunctionExpr::local_get(
+                    UtfCodepointFunctionLocalId(0),
+                    "capture".into(),
+                    FunctionType::new(Vec::new(), ValueType::UtfCodepoint),
+                ),
+            )),
+            Expr::function(FunctionExpr::custom(CustomFunctionExpr::local_get(
+                CustomFunctionLocal::new(CustomFunctionLocalId(0), custom_function_type.clone()),
+                "capture".into(),
+            ))),
+            Expr::function(FunctionExpr::float(FloatFunctionExpr::local_get(
+                FloatFunctionLocalId(0),
+                "capture".into(),
+                FunctionType::new(Vec::new(), ValueType::Float),
+            ))),
+            Expr::function(FunctionExpr::bool(BoolFunctionExpr::local_get(
+                BoolFunctionLocalId(0),
+                "capture".into(),
+                FunctionType::new(Vec::new(), ValueType::Bool),
+            ))),
+            Expr::function(FunctionExpr::nil(NilFunctionExpr::local_get(
+                NilFunctionLocalId(0),
+                "capture".into(),
+                FunctionType::new(Vec::new(), ValueType::Nil),
+            ))),
+            Expr::function(FunctionExpr::tuple(TupleFunctionExpr::local_get(
+                TupleFunctionLocalId(0),
+                "capture".into(),
+                FunctionType::new(Vec::new(), ValueType::Tuple(vec![ValueType::Int])),
+            ))),
+            Expr::function(FunctionExpr::list(ListFunctionExpr::local_get(
+                ListFunctionLocal::from_item_type(0, list_function_type.clone(), ValueType::Int),
+                "capture".into(),
+            ))),
+            Expr::function(FunctionExpr::function(FunctionFunctionExpr::local_get(
+                FunctionFunctionLocal::new(FunctionFunctionLocalId(0), function_function_type),
+                "capture".into(),
+            ))),
+        ];
+        let target_types = target_values.iter().map(Expr::value_type).collect();
+        let target = FunctionTemplate::new(
+            FunctionTemplateId::new(1),
+            "target".into(),
+            Vec::new(),
+            vec![Step::evaluate(Expr::tuple(TupleExpr::value(
+                target_values,
+                target_types,
+            )))],
+            ReturnExpr::int(
+                IntFunctionId(0),
+                IntExpr::panic(PanicExpr::panic_at(None, PanicSite::unknown())),
+            ),
+        );
+        let expression = IntFunctionExpr::closure(
+            crate::plan::monomorphic_function_instantiation(
+                1,
+                crate::plan::FunctionShape::from_function_type(function_type.clone()),
+            ),
+            Vec::new(),
+            vec![capture],
+            function_type,
+        );
+        let main = FunctionTemplate::new(
+            FunctionTemplateId::new(0),
             "main".into(),
             Vec::new(),
             Vec::new(),
             ReturnExpr::int_function(IntFunctionFunctionId(0), expression),
         );
-        let module = ModulePlan::new("main".into(), main, Vec::new()).with_custom_types(vec![
+        let module = ModulePlan::new("main".into(), main, vec![target]).with_custom_types(vec![
             CustomTypeDefinition::new(
                 CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
                 CustomTypePublicity::Public,

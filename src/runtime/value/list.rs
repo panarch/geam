@@ -3,7 +3,7 @@ use num_bigint::BigInt;
 use thiserror::Error;
 
 use super::{BitArrayValue, CustomValue, FunctionValue, Value};
-use crate::plan::{CustomType, FunctionType, ValueType};
+use crate::plan::{CustomType, FunctionType, TypeParameterId, ValueType};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ListValue {
@@ -22,6 +22,7 @@ pub struct ListValueItemTypeMismatch {
 // their values carry the metadata explicitly.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ListValueKind {
+    Parameter(TypeParameterId),
     Int(Vec<BigInt>),
     String(Vec<EcoString>),
     BitArray(Vec<BitArrayValue>),
@@ -189,6 +190,9 @@ impl ListValue {
 
     pub fn empty(item_type: ValueType) -> Self {
         match item_type {
+            ValueType::Parameter(parameter) => Self {
+                kind: ListValueKind::Parameter(parameter),
+            },
             ValueType::Int => Self::int(Vec::new()),
             ValueType::String => Self::string(Vec::new()),
             ValueType::BitArray => Self::bit_array(Vec::new()),
@@ -225,6 +229,7 @@ impl ListValue {
 
     pub fn item_type(&self) -> ValueType {
         match &self.kind {
+            ListValueKind::Parameter(parameter) => ValueType::Parameter(*parameter),
             ListValueKind::Int(_) => ValueType::Int,
             ListValueKind::String(_) => ValueType::String,
             ListValueKind::BitArray(_) => ValueType::BitArray,
@@ -243,6 +248,7 @@ impl ListValue {
 
     pub fn len(&self) -> usize {
         match &self.kind {
+            ListValueKind::Parameter(_) => 0,
             ListValueKind::Int(values) => values.len(),
             ListValueKind::String(values) => values.len(),
             ListValueKind::BitArray(values) => values.len(),
@@ -263,6 +269,7 @@ impl ListValue {
 
     pub fn to_values(&self) -> Vec<Value> {
         match &self.kind {
+            ListValueKind::Parameter(_) => Vec::new(),
             ListValueKind::Int(values) => values.iter().cloned().map(Value::Int).collect(),
             ListValueKind::String(values) => values.iter().cloned().map(Value::String).collect(),
             ListValueKind::BitArray(values) => {
@@ -308,7 +315,7 @@ fn ensure_item_types(
 #[cfg(test)]
 mod tests {
     use super::{ListValue, ListValueItemTypeMismatch};
-    use crate::plan::{CustomType, CustomTypeName, FunctionType, ValueType};
+    use crate::plan::{CustomType, CustomTypeName, FunctionType, TypeParameterId, ValueType};
     use crate::runtime::{BitArrayValue, CustomValue, FunctionValue, Value};
 
     #[test]
@@ -317,59 +324,103 @@ mod tests {
         let function_type = function.type_();
         let custom_type = sample_custom_type("Boxed");
         let custom = sample_custom_value(custom_type.clone(), "Boxed");
-        let values = [
-            ListValue::int(vec![1.into(), 2.into()]),
-            ListValue::string(vec!["one".into(), "two".into()]),
-            ListValue::bit_array(vec![
-                BitArrayValue::from_bytes(vec![1]),
-                BitArrayValue::from_bytes(vec![2]),
-            ]),
-            ListValue::utf_codepoint(vec!['a', '\u{10ffff}']),
-            ListValue::from_evaluated_custom(
-                custom_type.clone(),
-                vec![custom.clone(), custom.clone()],
-            ),
-            ListValue::float(vec![1.5, 2.5]),
-            ListValue::bool(vec![true, false]),
-            ListValue::nil(2),
-            ListValue::from_evaluated_tuple(
-                vec![ValueType::Int],
-                vec![vec![Value::Int(1.into())], vec![Value::Int(2.into())]],
-            ),
-            ListValue::from_evaluated_list(
+        let cases = [
+            (
+                ListValue::int(vec![1.into(), 2.into()]),
                 ValueType::Int,
+                vec![Value::Int(1.into()), Value::Int(2.into())],
+            ),
+            (
+                ListValue::string(vec!["one".into(), "two".into()]),
+                ValueType::String,
+                vec![Value::String("one".into()), Value::String("two".into())],
+            ),
+            (
+                ListValue::bit_array(vec![
+                    BitArrayValue::from_bytes(vec![1]),
+                    BitArrayValue::from_bytes(vec![2]),
+                ]),
+                ValueType::BitArray,
                 vec![
-                    ListValue::int(vec![1.into()]),
-                    ListValue::int(vec![2.into()]),
+                    Value::BitArray(BitArrayValue::from_bytes(vec![1])),
+                    Value::BitArray(BitArrayValue::from_bytes(vec![2])),
                 ],
             ),
-            ListValue::from_evaluated_function(
-                function_type.clone(),
-                vec![function.clone(), function.clone()],
+            (
+                ListValue::utf_codepoint(vec!['a', '\u{10ffff}']),
+                ValueType::UtfCodepoint,
+                vec![Value::UtfCodepoint('a'), Value::UtfCodepoint('\u{10ffff}')],
+            ),
+            (
+                ListValue::from_evaluated_custom(
+                    custom_type.clone(),
+                    vec![custom.clone(), custom.clone()],
+                ),
+                ValueType::Custom(custom_type.clone()),
+                vec![Value::Custom(custom.clone()), Value::Custom(custom.clone())],
+            ),
+            (
+                ListValue::float(vec![1.5, 2.5]),
+                ValueType::Float,
+                vec![Value::Float(1.5), Value::Float(2.5)],
+            ),
+            (
+                ListValue::bool(vec![true, false]),
+                ValueType::Bool,
+                vec![Value::Bool(true), Value::Bool(false)],
+            ),
+            (
+                ListValue::nil(2),
+                ValueType::Nil,
+                vec![Value::Nil, Value::Nil],
+            ),
+            (
+                ListValue::from_evaluated_tuple(
+                    vec![ValueType::Int],
+                    vec![vec![Value::Int(1.into())], vec![Value::Int(2.into())]],
+                ),
+                ValueType::Tuple(vec![ValueType::Int]),
+                vec![
+                    Value::Tuple(vec![Value::Int(1.into())]),
+                    Value::Tuple(vec![Value::Int(2.into())]),
+                ],
+            ),
+            (
+                ListValue::from_evaluated_list(
+                    ValueType::Int,
+                    vec![
+                        ListValue::int(vec![1.into()]),
+                        ListValue::int(vec![2.into()]),
+                    ],
+                ),
+                ValueType::List(Box::new(ValueType::Int)),
+                vec![
+                    Value::List(ListValue::int(vec![1.into()])),
+                    Value::List(ListValue::int(vec![2.into()])),
+                ],
+            ),
+            (
+                ListValue::from_evaluated_function(
+                    function_type.clone(),
+                    vec![function.clone(), function.clone()],
+                ),
+                ValueType::Function(Box::new(function_type.clone())),
+                vec![
+                    Value::Function(function.clone()),
+                    Value::Function(function.clone()),
+                ],
             ),
         ];
-        let item_types = [
-            ValueType::Int,
-            ValueType::String,
-            ValueType::BitArray,
-            ValueType::UtfCodepoint,
-            ValueType::Custom(custom_type.clone()),
-            ValueType::Float,
-            ValueType::Bool,
-            ValueType::Nil,
-            ValueType::Tuple(vec![ValueType::Int]),
-            ValueType::List(Box::new(ValueType::Int)),
-            ValueType::Function(Box::new(function_type.clone())),
-        ];
 
-        for (value, item_type) in values.iter().zip(item_types) {
+        for (value, item_type, expected) in cases {
             assert_eq!(value.item_type(), item_type);
             assert_eq!(value.len(), 2);
             assert!(!value.is_empty());
-            assert_eq!(value.to_values().len(), 2);
+            assert_eq!(value.to_values(), expected);
         }
 
         for item_type in [
+            ValueType::Parameter(TypeParameterId(0)),
             ValueType::Int,
             ValueType::String,
             ValueType::BitArray,

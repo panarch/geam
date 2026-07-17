@@ -9,20 +9,33 @@ use crate::planner::context::{FunctionParam, PlanContext};
 use crate::planner::error::{InvalidCallShapeReason, InvalidTypedAstReason, PlanError};
 use gleam_core::ast::{CallArg as GleamCallArg, TypedExpr};
 
-pub(super) fn plan_call_args(
+pub(super) fn plan_instantiated_call_args(
     arguments: Vec<GleamCallArg<TypedExpr>>,
     params: &[FunctionParam],
+    instantiated_shapes: &[ValueShape],
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
 ) -> Result<Vec<CallArg>, PlanError> {
     let mut args = Vec::with_capacity(arguments.len());
-    for (argument, param) in arguments.into_iter().zip(params) {
-        let expression = plan_argument_value(argument, param.shape().clone(), capture, context)?;
+    for ((argument, param), instantiated_shape) in
+        arguments.into_iter().zip(params).zip(instantiated_shapes)
+    {
+        let expression =
+            plan_argument_value(argument, instantiated_shape.clone(), capture, context)?;
         let actual = expression.value_type();
-        if actual == param.local().value_type() && !expression.shape().can_flow_to(param.shape()) {
+        let expected = instantiated_shape.value_type();
+        if actual != expected {
+            return Err(call_arg_type_mismatch(expected, actual));
+        }
+        if !expression.shape().can_flow_to(instantiated_shape) {
             return Err(call_arg_shape_mismatch());
         }
-        let arg = match expression.into_call_arg(param.local()) {
+        let arg = if param.shape() == instantiated_shape {
+            expression.into_call_arg(param.local())
+        } else {
+            Some(CallArg::parametric(param.slot().clone(), expression))
+        };
+        let arg = match arg {
             Some(arg) => arg,
             None => return Err(call_arg_type_mismatch(param.local().value_type(), actual)),
         };
@@ -55,6 +68,7 @@ pub(super) fn plan_function_call_args(
 }
 
 fn function_call_param_locals(params: &[ValueShape]) -> Vec<ParamLocal> {
+    let mut next_generic = 0;
     let mut next_int = 0;
     let mut next_string = 0;
     let mut next_bit_array = 0;
@@ -75,6 +89,8 @@ fn function_call_param_locals(params: &[ValueShape]) -> Vec<ParamLocal> {
     let mut next_tuple_list = 0;
     let mut next_list_list = 0;
     let mut next_function_list = 0;
+    let mut next_generic_list = 0;
+    let mut next_generic_function = 0;
     let mut next_int_function = 0;
     let mut next_string_function = 0;
     let mut next_bit_array_function = 0;
@@ -90,6 +106,14 @@ fn function_call_param_locals(params: &[ValueShape]) -> Vec<ParamLocal> {
     params
         .iter()
         .map(|shape| match shape {
+            ValueShape::Parameter(parameter) => {
+                let local = ParamLocal::generic(crate::plan::GenericLocal::new(
+                    crate::plan::GenericLocalId(next_generic),
+                    *parameter,
+                ));
+                next_generic += 1;
+                local
+            }
             ValueShape::Int => {
                 let local = ParamLocal::int(crate::plan::IntLocalId(next_int));
                 next_int += 1;
@@ -144,6 +168,14 @@ fn function_call_param_locals(params: &[ValueShape]) -> Vec<ParamLocal> {
             }
             ValueShape::List(item_shape) => {
                 let local = match item_shape.as_ref() {
+                    ValueShape::Parameter(parameter) => {
+                        let local = ListLocal::generic(
+                            crate::plan::GenericListLocalId(next_generic_list),
+                            *parameter,
+                        );
+                        next_generic_list += 1;
+                        local
+                    }
                     ValueShape::Int => {
                         let local = ListLocal::int(IntListLocalId(next_int_list));
                         next_int_list += 1;
@@ -217,6 +249,18 @@ fn function_call_param_locals(params: &[ValueShape]) -> Vec<ParamLocal> {
                 ParamLocal::list(local)
             }
             ValueShape::Function(function_shape) => match function_shape.return_shape() {
+                ValueShape::Parameter(parameter) => {
+                    let local =
+                        ParamLocal::generic_function(crate::plan::GenericFunctionLocal::new(
+                            crate::plan::GenericFunctionLocalId(next_generic_function),
+                            crate::plan::GenericFunctionType::new(
+                                function_shape.argument_shapes().to_vec(),
+                                *parameter,
+                            ),
+                        ));
+                    next_generic_function += 1;
+                    local
+                }
                 ValueShape::Int => {
                     let local = ParamLocal::int_function(
                         crate::plan::IntFunctionLocalId(next_int_function),
@@ -369,7 +413,12 @@ fn call_arg_type_mismatch(expected: ValueType, actual: ValueType) -> PlanError {
             },
         }
     } else {
-        super::super::invalid_expression_type_for_value(expected, actual)
+        PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionType {
+                expected: crate::planner::error::InvalidExpressionType::from_value_type(expected),
+                actual: crate::planner::error::InvalidExpressionType::from_value_type(actual),
+            },
+        }
     }
 }
 
@@ -399,26 +448,59 @@ fn plan_argument_value(
 #[cfg(test)]
 #[allow(clippy::arc_with_non_send_sync)]
 mod tests {
-    use super::{function_call_param_locals, plan_function_call_args};
+    use super::{function_call_param_locals, plan_function_call_args, plan_instantiated_call_args};
     use crate::plan::{
         BitArrayListLocalId, BoolListLocalId, CustomConstructorDefinition,
         CustomConstructorRefinement, CustomListLocalId, CustomLocalId, CustomType,
         CustomTypeDefinition, CustomTypeName, CustomTypePublicity, CustomValueShape,
         FloatListLocalId, FunctionListLocalId, FunctionType, IntListLocalId, ListListLocalId,
-        ListLocal, NilListLocalId, ParamLocal, StringListLocalId, TupleListLocalId,
-        UtfCodepointListLocalId, ValueShape, ValueType,
+        ListLocal, NilListLocalId, ParamBinding, ParamLocal, StringListLocalId, StringLocalId,
+        TupleListLocalId, UtfCodepointListLocalId, ValueShape, ValueType,
     };
-    use crate::planner::context::{AnonymousFunctions, PlanContext};
+    use crate::planner::context::{AnonymousFunctions, FunctionParam, PlanContext};
     use crate::planner::plan_module;
     use crate::planner::support::{compile, expect_plan_error};
     use crate::planner::{
-        InvalidCallShapeReason, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+        InvalidCallShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
+        UnsupportedExpressionKind,
     };
     use ecow::EcoString;
     use gleam_core::ast::{CallArg as GleamCallArg, Statement, TypedExpr, TypedModule};
     use gleam_core::type_::Type;
     use std::collections::HashMap;
     use std::sync::Arc;
+
+    #[test]
+    fn instantiated_call_argument_rejects_corrupted_parameter_local_family() {
+        let module = compile("fn identity(value: Int) { value } pub fn main() { identity(1) }");
+        let arguments = main_call_arguments(&module);
+        let module_name = EcoString::from("main");
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
+        let param = FunctionParam::new(
+            ParamLocal::string(StringLocalId(0)),
+            ValueShape::Int,
+            ParamBinding::Named("value".into()),
+            None,
+        );
+
+        assert_eq!(
+            plan_instantiated_call_args(
+                arguments,
+                &[param],
+                &[ValueShape::Int],
+                &mut context,
+                None,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::String,
+                    actual: InvalidExpressionType::Int,
+                },
+            }),
+        );
+    }
 
     #[test]
     fn function_call_param_locals_preserve_family_local_order() {
@@ -632,6 +714,57 @@ pub fn main() {
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
                     kind: crate::planner::InvalidExpressionShapeKind::Invalid,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_instantiated_call_argument_constructor_refinement() {
+        let module = compile(
+            r#"
+pub type Choice {
+  First
+  Second
+}
+
+fn consume(value: Choice) {
+  Nil
+}
+
+pub fn main() {
+  consume(Second)
+}
+"#,
+        );
+        let arguments = main_call_arguments(&module);
+        let module_name = EcoString::from("main");
+        let functions = HashMap::new();
+        let custom_types = vec![choice_definition()];
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new_with_custom_types(
+            &module_name,
+            &functions,
+            &custom_types,
+            &mut anonymous,
+        );
+        let expected = ValueShape::Custom(CustomValueShape::new(
+            choice_type().type_name().clone(),
+            Vec::new(),
+            CustomConstructorRefinement::Exact(0),
+        ));
+        let param = FunctionParam::new(
+            ParamLocal::custom(CustomLocalId(0), choice_type()),
+            expected.clone(),
+            ParamBinding::Named("value".into()),
+            None,
+        );
+
+        assert_eq!(
+            plan_instantiated_call_args(arguments, &[param], &[expected], &mut context, None,),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::FunctionCallArgumentTypeMismatch,
                 },
             }),
         );

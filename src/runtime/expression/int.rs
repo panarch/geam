@@ -154,8 +154,8 @@ fn eval_remainder_int(left: BigInt, right: BigInt) -> BigInt {
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExpr, Expr, FloatExpr, FunctionId, FunctionPlan, IntExpr, IntFunctionId, ModulePlan,
-        PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
+        BoolExpr, Expr, FloatExpr, FunctionTemplate, FunctionTemplateId, IntExpr, IntFunctionId,
+        ModulePlan, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr, ValueType,
     };
     use crate::runtime::{ExecutionError, run_main};
     use num_bigint::BigInt;
@@ -288,8 +288,8 @@ pub fn main() -> Int {{ {expression} }}
     }
 
     fn run_module_int_expression(expression: IntExpr) -> ExecutionError {
-        let main = FunctionPlan::new(
-            FunctionId::new(0),
+        let main = FunctionTemplate::new(
+            FunctionTemplateId::new(0),
             "main".into(),
             Vec::new(),
             Vec::new(),

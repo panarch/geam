@@ -1,12 +1,8 @@
 use super::CaptureSubstitution;
-use crate::plan::{
-    BitArrayExpr, BoolExpr, CallArg, CustomExpr, CustomFunctionExpr, Expr, FloatExpr, FunctionExpr,
-    FunctionFunctionExpr, IntExpr, ListExpr, ListFunctionExpr, NilExpr, RuntimeFunctionId,
-    StringExpr, TupleExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
-    ValueType,
-};
+use crate::plan::{Expr, FunctionShape};
 use crate::planner::context::{FunctionInfo, FunctionParam, PlanContext};
 use crate::planner::error::{InvalidCallShapeReason, InvalidTypedAstReason, PlanError};
+use crate::planner::type_parameter::FunctionInstantiationMismatch;
 use gleam_core::ast::{CallArg as GleamCallArg, TypedExpr};
 use gleam_core::type_::Type;
 use std::sync::Arc;
@@ -25,31 +21,44 @@ pub(super) fn plan_direct_function_call(
             },
         });
     }
-    let function_return_shape = function.return_shape();
-    let function_return_type = function_return_shape.value_type();
-    let function_id = function.runtime_id;
-    let return_type = ValueType::from_gleam(type_.as_ref()).ok_or(PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::CallShape {
-            reason: InvalidCallShapeReason::LocalFunctionCallUnsupportedReturnType,
-        },
-    })?;
-    if return_type != function_return_type {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::CallShape {
-                reason: InvalidCallShapeReason::LocalFunctionCallReturnTypeMismatch,
-            },
-        });
-    }
     validate_argument_labels(&arguments, &function.params)?;
-    let args = super::argument::plan_call_args(arguments, &function.params, context, capture)?;
+    let actual_shape = FunctionShape::new(
+        arguments
+            .iter()
+            .map(|argument| context.value_shape(argument.value.type_().as_ref()))
+            .collect(),
+        context.value_shape(type_.as_ref()),
+    );
+    let instantiation = function
+        .instantiate(&actual_shape)
+        .map_err(function_instantiation_mismatch)?;
+    let args = super::argument::plan_instantiated_call_args(
+        arguments,
+        &function.params,
+        instantiation.shape().argument_shapes(),
+        context,
+        capture,
+    )?;
 
-    call_expr(function_id, args)
-        .with_resolved_shape(function_return_shape)
-        .ok_or(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::CallShape {
-                reason: InvalidCallShapeReason::LocalFunctionCallReturnTypeMismatch,
-            },
-        })
+    Ok(Expr::call(instantiation, args))
+}
+
+fn function_instantiation_mismatch(mismatch: FunctionInstantiationMismatch) -> PlanError {
+    let reason = match mismatch {
+        FunctionInstantiationMismatch::ArgumentCount => {
+            InvalidCallShapeReason::LocalFunctionCallArityMismatch
+        }
+        FunctionInstantiationMismatch::ArgumentShape => {
+            InvalidCallShapeReason::FunctionCallArgumentTypeMismatch
+        }
+        FunctionInstantiationMismatch::ReturnShape
+        | FunctionInstantiationMismatch::UnresolvedParameter => {
+            InvalidCallShapeReason::LocalFunctionCallReturnTypeMismatch
+        }
+    };
+    PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::CallShape { reason },
+    }
 }
 
 fn validate_argument_labels(
@@ -71,87 +80,10 @@ fn validate_argument_labels(
     Ok(())
 }
 
-fn call_expr(function: RuntimeFunctionId, args: Vec<CallArg>) -> Expr {
-    match function {
-        RuntimeFunctionId::Int(function) => Expr::int(IntExpr::call(function, args)),
-        RuntimeFunctionId::String(function) => Expr::string(StringExpr::call(function, args)),
-        RuntimeFunctionId::BitArray(function) => {
-            Expr::bit_array(BitArrayExpr::call(function, args))
-        }
-        RuntimeFunctionId::UtfCodepoint(function) => {
-            Expr::utf_codepoint(UtfCodepointExpr::call(function, args))
-        }
-        RuntimeFunctionId::Custom(function) => Expr::custom(CustomExpr::call(function, args)),
-        RuntimeFunctionId::Float(function) => Expr::float(FloatExpr::call(function, args)),
-        RuntimeFunctionId::Bool(function) => Expr::bool(BoolExpr::call(function, args)),
-        RuntimeFunctionId::Nil(function) => Expr::nil(NilExpr::call(function, args)),
-        RuntimeFunctionId::Tuple { id, return_type } => {
-            Expr::tuple(TupleExpr::call(id, args, return_type))
-        }
-        RuntimeFunctionId::List(id) => Expr::list(ListExpr::call(id, args)),
-        RuntimeFunctionId::Function { id, return_type } => {
-            function_returning_function_call_expr(id, args, return_type)
-        }
-    }
-}
-
-fn function_returning_function_call_expr(
-    function: crate::plan::FunctionFunctionId,
-    args: Vec<CallArg>,
-    return_type: crate::plan::FunctionType,
-) -> Expr {
-    match function {
-        crate::plan::FunctionFunctionId::Int(function) => Expr::function(FunctionExpr::int(
-            crate::plan::IntFunctionExpr::call(function, args, return_type),
-        )),
-        crate::plan::FunctionFunctionId::String(function) => Expr::function(FunctionExpr::string(
-            crate::plan::StringFunctionExpr::call(function, args, return_type),
-        )),
-        crate::plan::FunctionFunctionId::BitArray(function) => {
-            Expr::function(FunctionExpr::bit_array(
-                crate::plan::BitArrayFunctionExpr::call(function, args, return_type),
-            ))
-        }
-        crate::plan::FunctionFunctionId::UtfCodepoint(function) => {
-            Expr::function(FunctionExpr::utf_codepoint(UtfCodepointFunctionExpr::call(
-                function,
-                args,
-                return_type,
-            )))
-        }
-        crate::plan::FunctionFunctionId::Custom(function) => Expr::function(FunctionExpr::custom(
-            CustomFunctionExpr::call(function, args),
-        )),
-        crate::plan::FunctionFunctionId::Float(function) => Expr::function(FunctionExpr::float(
-            crate::plan::FloatFunctionExpr::call(function, args, return_type),
-        )),
-        crate::plan::FunctionFunctionId::Bool(function) => Expr::function(FunctionExpr::bool(
-            crate::plan::BoolFunctionExpr::call(function, args, return_type),
-        )),
-        crate::plan::FunctionFunctionId::Nil(function) => Expr::function(FunctionExpr::nil(
-            crate::plan::NilFunctionExpr::call(function, args, return_type),
-        )),
-        crate::plan::FunctionFunctionId::Tuple(function) => Expr::function(FunctionExpr::tuple(
-            TupleFunctionExpr::call(function, args, return_type),
-        )),
-        crate::plan::FunctionFunctionId::List(function) => {
-            Expr::function(FunctionExpr::list(ListFunctionExpr::call(function, args)))
-        }
-        crate::plan::FunctionFunctionId::Function(function) => Expr::function(
-            FunctionExpr::function(FunctionFunctionExpr::call(function, args)),
-        ),
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::function_returning_function_call_expr;
-    use crate::plan::{
-        BoolFunctionFunctionId, FloatFunctionFunctionId, FunctionFunctionFunctionId,
-        FunctionFunctionId, FunctionType, IntFunctionFunctionId, IntLocalId,
-        ListFunctionFunctionId, LocalId, NilFunctionFunctionId, StringFunctionFunctionId,
-        TupleFunctionFunctionId, ValueType,
-    };
+    use super::function_instantiation_mismatch;
+    use crate::plan::{FunctionType, IntLocalId, LocalId, ValueType};
     use crate::planner::dsl::{
         call_float, call_int_function, call_list, float, float_arg, function, int, int_arg,
         int_function_arg, int_function_call_arg, int_function_ref, int_return_tail_call,
@@ -162,10 +94,38 @@ mod tests {
     use crate::planner::expression::{typed_int_expr, typed_string_expr};
     use crate::planner::plan_module;
     use crate::planner::support::compile;
-    use crate::planner::{
-        InvalidCallShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-    };
+    use crate::planner::type_parameter::FunctionInstantiationMismatch;
+    use crate::planner::{InvalidCallShapeReason, InvalidTypedAstReason, PlanError};
     use gleam_core::type_;
+
+    #[test]
+    fn function_instantiation_mismatch_preserves_each_call_boundary() {
+        for (mismatch, reason) in [
+            (
+                FunctionInstantiationMismatch::ArgumentCount,
+                InvalidCallShapeReason::LocalFunctionCallArityMismatch,
+            ),
+            (
+                FunctionInstantiationMismatch::ArgumentShape,
+                InvalidCallShapeReason::FunctionCallArgumentTypeMismatch,
+            ),
+            (
+                FunctionInstantiationMismatch::ReturnShape,
+                InvalidCallShapeReason::LocalFunctionCallReturnTypeMismatch,
+            ),
+            (
+                FunctionInstantiationMismatch::UnresolvedParameter,
+                InvalidCallShapeReason::LocalFunctionCallReturnTypeMismatch,
+            ),
+        ] {
+            assert_eq!(
+                function_instantiation_mismatch(mismatch),
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::CallShape { reason },
+                },
+            );
+        }
+    }
 
     #[test]
     fn plan_function_value_argument_direct_call() {
@@ -329,12 +289,12 @@ pub fn main() {
             .step(let_float_step(
                 0,
                 "half_value",
-                call_float(0, [float_arg(0, float(3.0))]),
+                call_float(1, [float_arg(0, float(3.0))]),
             ))
             .step(let_list_step(
                 0,
                 "values",
-                call_list(1, [int_arg(0, int(1))], ValueType::Int),
+                call_list(2, [int_arg(0, int(1))], ValueType::Int),
             )),
             [
                 function("half", local_float(0, "value").div_float(float(2.0)))
@@ -410,7 +370,7 @@ pub fn main() { identity(1) }
             plan_module(unsupported_return_type_call),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::LocalFunctionCallUnsupportedReturnType,
+                    reason: InvalidCallShapeReason::LocalFunctionCallReturnTypeMismatch,
                 },
             }),
         );
@@ -448,10 +408,8 @@ fn identity(value: Int) {
 pub fn main() {
   identity(1)
 }
-"#,
+            "#,
             typed_string_expr("wrong"),
-            InvalidExpressionType::Int,
-            InvalidExpressionType::String,
         );
 
         assert_call_argument_type_mismatch(
@@ -463,10 +421,8 @@ fn identity(value: String) {
 pub fn main() {
   identity("ok")
 }
-"#,
+            "#,
             typed_int_expr(1),
-            InvalidExpressionType::String,
-            InvalidExpressionType::Int,
         );
 
         assert_call_argument_type_mismatch(
@@ -478,10 +434,8 @@ fn identity(value: Bool) {
 pub fn main() {
   identity(True)
 }
-"#,
+            "#,
             typed_int_expr(1),
-            InvalidExpressionType::Bool,
-            InvalidExpressionType::Int,
         );
 
         assert_call_argument_type_mismatch(
@@ -493,10 +447,8 @@ fn identity(value: Nil) {
 pub fn main() {
   identity(Nil)
 }
-"#,
+            "#,
             typed_int_expr(1),
-            InvalidExpressionType::Nil,
-            InvalidExpressionType::Int,
         );
 
         let mut wrong_label_call = compile(
@@ -588,20 +540,14 @@ pub fn main() {
         assert_eq!(
             plan_module(non_function_call),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Function,
-                    actual: InvalidExpressionType::Int,
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::FunctionCallArgumentTypeMismatch,
                 },
             }),
         );
     }
 
-    fn assert_call_argument_type_mismatch(
-        src: &str,
-        value: gleam_core::ast::TypedExpr,
-        expected: InvalidExpressionType,
-        actual: InvalidExpressionType,
-    ) {
+    fn assert_call_argument_type_mismatch(src: &str, value: gleam_core::ast::TypedExpr) {
         let mut module = compile(src);
         let (_, _, arguments) =
             expect_call_statement_mut(&mut module.definitions.functions[1].body[0]);
@@ -610,7 +556,9 @@ pub fn main() {
         assert_eq!(
             plan_module(module),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType { expected, actual },
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::FunctionCallArgumentTypeMismatch,
+                },
             }),
         );
     }
@@ -618,71 +566,39 @@ pub fn main() {
     #[test]
     fn function_returning_function_call_expr_preserves_return_family() {
         let cases = [
-            (
-                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                FunctionType::new(vec![ValueType::Int], ValueType::Int),
+            FunctionType::new(vec![ValueType::Int], ValueType::Int),
+            FunctionType::new(vec![ValueType::String], ValueType::String),
+            FunctionType::new(vec![ValueType::Float], ValueType::Float),
+            FunctionType::new(vec![ValueType::Bool], ValueType::Bool),
+            FunctionType::new(vec![ValueType::Nil], ValueType::Nil),
+            FunctionType::new(
+                vec![ValueType::Tuple(vec![ValueType::Int])],
+                ValueType::Tuple(vec![ValueType::Int]),
             ),
-            (
-                FunctionFunctionId::String(StringFunctionFunctionId(0)),
-                FunctionType::new(vec![ValueType::String], ValueType::String),
+            FunctionType::new(
+                vec![ValueType::List(Box::new(ValueType::Int))],
+                ValueType::List(Box::new(ValueType::Int)),
             ),
-            (
-                FunctionFunctionId::Float(FloatFunctionFunctionId(0)),
-                FunctionType::new(vec![ValueType::Float], ValueType::Float),
-            ),
-            (
-                FunctionFunctionId::Bool(BoolFunctionFunctionId(0)),
-                FunctionType::new(vec![ValueType::Bool], ValueType::Bool),
-            ),
-            (
-                FunctionFunctionId::Nil(NilFunctionFunctionId(0)),
-                FunctionType::new(vec![ValueType::Nil], ValueType::Nil),
-            ),
-            (
-                FunctionFunctionId::Tuple(TupleFunctionFunctionId(0)),
-                FunctionType::new(
-                    vec![ValueType::Tuple(vec![ValueType::Int])],
-                    ValueType::Tuple(vec![ValueType::Int]),
-                ),
-            ),
-            (
-                FunctionFunctionId::List(ListFunctionFunctionId::from_item_type(
-                    0,
-                    FunctionType::new(
-                        vec![ValueType::List(Box::new(ValueType::Int))],
-                        ValueType::List(Box::new(ValueType::Int)),
-                    ),
+            FunctionType::new(
+                Vec::new(),
+                ValueType::Function(Box::new(FunctionType::new(
+                    vec![ValueType::Int],
                     ValueType::Int,
-                )),
-                FunctionType::new(
-                    vec![ValueType::List(Box::new(ValueType::Int))],
-                    ValueType::List(Box::new(ValueType::Int)),
-                ),
-            ),
-            (
-                FunctionFunctionId::Function(FunctionFunctionFunctionId::new(
-                    0,
-                    crate::plan::FunctionFunctionType::new(
-                        Vec::new(),
-                        FunctionType::new(vec![ValueType::Int], ValueType::Int),
-                    ),
-                )),
-                FunctionType::new(
-                    Vec::new(),
-                    ValueType::Function(Box::new(FunctionType::new(
-                        vec![ValueType::Int],
-                        ValueType::Int,
-                    ))),
-                ),
+                ))),
             ),
         ];
 
-        for (function, returned_function_type) in cases {
+        for (template, returned_function_type) in cases.into_iter().enumerate() {
+            let shape = crate::plan::FunctionShape::new(
+                Vec::new(),
+                crate::plan::ValueShape::Function(Box::new(
+                    crate::plan::FunctionShape::from_function_type(returned_function_type.clone()),
+                )),
+            );
             assert_eq!(
-                function_returning_function_call_expr(
-                    function,
+                crate::plan::Expr::call(
+                    crate::plan::monomorphic_function_instantiation(template, shape.clone()),
                     Vec::new(),
-                    returned_function_type.clone(),
                 )
                 .value_type(),
                 ValueType::Function(Box::new(returned_function_type)),

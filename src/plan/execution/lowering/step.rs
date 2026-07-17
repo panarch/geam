@@ -10,26 +10,30 @@ use super::id::{
 use crate::plan::{execution, module};
 
 pub(super) fn steps(
-    steps: Vec<module::Step>,
+    steps: &[module::Step],
     context: &mut super::LoweringContext,
 ) -> Vec<execution::Step> {
-    steps
-        .into_iter()
-        .map(|step| lower_step(step, context))
-        .collect()
+    steps.iter().map(|step| lower_step(step, context)).collect()
 }
 
-fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execution::Step {
+fn lower_step(step: &module::Step, context: &mut super::LoweringContext) -> execution::Step {
     use execution::StepKind as E;
     use module::StepKind as M;
 
-    execution::Step::from_kind(match step.into_kind() {
+    execution::Step::from_kind(match step.kind() {
+        M::LetGeneric { local, value, .. } => {
+            return execution::Step::from_kind(super::expression::generic_step(
+                *local, value, context,
+            ));
+        }
         M::LetInt {
             local,
             name: _,
             value,
         } => E::LetInt {
-            local: execution::IntLocalId(local.0),
+            local: execution::IntLocalId(
+                context.mapped_local(super::frame::LocalKind::Int, local.0),
+            ),
             value: int_expr(value, context),
         },
         M::LetFloat {
@@ -37,7 +41,9 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             name: _,
             value,
         } => E::LetFloat {
-            local: execution::FloatLocalId(local.0),
+            local: execution::FloatLocalId(
+                context.mapped_local(super::frame::LocalKind::Float, local.0),
+            ),
             value: float_expr(value, context),
         },
         M::LetString {
@@ -45,7 +51,9 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             name: _,
             value,
         } => E::LetString {
-            local: execution::StringLocalId(local.0),
+            local: execution::StringLocalId(
+                context.mapped_local(super::frame::LocalKind::String, local.0),
+            ),
             value: string_expr(value, context),
         },
         M::LetBitArray {
@@ -53,7 +61,9 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             name: _,
             value,
         } => E::LetBitArray {
-            local: execution::BitArrayLocalId(local.0),
+            local: execution::BitArrayLocalId(
+                context.mapped_local(super::frame::LocalKind::BitArray, local.0),
+            ),
             value: bit_array_expr(value, context),
         },
         M::LetUtfCodepoint {
@@ -61,22 +71,23 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             name: _,
             value,
         } => E::LetUtfCodepoint {
-            local: execution::UtfCodepointLocalId(local.0),
+            local: execution::UtfCodepointLocalId(
+                context.mapped_local(super::frame::LocalKind::UtfCodepoint, local.0),
+            ),
             value: utf_codepoint_expr(value, context),
         },
-        M::LetCustom { binding, name: _ } => {
-            let (local, value) = binding.into_parts();
-            E::LetCustom(execution::CustomLocalExpr::new(
-                custom_local(local, context),
-                custom_expr(value, context),
-            ))
-        }
+        M::LetCustom { binding, name: _ } => E::LetCustom(execution::CustomLocalExpr::new(
+            custom_local(binding.local(), context),
+            custom_expr(binding.value(), context),
+        )),
         M::LetBool {
             local,
             name: _,
             value,
         } => E::LetBool {
-            local: execution::BoolLocalId(local.0),
+            local: execution::BoolLocalId(
+                context.mapped_local(super::frame::LocalKind::Bool, local.0),
+            ),
             value: bool_expr(value, context),
         },
         M::LetNil {
@@ -84,7 +95,9 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             name: _,
             value,
         } => E::LetNil {
-            local: execution::NilLocalId(local.0),
+            local: execution::NilLocalId(
+                context.mapped_local(super::frame::LocalKind::Nil, local.0),
+            ),
             value: nil_expr(value, context),
         },
         M::LetTuple {
@@ -92,7 +105,9 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             name: _,
             value,
         } => E::LetTuple {
-            local: execution::TupleLocalId(local.0),
+            local: execution::TupleLocalId(
+                context.mapped_local(super::frame::LocalKind::Tuple, local.0),
+            ),
             value: tuple_expr(value, context),
         },
         M::LetList { name: _, value } => E::LetList {
@@ -103,7 +118,9 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             name: _,
             value,
         } => E::LetIntFunction {
-            local: execution::IntFunctionLocalId(local.0),
+            local: execution::IntFunctionLocalId(
+                context.mapped_local(super::frame::LocalKind::IntFunction, local.0),
+            ),
             value: typed_function_expr(value, context, int_function_expr),
         },
         M::LetFloatFunction {
@@ -111,7 +128,9 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             name: _,
             value,
         } => E::LetFloatFunction {
-            local: execution::FloatFunctionLocalId(local.0),
+            local: execution::FloatFunctionLocalId(
+                context.mapped_local(super::frame::LocalKind::FloatFunction, local.0),
+            ),
             value: typed_function_expr(value, context, super::expression::float_function_expr),
         },
         M::LetStringFunction {
@@ -119,7 +138,9 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             name: _,
             value,
         } => E::LetStringFunction {
-            local: execution::StringFunctionLocalId(local.0),
+            local: execution::StringFunctionLocalId(
+                context.mapped_local(super::frame::LocalKind::StringFunction, local.0),
+            ),
             value: typed_function_expr(value, context, string_function_expr),
         },
         M::LetBitArrayFunction {
@@ -127,7 +148,9 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             name: _,
             value,
         } => E::LetBitArrayFunction {
-            local: execution::BitArrayFunctionLocalId(local.0),
+            local: execution::BitArrayFunctionLocalId(
+                context.mapped_local(super::frame::LocalKind::BitArrayFunction, local.0),
+            ),
             value: typed_function_expr(value, context, bit_array_function_expr),
         },
         M::LetUtfCodepointFunction {
@@ -135,7 +158,9 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             name: _,
             value,
         } => E::LetUtfCodepointFunction {
-            local: execution::UtfCodepointFunctionLocalId(local.0),
+            local: execution::UtfCodepointFunctionLocalId(
+                context.mapped_local(super::frame::LocalKind::UtfCodepointFunction, local.0),
+            ),
             value: typed_function_expr(value, context, utf_codepoint_function_expr),
         },
         M::LetCustomFunction {
@@ -151,7 +176,9 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             name: _,
             value,
         } => E::LetBoolFunction {
-            local: execution::BoolFunctionLocalId(local.0),
+            local: execution::BoolFunctionLocalId(
+                context.mapped_local(super::frame::LocalKind::BoolFunction, local.0),
+            ),
             value: typed_function_expr(value, context, super::expression::bool_function_expr),
         },
         M::LetNilFunction {
@@ -159,7 +186,9 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             name: _,
             value,
         } => E::LetNilFunction {
-            local: execution::NilFunctionLocalId(local.0),
+            local: execution::NilFunctionLocalId(
+                context.mapped_local(super::frame::LocalKind::NilFunction, local.0),
+            ),
             value: typed_function_expr(value, context, nil_function_expr),
         },
         M::LetTupleFunction {
@@ -167,7 +196,9 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             name: _,
             value,
         } => E::LetTupleFunction {
-            local: execution::TupleFunctionLocalId(local.0),
+            local: execution::TupleFunctionLocalId(
+                context.mapped_local(super::frame::LocalKind::TupleFunction, local.0),
+            ),
             value: typed_function_expr(value, context, tuple_function_expr),
         },
         M::LetListFunction {
@@ -186,6 +217,11 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             local: function_function_local(local, context),
             value: typed_function_expr(value, context, function_function_expr),
         },
+        M::LetGenericFunction { local, value, .. } => {
+            return execution::Step::from_kind(super::expression::generic_function_step(
+                local, value, context,
+            ));
+        }
         M::AssertPattern {
             subject,
             pattern,
@@ -195,9 +231,11 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
         } => E::AssertPattern {
             subject: assert_subject(subject, context),
             pattern: assert_pattern(pattern, context),
-            message: message.map(|message| string_expr(message, context)),
-            site,
-            pattern_span,
+            message: message
+                .as_ref()
+                .map(|message| string_expr(message, context)),
+            site: site.clone(),
+            pattern_span: *pattern_span,
         },
         M::BindCustomFields { local, pattern } => E::BindCustomFields {
             local: custom_local(local, context),
@@ -209,42 +247,48 @@ fn lower_step(step: module::Step, context: &mut super::LoweringContext) -> execu
             site,
         } => E::AssertBool {
             condition: bool_expr(condition, context),
-            message: message.map(|message| string_expr(message, context)),
-            site,
+            message: message
+                .as_ref()
+                .map(|message| string_expr(message, context)),
+            site: site.clone(),
         },
         M::Evaluate(value) => E::Evaluate(expr(value, context)),
     })
 }
 
 fn assert_subject(
-    subject: module::AssertSubject,
+    subject: &module::AssertSubject,
     context: &mut super::LoweringContext,
 ) -> execution::AssertSubject {
     match subject {
-        module::AssertSubject::Int(local) => {
-            execution::AssertSubject::Int(execution::IntLocalId(local.0))
-        }
-        module::AssertSubject::Float(local) => {
-            execution::AssertSubject::Float(execution::FloatLocalId(local.0))
-        }
+        module::AssertSubject::Int(local) => execution::AssertSubject::Int(execution::IntLocalId(
+            context.mapped_local(super::frame::LocalKind::Int, local.0),
+        )),
+        module::AssertSubject::Float(local) => execution::AssertSubject::Float(
+            execution::FloatLocalId(context.mapped_local(super::frame::LocalKind::Float, local.0)),
+        ),
         module::AssertSubject::String(local) => {
-            execution::AssertSubject::String(execution::StringLocalId(local.0))
+            execution::AssertSubject::String(execution::StringLocalId(
+                context.mapped_local(super::frame::LocalKind::String, local.0),
+            ))
         }
         module::AssertSubject::BitArray(local) => {
-            execution::AssertSubject::BitArray(execution::BitArrayLocalId(local.0))
+            execution::AssertSubject::BitArray(execution::BitArrayLocalId(
+                context.mapped_local(super::frame::LocalKind::BitArray, local.0),
+            ))
         }
         module::AssertSubject::Custom(local) => {
             execution::AssertSubject::Custom(custom_local(local, context))
         }
-        module::AssertSubject::Bool(local) => {
-            execution::AssertSubject::Bool(execution::BoolLocalId(local.0))
-        }
-        module::AssertSubject::Nil(local) => {
-            execution::AssertSubject::Nil(execution::NilLocalId(local.0))
-        }
-        module::AssertSubject::Tuple(local) => {
-            execution::AssertSubject::Tuple(execution::TupleLocalId(local.0))
-        }
+        module::AssertSubject::Bool(local) => execution::AssertSubject::Bool(
+            execution::BoolLocalId(context.mapped_local(super::frame::LocalKind::Bool, local.0)),
+        ),
+        module::AssertSubject::Nil(local) => execution::AssertSubject::Nil(execution::NilLocalId(
+            context.mapped_local(super::frame::LocalKind::Nil, local.0),
+        )),
+        module::AssertSubject::Tuple(local) => execution::AssertSubject::Tuple(
+            execution::TupleLocalId(context.mapped_local(super::frame::LocalKind::Tuple, local.0)),
+        ),
         module::AssertSubject::List(local) => {
             execution::AssertSubject::List(list_local(local, context))
         }
@@ -252,25 +296,24 @@ fn assert_subject(
 }
 
 fn custom_binding_pattern(
-    pattern: module::CustomBindingPattern,
+    pattern: &module::CustomBindingPattern,
     context: &mut super::LoweringContext,
 ) -> execution::CustomBindingPattern {
-    let (_source_shape, constructor, fields) = pattern.into_parts();
     execution::CustomBindingPattern::new(
-        context.custom_constructor(constructor),
-        fields
-            .into_iter()
+        context.custom_constructor(pattern.constructor().clone()),
+        pattern
+            .fields()
+            .iter()
             .map(|field| total_binding_pattern(field, context))
             .collect(),
     )
 }
 
 fn total_binding_pattern(
-    pattern: module::TotalBindingPattern,
+    pattern: &module::TotalBindingPattern,
     context: &mut super::LoweringContext,
 ) -> execution::TotalBindingPattern {
-    let (type_, kind) = pattern.into_parts();
-    let kind = match kind {
+    let kind = match pattern.kind() {
         module::TotalBindingPatternKind::Bind(binding) => {
             execution::TotalBindingPatternKind::Bind(assert_binding(binding, context))
         }
@@ -278,7 +321,7 @@ fn total_binding_pattern(
         module::TotalBindingPatternKind::Tuple(elements) => {
             execution::TotalBindingPatternKind::Tuple(
                 elements
-                    .into_iter()
+                    .iter()
                     .map(|element| total_binding_pattern(element, context))
                     .collect(),
             )
@@ -291,16 +334,16 @@ fn total_binding_pattern(
         }
         module::TotalBindingPatternKind::Alias { pattern, binding } => {
             execution::TotalBindingPatternKind::Alias {
-                pattern: Box::new(total_binding_pattern(*pattern, context)),
+                pattern: Box::new(total_binding_pattern(pattern, context)),
                 binding: assert_binding(binding, context),
             }
         }
     };
-    execution::TotalBindingPattern::new(context.value_type(type_), kind)
+    execution::TotalBindingPattern::new(context.value_type(pattern.type_().clone()), kind)
 }
 
 pub(super) fn assert_pattern(
-    pattern: module::AssertPattern,
+    pattern: &module::AssertPattern,
     context: &mut super::LoweringContext,
 ) -> execution::AssertPattern {
     match pattern {
@@ -308,36 +351,36 @@ pub(super) fn assert_pattern(
             execution::AssertPattern::Bind(assert_binding(binding, context))
         }
         module::AssertPattern::Discard => execution::AssertPattern::Discard,
-        module::AssertPattern::Int(value) => execution::AssertPattern::Int(value),
-        module::AssertPattern::Float(value) => execution::AssertPattern::Float(value),
-        module::AssertPattern::String(value) => execution::AssertPattern::String(value),
-        module::AssertPattern::Bool(value) => execution::AssertPattern::Bool(value),
+        module::AssertPattern::Int(value) => execution::AssertPattern::Int(value.clone()),
+        module::AssertPattern::Float(value) => execution::AssertPattern::Float(*value),
+        module::AssertPattern::String(value) => execution::AssertPattern::String(value.clone()),
+        module::AssertPattern::Bool(value) => execution::AssertPattern::Bool(*value),
         module::AssertPattern::Nil => execution::AssertPattern::Nil,
         module::AssertPattern::Tuple(elements) => execution::AssertPattern::Tuple(
             elements
-                .into_iter()
+                .iter()
                 .map(|element| assert_pattern(element, context))
                 .collect(),
         ),
         module::AssertPattern::List(pattern) => {
-            let (_element_type, elements, tail) = pattern.into_parts();
             execution::AssertPattern::List(execution::ListAssertPattern::new(
-                elements
-                    .into_iter()
+                pattern
+                    .elements()
+                    .iter()
                     .map(|element| assert_pattern(element, context))
                     .collect(),
-                tail.map(|tail| assert_tail(tail, context)),
+                pattern.tail().map(|tail| assert_tail(tail, context)),
             ))
         }
         module::AssertPattern::BitArray(pattern) => {
-            execution::AssertPattern::BitArray(super::pattern::bit_array_pattern(pattern))
+            execution::AssertPattern::BitArray(super::pattern::bit_array_pattern(pattern, context))
         }
         module::AssertPattern::Custom(pattern) => {
-            let (constructor, fields) = pattern.into_parts();
             execution::AssertPattern::Custom(execution::CustomPattern::new(
-                context.custom_constructor(constructor),
-                fields
-                    .into_iter()
+                context.custom_constructor(pattern.constructor().clone()),
+                pattern
+                    .fields()
+                    .iter()
                     .map(|field| assert_pattern(field, context))
                     .collect(),
             ))
@@ -347,39 +390,45 @@ pub(super) fn assert_pattern(
             left,
             right,
         } => execution::AssertPattern::StringPrefix {
-            prefix,
-            left: left.map(string_assert_binding),
-            right: right.map(string_assert_binding),
+            prefix: prefix.clone(),
+            left: left
+                .as_ref()
+                .map(|binding| string_assert_binding(binding, context)),
+            right: right
+                .as_ref()
+                .map(|binding| string_assert_binding(binding, context)),
         },
         module::AssertPattern::Alias { pattern, binding } => execution::AssertPattern::Alias {
-            pattern: Box::new(assert_pattern(*pattern, context)),
+            pattern: Box::new(assert_pattern(pattern, context)),
             binding: assert_binding(binding, context),
         },
     }
 }
 
-fn string_assert_binding(binding: module::StringAssertBinding) -> execution::StringAssertBinding {
-    let (local, _) = binding.into_parts();
-    execution::StringAssertBinding::new(execution::StringLocalId(local.0))
+fn string_assert_binding(
+    binding: &module::StringAssertBinding,
+    context: &super::LoweringContext,
+) -> execution::StringAssertBinding {
+    execution::StringAssertBinding::new(execution::StringLocalId(
+        context.mapped_local(super::frame::LocalKind::String, binding.local().0),
+    ))
 }
 
 fn assert_binding(
-    binding: module::AssertBinding,
+    binding: &module::AssertBinding,
     context: &mut super::LoweringContext,
 ) -> execution::AssertBinding {
-    let (slot, _) = binding.into_parts();
-    execution::AssertBinding::new(super::param::param_slot(slot, context))
+    execution::AssertBinding::new(super::param::param_slot(binding.slot(), context))
 }
 
 fn assert_tail(
-    tail: module::ListAssertTail,
+    tail: &module::ListAssertTail,
     context: &mut super::LoweringContext,
 ) -> execution::ListAssertTail {
     match tail {
         module::ListAssertTail::Ignore => execution::ListAssertTail::Ignore,
         module::ListAssertTail::Bind(binding) => {
-            let (local, _) = binding.into_parts();
-            execution::ListAssertTail::bind(list_local(local, context))
+            execution::ListAssertTail::bind(list_local(binding.local(), context))
         }
     }
 }

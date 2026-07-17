@@ -160,7 +160,8 @@ fn plan_segment(
         None => match value_type {
             ValueType::Int => SegmentKind::Int,
             ValueType::Float => SegmentKind::Float,
-            ValueType::String
+            ValueType::Parameter(_)
+            | ValueType::String
             | ValueType::BitArray
             | ValueType::UtfCodepoint
             | ValueType::Custom(_)
@@ -359,9 +360,8 @@ mod tests {
     };
     use crate::plan::{
         BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayExpr, BitArraySegment, Endianness, Expr,
-        FloatBitSize, FloatExpr, FunctionExpr, FunctionReference, IntExpr, IntFunctionId,
-        IntLocalId, PanicSite, ParamLocal, RuntimeFunctionId, StringEncoding, StringExpr,
-        UtfCodepointExpr, UtfCodepointLocalId,
+        FloatBitSize, FloatExpr, FunctionExpr, FunctionReference, IntExpr, IntLocalId, PanicSite,
+        ParamLocal, StringEncoding, StringExpr, UtfCodepointExpr, UtfCodepointLocalId,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::error::{
@@ -1064,7 +1064,10 @@ pub fn main() { 0 }
         assert_eq!(
             plan_fixed_segment_fixture(
                 Expr::function(FunctionExpr::reference(FunctionReference::new(
-                    RuntimeFunctionId::Int(IntFunctionId(0)),
+                    crate::plan::monomorphic_function_instantiation(
+                        0,
+                        crate::plan::FunctionShape::new(Vec::new(), crate::plan::ValueShape::Int,),
+                    ),
                     Vec::<ParamLocal>::new(),
                 ))),
                 Vec::new(),

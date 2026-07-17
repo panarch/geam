@@ -18,8 +18,4 @@ impl<Expression> TypedFunctionExpr<Expression> {
     pub(crate) fn expression(&self) -> &Expression {
         &self.expression
     }
-
-    pub(crate) fn into_parts(self) -> (FunctionShape, Expression) {
-        (self.shape, self.expression)
-    }
 }

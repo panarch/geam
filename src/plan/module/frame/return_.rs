@@ -7,6 +7,7 @@ use crate::plan::{ReturnExpr, ReturnExprKind};
 impl FrameLayout {
     pub(in crate::plan::module::frame) fn include_return_expr(&mut self, expression: &ReturnExpr) {
         match expression.kind() {
+            ReturnExprKind::Generic { body, .. } => self.include_generic_return(body),
             ReturnExprKind::Int { body, .. } => self.include_int_return(body),
             ReturnExprKind::Float { body, .. } => self.include_float_return(body),
             ReturnExprKind::String { body, .. } => self.include_string_return(body),
@@ -27,6 +28,7 @@ impl FrameLayout {
             ReturnExprKind::TupleList { body, .. } => self.include_typed_list_return(body),
             ReturnExprKind::ListList { body, .. } => self.include_typed_list_return(body),
             ReturnExprKind::FunctionList { body, .. } => self.include_typed_list_return(body),
+            ReturnExprKind::GenericList { body, .. } => self.include_typed_list_return(body),
             ReturnExprKind::IntFunction { body, .. } => {
                 self.include_int_function_return(body);
             }
@@ -59,6 +61,9 @@ impl FrameLayout {
             }
             ReturnExprKind::FunctionFunction { body, .. } => {
                 self.include_function_function_return(body);
+            }
+            ReturnExprKind::GenericFunction { body, .. } => {
+                self.include_generic_function_return(body);
             }
         }
     }

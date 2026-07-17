@@ -1,0 +1,3549 @@
+mod list;
+
+use super::{
+    BitArrayBitsSize, BitArrayExpr, BitArrayListExpr, BitArrayListItem, BitArraySegment, BoolExpr,
+    BoolListExpr, BoolListItem, CustomConstruction, CustomConstructor, CustomExpr,
+    CustomFunctionExpr, CustomListExpr, CustomListItem, Expr, FloatExpr, FloatListExpr,
+    FloatListItem, FunctionExpr, FunctionListExpr, FunctionListItem, FunctionReference,
+    GenericListExpr, GenericListItem, IntExpr, IntListExpr, IntListItem, ListExpr, ListListExpr,
+    ListListItem, NilExpr, NilListExpr, NilListItem, StringExpr, StringListExpr, StringListItem,
+    TupleExpr, TupleListExpr, TupleListItem, TypeScheme, TypeSubstitution, UtfCodepointListExpr,
+    UtfCodepointListItem,
+};
+use crate::plan::{
+    CustomValueShape, Endianness, FloatBitSize, FunctionShape, PanicSite, StringEncoding,
+    ValueShape, ValueType,
+};
+use ecow::EcoString;
+use num_bigint::BigInt;
+
+use list::{
+    ConstantBitArrayListInstantiation, ConstantBitArrayListTemplateId, ConstantBitArrayListValue,
+    ConstantBoolListInstantiation, ConstantBoolListTemplateId, ConstantBoolListValue,
+    ConstantCustomListInstantiation, ConstantCustomListTemplateId, ConstantCustomListValue,
+    ConstantFloatListInstantiation, ConstantFloatListTemplateId, ConstantFloatListValue,
+    ConstantFunctionListInstantiation, ConstantFunctionListTemplateId, ConstantFunctionListValue,
+    ConstantGenericListTemplateId, ConstantGenericListValue, ConstantGenericListValueKind,
+    ConstantIntListInstantiation, ConstantIntListTemplateId, ConstantIntListValue,
+    ConstantListInstantiation, ConstantListListInstantiation, ConstantListListTemplateId,
+    ConstantListListValue, ConstantListTemplate, ConstantListTemplateSource, ConstantListValue,
+    ConstantNilListInstantiation, ConstantNilListTemplateId, ConstantNilListValue,
+    ConstantStringListInstantiation, ConstantStringListTemplateId, ConstantStringListValue,
+    ConstantTupleListInstantiation, ConstantTupleListTemplateId, ConstantTupleListValue,
+    ConstantUtfCodepointListInstantiation, ConstantUtfCodepointListTemplateId,
+    ConstantUtfCodepointListValue, ConstantUtfCodepointListValueKind, TypedConstantListValueKind,
+};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ConstantTemplateId(pub(crate) usize);
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConstantTemplate {
+    signature: ConstantTemplateSignature,
+    name: EcoString,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ConstantTemplates {
+    headers: Vec<ConstantTemplate>,
+    generic_lists: Vec<ConstantGenericListValue>,
+    ints: Vec<ConstantIntValue>,
+    strings: Vec<ConstantStringValue>,
+    bit_arrays: Vec<ConstantBitArrayValue>,
+    custom_values: Vec<ConstantCustomValue>,
+    floats: Vec<ConstantFloatValue>,
+    bools: Vec<ConstantBoolValue>,
+    nils: Vec<ConstantNilValue>,
+    tuples: Vec<ConstantTupleValue>,
+    int_lists: Vec<ConstantIntListValue>,
+    string_lists: Vec<ConstantStringListValue>,
+    bit_array_lists: Vec<ConstantBitArrayListValue>,
+    utf_codepoint_lists: Vec<ConstantUtfCodepointListValue>,
+    custom_lists: Vec<ConstantCustomListValue>,
+    float_lists: Vec<ConstantFloatListValue>,
+    bool_lists: Vec<ConstantBoolListValue>,
+    nil_lists: Vec<ConstantNilListValue>,
+    tuple_lists: Vec<ConstantTupleListValue>,
+    list_lists: Vec<ConstantListListValue>,
+    function_lists: Vec<ConstantFunctionListValue>,
+    functions: Vec<ConstantFunctionValue>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ConstantTemplateSignature {
+    id: ConstantTemplateId,
+    scheme: TypeScheme,
+    shape: ValueShape,
+    kind: ConstantTemplateSignatureKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ConstantTemplateSignatureKind {
+    Int(ConstantIntTemplateId),
+    String(ConstantStringTemplateId),
+    BitArray(ConstantBitArrayTemplateId),
+    Custom {
+        template: ConstantCustomTemplateId,
+        shape: CustomValueShape,
+    },
+    Float(ConstantFloatTemplateId),
+    Bool(ConstantBoolTemplateId),
+    Nil(ConstantNilTemplateId),
+    Tuple {
+        template: ConstantTupleTemplateId,
+        shape: Box<[ValueShape]>,
+    },
+    List(ConstantListTemplate),
+    Function {
+        template: ConstantFunctionTemplateId,
+        shape: FunctionShape,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct ConstantIntTemplateId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct ConstantStringTemplateId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct ConstantBitArrayTemplateId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct ConstantCustomTemplateId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct ConstantFloatTemplateId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct ConstantBoolTemplateId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct ConstantNilTemplateId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct ConstantTupleTemplateId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct ConstantFunctionTemplateId(pub(crate) usize);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct TypedConstantInstantiation<Id, Shape> {
+    template: Id,
+    substitution: TypeSubstitution,
+    shape: Shape,
+}
+
+pub(crate) type ConstantIntInstantiation = TypedConstantInstantiation<ConstantIntTemplateId, ()>;
+pub(crate) type ConstantStringInstantiation =
+    TypedConstantInstantiation<ConstantStringTemplateId, ()>;
+pub(crate) type ConstantBitArrayInstantiation =
+    TypedConstantInstantiation<ConstantBitArrayTemplateId, ()>;
+pub(crate) type ConstantCustomInstantiation =
+    TypedConstantInstantiation<ConstantCustomTemplateId, CustomValueShape>;
+pub(crate) type ConstantFloatInstantiation =
+    TypedConstantInstantiation<ConstantFloatTemplateId, ()>;
+pub(crate) type ConstantBoolInstantiation = TypedConstantInstantiation<ConstantBoolTemplateId, ()>;
+pub(crate) type ConstantNilInstantiation = TypedConstantInstantiation<ConstantNilTemplateId, ()>;
+pub(crate) type ConstantTupleInstantiation =
+    TypedConstantInstantiation<ConstantTupleTemplateId, Box<[ValueShape]>>;
+pub(crate) type ConstantFunctionInstantiation =
+    TypedConstantInstantiation<ConstantFunctionTemplateId, FunctionShape>;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct ConstantInstantiation {
+    kind: ConstantInstantiationKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum ConstantInstantiationKind {
+    Int(ConstantIntInstantiation),
+    String(ConstantStringInstantiation),
+    BitArray(ConstantBitArrayInstantiation),
+    Custom(ConstantCustomInstantiation),
+    Float(ConstantFloatInstantiation),
+    Bool(ConstantBoolInstantiation),
+    Nil(ConstantNilInstantiation),
+    Tuple(ConstantTupleInstantiation),
+    List(ConstantListInstantiation),
+    Function(ConstantFunctionInstantiation),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ConstantIntValue {
+    Value(BigInt),
+    Reference(ConstantIntInstantiation),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ConstantFloatValue {
+    Value(f64),
+    Reference(ConstantFloatInstantiation),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ConstantStringValue {
+    Value(EcoString),
+    Concatenation {
+        left: Box<ConstantStringValue>,
+        right: Box<ConstantStringValue>,
+    },
+    Reference(ConstantStringInstantiation),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ConstantBoolValue {
+    Value(bool),
+    Reference(ConstantBoolInstantiation),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ConstantNilValue {
+    Value,
+    Reference(ConstantNilInstantiation),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ConstantTupleValue {
+    shape: Box<[ValueShape]>,
+    kind: ConstantTupleValueKind,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ConstantTupleValueKind {
+    Value(Box<[ConstantValue]>),
+    Reference(ConstantTupleInstantiation),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ConstantBitArrayValue {
+    kind: ConstantBitArrayValueKind,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ConstantBitArrayValueKind {
+    Value(Box<[ConstantBitArraySegment]>),
+    Reference(ConstantBitArrayInstantiation),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ConstantCustomValue {
+    shape: CustomValueShape,
+    kind: ConstantCustomValueKind,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ConstantCustomValueKind {
+    Construction(ConstantCustomConstruction),
+    Reference(ConstantCustomInstantiation),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ConstantCustomConstruction {
+    constructor: CustomConstructor,
+    fields: Box<[ConstantValue]>,
+}
+
+#[derive(Debug)]
+pub(crate) struct MaterializedConstantCustomConstruction {
+    constructor: CustomConstructor,
+    fields: Box<[super::Expr]>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ConstantFunctionValue {
+    shape: FunctionShape,
+    kind: ConstantFunctionValueKind,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ConstantFunctionValueKind {
+    Target(ConstantFunction),
+    Reference(ConstantFunctionInstantiation),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ConstantValue {
+    kind: ConstantValueKind,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum ConstantValueKind {
+    Int(ConstantIntValue),
+    Float(ConstantFloatValue),
+    String(ConstantStringValue),
+    Bool(ConstantBoolValue),
+    Nil(ConstantNilValue),
+    Tuple(ConstantTupleValue),
+    List(ConstantListValue),
+    BitArray(ConstantBitArrayValue),
+    Custom(ConstantCustomValue),
+    Function(ConstantFunctionValue),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ConstantFunction {
+    Reference(FunctionReference),
+    Constructor(CustomConstructor),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ConstantListConstructionError {
+    TypeMismatch {
+        expected: ValueType,
+        actual: ValueType,
+    },
+    SpreadWithoutElements,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ConstantBitArraySegment {
+    Int {
+        value: ConstantIntValue,
+        bit_size: usize,
+        endianness: Endianness,
+    },
+    Float {
+        value: ConstantFloatValue,
+        bit_size: FloatBitSize,
+        endianness: Endianness,
+    },
+    String {
+        value: ConstantStringValue,
+        encoding: StringEncoding,
+    },
+    Bits(ConstantBitArrayValue),
+    SizedBits {
+        value: ConstantBitArrayValue,
+        bit_size: usize,
+        site: PanicSite,
+    },
+}
+
+impl ConstantTemplateId {
+    pub(crate) fn index(self) -> usize {
+        self.0
+    }
+}
+
+impl ConstantTemplate {
+    pub(crate) fn new(signature: ConstantTemplateSignature, name: EcoString) -> Self {
+        Self { signature, name }
+    }
+
+    pub fn id(&self) -> ConstantTemplateId {
+        self.signature.id()
+    }
+
+    pub fn name(&self) -> &EcoString {
+        &self.name
+    }
+
+    pub fn scheme(&self) -> &TypeScheme {
+        self.signature.scheme()
+    }
+
+    pub(crate) fn signature(&self) -> &ConstantTemplateSignature {
+        &self.signature
+    }
+}
+
+impl ConstantTemplates {
+    pub(crate) fn from_entries(entries: Vec<(ConstantTemplate, ConstantValue)>) -> Self {
+        let mut templates = Self {
+            headers: Vec::with_capacity(entries.len()),
+            generic_lists: Vec::new(),
+            ints: Vec::new(),
+            strings: Vec::new(),
+            bit_arrays: Vec::new(),
+            custom_values: Vec::new(),
+            floats: Vec::new(),
+            bools: Vec::new(),
+            nils: Vec::new(),
+            tuples: Vec::new(),
+            int_lists: Vec::new(),
+            string_lists: Vec::new(),
+            bit_array_lists: Vec::new(),
+            utf_codepoint_lists: Vec::new(),
+            custom_lists: Vec::new(),
+            float_lists: Vec::new(),
+            bool_lists: Vec::new(),
+            nil_lists: Vec::new(),
+            tuple_lists: Vec::new(),
+            list_lists: Vec::new(),
+            function_lists: Vec::new(),
+            functions: Vec::new(),
+        };
+        for (template, value) in entries {
+            templates.headers.push(template);
+            templates.push_value(value);
+        }
+        templates
+    }
+
+    pub(crate) fn empty() -> Self {
+        Self::from_entries(Vec::new())
+    }
+
+    pub(crate) fn headers(&self) -> &[ConstantTemplate] {
+        &self.headers
+    }
+
+    pub(crate) fn header(&self, id: ConstantTemplateId) -> &ConstantTemplate {
+        &self.headers[id.index()]
+    }
+
+    pub(crate) fn int(&self, id: ConstantIntTemplateId) -> &ConstantIntValue {
+        &self.ints[id.0]
+    }
+
+    pub(crate) fn string(&self, id: ConstantStringTemplateId) -> &ConstantStringValue {
+        &self.strings[id.0]
+    }
+
+    pub(crate) fn bit_array(&self, id: ConstantBitArrayTemplateId) -> &ConstantBitArrayValue {
+        &self.bit_arrays[id.0]
+    }
+
+    pub(crate) fn custom(&self, id: ConstantCustomTemplateId) -> &ConstantCustomValue {
+        &self.custom_values[id.0]
+    }
+
+    pub(crate) fn float(&self, id: ConstantFloatTemplateId) -> &ConstantFloatValue {
+        &self.floats[id.0]
+    }
+
+    pub(crate) fn bool(&self, id: ConstantBoolTemplateId) -> &ConstantBoolValue {
+        &self.bools[id.0]
+    }
+
+    pub(crate) fn nil(&self, id: ConstantNilTemplateId) -> &ConstantNilValue {
+        &self.nils[id.0]
+    }
+
+    pub(crate) fn tuple(&self, id: ConstantTupleTemplateId) -> &ConstantTupleValue {
+        &self.tuples[id.0]
+    }
+
+    fn generic_list(&self, id: ConstantGenericListTemplateId) -> &ConstantGenericListValue {
+        &self.generic_lists[id.0]
+    }
+
+    fn int_list(&self, id: ConstantIntListTemplateId) -> &ConstantIntListValue {
+        &self.int_lists[id.0]
+    }
+
+    fn string_list(&self, id: ConstantStringListTemplateId) -> &ConstantStringListValue {
+        &self.string_lists[id.0]
+    }
+
+    fn bit_array_list(&self, id: ConstantBitArrayListTemplateId) -> &ConstantBitArrayListValue {
+        &self.bit_array_lists[id.0]
+    }
+
+    fn utf_codepoint_list(
+        &self,
+        id: ConstantUtfCodepointListTemplateId,
+    ) -> &ConstantUtfCodepointListValue {
+        &self.utf_codepoint_lists[id.0]
+    }
+
+    fn custom_list(&self, id: ConstantCustomListTemplateId) -> &ConstantCustomListValue {
+        &self.custom_lists[id.0]
+    }
+
+    fn float_list(&self, id: ConstantFloatListTemplateId) -> &ConstantFloatListValue {
+        &self.float_lists[id.0]
+    }
+
+    fn bool_list(&self, id: ConstantBoolListTemplateId) -> &ConstantBoolListValue {
+        &self.bool_lists[id.0]
+    }
+
+    fn nil_list(&self, id: ConstantNilListTemplateId) -> &ConstantNilListValue {
+        &self.nil_lists[id.0]
+    }
+
+    fn tuple_list(&self, id: ConstantTupleListTemplateId) -> &ConstantTupleListValue {
+        &self.tuple_lists[id.0]
+    }
+
+    fn list_list(&self, id: ConstantListListTemplateId) -> &ConstantListListValue {
+        &self.list_lists[id.0]
+    }
+
+    fn function_list(&self, id: ConstantFunctionListTemplateId) -> &ConstantFunctionListValue {
+        &self.function_lists[id.0]
+    }
+
+    pub(crate) fn function(&self, id: ConstantFunctionTemplateId) -> &ConstantFunctionValue {
+        &self.functions[id.0]
+    }
+
+    fn push_value(&mut self, value: ConstantValue) {
+        match value.kind {
+            ConstantValueKind::Int(value) => self.ints.push(value),
+            ConstantValueKind::Float(value) => self.floats.push(value),
+            ConstantValueKind::String(value) => self.strings.push(value),
+            ConstantValueKind::Bool(value) => self.bools.push(value),
+            ConstantValueKind::Nil(value) => self.nils.push(value),
+            ConstantValueKind::Tuple(value) => self.tuples.push(value),
+            ConstantValueKind::List(value) => match value {
+                ConstantListValue::Generic(value) => self.generic_lists.push(value),
+                ConstantListValue::Int(value) => self.int_lists.push(value),
+                ConstantListValue::String(value) => self.string_lists.push(value),
+                ConstantListValue::BitArray(value) => self.bit_array_lists.push(value),
+                ConstantListValue::UtfCodepoint(value) => self.utf_codepoint_lists.push(value),
+                ConstantListValue::Custom(value) => self.custom_lists.push(value),
+                ConstantListValue::Float(value) => self.float_lists.push(value),
+                ConstantListValue::Bool(value) => self.bool_lists.push(value),
+                ConstantListValue::Nil(value) => self.nil_lists.push(value),
+                ConstantListValue::Tuple(value) => self.tuple_lists.push(value),
+                ConstantListValue::List(value) => self.list_lists.push(value),
+                ConstantListValue::Function(value) => self.function_lists.push(value),
+            },
+            ConstantValueKind::BitArray(value) => self.bit_arrays.push(value),
+            ConstantValueKind::Custom(value) => self.custom_values.push(value),
+            ConstantValueKind::Function(value) => self.functions.push(value),
+        }
+    }
+
+    pub(crate) fn materialize(&self, instantiation: &ConstantInstantiation) -> Expr {
+        match &instantiation.kind {
+            ConstantInstantiationKind::Int(value) => Expr::int(self.materialize_int(value)),
+            ConstantInstantiationKind::String(value) => {
+                Expr::string(self.materialize_string(value))
+            }
+            ConstantInstantiationKind::BitArray(value) => {
+                Expr::bit_array(self.materialize_bit_array(value))
+            }
+            ConstantInstantiationKind::Custom(value) => {
+                Expr::custom(self.materialize_custom(value))
+            }
+            ConstantInstantiationKind::Float(value) => Expr::float(self.materialize_float(value)),
+            ConstantInstantiationKind::Bool(value) => Expr::bool(self.materialize_bool(value)),
+            ConstantInstantiationKind::Nil(value) => Expr::nil(self.materialize_nil(value)),
+            ConstantInstantiationKind::Tuple(value) => Expr::tuple(self.materialize_tuple(value)),
+            ConstantInstantiationKind::List(value) => Expr::list(self.materialize_list(value)),
+            ConstantInstantiationKind::Function(value) => {
+                Expr::function(self.materialize_function(value))
+            }
+        }
+    }
+
+    fn materialize_value(&self, value: &ConstantValue, substitution: &TypeSubstitution) -> Expr {
+        match &value.kind {
+            ConstantValueKind::Int(value) => {
+                Expr::int(self.materialize_int_value(value, substitution))
+            }
+            ConstantValueKind::Float(value) => {
+                Expr::float(self.materialize_float_value(value, substitution))
+            }
+            ConstantValueKind::String(value) => {
+                Expr::string(self.materialize_string_value(value, substitution))
+            }
+            ConstantValueKind::Bool(value) => {
+                Expr::bool(self.materialize_bool_value(value, substitution))
+            }
+            ConstantValueKind::Nil(value) => {
+                Expr::nil(self.materialize_nil_value(value, substitution))
+            }
+            ConstantValueKind::Tuple(value) => {
+                Expr::tuple(self.materialize_tuple_value(value, substitution))
+            }
+            ConstantValueKind::List(value) => {
+                Expr::list(self.materialize_list_value(value, substitution))
+            }
+            ConstantValueKind::BitArray(value) => {
+                Expr::bit_array(self.materialize_bit_array_value(value, substitution))
+            }
+            ConstantValueKind::Custom(value) => {
+                Expr::custom(self.materialize_custom_value(value, substitution))
+            }
+            ConstantValueKind::Function(value) => {
+                Expr::function(self.materialize_function_value(value, substitution))
+            }
+        }
+    }
+
+    fn materialize_int(&self, value: &ConstantIntInstantiation) -> IntExpr {
+        self.materialize_int_value(self.int(value.template()), value.substitution())
+    }
+
+    fn materialize_int_value(
+        &self,
+        value: &ConstantIntValue,
+        substitution: &TypeSubstitution,
+    ) -> IntExpr {
+        match value {
+            ConstantIntValue::Value(value) => IntExpr::value(value.clone()),
+            ConstantIntValue::Reference(value) => {
+                self.materialize_int(&value.substitute_leaf(substitution))
+            }
+        }
+    }
+
+    fn materialize_float(&self, value: &ConstantFloatInstantiation) -> FloatExpr {
+        self.materialize_float_value(self.float(value.template()), value.substitution())
+    }
+
+    fn materialize_float_value(
+        &self,
+        value: &ConstantFloatValue,
+        substitution: &TypeSubstitution,
+    ) -> FloatExpr {
+        match value {
+            ConstantFloatValue::Value(value) => FloatExpr::value(*value),
+            ConstantFloatValue::Reference(value) => {
+                self.materialize_float(&value.substitute_leaf(substitution))
+            }
+        }
+    }
+
+    fn materialize_string(&self, value: &ConstantStringInstantiation) -> StringExpr {
+        self.materialize_string_value(self.string(value.template()), value.substitution())
+    }
+
+    fn materialize_string_value(
+        &self,
+        value: &ConstantStringValue,
+        substitution: &TypeSubstitution,
+    ) -> StringExpr {
+        match value {
+            ConstantStringValue::Value(value) => StringExpr::value(value.clone()),
+            ConstantStringValue::Concatenation { left, right } => StringExpr::concatenate(
+                self.materialize_string_value(left, substitution),
+                self.materialize_string_value(right, substitution),
+            ),
+            ConstantStringValue::Reference(value) => {
+                self.materialize_string(&value.substitute_leaf(substitution))
+            }
+        }
+    }
+
+    fn materialize_bool(&self, value: &ConstantBoolInstantiation) -> BoolExpr {
+        self.materialize_bool_value(self.bool(value.template()), value.substitution())
+    }
+
+    fn materialize_bool_value(
+        &self,
+        value: &ConstantBoolValue,
+        substitution: &TypeSubstitution,
+    ) -> BoolExpr {
+        match value {
+            ConstantBoolValue::Value(value) => BoolExpr::value(*value),
+            ConstantBoolValue::Reference(value) => {
+                self.materialize_bool(&value.substitute_leaf(substitution))
+            }
+        }
+    }
+
+    fn materialize_nil(&self, value: &ConstantNilInstantiation) -> NilExpr {
+        self.materialize_nil_value(self.nil(value.template()), value.substitution())
+    }
+
+    fn materialize_nil_value(
+        &self,
+        value: &ConstantNilValue,
+        substitution: &TypeSubstitution,
+    ) -> NilExpr {
+        match value {
+            ConstantNilValue::Value => NilExpr::value(),
+            ConstantNilValue::Reference(value) => {
+                self.materialize_nil(&value.substitute_leaf(substitution))
+            }
+        }
+    }
+
+    fn materialize_tuple(&self, value: &ConstantTupleInstantiation) -> TupleExpr {
+        self.materialize_tuple_value(self.tuple(value.template()), value.substitution())
+    }
+
+    fn materialize_tuple_value(
+        &self,
+        value: &ConstantTupleValue,
+        substitution: &TypeSubstitution,
+    ) -> TupleExpr {
+        match value.kind() {
+            ConstantTupleValueKind::Value(elements) => {
+                let shape = value
+                    .shape()
+                    .iter()
+                    .map(|shape| shape.substitute(substitution))
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice();
+                TupleExpr::value(
+                    elements
+                        .iter()
+                        .map(|element| self.materialize_value(element, substitution))
+                        .collect(),
+                    shape.iter().map(ValueShape::value_type).collect(),
+                )
+                .with_shape(shape)
+            }
+            ConstantTupleValueKind::Reference(value) => {
+                self.materialize_tuple(&value.substitute_tuple(substitution))
+            }
+        }
+    }
+
+    fn materialize_bit_array(&self, value: &ConstantBitArrayInstantiation) -> BitArrayExpr {
+        self.materialize_bit_array_value(self.bit_array(value.template()), value.substitution())
+    }
+
+    fn materialize_bit_array_value(
+        &self,
+        value: &ConstantBitArrayValue,
+        substitution: &TypeSubstitution,
+    ) -> BitArrayExpr {
+        match value.kind() {
+            ConstantBitArrayValueKind::Value(segments) => BitArrayExpr::value(
+                segments
+                    .iter()
+                    .map(|segment| self.materialize_bit_array_segment(segment, substitution))
+                    .collect(),
+            ),
+            ConstantBitArrayValueKind::Reference(value) => {
+                self.materialize_bit_array(&value.substitute_leaf(substitution))
+            }
+        }
+    }
+
+    fn materialize_bit_array_segment(
+        &self,
+        segment: &ConstantBitArraySegment,
+        substitution: &TypeSubstitution,
+    ) -> BitArraySegment {
+        match segment {
+            ConstantBitArraySegment::Int {
+                value,
+                bit_size,
+                endianness,
+            } => BitArraySegment::Int {
+                value: self.materialize_int_value(value, substitution),
+                bit_size: *bit_size,
+                endianness: *endianness,
+            },
+            ConstantBitArraySegment::Float {
+                value,
+                bit_size,
+                endianness,
+            } => BitArraySegment::Float {
+                value: self.materialize_float_value(value, substitution),
+                bit_size: *bit_size,
+                endianness: *endianness,
+            },
+            ConstantBitArraySegment::String { value, encoding } => BitArraySegment::String {
+                value: self.materialize_string_value(value, substitution),
+                encoding: *encoding,
+            },
+            ConstantBitArraySegment::Bits(value) => {
+                BitArraySegment::Bits(self.materialize_bit_array_value(value, substitution))
+            }
+            ConstantBitArraySegment::SizedBits {
+                value,
+                bit_size,
+                site,
+            } => BitArraySegment::SizedBits {
+                value: self.materialize_bit_array_value(value, substitution),
+                size: BitArrayBitsSize::Fixed(*bit_size),
+                site: site.clone(),
+            },
+        }
+    }
+
+    fn materialize_custom(&self, value: &ConstantCustomInstantiation) -> CustomExpr {
+        self.materialize_custom_value(self.custom(value.template()), value.substitution())
+    }
+
+    fn materialize_custom_value(
+        &self,
+        value: &ConstantCustomValue,
+        substitution: &TypeSubstitution,
+    ) -> CustomExpr {
+        match value.kind() {
+            ConstantCustomValueKind::Construction(construction) => {
+                let construction = MaterializedConstantCustomConstruction::new(
+                    construction.constructor().substitute(substitution),
+                    construction
+                        .fields()
+                        .iter()
+                        .map(|field| self.materialize_value(field, substitution))
+                        .collect(),
+                );
+                CustomExpr::from_construction(
+                    value.shape().substitute(substitution),
+                    CustomConstruction::from_constant(construction),
+                )
+            }
+            ConstantCustomValueKind::Reference(value) => {
+                self.materialize_custom(&value.substitute_custom(substitution))
+            }
+        }
+    }
+
+    fn materialize_function(&self, value: &ConstantFunctionInstantiation) -> FunctionExpr {
+        self.materialize_function_value(self.function(value.template()), value.substitution())
+    }
+
+    fn materialize_function_value(
+        &self,
+        value: &ConstantFunctionValue,
+        substitution: &TypeSubstitution,
+    ) -> FunctionExpr {
+        match value.kind() {
+            ConstantFunctionValueKind::Target(ConstantFunction::Reference(reference)) => {
+                FunctionExpr::reference(reference.substitute(substitution))
+            }
+            ConstantFunctionValueKind::Target(ConstantFunction::Constructor(constructor)) => {
+                FunctionExpr::custom(CustomFunctionExpr::constructor(
+                    constructor.substitute(substitution),
+                ))
+            }
+            ConstantFunctionValueKind::Reference(value) => {
+                self.materialize_function(&value.substitute_function(substitution))
+            }
+        }
+    }
+
+    fn materialize_list(&self, value: &ConstantListInstantiation) -> ListExpr {
+        match value {
+            ConstantListInstantiation::Generic(value) => self.materialize_generic_list_value(
+                self.generic_list(*value.source()),
+                value.substitution(),
+                &ValueShape::Parameter(*value.item_shape()),
+            ),
+            ConstantListInstantiation::Int(value) => {
+                ListExpr::Int(self.materialize_int_list(value))
+            }
+            ConstantListInstantiation::String(value) => {
+                ListExpr::String(self.materialize_string_list(value))
+            }
+            ConstantListInstantiation::BitArray(value) => {
+                ListExpr::BitArray(self.materialize_bit_array_list(value))
+            }
+            ConstantListInstantiation::UtfCodepoint(value) => {
+                ListExpr::UtfCodepoint(self.materialize_utf_codepoint_list(value))
+            }
+            ConstantListInstantiation::Custom(value) => {
+                ListExpr::Custom(self.materialize_custom_list(value))
+            }
+            ConstantListInstantiation::Float(value) => {
+                ListExpr::Float(self.materialize_float_list(value))
+            }
+            ConstantListInstantiation::Bool(value) => {
+                ListExpr::Bool(self.materialize_bool_list(value))
+            }
+            ConstantListInstantiation::Nil(value) => {
+                ListExpr::Nil(self.materialize_nil_list(value))
+            }
+            ConstantListInstantiation::Tuple(value) => {
+                ListExpr::Tuple(self.materialize_tuple_list(value))
+            }
+            ConstantListInstantiation::List(value) => {
+                ListExpr::List(self.materialize_list_list(value))
+            }
+            ConstantListInstantiation::Function(value) => {
+                ListExpr::Function(self.materialize_function_list(value))
+            }
+        }
+    }
+
+    fn materialize_list_value(
+        &self,
+        value: &ConstantListValue,
+        substitution: &TypeSubstitution,
+    ) -> ListExpr {
+        match value {
+            ConstantListValue::Generic(value) => {
+                let item_shape = ValueShape::Parameter(value.parameter()).substitute(substitution);
+                self.materialize_generic_list_value(value, substitution, &item_shape)
+            }
+            ConstantListValue::Int(value) => {
+                ListExpr::Int(self.materialize_int_list_value(value, substitution))
+            }
+            ConstantListValue::String(value) => {
+                ListExpr::String(self.materialize_string_list_value(value, substitution))
+            }
+            ConstantListValue::BitArray(value) => {
+                ListExpr::BitArray(self.materialize_bit_array_list_value(value, substitution))
+            }
+            ConstantListValue::UtfCodepoint(value) => ListExpr::UtfCodepoint(
+                self.materialize_utf_codepoint_list_value(value, substitution),
+            ),
+            ConstantListValue::Custom(value) => {
+                ListExpr::Custom(self.materialize_custom_list_value(value, substitution))
+            }
+            ConstantListValue::Float(value) => {
+                ListExpr::Float(self.materialize_float_list_value(value, substitution))
+            }
+            ConstantListValue::Bool(value) => {
+                ListExpr::Bool(self.materialize_bool_list_value(value, substitution))
+            }
+            ConstantListValue::Nil(value) => {
+                ListExpr::Nil(self.materialize_nil_list_value(value, substitution))
+            }
+            ConstantListValue::Tuple(value) => {
+                ListExpr::Tuple(self.materialize_tuple_list_value(value, substitution))
+            }
+            ConstantListValue::List(value) => {
+                ListExpr::List(self.materialize_list_list_value(value, substitution))
+            }
+            ConstantListValue::Function(value) => {
+                ListExpr::Function(self.materialize_function_list_value(value, substitution))
+            }
+        }
+    }
+
+    fn materialize_generic_list_value(
+        &self,
+        value: &ConstantGenericListValue,
+        substitution: &TypeSubstitution,
+        item_shape: &ValueShape,
+    ) -> ListExpr {
+        match item_shape {
+            ValueShape::Parameter(parameter) => ListExpr::Generic(
+                self.materialize_generic_parameter_list(value, substitution, *parameter),
+            ),
+            ValueShape::Int => {
+                ListExpr::Int(self.materialize_generic_int_list(value, substitution))
+            }
+            ValueShape::String => {
+                ListExpr::String(self.materialize_generic_string_list(value, substitution))
+            }
+            ValueShape::BitArray => {
+                ListExpr::BitArray(self.materialize_generic_bit_array_list(value, substitution))
+            }
+            ValueShape::UtfCodepoint => ListExpr::UtfCodepoint(
+                self.materialize_generic_utf_codepoint_list(value, substitution),
+            ),
+            ValueShape::Custom(shape) => {
+                ListExpr::Custom(self.materialize_generic_custom_list(value, substitution, shape))
+            }
+            ValueShape::Float => {
+                ListExpr::Float(self.materialize_generic_float_list(value, substitution))
+            }
+            ValueShape::Bool => {
+                ListExpr::Bool(self.materialize_generic_bool_list(value, substitution))
+            }
+            ValueShape::Nil => {
+                ListExpr::Nil(self.materialize_generic_nil_list(value, substitution))
+            }
+            ValueShape::Tuple(shape) => {
+                ListExpr::Tuple(self.materialize_generic_tuple_list(value, substitution, shape))
+            }
+            ValueShape::List(shape) => {
+                ListExpr::List(self.materialize_generic_list_list(value, substitution, shape))
+            }
+            ValueShape::Function(shape) => ListExpr::Function(
+                self.materialize_generic_function_list(value, substitution, shape),
+            ),
+        }
+    }
+
+    fn materialize_generic_parameter_list(
+        &self,
+        value: &ConstantGenericListValue,
+        substitution: &TypeSubstitution,
+        parameter: crate::plan::TypeParameterId,
+    ) -> GenericListExpr {
+        match value.kind() {
+            ConstantGenericListValueKind::Empty => {
+                GenericListExpr::value(GenericListItem::new(parameter), Vec::new())
+                    .with_item_shape(ValueShape::Parameter(parameter))
+            }
+            ConstantGenericListValueKind::Reference(value) => {
+                let substitution = value.substitution().substitute(substitution);
+                self.materialize_generic_parameter_list(
+                    self.generic_list(*value.source()),
+                    &substitution,
+                    parameter,
+                )
+            }
+        }
+    }
+
+    fn materialize_generic_int_list(
+        &self,
+        value: &ConstantGenericListValue,
+        substitution: &TypeSubstitution,
+    ) -> IntListExpr {
+        match value.kind() {
+            ConstantGenericListValueKind::Empty => {
+                IntListExpr::value(IntListItem, Vec::new()).with_item_shape(ValueShape::Int)
+            }
+            ConstantGenericListValueKind::Reference(value) => {
+                let substitution = value.substitution().substitute(substitution);
+                self.materialize_generic_int_list(self.generic_list(*value.source()), &substitution)
+            }
+        }
+    }
+
+    fn materialize_generic_string_list(
+        &self,
+        value: &ConstantGenericListValue,
+        substitution: &TypeSubstitution,
+    ) -> StringListExpr {
+        match value.kind() {
+            ConstantGenericListValueKind::Empty => {
+                StringListExpr::value(StringListItem, Vec::new())
+                    .with_item_shape(ValueShape::String)
+            }
+            ConstantGenericListValueKind::Reference(value) => {
+                let substitution = value.substitution().substitute(substitution);
+                self.materialize_generic_string_list(
+                    self.generic_list(*value.source()),
+                    &substitution,
+                )
+            }
+        }
+    }
+
+    fn materialize_generic_bit_array_list(
+        &self,
+        value: &ConstantGenericListValue,
+        substitution: &TypeSubstitution,
+    ) -> BitArrayListExpr {
+        match value.kind() {
+            ConstantGenericListValueKind::Empty => {
+                BitArrayListExpr::value(BitArrayListItem, Vec::new())
+                    .with_item_shape(ValueShape::BitArray)
+            }
+            ConstantGenericListValueKind::Reference(value) => {
+                let substitution = value.substitution().substitute(substitution);
+                self.materialize_generic_bit_array_list(
+                    self.generic_list(*value.source()),
+                    &substitution,
+                )
+            }
+        }
+    }
+
+    fn materialize_generic_utf_codepoint_list(
+        &self,
+        value: &ConstantGenericListValue,
+        substitution: &TypeSubstitution,
+    ) -> UtfCodepointListExpr {
+        match value.kind() {
+            ConstantGenericListValueKind::Empty => {
+                UtfCodepointListExpr::value(UtfCodepointListItem, Vec::new())
+                    .with_item_shape(ValueShape::UtfCodepoint)
+            }
+            ConstantGenericListValueKind::Reference(value) => {
+                let substitution = value.substitution().substitute(substitution);
+                self.materialize_generic_utf_codepoint_list(
+                    self.generic_list(*value.source()),
+                    &substitution,
+                )
+            }
+        }
+    }
+
+    fn materialize_generic_custom_list(
+        &self,
+        value: &ConstantGenericListValue,
+        substitution: &TypeSubstitution,
+        shape: &CustomValueShape,
+    ) -> CustomListExpr {
+        match value.kind() {
+            ConstantGenericListValueKind::Empty => {
+                CustomListExpr::value(CustomListItem::new(shape.type_().clone()), Vec::new())
+                    .with_item_shape(ValueShape::Custom(shape.clone()))
+            }
+            ConstantGenericListValueKind::Reference(value) => {
+                let substitution = value.substitution().substitute(substitution);
+                self.materialize_generic_custom_list(
+                    self.generic_list(*value.source()),
+                    &substitution,
+                    shape,
+                )
+            }
+        }
+    }
+
+    fn materialize_generic_float_list(
+        &self,
+        value: &ConstantGenericListValue,
+        substitution: &TypeSubstitution,
+    ) -> FloatListExpr {
+        match value.kind() {
+            ConstantGenericListValueKind::Empty => {
+                FloatListExpr::value(FloatListItem, Vec::new()).with_item_shape(ValueShape::Float)
+            }
+            ConstantGenericListValueKind::Reference(value) => {
+                let substitution = value.substitution().substitute(substitution);
+                self.materialize_generic_float_list(
+                    self.generic_list(*value.source()),
+                    &substitution,
+                )
+            }
+        }
+    }
+
+    fn materialize_generic_bool_list(
+        &self,
+        value: &ConstantGenericListValue,
+        substitution: &TypeSubstitution,
+    ) -> BoolListExpr {
+        match value.kind() {
+            ConstantGenericListValueKind::Empty => {
+                BoolListExpr::value(BoolListItem, Vec::new()).with_item_shape(ValueShape::Bool)
+            }
+            ConstantGenericListValueKind::Reference(value) => {
+                let substitution = value.substitution().substitute(substitution);
+                self.materialize_generic_bool_list(
+                    self.generic_list(*value.source()),
+                    &substitution,
+                )
+            }
+        }
+    }
+
+    fn materialize_generic_nil_list(
+        &self,
+        value: &ConstantGenericListValue,
+        substitution: &TypeSubstitution,
+    ) -> NilListExpr {
+        match value.kind() {
+            ConstantGenericListValueKind::Empty => {
+                NilListExpr::value(NilListItem, Vec::new()).with_item_shape(ValueShape::Nil)
+            }
+            ConstantGenericListValueKind::Reference(value) => {
+                let substitution = value.substitution().substitute(substitution);
+                self.materialize_generic_nil_list(self.generic_list(*value.source()), &substitution)
+            }
+        }
+    }
+
+    fn materialize_generic_tuple_list(
+        &self,
+        value: &ConstantGenericListValue,
+        substitution: &TypeSubstitution,
+        shape: &[ValueShape],
+    ) -> TupleListExpr {
+        match value.kind() {
+            ConstantGenericListValueKind::Empty => TupleListExpr::value(
+                TupleListItem::new(shape.iter().map(ValueShape::value_type).collect()),
+                Vec::new(),
+            )
+            .with_item_shape(ValueShape::Tuple(shape.to_vec().into_boxed_slice())),
+            ConstantGenericListValueKind::Reference(value) => {
+                let substitution = value.substitution().substitute(substitution);
+                self.materialize_generic_tuple_list(
+                    self.generic_list(*value.source()),
+                    &substitution,
+                    shape,
+                )
+            }
+        }
+    }
+
+    fn materialize_generic_list_list(
+        &self,
+        value: &ConstantGenericListValue,
+        substitution: &TypeSubstitution,
+        shape: &ValueShape,
+    ) -> ListListExpr {
+        match value.kind() {
+            ConstantGenericListValueKind::Empty => {
+                ListListExpr::value(ListListItem::new(Box::new(shape.value_type())), Vec::new())
+                    .with_item_shape(ValueShape::List(Box::new(shape.clone())))
+            }
+            ConstantGenericListValueKind::Reference(value) => {
+                let substitution = value.substitution().substitute(substitution);
+                self.materialize_generic_list_list(
+                    self.generic_list(*value.source()),
+                    &substitution,
+                    shape,
+                )
+            }
+        }
+    }
+
+    fn materialize_generic_function_list(
+        &self,
+        value: &ConstantGenericListValue,
+        substitution: &TypeSubstitution,
+        shape: &FunctionShape,
+    ) -> FunctionListExpr {
+        match value.kind() {
+            ConstantGenericListValueKind::Empty => {
+                FunctionListExpr::value(FunctionListItem::new(shape.type_()), Vec::new())
+                    .with_item_shape(ValueShape::Function(Box::new(shape.clone())))
+            }
+            ConstantGenericListValueKind::Reference(value) => {
+                let substitution = value.substitution().substitute(substitution);
+                self.materialize_generic_function_list(
+                    self.generic_list(*value.source()),
+                    &substitution,
+                    shape,
+                )
+            }
+        }
+    }
+
+    fn materialize_int_list(&self, value: &ConstantIntListInstantiation) -> IntListExpr {
+        match value.source() {
+            ConstantListTemplateSource::Generic(source) => {
+                self.materialize_generic_int_list(self.generic_list(*source), value.substitution())
+            }
+            ConstantListTemplateSource::Exact(source) => {
+                self.materialize_int_list_value(self.int_list(*source), value.substitution())
+            }
+        }
+    }
+
+    fn materialize_int_list_value(
+        &self,
+        value: &ConstantIntListValue,
+        substitution: &TypeSubstitution,
+    ) -> IntListExpr {
+        match value.kind() {
+            TypedConstantListValueKind::Value { elements, tail } => {
+                let elements = elements
+                    .iter()
+                    .map(|value| self.materialize_int_value(value, substitution))
+                    .collect();
+                match tail {
+                    Some(tail) => IntListExpr::spread(
+                        elements,
+                        self.materialize_int_list_value(tail, substitution),
+                    ),
+                    None => IntListExpr::value(IntListItem, elements),
+                }
+            }
+            TypedConstantListValueKind::Reference(value) => {
+                self.materialize_int_list(&value.substitute_leaf(substitution))
+            }
+        }
+    }
+
+    fn materialize_string_list(&self, value: &ConstantStringListInstantiation) -> StringListExpr {
+        match value.source() {
+            ConstantListTemplateSource::Generic(source) => self
+                .materialize_generic_string_list(self.generic_list(*source), value.substitution()),
+            ConstantListTemplateSource::Exact(source) => {
+                self.materialize_string_list_value(self.string_list(*source), value.substitution())
+            }
+        }
+    }
+
+    fn materialize_string_list_value(
+        &self,
+        value: &ConstantStringListValue,
+        substitution: &TypeSubstitution,
+    ) -> StringListExpr {
+        match value.kind() {
+            TypedConstantListValueKind::Value { elements, tail } => {
+                let elements = elements
+                    .iter()
+                    .map(|value| self.materialize_string_value(value, substitution))
+                    .collect();
+                match tail {
+                    Some(tail) => StringListExpr::spread(
+                        elements,
+                        self.materialize_string_list_value(tail, substitution),
+                    ),
+                    None => StringListExpr::value(StringListItem, elements),
+                }
+            }
+            TypedConstantListValueKind::Reference(value) => {
+                self.materialize_string_list(&value.substitute_leaf(substitution))
+            }
+        }
+    }
+
+    fn materialize_bit_array_list(
+        &self,
+        value: &ConstantBitArrayListInstantiation,
+    ) -> BitArrayListExpr {
+        match value.source() {
+            ConstantListTemplateSource::Generic(source) => self.materialize_generic_bit_array_list(
+                self.generic_list(*source),
+                value.substitution(),
+            ),
+            ConstantListTemplateSource::Exact(source) => self.materialize_bit_array_list_value(
+                self.bit_array_list(*source),
+                value.substitution(),
+            ),
+        }
+    }
+
+    fn materialize_bit_array_list_value(
+        &self,
+        value: &ConstantBitArrayListValue,
+        substitution: &TypeSubstitution,
+    ) -> BitArrayListExpr {
+        match value.kind() {
+            TypedConstantListValueKind::Value { elements, tail } => {
+                let elements = elements
+                    .iter()
+                    .map(|value| self.materialize_bit_array_value(value, substitution))
+                    .collect();
+                match tail {
+                    Some(tail) => BitArrayListExpr::spread(
+                        elements,
+                        self.materialize_bit_array_list_value(tail, substitution),
+                    ),
+                    None => BitArrayListExpr::value(BitArrayListItem, elements),
+                }
+            }
+            TypedConstantListValueKind::Reference(value) => {
+                self.materialize_bit_array_list(&value.substitute_leaf(substitution))
+            }
+        }
+    }
+
+    fn materialize_utf_codepoint_list(
+        &self,
+        value: &ConstantUtfCodepointListInstantiation,
+    ) -> UtfCodepointListExpr {
+        match value.source() {
+            ConstantListTemplateSource::Generic(source) => self
+                .materialize_generic_utf_codepoint_list(
+                    self.generic_list(*source),
+                    value.substitution(),
+                ),
+            ConstantListTemplateSource::Exact(source) => self.materialize_utf_codepoint_list_value(
+                self.utf_codepoint_list(*source),
+                value.substitution(),
+            ),
+        }
+    }
+
+    fn materialize_utf_codepoint_list_value(
+        &self,
+        value: &ConstantUtfCodepointListValue,
+        substitution: &TypeSubstitution,
+    ) -> UtfCodepointListExpr {
+        match value.kind() {
+            ConstantUtfCodepointListValueKind::Empty => {
+                UtfCodepointListExpr::value(UtfCodepointListItem, Vec::new())
+            }
+            ConstantUtfCodepointListValueKind::Reference(value) => {
+                self.materialize_utf_codepoint_list(&value.substitute_leaf(substitution))
+            }
+        }
+    }
+
+    fn materialize_custom_list(&self, value: &ConstantCustomListInstantiation) -> CustomListExpr {
+        match value.source() {
+            ConstantListTemplateSource::Generic(source) => self.materialize_generic_custom_list(
+                self.generic_list(*source),
+                value.substitution(),
+                value.item_shape(),
+            ),
+            ConstantListTemplateSource::Exact(source) => {
+                self.materialize_custom_list_value(self.custom_list(*source), value.substitution())
+            }
+        }
+    }
+
+    fn materialize_custom_list_value(
+        &self,
+        value: &ConstantCustomListValue,
+        substitution: &TypeSubstitution,
+    ) -> CustomListExpr {
+        match value.kind() {
+            TypedConstantListValueKind::Value { elements, tail } => {
+                let shape = value.item_shape().substitute(substitution);
+                let elements = elements
+                    .iter()
+                    .map(|value| self.materialize_custom_value(value, substitution))
+                    .collect();
+                let expression = match tail {
+                    Some(tail) => CustomListExpr::spread(
+                        elements,
+                        self.materialize_custom_list_value(tail, substitution),
+                    ),
+                    None => {
+                        CustomListExpr::value(CustomListItem::new(shape.type_().clone()), elements)
+                    }
+                };
+                expression.with_item_shape(ValueShape::Custom(shape))
+            }
+            TypedConstantListValueKind::Reference(value) => {
+                self.materialize_custom_list(&value.substitute_custom(substitution))
+            }
+        }
+    }
+
+    fn materialize_float_list(&self, value: &ConstantFloatListInstantiation) -> FloatListExpr {
+        match value.source() {
+            ConstantListTemplateSource::Generic(source) => self
+                .materialize_generic_float_list(self.generic_list(*source), value.substitution()),
+            ConstantListTemplateSource::Exact(source) => {
+                self.materialize_float_list_value(self.float_list(*source), value.substitution())
+            }
+        }
+    }
+
+    fn materialize_float_list_value(
+        &self,
+        value: &ConstantFloatListValue,
+        substitution: &TypeSubstitution,
+    ) -> FloatListExpr {
+        match value.kind() {
+            TypedConstantListValueKind::Value { elements, tail } => {
+                let elements = elements
+                    .iter()
+                    .map(|value| self.materialize_float_value(value, substitution))
+                    .collect();
+                match tail {
+                    Some(tail) => FloatListExpr::spread(
+                        elements,
+                        self.materialize_float_list_value(tail, substitution),
+                    ),
+                    None => FloatListExpr::value(FloatListItem, elements),
+                }
+            }
+            TypedConstantListValueKind::Reference(value) => {
+                self.materialize_float_list(&value.substitute_leaf(substitution))
+            }
+        }
+    }
+
+    fn materialize_bool_list(&self, value: &ConstantBoolListInstantiation) -> BoolListExpr {
+        match value.source() {
+            ConstantListTemplateSource::Generic(source) => {
+                self.materialize_generic_bool_list(self.generic_list(*source), value.substitution())
+            }
+            ConstantListTemplateSource::Exact(source) => {
+                self.materialize_bool_list_value(self.bool_list(*source), value.substitution())
+            }
+        }
+    }
+
+    fn materialize_bool_list_value(
+        &self,
+        value: &ConstantBoolListValue,
+        substitution: &TypeSubstitution,
+    ) -> BoolListExpr {
+        match value.kind() {
+            TypedConstantListValueKind::Value { elements, tail } => {
+                let elements = elements
+                    .iter()
+                    .map(|value| self.materialize_bool_value(value, substitution))
+                    .collect();
+                match tail {
+                    Some(tail) => BoolListExpr::spread(
+                        elements,
+                        self.materialize_bool_list_value(tail, substitution),
+                    ),
+                    None => BoolListExpr::value(BoolListItem, elements),
+                }
+            }
+            TypedConstantListValueKind::Reference(value) => {
+                self.materialize_bool_list(&value.substitute_leaf(substitution))
+            }
+        }
+    }
+
+    fn materialize_nil_list(&self, value: &ConstantNilListInstantiation) -> NilListExpr {
+        match value.source() {
+            ConstantListTemplateSource::Generic(source) => {
+                self.materialize_generic_nil_list(self.generic_list(*source), value.substitution())
+            }
+            ConstantListTemplateSource::Exact(source) => {
+                self.materialize_nil_list_value(self.nil_list(*source), value.substitution())
+            }
+        }
+    }
+
+    fn materialize_nil_list_value(
+        &self,
+        value: &ConstantNilListValue,
+        substitution: &TypeSubstitution,
+    ) -> NilListExpr {
+        match value.kind() {
+            TypedConstantListValueKind::Value { elements, tail } => {
+                let elements = elements
+                    .iter()
+                    .map(|value| self.materialize_nil_value(value, substitution))
+                    .collect();
+                match tail {
+                    Some(tail) => NilListExpr::spread(
+                        elements,
+                        self.materialize_nil_list_value(tail, substitution),
+                    ),
+                    None => NilListExpr::value(NilListItem, elements),
+                }
+            }
+            TypedConstantListValueKind::Reference(value) => {
+                self.materialize_nil_list(&value.substitute_leaf(substitution))
+            }
+        }
+    }
+
+    fn materialize_tuple_list(&self, value: &ConstantTupleListInstantiation) -> TupleListExpr {
+        match value.source() {
+            ConstantListTemplateSource::Generic(source) => self.materialize_generic_tuple_list(
+                self.generic_list(*source),
+                value.substitution(),
+                value.item_shape(),
+            ),
+            ConstantListTemplateSource::Exact(source) => {
+                self.materialize_tuple_list_value(self.tuple_list(*source), value.substitution())
+            }
+        }
+    }
+
+    fn materialize_tuple_list_value(
+        &self,
+        value: &ConstantTupleListValue,
+        substitution: &TypeSubstitution,
+    ) -> TupleListExpr {
+        match value.kind() {
+            TypedConstantListValueKind::Value { elements, tail } => {
+                let shape = value
+                    .item_shape()
+                    .iter()
+                    .map(|shape| shape.substitute(substitution))
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice();
+                let elements = elements
+                    .iter()
+                    .map(|value| self.materialize_tuple_value(value, substitution))
+                    .collect();
+                let expression = match tail {
+                    Some(tail) => TupleListExpr::spread(
+                        elements,
+                        self.materialize_tuple_list_value(tail, substitution),
+                    ),
+                    None => TupleListExpr::value(
+                        TupleListItem::new(shape.iter().map(ValueShape::value_type).collect()),
+                        elements,
+                    ),
+                };
+                expression.with_item_shape(ValueShape::Tuple(shape))
+            }
+            TypedConstantListValueKind::Reference(value) => {
+                self.materialize_tuple_list(&value.substitute_tuple(substitution))
+            }
+        }
+    }
+
+    fn materialize_list_list(&self, value: &ConstantListListInstantiation) -> ListListExpr {
+        match value.source() {
+            ConstantListTemplateSource::Generic(source) => self.materialize_generic_list_list(
+                self.generic_list(*source),
+                value.substitution(),
+                value.item_shape(),
+            ),
+            ConstantListTemplateSource::Exact(source) => {
+                self.materialize_list_list_value(self.list_list(*source), value.substitution())
+            }
+        }
+    }
+
+    fn materialize_list_list_value(
+        &self,
+        value: &ConstantListListValue,
+        substitution: &TypeSubstitution,
+    ) -> ListListExpr {
+        match value.kind() {
+            TypedConstantListValueKind::Value { elements, tail } => {
+                let shape = value.item_shape().substitute(substitution);
+                let elements = elements
+                    .iter()
+                    .map(|value| self.materialize_list_value(value, substitution))
+                    .collect();
+                let expression = match tail {
+                    Some(tail) => ListListExpr::spread(
+                        elements,
+                        self.materialize_list_list_value(tail, substitution),
+                    ),
+                    None => ListListExpr::value(
+                        ListListItem::new(Box::new(shape.value_type())),
+                        elements,
+                    ),
+                };
+                expression.with_item_shape(ValueShape::List(Box::new(shape)))
+            }
+            TypedConstantListValueKind::Reference(value) => {
+                self.materialize_list_list(&value.substitute_list(substitution))
+            }
+        }
+    }
+
+    fn materialize_function_list(
+        &self,
+        value: &ConstantFunctionListInstantiation,
+    ) -> FunctionListExpr {
+        match value.source() {
+            ConstantListTemplateSource::Generic(source) => self.materialize_generic_function_list(
+                self.generic_list(*source),
+                value.substitution(),
+                value.item_shape(),
+            ),
+            ConstantListTemplateSource::Exact(source) => self
+                .materialize_function_list_value(self.function_list(*source), value.substitution()),
+        }
+    }
+
+    fn materialize_function_list_value(
+        &self,
+        value: &ConstantFunctionListValue,
+        substitution: &TypeSubstitution,
+    ) -> FunctionListExpr {
+        match value.kind() {
+            TypedConstantListValueKind::Value { elements, tail } => {
+                let shape = value.item_shape().substitute(substitution);
+                let elements = elements
+                    .iter()
+                    .map(|value| self.materialize_function_value(value, substitution))
+                    .collect();
+                let expression = match tail {
+                    Some(tail) => FunctionListExpr::spread(
+                        elements,
+                        self.materialize_function_list_value(tail, substitution),
+                    ),
+                    None => FunctionListExpr::value(FunctionListItem::new(shape.type_()), elements),
+                };
+                expression.with_item_shape(ValueShape::Function(Box::new(shape)))
+            }
+            TypedConstantListValueKind::Reference(value) => {
+                self.materialize_function_list(&value.substitute_function(substitution))
+            }
+        }
+    }
+}
+
+impl ConstantTemplateSignature {
+    pub(crate) fn int(id: ConstantTemplateId, storage_index: usize, scheme: TypeScheme) -> Self {
+        Self::new(
+            id,
+            scheme,
+            ValueShape::Int,
+            ConstantTemplateSignatureKind::Int(ConstantIntTemplateId(storage_index)),
+        )
+    }
+
+    pub(crate) fn string(id: ConstantTemplateId, storage_index: usize, scheme: TypeScheme) -> Self {
+        Self::new(
+            id,
+            scheme,
+            ValueShape::String,
+            ConstantTemplateSignatureKind::String(ConstantStringTemplateId(storage_index)),
+        )
+    }
+
+    pub(crate) fn bit_array(
+        id: ConstantTemplateId,
+        storage_index: usize,
+        scheme: TypeScheme,
+    ) -> Self {
+        Self::new(
+            id,
+            scheme,
+            ValueShape::BitArray,
+            ConstantTemplateSignatureKind::BitArray(ConstantBitArrayTemplateId(storage_index)),
+        )
+    }
+
+    pub(crate) fn custom(
+        id: ConstantTemplateId,
+        storage_index: usize,
+        scheme: TypeScheme,
+        shape: CustomValueShape,
+    ) -> Self {
+        let kind_shape = shape.clone();
+        Self::new(
+            id,
+            scheme,
+            ValueShape::Custom(shape),
+            ConstantTemplateSignatureKind::Custom {
+                template: ConstantCustomTemplateId(storage_index),
+                shape: kind_shape,
+            },
+        )
+    }
+
+    pub(crate) fn float(id: ConstantTemplateId, storage_index: usize, scheme: TypeScheme) -> Self {
+        Self::new(
+            id,
+            scheme,
+            ValueShape::Float,
+            ConstantTemplateSignatureKind::Float(ConstantFloatTemplateId(storage_index)),
+        )
+    }
+
+    pub(crate) fn bool(id: ConstantTemplateId, storage_index: usize, scheme: TypeScheme) -> Self {
+        Self::new(
+            id,
+            scheme,
+            ValueShape::Bool,
+            ConstantTemplateSignatureKind::Bool(ConstantBoolTemplateId(storage_index)),
+        )
+    }
+
+    pub(crate) fn nil(id: ConstantTemplateId, storage_index: usize, scheme: TypeScheme) -> Self {
+        Self::new(
+            id,
+            scheme,
+            ValueShape::Nil,
+            ConstantTemplateSignatureKind::Nil(ConstantNilTemplateId(storage_index)),
+        )
+    }
+
+    pub(crate) fn tuple(
+        id: ConstantTemplateId,
+        storage_index: usize,
+        scheme: TypeScheme,
+        shape: Box<[ValueShape]>,
+    ) -> Self {
+        let kind_shape = shape.clone();
+        Self::new(
+            id,
+            scheme,
+            ValueShape::Tuple(shape),
+            ConstantTemplateSignatureKind::Tuple {
+                template: ConstantTupleTemplateId(storage_index),
+                shape: kind_shape,
+            },
+        )
+    }
+
+    pub(crate) fn list(
+        id: ConstantTemplateId,
+        storage_index: usize,
+        scheme: TypeScheme,
+        item_shape: ValueShape,
+    ) -> Self {
+        let template = ConstantListTemplate::from_item_shape(item_shape, storage_index);
+        let item_shape = template.item_shape();
+        Self::new(
+            id,
+            scheme,
+            ValueShape::List(Box::new(item_shape)),
+            ConstantTemplateSignatureKind::List(template),
+        )
+    }
+
+    pub(crate) fn function(
+        id: ConstantTemplateId,
+        storage_index: usize,
+        scheme: TypeScheme,
+        shape: FunctionShape,
+    ) -> Self {
+        let kind_shape = shape.clone();
+        Self::new(
+            id,
+            scheme,
+            ValueShape::Function(Box::new(shape)),
+            ConstantTemplateSignatureKind::Function {
+                template: ConstantFunctionTemplateId(storage_index),
+                shape: kind_shape,
+            },
+        )
+    }
+
+    fn new(
+        id: ConstantTemplateId,
+        scheme: TypeScheme,
+        shape: ValueShape,
+        kind: ConstantTemplateSignatureKind,
+    ) -> Self {
+        Self {
+            id,
+            scheme,
+            shape,
+            kind,
+        }
+    }
+
+    pub(crate) fn id(&self) -> ConstantTemplateId {
+        self.id
+    }
+
+    pub(crate) fn scheme(&self) -> &TypeScheme {
+        &self.scheme
+    }
+
+    pub(crate) fn shape(&self) -> &ValueShape {
+        &self.shape
+    }
+
+    pub(crate) fn try_instantiate(
+        &self,
+        arguments: Vec<ValueShape>,
+    ) -> Option<ConstantInstantiation> {
+        let substitution = self.scheme.try_substitution(arguments)?;
+        let kind = match &self.kind {
+            ConstantTemplateSignatureKind::Int(template) => ConstantInstantiationKind::Int(
+                TypedConstantInstantiation::new(*template, substitution, ()),
+            ),
+            ConstantTemplateSignatureKind::String(template) => ConstantInstantiationKind::String(
+                TypedConstantInstantiation::new(*template, substitution, ()),
+            ),
+            ConstantTemplateSignatureKind::BitArray(template) => {
+                ConstantInstantiationKind::BitArray(TypedConstantInstantiation::new(
+                    *template,
+                    substitution,
+                    (),
+                ))
+            }
+            ConstantTemplateSignatureKind::Custom { template, shape } => {
+                let shape = shape.substitute(&substitution);
+                ConstantInstantiationKind::Custom(TypedConstantInstantiation::new(
+                    *template,
+                    substitution,
+                    shape,
+                ))
+            }
+            ConstantTemplateSignatureKind::Float(template) => ConstantInstantiationKind::Float(
+                TypedConstantInstantiation::new(*template, substitution, ()),
+            ),
+            ConstantTemplateSignatureKind::Bool(template) => ConstantInstantiationKind::Bool(
+                TypedConstantInstantiation::new(*template, substitution, ()),
+            ),
+            ConstantTemplateSignatureKind::Nil(template) => ConstantInstantiationKind::Nil(
+                TypedConstantInstantiation::new(*template, substitution, ()),
+            ),
+            ConstantTemplateSignatureKind::Tuple { template, shape } => {
+                let shape = shape
+                    .iter()
+                    .map(|shape| shape.substitute(&substitution))
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice();
+                ConstantInstantiationKind::Tuple(TypedConstantInstantiation::new(
+                    *template,
+                    substitution,
+                    shape,
+                ))
+            }
+            ConstantTemplateSignatureKind::List(template) => {
+                ConstantInstantiationKind::List(template.instantiate(substitution))
+            }
+            ConstantTemplateSignatureKind::Function { template, shape } => {
+                let shape = shape.substitute(&substitution);
+                ConstantInstantiationKind::Function(TypedConstantInstantiation::new(
+                    *template,
+                    substitution,
+                    shape,
+                ))
+            }
+        };
+        Some(ConstantInstantiation { kind })
+    }
+}
+
+impl<Id: Copy, Shape> TypedConstantInstantiation<Id, Shape> {
+    fn new(template: Id, substitution: TypeSubstitution, shape: Shape) -> Self {
+        Self {
+            template,
+            substitution,
+            shape,
+        }
+    }
+
+    pub(crate) fn template(&self) -> Id {
+        self.template
+    }
+
+    pub(crate) fn substitution(&self) -> &TypeSubstitution {
+        &self.substitution
+    }
+
+    pub(crate) fn shape(&self) -> &Shape {
+        &self.shape
+    }
+}
+
+impl<Id: Copy> TypedConstantInstantiation<Id, ()> {
+    fn substitute_leaf(&self, outer: &TypeSubstitution) -> Self {
+        Self::new(self.template, self.substitution.substitute(outer), ())
+    }
+}
+
+impl TypedConstantInstantiation<ConstantCustomTemplateId, CustomValueShape> {
+    fn substitute_custom(&self, outer: &TypeSubstitution) -> Self {
+        Self::new(
+            self.template,
+            self.substitution.substitute(outer),
+            self.shape.substitute(outer),
+        )
+    }
+}
+
+impl TypedConstantInstantiation<ConstantTupleTemplateId, Box<[ValueShape]>> {
+    fn substitute_tuple(&self, outer: &TypeSubstitution) -> Self {
+        Self::new(
+            self.template,
+            self.substitution.substitute(outer),
+            self.shape
+                .iter()
+                .map(|shape| shape.substitute(outer))
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        )
+    }
+}
+
+impl TypedConstantInstantiation<ConstantFunctionTemplateId, FunctionShape> {
+    fn substitute_function(&self, outer: &TypeSubstitution) -> Self {
+        Self::new(
+            self.template,
+            self.substitution.substitute(outer),
+            self.shape.substitute(outer),
+        )
+    }
+}
+
+impl ConstantValue {
+    pub(crate) fn int(value: BigInt) -> Self {
+        Self {
+            kind: ConstantValueKind::Int(ConstantIntValue::Value(value)),
+        }
+    }
+
+    pub(crate) fn float(value: f64) -> Self {
+        Self {
+            kind: ConstantValueKind::Float(ConstantFloatValue::Value(value)),
+        }
+    }
+
+    pub(crate) fn string(value: EcoString) -> Self {
+        Self {
+            kind: ConstantValueKind::String(ConstantStringValue::Value(value)),
+        }
+    }
+
+    pub(crate) fn string_concatenation(
+        left: ConstantStringValue,
+        right: ConstantStringValue,
+    ) -> Self {
+        Self {
+            kind: ConstantValueKind::String(ConstantStringValue::Concatenation {
+                left: Box::new(left),
+                right: Box::new(right),
+            }),
+        }
+    }
+
+    pub(crate) fn bool(value: bool) -> Self {
+        Self {
+            kind: ConstantValueKind::Bool(ConstantBoolValue::Value(value)),
+        }
+    }
+
+    pub(crate) fn nil() -> Self {
+        Self {
+            kind: ConstantValueKind::Nil(ConstantNilValue::Value),
+        }
+    }
+
+    pub(crate) fn tuple(element_shapes: Box<[ValueShape]>, elements: Box<[Self]>) -> Self {
+        Self {
+            kind: ConstantValueKind::Tuple(ConstantTupleValue {
+                shape: element_shapes,
+                kind: ConstantTupleValueKind::Value(elements),
+            }),
+        }
+    }
+
+    pub(crate) fn try_list(
+        item_shape: ValueShape,
+        elements: Vec<Self>,
+        tail: Option<Self>,
+    ) -> Result<Self, ConstantListConstructionError> {
+        if elements.is_empty() && tail.is_some() {
+            return Err(ConstantListConstructionError::SpreadWithoutElements);
+        }
+
+        let tail = tail
+            .map(|tail| {
+                let actual = tail.shape();
+                tail.into_list()
+                    .ok_or_else(|| constant_list_tail_mismatch(&item_shape, actual))
+            })
+            .transpose()?;
+
+        let value = match &item_shape {
+            ValueShape::Parameter(parameter) => {
+                if let Some(value) = elements.first() {
+                    return Err(constant_list_element_mismatch(&item_shape, value.shape()));
+                }
+                ConstantListValue::generic(*parameter)
+            }
+            ValueShape::Int => ConstantListValue::int(
+                elements
+                    .into_iter()
+                    .map(|value| {
+                        let actual = value.shape();
+                        value
+                            .into_int()
+                            .ok_or_else(|| constant_list_element_mismatch(&item_shape, actual))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+                tail.map(|tail| {
+                    let actual = tail.shape();
+                    tail.into_int()
+                        .ok_or_else(|| constant_list_tail_mismatch(&item_shape, actual))
+                })
+                .transpose()?,
+            ),
+            ValueShape::String => ConstantListValue::string(
+                elements
+                    .into_iter()
+                    .map(|value| {
+                        let actual = value.shape();
+                        value
+                            .into_string()
+                            .ok_or_else(|| constant_list_element_mismatch(&item_shape, actual))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+                tail.map(|tail| {
+                    let actual = tail.shape();
+                    tail.into_string()
+                        .ok_or_else(|| constant_list_tail_mismatch(&item_shape, actual))
+                })
+                .transpose()?,
+            ),
+            ValueShape::BitArray => ConstantListValue::bit_array(
+                elements
+                    .into_iter()
+                    .map(|value| {
+                        let actual = value.shape();
+                        value
+                            .into_bit_array()
+                            .ok_or_else(|| constant_list_element_mismatch(&item_shape, actual))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+                tail.map(|tail| {
+                    let actual = tail.shape();
+                    tail.into_bit_array()
+                        .ok_or_else(|| constant_list_tail_mismatch(&item_shape, actual))
+                })
+                .transpose()?,
+            ),
+            ValueShape::UtfCodepoint => {
+                if let Some(value) = elements.first() {
+                    return Err(constant_list_element_mismatch(&item_shape, value.shape()));
+                }
+                ConstantListValue::utf_codepoint()
+            }
+            ValueShape::Custom(shape) => ConstantListValue::custom(
+                shape.clone(),
+                elements
+                    .into_iter()
+                    .map(|value| {
+                        let actual = value.shape();
+                        match value.kind {
+                            ConstantValueKind::Custom(value) if actual.can_flow_to(&item_shape) => {
+                                Ok(value)
+                            }
+                            _ => Err(constant_list_element_mismatch(&item_shape, actual)),
+                        }
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+                tail.map(|tail| {
+                    let actual = tail.shape();
+                    match tail {
+                        ConstantListValue::Custom(value)
+                            if actual
+                                .can_flow_to(&ValueShape::List(Box::new(item_shape.clone()))) =>
+                        {
+                            Ok(value)
+                        }
+                        _ => Err(constant_list_tail_mismatch(&item_shape, actual)),
+                    }
+                })
+                .transpose()?,
+            ),
+            ValueShape::Float => ConstantListValue::float(
+                elements
+                    .into_iter()
+                    .map(|value| {
+                        let actual = value.shape();
+                        value
+                            .into_float()
+                            .ok_or_else(|| constant_list_element_mismatch(&item_shape, actual))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+                tail.map(|tail| {
+                    let actual = tail.shape();
+                    tail.into_float()
+                        .ok_or_else(|| constant_list_tail_mismatch(&item_shape, actual))
+                })
+                .transpose()?,
+            ),
+            ValueShape::Bool => ConstantListValue::bool(
+                elements
+                    .into_iter()
+                    .map(|value| {
+                        let actual = value.shape();
+                        value
+                            .into_bool()
+                            .ok_or_else(|| constant_list_element_mismatch(&item_shape, actual))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+                tail.map(|tail| {
+                    let actual = tail.shape();
+                    tail.into_bool()
+                        .ok_or_else(|| constant_list_tail_mismatch(&item_shape, actual))
+                })
+                .transpose()?,
+            ),
+            ValueShape::Nil => ConstantListValue::nil(
+                elements
+                    .into_iter()
+                    .map(|value| {
+                        let actual = value.shape();
+                        value
+                            .into_nil()
+                            .ok_or_else(|| constant_list_element_mismatch(&item_shape, actual))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+                tail.map(|tail| {
+                    let actual = tail.shape();
+                    tail.into_nil()
+                        .ok_or_else(|| constant_list_tail_mismatch(&item_shape, actual))
+                })
+                .transpose()?,
+            ),
+            ValueShape::Tuple(shape) => ConstantListValue::tuple(
+                shape.clone(),
+                elements
+                    .into_iter()
+                    .map(|value| {
+                        let actual = value.shape();
+                        match value.kind {
+                            ConstantValueKind::Tuple(value) if actual.can_flow_to(&item_shape) => {
+                                Ok(value)
+                            }
+                            _ => Err(constant_list_element_mismatch(&item_shape, actual)),
+                        }
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+                tail.map(|tail| {
+                    let actual = tail.shape();
+                    match tail {
+                        ConstantListValue::Tuple(value)
+                            if actual
+                                .can_flow_to(&ValueShape::List(Box::new(item_shape.clone()))) =>
+                        {
+                            Ok(value)
+                        }
+                        _ => Err(constant_list_tail_mismatch(&item_shape, actual)),
+                    }
+                })
+                .transpose()?,
+            ),
+            ValueShape::List(shape) => ConstantListValue::list(
+                (**shape).clone(),
+                elements
+                    .into_iter()
+                    .map(|value| {
+                        let actual = value.shape();
+                        match value.kind {
+                            ConstantValueKind::List(value) if actual.can_flow_to(&item_shape) => {
+                                Ok(value)
+                            }
+                            _ => Err(constant_list_element_mismatch(&item_shape, actual)),
+                        }
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+                tail.map(|tail| {
+                    let actual = tail.shape();
+                    match tail {
+                        ConstantListValue::List(value)
+                            if actual
+                                .can_flow_to(&ValueShape::List(Box::new(item_shape.clone()))) =>
+                        {
+                            Ok(value)
+                        }
+                        _ => Err(constant_list_tail_mismatch(&item_shape, actual)),
+                    }
+                })
+                .transpose()?,
+            ),
+            ValueShape::Function(shape) => ConstantListValue::function(
+                (**shape).clone(),
+                elements
+                    .into_iter()
+                    .map(|value| {
+                        let actual = value.shape();
+                        match value.kind {
+                            ConstantValueKind::Function(value)
+                                if actual.can_flow_to(&item_shape) =>
+                            {
+                                Ok(value)
+                            }
+                            _ => Err(constant_list_element_mismatch(&item_shape, actual)),
+                        }
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+                tail.map(|tail| {
+                    let actual = tail.shape();
+                    match tail {
+                        ConstantListValue::Function(value)
+                            if actual
+                                .can_flow_to(&ValueShape::List(Box::new(item_shape.clone()))) =>
+                        {
+                            Ok(value)
+                        }
+                        _ => Err(constant_list_tail_mismatch(&item_shape, actual)),
+                    }
+                })
+                .transpose()?,
+            ),
+        };
+
+        Ok(Self {
+            kind: ConstantValueKind::List(value),
+        })
+    }
+
+    pub(crate) fn bit_array(segments: Box<[ConstantBitArraySegment]>) -> Self {
+        Self {
+            kind: ConstantValueKind::BitArray(ConstantBitArrayValue {
+                kind: ConstantBitArrayValueKind::Value(segments),
+            }),
+        }
+    }
+
+    pub(crate) fn custom(
+        shape: CustomValueShape,
+        constructor: CustomConstructor,
+        fields: Box<[Self]>,
+    ) -> Self {
+        Self {
+            kind: ConstantValueKind::Custom(ConstantCustomValue {
+                shape,
+                kind: ConstantCustomValueKind::Construction(ConstantCustomConstruction {
+                    constructor,
+                    fields,
+                }),
+            }),
+        }
+    }
+
+    pub(crate) fn function(shape: FunctionShape, function: ConstantFunction) -> Self {
+        Self {
+            kind: ConstantValueKind::Function(ConstantFunctionValue {
+                shape,
+                kind: ConstantFunctionValueKind::Target(function),
+            }),
+        }
+    }
+
+    pub(crate) fn reference(instantiation: ConstantInstantiation) -> Self {
+        let kind = match instantiation.kind {
+            ConstantInstantiationKind::Int(value) => {
+                ConstantValueKind::Int(ConstantIntValue::Reference(value))
+            }
+            ConstantInstantiationKind::String(value) => {
+                ConstantValueKind::String(ConstantStringValue::Reference(value))
+            }
+            ConstantInstantiationKind::BitArray(value) => {
+                ConstantValueKind::BitArray(ConstantBitArrayValue {
+                    kind: ConstantBitArrayValueKind::Reference(value),
+                })
+            }
+            ConstantInstantiationKind::Custom(value) => {
+                ConstantValueKind::Custom(ConstantCustomValue {
+                    shape: value.shape().clone(),
+                    kind: ConstantCustomValueKind::Reference(value),
+                })
+            }
+            ConstantInstantiationKind::Float(value) => {
+                ConstantValueKind::Float(ConstantFloatValue::Reference(value))
+            }
+            ConstantInstantiationKind::Bool(value) => {
+                ConstantValueKind::Bool(ConstantBoolValue::Reference(value))
+            }
+            ConstantInstantiationKind::Nil(value) => {
+                ConstantValueKind::Nil(ConstantNilValue::Reference(value))
+            }
+            ConstantInstantiationKind::Tuple(value) => {
+                ConstantValueKind::Tuple(ConstantTupleValue {
+                    shape: value.shape().clone(),
+                    kind: ConstantTupleValueKind::Reference(value),
+                })
+            }
+            ConstantInstantiationKind::List(value) => {
+                ConstantValueKind::List(ConstantListValue::reference(value))
+            }
+            ConstantInstantiationKind::Function(value) => {
+                ConstantValueKind::Function(ConstantFunctionValue {
+                    shape: value.shape().clone(),
+                    kind: ConstantFunctionValueKind::Reference(value),
+                })
+            }
+        };
+        Self { kind }
+    }
+
+    pub(crate) fn shape(&self) -> ValueShape {
+        match &self.kind {
+            ConstantValueKind::Int(_) => ValueShape::Int,
+            ConstantValueKind::Float(_) => ValueShape::Float,
+            ConstantValueKind::String(_) => ValueShape::String,
+            ConstantValueKind::Bool(_) => ValueShape::Bool,
+            ConstantValueKind::Nil(_) => ValueShape::Nil,
+            ConstantValueKind::Tuple(value) => ValueShape::Tuple(value.shape.clone()),
+            ConstantValueKind::List(value) => value.shape(),
+            ConstantValueKind::BitArray(_) => ValueShape::BitArray,
+            ConstantValueKind::Custom(value) => ValueShape::Custom(value.shape.clone()),
+            ConstantValueKind::Function(value) => {
+                ValueShape::Function(Box::new(value.shape.clone()))
+            }
+        }
+    }
+
+    pub(crate) fn into_int(self) -> Option<ConstantIntValue> {
+        match self.kind {
+            ConstantValueKind::Int(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn into_float(self) -> Option<ConstantFloatValue> {
+        match self.kind {
+            ConstantValueKind::Float(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn into_string(self) -> Option<ConstantStringValue> {
+        match self.kind {
+            ConstantValueKind::String(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn into_bit_array(self) -> Option<ConstantBitArrayValue> {
+        match self.kind {
+            ConstantValueKind::BitArray(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn into_bool(self) -> Option<ConstantBoolValue> {
+        match self.kind {
+            ConstantValueKind::Bool(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn into_nil(self) -> Option<ConstantNilValue> {
+        match self.kind {
+            ConstantValueKind::Nil(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    fn into_list(self) -> Option<ConstantListValue> {
+        match self.kind {
+            ConstantValueKind::List(value) => Some(value),
+            _ => None,
+        }
+    }
+}
+
+impl ConstantTupleValue {
+    pub(crate) fn shape(&self) -> &[ValueShape] {
+        &self.shape
+    }
+
+    pub(crate) fn kind(&self) -> &ConstantTupleValueKind {
+        &self.kind
+    }
+}
+
+impl ConstantBitArrayValue {
+    pub(crate) fn kind(&self) -> &ConstantBitArrayValueKind {
+        &self.kind
+    }
+}
+
+impl ConstantCustomValue {
+    pub(crate) fn shape(&self) -> &CustomValueShape {
+        &self.shape
+    }
+
+    pub(crate) fn kind(&self) -> &ConstantCustomValueKind {
+        &self.kind
+    }
+}
+
+impl ConstantCustomConstruction {
+    pub(crate) fn constructor(&self) -> &CustomConstructor {
+        &self.constructor
+    }
+
+    pub(crate) fn fields(&self) -> &[ConstantValue] {
+        &self.fields
+    }
+}
+
+impl MaterializedConstantCustomConstruction {
+    pub(crate) fn new(constructor: CustomConstructor, fields: Vec<super::Expr>) -> Self {
+        Self {
+            constructor,
+            fields: fields.into_boxed_slice(),
+        }
+    }
+
+    pub(crate) fn into_parts(self) -> (CustomConstructor, Box<[super::Expr]>) {
+        (self.constructor, self.fields)
+    }
+}
+
+impl ConstantFunctionValue {
+    pub(crate) fn kind(&self) -> &ConstantFunctionValueKind {
+        &self.kind
+    }
+}
+
+fn constant_list_element_mismatch(
+    expected: &ValueShape,
+    actual: ValueShape,
+) -> ConstantListConstructionError {
+    ConstantListConstructionError::TypeMismatch {
+        expected: expected.value_type(),
+        actual: actual.value_type(),
+    }
+}
+
+fn constant_list_tail_mismatch(
+    expected: &ValueShape,
+    actual: ValueShape,
+) -> ConstantListConstructionError {
+    ConstantListConstructionError::TypeMismatch {
+        expected: ValueType::List(Box::new(expected.value_type())),
+        actual: actual.value_type(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        ConstantBitArraySegment, ConstantFunction, ConstantListConstructionError, ConstantTemplate,
+        ConstantTemplateId, ConstantTemplateSignature, ConstantTemplates, ConstantValue,
+    };
+    use crate::plan::{
+        BitArrayExpr, BitArraySegment, BoolExpr, CustomConstructor, CustomConstructorField,
+        CustomConstructorRefinement, CustomExpr, CustomFunctionExpr, CustomTypeName,
+        CustomValueShape, Endianness, Expr, FloatBitSize, FloatExpr, FunctionExpr,
+        FunctionReference, FunctionShape, IntExpr, ListExpr, NilExpr, PanicSite, StringEncoding,
+        StringExpr, TupleExpr, TypeParameterId, TypeScheme, ValueShape, ValueType,
+        monomorphic_function_instantiation,
+    };
+
+    #[test]
+    fn constant_references_materialize_every_top_level_family() {
+        let monomorphic = TypeScheme::new(0);
+        let int_base =
+            ConstantTemplateSignature::int(ConstantTemplateId(0), 0, monomorphic.clone());
+        let int_alias =
+            ConstantTemplateSignature::int(ConstantTemplateId(1), 1, monomorphic.clone());
+        let int_reference = int_base
+            .try_instantiate(Vec::new())
+            .expect("a monomorphic Int constant should instantiate without arguments");
+
+        let string_base =
+            ConstantTemplateSignature::string(ConstantTemplateId(2), 0, monomorphic.clone());
+        let string_alias =
+            ConstantTemplateSignature::string(ConstantTemplateId(3), 1, monomorphic.clone());
+        let string_reference = string_base
+            .try_instantiate(Vec::new())
+            .expect("a monomorphic String constant should instantiate without arguments");
+
+        let float_base =
+            ConstantTemplateSignature::float(ConstantTemplateId(4), 0, monomorphic.clone());
+        let float_alias =
+            ConstantTemplateSignature::float(ConstantTemplateId(5), 1, monomorphic.clone());
+        let float_reference = float_base
+            .try_instantiate(Vec::new())
+            .expect("a monomorphic Float constant should instantiate without arguments");
+
+        let bool_base =
+            ConstantTemplateSignature::bool(ConstantTemplateId(6), 0, monomorphic.clone());
+        let bool_alias =
+            ConstantTemplateSignature::bool(ConstantTemplateId(7), 1, monomorphic.clone());
+        let bool_reference = bool_base
+            .try_instantiate(Vec::new())
+            .expect("a monomorphic Bool constant should instantiate without arguments");
+
+        let nil_base =
+            ConstantTemplateSignature::nil(ConstantTemplateId(8), 0, monomorphic.clone());
+        let nil_alias =
+            ConstantTemplateSignature::nil(ConstantTemplateId(9), 1, monomorphic.clone());
+        let nil_reference = nil_base
+            .try_instantiate(Vec::new())
+            .expect("a monomorphic Nil constant should instantiate without arguments");
+
+        let bit_array_base =
+            ConstantTemplateSignature::bit_array(ConstantTemplateId(10), 0, monomorphic.clone());
+        let bit_array_alias =
+            ConstantTemplateSignature::bit_array(ConstantTemplateId(11), 1, monomorphic.clone());
+        let bit_array_reference = bit_array_base
+            .try_instantiate(Vec::new())
+            .expect("a monomorphic BitArray constant should instantiate without arguments");
+
+        let custom_shape = CustomValueShape::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Token".into()),
+            Vec::new(),
+            CustomConstructorRefinement::Exact(0),
+        );
+        let constructor = CustomConstructor::new(
+            custom_shape.type_().clone(),
+            "Token".into(),
+            0,
+            vec![CustomConstructorField::new(None, ValueType::Int)],
+        );
+        let custom_base = ConstantTemplateSignature::custom(
+            ConstantTemplateId(12),
+            0,
+            monomorphic.clone(),
+            custom_shape.clone(),
+        );
+        let custom_alias = ConstantTemplateSignature::custom(
+            ConstantTemplateId(13),
+            1,
+            monomorphic.clone(),
+            custom_shape.clone(),
+        );
+        let custom_reference = custom_base
+            .try_instantiate(Vec::new())
+            .expect("a monomorphic custom constant should instantiate without arguments");
+
+        let tuple_shape = vec![ValueShape::Int, ValueShape::String].into_boxed_slice();
+        let tuple_base = ConstantTemplateSignature::tuple(
+            ConstantTemplateId(14),
+            0,
+            monomorphic.clone(),
+            tuple_shape.clone(),
+        );
+        let tuple_alias = ConstantTemplateSignature::tuple(
+            ConstantTemplateId(15),
+            1,
+            monomorphic.clone(),
+            tuple_shape.clone(),
+        );
+        let tuple_reference = tuple_base
+            .try_instantiate(Vec::new())
+            .expect("a monomorphic tuple constant should instantiate without arguments");
+
+        let function_shape = FunctionShape::new(vec![ValueShape::Int], ValueShape::String);
+        let function_reference = FunctionReference::new(
+            monomorphic_function_instantiation(3, function_shape.clone()),
+            Vec::new(),
+        );
+        let function_base = ConstantTemplateSignature::function(
+            ConstantTemplateId(16),
+            0,
+            monomorphic.clone(),
+            function_shape.clone(),
+        );
+        let function_alias = ConstantTemplateSignature::function(
+            ConstantTemplateId(17),
+            1,
+            monomorphic.clone(),
+            function_shape.clone(),
+        );
+        let function_reference_constant = function_base
+            .try_instantiate(Vec::new())
+            .expect("a monomorphic function constant should instantiate without arguments");
+
+        let constructor_function_shape = FunctionShape::new(
+            vec![ValueShape::Int],
+            ValueShape::Custom(custom_shape.clone()),
+        );
+        let constructor_function = ConstantTemplateSignature::function(
+            ConstantTemplateId(18),
+            2,
+            monomorphic,
+            constructor_function_shape.clone(),
+        );
+
+        let empty_bits = ConstantValue::bit_array(Box::new([]));
+        let empty_bits_value = empty_bits
+            .clone()
+            .into_bit_array()
+            .expect("a BitArray constant should retain its family");
+        let bit_array = ConstantValue::bit_array(
+            vec![
+                ConstantBitArraySegment::Int {
+                    value: ConstantValue::reference(int_reference.clone())
+                        .into_int()
+                        .expect("an Int reference should retain its family"),
+                    bit_size: 12,
+                    endianness: Endianness::Little,
+                },
+                ConstantBitArraySegment::Float {
+                    value: ConstantValue::reference(float_reference.clone())
+                        .into_float()
+                        .expect("a Float reference should retain its family"),
+                    bit_size: FloatBitSize::Sixteen,
+                    endianness: Endianness::Big,
+                },
+                ConstantBitArraySegment::String {
+                    value: ConstantValue::reference(string_reference.clone())
+                        .into_string()
+                        .expect("a String reference should retain its family"),
+                    encoding: StringEncoding::Utf16(Endianness::Little),
+                },
+                ConstantBitArraySegment::Bits(empty_bits_value.clone()),
+                ConstantBitArraySegment::SizedBits {
+                    value: empty_bits_value,
+                    bit_size: 0,
+                    site: PanicSite::unknown(),
+                },
+            ]
+            .into_boxed_slice(),
+        );
+
+        let entries = vec![
+            (
+                ConstantTemplate::new(int_base.clone(), "int".into()),
+                ConstantValue::int(7.into()),
+            ),
+            (
+                ConstantTemplate::new(int_alias.clone(), "int_alias".into()),
+                ConstantValue::reference(int_reference.clone()),
+            ),
+            (
+                ConstantTemplate::new(string_base.clone(), "string".into()),
+                ConstantValue::string_concatenation(
+                    ConstantValue::string("ge".into())
+                        .into_string()
+                        .expect("a String constant should retain its family"),
+                    ConstantValue::string("am".into())
+                        .into_string()
+                        .expect("a String constant should retain its family"),
+                ),
+            ),
+            (
+                ConstantTemplate::new(string_alias.clone(), "string_alias".into()),
+                ConstantValue::reference(string_reference.clone()),
+            ),
+            (
+                ConstantTemplate::new(float_base.clone(), "float".into()),
+                ConstantValue::float(1.5),
+            ),
+            (
+                ConstantTemplate::new(float_alias.clone(), "float_alias".into()),
+                ConstantValue::reference(float_reference.clone()),
+            ),
+            (
+                ConstantTemplate::new(bool_base.clone(), "bool".into()),
+                ConstantValue::bool(true),
+            ),
+            (
+                ConstantTemplate::new(bool_alias.clone(), "bool_alias".into()),
+                ConstantValue::reference(bool_reference),
+            ),
+            (
+                ConstantTemplate::new(nil_base.clone(), "nil".into()),
+                ConstantValue::nil(),
+            ),
+            (
+                ConstantTemplate::new(nil_alias.clone(), "nil_alias".into()),
+                ConstantValue::reference(nil_reference),
+            ),
+            (
+                ConstantTemplate::new(bit_array_base.clone(), "bits".into()),
+                bit_array,
+            ),
+            (
+                ConstantTemplate::new(bit_array_alias.clone(), "bits_alias".into()),
+                ConstantValue::reference(bit_array_reference),
+            ),
+            (
+                ConstantTemplate::new(custom_base.clone(), "token".into()),
+                ConstantValue::custom(
+                    custom_shape.clone(),
+                    constructor.clone(),
+                    vec![ConstantValue::reference(int_reference.clone())].into_boxed_slice(),
+                ),
+            ),
+            (
+                ConstantTemplate::new(custom_alias.clone(), "token_alias".into()),
+                ConstantValue::reference(custom_reference),
+            ),
+            (
+                ConstantTemplate::new(tuple_base.clone(), "pair".into()),
+                ConstantValue::tuple(
+                    tuple_shape,
+                    vec![
+                        ConstantValue::reference(int_reference),
+                        ConstantValue::reference(string_reference),
+                    ]
+                    .into_boxed_slice(),
+                ),
+            ),
+            (
+                ConstantTemplate::new(tuple_alias.clone(), "pair_alias".into()),
+                ConstantValue::reference(tuple_reference),
+            ),
+            (
+                ConstantTemplate::new(function_base.clone(), "function".into()),
+                ConstantValue::function(
+                    function_shape.clone(),
+                    ConstantFunction::Reference(function_reference.clone()),
+                ),
+            ),
+            (
+                ConstantTemplate::new(function_alias.clone(), "function_alias".into()),
+                ConstantValue::reference(function_reference_constant),
+            ),
+            (
+                ConstantTemplate::new(constructor_function.clone(), "constructor".into()),
+                ConstantValue::function(
+                    constructor_function_shape,
+                    ConstantFunction::Constructor(constructor.clone()),
+                ),
+            ),
+        ];
+        let templates = ConstantTemplates::from_entries(entries);
+
+        assert_eq!(templates.headers().len(), 19);
+        assert_eq!(
+            templates.header(ConstantTemplateId(18)).name(),
+            "constructor"
+        );
+        assert_eq!(
+            templates.materialize(
+                &int_alias
+                    .try_instantiate(Vec::new())
+                    .expect("a monomorphic Int alias should instantiate"),
+            ),
+            Expr::int(IntExpr::value(7.into())),
+        );
+        assert_eq!(
+            templates.materialize(
+                &string_alias
+                    .try_instantiate(Vec::new())
+                    .expect("a monomorphic String alias should instantiate"),
+            ),
+            Expr::string(StringExpr::concatenate(
+                StringExpr::value("ge".into()),
+                StringExpr::value("am".into()),
+            )),
+        );
+        assert_eq!(
+            templates.materialize(
+                &float_alias
+                    .try_instantiate(Vec::new())
+                    .expect("a monomorphic Float alias should instantiate"),
+            ),
+            Expr::float(FloatExpr::value(1.5)),
+        );
+        assert_eq!(
+            templates.materialize(
+                &bool_alias
+                    .try_instantiate(Vec::new())
+                    .expect("a monomorphic Bool alias should instantiate"),
+            ),
+            Expr::bool(BoolExpr::value(true)),
+        );
+        assert_eq!(
+            templates.materialize(
+                &nil_alias
+                    .try_instantiate(Vec::new())
+                    .expect("a monomorphic Nil alias should instantiate"),
+            ),
+            Expr::nil(NilExpr::value()),
+        );
+        assert_eq!(
+            templates.materialize(
+                &bit_array_alias
+                    .try_instantiate(Vec::new())
+                    .expect("a monomorphic BitArray alias should instantiate"),
+            ),
+            Expr::bit_array(BitArrayExpr::value(vec![
+                BitArraySegment::Int {
+                    value: IntExpr::value(7.into()),
+                    bit_size: 12,
+                    endianness: Endianness::Little,
+                },
+                BitArraySegment::Float {
+                    value: FloatExpr::value(1.5),
+                    bit_size: FloatBitSize::Sixteen,
+                    endianness: Endianness::Big,
+                },
+                BitArraySegment::String {
+                    value: StringExpr::concatenate(
+                        StringExpr::value("ge".into()),
+                        StringExpr::value("am".into()),
+                    ),
+                    encoding: StringEncoding::Utf16(Endianness::Little),
+                },
+                BitArraySegment::Bits(BitArrayExpr::value(Vec::new())),
+                BitArraySegment::SizedBits {
+                    value: BitArrayExpr::value(Vec::new()),
+                    size: crate::plan::BitArrayBitsSize::Fixed(0),
+                    site: PanicSite::unknown(),
+                },
+            ])),
+        );
+        assert_eq!(
+            templates.materialize(
+                &custom_alias
+                    .try_instantiate(Vec::new())
+                    .expect("a monomorphic custom alias should instantiate"),
+            ),
+            Expr::custom(
+                CustomExpr::try_constructor(
+                    constructor.clone(),
+                    vec![Expr::int(IntExpr::value(7.into()))],
+                )
+                .expect("the constructor field count should match"),
+            ),
+        );
+        assert_eq!(
+            templates.materialize(
+                &tuple_alias
+                    .try_instantiate(Vec::new())
+                    .expect("a monomorphic tuple alias should instantiate"),
+            ),
+            Expr::tuple(TupleExpr::value(
+                vec![
+                    Expr::int(IntExpr::value(7.into())),
+                    Expr::string(StringExpr::concatenate(
+                        StringExpr::value("ge".into()),
+                        StringExpr::value("am".into()),
+                    )),
+                ],
+                vec![ValueType::Int, ValueType::String],
+            )),
+        );
+        assert_eq!(
+            templates.materialize(
+                &function_alias
+                    .try_instantiate(Vec::new())
+                    .expect("a monomorphic function alias should instantiate"),
+            ),
+            Expr::function(FunctionExpr::reference(function_reference)),
+        );
+        assert_eq!(
+            templates.materialize(
+                &constructor_function
+                    .try_instantiate(Vec::new())
+                    .expect("a monomorphic constructor function should instantiate"),
+            ),
+            Expr::function(FunctionExpr::custom(CustomFunctionExpr::constructor(
+                constructor,
+            ))),
+        );
+    }
+
+    #[test]
+    fn generic_empty_list_references_materialize_every_item_shape() {
+        let parameter = TypeParameterId(0);
+        let base_signature = ConstantTemplateSignature::list(
+            ConstantTemplateId(0),
+            0,
+            TypeScheme::new(1),
+            ValueShape::Parameter(parameter),
+        );
+        let alias_signature = ConstantTemplateSignature::list(
+            ConstantTemplateId(1),
+            1,
+            TypeScheme::new(1),
+            ValueShape::Parameter(parameter),
+        );
+        let identity = base_signature
+            .try_instantiate(vec![ValueShape::Parameter(parameter)])
+            .expect("one parameter should match the generic constant scheme");
+        let templates = ConstantTemplates::from_entries(vec![
+            (
+                ConstantTemplate::new(base_signature, "empty".into()),
+                ConstantValue::try_list(ValueShape::Parameter(parameter), Vec::new(), None)
+                    .expect("an uninhabited list constant may be empty"),
+            ),
+            (
+                ConstantTemplate::new(alias_signature.clone(), "alias".into()),
+                ConstantValue::reference(identity),
+            ),
+        ]);
+
+        let custom_shape = CustomValueShape::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Token".into()),
+            Vec::new(),
+            CustomConstructorRefinement::Exact(0),
+        );
+        let function_shape = FunctionShape::new(vec![ValueShape::Int], ValueShape::String);
+        let item_shapes = vec![
+            ValueShape::Parameter(parameter),
+            ValueShape::Int,
+            ValueShape::String,
+            ValueShape::BitArray,
+            ValueShape::UtfCodepoint,
+            ValueShape::Custom(custom_shape),
+            ValueShape::Float,
+            ValueShape::Bool,
+            ValueShape::Nil,
+            ValueShape::Tuple(vec![ValueShape::Int, ValueShape::String].into_boxed_slice()),
+            ValueShape::List(Box::new(ValueShape::Bool)),
+            ValueShape::Function(Box::new(function_shape)),
+        ];
+
+        for item_shape in item_shapes {
+            let instantiation = alias_signature
+                .try_instantiate(vec![item_shape.clone()])
+                .expect("one item shape should match the generic constant scheme");
+            assert_eq!(
+                templates.materialize(&instantiation),
+                Expr::list(
+                    ListExpr::value(Vec::new(), item_shape.value_type())
+                        .with_item_shape(item_shape),
+                ),
+            );
+        }
+    }
+
+    #[test]
+    fn exact_list_references_materialize_every_item_family() {
+        let monomorphic = TypeScheme::new(0);
+        let custom_shape = CustomValueShape::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Token".into()),
+            Vec::new(),
+            CustomConstructorRefinement::Exact(0),
+        );
+        let constructor = CustomConstructor::new(
+            custom_shape.type_().clone(),
+            "Token".into(),
+            0,
+            vec![CustomConstructorField::new(None, ValueType::Int)],
+        );
+        let tuple_shape = vec![ValueShape::Int, ValueShape::String].into_boxed_slice();
+        let function_shape = FunctionShape::new(vec![ValueShape::Int], ValueShape::String);
+        let function_reference = FunctionReference::new(
+            monomorphic_function_instantiation(5, function_shape.clone()),
+            Vec::new(),
+        );
+
+        let item_shapes = vec![
+            ValueShape::Int,
+            ValueShape::String,
+            ValueShape::BitArray,
+            ValueShape::UtfCodepoint,
+            ValueShape::Custom(custom_shape.clone()),
+            ValueShape::Float,
+            ValueShape::Bool,
+            ValueShape::Nil,
+            ValueShape::Tuple(tuple_shape.clone()),
+            ValueShape::List(Box::new(ValueShape::Int)),
+            ValueShape::Function(Box::new(function_shape.clone())),
+        ];
+        let signatures = item_shapes
+            .iter()
+            .enumerate()
+            .flat_map(|(index, shape)| {
+                [
+                    ConstantTemplateSignature::list(
+                        ConstantTemplateId(index * 2),
+                        0,
+                        monomorphic.clone(),
+                        shape.clone(),
+                    ),
+                    ConstantTemplateSignature::list(
+                        ConstantTemplateId(index * 2 + 1),
+                        1,
+                        monomorphic.clone(),
+                        shape.clone(),
+                    ),
+                ]
+            })
+            .collect::<Vec<_>>();
+
+        let int_tail =
+            ConstantValue::try_list(ValueShape::Int, vec![ConstantValue::int(2.into())], None)
+                .expect("an Int list tail should accept Int elements");
+        let int_list = ConstantValue::try_list(
+            ValueShape::Int,
+            vec![ConstantValue::int(1.into())],
+            Some(int_tail),
+        )
+        .expect("an Int list spread should accept an Int list tail");
+
+        let string_tail = ConstantValue::try_list(
+            ValueShape::String,
+            vec![ConstantValue::string("two".into())],
+            None,
+        )
+        .expect("a String list tail should accept String elements");
+        let string_list = ConstantValue::try_list(
+            ValueShape::String,
+            vec![ConstantValue::string("one".into())],
+            Some(string_tail),
+        )
+        .expect("a String list spread should accept a String list tail");
+
+        let bit_array_tail = ConstantValue::try_list(
+            ValueShape::BitArray,
+            vec![ConstantValue::bit_array(Box::new([]))],
+            None,
+        )
+        .expect("a BitArray list tail should accept BitArray elements");
+        let bit_array_list = ConstantValue::try_list(
+            ValueShape::BitArray,
+            vec![ConstantValue::bit_array(Box::new([]))],
+            Some(bit_array_tail),
+        )
+        .expect("a BitArray list spread should accept a BitArray list tail");
+
+        let utf_codepoint_list =
+            ConstantValue::try_list(ValueShape::UtfCodepoint, Vec::new(), None)
+                .expect("a UtfCodepoint constant list may be empty");
+
+        let token = |value: i64| {
+            ConstantValue::custom(
+                custom_shape.clone(),
+                constructor.clone(),
+                vec![ConstantValue::int(value.into())].into_boxed_slice(),
+            )
+        };
+        let custom_tail = ConstantValue::try_list(
+            ValueShape::Custom(custom_shape.clone()),
+            vec![token(4)],
+            None,
+        )
+        .expect("a custom list tail should accept matching custom elements");
+        let custom_list = ConstantValue::try_list(
+            ValueShape::Custom(custom_shape.clone()),
+            vec![token(3)],
+            Some(custom_tail),
+        )
+        .expect("a custom list spread should accept a matching custom list tail");
+
+        let float_tail =
+            ConstantValue::try_list(ValueShape::Float, vec![ConstantValue::float(2.5)], None)
+                .expect("a Float list tail should accept Float elements");
+        let float_list = ConstantValue::try_list(
+            ValueShape::Float,
+            vec![ConstantValue::float(1.5)],
+            Some(float_tail),
+        )
+        .expect("a Float list spread should accept a Float list tail");
+
+        let bool_tail =
+            ConstantValue::try_list(ValueShape::Bool, vec![ConstantValue::bool(false)], None)
+                .expect("a Bool list tail should accept Bool elements");
+        let bool_list = ConstantValue::try_list(
+            ValueShape::Bool,
+            vec![ConstantValue::bool(true)],
+            Some(bool_tail),
+        )
+        .expect("a Bool list spread should accept a Bool list tail");
+
+        let nil_tail = ConstantValue::try_list(ValueShape::Nil, vec![ConstantValue::nil()], None)
+            .expect("a Nil list tail should accept Nil elements");
+        let nil_list =
+            ConstantValue::try_list(ValueShape::Nil, vec![ConstantValue::nil()], Some(nil_tail))
+                .expect("a Nil list spread should accept a Nil list tail");
+
+        let pair = |number: i64, string: &str| {
+            ConstantValue::tuple(
+                tuple_shape.clone(),
+                vec![
+                    ConstantValue::int(number.into()),
+                    ConstantValue::string(string.into()),
+                ]
+                .into_boxed_slice(),
+            )
+        };
+        let tuple_tail = ConstantValue::try_list(
+            ValueShape::Tuple(tuple_shape.clone()),
+            vec![pair(2, "two")],
+            None,
+        )
+        .expect("a tuple list tail should accept matching tuple elements");
+        let tuple_list = ConstantValue::try_list(
+            ValueShape::Tuple(tuple_shape.clone()),
+            vec![pair(1, "one")],
+            Some(tuple_tail),
+        )
+        .expect("a tuple list spread should accept a matching tuple list tail");
+
+        let int_element = |value: i64| {
+            ConstantValue::try_list(
+                ValueShape::Int,
+                vec![ConstantValue::int(value.into())],
+                None,
+            )
+            .expect("a nested Int list should accept Int elements")
+        };
+        let list_tail = ConstantValue::try_list(
+            ValueShape::List(Box::new(ValueShape::Int)),
+            vec![int_element(2)],
+            None,
+        )
+        .expect("a nested list tail should accept matching lists");
+        let list_list = ConstantValue::try_list(
+            ValueShape::List(Box::new(ValueShape::Int)),
+            vec![int_element(1)],
+            Some(list_tail),
+        )
+        .expect("a nested list spread should accept a matching nested list tail");
+
+        let function_value = || {
+            ConstantValue::function(
+                function_shape.clone(),
+                ConstantFunction::Reference(function_reference.clone()),
+            )
+        };
+        let function_tail = ConstantValue::try_list(
+            ValueShape::Function(Box::new(function_shape.clone())),
+            vec![function_value()],
+            None,
+        )
+        .expect("a function list tail should accept matching functions");
+        let function_list = ConstantValue::try_list(
+            ValueShape::Function(Box::new(function_shape.clone())),
+            vec![function_value()],
+            Some(function_tail),
+        )
+        .expect("a function list spread should accept a matching function list tail");
+
+        let base_values = vec![
+            int_list,
+            string_list,
+            bit_array_list,
+            utf_codepoint_list,
+            custom_list,
+            float_list,
+            bool_list,
+            nil_list,
+            tuple_list,
+            list_list,
+            function_list,
+        ];
+        let mut entries = Vec::with_capacity(base_values.len() * 2);
+        for (index, value) in base_values.into_iter().enumerate() {
+            let base_signature = signatures[index * 2].clone();
+            let alias_signature = signatures[index * 2 + 1].clone();
+            let reference = base_signature
+                .try_instantiate(Vec::new())
+                .expect("a monomorphic list constant should instantiate without arguments");
+            entries.push((
+                ConstantTemplate::new(base_signature, format!("base_{index}").into()),
+                value,
+            ));
+            entries.push((
+                ConstantTemplate::new(alias_signature, format!("alias_{index}").into()),
+                ConstantValue::reference(reference),
+            ));
+        }
+        let templates = ConstantTemplates::from_entries(entries);
+
+        let expected = vec![
+            ListExpr::spread(
+                vec![Expr::int(IntExpr::value(1.into()))],
+                ListExpr::value(vec![Expr::int(IntExpr::value(2.into()))], ValueType::Int),
+                ValueType::Int,
+            ),
+            ListExpr::spread(
+                vec![Expr::string(StringExpr::value("one".into()))],
+                ListExpr::value(
+                    vec![Expr::string(StringExpr::value("two".into()))],
+                    ValueType::String,
+                ),
+                ValueType::String,
+            ),
+            ListExpr::spread(
+                vec![Expr::bit_array(BitArrayExpr::value(Vec::new()))],
+                ListExpr::value(
+                    vec![Expr::bit_array(BitArrayExpr::value(Vec::new()))],
+                    ValueType::BitArray,
+                ),
+                ValueType::BitArray,
+            ),
+            ListExpr::value(Vec::new(), ValueType::UtfCodepoint),
+            ListExpr::spread(
+                vec![Expr::custom(
+                    CustomExpr::try_constructor(
+                        constructor.clone(),
+                        vec![Expr::int(IntExpr::value(3.into()))],
+                    )
+                    .expect("the custom element should match its constructor"),
+                )],
+                ListExpr::value(
+                    vec![Expr::custom(
+                        CustomExpr::try_constructor(
+                            constructor.clone(),
+                            vec![Expr::int(IntExpr::value(4.into()))],
+                        )
+                        .expect("the custom tail element should match its constructor"),
+                    )],
+                    ValueType::Custom(custom_shape.type_().clone()),
+                )
+                .with_item_shape(ValueShape::Custom(custom_shape.clone())),
+                ValueType::Custom(custom_shape.type_().clone()),
+            )
+            .with_item_shape(ValueShape::Custom(custom_shape)),
+            ListExpr::spread(
+                vec![Expr::float(FloatExpr::value(1.5))],
+                ListExpr::value(vec![Expr::float(FloatExpr::value(2.5))], ValueType::Float),
+                ValueType::Float,
+            ),
+            ListExpr::spread(
+                vec![Expr::bool(BoolExpr::value(true))],
+                ListExpr::value(vec![Expr::bool(BoolExpr::value(false))], ValueType::Bool),
+                ValueType::Bool,
+            ),
+            ListExpr::spread(
+                vec![Expr::nil(NilExpr::value())],
+                ListExpr::value(vec![Expr::nil(NilExpr::value())], ValueType::Nil),
+                ValueType::Nil,
+            ),
+            ListExpr::spread(
+                vec![Expr::tuple(TupleExpr::value(
+                    vec![
+                        Expr::int(IntExpr::value(1.into())),
+                        Expr::string(StringExpr::value("one".into())),
+                    ],
+                    vec![ValueType::Int, ValueType::String],
+                ))],
+                ListExpr::value(
+                    vec![Expr::tuple(TupleExpr::value(
+                        vec![
+                            Expr::int(IntExpr::value(2.into())),
+                            Expr::string(StringExpr::value("two".into())),
+                        ],
+                        vec![ValueType::Int, ValueType::String],
+                    ))],
+                    ValueType::Tuple(vec![ValueType::Int, ValueType::String]),
+                ),
+                ValueType::Tuple(vec![ValueType::Int, ValueType::String]),
+            ),
+            ListExpr::spread(
+                vec![Expr::list(ListExpr::value(
+                    vec![Expr::int(IntExpr::value(1.into()))],
+                    ValueType::Int,
+                ))],
+                ListExpr::value(
+                    vec![Expr::list(ListExpr::value(
+                        vec![Expr::int(IntExpr::value(2.into()))],
+                        ValueType::Int,
+                    ))],
+                    ValueType::List(Box::new(ValueType::Int)),
+                ),
+                ValueType::List(Box::new(ValueType::Int)),
+            ),
+            ListExpr::spread(
+                vec![Expr::function(FunctionExpr::reference(
+                    function_reference.clone(),
+                ))],
+                ListExpr::value(
+                    vec![Expr::function(FunctionExpr::reference(
+                        function_reference.clone(),
+                    ))],
+                    ValueType::Function(Box::new(function_shape.type_())),
+                ),
+                ValueType::Function(Box::new(function_shape.type_())),
+            ),
+        ];
+
+        for (index, expected) in expected.into_iter().enumerate() {
+            let instantiation = signatures[index * 2 + 1]
+                .try_instantiate(Vec::new())
+                .expect("a monomorphic list alias should instantiate without arguments");
+            assert_eq!(templates.materialize(&instantiation), Expr::list(expected));
+        }
+    }
+
+    #[test]
+    fn constant_template_instantiation_rejects_wrong_argument_count() {
+        let signature = ConstantTemplateSignature::list(
+            ConstantTemplateId(3),
+            0,
+            TypeScheme::new(1),
+            ValueShape::Parameter(TypeParameterId(0)),
+        );
+
+        assert_eq!(signature.try_instantiate(Vec::new()), None);
+        let instantiation = signature
+            .try_instantiate(vec![ValueShape::String])
+            .expect("one argument should match the constant scheme");
+        assert_eq!(
+            ConstantValue::reference(instantiation).shape(),
+            ValueShape::List(Box::new(ValueShape::String)),
+        );
+    }
+
+    #[test]
+    fn list_construction_rejects_uninhabited_and_mismatched_payloads() {
+        let int_list =
+            ConstantValue::try_list(ValueShape::Int, vec![ConstantValue::int(1.into())], None)
+                .expect("an Int list should accept Int elements");
+        let string_list = ConstantValue::try_list(
+            ValueShape::String,
+            vec![ConstantValue::string("one".into())],
+            None,
+        )
+        .expect("a String list should accept String elements");
+
+        assert_eq!(
+            ConstantValue::try_list(ValueShape::Int, Vec::new(), Some(int_list.clone())),
+            Err(ConstantListConstructionError::SpreadWithoutElements),
+        );
+        assert_eq!(
+            ConstantValue::try_list(
+                ValueShape::Parameter(TypeParameterId(0)),
+                vec![ConstantValue::int(1.into())],
+                None,
+            ),
+            Err(ConstantListConstructionError::TypeMismatch {
+                expected: ValueType::Parameter(TypeParameterId(0)),
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ConstantValue::try_list(
+                ValueShape::UtfCodepoint,
+                vec![ConstantValue::int(1.into())],
+                None,
+            ),
+            Err(ConstantListConstructionError::TypeMismatch {
+                expected: ValueType::UtfCodepoint,
+                actual: ValueType::Int,
+            }),
+        );
+
+        assert_eq!(
+            ConstantValue::try_list(
+                ValueShape::Int,
+                vec![ConstantValue::string("one".into())],
+                None,
+            ),
+            Err(ConstantListConstructionError::TypeMismatch {
+                expected: ValueType::Int,
+                actual: ValueType::String,
+            }),
+        );
+        assert_eq!(
+            ConstantValue::try_list(ValueShape::Float, vec![ConstantValue::int(1.into())], None,),
+            Err(ConstantListConstructionError::TypeMismatch {
+                expected: ValueType::Float,
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ConstantValue::try_list(ValueShape::String, vec![ConstantValue::int(1.into())], None,),
+            Err(ConstantListConstructionError::TypeMismatch {
+                expected: ValueType::String,
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ConstantValue::try_list(
+                ValueShape::BitArray,
+                vec![ConstantValue::int(1.into())],
+                None,
+            ),
+            Err(ConstantListConstructionError::TypeMismatch {
+                expected: ValueType::BitArray,
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ConstantValue::try_list(ValueShape::Bool, vec![ConstantValue::int(1.into())], None,),
+            Err(ConstantListConstructionError::TypeMismatch {
+                expected: ValueType::Bool,
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ConstantValue::try_list(ValueShape::Nil, vec![ConstantValue::int(1.into())], None,),
+            Err(ConstantListConstructionError::TypeMismatch {
+                expected: ValueType::Nil,
+                actual: ValueType::Int,
+            }),
+        );
+
+        let custom_shape = CustomValueShape::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Token".into()),
+            Vec::new(),
+            CustomConstructorRefinement::Exact(0),
+        );
+        let constructor =
+            CustomConstructor::new(custom_shape.type_().clone(), "Token".into(), 0, Vec::new());
+        let custom = ConstantValue::custom(custom_shape.clone(), constructor.clone(), Box::new([]));
+        let tuple = ConstantValue::tuple(
+            vec![ValueShape::Int].into_boxed_slice(),
+            vec![ConstantValue::int(1.into())].into_boxed_slice(),
+        );
+        let function_shape =
+            FunctionShape::new(Vec::new(), ValueShape::Custom(custom_shape.clone()));
+        let function = ConstantValue::function(
+            function_shape.clone(),
+            ConstantFunction::Constructor(constructor),
+        );
+
+        assert_eq!(
+            ConstantValue::try_list(
+                ValueShape::Custom(custom_shape.clone()),
+                vec![ConstantValue::int(1.into())],
+                None,
+            ),
+            Err(ConstantListConstructionError::TypeMismatch {
+                expected: ValueType::Custom(custom_shape.type_().clone()),
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ConstantValue::try_list(
+                ValueShape::Tuple(vec![ValueShape::Int].into_boxed_slice()),
+                vec![ConstantValue::int(1.into())],
+                None,
+            ),
+            Err(ConstantListConstructionError::TypeMismatch {
+                expected: ValueType::Tuple(vec![ValueType::Int]),
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ConstantValue::try_list(
+                ValueShape::List(Box::new(ValueShape::Int)),
+                vec![ConstantValue::int(1.into())],
+                None,
+            ),
+            Err(ConstantListConstructionError::TypeMismatch {
+                expected: ValueType::List(Box::new(ValueType::Int)),
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ConstantValue::try_list(
+                ValueShape::Function(Box::new(function_shape.clone())),
+                vec![ConstantValue::int(1.into())],
+                None,
+            ),
+            Err(ConstantListConstructionError::TypeMismatch {
+                expected: ValueType::Function(Box::new(function_shape.type_())),
+                actual: ValueType::Int,
+            }),
+        );
+
+        assert_eq!(
+            ConstantValue::try_list(
+                ValueShape::Int,
+                vec![ConstantValue::int(1.into())],
+                Some(ConstantValue::int(2.into())),
+            ),
+            Err(ConstantListConstructionError::TypeMismatch {
+                expected: ValueType::List(Box::new(ValueType::Int)),
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ConstantValue::try_list(
+                ValueShape::Int,
+                vec![ConstantValue::int(1.into())],
+                Some(string_list.clone()),
+            ),
+            Err(ConstantListConstructionError::TypeMismatch {
+                expected: ValueType::List(Box::new(ValueType::Int)),
+                actual: ValueType::List(Box::new(ValueType::String)),
+            }),
+        );
+        assert_eq!(
+            ConstantValue::try_list(
+                ValueShape::String,
+                vec![ConstantValue::string("one".into())],
+                Some(int_list.clone()),
+            ),
+            Err(ConstantListConstructionError::TypeMismatch {
+                expected: ValueType::List(Box::new(ValueType::String)),
+                actual: ValueType::List(Box::new(ValueType::Int)),
+            }),
+        );
+        assert_eq!(
+            ConstantValue::try_list(
+                ValueShape::BitArray,
+                vec![ConstantValue::bit_array(Box::new([]))],
+                Some(int_list.clone()),
+            ),
+            Err(ConstantListConstructionError::TypeMismatch {
+                expected: ValueType::List(Box::new(ValueType::BitArray)),
+                actual: ValueType::List(Box::new(ValueType::Int)),
+            }),
+        );
+        assert_eq!(
+            ConstantValue::try_list(
+                ValueShape::Float,
+                vec![ConstantValue::float(1.5)],
+                Some(int_list.clone()),
+            ),
+            Err(ConstantListConstructionError::TypeMismatch {
+                expected: ValueType::List(Box::new(ValueType::Float)),
+                actual: ValueType::List(Box::new(ValueType::Int)),
+            }),
+        );
+        assert_eq!(
+            ConstantValue::try_list(
+                ValueShape::Bool,
+                vec![ConstantValue::bool(true)],
+                Some(int_list.clone()),
+            ),
+            Err(ConstantListConstructionError::TypeMismatch {
+                expected: ValueType::List(Box::new(ValueType::Bool)),
+                actual: ValueType::List(Box::new(ValueType::Int)),
+            }),
+        );
+        assert_eq!(
+            ConstantValue::try_list(
+                ValueShape::Nil,
+                vec![ConstantValue::nil()],
+                Some(int_list.clone()),
+            ),
+            Err(ConstantListConstructionError::TypeMismatch {
+                expected: ValueType::List(Box::new(ValueType::Nil)),
+                actual: ValueType::List(Box::new(ValueType::Int)),
+            }),
+        );
+        assert_eq!(
+            ConstantValue::try_list(
+                ValueShape::Custom(custom_shape.clone()),
+                vec![custom],
+                Some(int_list.clone()),
+            ),
+            Err(ConstantListConstructionError::TypeMismatch {
+                expected: ValueType::List(Box::new(ValueType::Custom(
+                    custom_shape.type_().clone(),
+                ))),
+                actual: ValueType::List(Box::new(ValueType::Int)),
+            }),
+        );
+        assert_eq!(
+            ConstantValue::try_list(
+                ValueShape::Tuple(vec![ValueShape::Int].into_boxed_slice()),
+                vec![tuple],
+                Some(int_list.clone()),
+            ),
+            Err(ConstantListConstructionError::TypeMismatch {
+                expected: ValueType::List(Box::new(ValueType::Tuple(vec![ValueType::Int]))),
+                actual: ValueType::List(Box::new(ValueType::Int)),
+            }),
+        );
+        assert_eq!(
+            ConstantValue::try_list(
+                ValueShape::List(Box::new(ValueShape::Int)),
+                vec![int_list.clone()],
+                Some(int_list.clone()),
+            ),
+            Err(ConstantListConstructionError::TypeMismatch {
+                expected: ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Int)))),
+                actual: ValueType::List(Box::new(ValueType::Int)),
+            }),
+        );
+        assert_eq!(
+            ConstantValue::try_list(
+                ValueShape::Function(Box::new(function_shape.clone())),
+                vec![function],
+                Some(int_list),
+            ),
+            Err(ConstantListConstructionError::TypeMismatch {
+                expected: ValueType::List(Box::new(ValueType::Function(Box::new(
+                    function_shape.type_(),
+                )))),
+                actual: ValueType::List(Box::new(ValueType::Int)),
+            }),
+        );
+    }
+}

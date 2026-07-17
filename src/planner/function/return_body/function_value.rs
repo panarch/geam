@@ -2,82 +2,112 @@ use crate::plan::{
     BitArrayFunctionExpr, BitArrayFunctionExprKind, BitArrayFunctionReturn, BoolFunctionExpr,
     BoolFunctionExprKind, BoolFunctionReturn, CustomFunctionExpr, CustomFunctionReturn,
     FloatFunctionExpr, FloatFunctionExprKind, FloatFunctionReturn, FunctionExpr, FunctionExprKind,
-    FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionReturn, IntFunctionExpr,
-    IntFunctionExprKind, IntFunctionReturn, ListFunctionExpr, ListFunctionExprKind,
-    ListFunctionReturn, NilFunctionExpr, NilFunctionExprKind, NilFunctionReturn, ReturnBody,
-    ReturnExpr, StringFunctionExpr, StringFunctionExprKind, StringFunctionReturn,
-    TupleFunctionExpr, TupleFunctionExprKind, TupleFunctionReturn, UtfCodepointFunctionExpr,
-    UtfCodepointFunctionExprKind, UtfCodepointFunctionReturn,
+    FunctionFunctionExpr, FunctionFunctionReturn, GenericFunctionExpr, GenericFunctionExprKind,
+    GenericFunctionReturn, IntFunctionExpr, IntFunctionExprKind, IntFunctionReturn,
+    ListFunctionExpr, ListFunctionExprKind, ListFunctionReturn, NilFunctionExpr,
+    NilFunctionExprKind, NilFunctionReturn, ReturnBody, ReturnExpr, StringFunctionExpr,
+    StringFunctionExprKind, StringFunctionReturn, TupleFunctionExpr, TupleFunctionExprKind,
+    TupleFunctionReturn, UtfCodepointFunctionExpr, UtfCodepointFunctionExprKind,
+    UtfCodepointFunctionReturn,
 };
-use crate::planner::error::{InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError};
-use ecow::EcoString;
-
-pub(super) fn function_returning_function_expr(
-    name: &EcoString,
-    runtime_id: FunctionFunctionId,
-    actual: FunctionExpr,
-) -> Result<ReturnExpr, PlanError> {
+pub(super) fn function_returning_function_expr(actual: FunctionExpr) -> ReturnExpr {
     let (shape, kind) = actual.into_parts();
-    match (runtime_id, kind) {
-        (FunctionFunctionId::Int(runtime_id), FunctionExprKind::Int(actual)) => Ok(
-            ReturnExpr::int_function_shape_body(runtime_id, shape, int_function_return(actual)),
-        ),
-        (FunctionFunctionId::String(runtime_id), FunctionExprKind::String(actual)) => {
-            Ok(ReturnExpr::string_function_shape_body(
-                runtime_id,
-                shape,
-                string_function_return(actual),
-            ))
+    match kind {
+        FunctionExprKind::Generic(actual) => {
+            ReturnExpr::generic_function_shape_body(shape, generic_function_return(actual))
         }
-        (FunctionFunctionId::BitArray(runtime_id), FunctionExprKind::BitArray(actual)) => {
-            Ok(ReturnExpr::bit_array_function_shape_body(
-                runtime_id,
-                shape,
-                bit_array_function_return(actual),
-            ))
+        FunctionExprKind::Int(actual) => {
+            ReturnExpr::int_function_shape_body(shape, int_function_return(actual))
         }
-        (FunctionFunctionId::UtfCodepoint(runtime_id), FunctionExprKind::UtfCodepoint(actual)) => {
-            Ok(ReturnExpr::utf_codepoint_function_shape_body(
-                runtime_id,
-                shape,
-                utf_codepoint_function_return(actual),
-            ))
+        FunctionExprKind::String(actual) => {
+            ReturnExpr::string_function_shape_body(shape, string_function_return(actual))
         }
-        (FunctionFunctionId::Custom(runtime_id), FunctionExprKind::Custom(actual)) => {
-            Ok(ReturnExpr::custom_function_shape_body(
-                runtime_id.index(),
-                shape,
-                custom_function_return(actual),
-            ))
+        FunctionExprKind::BitArray(actual) => {
+            ReturnExpr::bit_array_function_shape_body(shape, bit_array_function_return(actual))
         }
-        (FunctionFunctionId::Float(runtime_id), FunctionExprKind::Float(actual)) => Ok(
-            ReturnExpr::float_function_shape_body(runtime_id, shape, float_function_return(actual)),
+        FunctionExprKind::UtfCodepoint(actual) => ReturnExpr::utf_codepoint_function_shape_body(
+            shape,
+            utf_codepoint_function_return(actual),
         ),
-        (FunctionFunctionId::Bool(runtime_id), FunctionExprKind::Bool(actual)) => Ok(
-            ReturnExpr::bool_function_shape_body(runtime_id, shape, bool_function_return(actual)),
-        ),
-        (FunctionFunctionId::Nil(runtime_id), FunctionExprKind::Nil(actual)) => Ok(
-            ReturnExpr::nil_function_shape_body(runtime_id, shape, nil_function_return(actual)),
-        ),
-        (FunctionFunctionId::Tuple(runtime_id), FunctionExprKind::Tuple(actual)) => Ok(
-            ReturnExpr::tuple_function_shape_body(runtime_id, shape, tuple_function_return(actual)),
-        ),
-        (FunctionFunctionId::List(runtime_id), FunctionExprKind::List(actual)) => Ok(
-            ReturnExpr::list_function_shape_body(runtime_id, shape, list_function_return(actual)),
-        ),
-        (FunctionFunctionId::Function(runtime_id), FunctionExprKind::Function(actual)) => {
-            Ok(ReturnExpr::function_function_shape_body(
-                runtime_id.index(),
-                shape,
-                function_function_return(actual),
-            ))
+        FunctionExprKind::Custom(actual) => {
+            ReturnExpr::custom_function_shape_body(shape, custom_function_return(actual))
         }
-        _ => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::FunctionShape {
-                name: name.clone(),
-                reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
-            },
-        }),
+        FunctionExprKind::Float(actual) => {
+            ReturnExpr::float_function_shape_body(shape, float_function_return(actual))
+        }
+        FunctionExprKind::Bool(actual) => {
+            ReturnExpr::bool_function_shape_body(shape, bool_function_return(actual))
+        }
+        FunctionExprKind::Nil(actual) => {
+            ReturnExpr::nil_function_shape_body(shape, nil_function_return(actual))
+        }
+        FunctionExprKind::Tuple(actual) => {
+            ReturnExpr::tuple_function_shape_body(shape, tuple_function_return(actual))
+        }
+        FunctionExprKind::List(actual) => {
+            let item_type = actual.return_item_type();
+            ReturnExpr::list_function_shape_body(shape, item_type, list_function_return(actual))
+        }
+        FunctionExprKind::Function(actual) => {
+            ReturnExpr::function_function_shape_body(shape, function_function_return(actual))
+        }
+    }
+}
+
+fn generic_function_return(expression: GenericFunctionExpr) -> GenericFunctionReturn {
+    match expression.kind() {
+        GenericFunctionExprKind::Call { function, args } => {
+            ReturnBody::tail_call(function.clone(), args.clone())
+        }
+        GenericFunctionExprKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            (**subject).clone(),
+            generic_function_return((**true_).clone()),
+            generic_function_return((**false_).clone()),
+        ),
+        GenericFunctionExprKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), generic_function_return(branch.clone())))
+                .collect(),
+            generic_function_return((**fallback).clone()),
+        ),
+        GenericFunctionExprKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), generic_function_return(branch.clone())))
+                .collect(),
+            generic_function_return((**fallback).clone()),
+        ),
+        GenericFunctionExprKind::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::float_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (*value, generic_function_return(branch.clone())))
+                .collect(),
+            generic_function_return((**fallback).clone()),
+        ),
+        GenericFunctionExprKind::Block { steps, return_ } => {
+            ReturnBody::block(steps.clone(), generic_function_return((**return_).clone()))
+        }
+        _ => ReturnBody::expr(expression),
     }
 }
 
@@ -88,7 +118,7 @@ fn custom_function_return(expression: CustomFunctionExpr) -> CustomFunctionRetur
 fn int_function_return(expression: IntFunctionExpr) -> IntFunctionReturn {
     match expression.kind() {
         IntFunctionExprKind::Call { function, args, .. } => {
-            ReturnBody::tail_call(*function, args.clone())
+            ReturnBody::tail_call(function.clone(), args.clone())
         }
         IntFunctionExprKind::BoolCase {
             subject,
@@ -145,7 +175,7 @@ fn int_function_return(expression: IntFunctionExpr) -> IntFunctionReturn {
 fn string_function_return(expression: StringFunctionExpr) -> StringFunctionReturn {
     match expression.kind() {
         StringFunctionExprKind::Call { function, args, .. } => {
-            ReturnBody::tail_call(*function, args.clone())
+            ReturnBody::tail_call(function.clone(), args.clone())
         }
         StringFunctionExprKind::BoolCase {
             subject,
@@ -202,7 +232,7 @@ fn string_function_return(expression: StringFunctionExpr) -> StringFunctionRetur
 fn bit_array_function_return(expression: BitArrayFunctionExpr) -> BitArrayFunctionReturn {
     match expression.kind() {
         BitArrayFunctionExprKind::Call { function, args, .. } => {
-            ReturnBody::tail_call(*function, args.clone())
+            ReturnBody::tail_call(function.clone(), args.clone())
         }
         BitArrayFunctionExprKind::BoolCase {
             subject,
@@ -262,7 +292,7 @@ fn utf_codepoint_function_return(
 ) -> UtfCodepointFunctionReturn {
     match expression.kind() {
         UtfCodepointFunctionExprKind::Call { function, args, .. } => {
-            ReturnBody::tail_call(*function, args.clone())
+            ReturnBody::tail_call(function.clone(), args.clone())
         }
         UtfCodepointFunctionExprKind::BoolCase {
             subject,
@@ -324,7 +354,7 @@ fn utf_codepoint_function_return(
 fn float_function_return(expression: FloatFunctionExpr) -> FloatFunctionReturn {
     match expression.kind() {
         FloatFunctionExprKind::Call { function, args, .. } => {
-            ReturnBody::tail_call(*function, args.clone())
+            ReturnBody::tail_call(function.clone(), args.clone())
         }
         FloatFunctionExprKind::BoolCase {
             subject,
@@ -381,7 +411,7 @@ fn float_function_return(expression: FloatFunctionExpr) -> FloatFunctionReturn {
 fn bool_function_return(expression: BoolFunctionExpr) -> BoolFunctionReturn {
     match expression.kind() {
         BoolFunctionExprKind::Call { function, args, .. } => {
-            ReturnBody::tail_call(*function, args.clone())
+            ReturnBody::tail_call(function.clone(), args.clone())
         }
         BoolFunctionExprKind::BoolCase {
             subject,
@@ -438,7 +468,7 @@ fn bool_function_return(expression: BoolFunctionExpr) -> BoolFunctionReturn {
 fn nil_function_return(expression: NilFunctionExpr) -> NilFunctionReturn {
     match expression.kind() {
         NilFunctionExprKind::Call { function, args, .. } => {
-            ReturnBody::tail_call(*function, args.clone())
+            ReturnBody::tail_call(function.clone(), args.clone())
         }
         NilFunctionExprKind::BoolCase {
             subject,
@@ -495,7 +525,7 @@ fn nil_function_return(expression: NilFunctionExpr) -> NilFunctionReturn {
 fn tuple_function_return(expression: TupleFunctionExpr) -> TupleFunctionReturn {
     match expression.kind() {
         TupleFunctionExprKind::Call { function, args, .. } => {
-            ReturnBody::tail_call(*function, args.clone())
+            ReturnBody::tail_call(function.clone(), args.clone())
         }
         TupleFunctionExprKind::BoolCase {
             subject,
@@ -613,863 +643,274 @@ fn function_function_return(expression: FunctionFunctionExpr) -> FunctionFunctio
 #[cfg(test)]
 mod tests {
     use super::{
-        bit_array_function_return, custom_function_return, float_function_return,
-        function_returning_function_expr, list_function_return,
+        bit_array_function_return, bool_function_return, float_function_return,
+        int_function_return, list_function_return, nil_function_return, string_function_return,
+        tuple_function_return,
     };
     use crate::plan::{
-        BitArrayFunctionExpr, BitArrayFunctionFunctionId, BitArrayFunctionId,
-        BitArrayFunctionReference, BoolExpr, BoolFunctionExpr, BoolFunctionFunctionId,
-        BoolFunctionId, BoolFunctionReference, CustomFunctionExpr, CustomFunctionFunctionId,
-        CustomFunctionId, CustomFunctionReference, CustomFunctionType, CustomType, CustomTypeName,
-        FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId,
-        FloatFunctionReference, FunctionExpr, FunctionFunctionExpr, FunctionFunctionFunctionId,
-        FunctionFunctionId, FunctionFunctionReference, FunctionFunctionReturn,
-        FunctionFunctionType, FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
-        IntFunctionId, IntFunctionReference, IntLocalId, ListFunctionExpr, ListFunctionFunctionId,
-        ListFunctionId, ListFunctionReference, NilFunctionExpr, NilFunctionFunctionId,
-        NilFunctionId, NilFunctionReference, ParamLocal, ReturnBody, ReturnExpr, StringExpr,
-        StringFunctionExpr, StringFunctionFunctionId, StringFunctionId, StringFunctionReference,
-        TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId, TupleFunctionReference,
-        ValueType,
+        BitArrayFunctionExpr, BitArrayFunctionReference, BoolExpr, BoolFunctionExpr,
+        BoolFunctionReference, FloatExpr, FloatFunctionExpr, FloatFunctionReference, FunctionShape,
+        FunctionType, IntFunctionExpr, IntFunctionReference, ListFunctionExpr,
+        ListFunctionReference, ReturnBody, StringExpr, StringFunctionExpr, StringFunctionReference,
+        TupleFunctionExpr, TupleFunctionReference, ValueShape, ValueType,
+        monomorphic_function_instantiation,
     };
-    use crate::planner::{InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError};
-    use num_bigint::BigInt;
 
     #[test]
-    fn function_returning_function_expr_rejects_family_mismatch() {
-        assert_eq!(
-            function_returning_function_expr(
-                &"main".into(),
-                FunctionFunctionId::Float(FloatFunctionFunctionId(0)),
-                FunctionExpr::int(IntFunctionExpr::reference(IntFunctionReference::new(
-                    IntFunctionId(0),
-                    Vec::new(),
-                ))),
-            ),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::FunctionShape {
-                    name: "main".into(),
-                    reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
-                },
-            }),
-        );
-    }
-
-    #[test]
-    fn function_returning_function_expr_preserves_return_families() {
-        let function_return_type = FunctionType::new(Vec::new(), ValueType::Int);
-
-        assert_eq!(
-            function_returning_function_expr(
-                &"main".into(),
-                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                FunctionExpr::int(IntFunctionExpr::reference(IntFunctionReference::new(
-                    IntFunctionId(0),
-                    Vec::new(),
-                ))),
-            ),
-            Ok(ReturnExpr::int_function(
-                IntFunctionFunctionId(0),
-                IntFunctionExpr::reference(IntFunctionReference::new(IntFunctionId(0), Vec::new())),
-            )),
-        );
-
-        assert_eq!(
-            function_returning_function_expr(
-                &"main".into(),
-                FunctionFunctionId::String(StringFunctionFunctionId(0)),
-                FunctionExpr::string(StringFunctionExpr::reference(StringFunctionReference::new(
-                    StringFunctionId(0),
-                    Vec::new(),
-                ))),
-            ),
-            Ok(ReturnExpr::string_function(
-                StringFunctionFunctionId(0),
-                StringFunctionExpr::reference(StringFunctionReference::new(
-                    StringFunctionId(0),
-                    Vec::new(),
-                )),
-            )),
-        );
-
-        assert_eq!(
-            function_returning_function_expr(
-                &"main".into(),
-                FunctionFunctionId::BitArray(BitArrayFunctionFunctionId(0)),
-                FunctionExpr::bit_array(BitArrayFunctionExpr::reference(
-                    BitArrayFunctionReference::new(BitArrayFunctionId(0), Vec::new()),
-                )),
-            ),
-            Ok(ReturnExpr::bit_array_function(
-                BitArrayFunctionFunctionId(0),
-                BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(
-                    BitArrayFunctionId(0),
-                    Vec::new(),
-                )),
-            )),
-        );
-
-        assert_eq!(
-            function_returning_function_expr(
-                &"main".into(),
-                FunctionFunctionId::Float(FloatFunctionFunctionId(0)),
-                FunctionExpr::float(FloatFunctionExpr::reference(FloatFunctionReference::new(
-                    FloatFunctionId(0),
-                    Vec::new(),
-                ))),
-            ),
-            Ok(ReturnExpr::float_function(
-                FloatFunctionFunctionId(0),
-                FloatFunctionExpr::reference(FloatFunctionReference::new(
-                    FloatFunctionId(0),
-                    Vec::new(),
-                )),
-            )),
-        );
-
-        assert_eq!(
-            function_returning_function_expr(
-                &"main".into(),
-                FunctionFunctionId::Bool(BoolFunctionFunctionId(0)),
-                FunctionExpr::bool(BoolFunctionExpr::reference(BoolFunctionReference::new(
-                    BoolFunctionId(0),
-                    Vec::new(),
-                ))),
-            ),
-            Ok(ReturnExpr::bool_function(
-                BoolFunctionFunctionId(0),
-                BoolFunctionExpr::reference(BoolFunctionReference::new(
-                    BoolFunctionId(0),
-                    Vec::new()
-                )),
-            )),
-        );
-
-        assert_eq!(
-            function_returning_function_expr(
-                &"main".into(),
-                FunctionFunctionId::Nil(NilFunctionFunctionId(0)),
-                FunctionExpr::nil(NilFunctionExpr::reference(NilFunctionReference::new(
-                    NilFunctionId(0),
-                    Vec::new(),
-                ))),
-            ),
-            Ok(ReturnExpr::nil_function(
-                NilFunctionFunctionId(0),
-                NilFunctionExpr::reference(NilFunctionReference::new(NilFunctionId(0), Vec::new())),
-            )),
-        );
-
-        assert_eq!(
-            function_returning_function_expr(
-                &"main".into(),
-                FunctionFunctionId::Tuple(TupleFunctionFunctionId(0)),
-                FunctionExpr::tuple(TupleFunctionExpr::reference(
-                    TupleFunctionReference::new(TupleFunctionId(0), Vec::new()),
-                    vec![ValueType::Float],
-                )),
-            ),
-            Ok(ReturnExpr::tuple_function(
-                TupleFunctionFunctionId(0),
-                TupleFunctionExpr::reference(
-                    TupleFunctionReference::new(TupleFunctionId(0), Vec::new()),
-                    vec![ValueType::Float],
-                ),
-            )),
-        );
-
-        assert_eq!(
-            function_returning_function_expr(
-                &"main".into(),
-                FunctionFunctionId::List(ListFunctionFunctionId::from_item_type(
-                    0,
-                    crate::plan::FunctionType::new(
-                        Vec::new(),
-                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
-                    ),
-                    crate::plan::ValueType::Int
-                )),
-                FunctionExpr::list(ListFunctionExpr::reference(ListFunctionReference::new(
-                    ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-                    Vec::new()
-                ))),
-            ),
-            Ok(ReturnExpr::list_function(
-                ListFunctionFunctionId::from_item_type(
-                    0,
-                    crate::plan::FunctionType::new(
-                        Vec::new(),
-                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
-                    ),
-                    crate::plan::ValueType::Int
-                ),
-                ListFunctionExpr::reference(ListFunctionReference::new(
-                    ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-                    Vec::new()
-                )),
-            )),
-        );
-
-        assert_eq!(
-            function_returning_function_expr(
-                &"main".into(),
-                FunctionFunctionId::Function(FunctionFunctionFunctionId::new(
-                    0,
-                    FunctionFunctionType::new(Vec::new(), function_return_type.clone()),
-                )),
-                FunctionExpr::function(FunctionFunctionExpr::reference(
-                    FunctionFunctionReference::new(
-                        FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                        Vec::new(),
-                    ),
-                    function_return_type.clone(),
-                )),
-            ),
-            Ok(ReturnExpr::function_function(
+    fn concrete_function_returns_preserve_recursive_case_and_block_shapes() {
+        let int_reference = IntFunctionExpr::reference(IntFunctionReference::new(
+            monomorphic_function_instantiation(
                 0,
-                FunctionFunctionExpr::reference(
-                    FunctionFunctionReference::new(
-                        FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                        Vec::new(),
-                    ),
-                    function_return_type,
-                ),
-            )),
-        );
-    }
-
-    #[test]
-    fn function_value_returns_preserve_float_case_return_body_shape() {
-        assert_eq!(
-            function_returning_function_expr(
-                &"int_function".into(),
-                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                FunctionExpr::int(int_function_float_case()),
+                FunctionShape::from_function_type(FunctionType::new(Vec::new(), ValueType::Int)),
             ),
-            Ok(ReturnExpr::int_function_body(
-                IntFunctionFunctionId(0),
-                int_function_type(),
-                ReturnBody::float_case(
-                    FloatExpr::value(1.0),
-                    vec![(1.0, ReturnBody::expr(int_function_value()))],
-                    ReturnBody::expr(int_function_value()),
-                ),
-            )),
+            Vec::new(),
+        ));
+        let int_float_case = IntFunctionExpr::float_case(
+            FloatExpr::value(1.0),
+            vec![(1.0, int_reference.clone())],
+            int_reference.clone(),
+        );
+        let int_bool_case = IntFunctionExpr::bool_case(
+            BoolExpr::value(true),
+            int_float_case,
+            int_reference.clone(),
         );
         assert_eq!(
-            function_returning_function_expr(
-                &"string_function".into(),
-                FunctionFunctionId::String(StringFunctionFunctionId(0)),
-                FunctionExpr::string(string_function_float_case()),
-            ),
-            Ok(ReturnExpr::string_function_body(
-                StringFunctionFunctionId(0),
-                string_function_type(),
-                ReturnBody::float_case(
-                    FloatExpr::value(1.0),
-                    vec![(1.0, ReturnBody::expr(string_function_value()))],
-                    ReturnBody::expr(string_function_value()),
-                ),
-            )),
-        );
-        assert_eq!(
-            function_returning_function_expr(
-                &"float_function".into(),
-                FunctionFunctionId::Float(FloatFunctionFunctionId(0)),
-                FunctionExpr::float(float_function_float_case()),
-            ),
-            Ok(ReturnExpr::float_function_body(
-                FloatFunctionFunctionId(0),
-                float_function_type(),
-                ReturnBody::float_case(
-                    FloatExpr::value(1.0),
-                    vec![(1.0, ReturnBody::expr(float_function_value()))],
-                    ReturnBody::expr(float_function_value()),
-                ),
-            )),
-        );
-        assert_eq!(
-            function_returning_function_expr(
-                &"bool_function".into(),
-                FunctionFunctionId::Bool(BoolFunctionFunctionId(0)),
-                FunctionExpr::bool(bool_function_float_case()),
-            ),
-            Ok(ReturnExpr::bool_function_body(
-                BoolFunctionFunctionId(0),
-                bool_function_type(),
-                ReturnBody::float_case(
-                    FloatExpr::value(1.0),
-                    vec![(1.0, ReturnBody::expr(bool_function_value()))],
-                    ReturnBody::expr(bool_function_value()),
-                ),
-            )),
-        );
-        assert_eq!(
-            function_returning_function_expr(
-                &"nil_function".into(),
-                FunctionFunctionId::Nil(NilFunctionFunctionId(0)),
-                FunctionExpr::nil(nil_function_float_case()),
-            ),
-            Ok(ReturnExpr::nil_function_body(
-                NilFunctionFunctionId(0),
-                nil_function_type(),
-                ReturnBody::float_case(
-                    FloatExpr::value(1.0),
-                    vec![(1.0, ReturnBody::expr(nil_function_value()))],
-                    ReturnBody::expr(nil_function_value()),
-                ),
-            )),
-        );
-        assert_eq!(
-            function_returning_function_expr(
-                &"tuple_function".into(),
-                FunctionFunctionId::Tuple(TupleFunctionFunctionId(0)),
-                FunctionExpr::tuple(tuple_function_float_case()),
-            ),
-            Ok(ReturnExpr::tuple_function_body(
-                TupleFunctionFunctionId(0),
-                tuple_function_type(),
-                ReturnBody::float_case(
-                    FloatExpr::value(1.0),
-                    vec![(1.0, ReturnBody::expr(tuple_function_value()))],
-                    ReturnBody::expr(tuple_function_value()),
-                ),
-            )),
-        );
-        assert_eq!(
-            function_returning_function_expr(
-                &"list_function".into(),
-                FunctionFunctionId::List(ListFunctionFunctionId::from_item_type(
-                    0,
-                    list_function_type(),
-                    crate::plan::ValueType::Int,
-                )),
-                FunctionExpr::list(list_function_float_case()),
-            ),
-            Ok(ReturnExpr::list_function_body(
-                ListFunctionFunctionId::from_item_type(
-                    0,
-                    list_function_type(),
-                    crate::plan::ValueType::Int
-                ),
-                ReturnBody::float_case(
-                    FloatExpr::value(1.0),
-                    vec![(1.0, ReturnBody::expr(list_function_value()))],
-                    ReturnBody::expr(list_function_value()),
-                ),
-            )),
-        );
-        assert_eq!(
-            function_returning_function_expr(
-                &"function_function".into(),
-                FunctionFunctionId::Function(FunctionFunctionFunctionId::new(
-                    0,
-                    FunctionFunctionType::new(Vec::new(), float_function_type()),
-                )),
-                FunctionExpr::function(function_function_float_case()),
-            ),
-            Ok(ReturnExpr::function_function_body(
-                0,
-                FunctionFunctionReturn::expr(function_function_float_case()),
-            )),
-        );
-    }
-
-    #[test]
-    fn custom_function_return_preserves_tail_case_and_block_shapes() {
-        let value = custom_function_value();
-        assert_eq!(
-            custom_function_return(CustomFunctionExpr::call(
-                CustomFunctionFunctionId::new(0, custom_function_type()),
-                Vec::new(),
-            ))
-            .into_parts(),
-            (custom_function_type(), ReturnBody::tail_call(0, Vec::new()),),
-        );
-        assert_eq!(
-            custom_function_return(CustomFunctionExpr::bool_case(
-                BoolExpr::value(true),
-                value.clone(),
-                value.clone(),
-            ))
-            .into_parts(),
-            (
-                custom_function_type(),
-                ReturnBody::bool_case(
-                    BoolExpr::value(true),
-                    ReturnBody::expr(value.clone().into_parts().1),
-                    ReturnBody::expr(value.clone().into_parts().1),
-                ),
-            ),
-        );
-        assert_eq!(
-            custom_function_return(CustomFunctionExpr::int_case(
-                IntExpr::value(1.into()),
-                vec![(1.into(), value.clone())],
-                value.clone(),
-            ))
-            .into_parts(),
-            (
-                custom_function_type(),
-                ReturnBody::int_case(
-                    IntExpr::value(1.into()),
-                    vec![(1.into(), ReturnBody::expr(value.clone().into_parts().1))],
-                    ReturnBody::expr(value.clone().into_parts().1),
-                ),
-            ),
-        );
-        assert_eq!(
-            custom_function_return(CustomFunctionExpr::string_case(
-                StringExpr::value("one".into()),
-                vec![("one".into(), value.clone())],
-                value.clone(),
-            ))
-            .into_parts(),
-            (
-                custom_function_type(),
-                ReturnBody::string_case(
-                    StringExpr::value("one".into()),
-                    vec![("one".into(), ReturnBody::expr(value.clone().into_parts().1),)],
-                    ReturnBody::expr(value.clone().into_parts().1),
-                ),
-            ),
-        );
-        assert_eq!(
-            custom_function_return(CustomFunctionExpr::float_case(
-                FloatExpr::value(1.0),
-                vec![(1.0, value.clone())],
-                value.clone(),
-            ))
-            .into_parts(),
-            (
-                custom_function_type(),
-                ReturnBody::float_case(
-                    FloatExpr::value(1.0),
-                    vec![(1.0, ReturnBody::expr(value.clone().into_parts().1))],
-                    ReturnBody::expr(value.clone().into_parts().1),
-                ),
-            ),
-        );
-        assert_eq!(
-            custom_function_return(CustomFunctionExpr::block(
-                vec![crate::plan::Step::evaluate(crate::plan::Expr::int(
-                    IntExpr::value(1.into()),
-                ))],
-                value.clone(),
-            ))
-            .into_parts(),
-            (
-                custom_function_type(),
-                ReturnBody::block(
-                    vec![crate::plan::Step::evaluate(crate::plan::Expr::int(
-                        IntExpr::value(1.into()),
-                    ))],
-                    ReturnBody::expr(value.into_parts().1),
-                ),
-            ),
-        );
-    }
-
-    #[test]
-    fn float_function_return_preserves_tail_and_case_return_body_shapes() {
-        assert_eq!(
-            float_function_return(FloatFunctionExpr::call(
-                FloatFunctionFunctionId(0),
-                Vec::new(),
-                float_function_type(),
-            )),
-            ReturnBody::tail_call(FloatFunctionFunctionId(0), Vec::new()),
-        );
-        assert_eq!(
-            float_function_return(FloatFunctionExpr::bool_case(
-                BoolExpr::value(true),
-                float_function_value(),
-                float_function_value(),
-            )),
+            int_function_return(int_bool_case),
             ReturnBody::bool_case(
                 BoolExpr::value(true),
-                ReturnBody::expr(float_function_value()),
-                ReturnBody::expr(float_function_value()),
-            ),
-        );
-        assert_eq!(
-            float_function_return(FloatFunctionExpr::int_case(
-                IntExpr::value(BigInt::from(1)),
-                vec![(BigInt::from(1), float_function_value())],
-                float_function_value(),
-            )),
-            ReturnBody::int_case(
-                IntExpr::value(BigInt::from(1)),
-                vec![(BigInt::from(1), ReturnBody::expr(float_function_value()))],
-                ReturnBody::expr(float_function_value()),
-            ),
-        );
-        assert_eq!(
-            float_function_return(FloatFunctionExpr::string_case(
-                StringExpr::value("one".into()),
-                vec![("one".into(), float_function_value())],
-                float_function_value(),
-            )),
-            ReturnBody::string_case(
-                StringExpr::value("one".into()),
-                vec![("one".into(), ReturnBody::expr(float_function_value()))],
-                ReturnBody::expr(float_function_value()),
-            ),
-        );
-        assert_eq!(
-            float_function_return(FloatFunctionExpr::block(
-                vec![crate::plan::Step::evaluate(crate::plan::Expr::float(
+                ReturnBody::float_case(
                     FloatExpr::value(1.0),
-                ))],
-                float_function_value(),
-            )),
-            ReturnBody::block(
-                vec![crate::plan::Step::evaluate(crate::plan::Expr::float(
-                    FloatExpr::value(1.0),
-                ))],
-                ReturnBody::expr(float_function_value()),
+                    vec![(1.0, ReturnBody::expr(int_reference.clone()))],
+                    ReturnBody::expr(int_reference.clone()),
+                ),
+                ReturnBody::expr(int_reference),
             ),
         );
-    }
 
-    #[test]
-    fn bit_array_function_return_preserves_tail_and_block_return_body_shapes() {
-        let type_ = FunctionType::new(Vec::new(), ValueType::BitArray);
-        let value = BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(
-            BitArrayFunctionId(0),
+        let string_reference = StringFunctionExpr::reference(StringFunctionReference::new(
+            monomorphic_function_instantiation(
+                1,
+                FunctionShape::from_function_type(FunctionType::new(Vec::new(), ValueType::String)),
+            ),
+            Vec::new(),
+        ));
+        let string_float_case = StringFunctionExpr::float_case(
+            FloatExpr::value(1.0),
+            vec![(1.0, string_reference.clone())],
+            string_reference.clone(),
+        );
+        let string_bool_case = StringFunctionExpr::bool_case(
+            BoolExpr::value(true),
+            string_float_case,
+            string_reference.clone(),
+        );
+        assert_eq!(
+            string_function_return(StringFunctionExpr::block(Vec::new(), string_bool_case)),
+            ReturnBody::block(
+                Vec::new(),
+                ReturnBody::bool_case(
+                    BoolExpr::value(true),
+                    ReturnBody::float_case(
+                        FloatExpr::value(1.0),
+                        vec![(1.0, ReturnBody::expr(string_reference.clone()))],
+                        ReturnBody::expr(string_reference.clone()),
+                    ),
+                    ReturnBody::expr(string_reference),
+                ),
+            ),
+        );
+
+        let bit_array_reference = BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(
+            monomorphic_function_instantiation(
+                2,
+                FunctionShape::from_function_type(FunctionType::new(
+                    Vec::new(),
+                    ValueType::BitArray,
+                )),
+            ),
             Vec::new(),
         ));
         assert_eq!(
-            bit_array_function_return(BitArrayFunctionExpr::call(
-                BitArrayFunctionFunctionId(0),
-                Vec::new(),
-                type_.clone(),
-            )),
-            ReturnBody::tail_call(BitArrayFunctionFunctionId(0), Vec::new()),
-        );
-        let step = crate::plan::Step::evaluate(crate::plan::Expr::int(IntExpr::value(1.into())));
-        assert_eq!(
             bit_array_function_return(BitArrayFunctionExpr::block(
-                vec![step.clone()],
-                value.clone(),
+                Vec::new(),
+                bit_array_reference.clone(),
             )),
-            ReturnBody::block(vec![step], ReturnBody::expr(value.clone())),
+            ReturnBody::block(Vec::new(), ReturnBody::expr(bit_array_reference)),
         );
-        assert_eq!(
-            bit_array_function_return(BitArrayFunctionExpr::bool_case(
-                BoolExpr::value(true),
-                value.clone(),
-                value.clone(),
-            )),
-            ReturnBody::bool_case(
-                BoolExpr::value(true),
-                ReturnBody::expr(value.clone()),
-                ReturnBody::expr(value.clone()),
+
+        let float_reference = FloatFunctionExpr::reference(FloatFunctionReference::new(
+            monomorphic_function_instantiation(
+                3,
+                FunctionShape::from_function_type(FunctionType::new(Vec::new(), ValueType::Float)),
             ),
+            Vec::new(),
+        ));
+        let float_string_case = FloatFunctionExpr::string_case(
+            StringExpr::value("value".into()),
+            vec![("value".into(), float_reference.clone())],
+            float_reference.clone(),
         );
         assert_eq!(
-            bit_array_function_return(BitArrayFunctionExpr::int_case(
-                IntExpr::value(1.into()),
-                vec![(BigInt::from(1), value.clone())],
-                value.clone(),
-            )),
-            ReturnBody::int_case(
-                IntExpr::value(1.into()),
-                vec![(BigInt::from(1), ReturnBody::expr(value.clone()))],
-                ReturnBody::expr(value.clone()),
-            ),
-        );
-        assert_eq!(
-            bit_array_function_return(BitArrayFunctionExpr::string_case(
-                StringExpr::value("one".into()),
-                vec![("one".into(), value.clone())],
-                value.clone(),
-            )),
-            ReturnBody::string_case(
-                StringExpr::value("one".into()),
-                vec![("one".into(), ReturnBody::expr(value.clone()))],
-                ReturnBody::expr(value.clone()),
-            ),
-        );
-        assert_eq!(
-            bit_array_function_return(BitArrayFunctionExpr::float_case(
+            float_function_return(FloatFunctionExpr::float_case(
                 FloatExpr::value(1.0),
-                vec![(1.0, value.clone())],
-                value.clone(),
-            )),
+                vec![(1.0, float_string_case)],
+                float_reference.clone(),
+            ),),
             ReturnBody::float_case(
                 FloatExpr::value(1.0),
-                vec![(1.0, ReturnBody::expr(value.clone()))],
-                ReturnBody::expr(value),
+                vec![(
+                    1.0,
+                    ReturnBody::string_case(
+                        StringExpr::value("value".into()),
+                        vec![("value".into(), ReturnBody::expr(float_reference.clone()))],
+                        ReturnBody::expr(float_reference.clone()),
+                    ),
+                )],
+                ReturnBody::expr(float_reference),
             ),
         );
-    }
 
-    #[test]
-    fn list_function_return_preserves_tail_and_case_return_body_shapes() {
+        let bool_reference = BoolFunctionExpr::reference(BoolFunctionReference::new(
+            monomorphic_function_instantiation(
+                4,
+                FunctionShape::from_function_type(FunctionType::new(Vec::new(), ValueType::Bool)),
+            ),
+            Vec::new(),
+        ));
+        let bool_float_case = BoolFunctionExpr::float_case(
+            FloatExpr::value(1.0),
+            vec![(1.0, bool_reference.clone())],
+            bool_reference.clone(),
+        );
+        let bool_bool_case = BoolFunctionExpr::bool_case(
+            BoolExpr::value(true),
+            bool_float_case,
+            bool_reference.clone(),
+        );
         assert_eq!(
-            list_function_return(ListFunctionExpr::call(
-                ListFunctionFunctionId::from_item_type(
-                    0,
-                    crate::plan::FunctionType::new(
-                        Vec::new(),
-                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
+            bool_function_return(BoolFunctionExpr::block(Vec::new(), bool_bool_case)),
+            ReturnBody::block(
+                Vec::new(),
+                ReturnBody::bool_case(
+                    BoolExpr::value(true),
+                    ReturnBody::float_case(
+                        FloatExpr::value(1.0),
+                        vec![(1.0, ReturnBody::expr(bool_reference.clone()))],
+                        ReturnBody::expr(bool_reference.clone()),
                     ),
-                    crate::plan::ValueType::Int
+                    ReturnBody::expr(bool_reference),
                 ),
-                Vec::new()
-            )),
-            ReturnBody::tail_call(
-                ListFunctionFunctionId::from_item_type(
-                    0,
-                    crate::plan::FunctionType::new(
+            ),
+        );
+
+        let nil_reference =
+            crate::plan::NilFunctionExpr::reference(crate::plan::NilFunctionReference::new(
+                monomorphic_function_instantiation(
+                    5,
+                    FunctionShape::from_function_type(FunctionType::new(
                         Vec::new(),
-                        crate::plan::ValueType::List(Box::new(crate::plan::ValueType::Int))
-                    ),
-                    crate::plan::ValueType::Int
+                        ValueType::Nil,
+                    )),
                 ),
-                Vec::new()
-            ),
+                Vec::new(),
+            ));
+        let nil_float_case = crate::plan::NilFunctionExpr::float_case(
+            FloatExpr::value(1.0),
+            vec![(1.0, nil_reference.clone())],
+            nil_reference.clone(),
+        );
+        let nil_bool_case = crate::plan::NilFunctionExpr::bool_case(
+            BoolExpr::value(true),
+            nil_float_case,
+            nil_reference.clone(),
         );
         assert_eq!(
-            list_function_return(ListFunctionExpr::bool_case(
-                BoolExpr::value(true),
-                list_function_value(),
-                list_function_value(),
+            nil_function_return(crate::plan::NilFunctionExpr::block(
+                Vec::new(),
+                nil_bool_case,
             )),
-            ReturnBody::bool_case(
-                BoolExpr::value(true),
-                ReturnBody::expr(list_function_value()),
-                ReturnBody::expr(list_function_value()),
+            ReturnBody::block(
+                Vec::new(),
+                ReturnBody::bool_case(
+                    BoolExpr::value(true),
+                    ReturnBody::float_case(
+                        FloatExpr::value(1.0),
+                        vec![(1.0, ReturnBody::expr(nil_reference.clone()))],
+                        ReturnBody::expr(nil_reference.clone()),
+                    ),
+                    ReturnBody::expr(nil_reference),
+                ),
             ),
         );
-        assert_eq!(
-            list_function_return(ListFunctionExpr::int_case(
-                IntExpr::value(BigInt::from(1)),
-                vec![(BigInt::from(1), list_function_value())],
-                list_function_value(),
-            )),
-            ReturnBody::int_case(
-                IntExpr::value(BigInt::from(1)),
-                vec![(BigInt::from(1), ReturnBody::expr(list_function_value()))],
-                ReturnBody::expr(list_function_value()),
+
+        let tuple_reference = TupleFunctionExpr::reference(TupleFunctionReference::new(
+            monomorphic_function_instantiation(
+                6,
+                FunctionShape::new(
+                    Vec::new(),
+                    ValueShape::Tuple(vec![ValueShape::Int].into_boxed_slice()),
+                ),
             ),
+            Vec::new(),
+        ));
+        let tuple_string_case = TupleFunctionExpr::string_case(
+            StringExpr::value("value".into()),
+            vec![("value".into(), tuple_reference.clone())],
+            tuple_reference.clone(),
         );
         assert_eq!(
-            list_function_return(ListFunctionExpr::string_case(
-                StringExpr::value("one".into()),
-                vec![("one".into(), list_function_value())],
-                list_function_value(),
-            )),
-            ReturnBody::string_case(
-                StringExpr::value("one".into()),
-                vec![("one".into(), ReturnBody::expr(list_function_value()))],
-                ReturnBody::expr(list_function_value()),
+            tuple_function_return(TupleFunctionExpr::float_case(
+                FloatExpr::value(1.0),
+                vec![(1.0, tuple_string_case)],
+                tuple_reference.clone(),
+            ),),
+            ReturnBody::float_case(
+                FloatExpr::value(1.0),
+                vec![(
+                    1.0,
+                    ReturnBody::string_case(
+                        StringExpr::value("value".into()),
+                        vec![("value".into(), ReturnBody::expr(tuple_reference.clone()))],
+                        ReturnBody::expr(tuple_reference.clone()),
+                    ),
+                )],
+                ReturnBody::expr(tuple_reference),
             ),
+        );
+        let list_reference = ListFunctionExpr::reference(
+            ListFunctionReference::new(
+                monomorphic_function_instantiation(
+                    7,
+                    FunctionShape::new(Vec::new(), ValueShape::List(Box::new(ValueShape::Int))),
+                ),
+                Vec::new(),
+            ),
+            ValueType::Int,
+        );
+        let list_string_case = ListFunctionExpr::string_case(
+            StringExpr::value("value".into()),
+            vec![("value".into(), list_reference.clone())],
+            list_reference.clone(),
         );
         assert_eq!(
             list_function_return(ListFunctionExpr::float_case(
                 FloatExpr::value(1.0),
-                vec![(1.0, list_function_value())],
-                list_function_value(),
-            )),
+                vec![(1.0, list_string_case)],
+                list_reference.clone(),
+            ),),
             ReturnBody::float_case(
                 FloatExpr::value(1.0),
-                vec![(1.0, ReturnBody::expr(list_function_value()))],
-                ReturnBody::expr(list_function_value()),
+                vec![(
+                    1.0,
+                    ReturnBody::string_case(
+                        StringExpr::value("value".into()),
+                        vec![("value".into(), ReturnBody::expr(list_reference.clone()))],
+                        ReturnBody::expr(list_reference.clone()),
+                    ),
+                )],
+                ReturnBody::expr(list_reference),
             ),
         );
-        assert_eq!(
-            list_function_return(ListFunctionExpr::block(
-                vec![crate::plan::Step::evaluate(crate::plan::Expr::float(
-                    FloatExpr::value(1.0),
-                ))],
-                list_function_value(),
-            )),
-            ReturnBody::block(
-                vec![crate::plan::Step::evaluate(crate::plan::Expr::float(
-                    FloatExpr::value(1.0),
-                ))],
-                ReturnBody::expr(list_function_value()),
-            ),
-        );
-    }
-
-    fn int_function_float_case() -> IntFunctionExpr {
-        IntFunctionExpr::float_case(
-            FloatExpr::value(1.0),
-            vec![(1.0, int_function_value())],
-            int_function_value(),
-        )
-    }
-
-    fn string_function_float_case() -> StringFunctionExpr {
-        StringFunctionExpr::float_case(
-            FloatExpr::value(1.0),
-            vec![(1.0, string_function_value())],
-            string_function_value(),
-        )
-    }
-
-    fn float_function_float_case() -> FloatFunctionExpr {
-        FloatFunctionExpr::float_case(
-            FloatExpr::value(1.0),
-            vec![(1.0, float_function_value())],
-            float_function_value(),
-        )
-    }
-
-    fn bool_function_float_case() -> BoolFunctionExpr {
-        BoolFunctionExpr::float_case(
-            FloatExpr::value(1.0),
-            vec![(1.0, bool_function_value())],
-            bool_function_value(),
-        )
-    }
-
-    fn nil_function_float_case() -> NilFunctionExpr {
-        NilFunctionExpr::float_case(
-            FloatExpr::value(1.0),
-            vec![(1.0, nil_function_value())],
-            nil_function_value(),
-        )
-    }
-
-    fn tuple_function_float_case() -> TupleFunctionExpr {
-        TupleFunctionExpr::float_case(
-            FloatExpr::value(1.0),
-            vec![(1.0, tuple_function_value())],
-            tuple_function_value(),
-        )
-    }
-
-    fn list_function_float_case() -> ListFunctionExpr {
-        ListFunctionExpr::float_case(
-            FloatExpr::value(1.0),
-            vec![(1.0, list_function_value())],
-            list_function_value(),
-        )
-    }
-
-    fn function_function_float_case() -> FunctionFunctionExpr {
-        FunctionFunctionExpr::float_case(
-            FloatExpr::value(1.0),
-            vec![(1.0, function_function_value())],
-            function_function_value(),
-        )
-    }
-
-    fn int_function_type() -> FunctionType {
-        FunctionType::new(vec![ValueType::Int], ValueType::Int)
-    }
-
-    fn string_function_type() -> FunctionType {
-        FunctionType::new(vec![ValueType::Float], ValueType::String)
-    }
-
-    fn float_function_type() -> FunctionType {
-        FunctionType::new(vec![ValueType::Float], ValueType::Float)
-    }
-
-    fn bool_function_type() -> FunctionType {
-        FunctionType::new(vec![ValueType::Float], ValueType::Bool)
-    }
-
-    fn nil_function_type() -> FunctionType {
-        FunctionType::new(vec![ValueType::Float], ValueType::Nil)
-    }
-
-    fn tuple_function_type() -> FunctionType {
-        FunctionType::new(
-            vec![ValueType::Float],
-            ValueType::Tuple(vec![ValueType::Float]),
-        )
-    }
-
-    fn list_function_type() -> FunctionType {
-        FunctionType::new(
-            vec![ValueType::Float],
-            ValueType::List(Box::new(ValueType::Int)),
-        )
-    }
-
-    fn int_function_value() -> IntFunctionExpr {
-        IntFunctionExpr::reference(IntFunctionReference::new(
-            IntFunctionId(0),
-            vec![ParamLocal::int(IntLocalId(0))],
-        ))
-    }
-
-    fn string_function_value() -> StringFunctionExpr {
-        StringFunctionExpr::reference(StringFunctionReference::new(
-            StringFunctionId(0),
-            vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
-        ))
-    }
-
-    fn float_function_value() -> FloatFunctionExpr {
-        FloatFunctionExpr::reference(FloatFunctionReference::new(
-            FloatFunctionId(0),
-            vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
-        ))
-    }
-
-    fn bool_function_value() -> BoolFunctionExpr {
-        BoolFunctionExpr::reference(BoolFunctionReference::new(
-            BoolFunctionId(0),
-            vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
-        ))
-    }
-
-    fn nil_function_value() -> NilFunctionExpr {
-        NilFunctionExpr::reference(NilFunctionReference::new(
-            NilFunctionId(0),
-            vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
-        ))
-    }
-
-    fn tuple_function_value() -> TupleFunctionExpr {
-        TupleFunctionExpr::reference(
-            TupleFunctionReference::new(
-                TupleFunctionId(0),
-                vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
-            ),
-            vec![ValueType::Float],
-        )
-    }
-
-    fn list_function_value() -> ListFunctionExpr {
-        ListFunctionExpr::reference(ListFunctionReference::new(
-            ListFunctionId::from_item_type(0, crate::plan::ValueType::Int),
-            vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
-        ))
-    }
-
-    fn function_function_value() -> FunctionFunctionExpr {
-        FunctionFunctionExpr::reference(
-            FunctionFunctionReference::new(
-                FunctionFunctionId::Float(FloatFunctionFunctionId(0)),
-                Vec::new(),
-            ),
-            float_function_type(),
-        )
-    }
-
-    fn custom_function_type() -> CustomFunctionType {
-        CustomFunctionType::new(vec![ValueType::Float], custom_type())
-    }
-
-    fn custom_function_value() -> CustomFunctionExpr {
-        CustomFunctionExpr::reference(CustomFunctionReference::new(
-            CustomFunctionId::new(0, custom_type()),
-            vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
-        ))
-    }
-
-    fn custom_type() -> CustomType {
-        CustomType::new(
-            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
-            Vec::new(),
-        )
     }
 }

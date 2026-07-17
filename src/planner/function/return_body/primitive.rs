@@ -1,13 +1,70 @@
 use crate::plan::{
     BitArrayExpr, BitArrayExprKind, BitArrayReturn, BoolExpr, BoolExprKind, BoolReturn, CustomExpr,
-    CustomReturn, FloatExpr, FloatExprKind, FloatReturn, IntExpr, IntExprKind, IntReturn, ListItem,
-    NilExpr, NilExprKind, NilReturn, ReturnBody, StringExpr, StringExprKind, StringReturn,
-    TupleExpr, TupleExprKind, TupleReturn, TypedListExpr, TypedListReturnKind, UtfCodepointExpr,
-    UtfCodepointExprKind, UtfCodepointReturn,
+    CustomReturn, FloatExpr, FloatExprKind, FloatReturn, GenericExpr, GenericExprKind,
+    GenericReturn, IntExpr, IntExprKind, IntReturn, ListItem, NilExpr, NilExprKind, NilReturn,
+    ReturnBody, StringExpr, StringExprKind, StringReturn, TupleExpr, TupleExprKind, TupleReturn,
+    TypedListExpr, TypedListReturnKind, UtfCodepointExpr, UtfCodepointExprKind, UtfCodepointReturn,
 };
 
 pub(super) fn custom_return(expression: CustomExpr) -> CustomReturn {
     CustomReturn::expr(expression)
+}
+
+pub(super) fn generic_return(expression: GenericExpr) -> GenericReturn {
+    match expression.kind() {
+        GenericExprKind::Call { function, args } => {
+            ReturnBody::tail_call(function.clone(), args.clone())
+        }
+        GenericExprKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            (**subject).clone(),
+            generic_return((**true_).clone()),
+            generic_return((**false_).clone()),
+        ),
+        GenericExprKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), generic_return(branch.clone())))
+                .collect(),
+            generic_return((**fallback).clone()),
+        ),
+        GenericExprKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), generic_return(branch.clone())))
+                .collect(),
+            generic_return((**fallback).clone()),
+        ),
+        GenericExprKind::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::float_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (*value, generic_return(branch.clone())))
+                .collect(),
+            generic_return((**fallback).clone()),
+        ),
+        GenericExprKind::Block { steps, return_ } => {
+            ReturnBody::block(steps.clone(), generic_return((**return_).clone()))
+        }
+        _ => ReturnBody::expr(expression),
+    }
 }
 
 #[cfg(test)]
@@ -15,7 +72,9 @@ use crate::plan::{ListExpr, ListReturn};
 
 pub(super) fn int_return(expression: IntExpr) -> IntReturn {
     match expression.kind() {
-        IntExprKind::Call { function, args } => ReturnBody::tail_call(*function, args.clone()),
+        IntExprKind::Call { function, args } => {
+            ReturnBody::tail_call(function.clone(), args.clone())
+        }
         IntExprKind::BoolCase {
             subject,
             true_,
@@ -70,7 +129,9 @@ pub(super) fn int_return(expression: IntExpr) -> IntReturn {
 
 pub(super) fn string_return(expression: StringExpr) -> StringReturn {
     match expression.kind() {
-        StringExprKind::Call { function, args } => ReturnBody::tail_call(*function, args.clone()),
+        StringExprKind::Call { function, args } => {
+            ReturnBody::tail_call(function.clone(), args.clone())
+        }
         StringExprKind::BoolCase {
             subject,
             true_,
@@ -125,7 +186,9 @@ pub(super) fn string_return(expression: StringExpr) -> StringReturn {
 
 pub(super) fn bit_array_return(expression: BitArrayExpr) -> BitArrayReturn {
     match expression.kind() {
-        BitArrayExprKind::Call { function, args } => ReturnBody::tail_call(*function, args.clone()),
+        BitArrayExprKind::Call { function, args } => {
+            ReturnBody::tail_call(function.clone(), args.clone())
+        }
         BitArrayExprKind::BoolCase {
             subject,
             true_,
@@ -181,7 +244,7 @@ pub(super) fn bit_array_return(expression: BitArrayExpr) -> BitArrayReturn {
 pub(super) fn utf_codepoint_return(expression: UtfCodepointExpr) -> UtfCodepointReturn {
     match expression.kind() {
         UtfCodepointExprKind::Call { function, args } => {
-            ReturnBody::tail_call(*function, args.clone())
+            ReturnBody::tail_call(function.clone(), args.clone())
         }
         UtfCodepointExprKind::BoolCase {
             subject,
@@ -237,7 +300,9 @@ pub(super) fn utf_codepoint_return(expression: UtfCodepointExpr) -> UtfCodepoint
 
 pub(super) fn bool_return(expression: BoolExpr) -> BoolReturn {
     match expression.kind() {
-        BoolExprKind::Call { function, args } => ReturnBody::tail_call(*function, args.clone()),
+        BoolExprKind::Call { function, args } => {
+            ReturnBody::tail_call(function.clone(), args.clone())
+        }
         BoolExprKind::BoolCase {
             subject,
             true_,
@@ -292,7 +357,9 @@ pub(super) fn bool_return(expression: BoolExpr) -> BoolReturn {
 
 pub(super) fn nil_return(expression: NilExpr) -> NilReturn {
     match expression.kind() {
-        NilExprKind::Call { function, args } => ReturnBody::tail_call(*function, args.clone()),
+        NilExprKind::Call { function, args } => {
+            ReturnBody::tail_call(function.clone(), args.clone())
+        }
         NilExprKind::BoolCase {
             subject,
             true_,
@@ -347,7 +414,9 @@ pub(super) fn nil_return(expression: NilExpr) -> NilReturn {
 
 pub(super) fn float_return(expression: FloatExpr) -> FloatReturn {
     match expression.kind() {
-        FloatExprKind::Call { function, args } => ReturnBody::tail_call(*function, args.clone()),
+        FloatExprKind::Call { function, args } => {
+            ReturnBody::tail_call(function.clone(), args.clone())
+        }
         FloatExprKind::BoolCase {
             subject,
             true_,
@@ -402,7 +471,9 @@ pub(super) fn float_return(expression: FloatExpr) -> FloatReturn {
 
 pub(super) fn tuple_return(expression: TupleExpr) -> TupleReturn {
     match expression.kind() {
-        TupleExprKind::Call { function, args } => ReturnBody::tail_call(*function, args.clone()),
+        TupleExprKind::Call { function, args } => {
+            ReturnBody::tail_call(function.clone(), args.clone())
+        }
         TupleExprKind::BoolCase {
             subject,
             true_,
@@ -458,6 +529,10 @@ pub(super) fn tuple_return(expression: TupleExpr) -> TupleReturn {
 #[cfg(test)]
 pub(super) fn list_return(expression: ListExpr) -> ListReturn {
     match expression {
+        ListExpr::Generic(expression) => ListReturn::Generic {
+            item_parameter: expression.item().parameter(),
+            body: typed_list_return_body(expression),
+        },
         ListExpr::Int(expression) => ListReturn::Int(typed_list_return_body(expression)),
         ListExpr::String(expression) => ListReturn::String(typed_list_return_body(expression)),
         ListExpr::BitArray(expression) => ListReturn::BitArray(typed_list_return_body(expression)),
@@ -549,9 +624,9 @@ mod tests {
         bool_return, float_return, int_return, list_return, nil_return, string_return, tuple_return,
     };
     use crate::plan::{
-        BoolExpr, CustomType, CustomTypeName, Expr, FloatExpr, FloatFunctionId, FunctionType,
-        IntExpr, ListCaseBranches, ListExpr, ListReturn, NilExpr, ReturnBody, Step, StringExpr,
-        TupleExpr, ValueType,
+        BoolExpr, CustomType, CustomTypeName, Expr, FloatExpr, FunctionType, IntExpr,
+        ListCaseBranches, ListExpr, ListReturn, NilExpr, ReturnBody, Step, StringExpr, TupleExpr,
+        TypeParameterId, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -629,6 +704,11 @@ mod tests {
 
     #[test]
     fn list_return_preserves_every_item_family() {
+        let parameter = TypeParameterId(0);
+        assert_eq!(
+            list_return(ListExpr::value(Vec::new(), ValueType::Parameter(parameter),)),
+            ListReturn::expr(ListExpr::value(Vec::new(), ValueType::Parameter(parameter),)),
+        );
         assert_eq!(
             list_return(ListExpr::value(Vec::new(), ValueType::Int)),
             ListReturn::expr(ListExpr::value(Vec::new(), ValueType::Int)),
@@ -698,9 +778,13 @@ mod tests {
 
     #[test]
     fn float_return_preserves_tail_and_case_return_body_shapes() {
+        let function = crate::plan::monomorphic_function_instantiation(
+            1,
+            crate::plan::FunctionShape::new(Vec::new(), crate::plan::ValueShape::Float),
+        );
         assert_eq!(
-            float_return(FloatExpr::call(FloatFunctionId(1), Vec::new())),
-            ReturnBody::tail_call(FloatFunctionId(1), Vec::new()),
+            float_return(FloatExpr::call(function.clone(), Vec::new())),
+            ReturnBody::tail_call(function, Vec::new()),
         );
         assert_eq!(
             float_return(FloatExpr::bool_case(

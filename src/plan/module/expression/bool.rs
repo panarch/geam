@@ -3,7 +3,7 @@ use super::{
     IntExpr, ListExpr, PanicExpr, StringExpr, TupleExpr,
 };
 use crate::plan::{AssertPattern, BitArrayExpr, BitArrayPattern};
-use crate::plan::{BoolFunctionId, BoolLocalId, Step};
+use crate::plan::{BoolLocalId, FunctionInstantiation, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -20,7 +20,7 @@ pub(crate) enum BoolExprKind {
         name: EcoString,
     },
     Call {
-        function: BoolFunctionId,
+        function: FunctionInstantiation,
         args: Vec<CallArg>,
     },
     FunctionCall {
@@ -145,7 +145,7 @@ impl BoolExpr {
         }
     }
 
-    pub(crate) fn call(function: BoolFunctionId, args: Vec<CallArg>) -> Self {
+    pub(crate) fn call(function: FunctionInstantiation, args: Vec<CallArg>) -> Self {
         Self {
             kind: BoolExprKind::Call { function, args },
         }
@@ -413,18 +413,15 @@ impl BoolExpr {
     pub(crate) fn kind(&self) -> &BoolExprKind {
         &self.kind
     }
-
-    pub(crate) fn into_kind(self) -> BoolExprKind {
-        self.kind
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{BoolExpr, BoolExprKind};
     use crate::plan::{
-        BoolFunctionId, BoolFunctionReference, BoolLocalId, Expr, FloatExpr, IntExpr, Step,
-        StringExpr, TupleExpr, ValueType,
+        BoolFunctionReference, BoolLocalId, Expr, FloatExpr, FunctionInstantiation, FunctionShape,
+        IntExpr, Step, StringExpr, TupleExpr, ValueShape, ValueType,
+        monomorphic_function_instantiation,
     };
     use num_bigint::BigInt;
 
@@ -439,9 +436,9 @@ mod tests {
             },
         );
         assert_eq!(
-            BoolExpr::call(BoolFunctionId(0), Vec::new()).kind(),
+            BoolExpr::call(function_instantiation(), Vec::new()).kind(),
             &BoolExprKind::Call {
-                function: BoolFunctionId(0),
+                function: function_instantiation(),
                 args: Vec::new(),
             },
         );
@@ -629,9 +626,13 @@ mod tests {
 
     fn function_expr() -> crate::plan::BoolFunctionExpr {
         crate::plan::BoolFunctionExpr::reference(BoolFunctionReference::new(
-            BoolFunctionId(0),
+            function_instantiation(),
             Vec::new(),
         ))
+    }
+
+    fn function_instantiation() -> FunctionInstantiation {
+        monomorphic_function_instantiation(0, FunctionShape::new(Vec::new(), ValueShape::Bool))
     }
 
     fn tuple_expr() -> TupleExpr {

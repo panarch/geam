@@ -142,7 +142,7 @@ fn plan_refutable_assert_assignment_from_expr(
     message: Option<TypedExpr>,
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedAssignment, PlanError> {
-    validate_pattern_value_type(&pattern, value.value_type())?;
+    validate_pattern_value_type(&pattern, value.value_type(), context)?;
     let message = message
         .map(|message| plan_assert_message(message, context))
         .transpose()?;
@@ -160,8 +160,12 @@ fn plan_refutable_assert_assignment_from_expr(
     })
 }
 
-fn validate_pattern_value_type(pattern: &TypedPattern, actual: ValueType) -> Result<(), PlanError> {
-    let expected = crate::planner::pattern::pattern_value_type(pattern)?;
+fn validate_pattern_value_type(
+    pattern: &TypedPattern,
+    actual: ValueType,
+    context: &mut PlanContext<'_>,
+) -> Result<(), PlanError> {
+    let expected = crate::planner::pattern::pattern_value_type(pattern, context)?;
     if expected == actual {
         return Ok(());
     }
@@ -272,9 +276,11 @@ fn plan_assert_subject(
                 Expr::list(local_value),
             ))
         }
-        ExprKind::UtfCodepoint(_) | ExprKind::Function(_) => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::InvalidPattern,
-        }),
+        ExprKind::Generic(_) | ExprKind::UtfCodepoint(_) | ExprKind::Function(_) => {
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::InvalidPattern,
+            })
+        }
     }
 }
 
@@ -318,10 +324,10 @@ mod tests {
         BitArrayPatternSizeExpr, BitArrayPatternValue, BitArraySegment,
         CustomConstructorRefinement, CustomLocal, CustomLocalId, CustomType, CustomTypeName,
         CustomValueShape, Endianness, FloatLocalId, FunctionExpr, IntExpr, IntFunctionExpr,
-        IntFunctionId, IntFunctionReference, IntListLocalId, IntLocalId, ListAssertPattern,
-        ListAssertTail, ListLocal, NilLocalId, PanicSite, ParamLocal, Signedness, SourceSpan, Step,
-        StepKind, StringExpr, StringLocalId, TupleLocalId, UtfCodepointExpr, UtfCodepointLocalId,
-        ValueShape, ValueType,
+        IntFunctionReference, IntListLocalId, IntLocalId, ListAssertPattern, ListAssertTail,
+        ListLocal, NilLocalId, PanicSite, ParamLocal, Signedness, SourceSpan, Step, StepKind,
+        StringExpr, StringLocalId, TupleLocalId, UtfCodepointExpr, UtfCodepointLocalId, ValueShape,
+        ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
@@ -579,7 +585,16 @@ pub fn main() {
                     origin: VariableOrigin::generated(),
                 },
                 crate::plan::Expr::function(FunctionExpr::int(IntFunctionExpr::reference(
-                    IntFunctionReference::new(IntFunctionId(0), Vec::new()),
+                    IntFunctionReference::new(
+                        crate::plan::monomorphic_function_instantiation(
+                            0,
+                            crate::plan::FunctionShape::new(
+                                Vec::new(),
+                                crate::plan::ValueShape::Int,
+                            ),
+                        ),
+                        Vec::new(),
+                    ),
                 ))),
             ),
         ];
@@ -603,6 +618,10 @@ pub fn main() {
 
     #[test]
     fn assertion_type_validation_propagates_malformed_pattern_shape() {
+        let module_name = "main".into();
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
         assert_eq!(
             super::validate_pattern_value_type(
                 &Pattern::BitArraySize(gleam_core::ast::BitArraySize::Int {
@@ -611,6 +630,7 @@ pub fn main() {
                     int_value: BigInt::from(1),
                 }),
                 ValueType::Int,
+                &mut context,
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::InvalidPattern,

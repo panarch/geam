@@ -1,20 +1,23 @@
 use crate::plan::{
-    FunctionFunctionLocalId, FunctionId, IntFunctionLocalId, ModulePlan, ParamBinding, ParamLocal,
-    SourceContext, ValueType,
+    FunctionFunctionLocalId, FunctionTemplateId, IntFunctionLocalId, ModulePlan, ParamBinding,
+    ParamLocal, SourceContext, ValueType,
 };
-use crate::planner::context::{
-    AnonymousFunctions, FunctionInfo, FunctionParam, FunctionRuntimeIds,
-};
+use crate::planner::context::{AnonymousFunctions, FunctionInfo, FunctionParam};
 use crate::planner::error::{
-    InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedArgumentReason,
-    UnsupportedFunctionReason, UnsupportedTopLevelKind,
+    InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedFunctionReason,
+    UnsupportedTopLevelKind,
 };
 use crate::planner::function::{function_name, plan_function};
+use crate::planner::type_parameter::TypeParameterScope;
 use ecow::EcoString;
 use gleam_core::ast::{ArgNames, Statement, TypedExpr, TypedFunction, TypedModule};
 use gleam_core::type_::{Type, TypeVar};
 use std::collections::HashMap;
 use std::ops::Deref;
+
+pub(in crate::planner) use constant::ConstantRegistry;
+#[cfg(test)]
+pub(in crate::planner) use constant::plan_constants;
 
 pub fn plan_module(module: TypedModule) -> Result<ModulePlan, PlanError> {
     plan_module_inner(module)
@@ -49,6 +52,13 @@ fn plan_module_inner(module: TypedModule) -> Result<ModulePlan, PlanError> {
         mut anonymous_functions,
     } = function_table(&definitions.functions)?;
     let main = validate_main_function(main)?;
+    let constants = constant::plan_constants(
+        definitions.constants,
+        &module_name,
+        &by_name,
+        &custom_types,
+        &mut anonymous_functions,
+    )?;
     let mut functions = Vec::new();
 
     for function in functions_before_main {
@@ -57,6 +67,7 @@ fn plan_module_inner(module: TypedModule) -> Result<ModulePlan, PlanError> {
             &module_name,
             &by_name,
             &custom_types,
+            &constants,
             function.function,
             &mut anonymous_functions,
         )?;
@@ -68,6 +79,7 @@ fn plan_module_inner(module: TypedModule) -> Result<ModulePlan, PlanError> {
         &module_name,
         &by_name,
         &custom_types,
+        &constants,
         main.function,
         &mut anonymous_functions,
     )?;
@@ -78,15 +90,19 @@ fn plan_module_inner(module: TypedModule) -> Result<ModulePlan, PlanError> {
             &module_name,
             &by_name,
             &custom_types,
+            &constants,
             function.function,
             &mut anonymous_functions,
         )?;
         functions.push(planned);
     }
     let anonymous_functions = anonymous_functions.into_functions();
+    let constants = constants.into_templates();
+    validate_executable_main(&main)?;
 
     Ok(ModulePlan::new(module_name, main, functions)
         .with_custom_types(custom_types)
+        .with_constants(constants)
         .with_anonymous_functions(anonymous_functions))
 }
 
@@ -110,14 +126,18 @@ fn function_table(
 
     for function in functions {
         let name = function_name(function)?;
+        let mut type_parameters = TypeParameterScope::default();
         let return_shape =
-            function_return_shape(name.clone(), &function.return_type, &function.body)?;
-        let params = function_params(name.clone(), &function.arguments, ParamLabelPolicy::Allow)?;
+            function_return_shape_in(&function.return_type, &function.body, &mut type_parameters);
+        let params = function_params_allowing_labels_in(&function.arguments, &mut type_parameters);
+        let scheme = type_parameters.scheme();
         seeds.push(FunctionSeed {
             name,
             function: function.clone(),
             params,
             return_shape,
+            scheme,
+            type_parameters,
         });
     }
 
@@ -133,8 +153,7 @@ fn function_table(
         });
     };
 
-    let mut runtime_ids = FunctionRuntimeIds::default();
-    let main_info = function_info(0, &main_seed, &mut runtime_ids);
+    let main_info = function_info(0, &main_seed);
     let main = FunctionToPlan {
         info: main_info.clone(),
         function: main_seed.function,
@@ -149,7 +168,7 @@ fn function_table(
             continue;
         }
 
-        let info = function_info(next_function_index, &seed, &mut runtime_ids);
+        let info = function_info(next_function_index, &seed);
         next_function_index += 1;
         by_name.insert(seed.name.clone(), info.clone());
         let function = FunctionToPlan {
@@ -164,7 +183,7 @@ fn function_table(
         }
     }
 
-    let anonymous_functions = AnonymousFunctions::new(next_function_index, runtime_ids);
+    let anonymous_functions = AnonymousFunctions::new(next_function_index);
 
     Ok(FunctionTable {
         by_name,
@@ -175,15 +194,20 @@ fn function_table(
     })
 }
 
-fn function_info(
-    function_index: usize,
-    seed: &FunctionSeed,
-    runtime_ids: &mut FunctionRuntimeIds,
-) -> FunctionInfo {
-    let runtime_id = runtime_ids.next_shape(&seed.return_shape);
+fn function_info(function_index: usize, seed: &FunctionSeed) -> FunctionInfo {
     FunctionInfo {
-        id: FunctionId::new(function_index),
-        runtime_id,
+        signature: crate::plan::FunctionTemplateSignature::new(
+            FunctionTemplateId::new(function_index),
+            seed.scheme.clone(),
+            crate::plan::FunctionShape::new(
+                seed.params
+                    .iter()
+                    .map(|param| param.shape().clone())
+                    .collect(),
+                seed.return_shape.clone(),
+            ),
+        ),
+        type_parameters: seed.type_parameters.clone(),
         return_shape: seed.return_shape.clone(),
         params: seed.params.clone(),
     }
@@ -195,6 +219,8 @@ struct FunctionSeed {
     function: TypedFunction,
     params: Vec<FunctionParam>,
     return_shape: crate::plan::ValueShape,
+    scheme: crate::plan::TypeScheme,
+    type_parameters: TypeParameterScope,
 }
 
 #[cfg(test)]
@@ -206,6 +232,7 @@ fn function_return_type(
     function_return_shape(name, type_, body).map(|shape| shape.value_type())
 }
 
+#[cfg(test)]
 fn function_return_shape(
     name: EcoString,
     type_: &Type,
@@ -225,6 +252,22 @@ fn function_return_shape(
         name,
         reason: UnsupportedFunctionReason::UnsupportedReturnType,
     })
+}
+
+fn function_return_shape_in(
+    type_: &Type,
+    body: &[gleam_core::ast::TypedStatement],
+    parameters: &mut TypeParameterScope,
+) -> crate::plan::ValueShape {
+    if !is_inferred_return_type(type_) {
+        return crate::plan::ValueShape::from_gleam_in(type_, parameters);
+    }
+
+    if let Some(return_type) = source_stop_return_type(body) {
+        return crate::plan::ValueShape::from_value_type(return_type);
+    }
+
+    crate::plan::ValueShape::from_gleam_in(type_, parameters)
 }
 
 fn is_inferred_return_type(type_: &Type) -> bool {
@@ -260,11 +303,33 @@ fn is_source_stop_expr(expression: &TypedExpr) -> bool {
     }
 }
 
-pub(super) fn function_params(
+pub(super) fn function_params_in(
     function_name: EcoString,
     arguments: &[gleam_core::ast::TypedArg],
-    label_policy: ParamLabelPolicy,
+    parameters: &mut TypeParameterScope,
 ) -> Result<Vec<FunctionParam>, PlanError> {
+    if arguments.iter().any(|argument| {
+        matches!(
+            argument.names,
+            ArgNames::NamedLabelled { .. } | ArgNames::LabelledDiscard { .. }
+        )
+    }) {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::FunctionShape {
+                name: function_name,
+                reason: InvalidFunctionShapeReason::LabelledArgument,
+            },
+        });
+    }
+
+    Ok(function_params_allowing_labels_in(arguments, parameters))
+}
+
+fn function_params_allowing_labels_in(
+    arguments: &[gleam_core::ast::TypedArg],
+    parameters: &mut TypeParameterScope,
+) -> Vec<FunctionParam> {
+    let mut next_generic = 0;
     let mut next_int = 0;
     let mut next_float = 0;
     let mut next_string = 0;
@@ -285,6 +350,7 @@ pub(super) fn function_params(
     let mut next_tuple_list = 0;
     let mut next_list_list = 0;
     let mut next_function_list = 0;
+    let mut next_generic_list = 0;
     let mut function_locals = FunctionParamLocalCounters::default();
 
     arguments
@@ -293,33 +359,24 @@ pub(super) fn function_params(
             let (binding, label) = match &argument.names {
                 ArgNames::Named { name, .. } => (ParamBinding::Named(name.clone()), None),
                 ArgNames::Discard { .. } => (ParamBinding::Discard, None),
-                ArgNames::NamedLabelled { label, name, .. }
-                    if label_policy == ParamLabelPolicy::Allow =>
-                {
+                ArgNames::NamedLabelled { label, name, .. } => {
                     (ParamBinding::Named(name.clone()), Some(label.clone()))
                 }
-                ArgNames::LabelledDiscard { label, .. }
-                    if label_policy == ParamLabelPolicy::Allow =>
-                {
+                ArgNames::LabelledDiscard { label, .. } => {
                     (ParamBinding::Discard, Some(label.clone()))
-                }
-                ArgNames::NamedLabelled { .. } | ArgNames::LabelledDiscard { .. } => {
-                    return Err(PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::FunctionShape {
-                            name: function_name.clone(),
-                            reason: InvalidFunctionShapeReason::LabelledArgument,
-                        },
-                    });
                 }
             };
 
-            let Some(shape) = crate::plan::ValueShape::from_gleam(&argument.type_) else {
-                return Err(PlanError::UnsupportedArgument {
-                    function: function_name.clone(),
-                    reason: UnsupportedArgumentReason::UnsupportedType,
-                });
-            };
+            let shape = crate::plan::ValueShape::from_gleam_in(&argument.type_, parameters);
             let local = match &shape {
+                crate::plan::ValueShape::Parameter(parameter) => {
+                    let local = ParamLocal::generic(crate::plan::GenericLocal::new(
+                        crate::plan::GenericLocalId(next_generic),
+                        *parameter,
+                    ));
+                    next_generic += 1;
+                    local
+                }
                 crate::plan::ValueShape::Int => {
                     let local = ParamLocal::int(crate::plan::IntLocalId(next_int));
                     next_int += 1;
@@ -378,6 +435,14 @@ pub(super) fn function_params(
                 }
                 crate::plan::ValueShape::List(element_shape) => {
                     let local = match element_shape.as_ref() {
+                        crate::plan::ValueShape::Parameter(parameter) => {
+                            let local = crate::plan::ListLocal::generic(
+                                crate::plan::GenericListLocalId(next_generic_list),
+                                *parameter,
+                            );
+                            next_generic_list += 1;
+                            local
+                        }
                         crate::plan::ValueShape::Int => {
                             let local = crate::plan::ListLocal::int(crate::plan::IntListLocalId(
                                 next_int_list,
@@ -469,19 +534,14 @@ pub(super) fn function_params(
                     function_locals.next_shape(function_shape)
                 }
             };
-            Ok(FunctionParam::new(local, shape, binding, label))
+            FunctionParam::new(local, shape, binding, label)
         })
         .collect()
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum ParamLabelPolicy {
-    Allow,
-    Reject,
-}
-
 #[derive(Default)]
 struct FunctionParamLocalCounters {
+    next_generic: usize,
     next_int: usize,
     next_float: usize,
     next_string: usize,
@@ -499,6 +559,17 @@ impl FunctionParamLocalCounters {
     fn next_shape(&mut self, shape: &crate::plan::FunctionShape) -> ParamLocal {
         let type_ = shape.type_();
         match shape.return_shape() {
+            crate::plan::ValueShape::Parameter(parameter) => {
+                let local = ParamLocal::generic_function(crate::plan::GenericFunctionLocal::new(
+                    crate::plan::GenericFunctionLocalId(self.next_generic),
+                    crate::plan::GenericFunctionType::new(
+                        shape.argument_shapes().to_vec(),
+                        *parameter,
+                    ),
+                ));
+                self.next_generic += 1;
+                local
+            }
             crate::plan::ValueShape::Int => {
                 let local =
                     ParamLocal::int_function(IntFunctionLocalId(self.next_int), type_.clone());
@@ -608,17 +679,31 @@ fn validate_main_function(main: FunctionToPlan) -> Result<FunctionToPlan, PlanEr
     Ok(main)
 }
 
+fn validate_executable_main(main: &crate::plan::FunctionTemplate) -> Result<(), PlanError> {
+    if main.scheme().is_monomorphic() {
+        Ok(())
+    } else {
+        Err(PlanError::UnsupportedFunction {
+            name: "main".into(),
+            reason: UnsupportedFunctionReason::UnsupportedReturnType,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::plan_module;
     use crate::plan::{
-        BitArrayListLocalId, BoolListLocalId, CustomConstructorDefinition, CustomFieldDefinition,
-        CustomFunctionId, CustomLocalId, CustomType, CustomTypeDefinition, CustomTypeName,
+        BitArrayListLocalId, BoolListLocalId, ConstantTemplate, ConstantTemplateId,
+        ConstantTemplateSignature, ConstantTemplates, ConstantValue, CustomConstructorDefinition,
+        CustomFieldDefinition, CustomLocalId, CustomType, CustomTypeDefinition, CustomTypeName,
         CustomTypePublicity, CustomTypeTemplate, FloatListLocalId, FunctionFunctionId,
-        FunctionListLocalId, FunctionType, IntFunctionFunctionId, IntFunctionId, IntListLocalId,
-        IntLocalId, ListListLocalId, ListLocal, LocalId, NilExpr, NilFunctionId, NilListLocalId,
-        PanicExpr, PanicSite, Param, ParamLocal, RuntimeFunctionId, SourceSpan, StringListLocalId,
-        TupleListLocalId, ValueType,
+        FunctionListLocalId, FunctionType, GenericExpr, GenericFunctionLocal,
+        GenericFunctionLocalId, GenericFunctionType, GenericListLocalId, GenericLocal,
+        GenericLocalId, IntFunctionFunctionId, IntFunctionId, IntListLocalId, IntLocalId,
+        ListListLocalId, ListLocal, LocalId, NilExpr, NilFunctionId, NilListLocalId, PanicExpr,
+        PanicSite, Param, ParamLocal, ReturnBody, ReturnExpr, RuntimeFunctionId, SourceSpan,
+        StringListLocalId, TupleListLocalId, TypeParameterId, TypeScheme, ValueShape, ValueType,
     };
     use crate::planner::dsl::{
         call_int, call_int_returning_function, function, function_ref, int, int_arg,
@@ -714,7 +799,14 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
-        let expected = module("main", function("main", int(42)), []);
+        let signature =
+            ConstantTemplateSignature::int(ConstantTemplateId(0), 0, TypeScheme::new(0));
+        let expected = module("main", function("main", int(42)), []).with_constants(
+            ConstantTemplates::from_entries(vec![(
+                ConstantTemplate::new(signature, "answer".into()),
+                ConstantValue::int(42.into()),
+            )]),
+        );
 
         assert_eq!(actual, expected);
     }
@@ -884,7 +976,44 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_source_stop_with_generic_return_type() {
+    fn parametric_function_return_shapes_preserve_inferred_and_source_stop_results() {
+        let source_stop = compile(
+            r#"
+pub fn main() {
+  panic
+}
+"#,
+        );
+        let mut concrete_parameters = super::TypeParameterScope::default();
+        assert_eq!(
+            super::function_return_shape_in(type_::int().as_ref(), &[], &mut concrete_parameters),
+            ValueShape::Int,
+        );
+
+        let mut source_stop_parameters = super::TypeParameterScope::default();
+        assert_eq!(
+            super::function_return_shape_in(
+                type_::unbound_var(41).as_ref(),
+                &source_stop.definitions.functions[0].body,
+                &mut source_stop_parameters,
+            ),
+            ValueShape::Nil,
+        );
+
+        let mut inferred_parameters = super::TypeParameterScope::default();
+        assert_eq!(
+            super::function_return_shape_in(
+                type_::unbound_var(41).as_ref(),
+                &[],
+                &mut inferred_parameters,
+            ),
+            ValueShape::Parameter(TypeParameterId(0)),
+        );
+        assert_eq!(inferred_parameters.scheme(), TypeScheme::new(1));
+    }
+
+    #[test]
+    fn reject_margin_source_stop_generic_return_without_template_scope() {
         let block_with_source_stop = compile(
             r#"
 pub fn main() {
@@ -906,9 +1035,12 @@ pub fn main() {
                 reason: UnsupportedFunctionReason::UnsupportedReturnType,
             }),
         );
-        assert_eq!(
-            expect_plan_error(
-                r#"
+    }
+
+    #[test]
+    fn plan_source_stop_generic_function_as_template() {
+        let actual = plan_module(compile(
+            r#"
 fn fail() -> a {
   panic
 }
@@ -917,9 +1049,38 @@ pub fn main() {
   1
 }
 "#,
+        ))
+        .expect("generic source-stop function should plan as a template");
+        let fail = &actual.functions()[0];
+        let parameter = TypeParameterId(0);
+        assert_eq!(fail.scheme(), &TypeScheme::new(1));
+        assert_eq!(
+            fail.return_(),
+            &ReturnExpr::generic_body(
+                parameter,
+                ReturnBody::expr(GenericExpr::panic(
+                    parameter,
+                    PanicExpr::panic_at(
+                        None,
+                        PanicSite::new("main".into(), "fail".into(), SourceSpan::new(20, 25),),
+                    ),
+                )),
+            ),
+        );
+    }
+
+    #[test]
+    fn reject_profile_unresolved_generic_main_as_specialization_root() {
+        assert_eq!(
+            expect_plan_error(
+                r#"
+pub fn main() {
+  []
+}
+"#,
             ),
             PlanError::UnsupportedFunction {
-                name: "fail".into(),
+                name: "main".into(),
                 reason: UnsupportedFunctionReason::UnsupportedReturnType,
             },
         );
@@ -986,7 +1147,7 @@ fn after() -> Result(Int, Nil) {
             .map(|function| {
                 (
                     function.name().clone(),
-                    function.return_().runtime_id(),
+                    function.id(),
                     function.return_().value_type(),
                 )
             })
@@ -997,26 +1158,12 @@ fn after() -> Result(Int, Nil) {
             vec![
                 (
                     "before".into(),
-                    RuntimeFunctionId::Custom(CustomFunctionId::from_shape(
-                        0,
-                        crate::plan::CustomValueShape::new(
-                            result_custom_type().type_name().clone(),
-                            vec![crate::plan::ValueShape::Int, crate::plan::ValueShape::Nil],
-                            crate::plan::CustomConstructorRefinement::Exact(0),
-                        ),
-                    )),
+                    crate::plan::FunctionTemplateId::new(1),
                     result_type(),
                 ),
                 (
                     "after".into(),
-                    RuntimeFunctionId::Custom(CustomFunctionId::from_shape(
-                        1,
-                        crate::plan::CustomValueShape::new(
-                            result_custom_type().type_name().clone(),
-                            vec![crate::plan::ValueShape::Int, crate::plan::ValueShape::Nil],
-                            crate::plan::CustomConstructorRefinement::Exact(0),
-                        ),
-                    )),
+                    crate::plan::FunctionTemplateId::new(2),
                     result_type(),
                 ),
             ],
@@ -1087,7 +1234,7 @@ fn get() {
             "main",
             function("main", int(1)).evaluate(function_ref(
                 RuntimeFunctionId::Function {
-                    id: FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                    id: FunctionFunctionId::Int(IntFunctionFunctionId(2)),
                     return_type: returned_function_type.clone(),
                 },
                 Vec::<ParamLocal>::new(),
@@ -1130,7 +1277,7 @@ fn get() {
         let expected = module(
             "main",
             function("main", int(1)).evaluate(call_int_returning_function(
-                0,
+                2,
                 [],
                 returned_function_type,
             )),
@@ -1252,7 +1399,7 @@ fn count(values: Result(Int, Nil)) {
     }
 
     #[test]
-    fn reject_margin_custom_function_argument_with_unsupported_typed_ast_type() {
+    fn reject_margin_custom_function_argument_with_mismatched_generic_return() {
         let mut module = compile(
             r#"
 fn count(value: Int) { value }
@@ -1263,9 +1410,11 @@ pub fn main() { count(1) }
 
         assert_eq!(
             plan_module(module),
-            Err(PlanError::UnsupportedArgument {
-                function: "count".into(),
-                reason: crate::planner::UnsupportedArgumentReason::UnsupportedType,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: "count".into(),
+                    reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
+                },
             }),
         );
     }
@@ -1400,6 +1549,55 @@ pub fn main() {
     }
 
     #[test]
+    fn plan_generic_params_preserve_scheme_owned_local_shapes() {
+        let actual = plan_module(compile(
+            r#"
+fn apply(
+  function: fn(value) -> value,
+  value: value,
+  values: List(value),
+) -> value {
+  function(value)
+}
+
+pub fn main() {
+  apply(fn(value) { value }, 1, [1])
+}
+"#,
+        ))
+        .expect("concretely called generic params should plan as one template");
+        let apply = actual
+            .functions()
+            .iter()
+            .find(|function| function.name() == "apply")
+            .expect("apply template should be planned");
+        let parameter = TypeParameterId(0);
+        let callable = GenericFunctionType::new(vec![ValueShape::Parameter(parameter)], parameter);
+
+        assert_eq!(apply.scheme(), &TypeScheme::new(1));
+        assert_eq!(
+            apply.params(),
+            &[
+                Param::named(
+                    ParamLocal::generic_function(GenericFunctionLocal::new(
+                        GenericFunctionLocalId(0),
+                        callable,
+                    )),
+                    "function".into(),
+                ),
+                Param::named(
+                    ParamLocal::generic(GenericLocal::new(GenericLocalId(0), parameter)),
+                    "value".into(),
+                ),
+                Param::named(
+                    ParamLocal::list(ListLocal::generic(GenericListLocalId(0), parameter)),
+                    "values".into(),
+                ),
+            ],
+        );
+    }
+
+    #[test]
     fn plan_local_custom_type_definition() {
         let plan = plan_module(compile(
             r#"
@@ -1427,6 +1625,28 @@ pub fn main() {
                     vec![CustomFieldDefinition::new(None, CustomTypeTemplate::Int)],
                 )],
             )],
+        );
+    }
+
+    #[test]
+    fn reject_profile_module_propagates_external_custom_type_owner_error() {
+        let module = crate::frontend::compile_typed_module(
+            "main",
+            "main.gleam",
+            r#"
+@external(erlang, "external", "thing")
+pub type Thing
+
+pub fn main() { 1 }
+"#,
+        )
+        .expect("an external custom type should analyse");
+
+        assert_eq!(
+            plan_module(module),
+            Err(PlanError::UnsupportedTopLevel {
+                kind: UnsupportedTopLevelKind::ExternalCustomType,
+            }),
         );
     }
 
@@ -1459,4 +1679,5 @@ pub fn main() {
         )
     }
 }
+mod constant;
 mod custom_type;

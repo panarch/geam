@@ -4,17 +4,18 @@ use super::{
     UtfCodepointFunction,
 };
 use crate::plan::{
-    BitArrayFunctionExpr, BitArrayFunctionId, BitArrayFunctionLocalId, BitArrayFunctionReference,
-    BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId, BoolFunctionReference, CaptureArg,
-    FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId, FloatFunctionReference, FunctionExpr,
-    FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId, FunctionFunctionReference,
-    FunctionReference, FunctionType, IntFunctionExpr, IntFunctionId, IntFunctionLocalId,
-    IntFunctionReference, ListFunctionExpr, ListFunctionId, ListFunctionLocal,
-    ListFunctionReference, NilFunctionExpr, NilFunctionId, NilFunctionLocalId,
-    NilFunctionReference, ParamLocal, RuntimeFunctionId, StringFunctionExpr, StringFunctionId,
-    StringFunctionLocalId, StringFunctionReference, TupleFunctionExpr, TupleFunctionId,
-    TupleFunctionLocalId, TupleFunctionReference, UtfCodepointFunctionExpr, UtfCodepointFunctionId,
-    UtfCodepointFunctionLocalId, UtfCodepointFunctionReference, ValueType,
+    BitArrayFunctionExpr, BitArrayFunctionLocalId, BitArrayFunctionReference, BoolFunctionExpr,
+    BoolFunctionLocalId, BoolFunctionReference, CaptureArg, FloatFunctionExpr,
+    FloatFunctionLocalId, FloatFunctionReference, FunctionExpr, FunctionFunctionExpr,
+    FunctionFunctionId, FunctionFunctionLocalId, FunctionFunctionReference, FunctionInstantiation,
+    FunctionReference, FunctionShape, FunctionType, GenericFunctionExpr, GenericFunctionReference,
+    GenericFunctionType, IntFunctionExpr, IntFunctionLocalId, IntFunctionReference,
+    ListFunctionExpr, ListFunctionLocal, ListFunctionReference, NilFunctionExpr,
+    NilFunctionLocalId, NilFunctionReference, ParamLocal, ParamSlot, RuntimeFunctionId,
+    StringFunctionExpr, StringFunctionLocalId, StringFunctionReference, TupleFunctionExpr,
+    TupleFunctionLocalId, TupleFunctionReference, TypeParameterId, UtfCodepointFunctionExpr,
+    UtfCodepointFunctionLocalId, UtfCodepointFunctionReference, ValueShape, ValueType,
+    monomorphic_function_instantiation,
 };
 
 use ecow::EcoString;
@@ -23,34 +24,152 @@ fn function_type(params: &[ParamLocal], return_: ValueType) -> FunctionType {
     FunctionType::new(params.iter().map(ParamLocal::value_type).collect(), return_)
 }
 
+fn instantiation(
+    template: usize,
+    params: &[ParamLocal],
+    return_: ValueShape,
+) -> FunctionInstantiation {
+    monomorphic_function_instantiation(
+        template,
+        FunctionShape::new(
+            params.iter().map(ParamLocal::value_shape).collect(),
+            return_,
+        ),
+    )
+}
+
+fn function_function_template(id: &FunctionFunctionId) -> usize {
+    match id {
+        FunctionFunctionId::Int(id) => id.0,
+        FunctionFunctionId::Float(id) => id.0,
+        FunctionFunctionId::String(id) => id.0,
+        FunctionFunctionId::BitArray(id) => id.0,
+        FunctionFunctionId::UtfCodepoint(id) => id.0,
+        FunctionFunctionId::Custom(id) => id.index(),
+        FunctionFunctionId::Bool(id) => id.0,
+        FunctionFunctionId::Nil(id) => id.0,
+        FunctionFunctionId::Tuple(id) => id.0,
+        FunctionFunctionId::List(id) => match id {
+            crate::plan::ListFunctionFunctionId::Generic { id, .. } => id.0,
+            crate::plan::ListFunctionFunctionId::Int { id, .. } => id.0,
+            crate::plan::ListFunctionFunctionId::String { id, .. } => id.0,
+            crate::plan::ListFunctionFunctionId::BitArray { id, .. } => id.0,
+            crate::plan::ListFunctionFunctionId::UtfCodepoint { id, .. } => id.0,
+            crate::plan::ListFunctionFunctionId::Custom { id, .. } => id.0,
+            crate::plan::ListFunctionFunctionId::Float { id, .. } => id.0,
+            crate::plan::ListFunctionFunctionId::Bool { id, .. } => id.0,
+            crate::plan::ListFunctionFunctionId::Nil { id, .. } => id.0,
+            crate::plan::ListFunctionFunctionId::Tuple { id, .. } => id.0,
+            crate::plan::ListFunctionFunctionId::List { id, .. } => id.0,
+            crate::plan::ListFunctionFunctionId::Function { id, .. } => id.0,
+        },
+        FunctionFunctionId::Function(id) => id.index(),
+    }
+}
+
+fn runtime_function_template(id: &RuntimeFunctionId) -> (usize, ValueShape) {
+    match id {
+        RuntimeFunctionId::Int(id) => (id.0, ValueShape::Int),
+        RuntimeFunctionId::Float(id) => (id.0, ValueShape::Float),
+        RuntimeFunctionId::String(id) => (id.0, ValueShape::String),
+        RuntimeFunctionId::BitArray(id) => (id.0, ValueShape::BitArray),
+        RuntimeFunctionId::UtfCodepoint(id) => (id.0, ValueShape::UtfCodepoint),
+        RuntimeFunctionId::Custom(id) => {
+            (id.index(), ValueShape::Custom(id.return_shape().clone()))
+        }
+        RuntimeFunctionId::Bool(id) => (id.0, ValueShape::Bool),
+        RuntimeFunctionId::Nil(id) => (id.0, ValueShape::Nil),
+        RuntimeFunctionId::Tuple { id, return_type } => (
+            id.0,
+            ValueShape::Tuple(
+                return_type
+                    .iter()
+                    .cloned()
+                    .map(ValueShape::from_value_type)
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            ),
+        ),
+        RuntimeFunctionId::List(id) => (
+            match id {
+                crate::plan::ListFunctionId::Generic { id, .. } => id.0,
+                crate::plan::ListFunctionId::Int(id) => id.0,
+                crate::plan::ListFunctionId::String(id) => id.0,
+                crate::plan::ListFunctionId::BitArray(id) => id.0,
+                crate::plan::ListFunctionId::UtfCodepoint(id) => id.0,
+                crate::plan::ListFunctionId::Custom { id, .. } => id.0,
+                crate::plan::ListFunctionId::Float(id) => id.0,
+                crate::plan::ListFunctionId::Bool(id) => id.0,
+                crate::plan::ListFunctionId::Nil(id) => id.0,
+                crate::plan::ListFunctionId::Tuple { id, .. } => id.0,
+                crate::plan::ListFunctionId::List { id, .. } => id.0,
+                crate::plan::ListFunctionId::Function { id, .. } => id.0,
+            },
+            ValueShape::List(Box::new(ValueShape::from_value_type(id.item_type()))),
+        ),
+        RuntimeFunctionId::Function { id, return_type } => (
+            function_function_template(id),
+            ValueShape::Function(Box::new(FunctionShape::from_function_type(
+                return_type.clone(),
+            ))),
+        ),
+    }
+}
+
 pub(crate) fn function_ref(
-    runtime_id: RuntimeFunctionId,
+    target: RuntimeFunctionId,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
 ) -> Function {
+    let params = params
+        .into_iter()
+        .map(IntoParamLocal::into_param_local)
+        .collect::<Vec<_>>();
+    let (template, return_) = runtime_function_template(&target);
     Function(FunctionExpr::reference(FunctionReference::new(
-        runtime_id,
-        params
-            .into_iter()
-            .map(IntoParamLocal::into_param_local)
-            .collect(),
+        instantiation(template, &params, return_),
+        params,
+    )))
+}
+
+pub(crate) fn generic_function_ref(
+    template: usize,
+    params: impl IntoIterator<Item = impl IntoParamLocal>,
+    return_parameter: TypeParameterId,
+) -> Function {
+    let params = params
+        .into_iter()
+        .map(IntoParamLocal::into_param_local)
+        .collect::<Vec<_>>();
+    let type_ = GenericFunctionType::new(
+        params.iter().map(ParamLocal::value_shape).collect(),
+        return_parameter,
+    );
+
+    Function(FunctionExpr::generic(GenericFunctionExpr::reference(
+        GenericFunctionReference::new(
+            instantiation(template, &params, ValueShape::Parameter(return_parameter)),
+            params,
+        ),
+        type_,
     )))
 }
 
 pub(crate) fn int_function_ref(
-    runtime_id: usize,
+    template: usize,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
 ) -> IntFunction {
+    let params = params
+        .into_iter()
+        .map(IntoParamLocal::into_param_local)
+        .collect::<Vec<_>>();
     IntFunction(IntFunctionExpr::reference(IntFunctionReference::new(
-        IntFunctionId(runtime_id),
-        params
-            .into_iter()
-            .map(IntoParamLocal::into_param_local)
-            .collect(),
+        instantiation(template, &params, ValueShape::Int),
+        params,
     )))
 }
 
 pub(crate) fn int_function_closure(
-    runtime_id: usize,
+    template: usize,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
     captures: impl IntoIterator<Item = CaptureArg>,
 ) -> IntFunction {
@@ -61,7 +180,7 @@ pub(crate) fn int_function_closure(
     let type_ = function_type(&params, ValueType::Int);
 
     IntFunction(IntFunctionExpr::closure(
-        IntFunctionId(runtime_id),
+        instantiation(template, &params, ValueShape::Int),
         params,
         captures.into_iter().collect(),
         type_,
@@ -69,35 +188,37 @@ pub(crate) fn int_function_closure(
 }
 
 pub(crate) fn string_function_ref(
-    runtime_id: usize,
+    template: usize,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
 ) -> StringFunction {
+    let params = params
+        .into_iter()
+        .map(IntoParamLocal::into_param_local)
+        .collect::<Vec<_>>();
     StringFunction(StringFunctionExpr::reference(StringFunctionReference::new(
-        StringFunctionId(runtime_id),
-        params
-            .into_iter()
-            .map(IntoParamLocal::into_param_local)
-            .collect(),
+        instantiation(template, &params, ValueShape::String),
+        params,
     )))
 }
 
 pub(crate) fn bit_array_function_ref(
-    runtime_id: usize,
+    template: usize,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
 ) -> BitArrayFunction {
+    let params = params
+        .into_iter()
+        .map(IntoParamLocal::into_param_local)
+        .collect::<Vec<_>>();
     BitArrayFunction(BitArrayFunctionExpr::reference(
         BitArrayFunctionReference::new(
-            BitArrayFunctionId(runtime_id),
-            params
-                .into_iter()
-                .map(IntoParamLocal::into_param_local)
-                .collect(),
+            instantiation(template, &params, ValueShape::BitArray),
+            params,
         ),
     ))
 }
 
 pub(crate) fn bit_array_function_closure(
-    runtime_id: usize,
+    template: usize,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
     captures: impl IntoIterator<Item = CaptureArg>,
 ) -> BitArrayFunction {
@@ -108,7 +229,7 @@ pub(crate) fn bit_array_function_closure(
     let type_ = function_type(&params, ValueType::BitArray);
 
     BitArrayFunction(BitArrayFunctionExpr::closure(
-        BitArrayFunctionId(runtime_id),
+        instantiation(template, &params, ValueShape::BitArray),
         params,
         captures.into_iter().collect(),
         type_,
@@ -116,22 +237,23 @@ pub(crate) fn bit_array_function_closure(
 }
 
 pub(crate) fn utf_codepoint_function_ref(
-    runtime_id: usize,
+    template: usize,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
 ) -> UtfCodepointFunction {
+    let params = params
+        .into_iter()
+        .map(IntoParamLocal::into_param_local)
+        .collect::<Vec<_>>();
     UtfCodepointFunction(UtfCodepointFunctionExpr::reference(
         UtfCodepointFunctionReference::new(
-            UtfCodepointFunctionId(runtime_id),
-            params
-                .into_iter()
-                .map(IntoParamLocal::into_param_local)
-                .collect(),
+            instantiation(template, &params, ValueShape::UtfCodepoint),
+            params,
         ),
     ))
 }
 
 pub(crate) fn utf_codepoint_function_closure(
-    runtime_id: usize,
+    template: usize,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
     captures: impl IntoIterator<Item = CaptureArg>,
 ) -> UtfCodepointFunction {
@@ -142,7 +264,7 @@ pub(crate) fn utf_codepoint_function_closure(
     let type_ = function_type(&params, ValueType::UtfCodepoint);
 
     UtfCodepointFunction(UtfCodepointFunctionExpr::closure(
-        UtfCodepointFunctionId(runtime_id),
+        instantiation(template, &params, ValueShape::UtfCodepoint),
         params,
         captures.into_iter().collect(),
         type_,
@@ -150,20 +272,21 @@ pub(crate) fn utf_codepoint_function_closure(
 }
 
 pub(crate) fn float_function_ref(
-    runtime_id: usize,
+    template: usize,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
 ) -> FloatFunction {
+    let params = params
+        .into_iter()
+        .map(IntoParamLocal::into_param_local)
+        .collect::<Vec<_>>();
     FloatFunction(FloatFunctionExpr::reference(FloatFunctionReference::new(
-        FloatFunctionId(runtime_id),
-        params
-            .into_iter()
-            .map(IntoParamLocal::into_param_local)
-            .collect(),
+        instantiation(template, &params, ValueShape::Float),
+        params,
     )))
 }
 
 pub(crate) fn float_function_closure(
-    runtime_id: usize,
+    template: usize,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
     captures: impl IntoIterator<Item = CaptureArg>,
 ) -> FloatFunction {
@@ -174,7 +297,7 @@ pub(crate) fn float_function_closure(
     let type_ = function_type(&params, ValueType::Float);
 
     FloatFunction(FloatFunctionExpr::closure(
-        FloatFunctionId(runtime_id),
+        instantiation(template, &params, ValueShape::Float),
         params,
         captures.into_iter().collect(),
         type_,
@@ -182,68 +305,81 @@ pub(crate) fn float_function_closure(
 }
 
 pub(crate) fn bool_function_ref(
-    runtime_id: usize,
+    template: usize,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
 ) -> BoolFunction {
+    let params = params
+        .into_iter()
+        .map(IntoParamLocal::into_param_local)
+        .collect::<Vec<_>>();
     BoolFunction(BoolFunctionExpr::reference(BoolFunctionReference::new(
-        BoolFunctionId(runtime_id),
-        params
-            .into_iter()
-            .map(IntoParamLocal::into_param_local)
-            .collect(),
+        instantiation(template, &params, ValueShape::Bool),
+        params,
     )))
 }
 
 pub(crate) fn nil_function_ref(
-    runtime_id: usize,
+    template: usize,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
 ) -> NilFunction {
+    let params = params
+        .into_iter()
+        .map(IntoParamLocal::into_param_local)
+        .collect::<Vec<_>>();
     NilFunction(NilFunctionExpr::reference(NilFunctionReference::new(
-        NilFunctionId(runtime_id),
-        params
-            .into_iter()
-            .map(IntoParamLocal::into_param_local)
-            .collect(),
+        instantiation(template, &params, ValueShape::Nil),
+        params,
     )))
 }
 
 pub(crate) fn tuple_function_ref(
-    runtime_id: usize,
+    template: usize,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
     return_type: impl IntoIterator<Item = impl IntoValueType>,
 ) -> TupleFunction {
-    TupleFunction(TupleFunctionExpr::reference(
-        TupleFunctionReference::new(
-            TupleFunctionId(runtime_id),
-            params
-                .into_iter()
-                .map(IntoParamLocal::into_param_local)
-                .collect(),
+    let params = params
+        .into_iter()
+        .map(IntoParamLocal::into_param_local)
+        .collect::<Vec<_>>();
+    let return_type = return_type
+        .into_iter()
+        .map(IntoValueType::into_value_type)
+        .collect::<Vec<_>>();
+    TupleFunction(TupleFunctionExpr::reference(TupleFunctionReference::new(
+        instantiation(
+            template,
+            &params,
+            ValueShape::from_value_type(ValueType::Tuple(return_type)),
         ),
-        return_type
-            .into_iter()
-            .map(IntoValueType::into_value_type)
-            .collect(),
-    ))
+        params,
+    )))
 }
 
 pub(crate) fn list_function_ref(
-    runtime_id: usize,
+    template: usize,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
     item_type: impl IntoValueType,
 ) -> ListFunction {
     let item_type = item_type.into_value_type();
-    ListFunction(ListFunctionExpr::reference(ListFunctionReference::new(
-        ListFunctionId::from_item_type(runtime_id, item_type),
-        params
-            .into_iter()
-            .map(IntoParamLocal::into_param_local)
-            .collect(),
-    )))
+    let params = params
+        .into_iter()
+        .map(IntoParamLocal::into_param_local)
+        .collect::<Vec<_>>();
+    ListFunction(ListFunctionExpr::reference(
+        ListFunctionReference::new(
+            instantiation(
+                template,
+                &params,
+                ValueShape::List(Box::new(ValueShape::from_value_type(item_type.clone()))),
+            ),
+            params,
+        ),
+        item_type,
+    ))
 }
 
 pub(crate) fn tuple_function_closure(
-    runtime_id: usize,
+    template: usize,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
     captures: impl IntoIterator<Item = CaptureArg>,
     return_type: impl IntoIterator<Item = impl IntoValueType>,
@@ -259,7 +395,11 @@ pub(crate) fn tuple_function_closure(
     let type_ = function_type(&params, ValueType::Tuple(return_type.clone()));
 
     TupleFunction(TupleFunctionExpr::closure(
-        TupleFunctionId(runtime_id),
+        instantiation(
+            template,
+            &params,
+            ValueShape::from_value_type(ValueType::Tuple(return_type.clone())),
+        ),
         params,
         captures.into_iter().collect(),
         type_,
@@ -268,7 +408,7 @@ pub(crate) fn tuple_function_closure(
 }
 
 pub(crate) fn list_function_closure(
-    runtime_id: usize,
+    template: usize,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
     captures: impl IntoIterator<Item = CaptureArg>,
     item_type: impl IntoValueType,
@@ -279,10 +419,15 @@ pub(crate) fn list_function_closure(
         .collect::<Vec<_>>();
     let item_type = item_type.into_value_type();
 
-    ListFunction(ListFunctionExpr::closure(
-        ListFunctionId::from_item_type(runtime_id, item_type),
-        params,
+    ListFunction(ListFunctionExpr::closure_slots(
+        instantiation(
+            template,
+            &params,
+            ValueShape::List(Box::new(ValueShape::from_value_type(item_type.clone()))),
+        ),
+        params.into_iter().map(ParamSlot::from_local).collect(),
         captures.into_iter().collect(),
+        item_type,
     ))
 }
 
@@ -299,24 +444,29 @@ pub(crate) fn local_int_function(
 }
 
 pub(crate) fn function_function_ref(
-    runtime_id: FunctionFunctionId,
+    template: FunctionFunctionId,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
     return_type: FunctionType,
 ) -> FunctionFunction {
+    let params = params
+        .into_iter()
+        .map(IntoParamLocal::into_param_local)
+        .collect::<Vec<_>>();
+    let function = instantiation(
+        function_function_template(&template),
+        &params,
+        ValueShape::Function(Box::new(FunctionShape::from_function_type(
+            return_type.clone(),
+        ))),
+    );
     FunctionFunction(FunctionFunctionExpr::reference(
-        FunctionFunctionReference::new(
-            runtime_id,
-            params
-                .into_iter()
-                .map(IntoParamLocal::into_param_local)
-                .collect(),
-        ),
+        FunctionFunctionReference::new(function, params),
         return_type,
     ))
 }
 
 pub(crate) fn function_function_closure(
-    runtime_id: FunctionFunctionId,
+    template: FunctionFunctionId,
     params: impl IntoIterator<Item = impl IntoParamLocal>,
     captures: impl IntoIterator<Item = CaptureArg>,
     return_type: FunctionType,
@@ -327,11 +477,15 @@ pub(crate) fn function_function_closure(
         .collect::<Vec<_>>();
     let type_ = crate::plan::FunctionFunctionType::new(
         params.iter().map(ParamLocal::value_type).collect(),
-        return_type,
+        return_type.clone(),
     );
 
     FunctionFunction(FunctionFunctionExpr::closure(
-        runtime_id,
+        instantiation(
+            function_function_template(&template),
+            &params,
+            ValueShape::Function(Box::new(FunctionShape::from_function_type(return_type))),
+        ),
         params,
         captures.into_iter().collect(),
         type_,
@@ -508,27 +662,27 @@ mod tests {
     use super::{
         bit_array_function_closure, bit_array_function_ref, bool_function_ref,
         float_function_closure, float_function_ref, function_function_closure,
-        function_function_ref, function_ref, int_function_closure, int_function_ref,
-        list_function_closure, list_function_ref, local_bit_array_function, local_bool_function,
-        local_float_function, local_function_function, local_int_function, local_list_function,
-        local_nil_function, local_string_function, local_tuple_function,
-        local_utf_codepoint_function, nil_function_ref, string_function_ref,
-        tuple_function_closure, tuple_function_ref, utf_codepoint_function_closure,
-        utf_codepoint_function_ref,
+        function_function_ref, function_ref, generic_function_ref, instantiation,
+        int_function_closure, int_function_ref, list_function_closure, list_function_ref,
+        local_bit_array_function, local_bool_function, local_float_function,
+        local_function_function, local_int_function, local_list_function, local_nil_function,
+        local_string_function, local_tuple_function, local_utf_codepoint_function,
+        nil_function_ref, string_function_ref, tuple_function_closure, tuple_function_ref,
+        utf_codepoint_function_closure, utf_codepoint_function_ref,
     };
     use crate::plan::{
-        BitArrayFunctionExpr, BitArrayFunctionId, BitArrayFunctionLocalId,
-        BitArrayFunctionReference, BoolFunctionExpr, BoolFunctionId, BoolFunctionLocalId,
-        BoolFunctionReference, FloatFunctionExpr, FloatFunctionId, FloatFunctionLocalId,
-        FloatFunctionReference, FunctionExpr, FunctionFunctionExpr, FunctionFunctionId,
-        FunctionFunctionLocalId, FunctionReference, FunctionType, IntFunctionExpr,
-        IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntFunctionReference,
-        ListFunctionExpr, ListFunctionId, ListFunctionReference, NilFunctionExpr, NilFunctionId,
-        NilFunctionLocalId, NilFunctionReference, ParamLocal, RuntimeFunctionId,
-        StringFunctionExpr, StringFunctionId, StringFunctionLocalId, StringFunctionReference,
-        TupleFunctionExpr, TupleFunctionId, TupleFunctionLocalId, TupleFunctionReference,
-        UtfCodepointFunctionExpr, UtfCodepointFunctionId, UtfCodepointFunctionLocalId,
-        UtfCodepointFunctionReference, ValueType,
+        BitArrayFunctionExpr, BitArrayFunctionLocalId, BitArrayFunctionReference, BoolFunctionExpr,
+        BoolFunctionLocalId, BoolFunctionReference, CustomType, CustomTypeName, FloatFunctionExpr,
+        FloatFunctionLocalId, FloatFunctionReference, FunctionExpr, FunctionFunctionExpr,
+        FunctionFunctionId, FunctionFunctionLocalId, FunctionFunctionReference, FunctionReference,
+        FunctionShape, FunctionType, GenericFunctionExpr, GenericFunctionReference,
+        GenericFunctionType, IntFunctionExpr, IntFunctionFunctionId, IntFunctionLocalId,
+        IntFunctionReference, ListFunctionExpr, ListFunctionFunctionId, ListFunctionId,
+        ListFunctionReference, NilFunctionExpr, NilFunctionLocalId, NilFunctionReference,
+        ParamLocal, RuntimeFunctionId, StringFunctionExpr, StringFunctionLocalId,
+        StringFunctionReference, TupleFunctionExpr, TupleFunctionLocalId, TupleFunctionReference,
+        TypeParameterId, UtfCodepointFunctionExpr, UtfCodepointFunctionLocalId,
+        UtfCodepointFunctionReference, ValueShape, ValueType,
     };
     use crate::planner::dsl::expression::{Function, float, int};
 
@@ -540,7 +694,11 @@ mod tests {
                 [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
             )),
             FunctionExpr::reference(FunctionReference::new(
-                RuntimeFunctionId::Int(IntFunctionId(0)),
+                instantiation(
+                    0,
+                    &[ParamLocal::int(crate::plan::IntLocalId(0))],
+                    ValueShape::Int,
+                ),
                 vec![ParamLocal::int(crate::plan::IntLocalId(0))],
             )),
         );
@@ -551,7 +709,11 @@ mod tests {
             )
             .0,
             StringFunctionExpr::reference(StringFunctionReference::new(
-                StringFunctionId(1),
+                instantiation(
+                    1,
+                    &[ParamLocal::string(crate::plan::StringLocalId(0))],
+                    ValueShape::String,
+                ),
                 vec![ParamLocal::string(crate::plan::StringLocalId(0))],
             )),
         );
@@ -564,7 +726,11 @@ mod tests {
             )
             .0,
             BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(
-                BitArrayFunctionId(8),
+                instantiation(
+                    8,
+                    &[ParamLocal::bit_array(crate::plan::BitArrayLocalId(0))],
+                    ValueShape::BitArray,
+                ),
                 vec![ParamLocal::bit_array(crate::plan::BitArrayLocalId(0))],
             )),
         );
@@ -577,7 +743,13 @@ mod tests {
             )
             .0,
             UtfCodepointFunctionExpr::reference(UtfCodepointFunctionReference::new(
-                UtfCodepointFunctionId(9),
+                instantiation(
+                    9,
+                    &[ParamLocal::utf_codepoint(crate::plan::UtfCodepointLocalId(
+                        0
+                    ),)],
+                    ValueShape::UtfCodepoint,
+                ),
                 vec![ParamLocal::utf_codepoint(crate::plan::UtfCodepointLocalId(
                     0
                 ),)],
@@ -590,21 +762,33 @@ mod tests {
             )
             .0,
             FloatFunctionExpr::reference(FloatFunctionReference::new(
-                FloatFunctionId(2),
+                instantiation(
+                    2,
+                    &[ParamLocal::float(crate::plan::FloatLocalId(0))],
+                    ValueShape::Float,
+                ),
                 vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
             )),
         );
         assert_eq!(
             bool_function_ref(3, [crate::plan::LocalId::Bool(crate::plan::BoolLocalId(0))]).0,
             BoolFunctionExpr::reference(BoolFunctionReference::new(
-                BoolFunctionId(3),
+                instantiation(
+                    3,
+                    &[ParamLocal::bool(crate::plan::BoolLocalId(0))],
+                    ValueShape::Bool,
+                ),
                 vec![ParamLocal::bool(crate::plan::BoolLocalId(0))],
             )),
         );
         assert_eq!(
             nil_function_ref(4, [crate::plan::LocalId::Nil(crate::plan::NilLocalId(0))]).0,
             NilFunctionExpr::reference(NilFunctionReference::new(
-                NilFunctionId(4),
+                instantiation(
+                    4,
+                    &[ParamLocal::nil(crate::plan::NilLocalId(0))],
+                    ValueShape::Nil,
+                ),
                 vec![ParamLocal::nil(crate::plan::NilLocalId(0))],
             )),
         );
@@ -615,13 +799,14 @@ mod tests {
                 [ValueType::Int, ValueType::String],
             )
             .0,
-            TupleFunctionExpr::reference(
-                TupleFunctionReference::new(
-                    TupleFunctionId(5),
-                    vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+            TupleFunctionExpr::reference(TupleFunctionReference::new(
+                instantiation(
+                    5,
+                    &[ParamLocal::int(crate::plan::IntLocalId(0))],
+                    ValueShape::Tuple(vec![ValueShape::Int, ValueShape::String].into_boxed_slice(),),
                 ),
-                vec![ValueType::Int, ValueType::String],
-            ),
+                vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+            ),),
         );
         assert_eq!(
             list_function_ref(
@@ -630,10 +815,17 @@ mod tests {
                 ValueType::Int,
             )
             .0,
-            ListFunctionExpr::reference(ListFunctionReference::new(
-                ListFunctionId::from_item_type(6, crate::plan::ValueType::Int),
-                vec![ParamLocal::int(crate::plan::IntLocalId(0))]
-            )),
+            ListFunctionExpr::reference(
+                ListFunctionReference::new(
+                    instantiation(
+                        6,
+                        &[ParamLocal::int(crate::plan::IntLocalId(0))],
+                        ValueShape::List(Box::new(ValueShape::Int)),
+                    ),
+                    vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+                ),
+                ValueType::Int,
+            ),
         );
         assert_eq!(
             FunctionExpr::from(Function::from(int_function_ref(
@@ -641,10 +833,137 @@ mod tests {
                 [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
             ))),
             FunctionExpr::int(IntFunctionExpr::reference(IntFunctionReference::new(
-                IntFunctionId(7),
+                instantiation(
+                    7,
+                    &[ParamLocal::int(crate::plan::IntLocalId(0))],
+                    ValueShape::Int,
+                ),
                 vec![ParamLocal::int(crate::plan::IntLocalId(0))],
             ))),
         );
+
+        let parameter = TypeParameterId(0);
+        assert_eq!(
+            FunctionExpr::from(generic_function_ref(
+                10,
+                [ParamLocal::generic(crate::plan::GenericLocal::new(
+                    crate::plan::GenericLocalId(0),
+                    parameter,
+                ))],
+                parameter,
+            )),
+            FunctionExpr::generic(GenericFunctionExpr::reference(
+                GenericFunctionReference::new(
+                    instantiation(
+                        10,
+                        &[ParamLocal::generic(crate::plan::GenericLocal::new(
+                            crate::plan::GenericLocalId(0),
+                            parameter,
+                        ))],
+                        ValueShape::Parameter(parameter),
+                    ),
+                    vec![ParamLocal::generic(crate::plan::GenericLocal::new(
+                        crate::plan::GenericLocalId(0),
+                        parameter,
+                    ))],
+                ),
+                GenericFunctionType::new(vec![ValueShape::Parameter(parameter)], parameter),
+            )),
+        );
+    }
+
+    #[test]
+    fn list_function_refs_preserve_every_item_family_template() {
+        let custom = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        );
+        let item_types = vec![
+            ValueType::Parameter(TypeParameterId(0)),
+            ValueType::Int,
+            ValueType::String,
+            ValueType::BitArray,
+            ValueType::UtfCodepoint,
+            ValueType::Custom(custom),
+            ValueType::Float,
+            ValueType::Bool,
+            ValueType::Nil,
+            ValueType::Tuple(vec![ValueType::Int]),
+            ValueType::List(Box::new(ValueType::Int)),
+            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
+        ];
+
+        for (template, item_type) in item_types.into_iter().enumerate() {
+            assert_eq!(
+                FunctionExpr::from(function_ref(
+                    RuntimeFunctionId::List(ListFunctionId::from_item_type(
+                        template,
+                        item_type.clone(),
+                    )),
+                    Vec::<ParamLocal>::new(),
+                )),
+                FunctionExpr::reference(FunctionReference::new(
+                    instantiation(
+                        template,
+                        &[],
+                        ValueShape::List(Box::new(ValueShape::from_value_type(item_type))),
+                    ),
+                    Vec::new(),
+                )),
+            );
+        }
+    }
+
+    #[test]
+    fn function_returning_list_refs_preserve_every_item_family_template() {
+        let custom = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        );
+        let item_types = vec![
+            ValueType::Parameter(TypeParameterId(0)),
+            ValueType::Int,
+            ValueType::String,
+            ValueType::BitArray,
+            ValueType::UtfCodepoint,
+            ValueType::Custom(custom),
+            ValueType::Float,
+            ValueType::Bool,
+            ValueType::Nil,
+            ValueType::Tuple(vec![ValueType::Int]),
+            ValueType::List(Box::new(ValueType::Int)),
+            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
+        ];
+
+        for (template, item_type) in item_types.into_iter().enumerate() {
+            let returned_type =
+                FunctionType::new(Vec::new(), ValueType::List(Box::new(item_type.clone())));
+            assert_eq!(
+                function_function_ref(
+                    FunctionFunctionId::List(ListFunctionFunctionId::from_item_type(
+                        template,
+                        returned_type.clone(),
+                        item_type,
+                    )),
+                    Vec::<ParamLocal>::new(),
+                    returned_type.clone(),
+                )
+                .0,
+                FunctionFunctionExpr::reference(
+                    FunctionFunctionReference::new(
+                        instantiation(
+                            template,
+                            &[],
+                            ValueShape::Function(Box::new(FunctionShape::from_function_type(
+                                returned_type.clone(),
+                            ))),
+                        ),
+                        Vec::new(),
+                    ),
+                    returned_type,
+                ),
+            );
+        }
     }
 
     #[test]
@@ -803,7 +1122,11 @@ mod tests {
         assert_eq!(
             int_function_closure(0, [ParamLocal::int(crate::plan::IntLocalId(0))], []).0,
             IntFunctionExpr::closure(
-                IntFunctionId(0),
+                instantiation(
+                    0,
+                    &[ParamLocal::int(crate::plan::IntLocalId(0))],
+                    ValueShape::Int,
+                ),
                 vec![ParamLocal::int(crate::plan::IntLocalId(0))],
                 Vec::new(),
                 FunctionType::new(vec![ValueType::Int], ValueType::Int),
@@ -817,7 +1140,11 @@ mod tests {
             )
             .0,
             BitArrayFunctionExpr::closure(
-                BitArrayFunctionId(1),
+                instantiation(
+                    1,
+                    &[ParamLocal::bit_array(crate::plan::BitArrayLocalId(0))],
+                    ValueShape::BitArray,
+                ),
                 vec![ParamLocal::bit_array(crate::plan::BitArrayLocalId(0))],
                 Vec::new(),
                 FunctionType::new(vec![ValueType::BitArray], ValueType::BitArray),
@@ -833,7 +1160,13 @@ mod tests {
             )
             .0,
             UtfCodepointFunctionExpr::closure(
-                UtfCodepointFunctionId(2),
+                instantiation(
+                    2,
+                    &[ParamLocal::utf_codepoint(crate::plan::UtfCodepointLocalId(
+                        0
+                    ),)],
+                    ValueShape::UtfCodepoint,
+                ),
                 vec![ParamLocal::utf_codepoint(crate::plan::UtfCodepointLocalId(
                     0
                 ),)],
@@ -852,7 +1185,11 @@ mod tests {
             )
             .0,
             FloatFunctionExpr::closure(
-                FloatFunctionId(0),
+                instantiation(
+                    0,
+                    &[ParamLocal::float(crate::plan::FloatLocalId(0))],
+                    ValueShape::Float,
+                ),
                 vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
                 vec![crate::planner::dsl::expression::capture_float(
                     0,
@@ -870,7 +1207,13 @@ mod tests {
             )
             .0,
             FunctionFunctionExpr::closure(
-                FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+                instantiation(
+                    0,
+                    &[],
+                    ValueShape::Function(Box::new(FunctionShape::from_function_type(
+                        FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                    ))),
+                ),
                 Vec::new(),
                 vec![crate::planner::dsl::expression::capture_int(0, int(1))],
                 crate::plan::FunctionFunctionType::new(
@@ -888,7 +1231,11 @@ mod tests {
             )
             .0,
             TupleFunctionExpr::closure(
-                TupleFunctionId(0),
+                instantiation(
+                    0,
+                    &[ParamLocal::int(crate::plan::IntLocalId(0))],
+                    ValueShape::Tuple(vec![ValueShape::Int, ValueShape::String].into_boxed_slice(),),
+                ),
                 vec![ParamLocal::int(crate::plan::IntLocalId(0))],
                 vec![crate::planner::dsl::expression::capture_int(0, int(1))],
                 FunctionType::new(
@@ -907,9 +1254,14 @@ mod tests {
             )
             .0,
             ListFunctionExpr::closure(
-                ListFunctionId::from_item_type(0, ValueType::String),
+                instantiation(
+                    0,
+                    &[ParamLocal::int(crate::plan::IntLocalId(0))],
+                    ValueShape::List(Box::new(ValueShape::String)),
+                ),
                 vec![ParamLocal::int(crate::plan::IntLocalId(0))],
                 vec![crate::planner::dsl::expression::capture_int(0, int(1))],
+                ValueType::String,
             ),
         );
     }

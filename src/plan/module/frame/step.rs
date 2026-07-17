@@ -13,6 +13,10 @@ impl FrameLayout {
 
     fn include_step(&mut self, step: &Step) {
         match step.kind() {
+            StepKind::LetGeneric { local, value, .. } => {
+                self.include_generic_expr(value);
+                self.include_generic(*local);
+            }
             StepKind::LetInt { local, value, .. } => {
                 self.include_int_expr(value);
                 self.include_int(*local);
@@ -93,6 +97,10 @@ impl FrameLayout {
             StepKind::LetFunctionFunction { local, value, .. } => {
                 self.include_function_function_expr(value.expression());
                 self.include_function_function(local.clone());
+            }
+            StepKind::LetGenericFunction { local, value, .. } => {
+                self.include_generic_function_expr(value.expression());
+                self.include_generic_function(local.clone());
             }
             StepKind::AssertPattern {
                 subject,
@@ -249,7 +257,16 @@ mod tests {
                 "text".into(),
                 StringExpr::block(
                     Vec::new(),
-                    StringExpr::call(crate::plan::StringFunctionId(0), Vec::new()),
+                    StringExpr::call(
+                        crate::plan::monomorphic_function_instantiation(
+                            0,
+                            crate::plan::FunctionShape::new(
+                                Vec::new(),
+                                crate::plan::ValueShape::String,
+                            ),
+                        ),
+                        Vec::new(),
+                    ),
                 ),
             ),
             crate::plan::Step::let_bool(
@@ -268,7 +285,16 @@ mod tests {
                 "none".into(),
                 NilExpr::block(
                     Vec::new(),
-                    NilExpr::call(crate::plan::NilFunctionId(0), Vec::new()),
+                    NilExpr::call(
+                        crate::plan::monomorphic_function_instantiation(
+                            0,
+                            crate::plan::FunctionShape::new(
+                                Vec::new(),
+                                crate::plan::ValueShape::Nil,
+                            ),
+                        ),
+                        Vec::new(),
+                    ),
                 ),
             ),
             crate::plan::Step::let_string_function(
