@@ -1656,7 +1656,6 @@ pub fn main() -> Int {
                 0,
                 crate::plan::FunctionShape::new(Vec::new(), ValueShape::Nil),
             ),
-            Vec::new(),
         )));
         let list_expression = Expr::from(list([int(1)], ValueType::Int));
         let nil_expression = Expr::from(nil());

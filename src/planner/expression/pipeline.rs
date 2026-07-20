@@ -148,7 +148,7 @@ pub fn main() {
                 "main",
                 int_return_block(
                     [let_int_step(0, "_pipe", int(1))],
-                    int_return_tail_call(1, [int_arg(0, local_int(0, "_pipe"))]),
+                    int_return_tail_call(1, [int_arg(local_int(0, "_pipe"))]),
                 ),
             ),
             [function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value")],
@@ -177,10 +177,7 @@ pub fn main() {
                 "main",
                 int_return_block(
                     [let_int_step(0, "_pipe", int(1))],
-                    int_return_tail_call(
-                        1,
-                        [int_arg(0, local_int(0, "_pipe")), int_arg(1, int(2))],
-                    ),
+                    int_return_tail_call(1, [int_arg(local_int(0, "_pipe")), int_arg(int(2))]),
                 ),
             ),
             [
@@ -221,13 +218,10 @@ pub fn main() {
                         let_int_step(
                             1,
                             "_pipe",
-                            call_int(1, [int_arg(0, local_int(0, "_pipe")), int_arg(1, int(2))]),
+                            call_int(1, [int_arg(local_int(0, "_pipe")), int_arg(int(2))]),
                         ),
                     ],
-                    int_return_tail_call(
-                        2,
-                        [int_arg(0, local_int(1, "_pipe")), int_arg(1, int(3))],
-                    ),
+                    int_return_tail_call(2, [int_arg(local_int(1, "_pipe")), int_arg(int(3))]),
                 ),
             ),
             [
@@ -274,7 +268,7 @@ pub fn main() {
                         "_pipe",
                         block_int([let_int_step(0, "x", int(1))], local_int(0, "x")),
                     )],
-                    int_return_tail_call(1, [int_arg(0, local_int(1, "_pipe"))]),
+                    int_return_tail_call(1, [int_arg(local_int(1, "_pipe"))]),
                 ),
             ),
             [function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value")],
@@ -303,10 +297,7 @@ pub fn main() {
                 "main",
                 int_return_block(
                     [let_int_step(0, "_pipe", int(1))],
-                    int_return_tail_call(
-                        1,
-                        [int_arg(0, int(10)), int_arg(1, local_int(0, "_pipe"))],
-                    ),
+                    int_return_tail_call(1, [int_arg(int(10)), int_arg(local_int(0, "_pipe"))]),
                 ),
             ),
             [function(
@@ -340,10 +331,7 @@ pub fn main() {
                 "main",
                 int_return_block(
                     [let_int_step(0, "_pipe", int(2))],
-                    int_return_tail_call(
-                        1,
-                        [int_arg(0, int(40)), int_arg(1, local_int(0, "_pipe"))],
-                    ),
+                    int_return_tail_call(1, [int_arg(int(40)), int_arg(local_int(0, "_pipe"))]),
                 ),
             ),
             [
@@ -376,10 +364,7 @@ pub fn main() {
                 "main",
                 int_return_block(
                     [let_int_step(0, "_pipe", int(2))],
-                    int_return_tail_call(
-                        1,
-                        [int_arg(0, int(40)), int_arg(1, local_int(0, "_pipe"))],
-                    ),
+                    int_return_tail_call(1, [int_arg(int(40)), int_arg(local_int(0, "_pipe"))]),
                 ),
             ),
             [
@@ -415,7 +400,7 @@ pub fn main() {
                     [let_int_step(0, "_pipe", int(1))],
                     int_return_expr(call_int_function(
                         local_int_function(0, "f", [LocalId::Int(IntLocalId(0))]),
-                        [int_function_call_arg(0, local_int(0, "_pipe"))],
+                        [int_function_call_arg(local_int(0, "_pipe"))],
                     )),
                 ),
             )
@@ -442,7 +427,7 @@ pub fn main() {
                     [let_int_step(0, "_pipe", int(1))],
                     int_return_expr(call_int_function(
                         int_function_closure(1, [LocalId::Int(IntLocalId(0))], []),
-                        [int_function_call_arg(0, local_int(0, "_pipe"))],
+                        [int_function_call_arg(local_int(0, "_pipe"))],
                     )),
                 ),
             ),
@@ -478,8 +463,8 @@ pub fn main() {
                     int_return_expr(call_int_function(
                         local_int_function(0, "f", params),
                         [
-                            int_function_call_arg(0, int(10)),
-                            int_function_call_arg(1, local_int(0, "_pipe")),
+                            int_function_call_arg(int(10)),
+                            int_function_call_arg(local_int(0, "_pipe")),
                         ],
                     )),
                 ),
@@ -519,9 +504,9 @@ pub fn main() {
                     int_return_tail_call(
                         1,
                         [
-                            int_arg(0, int(10)),
-                            int_arg(1, local_int(0, "_pipe")),
-                            int_arg(2, int(3)),
+                            int_arg(int(10)),
+                            int_arg(local_int(0, "_pipe")),
+                            int_arg(int(3)),
                         ],
                     ),
                 ),
@@ -576,7 +561,7 @@ fn identity_nil(value: Nil) {
                 "main",
                 string_return_block(
                     [let_string_step(0, "_pipe", string("geam"))],
-                    string_return_tail_call(1, [string_arg(0, local_string(0, "_pipe"))]),
+                    string_return_tail_call(1, [string_arg(local_string(0, "_pipe"))]),
                 ),
             ),
             [
@@ -586,7 +571,7 @@ fn identity_nil(value: Nil) {
                     "bool_main",
                     bool_return_block(
                         [let_bool_step(0, "_pipe", bool_(true))],
-                        bool_return_tail_call(2, [bool_arg(0, local_bool(0, "_pipe"))]),
+                        bool_return_tail_call(2, [bool_arg(local_bool(0, "_pipe"))]),
                     ),
                 ),
                 function("identity_nil", local_nil(0, "value")).param_nil(0, "value"),
@@ -594,7 +579,7 @@ fn identity_nil(value: Nil) {
                     "nil_main",
                     nil_return_block(
                         [let_nil_step(0, "_pipe", nil())],
-                        nil_return_tail_call(4, [nil_arg(0, local_nil(0, "_pipe"))]),
+                        nil_return_tail_call(4, [nil_arg(local_nil(0, "_pipe"))]),
                     ),
                 ),
             ],

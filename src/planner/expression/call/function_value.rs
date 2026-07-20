@@ -369,7 +369,7 @@ pub fn main() {
                 "main",
                 call_int_function(
                     int_function_closure(1, [LocalId::Int(IntLocalId(0))], []),
-                    [int_function_call_arg(0, int(41))],
+                    [int_function_call_arg(int(41))],
                 ),
             ),
             [],
@@ -421,7 +421,7 @@ pub fn main() {
                 "main",
                 call_int_function(
                     local_int_function(0, "function", [LocalId::Int(IntLocalId(0))]),
-                    [int_function_call_arg(0, int(1))],
+                    [int_function_call_arg(int(1))],
                 ),
             )
             .step(let_int_function_step(
@@ -465,7 +465,7 @@ pub fn primitive_shadow() {
                 "main",
                 call_int_function(
                     local_int_function(0, "function", [LocalId::Int(IntLocalId(0))]),
-                    [int_function_call_arg(0, int(1))],
+                    [int_function_call_arg(int(1))],
                 ),
             )
             .let_int(0, "function", int(1))
@@ -509,7 +509,7 @@ pub fn main() {
                 "main",
                 call_int_function(
                     block_int_function([], int_function_ref(1, [LocalId::Int(IntLocalId(0))])),
-                    [int_function_call_arg(0, int(1))],
+                    [int_function_call_arg(int(1))],
                 ),
             ),
             [function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value")],
@@ -563,7 +563,7 @@ pub fn main() {
                         int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
                         int_function_ref(2, [LocalId::Int(IntLocalId(0))]),
                     ),
-                    [int_function_call_arg(0, int(1))],
+                    [int_function_call_arg(int(1))],
                 ),
             )
             .let_int(
@@ -575,7 +575,7 @@ pub fn main() {
                         [(0, int_function_ref(2, [LocalId::Int(IntLocalId(0))]))],
                         int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
                     ),
-                    [int_function_call_arg(0, int(1))],
+                    [int_function_call_arg(int(1))],
                 ),
             ),
             [add_one, add_ten],
@@ -607,10 +607,10 @@ pub fn main() {
                 "main",
                 call_int_function(
                     local_int_function(0, "function", [ValueType::Tuple(pair_type.clone())]),
-                    [tuple_arg(
-                        0,
-                        tuple([Expr::from(int(41)), Expr::from(string("ok"))]),
-                    )],
+                    [tuple_arg(tuple([
+                        Expr::from(int(41)),
+                        Expr::from(string("ok")),
+                    ]))],
                 ),
             )
             .step(let_int_function_step(

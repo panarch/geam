@@ -122,9 +122,8 @@ mod tests {
     use crate::plan::{
         BoolExpr, Expr, FloatExpr, FunctionExpr, FunctionReference, FunctionShape, FunctionType,
         GenericFunctionExpr, GenericFunctionReference, GenericFunctionType, IntExpr,
-        IntFunctionExpr, IntFunctionReference, IntLocalId, ListExpr, ParamLocal, ReturnBody,
-        ReturnExpr, StringExpr, TypeParameterId, ValueShape, ValueType,
-        monomorphic_function_instantiation,
+        IntFunctionExpr, IntFunctionReference, ListExpr, ReturnBody, ReturnExpr, StringExpr,
+        TypeParameterId, ValueShape, ValueType, monomorphic_function_instantiation,
     };
     use crate::planner::{InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError};
 
@@ -149,8 +148,7 @@ mod tests {
                 &"main".into(),
                 &ValueShape::Function(Box::new(FunctionShape::new(Vec::new(), ValueShape::Int,))),
                 Expr::function(FunctionExpr::reference(FunctionReference::new(
-                    instantiation(FunctionType::new(Vec::new(), ValueType::String)),
-                    Vec::new(),
+                    instantiation(FunctionType::new(Vec::new(), ValueType::String))
                 ))),
             ),
             Err(PlanError::InvalidTypedAst {
@@ -170,10 +168,10 @@ mod tests {
                 &"main".into(),
                 &ValueShape::Function(Box::new(FunctionShape::from_function_type(expected))),
                 Expr::function(FunctionExpr::int(IntFunctionExpr::reference(
-                    IntFunctionReference::new(
-                        instantiation(FunctionType::new(vec![ValueType::Int], ValueType::Int,)),
-                        vec![ParamLocal::int(IntLocalId(0))]
-                    ),
+                    IntFunctionReference::new(instantiation(FunctionType::new(
+                        vec![ValueType::Int],
+                        ValueType::Int,
+                    ))),
                 ))),
             ),
             Err(PlanError::InvalidTypedAst {
@@ -190,10 +188,10 @@ mod tests {
                 &"main".into(),
                 &ValueShape::Function(Box::new(FunctionShape::from_function_type(expected))),
                 Expr::function(FunctionExpr::int(IntFunctionExpr::reference(
-                    IntFunctionReference::new(
-                        instantiation(FunctionType::new(Vec::new(), ValueType::Int)),
+                    IntFunctionReference::new(instantiation(FunctionType::new(
                         Vec::new(),
-                    ),
+                        ValueType::Int
+                    ))),
                 ))),
             ),
             Err(PlanError::InvalidTypedAst {
@@ -211,10 +209,7 @@ mod tests {
         let type_ = GenericFunctionType::new(Vec::new(), parameter);
         let shape = type_.shape();
         let reference = GenericFunctionExpr::reference(
-            GenericFunctionReference::new(
-                monomorphic_function_instantiation(0, shape.clone()),
-                Vec::new(),
-            ),
+            GenericFunctionReference::new(monomorphic_function_instantiation(0, shape.clone())),
             type_.clone(),
         );
         let call_function = monomorphic_function_instantiation(1, shape.clone());

@@ -657,10 +657,10 @@ mod tests {
                                 1,
                                 FunctionShape::new(vec![ValueShape::Int], ValueShape::Int),
                             ),
-                            vec![CallArg::int(
-                                IntLocalId(4),
-                                IntExpr::local_get(IntLocalId(5), "arg".into()),
-                            )],
+                            vec![CallArg::new(crate::plan::Expr::int(IntExpr::local_get(
+                                IntLocalId(5),
+                                "arg".into(),
+                            )))],
                         ),
                     )],
                     ReturnBody::expr(IntExpr::local_get(IntLocalId(6), "fallback".into())),
@@ -789,10 +789,9 @@ mod tests {
                 3,
                 FunctionShape::new(vec![ValueShape::Float], ValueShape::Float),
             ),
-            vec![CallArg::float(
-                FloatLocalId(27),
+            vec![CallArg::new(crate::plan::Expr::float(
                 FloatExpr::local_get(FloatLocalId(28), "float_tail_arg".into()),
-            )],
+            ))],
         ));
         let layout = FrameLayout::from_function_parts(&[], &[], &float_tail_return);
         assert_eq!(layout.floats(), 29);

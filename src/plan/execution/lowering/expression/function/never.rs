@@ -24,10 +24,9 @@ pub(in crate::plan::execution::lowering) fn tuple_never_function_expr(
         }
         M::Closure {
             function,
-            params,
             captures,
             return_type: _,
-        } => super::closure_template(function, params, captures, context, |function, context| {
+        } => super::closure_template(function, captures, context, |function, context| {
             context.never_function_id(function)
         })
         .map(E::Closure),
@@ -190,14 +189,12 @@ pub(in crate::plan::execution::lowering) fn custom_never_function_expr_kind(
             })
             .map(E::Reference)
         }
-        M::Closure {
-            function,
-            params,
-            captures,
-        } => super::closure_template(function, params, captures, context, |function, context| {
-            context.never_function_id(function)
-        })
-        .map(E::Closure),
+        M::Closure { function, captures } => {
+            super::closure_template(function, captures, context, |function, context| {
+                context.never_function_id(function)
+            })
+            .map(E::Closure)
+        }
         M::LocalGet { local, name: _ } => Representability::Inhabited(E::LocalGet {
             local: execution::NeverFunctionLocal::new(
                 execution::NeverFunctionLocalId(context.mapped_local(
@@ -338,14 +335,12 @@ pub(in crate::plan::execution::lowering) fn generic_never_function_expr(
             })
             .map(E::Reference)
         }
-        M::Closure {
-            function,
-            params,
-            captures,
-        } => super::closure_template(function, params, captures, context, |function, context| {
-            context.never_function_id(function)
-        })
-        .map(E::Closure),
+        M::Closure { function, captures } => {
+            super::closure_template(function, captures, context, |function, context| {
+                context.never_function_id(function)
+            })
+            .map(E::Closure)
+        }
         M::LocalGet { local, name: _ } => Representability::Inhabited(E::LocalGet {
             local: execution::NeverFunctionLocal::new(
                 execution::NeverFunctionLocalId(context.generic_function_local_index(local.id())),

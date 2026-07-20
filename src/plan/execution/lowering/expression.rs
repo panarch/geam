@@ -13,7 +13,6 @@ mod string;
 mod tuple;
 mod utf_codepoint;
 
-use super::id::list_function_local_at_target;
 use super::specialization::Representability;
 use crate::plan::module;
 
@@ -474,84 +473,6 @@ enum PotentialCallArg {
     Diverging(execution::NeverExpr),
 }
 
-fn specialized_value_binding_for_shape(
-    index: usize,
-    value: &module::Expr,
-    shape: &super::specialization::StoredValueShape,
-    context: &mut super::LoweringContext,
-) -> Representability<SpecializedValueBinding> {
-    match value.kind() {
-        module::ExprKind::Generic(value) => {
-            specialized_stored_generic_value_binding(index, value, shape, context)
-        }
-        module::ExprKind::Int(value) => {
-            int_expr(value, context).map(|value| SpecializedValueBinding::Int {
-                local: execution::IntLocalId(index),
-                value,
-            })
-        }
-        module::ExprKind::Float(value) => {
-            float_expr(value, context).map(|value| SpecializedValueBinding::Float {
-                local: execution::FloatLocalId(index),
-                value,
-            })
-        }
-        module::ExprKind::String(value) => {
-            string_expr(value, context).map(|value| SpecializedValueBinding::String {
-                local: execution::StringLocalId(index),
-                value,
-            })
-        }
-        module::ExprKind::BitArray(value) => {
-            bit_array_expr(value, context).map(|value| SpecializedValueBinding::BitArray {
-                local: execution::BitArrayLocalId(index),
-                value,
-            })
-        }
-        module::ExprKind::UtfCodepoint(value) => {
-            utf_codepoint_expr(value, context).map(|value| SpecializedValueBinding::UtfCodepoint {
-                local: execution::UtfCodepointLocalId(index),
-                value,
-            })
-        }
-        module::ExprKind::Custom(value) => custom_expr(value, context).map(|expression| {
-            SpecializedValueBinding::Custom(execution::CustomLocalExpr::new(
-                execution::CustomLocal::new(
-                    execution::CustomLocalId(index),
-                    context.custom_value_shape(value.shape().clone()),
-                ),
-                expression,
-            ))
-        }),
-        module::ExprKind::Bool(value) => {
-            bool_expr(value, context).map(|value| SpecializedValueBinding::Bool {
-                local: execution::BoolLocalId(index),
-                value,
-            })
-        }
-        module::ExprKind::Nil(value) => {
-            nil_expr(value, context).map(|value| SpecializedValueBinding::Nil {
-                local: execution::NilLocalId(index),
-                value,
-            })
-        }
-        module::ExprKind::Tuple(value) => {
-            tuple_expr(value, context).map(|value| SpecializedValueBinding::Tuple {
-                local: execution::TupleLocalId(index),
-                value,
-            })
-        }
-        module::ExprKind::List(value) => {
-            list::specialized_list_local_expr(index, list_expr(value, context))
-                .map(SpecializedValueBinding::List)
-        }
-        module::ExprKind::Function(value) => {
-            function::specialized_function_binding(index, value, context)
-                .map(|value| SpecializedValueBinding::Function(Box::new(value)))
-        }
-    }
-}
-
 fn specialized_stored_generic_value_binding(
     index: usize,
     value: &module::GenericExpr,
@@ -943,8 +864,8 @@ fn lower_direct_call_args(
     context: &mut super::LoweringContext,
 ) -> Representability<LoweredCallArguments> {
     let mut lowered = Vec::with_capacity(args.len());
-    for arg in args {
-        let arg = match direct_call_arg(function, arg, context) {
+    for (index, arg) in args.iter().enumerate() {
+        let arg = match direct_call_arg(function, module::ParamPosition::new(index), arg, context) {
             Representability::Inhabited(arg) => arg,
             Representability::Uninhabited => return Representability::Uninhabited,
         };
@@ -1013,13 +934,13 @@ pub(super) fn function_call<Function>(
 
 fn direct_call_arg(
     function: &module::FunctionInstantiation,
+    position: module::ParamPosition,
     arg: &module::CallArg,
     context: &mut super::LoweringContext,
 ) -> Representability<LoweredCallArg> {
-    let key = call_arg_local_key(arg);
     match arg.storage() {
         module::CallArgStorage::Stored(_) => {
-            let target = context.stored_symbolic_target_local(function, key);
+            let target = context.target_param_local(function, position);
             stored_call_arg_at(&target, arg, context)
                 .map(Box::new)
                 .map(LoweredCallArg::Stored)
@@ -1027,7 +948,7 @@ fn direct_call_arg(
         module::CallArgStorage::PotentiallyUninhabited(value) => {
             match potentially_uninhabited_call_arg(value, context) {
                 Representability::Inhabited(PotentialCallArg::Stored(_)) => {
-                    let target = context.stored_symbolic_target_local(function, key);
+                    let target = context.target_param_local(function, position);
                     stored_call_arg_at(&target, arg, context)
                         .map(Box::new)
                         .map(LoweredCallArg::Stored)
@@ -1098,343 +1019,90 @@ fn stored_call_arg_at(
     arg: &module::CallArg,
     context: &mut super::LoweringContext,
 ) -> Representability<execution::CallArg> {
-    use execution::CallArgKind as E;
-    use module::CallArgKind as M;
+    specialized_value_binding_at_target(target, arg.value(), context).map(specialized_call_arg)
+}
 
+fn specialized_value_binding_at_target(
+    target: &super::StoredTargetLocal,
+    value: &module::Expr,
+    context: &mut super::LoweringContext,
+) -> Representability<SpecializedValueBinding> {
     let index = target.index();
 
-    let kind = match arg.kind() {
-        M::Parametric { slot: _, value } => {
-            return specialized_value_binding_for_shape(index, value, target.shape(), context)
-                .map(specialized_call_arg);
+    match value.kind() {
+        module::ExprKind::Generic(value) => {
+            specialized_stored_generic_value_binding(index, value, target.shape(), context)
         }
-        M::Int { local: _, value } => int_expr(value, context).map(|value| E::Int {
-            local: execution::IntLocalId(index),
-            value,
-        }),
-        M::String { local: _, value } => string_expr(value, context).map(|value| E::String {
-            local: execution::StringLocalId(index),
-            value,
-        }),
-        M::BitArray { local: _, value } => {
-            bit_array_expr(value, context).map(|value| E::BitArray {
+        module::ExprKind::Int(value) => {
+            int_expr(value, context).map(|value| SpecializedValueBinding::Int {
+                local: execution::IntLocalId(index),
+                value,
+            })
+        }
+        module::ExprKind::Float(value) => {
+            float_expr(value, context).map(|value| SpecializedValueBinding::Float {
+                local: execution::FloatLocalId(index),
+                value,
+            })
+        }
+        module::ExprKind::String(value) => {
+            string_expr(value, context).map(|value| SpecializedValueBinding::String {
+                local: execution::StringLocalId(index),
+                value,
+            })
+        }
+        module::ExprKind::BitArray(value) => {
+            bit_array_expr(value, context).map(|value| SpecializedValueBinding::BitArray {
                 local: execution::BitArrayLocalId(index),
                 value,
             })
         }
-        M::UtfCodepoint { local: _, value } => {
-            utf_codepoint_expr(value, context).map(|value| E::UtfCodepoint {
+        module::ExprKind::UtfCodepoint(value) => {
+            utf_codepoint_expr(value, context).map(|value| SpecializedValueBinding::UtfCodepoint {
                 local: execution::UtfCodepointLocalId(index),
                 value,
             })
         }
-        M::Custom(binding) => {
-            let local = execution::CustomLocal::new(
-                execution::CustomLocalId(index),
-                context.lower_concrete_custom_shape(&target.custom_shape(binding.local().shape())),
-            );
-            custom_expr(binding.value(), context)
-                .map(|value| E::Custom(execution::CustomLocalExpr::new(local, value)))
-        }
-        M::Float { local: _, value } => float_expr(value, context).map(|value| E::Float {
-            local: execution::FloatLocalId(index),
-            value,
+        module::ExprKind::Custom(value) => custom_expr(value, context).map(|expression| {
+            SpecializedValueBinding::Custom(execution::CustomLocalExpr::new(
+                execution::CustomLocal::new(
+                    execution::CustomLocalId(index),
+                    context.lower_concrete_custom_shape(
+                        &context.target_custom_shape(target, value.shape()),
+                    ),
+                ),
+                expression,
+            ))
         }),
-        M::Bool { local: _, value } => bool_expr(value, context).map(|value| E::Bool {
-            local: execution::BoolLocalId(index),
+        module::ExprKind::Bool(value) => {
+            bool_expr(value, context).map(|value| SpecializedValueBinding::Bool {
+                local: execution::BoolLocalId(index),
+                value,
+            })
+        }
+        module::ExprKind::Nil(value) => {
+            nil_expr(value, context).map(|value| SpecializedValueBinding::Nil {
+                local: execution::NilLocalId(index),
+                value,
+            })
+        }
+        module::ExprKind::Tuple(value) => {
+            tuple_expr(value, context).map(|value| SpecializedValueBinding::Tuple {
+                local: execution::TupleLocalId(index),
+                value,
+            })
+        }
+        module::ExprKind::List(value) => {
+            list::specialized_list_local_expr(index, list_expr(value, context))
+                .map(SpecializedValueBinding::List)
+        }
+        module::ExprKind::Function(value) => function::specialized_function_binding_for_shape(
+            index,
             value,
-        }),
-        M::Nil { local: _, value } => nil_expr(value, context).map(|value| E::Nil {
-            local: execution::NilLocalId(index),
-            value,
-        }),
-        M::Tuple { local: _, value } => tuple_expr(value, context).map(|value| E::Tuple {
-            local: execution::TupleLocalId(index),
-            value,
-        }),
-        M::List(value) => list::list_local_expr_at(index, value, context).map(E::List),
-        M::IntFunction { local: _, value } => {
-            let shape = target.function_shape(value.shape());
-            if matches!(
-                context.function_representation(&shape),
-                super::specialization::FunctionRepresentation::Symbolic
-            ) {
-                return symbolic_function_call_arg(
-                    index,
-                    value,
-                    shape,
-                    context,
-                    symbolic_int_function_expr,
-                );
-            }
-            typed_function_expr(value, context, int_function_expr).map(|value| E::IntFunction {
-                local: execution::IntFunctionLocalId(index),
-                value,
-            })
-        }
-        M::StringFunction { local: _, value } => {
-            let shape = target.function_shape(value.shape());
-            if matches!(
-                context.function_representation(&shape),
-                super::specialization::FunctionRepresentation::Symbolic
-            ) {
-                return symbolic_function_call_arg(
-                    index,
-                    value,
-                    shape,
-                    context,
-                    symbolic_string_function_expr,
-                );
-            }
-            typed_function_expr(value, context, string_function_expr).map(|value| {
-                E::StringFunction {
-                    local: execution::StringFunctionLocalId(index),
-                    value,
-                }
-            })
-        }
-        M::BitArrayFunction { local: _, value } => {
-            let shape = target.function_shape(value.shape());
-            if matches!(
-                context.function_representation(&shape),
-                super::specialization::FunctionRepresentation::Symbolic
-            ) {
-                return symbolic_function_call_arg(
-                    index,
-                    value,
-                    shape,
-                    context,
-                    symbolic_bit_array_function_expr,
-                );
-            }
-            typed_function_expr(value, context, bit_array_function_expr).map(|value| {
-                E::BitArrayFunction {
-                    local: execution::BitArrayFunctionLocalId(index),
-                    value,
-                }
-            })
-        }
-        M::UtfCodepointFunction { local: _, value } => {
-            let shape = target.function_shape(value.shape());
-            if matches!(
-                context.function_representation(&shape),
-                super::specialization::FunctionRepresentation::Symbolic
-            ) {
-                return symbolic_function_call_arg(
-                    index,
-                    value,
-                    shape,
-                    context,
-                    symbolic_utf_codepoint_function_expr,
-                );
-            }
-            typed_function_expr(value, context, utf_codepoint_function_expr).map(|value| {
-                E::UtfCodepointFunction {
-                    local: execution::UtfCodepointFunctionLocalId(index),
-                    value,
-                }
-            })
-        }
-        M::CustomFunction { local, value } => {
-            let shape = target.function_shape(value.shape());
-            match shape.arguments_representation(&context.representations) {
-                super::specialization::FunctionArgumentsRepresentation::Symbolic => {
-                    return symbolic_function_call_arg(
-                        index,
-                        value,
-                        shape,
-                        context,
-                        symbolic_custom_function_expr,
-                    );
-                }
-                super::specialization::FunctionArgumentsRepresentation::Inhabited => {}
-            }
-            let local = execution::CustomFunctionLocal::new(
-                execution::CustomFunctionLocalId(index),
-                context
-                    .custom_function_type_with_substitution(local.type_(), target.substitution()),
-            );
-            typed_function_expr(value, context, custom_function_expr)
-                .map(|value| E::CustomFunction { local, value })
-        }
-        M::FloatFunction { local: _, value } => {
-            let shape = target.function_shape(value.shape());
-            if matches!(
-                context.function_representation(&shape),
-                super::specialization::FunctionRepresentation::Symbolic
-            ) {
-                return symbolic_function_call_arg(
-                    index,
-                    value,
-                    shape,
-                    context,
-                    symbolic_float_function_expr,
-                );
-            }
-            typed_function_expr(value, context, float_function_expr).map(|value| E::FloatFunction {
-                local: execution::FloatFunctionLocalId(index),
-                value,
-            })
-        }
-        M::BoolFunction { local: _, value } => {
-            let shape = target.function_shape(value.shape());
-            if matches!(
-                context.function_representation(&shape),
-                super::specialization::FunctionRepresentation::Symbolic
-            ) {
-                return symbolic_function_call_arg(
-                    index,
-                    value,
-                    shape,
-                    context,
-                    symbolic_bool_function_expr,
-                );
-            }
-            typed_function_expr(value, context, bool_function_expr).map(|value| E::BoolFunction {
-                local: execution::BoolFunctionLocalId(index),
-                value,
-            })
-        }
-        M::NilFunction { local: _, value } => {
-            let shape = target.function_shape(value.shape());
-            if matches!(
-                context.function_representation(&shape),
-                super::specialization::FunctionRepresentation::Symbolic
-            ) {
-                return symbolic_function_call_arg(
-                    index,
-                    value,
-                    shape,
-                    context,
-                    symbolic_nil_function_expr,
-                );
-            }
-            typed_function_expr(value, context, nil_function_expr).map(|value| E::NilFunction {
-                local: execution::NilFunctionLocalId(index),
-                value,
-            })
-        }
-        M::TupleFunction { local: _, value } => {
-            let shape = target.function_shape(value.shape());
-            match shape.arguments_representation(&context.representations) {
-                super::specialization::FunctionArgumentsRepresentation::Symbolic => {
-                    return symbolic_function_call_arg(
-                        index,
-                        value,
-                        shape,
-                        context,
-                        symbolic_tuple_function_expr,
-                    );
-                }
-                super::specialization::FunctionArgumentsRepresentation::Inhabited => {}
-            }
-            typed_function_expr(value, context, tuple_function_expr).map(|value| E::TupleFunction {
-                local: execution::TupleFunctionLocalId(index),
-                value,
-            })
-        }
-        M::ListFunction { local, value } => {
-            let shape = target.function_shape(value.shape());
-            if matches!(
-                context.function_representation(&shape),
-                super::specialization::FunctionRepresentation::Symbolic
-            ) {
-                return symbolic_function_call_arg(
-                    index,
-                    value,
-                    shape,
-                    context,
-                    symbolic_list_function_expr,
-                );
-            }
-            let local = list_function_local_at_target(index, local, target, context);
-            typed_function_expr(value, context, list_function_expr)
-                .map(|value| E::ListFunction { local, value })
-        }
-        M::FunctionFunction { local, value } => {
-            let shape = target.function_shape(value.shape());
-            if matches!(
-                context.function_representation(&shape),
-                super::specialization::FunctionRepresentation::Symbolic
-            ) {
-                return symbolic_function_call_arg(
-                    index,
-                    value,
-                    shape,
-                    context,
-                    symbolic_function_function_expr,
-                );
-            }
-            let local = execution::FunctionFunctionLocal::new(
-                execution::FunctionFunctionLocalId(index),
-                context
-                    .function_function_type_with_substitution(local.type_(), target.substitution()),
-            );
-            typed_function_expr(value, context, function_function_expr)
-                .map(|value| E::FunctionFunction { local, value })
-        }
-        M::GenericFunction { local: _, value } => {
-            return function::specialized_function_binding_for_shape(
-                index,
-                value,
-                target.function_shape(value.shape()),
-                context,
-            )
-            .map(specialized_function_call_arg)
-            .map(execution::CallArg::from_kind);
-        }
-    };
-    kind.map(execution::CallArg::from_kind)
-}
-
-fn symbolic_function_call_arg<ModuleExpr>(
-    index: usize,
-    value: &module::TypedFunctionExpr<ModuleExpr>,
-    shape: super::specialization::SpecializedFunctionShape,
-    context: &mut super::LoweringContext,
-    lower: impl FnOnce(
-        &ModuleExpr,
-        &super::specialization::SpecializedFunctionShape,
-        &mut super::LoweringContext,
-    ) -> Representability<execution::GenericFunctionExpr>,
-) -> Representability<execution::CallArg> {
-    function::symbolic_typed_function_binding(index, value, shape, context, lower)
-        .map(specialized_function_call_arg)
-        .map(execution::CallArg::from_kind)
-}
-
-fn call_arg_local_key(arg: &module::CallArg) -> super::frame::LocalKey {
-    use super::frame::{LocalKey, LocalKind};
-    use module::CallArgKind as A;
-
-    match arg.kind() {
-        A::Parametric { slot, .. } => super::frame::param_local_key(slot.local()),
-        A::Int { local, .. } => LocalKey::new(LocalKind::Int, local.0),
-        A::String { local, .. } => LocalKey::new(LocalKind::String, local.0),
-        A::BitArray { local, .. } => LocalKey::new(LocalKind::BitArray, local.0),
-        A::UtfCodepoint { local, .. } => LocalKey::new(LocalKind::UtfCodepoint, local.0),
-        A::Custom(binding) => LocalKey::new(LocalKind::Custom, binding.local().id().0),
-        A::Float { local, .. } => LocalKey::new(LocalKind::Float, local.0),
-        A::Bool { local, .. } => LocalKey::new(LocalKind::Bool, local.0),
-        A::Nil { local, .. } => LocalKey::new(LocalKind::Nil, local.0),
-        A::Tuple { local, .. } => LocalKey::new(LocalKind::Tuple, local.0),
-        A::List(local) => list_local_expr_key(local),
-        A::IntFunction { local, .. } => LocalKey::new(LocalKind::IntFunction, local.0),
-        A::StringFunction { local, .. } => LocalKey::new(LocalKind::StringFunction, local.0),
-        A::BitArrayFunction { local, .. } => LocalKey::new(LocalKind::BitArrayFunction, local.0),
-        A::UtfCodepointFunction { local, .. } => {
-            LocalKey::new(LocalKind::UtfCodepointFunction, local.0)
-        }
-        A::CustomFunction { local, .. } => LocalKey::new(LocalKind::CustomFunction, local.id().0),
-        A::FloatFunction { local, .. } => LocalKey::new(LocalKind::FloatFunction, local.0),
-        A::BoolFunction { local, .. } => LocalKey::new(LocalKind::BoolFunction, local.0),
-        A::NilFunction { local, .. } => LocalKey::new(LocalKind::NilFunction, local.0),
-        A::TupleFunction { local, .. } => LocalKey::new(LocalKind::TupleFunction, local.0),
-        A::ListFunction { local, .. } => super::frame::list_function_local_key(local),
-        A::FunctionFunction { local, .. } => {
-            LocalKey::new(LocalKind::FunctionFunction, local.id().0)
-        }
-        A::GenericFunction { local, .. } => LocalKey::new(LocalKind::GenericFunction, local.id().0),
+            context.target_function_shape(target, value.shape()),
+            context,
+        )
+        .map(|value| SpecializedValueBinding::Function(Box::new(value))),
     }
 }
 
@@ -1478,8 +1146,8 @@ pub(super) fn capture_args(
     context: &mut super::LoweringContext,
 ) -> Representability<Vec<execution::CaptureArg>> {
     let mut lowered = Vec::with_capacity(args.len());
-    for arg in args {
-        let target = context.stored_symbolic_target_local(function, capture_arg_local_key(arg));
+    for (index, arg) in args.iter().enumerate() {
+        let target = context.target_capture_local(function, module::CapturePosition::new(index));
         let arg = match capture_arg_at(&target, arg, context) {
             Representability::Inhabited(arg) => arg,
             Representability::Uninhabited => return Representability::Uninhabited,
@@ -1502,343 +1170,8 @@ fn capture_arg_at(
     arg: &module::CaptureArg,
     context: &mut super::LoweringContext,
 ) -> Representability<execution::CaptureArg> {
-    use execution::CaptureArgKind as E;
-    use module::CaptureArgKind as M;
-
-    let index = target.index();
-
-    let kind = match arg.kind() {
-        M::Generic { local: _, value } => {
-            return specialized_stored_generic_value_binding(index, value, target.shape(), context)
-                .and_then(specialized_capture_arg);
-        }
-        M::Int { local: _, value } => int_expr(value, context).map(|value| E::Int {
-            local: execution::IntLocalId(index),
-            value,
-        }),
-        M::String { local: _, value } => string_expr(value, context).map(|value| E::String {
-            local: execution::StringLocalId(index),
-            value,
-        }),
-        M::BitArray { local: _, value } => {
-            bit_array_expr(value, context).map(|value| E::BitArray {
-                local: execution::BitArrayLocalId(index),
-                value,
-            })
-        }
-        M::UtfCodepoint { local: _, value } => {
-            utf_codepoint_expr(value, context).map(|value| E::UtfCodepoint {
-                local: execution::UtfCodepointLocalId(index),
-                value,
-            })
-        }
-        M::Custom(binding) => {
-            let local = execution::CustomLocal::new(
-                execution::CustomLocalId(index),
-                context.lower_concrete_custom_shape(&target.custom_shape(binding.local().shape())),
-            );
-            custom_expr(binding.value(), context)
-                .map(|value| E::Custom(execution::CustomLocalExpr::new(local, value)))
-        }
-        M::Float { local: _, value } => float_expr(value, context).map(|value| E::Float {
-            local: execution::FloatLocalId(index),
-            value,
-        }),
-        M::Bool { local: _, value } => bool_expr(value, context).map(|value| E::Bool {
-            local: execution::BoolLocalId(index),
-            value,
-        }),
-        M::Nil { local: _, value } => nil_expr(value, context).map(|value| E::Nil {
-            local: execution::NilLocalId(index),
-            value,
-        }),
-        M::Tuple { local: _, value } => tuple_expr(value, context).map(|value| E::Tuple {
-            local: execution::TupleLocalId(index),
-            value,
-        }),
-        M::List(value) => list::list_local_expr_at(index, value, context).map(E::List),
-        M::IntFunction { local: _, value } => {
-            let shape = target.function_shape(value.shape());
-            if matches!(
-                context.function_representation(&shape),
-                super::specialization::FunctionRepresentation::Symbolic
-            ) {
-                return symbolic_function_capture_arg(
-                    index,
-                    value,
-                    shape,
-                    context,
-                    symbolic_int_function_expr,
-                );
-            }
-            typed_function_expr(value, context, int_function_expr).map(|value| E::IntFunction {
-                local: execution::IntFunctionLocalId(index),
-                value,
-            })
-        }
-        M::StringFunction { local: _, value } => {
-            let shape = target.function_shape(value.shape());
-            if matches!(
-                context.function_representation(&shape),
-                super::specialization::FunctionRepresentation::Symbolic
-            ) {
-                return symbolic_function_capture_arg(
-                    index,
-                    value,
-                    shape,
-                    context,
-                    symbolic_string_function_expr,
-                );
-            }
-            typed_function_expr(value, context, string_function_expr).map(|value| {
-                E::StringFunction {
-                    local: execution::StringFunctionLocalId(index),
-                    value,
-                }
-            })
-        }
-        M::BitArrayFunction { local: _, value } => {
-            let shape = target.function_shape(value.shape());
-            if matches!(
-                context.function_representation(&shape),
-                super::specialization::FunctionRepresentation::Symbolic
-            ) {
-                return symbolic_function_capture_arg(
-                    index,
-                    value,
-                    shape,
-                    context,
-                    symbolic_bit_array_function_expr,
-                );
-            }
-            typed_function_expr(value, context, bit_array_function_expr).map(|value| {
-                E::BitArrayFunction {
-                    local: execution::BitArrayFunctionLocalId(index),
-                    value,
-                }
-            })
-        }
-        M::UtfCodepointFunction { local: _, value } => {
-            let shape = target.function_shape(value.shape());
-            if matches!(
-                context.function_representation(&shape),
-                super::specialization::FunctionRepresentation::Symbolic
-            ) {
-                return symbolic_function_capture_arg(
-                    index,
-                    value,
-                    shape,
-                    context,
-                    symbolic_utf_codepoint_function_expr,
-                );
-            }
-            typed_function_expr(value, context, utf_codepoint_function_expr).map(|value| {
-                E::UtfCodepointFunction {
-                    local: execution::UtfCodepointFunctionLocalId(index),
-                    value,
-                }
-            })
-        }
-        M::CustomFunction { local, value } => {
-            let shape = target.function_shape(value.shape());
-            match shape.arguments_representation(&context.representations) {
-                super::specialization::FunctionArgumentsRepresentation::Symbolic => {
-                    return symbolic_function_capture_arg(
-                        index,
-                        value,
-                        shape,
-                        context,
-                        symbolic_custom_function_expr,
-                    );
-                }
-                super::specialization::FunctionArgumentsRepresentation::Inhabited => {}
-            }
-            let local = execution::CustomFunctionLocal::new(
-                execution::CustomFunctionLocalId(index),
-                context
-                    .custom_function_type_with_substitution(local.type_(), target.substitution()),
-            );
-            typed_function_expr(value, context, custom_function_expr)
-                .map(|value| E::CustomFunction { local, value })
-        }
-        M::FloatFunction { local: _, value } => {
-            let shape = target.function_shape(value.shape());
-            if matches!(
-                context.function_representation(&shape),
-                super::specialization::FunctionRepresentation::Symbolic
-            ) {
-                return symbolic_function_capture_arg(
-                    index,
-                    value,
-                    shape,
-                    context,
-                    symbolic_float_function_expr,
-                );
-            }
-            typed_function_expr(value, context, float_function_expr).map(|value| E::FloatFunction {
-                local: execution::FloatFunctionLocalId(index),
-                value,
-            })
-        }
-        M::BoolFunction { local: _, value } => {
-            let shape = target.function_shape(value.shape());
-            if matches!(
-                context.function_representation(&shape),
-                super::specialization::FunctionRepresentation::Symbolic
-            ) {
-                return symbolic_function_capture_arg(
-                    index,
-                    value,
-                    shape,
-                    context,
-                    symbolic_bool_function_expr,
-                );
-            }
-            typed_function_expr(value, context, bool_function_expr).map(|value| E::BoolFunction {
-                local: execution::BoolFunctionLocalId(index),
-                value,
-            })
-        }
-        M::NilFunction { local: _, value } => {
-            let shape = target.function_shape(value.shape());
-            if matches!(
-                context.function_representation(&shape),
-                super::specialization::FunctionRepresentation::Symbolic
-            ) {
-                return symbolic_function_capture_arg(
-                    index,
-                    value,
-                    shape,
-                    context,
-                    symbolic_nil_function_expr,
-                );
-            }
-            typed_function_expr(value, context, nil_function_expr).map(|value| E::NilFunction {
-                local: execution::NilFunctionLocalId(index),
-                value,
-            })
-        }
-        M::TupleFunction { local: _, value } => {
-            let shape = target.function_shape(value.shape());
-            match shape.arguments_representation(&context.representations) {
-                super::specialization::FunctionArgumentsRepresentation::Symbolic => {
-                    return symbolic_function_capture_arg(
-                        index,
-                        value,
-                        shape,
-                        context,
-                        symbolic_tuple_function_expr,
-                    );
-                }
-                super::specialization::FunctionArgumentsRepresentation::Inhabited => {}
-            }
-            typed_function_expr(value, context, tuple_function_expr).map(|value| E::TupleFunction {
-                local: execution::TupleFunctionLocalId(index),
-                value,
-            })
-        }
-        M::ListFunction { local, value } => {
-            let shape = target.function_shape(value.shape());
-            if matches!(
-                context.function_representation(&shape),
-                super::specialization::FunctionRepresentation::Symbolic
-            ) {
-                return symbolic_function_capture_arg(
-                    index,
-                    value,
-                    shape,
-                    context,
-                    symbolic_list_function_expr,
-                );
-            }
-            let local = list_function_local_at_target(index, local, target, context);
-            typed_function_expr(value, context, list_function_expr)
-                .map(|value| E::ListFunction { local, value })
-        }
-        M::FunctionFunction { local, value } => {
-            let shape = target.function_shape(value.shape());
-            if matches!(
-                context.function_representation(&shape),
-                super::specialization::FunctionRepresentation::Symbolic
-            ) {
-                return symbolic_function_capture_arg(
-                    index,
-                    value,
-                    shape,
-                    context,
-                    symbolic_function_function_expr,
-                );
-            }
-            let local = execution::FunctionFunctionLocal::new(
-                execution::FunctionFunctionLocalId(index),
-                context
-                    .function_function_type_with_substitution(local.type_(), target.substitution()),
-            );
-            typed_function_expr(value, context, function_function_expr)
-                .map(|value| E::FunctionFunction { local, value })
-        }
-        M::GenericFunction { local: _, value } => {
-            return function::specialized_typed_generic_function_binding_for_shape(
-                index,
-                value,
-                target.function_shape(value.shape()),
-                context,
-            )
-            .map(specialized_function_capture_arg)
-            .map(execution::CaptureArg::from_kind);
-        }
-    };
-    kind.map(execution::CaptureArg::from_kind)
+    specialized_value_binding_at_target(target, arg.value(), context)
+        .and_then(specialized_capture_arg)
 }
 
-fn symbolic_function_capture_arg<ModuleExpr>(
-    index: usize,
-    value: &module::TypedFunctionExpr<ModuleExpr>,
-    shape: super::specialization::SpecializedFunctionShape,
-    context: &mut super::LoweringContext,
-    lower: impl FnOnce(
-        &ModuleExpr,
-        &super::specialization::SpecializedFunctionShape,
-        &mut super::LoweringContext,
-    ) -> Representability<execution::GenericFunctionExpr>,
-) -> Representability<execution::CaptureArg> {
-    function::symbolic_typed_function_binding(index, value, shape, context, lower)
-        .map(specialized_function_capture_arg)
-        .map(execution::CaptureArg::from_kind)
-}
-
-fn capture_arg_local_key(arg: &module::CaptureArg) -> super::frame::LocalKey {
-    use super::frame::{LocalKey, LocalKind};
-    use module::CaptureArgKind as A;
-
-    match arg.kind() {
-        A::Generic { local, .. } => LocalKey::new(LocalKind::Generic, local.id().0),
-        A::Int { local, .. } => LocalKey::new(LocalKind::Int, local.0),
-        A::String { local, .. } => LocalKey::new(LocalKind::String, local.0),
-        A::BitArray { local, .. } => LocalKey::new(LocalKind::BitArray, local.0),
-        A::UtfCodepoint { local, .. } => LocalKey::new(LocalKind::UtfCodepoint, local.0),
-        A::Custom(binding) => LocalKey::new(LocalKind::Custom, binding.local().id().0),
-        A::Float { local, .. } => LocalKey::new(LocalKind::Float, local.0),
-        A::Bool { local, .. } => LocalKey::new(LocalKind::Bool, local.0),
-        A::Nil { local, .. } => LocalKey::new(LocalKind::Nil, local.0),
-        A::Tuple { local, .. } => LocalKey::new(LocalKind::Tuple, local.0),
-        A::List(local) => list_local_expr_key(local),
-        A::IntFunction { local, .. } => LocalKey::new(LocalKind::IntFunction, local.0),
-        A::StringFunction { local, .. } => LocalKey::new(LocalKind::StringFunction, local.0),
-        A::BitArrayFunction { local, .. } => LocalKey::new(LocalKind::BitArrayFunction, local.0),
-        A::UtfCodepointFunction { local, .. } => {
-            LocalKey::new(LocalKind::UtfCodepointFunction, local.0)
-        }
-        A::CustomFunction { local, .. } => LocalKey::new(LocalKind::CustomFunction, local.id().0),
-        A::FloatFunction { local, .. } => LocalKey::new(LocalKind::FloatFunction, local.0),
-        A::BoolFunction { local, .. } => LocalKey::new(LocalKind::BoolFunction, local.0),
-        A::NilFunction { local, .. } => LocalKey::new(LocalKind::NilFunction, local.0),
-        A::TupleFunction { local, .. } => LocalKey::new(LocalKind::TupleFunction, local.0),
-        A::ListFunction { local, .. } => super::frame::list_function_local_key(local),
-        A::FunctionFunction { local, .. } => {
-            LocalKey::new(LocalKind::FunctionFunction, local.id().0)
-        }
-        A::GenericFunction { local, .. } => LocalKey::new(LocalKind::GenericFunction, local.id().0),
-    }
-}
 pub(super) use bit_array::bit_array_expr;

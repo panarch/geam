@@ -358,18 +358,15 @@ mod tests {
             )),
             FunctionReturn::CustomFunction(CustomFunctionReturn::expr(
                 CustomFunctionExpr::reference(
-                    CustomFunctionReference::new(
-                        crate::plan::monomorphic_function_instantiation(
-                            0,
-                            crate::plan::FunctionShape::new(
-                                Vec::new(),
-                                crate::plan::ValueShape::Custom(
-                                    crate::plan::CustomValueShape::any(custom_type()),
-                                ),
-                            ),
+                    CustomFunctionReference::new(crate::plan::monomorphic_function_instantiation(
+                        0,
+                        crate::plan::FunctionShape::new(
+                            Vec::new(),
+                            crate::plan::ValueShape::Custom(crate::plan::CustomValueShape::any(
+                                custom_type()
+                            ),),
                         ),
-                        Vec::new(),
-                    ),
+                    )),
                     crate::plan::CustomValueShape::any(custom_type()),
                 ),
             )),

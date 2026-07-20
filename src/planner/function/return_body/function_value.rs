@@ -663,7 +663,6 @@ mod tests {
                 0,
                 FunctionShape::from_function_type(FunctionType::new(Vec::new(), ValueType::Int)),
             ),
-            Vec::new(),
         ));
         let int_float_case = IntFunctionExpr::float_case(
             FloatExpr::value(1.0),
@@ -693,7 +692,6 @@ mod tests {
                 1,
                 FunctionShape::from_function_type(FunctionType::new(Vec::new(), ValueType::String)),
             ),
-            Vec::new(),
         ));
         let string_float_case = StringFunctionExpr::float_case(
             FloatExpr::value(1.0),
@@ -729,7 +727,6 @@ mod tests {
                     ValueType::BitArray,
                 )),
             ),
-            Vec::new(),
         ));
         assert_eq!(
             bit_array_function_return(BitArrayFunctionExpr::block(
@@ -744,7 +741,6 @@ mod tests {
                 3,
                 FunctionShape::from_function_type(FunctionType::new(Vec::new(), ValueType::Float)),
             ),
-            Vec::new(),
         ));
         let float_string_case = FloatFunctionExpr::string_case(
             StringExpr::value("value".into()),
@@ -776,7 +772,6 @@ mod tests {
                 4,
                 FunctionShape::from_function_type(FunctionType::new(Vec::new(), ValueType::Bool)),
             ),
-            Vec::new(),
         ));
         let bool_float_case = BoolFunctionExpr::float_case(
             FloatExpr::value(1.0),
@@ -804,17 +799,12 @@ mod tests {
             ),
         );
 
-        let nil_reference =
-            crate::plan::NilFunctionExpr::reference(crate::plan::NilFunctionReference::new(
-                monomorphic_function_instantiation(
-                    5,
-                    FunctionShape::from_function_type(FunctionType::new(
-                        Vec::new(),
-                        ValueType::Nil,
-                    )),
-                ),
-                Vec::new(),
-            ));
+        let nil_reference = crate::plan::NilFunctionExpr::reference(
+            crate::plan::NilFunctionReference::new(monomorphic_function_instantiation(
+                5,
+                FunctionShape::from_function_type(FunctionType::new(Vec::new(), ValueType::Nil)),
+            )),
+        );
         let nil_float_case = crate::plan::NilFunctionExpr::float_case(
             FloatExpr::value(1.0),
             vec![(1.0, nil_reference.clone())],
@@ -852,7 +842,6 @@ mod tests {
                     ValueShape::Tuple(vec![ValueShape::Int].into_boxed_slice()),
                 ),
             ),
-            Vec::new(),
         ));
         let tuple_string_case = TupleFunctionExpr::string_case(
             StringExpr::value("value".into()),
@@ -879,13 +868,10 @@ mod tests {
             ),
         );
         let list_reference = ListFunctionExpr::reference(
-            ListFunctionReference::new(
-                monomorphic_function_instantiation(
-                    7,
-                    FunctionShape::new(Vec::new(), ValueShape::List(Box::new(ValueShape::Int))),
-                ),
-                Vec::new(),
-            ),
+            ListFunctionReference::new(monomorphic_function_instantiation(
+                7,
+                FunctionShape::new(Vec::new(), ValueShape::List(Box::new(ValueShape::Int))),
+            )),
             ValueType::Int,
         );
         let list_string_case = ListFunctionExpr::string_case(

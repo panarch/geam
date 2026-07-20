@@ -361,7 +361,7 @@ mod tests {
     use crate::plan::{
         BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayExpr, BitArraySegment, Endianness, Expr,
         FloatBitSize, FloatExpr, FunctionExpr, FunctionReference, IntExpr, IntLocalId, PanicSite,
-        ParamLocal, StringEncoding, StringExpr, UtfCodepointExpr, UtfCodepointLocalId,
+        StringEncoding, StringExpr, UtfCodepointExpr, UtfCodepointLocalId,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::error::{
@@ -1067,8 +1067,7 @@ pub fn main() { 0 }
                     crate::plan::monomorphic_function_instantiation(
                         0,
                         crate::plan::FunctionShape::new(Vec::new(), crate::plan::ValueShape::Int,),
-                    ),
-                    Vec::<ParamLocal>::new(),
+                    )
                 ))),
                 Vec::new(),
                 None,

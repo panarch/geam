@@ -294,10 +294,7 @@ mod tests {
     }
 
     fn function_expr() -> crate::plan::NilFunctionExpr {
-        crate::plan::NilFunctionExpr::reference(NilFunctionReference::new(
-            function_instantiation(),
-            Vec::new(),
-        ))
+        crate::plan::NilFunctionExpr::reference(NilFunctionReference::new(function_instantiation()))
     }
 
     fn function_instantiation() -> FunctionInstantiation {

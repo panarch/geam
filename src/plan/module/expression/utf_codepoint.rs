@@ -159,8 +159,8 @@ impl UtfCodepointExpr {
 mod tests {
     use super::{UtfCodepointExpr, UtfCodepointExprKind};
     use crate::plan::{
-        BoolExpr, Expr, FunctionInstantiation, FunctionShape, IntExpr, PanicExpr, PanicSite,
-        ParamLocal, Step, StringExpr, TupleExpr, TupleLocalId, UtfCodepointFunctionExpr,
+        BoolExpr, Expr, FunctionInstantiation, FunctionShape, IntExpr, PanicExpr, PanicSite, Step,
+        StringExpr, TupleExpr, TupleLocalId, UtfCodepointFunctionExpr,
         UtfCodepointFunctionReference, UtfCodepointListExpr, UtfCodepointListItem,
         UtfCodepointListLocalId, UtfCodepointLocalId, ValueShape, ValueType,
         monomorphic_function_instantiation,
@@ -275,7 +275,6 @@ mod tests {
     fn function() -> UtfCodepointFunctionExpr {
         UtfCodepointFunctionExpr::reference(UtfCodepointFunctionReference::new(
             function_instantiation(),
-            vec![ParamLocal::utf_codepoint(UtfCodepointLocalId(0))],
         ))
     }
 

@@ -88,7 +88,7 @@ pub fn main() {
         .expect("source should plan");
         let expected = module(
             "main",
-            function("main", int_return_tail_call(1, [int_arg(0, int(1))])),
+            function("main", int_return_tail_call(1, [int_arg(int(1))])),
             [
                 function("negate", local_int(0, "value").negate_int()).param_int(0, "value"),
                 function("invert", local_bool(0, "value").negate_bool()).param_bool(0, "value"),

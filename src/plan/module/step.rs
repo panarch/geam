@@ -675,13 +675,14 @@ impl Step {
 #[cfg(test)]
 mod tests {
     use super::{Step, StepKind};
+    use crate::plan::module::TypedFunctionExpr;
     use crate::plan::{
         AssertPattern, AssertSubject, BoolExpr, CustomFunctionExpr, CustomFunctionLocal,
         CustomFunctionLocalId, CustomFunctionType, CustomType, CustomTypeName, Expr,
         FunctionFunctionExpr, FunctionFunctionLocal, FunctionFunctionLocalId, FunctionFunctionType,
         FunctionType, IntExpr, IntFunctionLocalId, IntFunctionReference, IntListLocalId,
-        IntLocalId, ListAssertPattern, ListAssertTail, ListLocal, PanicExpr, PanicSite, ParamLocal,
-        StringExpr, TypedFunctionExpr, ValueShape, ValueType,
+        IntLocalId, ListAssertPattern, ListAssertTail, ListLocal, PanicExpr, PanicSite, StringExpr,
+        ValueShape, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -829,7 +830,6 @@ mod tests {
                     crate::plan::ValueShape::Int,
                 ),
             ),
-            vec![ParamLocal::int(IntLocalId(0))],
         ))
     }
 }

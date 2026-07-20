@@ -1241,11 +1241,10 @@ mod tests {
             Step::evaluate(Expr::function(FunctionExpr::string(
                 StringFunctionExpr::closure(
                     function_instantiation(1, string_type.clone()),
-                    Vec::new(),
-                    vec![CaptureArg::int(
-                        IntLocalId(0),
-                        IntExpr::local_get(IntLocalId(30), "string_closure_capture".into()),
-                    )],
+                    vec![CaptureArg::new(crate::plan::Expr::int(IntExpr::local_get(
+                        IntLocalId(30),
+                        "string_closure_capture".into(),
+                    )))],
                     string_type.clone(),
                 ),
             ))),
@@ -1255,21 +1254,20 @@ mod tests {
                         FunctionFunctionLocal::new(FunctionFunctionLocalId(20), string_callee_type),
                         "string_callee".into(),
                     ),
-                    vec![CallArg::int(
-                        IntLocalId(0),
-                        IntExpr::local_get(IntLocalId(31), "string_call_arg".into()),
-                    )],
+                    vec![CallArg::new(crate::plan::Expr::int(IntExpr::local_get(
+                        IntLocalId(31),
+                        "string_call_arg".into(),
+                    )))],
                     string_type,
                 ),
             ))),
             Step::evaluate(Expr::function(FunctionExpr::float(
                 FloatFunctionExpr::closure(
                     function_instantiation(1, float_type.clone()),
-                    Vec::new(),
-                    vec![CaptureArg::int(
-                        IntLocalId(0),
-                        IntExpr::local_get(IntLocalId(38), "float_closure_capture".into()),
-                    )],
+                    vec![CaptureArg::new(crate::plan::Expr::int(IntExpr::local_get(
+                        IntLocalId(38),
+                        "float_closure_capture".into(),
+                    )))],
                     float_type.clone(),
                 ),
             ))),
@@ -1279,21 +1277,20 @@ mod tests {
                         FunctionFunctionLocal::new(FunctionFunctionLocalId(24), float_callee_type),
                         "float_callee".into(),
                     ),
-                    vec![CallArg::int(
-                        IntLocalId(0),
-                        IntExpr::local_get(IntLocalId(39), "float_call_arg".into()),
-                    )],
+                    vec![CallArg::new(crate::plan::Expr::int(IntExpr::local_get(
+                        IntLocalId(39),
+                        "float_call_arg".into(),
+                    )))],
                     float_type,
                 ),
             ))),
             Step::evaluate(Expr::function(FunctionExpr::bool(
                 BoolFunctionExpr::closure(
                     function_instantiation(1, bool_type.clone()),
-                    Vec::new(),
-                    vec![CaptureArg::int(
-                        IntLocalId(0),
-                        IntExpr::local_get(IntLocalId(32), "bool_closure_capture".into()),
-                    )],
+                    vec![CaptureArg::new(crate::plan::Expr::int(IntExpr::local_get(
+                        IntLocalId(32),
+                        "bool_closure_capture".into(),
+                    )))],
                     bool_type.clone(),
                 ),
             ))),
@@ -1303,20 +1300,19 @@ mod tests {
                         FunctionFunctionLocal::new(FunctionFunctionLocalId(21), bool_callee_type),
                         "bool_callee".into(),
                     ),
-                    vec![CallArg::int(
-                        IntLocalId(0),
-                        IntExpr::local_get(IntLocalId(33), "bool_call_arg".into()),
-                    )],
+                    vec![CallArg::new(crate::plan::Expr::int(IntExpr::local_get(
+                        IntLocalId(33),
+                        "bool_call_arg".into(),
+                    )))],
                     bool_type,
                 ),
             ))),
             Step::evaluate(Expr::function(FunctionExpr::nil(NilFunctionExpr::closure(
                 function_instantiation(1, nil_type.clone()),
-                Vec::new(),
-                vec![CaptureArg::int(
-                    IntLocalId(0),
-                    IntExpr::local_get(IntLocalId(34), "nil_closure_capture".into()),
-                )],
+                vec![CaptureArg::new(crate::plan::Expr::int(IntExpr::local_get(
+                    IntLocalId(34),
+                    "nil_closure_capture".into(),
+                )))],
                 nil_type.clone(),
             )))),
             Step::evaluate(Expr::function(FunctionExpr::nil(
@@ -1325,21 +1321,20 @@ mod tests {
                         FunctionFunctionLocal::new(FunctionFunctionLocalId(22), nil_callee_type),
                         "nil_callee".into(),
                     ),
-                    vec![CallArg::int(
-                        IntLocalId(0),
-                        IntExpr::local_get(IntLocalId(35), "nil_call_arg".into()),
-                    )],
+                    vec![CallArg::new(crate::plan::Expr::int(IntExpr::local_get(
+                        IntLocalId(35),
+                        "nil_call_arg".into(),
+                    )))],
                     nil_type,
                 ),
             ))),
             Step::evaluate(Expr::function(FunctionExpr::function(
                 FunctionFunctionExpr::closure(
                     function_instantiation(1, function_type.to_function_type()),
-                    Vec::new(),
-                    vec![CaptureArg::int(
-                        IntLocalId(0),
-                        IntExpr::local_get(IntLocalId(36), "function_closure_capture".into()),
-                    )],
+                    vec![CaptureArg::new(crate::plan::Expr::int(IntExpr::local_get(
+                        IntLocalId(36),
+                        "function_closure_capture".into(),
+                    )))],
                     function_type.clone(),
                 ),
             ))),
@@ -1352,10 +1347,10 @@ mod tests {
                         ),
                         "function_callee".into(),
                     ),
-                    vec![CallArg::int(
-                        IntLocalId(0),
-                        IntExpr::local_get(IntLocalId(37), "function_call_arg".into()),
-                    )],
+                    vec![CallArg::new(crate::plan::Expr::int(IntExpr::local_get(
+                        IntLocalId(37),
+                        "function_call_arg".into(),
+                    )))],
                 )
                 .expect("exact function call"),
             ))),
@@ -1391,11 +1386,10 @@ mod tests {
             Step::evaluate(Expr::function(FunctionExpr::tuple(
                 TupleFunctionExpr::closure(
                     function_instantiation(1, tuple_function_type.clone()),
-                    Vec::new(),
-                    vec![CaptureArg::int(
+                    vec![CaptureArg::new(crate::plan::Expr::int(IntExpr::local_get(
                         IntLocalId(10),
-                        IntExpr::local_get(IntLocalId(10), "closure_capture".into()),
-                    )],
+                        "closure_capture".into(),
+                    )))],
                     tuple_function_type.clone(),
                     tuple_type.clone(),
                 ),
@@ -1414,10 +1408,10 @@ mod tests {
                         vec![ValueShape::Int],
                         tuple_function_type.clone(),
                     ),
-                    vec![CallArg::int(
-                        IntLocalId(0),
-                        IntExpr::local_get(IntLocalId(11), "direct_arg".into()),
-                    )],
+                    vec![CallArg::new(crate::plan::Expr::int(IntExpr::local_get(
+                        IntLocalId(11),
+                        "direct_arg".into(),
+                    )))],
                     tuple_function_type.clone(),
                 ),
             ))),
@@ -1430,10 +1424,10 @@ mod tests {
                         ),
                         "callee".into(),
                     ),
-                    vec![CallArg::int(
-                        IntLocalId(0),
-                        IntExpr::local_get(IntLocalId(12), "function_arg".into()),
-                    )],
+                    vec![CallArg::new(crate::plan::Expr::int(IntExpr::local_get(
+                        IntLocalId(12),
+                        "function_arg".into(),
+                    )))],
                     tuple_function_type.clone(),
                 ),
             ))),
@@ -1556,11 +1550,10 @@ mod tests {
             Step::evaluate(Expr::function(FunctionExpr::list(
                 ListFunctionExpr::closure(
                     function_instantiation(0, list_function_type.clone()),
-                    Vec::new(),
-                    vec![CaptureArg::int(
-                        IntLocalId(0),
-                        IntExpr::local_get(IntLocalId(15), "closure_capture".into()),
-                    )],
+                    vec![CaptureArg::new(crate::plan::Expr::int(IntExpr::local_get(
+                        IntLocalId(15),
+                        "closure_capture".into(),
+                    )))],
                     ValueType::Int,
                 ),
             ))),
@@ -1583,10 +1576,10 @@ mod tests {
                     vec![ValueShape::Int],
                     list_function_type.clone(),
                 ),
-                vec![CallArg::int(
-                    IntLocalId(0),
-                    IntExpr::local_get(IntLocalId(16), "direct_arg".into()),
-                )],
+                vec![CallArg::new(crate::plan::Expr::int(IntExpr::local_get(
+                    IntLocalId(16),
+                    "direct_arg".into(),
+                )))],
                 list_function_type.clone(),
                 ValueType::Int,
             )))),
@@ -1599,10 +1592,10 @@ mod tests {
                         ),
                         "callee".into(),
                     ),
-                    vec![CallArg::int(
-                        IntLocalId(0),
-                        IntExpr::local_get(IntLocalId(17), "function_arg".into()),
-                    )],
+                    vec![CallArg::new(crate::plan::Expr::int(IntExpr::local_get(
+                        IntLocalId(17),
+                        "function_arg".into(),
+                    )))],
                     list_function_type.clone(),
                     ValueType::Int,
                 ),

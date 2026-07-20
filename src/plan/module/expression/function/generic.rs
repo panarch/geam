@@ -1,8 +1,8 @@
 use crate::plan::{
     BoolExpr, CaptureArg, ConstantGenericFunctionInstantiation, CustomFieldAccess, FloatExpr,
     FunctionFunctionExpr, FunctionInstantiation, FunctionListExpr, FunctionShape,
-    GenericFunctionLocal, GenericFunctionReference, IntExpr, PanicExpr, ParamSlot, Step,
-    StringExpr, TupleExpr, TypeParameterId,
+    GenericFunctionLocal, GenericFunctionReference, IntExpr, PanicExpr, Step, StringExpr,
+    TupleExpr, TypeParameterId,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -19,7 +19,6 @@ pub(crate) enum GenericFunctionExprKind {
     Reference(GenericFunctionReference),
     Closure {
         function: FunctionInstantiation,
-        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
     },
     LocalGet {
@@ -93,17 +92,12 @@ impl GenericFunctionExpr {
 
     pub(crate) fn closure(
         function: FunctionInstantiation,
-        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
         type_: crate::plan::GenericFunctionType,
     ) -> Self {
         Self {
             type_,
-            kind: GenericFunctionExprKind::Closure {
-                function,
-                params,
-                captures,
-            },
+            kind: GenericFunctionExprKind::Closure { function, captures },
         }
     }
 

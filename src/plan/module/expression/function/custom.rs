@@ -1,11 +1,9 @@
 use super::returning_function::FunctionFunctionCallMismatch;
-#[cfg(test)]
-use crate::plan::ParamLocal;
 use crate::plan::{
     BoolExpr, CaptureArg, ConstantCustomFunctionInstantiation, CustomConstructor,
     CustomFieldAccess, CustomFunctionLocal, CustomFunctionReference, CustomFunctionType, FloatExpr,
     FunctionFunctionExpr, FunctionInstantiation, FunctionListExpr, FunctionType, IntExpr,
-    PanicExpr, ParamSlot, Step, StringExpr, TupleExpr,
+    PanicExpr, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -23,7 +21,6 @@ pub(crate) enum CustomFunctionExprKind {
     Reference(CustomFunctionReference),
     Closure {
         function: FunctionInstantiation,
-        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
     },
     LocalGet {
@@ -114,35 +111,15 @@ impl CustomFunctionExpr {
         }
     }
 
-    pub(crate) fn closure_slots(
+    pub(crate) fn closure(
         function: FunctionInstantiation,
-        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
         type_: CustomFunctionType,
     ) -> Self {
         Self {
             type_,
-            kind: CustomFunctionExprKind::Closure {
-                function,
-                params,
-                captures,
-            },
+            kind: CustomFunctionExprKind::Closure { function, captures },
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn closure(
-        function: FunctionInstantiation,
-        params: Vec<ParamLocal>,
-        captures: Vec<CaptureArg>,
-        type_: CustomFunctionType,
-    ) -> Self {
-        Self::closure_slots(
-            function,
-            params.into_iter().map(ParamSlot::from_local).collect(),
-            captures,
-            type_,
-        )
     }
 
     pub(crate) fn local_get(local: CustomFunctionLocal, name: EcoString) -> Self {
@@ -335,10 +312,10 @@ mod tests {
     use super::{CustomFunctionExpr, CustomFunctionExprKind};
     use crate::plan::{
         BoolExpr, CallArg, CustomConstructorRefinement, CustomFunctionReference,
-        CustomFunctionType, CustomLocalId, CustomType, CustomTypeName, CustomValueShape,
-        FunctionExpr, FunctionFunctionCallMismatch, FunctionFunctionExpr,
-        FunctionFunctionReference, FunctionInstantiation, FunctionShape, FunctionType, IntExpr,
-        IntLocalId, ParamLocal, ValueShape, ValueType, monomorphic_function_instantiation,
+        CustomFunctionType, CustomType, CustomTypeName, CustomValueShape, FunctionExpr,
+        FunctionFunctionCallMismatch, FunctionFunctionExpr, FunctionFunctionReference,
+        FunctionInstantiation, FunctionShape, FunctionType, IntExpr, ValueShape, ValueType,
+        monomorphic_function_instantiation,
     };
 
     #[test]
@@ -371,7 +348,7 @@ mod tests {
     #[test]
     fn function_call_derives_custom_type_and_checks_argument_count() {
         let function = function_call_callee();
-        let argument = CallArg::int(IntLocalId(0), IntExpr::value(1.into()));
+        let argument = CallArg::new(crate::plan::Expr::int(IntExpr::value(1.into())));
         let expression =
             CustomFunctionExpr::try_function_call(function.clone(), vec![argument.clone()])
                 .expect("exact custom function call");
@@ -415,10 +392,7 @@ mod tests {
             return_shape.clone(),
         );
         let function = CustomFunctionExpr::reference(
-            CustomFunctionReference::new(
-                custom_function_instantiation_with_param(),
-                vec![ParamLocal::custom(CustomLocalId(0), custom_type())],
-            ),
+            CustomFunctionReference::new(custom_function_instantiation_with_param()),
             return_shape.clone(),
         );
 
@@ -458,10 +432,7 @@ mod tests {
             ValueShape::Custom(exact.clone()),
         );
         let function = FunctionExpr::custom(CustomFunctionExpr::reference(
-            CustomFunctionReference::new(
-                custom_function_instantiation_with_param(),
-                vec![ParamLocal::custom(CustomLocalId(0), custom_type())],
-            ),
+            CustomFunctionReference::new(custom_function_instantiation_with_param()),
             exact.clone(),
         ));
 
@@ -489,10 +460,7 @@ mod tests {
             ValueShape::Custom(return_shape.clone()),
         );
         let function = CustomFunctionExpr::reference(
-            CustomFunctionReference::new(
-                custom_function_instantiation_with_param(),
-                vec![ParamLocal::custom(CustomLocalId(0), custom_type())],
-            ),
+            CustomFunctionReference::new(custom_function_instantiation_with_param()),
             return_shape.clone(),
         );
         let expression = FunctionExpr::custom(function)
@@ -518,25 +486,19 @@ mod tests {
     }
 
     fn function_reference() -> CustomFunctionReference {
-        CustomFunctionReference::new(custom_function_instantiation(), Vec::new())
+        CustomFunctionReference::new(custom_function_instantiation())
     }
 
     fn function_call_callee() -> FunctionFunctionExpr {
         FunctionFunctionExpr::reference(
-            FunctionFunctionReference::new(
-                function_call_callee_instantiation(),
-                vec![ParamLocal::int(IntLocalId(0))],
-            ),
+            FunctionFunctionReference::new(function_call_callee_instantiation()),
             function_type().to_function_type(),
         )
     }
 
     fn wrong_return_family_callee() -> FunctionFunctionExpr {
         FunctionFunctionExpr::reference(
-            FunctionFunctionReference::new(
-                wrong_return_family_instantiation(),
-                vec![ParamLocal::int(IntLocalId(0))],
-            ),
+            FunctionFunctionReference::new(wrong_return_family_instantiation()),
             FunctionType::new(Vec::new(), ValueType::Int),
         )
     }

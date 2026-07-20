@@ -17,14 +17,12 @@ pub(in crate::plan::execution::lowering) fn utf_codepoint_function_expr(
             context.utf_codepoint_function_id(id)
         })
         .map(E::Reference),
-        M::Closure {
-            function,
-            params,
-            captures,
-        } => super::closure_template(function, params, captures, context, |id, context| {
-            context.utf_codepoint_function_id(id)
-        })
-        .map(E::Closure),
+        M::Closure { function, captures } => {
+            super::closure_template(function, captures, context, |id, context| {
+                context.utf_codepoint_function_id(id)
+            })
+            .map(E::Closure)
+        }
         M::LocalGet { local, name: _ } => Representability::Inhabited(E::LocalGet {
             local: execution::UtfCodepointFunctionLocalId(context.mapped_local(
                 super::super::super::frame::LocalKind::UtfCodepointFunction,

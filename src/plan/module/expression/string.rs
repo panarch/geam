@@ -346,7 +346,6 @@ mod tests {
     fn function_expr() -> crate::plan::StringFunctionExpr {
         crate::plan::StringFunctionExpr::reference(StringFunctionReference::new(
             function_instantiation(),
-            Vec::new(),
         ))
     }
 

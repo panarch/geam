@@ -21,14 +21,12 @@ pub(in crate::plan::execution::lowering) fn list_function_expr(
             context.list_function_id(function, &item_shape)
         })
         .map(E::Reference),
-        M::Closure {
-            function,
-            params,
-            captures,
-        } => super::closure_template(function, params, captures, context, |function, context| {
-            context.list_function_id(function, &item_shape)
-        })
-        .map(E::Closure),
+        M::Closure { function, captures } => {
+            super::closure_template(function, captures, context, |function, context| {
+                context.list_function_id(function, &item_shape)
+            })
+            .map(E::Closure)
+        }
         M::LocalGet { local, name: _ } => Representability::Inhabited(E::LocalGet {
             local: crate::plan::execution::lowering::id::list_function_local(local, context),
         }),
@@ -168,14 +166,12 @@ pub(in crate::plan::execution::lowering) fn generic_list_function_expr(
             })
             .map(E::Reference)
         }
-        M::Closure {
-            function,
-            params,
-            captures,
-        } => super::closure_template(function, params, captures, context, |function, context| {
-            context.list_function_id(function, item_shape)
-        })
-        .map(E::Closure),
+        M::Closure { function, captures } => {
+            super::closure_template(function, captures, context, |function, context| {
+                context.list_function_id(function, item_shape)
+            })
+            .map(E::Closure)
+        }
         M::LocalGet { local, name: _ } => Representability::Inhabited(E::LocalGet {
             local: super::super::super::frame::generic_list_returning_function_local(
                 local, item_shape, context,

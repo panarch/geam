@@ -668,26 +668,11 @@ pub fn main() {
         let module_plan = crate::plan_module(typed).expect("source should plan");
         let plan = ExecutionPlan::from_module_plan(module_plan);
 
-        let string_empty =
-            plan.custom_constructor(CustomConstructorId::new(CustomTypeId::new(0), 0));
-        assert_eq!(string_empty.name(), &ecow::EcoString::from("Empty"));
-        assert_eq!(string_empty.fields().len(), 0);
-        let string_full =
-            plan.custom_constructor(CustomConstructorId::new(CustomTypeId::new(0), 1));
-        assert_eq!(string_full.name(), &ecow::EcoString::from("Full"));
-        assert_eq!(
-            string_full
-                .fields()
-                .iter()
-                .map(|field| field.type_().clone())
-                .collect::<Vec<_>>(),
-            vec![
-                ExecutionValueType::String,
-                ExecutionValueType::Custom(CustomTypeId::new(0)),
-            ],
-        );
-
-        let int_full = plan.custom_constructor(CustomConstructorId::new(CustomTypeId::new(1), 1));
+        let int_empty = plan.custom_constructor(CustomConstructorId::new(CustomTypeId::new(0), 0));
+        assert_eq!(int_empty.name(), &ecow::EcoString::from("Empty"));
+        assert_eq!(int_empty.fields().len(), 0);
+        let int_full = plan.custom_constructor(CustomConstructorId::new(CustomTypeId::new(0), 1));
+        assert_eq!(int_full.name(), &ecow::EcoString::from("Full"));
         assert_eq!(
             int_full
                 .fields()
@@ -696,6 +681,20 @@ pub fn main() {
                 .collect::<Vec<_>>(),
             vec![
                 ExecutionValueType::Int,
+                ExecutionValueType::Custom(CustomTypeId::new(0)),
+            ],
+        );
+
+        let string_full =
+            plan.custom_constructor(CustomConstructorId::new(CustomTypeId::new(1), 1));
+        assert_eq!(
+            string_full
+                .fields()
+                .iter()
+                .map(|field| field.type_().clone())
+                .collect::<Vec<_>>(),
+            vec![
+                ExecutionValueType::String,
                 ExecutionValueType::Custom(CustomTypeId::new(1)),
             ],
         );
@@ -703,7 +702,7 @@ pub fn main() {
             plan.list_storage_type(ListTypeId::new(0)),
             ListStorageTypeId::Custom(CustomListTypeId::new(
                 ListTypeId::new(0),
-                CustomTypeId::new(0),
+                CustomTypeId::new(1),
             )),
         );
 
@@ -724,7 +723,7 @@ pub fn main() {
             0,
         );
         assert_eq!(
-            plan.custom_value_type(CustomTypeId::new(1)),
+            plan.custom_value_type(CustomTypeId::new(0)),
             CustomType::new(
                 CustomTypeName::new("geam".into(), "main".into(), "Box".into()),
                 vec![ValueType::Int],

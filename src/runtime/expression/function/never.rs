@@ -190,8 +190,8 @@ mod tests {
         FunctionType, GenericExpr, GenericFunctionExpr as ModuleGenericFunctionExpr,
         GenericFunctionReturn, GenericFunctionType, IntExpr, IntFunctionExpr, IntFunctionId,
         IntFunctionReference, IntLocalId, ModulePlan, PanicExpr, PanicSite, Param, ParamLocal,
-        ParamSlot, ReturnExpr, Step, StringExpr, TupleExpr, TypeParameterId, TypeScheme,
-        ValueShape, ValueType, monomorphic_function_instantiation,
+        ReturnExpr, Step, StringExpr, TupleExpr, TypeParameterId, TypeScheme, ValueShape,
+        ValueType, monomorphic_function_instantiation,
     };
     use crate::runtime::evaluated::{
         EvaluatedFunctionValue, EvaluatedFunctionValueKind, EvaluatedIntFunction, EvaluatedValue,
@@ -230,6 +230,9 @@ mod tests {
                     "value".into(),
                     ValueShape::Int,
                 )],
+                vec![crate::plan::ParamSlot::from_local(ParamLocal::int(
+                    IntLocalId(1),
+                ))],
                 vec![Step::evaluate(Expr::int(IntExpr::local_get(
                     IntLocalId(1),
                     "capture".into(),
@@ -250,14 +253,9 @@ mod tests {
             (
                 ModuleGenericFunctionExpr::closure(
                     target_instantiation,
-                    vec![ParamSlot::new(
-                        ParamLocal::int(IntLocalId(0)),
-                        ValueShape::Int,
-                    )],
-                    vec![CaptureArg::int(
-                        IntLocalId(1),
-                        IntExpr::panic(panic("capture")),
-                    )],
+                    vec![CaptureArg::new(crate::plan::Expr::int(IntExpr::panic(
+                        panic("capture"),
+                    )))],
                     type_.clone(),
                 ),
                 "capture",
@@ -394,6 +392,7 @@ pub fn main() {
             "main".into(),
             Vec::new(),
             Vec::new(),
+            Vec::new(),
             ReturnExpr::generic_function_shape_body(
                 function_shape.clone(),
                 GenericFunctionReturn::expr(expression),
@@ -507,14 +506,12 @@ pub fn main() { get(Box(diverge)) }
             FunctionType::new(vec![ValueType::Int], ValueType::Parameter(parameter));
         let expected = ValueType::Function(Box::new(expected_type));
         let wrong_type = FunctionType::new(Vec::new(), ValueType::Int);
-        let wrong_function =
-            FunctionExpr::int(IntFunctionExpr::reference(IntFunctionReference::new(
-                monomorphic_function_instantiation(
-                    1,
-                    FunctionShape::from_function_type(wrong_type.clone()),
-                ),
-                Vec::new(),
-            )));
+        let wrong_function = FunctionExpr::int(IntFunctionExpr::reference(
+            IntFunctionReference::new(monomorphic_function_instantiation(
+                1,
+                FunctionShape::from_function_type(wrong_type.clone()),
+            )),
+        ));
         let expression = ModuleGenericFunctionExpr::tuple_index(
             TupleExpr::value(vec![Expr::function(wrong_function)], vec![expected.clone()]),
             0,
@@ -666,6 +663,7 @@ pub fn main() { get(Box(diverge)) }
         let main = FunctionTemplate::from_signature(
             signature,
             "main".into(),
+            Vec::new(),
             Vec::new(),
             Vec::new(),
             ReturnExpr::generic_function_shape_body(

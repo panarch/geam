@@ -69,6 +69,8 @@ impl LocalKey {
 #[derive(Clone)]
 pub(super) struct LocalAllocationTemplate {
     entries: Box<[(LocalKey, crate::plan::ValueShape)]>,
+    params: Box<[LocalKey]>,
+    captures: Box<[LocalKey]>,
 }
 
 #[derive(Clone)]
@@ -76,6 +78,8 @@ pub(super) struct LocalAllocationPlan {
     stored_shapes: Box<[StoredValueShape]>,
     allocations: HashMap<LocalKey, LocalAllocation>,
     uninhabited: HashMap<LocalKey, crate::plan::TypeParameterId>,
+    custom_shapes: HashMap<LocalKey, super::specialization::SpecializedCustomValueShape>,
+    function_shapes: HashMap<LocalKey, SpecializedFunctionShape>,
 }
 
 #[derive(Clone)]
@@ -151,13 +155,33 @@ impl LocalAllocationTemplate {
     pub(super) fn new(template: &module::FunctionTemplate) -> Self {
         let mut entries = Vec::new();
         let mut included = HashSet::new();
+        let params = template
+            .entry()
+            .params()
+            .iter()
+            .map(|param| param_local_key(param.local()))
+            .collect::<Vec<_>>();
+        let captures = template
+            .entry()
+            .captures()
+            .iter()
+            .map(|capture| param_local_key(capture.local()))
+            .collect::<Vec<_>>();
 
-        for param in template.params() {
+        for param in template.entry().params() {
             push_template_entry(
                 &mut entries,
                 &mut included,
                 param_local_key(param.local()),
                 param.shape().clone(),
+            );
+        }
+        for capture in template.entry().captures() {
+            push_template_entry(
+                &mut entries,
+                &mut included,
+                param_local_key(capture.local()),
+                capture.shape().clone(),
             );
         }
 
@@ -168,7 +192,21 @@ impl LocalAllocationTemplate {
 
         Self {
             entries: entries.into_boxed_slice(),
+            params: params.into_boxed_slice(),
+            captures: captures.into_boxed_slice(),
         }
+    }
+
+    pub(super) fn param_key(&self, position: module::ParamPosition) -> LocalKey {
+        self.params[position.index()]
+    }
+
+    pub(super) fn param_count(&self) -> usize {
+        self.params.len()
+    }
+
+    pub(super) fn capture_key(&self, position: module::CapturePosition) -> LocalKey {
+        self.captures[position.index()]
     }
 
     pub(super) fn specialize(
@@ -180,6 +218,8 @@ impl LocalAllocationTemplate {
         let mut allocations = HashMap::with_capacity(self.entries.len());
         let mut uninhabited = HashMap::new();
         let mut stored_shapes = Vec::new();
+        let mut custom_shapes = Vec::new();
+        let mut function_shapes = Vec::new();
 
         for (key, shape) in &self.entries {
             let shape = SpecializedValueShape::instantiate(shape, substitution);
@@ -193,6 +233,21 @@ impl LocalAllocationTemplate {
             let index = next
                 .entry(StorageFamily::of(&stored, representations))
                 .or_default();
+            match &stored {
+                StoredValueShape::Custom(shape) => custom_shapes.push((*key, shape.clone())),
+                StoredValueShape::Function(shape) => {
+                    function_shapes.push((*key, shape.as_ref().clone()))
+                }
+                StoredValueShape::Int
+                | StoredValueShape::Float
+                | StoredValueShape::String
+                | StoredValueShape::BitArray
+                | StoredValueShape::UtfCodepoint
+                | StoredValueShape::Bool
+                | StoredValueShape::Nil
+                | StoredValueShape::Tuple(_)
+                | StoredValueShape::List(_) => {}
+            }
             allocations.insert(
                 *key,
                 LocalAllocation {
@@ -208,6 +263,8 @@ impl LocalAllocationTemplate {
             stored_shapes: stored_shapes.into_boxed_slice(),
             allocations,
             uninhabited,
+            custom_shapes: custom_shapes.into_iter().collect(),
+            function_shapes: function_shapes.into_iter().collect(),
         }
     }
 }
@@ -234,6 +291,17 @@ impl LocalAllocationPlan {
 
     pub(super) fn stored_shapes(&self) -> &[StoredValueShape] {
         &self.stored_shapes
+    }
+
+    pub(super) fn custom_shape(
+        &self,
+        key: LocalKey,
+    ) -> &super::specialization::SpecializedCustomValueShape {
+        &self.custom_shapes[&key]
+    }
+
+    pub(super) fn function_shape(&self, key: LocalKey) -> &SpecializedFunctionShape {
+        &self.function_shapes[&key]
     }
 }
 

@@ -413,10 +413,7 @@ mod tests {
     }
 
     fn function_expr() -> crate::plan::IntFunctionExpr {
-        crate::plan::IntFunctionExpr::reference(IntFunctionReference::new(
-            function_instantiation(),
-            Vec::new(),
-        ))
+        crate::plan::IntFunctionExpr::reference(IntFunctionReference::new(function_instantiation()))
     }
 
     fn function_instantiation() -> FunctionInstantiation {

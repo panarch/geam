@@ -514,11 +514,10 @@ impl FrameLayout {
 #[cfg(test)]
 pub(super) mod test_helpers {
     use crate::plan::{
-        BoolFunctionExpr, BoolFunctionReference, BoolLocalId, FloatFunctionExpr,
-        FloatFunctionReference, FloatLocalId, FunctionFunctionType, FunctionShape, IntFunctionExpr,
-        IntFunctionReference, IntLocalId, NilFunctionExpr, NilFunctionReference, NilLocalId,
-        ParamLocal, StringFunctionExpr, StringFunctionReference, StringLocalId, ValueShape,
-        monomorphic_function_instantiation,
+        BoolFunctionExpr, BoolFunctionReference, FloatFunctionExpr, FloatFunctionReference,
+        FunctionFunctionType, FunctionShape, IntFunctionExpr, IntFunctionReference,
+        NilFunctionExpr, NilFunctionReference, StringFunctionExpr, StringFunctionReference,
+        ValueShape, monomorphic_function_instantiation,
     };
 
     pub(super) fn int_function_expr() -> IntFunctionExpr {
@@ -527,7 +526,6 @@ pub(super) mod test_helpers {
                 0,
                 FunctionShape::new(vec![ValueShape::Int], ValueShape::Int),
             ),
-            vec![ParamLocal::int(IntLocalId(0))],
         ))
     }
 
@@ -537,7 +535,6 @@ pub(super) mod test_helpers {
                 0,
                 FunctionShape::new(vec![ValueShape::String], ValueShape::String),
             ),
-            vec![ParamLocal::string(StringLocalId(0))],
         ))
     }
 
@@ -547,7 +544,6 @@ pub(super) mod test_helpers {
                 0,
                 FunctionShape::new(vec![ValueShape::Float], ValueShape::Float),
             ),
-            vec![ParamLocal::float(FloatLocalId(0))],
         ))
     }
 
@@ -557,7 +553,6 @@ pub(super) mod test_helpers {
                 0,
                 FunctionShape::new(vec![ValueShape::Bool], ValueShape::Bool),
             ),
-            vec![ParamLocal::bool(BoolLocalId(0))],
         ))
     }
 
@@ -567,7 +562,6 @@ pub(super) mod test_helpers {
                 0,
                 FunctionShape::new(vec![ValueShape::Nil], ValueShape::Nil),
             ),
-            vec![ParamLocal::nil(NilLocalId(0))],
         ))
     }
 

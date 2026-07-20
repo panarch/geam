@@ -34,7 +34,6 @@ pub(super) fn plan_direct_function_call(
         .map_err(function_instantiation_mismatch)?;
     let args = super::argument::plan_instantiated_call_args(
         arguments,
-        &function.params,
         instantiation.shape().argument_shapes(),
         context,
         capture,
@@ -178,8 +177,8 @@ pub fn main() {
                 int_return_tail_call(
                     2,
                     [
-                        int_function_arg(0, int_function_ref(1, [LocalId::Int(IntLocalId(0))])),
-                        int_arg(0, int(41)),
+                        int_function_arg(int_function_ref(1, [LocalId::Int(IntLocalId(0))])),
+                        int_arg(int(41)),
                     ],
                 ),
             ),
@@ -189,7 +188,7 @@ pub fn main() {
                     "apply",
                     call_int_function(
                         local_int_function(0, "function", [LocalId::Int(IntLocalId(0))]),
-                        [int_function_call_arg(0, local_int(0, "value"))],
+                        [int_function_call_arg(local_int(0, "value"))],
                     ),
                 )
                 .param_int_function(0, "function", [ValueType::Int])
@@ -226,11 +225,12 @@ pub fn main() {
                 int_return_tail_call(
                     2,
                     [
-                        int_function_arg(
+                        int_function_arg(local_int_function(
                             0,
-                            local_int_function(0, "add", [LocalId::Int(IntLocalId(0))]),
-                        ),
-                        int_arg(0, int(41)),
+                            "add",
+                            [LocalId::Int(IntLocalId(0))],
+                        )),
+                        int_arg(int(41)),
                     ],
                 ),
             )
@@ -245,7 +245,7 @@ pub fn main() {
                     "apply",
                     call_int_function(
                         local_int_function(0, "function", [LocalId::Int(IntLocalId(0))]),
-                        [int_function_call_arg(0, local_int(0, "value"))],
+                        [int_function_call_arg(local_int(0, "value"))],
                     ),
                 )
                 .param_int_function(0, "function", [ValueType::Int])
@@ -274,7 +274,7 @@ pub fn main() {
             "main",
             function(
                 "main",
-                int_return_tail_call(1, [int_arg(0, int(40)), int_arg(1, int(2))]),
+                int_return_tail_call(1, [int_arg(int(40)), int_arg(int(2))]),
             ),
             [
                 function("add", local_int(0, "base").add_int(local_int(1, "amount")))
@@ -315,12 +315,12 @@ pub fn main() {
             .step(let_float_step(
                 0,
                 "half_value",
-                call_float(1, [float_arg(0, float(3.0))]),
+                call_float(1, [float_arg(float(3.0))]),
             ))
             .step(let_list_step(
                 0,
                 "values",
-                call_list(2, [int_arg(0, int(1))], ValueType::Int),
+                call_list(2, [int_arg(int(1))], ValueType::Int),
             )),
             [
                 function("half", local_float(0, "value").div_float(float(2.0)))

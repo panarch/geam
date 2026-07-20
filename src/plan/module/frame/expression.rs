@@ -1572,10 +1572,9 @@ mod tests {
                     0,
                     FunctionShape::new(vec![ValueShape::Float], ValueShape::Float),
                 ),
-                vec![CallArg::float(
-                    FloatLocalId(0),
+                vec![CallArg::new(crate::plan::Expr::float(
                     FloatExpr::local_get(FloatLocalId(27), "float_call_arg".into()),
-                )],
+                ))],
             ))),
             Step::evaluate(Expr::float(FloatExpr::function_call(
                 crate::plan::FloatFunctionExpr::local_get(
@@ -1585,10 +1584,9 @@ mod tests {
                         .type_()
                         .clone(),
                 ),
-                vec![CallArg::float(
-                    FloatLocalId(1),
+                vec![CallArg::new(crate::plan::Expr::float(
                     FloatExpr::local_get(FloatLocalId(28), "float_function_call_arg".into()),
-                )],
+                ))],
             ))),
             Step::evaluate(Expr::float(FloatExpr::bool_case(
                 BoolExpr::local_get(BoolLocalId(13), "float_bool_case_subject".into()),
@@ -1679,10 +1677,9 @@ mod tests {
                         ValueType::Tuple(tuple_type()),
                     )),
                 ),
-                vec![CallArg::tuple(
-                    TupleLocalId(1),
+                vec![CallArg::new(crate::plan::Expr::tuple(
                     TupleExpr::local_get(TupleLocalId(2), "tuple_call_arg".into(), tuple_type()),
-                )],
+                ))],
                 tuple_type(),
             ))),
             Step::evaluate(Expr::tuple(TupleExpr::function_call(
@@ -1691,14 +1688,13 @@ mod tests {
                     "tuple_function".into(),
                     tuple_function_type(),
                 ),
-                vec![CallArg::tuple(
-                    TupleLocalId(3),
+                vec![CallArg::new(crate::plan::Expr::tuple(
                     TupleExpr::local_get(
                         TupleLocalId(4),
                         "tuple_function_call_arg".into(),
                         tuple_type(),
                     ),
-                )],
+                ))],
                 tuple_type(),
             ))),
             Step::evaluate(Expr::tuple(TupleExpr::tuple_index(
@@ -1815,15 +1811,10 @@ mod tests {
                         ValueShape::List(Box::new(ValueShape::Int)),
                     ),
                 ),
-                vec![CallArg::list(crate::plan::ListLocalExpr::Int {
-                    local: IntListLocalId(0),
-                    value: ListExpr::local_get(
-                        ListLocal::int(IntListLocalId(1)),
-                        "call_arg".into(),
-                    )
-                    .into_int()
-                    .expect("expected int list"),
-                })],
+                vec![CallArg::new(Expr::list(ListExpr::local_get(
+                    ListLocal::int(IntListLocalId(1)),
+                    "call_arg".into(),
+                )))],
                 ValueShape::Int,
             ))),
             Step::evaluate(Expr::list(ListExpr::function_call(
@@ -1838,15 +1829,10 @@ mod tests {
                     ),
                     "callee".into(),
                 ),
-                vec![CallArg::list(crate::plan::ListLocalExpr::Int {
-                    local: IntListLocalId(1),
-                    value: ListExpr::local_get(
-                        ListLocal::int(IntListLocalId(2)),
-                        "function_call_arg".into(),
-                    )
-                    .into_int()
-                    .expect("expected int list"),
-                })],
+                vec![CallArg::new(Expr::list(ListExpr::local_get(
+                    ListLocal::int(IntListLocalId(2)),
+                    "function_call_arg".into(),
+                )))],
             ))),
             Step::evaluate(Expr::list(ListExpr::tuple_index(
                 TupleExpr::value(

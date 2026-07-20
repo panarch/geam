@@ -41,12 +41,12 @@ pub use custom_type::{
 pub(crate) use expression::custom_constructor_expr;
 pub(crate) use expression::{
     BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayExprKind, BitArrayFunctionExprKind,
-    BitArraySegment, BoolCaseBranches, BoolExprKind, BoolFunctionExprKind, CallArgKind,
-    CallArgStorage, CaptureArg, CaptureArgKind, CustomBoolCaseBranches, CustomCaseBranches,
-    CustomConstruction, CustomExprKind, CustomFieldAccess, CustomFunctionExprKind, Endianness,
-    ExprKind, FloatBitSize, FloatCaseBranches, FloatExprKind, FloatFunctionExprKind,
-    FunctionExprKind, FunctionFunctionCallMismatch, FunctionFunctionExprKind, GenericExpr,
-    GenericExprKind, GenericFunctionExpr, GenericFunctionExprKind, IntCaseBranches, IntExprKind,
+    BitArraySegment, BoolCaseBranches, BoolExprKind, BoolFunctionExprKind, CallArgStorage,
+    CaptureArg, CustomBoolCaseBranches, CustomCaseBranches, CustomConstruction, CustomExprKind,
+    CustomFieldAccess, CustomFunctionExprKind, Endianness, ExprKind, FloatBitSize,
+    FloatCaseBranches, FloatExprKind, FloatFunctionExprKind, FunctionExprKind,
+    FunctionFunctionCallMismatch, FunctionFunctionExprKind, GenericExpr, GenericExprKind,
+    GenericFunctionExpr, GenericFunctionExprKind, IntCaseBranches, IntExprKind,
     IntFunctionExprKind, ListElements, ListFunctionExprKind, NilExprKind, NilFunctionExprKind,
     PanicExpr, PanicExprKind, PotentiallyUninhabitedCallArg, StringCaseBranches, StringEncoding,
     StringExprKind, StringFunctionExprKind, TupleExprKind, TupleFunctionExprKind,
@@ -72,13 +72,14 @@ pub(crate) use frame::{FrameLayout, FrameLayoutParts};
 pub(crate) use function::ListReturn;
 pub(crate) use function::{
     BitArrayFunctionReturn, BitArrayListReturn, BitArrayReturn, BoolFunctionReturn, BoolListReturn,
-    BoolReturn, CustomFunctionReturn, CustomListReturn, CustomReturn, FloatFunctionReturn,
-    FloatListReturn, FloatReturn, FunctionFunctionReturn, FunctionListReturn,
+    BoolReturn, CapturePosition, CustomFunctionReturn, CustomListReturn, CustomReturn,
+    FloatFunctionReturn, FloatListReturn, FloatReturn, FunctionFunctionReturn, FunctionListReturn,
     GenericFunctionReturn, GenericListReturn, GenericReturn, IntFunctionReturn, IntListReturn,
     IntReturn, ListFunctionReturn, ListListReturn, NilFunctionReturn, NilListReturn, NilReturn,
-    ParamLocal, ParamSlot, ParameterListListReturn, ReturnBody, ReturnBodyKind, ReturnExprKind,
-    StringFunctionReturn, StringListReturn, StringReturn, TupleFunctionReturn, TupleListReturn,
-    TupleReturn, UtfCodepointFunctionReturn, UtfCodepointListReturn, UtfCodepointReturn,
+    ParamLocal, ParamPosition, ParamSlot, ParameterListListReturn, ReturnBody, ReturnBodyKind,
+    ReturnExprKind, StringFunctionReturn, StringListReturn, StringReturn, TupleFunctionReturn,
+    TupleListReturn, TupleReturn, UtfCodepointFunctionReturn, UtfCodepointListReturn,
+    UtfCodepointReturn,
 };
 pub use function::{FunctionTemplate, Param, ParamBinding, ReturnExpr};
 #[cfg(test)]

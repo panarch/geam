@@ -329,7 +329,6 @@ pub fn main() {
                             ValueType::Int,
                         )),
                     ),
-                    Vec::new(),
                 )),
             ))],
             vec![ValueType::Function(Box::new(type_.to_function_type()))],
@@ -365,10 +364,7 @@ pub fn main() {
         let tuple = TupleExpr::value(
             vec![Expr::function(FunctionExpr::custom(
                 CustomFunctionExpr::reference(
-                    CustomFunctionReference::new(
-                        custom_function_instantiation(3, &actual_type),
-                        vec![ParamLocal::int(IntLocalId(0))],
-                    ),
+                    CustomFunctionReference::new(custom_function_instantiation(3, &actual_type)),
                     actual_type.return_().clone(),
                 ),
             ))],
@@ -391,15 +387,16 @@ pub fn main() {
         let type_ = boxed_function_type();
         let fallback = || {
             CustomFunctionExpr::reference(
-                CustomFunctionReference::new(custom_function_instantiation(1, &type_), Vec::new()),
+                CustomFunctionReference::new(custom_function_instantiation(1, &type_)),
                 type_.return_().clone(),
             )
         };
         let expressions = [
             CustomFunctionExpr::closure(
                 custom_function_instantiation(1, &type_),
-                Vec::new(),
-                vec![CaptureArg::int(IntLocalId(0), IntExpr::panic(panic()))],
+                vec![CaptureArg::new(crate::plan::Expr::int(IntExpr::panic(
+                    panic(),
+                )))],
                 type_.clone(),
             ),
             CustomFunctionExpr::tuple_index(
@@ -447,10 +444,13 @@ pub fn main() {
     }
 
     fn run_module_custom_function_expression(expression: CustomFunctionExpr) -> ExecutionError {
-        let custom_target = FunctionTemplate::new(
+        let custom_target = FunctionTemplate::with_captures(
             FunctionTemplateId::new(1),
             "custom_target".into(),
             Vec::new(),
+            vec![crate::plan::ParamSlot::from_local(
+                crate::plan::ParamLocal::int(IntLocalId(0)),
+            )],
             vec![Step::evaluate(Expr::int(IntExpr::local_get(
                 IntLocalId(0),
                 "capture".into(),

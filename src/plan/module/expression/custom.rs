@@ -316,10 +316,6 @@ impl CustomLocalExpr {
         Self { local, value }
     }
 
-    pub(super) fn from_parts(local: CustomLocal, value: CustomExpr) -> Self {
-        Self { local, value }
-    }
-
     pub(crate) fn local(&self) -> &CustomLocal {
         &self.local
     }
@@ -449,7 +445,7 @@ mod tests {
     use super::{CustomArgumentCountMismatch, CustomExpr, CustomExprKind};
     use crate::plan::{
         CallArg, CustomConstructor, CustomConstructorField, CustomFunctionExpr, CustomType,
-        CustomTypeName, Expr, IntExpr, IntLocalId, ValueType,
+        CustomTypeName, Expr, IntExpr, ValueType,
     };
 
     #[test]
@@ -526,7 +522,7 @@ mod tests {
             vec![CustomConstructorField::new(None, ValueType::Int)],
         );
         let function = CustomFunctionExpr::constructor(constructor);
-        let argument = CallArg::int(IntLocalId(0), IntExpr::value(1.into()));
+        let argument = CallArg::new(crate::plan::Expr::int(IntExpr::value(1.into())));
 
         assert_eq!(
             CustomExpr::try_function_call(function.clone(), Vec::new()),

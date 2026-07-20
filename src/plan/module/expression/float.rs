@@ -381,7 +381,6 @@ mod tests {
     fn function_expr() -> crate::plan::FloatFunctionExpr {
         crate::plan::FloatFunctionExpr::reference(FloatFunctionReference::new(
             function_instantiation(),
-            Vec::new(),
         ))
     }
 

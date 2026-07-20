@@ -1,10 +1,8 @@
 use crate::plan::CustomFieldAccess;
-#[cfg(test)]
-use crate::plan::ParamLocal;
 use crate::plan::{
     BoolExpr, CaptureArg, ConstantTupleFunctionInstantiation, FloatExpr, FunctionFunctionExpr,
-    FunctionInstantiation, FunctionListExpr, FunctionType, IntExpr, PanicExpr, ParamSlot, Step,
-    StringExpr, TupleExpr, TupleFunctionLocalId, TupleFunctionReference, ValueType,
+    FunctionInstantiation, FunctionListExpr, FunctionType, IntExpr, PanicExpr, Step, StringExpr,
+    TupleExpr, TupleFunctionLocalId, TupleFunctionReference, ValueType,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -21,7 +19,6 @@ pub(crate) enum TupleFunctionExprKind {
     Reference(TupleFunctionReference),
     Closure {
         function: FunctionInstantiation,
-        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
         return_type: Vec<ValueType>,
     },
@@ -93,9 +90,8 @@ impl TupleFunctionExpr {
         }
     }
 
-    pub(crate) fn closure_slots(
+    pub(crate) fn closure(
         function: FunctionInstantiation,
-        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
         type_: FunctionType,
         return_type: Vec<ValueType>,
@@ -104,28 +100,10 @@ impl TupleFunctionExpr {
             type_,
             kind: TupleFunctionExprKind::Closure {
                 function,
-                params,
                 captures,
                 return_type,
             },
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn closure(
-        function: FunctionInstantiation,
-        params: Vec<ParamLocal>,
-        captures: Vec<CaptureArg>,
-        type_: FunctionType,
-        return_type: Vec<ValueType>,
-    ) -> Self {
-        Self::closure_slots(
-            function,
-            params.into_iter().map(ParamSlot::from_local).collect(),
-            captures,
-            type_,
-            return_type,
-        )
     }
 
     pub(crate) fn local_get(
@@ -293,7 +271,7 @@ mod tests {
     use super::{TupleFunctionExpr, TupleFunctionExprKind};
     use crate::plan::{
         BoolExpr, Expr, FunctionFunctionExpr, FunctionFunctionReference, FunctionInstantiation,
-        FunctionShape, FunctionType, IntExpr, ParamLocal, Step, TupleExpr, TupleFunctionLocalId,
+        FunctionShape, FunctionType, IntExpr, Step, TupleExpr, TupleFunctionLocalId,
         TupleFunctionReference, ValueShape, ValueType, monomorphic_function_instantiation,
     };
 
@@ -301,15 +279,13 @@ mod tests {
     fn tuple_function_expr_kind_accessors() {
         assert_eq!(
             tuple_function_value().kind(),
-            &TupleFunctionExprKind::Reference(TupleFunctionReference::new(
-                function_instantiation(),
-                vec![ParamLocal::int(crate::plan::IntLocalId(0))],
-            )),
+            &TupleFunctionExprKind::Reference(
+                TupleFunctionReference::new(function_instantiation())
+            ),
         );
         assert_eq!(
             TupleFunctionExpr::closure(
                 function_instantiation(),
-                vec![ParamLocal::int(crate::plan::IntLocalId(0))],
                 Vec::new(),
                 tuple_function_type(),
                 tuple_type(),
@@ -317,9 +293,6 @@ mod tests {
             .kind(),
             &TupleFunctionExprKind::Closure {
                 function: function_instantiation(),
-                params: vec![crate::plan::ParamSlot::from_local(ParamLocal::int(
-                    crate::plan::IntLocalId(0)
-                ))],
                 captures: Vec::new(),
                 return_type: tuple_type(),
             },
@@ -441,7 +414,6 @@ mod tests {
         assert_eq!(
             TupleFunctionExpr::closure(
                 function_instantiation(),
-                vec![ParamLocal::int(crate::plan::IntLocalId(0))],
                 Vec::new(),
                 tuple_function_type(),
                 tuple_type(),
@@ -474,10 +446,7 @@ mod tests {
     }
 
     fn tuple_function_value() -> TupleFunctionExpr {
-        TupleFunctionExpr::reference(TupleFunctionReference::new(
-            function_instantiation(),
-            vec![ParamLocal::int(crate::plan::IntLocalId(0))],
-        ))
+        TupleFunctionExpr::reference(TupleFunctionReference::new(function_instantiation()))
     }
 
     fn tuple_function_type() -> FunctionType {
@@ -497,7 +466,7 @@ mod tests {
 
     fn function_function_value() -> FunctionFunctionExpr {
         FunctionFunctionExpr::reference(
-            FunctionFunctionReference::new(function_returning_function_instantiation(), Vec::new()),
+            FunctionFunctionReference::new(function_returning_function_instantiation()),
             tuple_function_type(),
         )
     }

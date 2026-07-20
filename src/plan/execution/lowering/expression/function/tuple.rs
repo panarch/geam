@@ -17,10 +17,9 @@ pub(in crate::plan::execution::lowering) fn tuple_function_expr(
         }
         M::Closure {
             function,
-            params,
             captures,
             return_type: _,
-        } => super::closure_template(function, params, captures, context, |id, context| {
+        } => super::closure_template(function, captures, context, |id, context| {
             context.tuple_function_id(id)
         })
         .map(E::Closure),

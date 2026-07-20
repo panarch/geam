@@ -130,7 +130,17 @@ struct LoweringContext {
 struct StoredTargetLocal {
     index: usize,
     shape: specialization::StoredValueShape,
-    substitution: SpecializedTypeSubstitution,
+    origin: StoredTargetOrigin,
+}
+
+enum StoredTargetOrigin {
+    Allocation {
+        specialization: SpecializationKey,
+        key: frame::LocalKey,
+    },
+    Current {
+        substitution: SpecializedTypeSubstitution,
+    },
 }
 
 impl StoredTargetLocal {
@@ -140,18 +150,6 @@ impl StoredTargetLocal {
 
     fn shape(&self) -> &specialization::StoredValueShape {
         &self.shape
-    }
-
-    fn substitution(&self) -> &SpecializedTypeSubstitution {
-        &self.substitution
-    }
-
-    fn custom_shape(&self, shape: &crate::plan::CustomValueShape) -> SpecializedCustomValueShape {
-        SpecializedCustomValueShape::instantiate(shape, &self.substitution)
-    }
-
-    fn function_shape(&self, shape: &crate::plan::FunctionShape) -> SpecializedFunctionShape {
-        SpecializedFunctionShape::instantiate(shape, &self.substitution)
     }
 }
 
@@ -1183,19 +1181,106 @@ impl LoweringContext {
         self.local_index(frame::LocalKey::new(kind, index))
     }
 
-    fn stored_symbolic_target_local(
+    fn target_param_local(
         &mut self,
         instantiation: &crate::plan::FunctionInstantiation,
-        key: frame::LocalKey,
+        position: crate::plan::ParamPosition,
     ) -> StoredTargetLocal {
         let (specialization, _) =
             SpecializationKey::from_instantiation(instantiation, &self.substitution);
+        let key = self.frame_templates[&specialization.template()].param_key(position);
+        self.stored_specialization_local(specialization, key)
+    }
+
+    fn target_param_count(&self, instantiation: &crate::plan::FunctionInstantiation) -> usize {
+        self.frame_templates[&instantiation.template()].param_count()
+    }
+
+    fn target_param_allocation(
+        &mut self,
+        instantiation: &crate::plan::FunctionInstantiation,
+        position: crate::plan::ParamPosition,
+    ) -> specialization::StorageErasure<StoredTargetLocal> {
+        let (specialization, _) =
+            SpecializationKey::from_instantiation(instantiation, &self.substitution);
+        let key = self.frame_templates[&specialization.template()].param_key(position);
+        self.reserve_locals(&specialization);
+        match self.specialization_locals[&specialization].allocation(key) {
+            frame::AllocatedLocal::Stored { index, shape } => {
+                specialization::StorageErasure::Stored(StoredTargetLocal {
+                    index,
+                    shape,
+                    origin: StoredTargetOrigin::Allocation {
+                        specialization,
+                        key,
+                    },
+                })
+            }
+            frame::AllocatedLocal::Uninhabited(_) => specialization::StorageErasure::Erased,
+        }
+    }
+
+    fn target_capture_local(
+        &mut self,
+        instantiation: &crate::plan::FunctionInstantiation,
+        position: crate::plan::CapturePosition,
+    ) -> StoredTargetLocal {
+        let (specialization, _) =
+            SpecializationKey::from_instantiation(instantiation, &self.substitution);
+        let key = self.frame_templates[&specialization.template()].capture_key(position);
+        self.stored_specialization_local(specialization, key)
+    }
+
+    fn stored_specialization_local(
+        &mut self,
+        specialization: SpecializationKey,
+        key: frame::LocalKey,
+    ) -> StoredTargetLocal {
         self.reserve_locals(&specialization);
         let (index, shape) = self.specialization_locals[&specialization].stored_allocation(key);
         StoredTargetLocal {
             index,
             shape,
-            substitution: specialization.substitution().clone(),
+            origin: StoredTargetOrigin::Allocation {
+                specialization,
+                key,
+            },
+        }
+    }
+
+    fn target_custom_shape(
+        &self,
+        target: &StoredTargetLocal,
+        current: &crate::plan::CustomValueShape,
+    ) -> SpecializedCustomValueShape {
+        match &target.origin {
+            StoredTargetOrigin::Allocation {
+                specialization,
+                key,
+            } => self.specialization_locals[specialization]
+                .custom_shape(*key)
+                .clone(),
+            StoredTargetOrigin::Current { substitution } => {
+                SpecializedCustomValueShape::instantiate(current, substitution)
+            }
+        }
+    }
+
+    fn target_function_shape(
+        &self,
+        target: &StoredTargetLocal,
+        current: &crate::plan::FunctionShape,
+    ) -> SpecializedFunctionShape {
+        match &target.origin {
+            StoredTargetOrigin::Allocation {
+                specialization,
+                key,
+            } => self.specialization_locals[specialization]
+                .function_shape(*key)
+                .clone(),
+            StoredTargetOrigin::Current { substitution } => {
+                SpecializedFunctionShape::instantiate(current, substitution)
+            }
         }
     }
 
@@ -1207,7 +1292,9 @@ impl LoweringContext {
         StoredTargetLocal {
             index,
             shape,
-            substitution: self.substitution.clone(),
+            origin: StoredTargetOrigin::Current {
+                substitution: self.substitution.clone(),
+            },
         }
     }
 
@@ -2246,6 +2333,8 @@ mod tests {
         let parameter = TypeParameterId(0);
         let capture_local =
             crate::plan::GenericLocal::new(crate::plan::GenericLocalId(0), parameter);
+        let captured_local =
+            crate::plan::GenericLocal::new(crate::plan::GenericLocalId(1), parameter);
         let capture_target_signature = crate::plan::FunctionTemplateSignature::new(
             crate::plan::FunctionTemplateId::new(1),
             crate::plan::TypeScheme::new(1),
@@ -2260,6 +2349,10 @@ mod tests {
             vec![crate::plan::Param::named_shape(
                 crate::plan::ParamLocal::generic(capture_local),
                 "captured".into(),
+                crate::plan::ValueShape::Parameter(parameter),
+            )],
+            vec![crate::plan::ParamSlot::new(
+                crate::plan::ParamLocal::generic(captured_local),
                 crate::plan::ValueShape::Parameter(parameter),
             )],
             Vec::new(),
@@ -2385,15 +2478,11 @@ mod tests {
                 .expect("a parameter item type should create a generic list expression");
         let list_index = crate::plan::GenericExpr::list_index(empty_list, 0);
 
-        let diverging_local =
-            crate::plan::GenericLocal::new(crate::plan::GenericLocalId(1), parameter);
-        let diverging_argument = crate::plan::CallArg::parametric(
-            crate::plan::ParamSlot::from_local(crate::plan::ParamLocal::generic(diverging_local)),
-            crate::plan::Expr::generic(crate::plan::GenericExpr::panic(
+        let diverging_argument =
+            crate::plan::CallArg::new(crate::plan::Expr::generic(crate::plan::GenericExpr::panic(
                 parameter,
                 crate::plan::PanicExpr::panic_at(None, crate::plan::PanicSite::unknown()),
-            )),
-        );
+            )));
         let diverging_call = crate::plan::GenericExpr::call(
             parameter,
             crate::plan::monomorphic_function_instantiation(
@@ -2405,10 +2494,7 @@ mod tests {
             ),
             vec![diverging_argument],
         );
-        let erased_argument = crate::plan::CallArg::parametric(
-            crate::plan::ParamSlot::from_local(crate::plan::ParamLocal::generic(diverging_local)),
-            crate::plan::Expr::generic(local.clone()),
-        );
+        let erased_argument = crate::plan::CallArg::new(crate::plan::Expr::generic(local.clone()));
         let erased_direct_call = crate::plan::GenericExpr::call(
             parameter,
             crate::plan::monomorphic_function_instantiation(
@@ -2438,15 +2524,12 @@ mod tests {
                     parameter,
                 ),
             ),
-            vec![crate::plan::CallArg::parametric(
-                crate::plan::ParamSlot::from_local(crate::plan::ParamLocal::generic(
-                    crate::plan::GenericLocal::new(crate::plan::GenericLocalId(2), parameter),
-                )),
-                crate::plan::Expr::generic(crate::plan::GenericExpr::panic(
+            vec![crate::plan::CallArg::new(crate::plan::Expr::generic(
+                crate::plan::GenericExpr::panic(
                     parameter,
                     crate::plan::PanicExpr::panic_at(None, crate::plan::PanicSite::unknown()),
-                )),
-            )],
+                ),
+            ))],
         );
         let parameter_list_call = crate::plan::ListExpr::function_call(
             crate::plan::ListFunctionExpr::panic(
@@ -2457,15 +2540,12 @@ mod tests {
                 ),
                 ValueType::Parameter(parameter),
             ),
-            vec![crate::plan::CallArg::parametric(
-                crate::plan::ParamSlot::from_local(crate::plan::ParamLocal::generic(
-                    crate::plan::GenericLocal::new(crate::plan::GenericLocalId(3), parameter),
-                )),
-                crate::plan::Expr::generic(crate::plan::GenericExpr::panic(
+            vec![crate::plan::CallArg::new(crate::plan::Expr::generic(
+                crate::plan::GenericExpr::panic(
                     parameter,
                     crate::plan::PanicExpr::panic_at(None, crate::plan::PanicSite::unknown()),
-                )),
-            )],
+                ),
+            ))],
         )
         .into_generic()
         .expect("a parameter item type should create a generic-list expression");
@@ -2656,20 +2736,14 @@ mod tests {
                     crate::plan::ValueShape::Parameter(parameter),
                 ),
             ),
-            vec![crate::plan::CallArg::parametric(
-                crate::plan::ParamSlot::from_local(crate::plan::ParamLocal::generic(
-                    crate::plan::GenericLocal::new(crate::plan::GenericLocalId(1), parameter),
-                )),
-                crate::plan::Expr::generic(local),
-            )],
+            vec![crate::plan::CallArg::new(crate::plan::Expr::generic(local))],
         );
         assert_eq!(
             super::expression::capture_args(
                 &capture_target,
-                &[crate::plan::CaptureArg::generic(
-                    crate::plan::GenericLocal::new(crate::plan::GenericLocalId(0), parameter),
-                    erased_capture_source,
-                )],
+                &[crate::plan::CaptureArg::new(crate::plan::Expr::generic(
+                    erased_capture_source
+                ))],
                 &mut context,
             )
             .map(|_| ()),
@@ -2797,12 +2871,9 @@ mod tests {
                 returned_shape,
             ),
         );
-        let argument_local =
-            crate::plan::GenericLocal::new(crate::plan::GenericLocalId(0), parameter);
-        let argument = crate::plan::CallArg::parametric(
-            crate::plan::ParamSlot::from_local(crate::plan::ParamLocal::generic(argument_local)),
-            crate::plan::Expr::generic(crate::plan::GenericExpr::panic(parameter, panic())),
-        );
+        let argument = crate::plan::CallArg::new(crate::plan::Expr::generic(
+            crate::plan::GenericExpr::panic(parameter, panic()),
+        ));
         let function_call =
             crate::plan::CustomFunctionExpr::try_function_call(function_function, vec![argument])
                 .expect("the function-function argument count should match");

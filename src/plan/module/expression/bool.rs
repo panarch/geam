@@ -634,7 +634,6 @@ mod tests {
     fn function_expr() -> crate::plan::BoolFunctionExpr {
         crate::plan::BoolFunctionExpr::reference(BoolFunctionReference::new(
             function_instantiation(),
-            Vec::new(),
         ))
     }
 

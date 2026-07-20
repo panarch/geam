@@ -1207,8 +1207,7 @@ impl ConstantTemplates {
         reference: &FunctionReference,
         substitution: &TypeSubstitution,
     ) -> TypedFunctionReference<Function> {
-        let (instantiation, params) = reference.substitute(substitution).into_parts();
-        TypedFunctionReference::from_slots(instantiation, params)
+        TypedFunctionReference::new(reference.substitute(substitution).into_instantiation())
     }
 
     pub(crate) fn materialize_generic_function(
@@ -3720,10 +3719,10 @@ mod tests {
             .expect("a monomorphic tuple constant should instantiate without arguments");
 
         let function_shape = FunctionShape::new(vec![ValueShape::Int], ValueShape::String);
-        let function_reference = FunctionReference::new(
-            monomorphic_function_instantiation(3, function_shape.clone()),
-            Vec::new(),
-        );
+        let function_reference = FunctionReference::new(monomorphic_function_instantiation(
+            3,
+            function_shape.clone(),
+        ));
         let function_base = ConstantTemplateSignature::function(
             ConstantTemplateId(16),
             0,
@@ -4669,10 +4668,10 @@ pub fn main() {
         );
         let tuple_shape = vec![ValueShape::Int, ValueShape::String].into_boxed_slice();
         let function_shape = FunctionShape::new(vec![ValueShape::Int], ValueShape::String);
-        let function_reference = FunctionReference::new(
-            monomorphic_function_instantiation(5, function_shape.clone()),
-            Vec::new(),
-        );
+        let function_reference = FunctionReference::new(monomorphic_function_instantiation(
+            5,
+            function_shape.clone(),
+        ));
 
         let item_shapes = vec![
             ValueShape::Int,

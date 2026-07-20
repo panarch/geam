@@ -2950,6 +2950,7 @@ pub fn main() {
             "main".into(),
             Vec::new(),
             Vec::new(),
+            Vec::new(),
             ReturnExpr::generic_list_body(parameter, GenericListReturn::expr(expression)),
         );
         let module = ModulePlan::new("main".into(), main, Vec::new());

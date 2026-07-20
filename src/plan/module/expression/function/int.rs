@@ -1,10 +1,8 @@
 use crate::plan::CustomFieldAccess;
-#[cfg(test)]
-use crate::plan::ParamLocal;
 use crate::plan::{
     BoolExpr, CaptureArg, ConstantIntFunctionInstantiation, FloatExpr, FunctionFunctionExpr,
     FunctionInstantiation, FunctionListExpr, FunctionType, IntExpr, IntFunctionLocalId,
-    IntFunctionReference, PanicExpr, ParamSlot, Step, StringExpr, TupleExpr,
+    IntFunctionReference, PanicExpr, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -21,7 +19,6 @@ pub(crate) enum IntFunctionExprKind {
     Reference(IntFunctionReference),
     Closure {
         function: FunctionInstantiation,
-        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
     },
     LocalGet {
@@ -92,35 +89,15 @@ impl IntFunctionExpr {
         }
     }
 
-    pub(crate) fn closure_slots(
+    pub(crate) fn closure(
         function: FunctionInstantiation,
-        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
         type_: FunctionType,
     ) -> Self {
         Self {
             type_,
-            kind: IntFunctionExprKind::Closure {
-                function,
-                params,
-                captures,
-            },
+            kind: IntFunctionExprKind::Closure { function, captures },
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn closure(
-        function: FunctionInstantiation,
-        params: Vec<ParamLocal>,
-        captures: Vec<CaptureArg>,
-        type_: FunctionType,
-    ) -> Self {
-        Self::closure_slots(
-            function,
-            params.into_iter().map(ParamSlot::from_local).collect(),
-            captures,
-            type_,
-        )
     }
 
     pub(crate) fn local_get(
@@ -288,8 +265,8 @@ mod tests {
     use super::{IntFunctionExpr, IntFunctionExprKind};
     use crate::plan::{
         BoolExpr, Expr, FunctionFunctionExpr, FunctionFunctionReference, FunctionInstantiation,
-        FunctionShape, FunctionType, IntExpr, IntFunctionLocalId, IntFunctionReference, IntLocalId,
-        ParamLocal, Step, StringExpr, ValueShape, ValueType, monomorphic_function_instantiation,
+        FunctionShape, FunctionType, IntExpr, IntFunctionLocalId, IntFunctionReference, Step,
+        StringExpr, ValueShape, ValueType, monomorphic_function_instantiation,
     };
 
     #[test]
@@ -300,24 +277,13 @@ mod tests {
         );
         assert_eq!(
             int_function_value().kind(),
-            &IntFunctionExprKind::Reference(IntFunctionReference::new(
-                function_instantiation(),
-                vec![ParamLocal::int(IntLocalId(0))],
-            )),
+            &IntFunctionExprKind::Reference(IntFunctionReference::new(function_instantiation())),
         );
         assert_eq!(
-            IntFunctionExpr::closure(
-                function_instantiation(),
-                vec![ParamLocal::int(IntLocalId(0))],
-                Vec::new(),
-                int_function_type(),
-            )
-            .kind(),
+            IntFunctionExpr::closure(function_instantiation(), Vec::new(), int_function_type(),)
+                .kind(),
             &IntFunctionExprKind::Closure {
                 function: function_instantiation(),
-                params: vec![crate::plan::ParamSlot::from_local(ParamLocal::int(
-                    IntLocalId(0)
-                ))],
                 captures: Vec::new(),
             },
         );
@@ -456,10 +422,7 @@ mod tests {
     }
 
     fn int_function_value() -> IntFunctionExpr {
-        IntFunctionExpr::reference(IntFunctionReference::new(
-            function_instantiation(),
-            vec![ParamLocal::int(IntLocalId(0))],
-        ))
+        IntFunctionExpr::reference(IntFunctionReference::new(function_instantiation()))
     }
 
     fn int_function_type() -> FunctionType {
@@ -468,7 +431,7 @@ mod tests {
 
     fn function_function_value() -> FunctionFunctionExpr {
         FunctionFunctionExpr::reference(
-            FunctionFunctionReference::new(function_returning_function_instantiation(), Vec::new()),
+            FunctionFunctionReference::new(function_returning_function_instantiation()),
             int_function_type(),
         )
     }

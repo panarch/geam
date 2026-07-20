@@ -24,14 +24,17 @@ pub(super) fn param_slot(
 
 pub(super) fn target_param_slot(
     function: &module::FunctionInstantiation,
-    slot: &module::ParamSlot,
+    position: module::ParamPosition,
     context: &mut super::LoweringContext,
-) -> super::super::ParamSlot {
-    let target =
-        context.stored_symbolic_target_local(function, super::frame::param_local_key(slot.local()));
-    let shape = context.types.value_shape(&target.shape().to_specialized());
-    let local = super::frame::stored_value_local_at(target.shape(), target.index(), context);
-    super::super::ParamSlot::new(local, shape)
+) -> super::specialization::StorageErasure<super::super::ParamSlot> {
+    context
+        .target_param_allocation(function, position)
+        .map(|target| {
+            let shape = context.types.value_shape(&target.shape().to_specialized());
+            let local =
+                super::frame::stored_value_local_at(target.shape(), target.index(), context);
+            super::super::ParamSlot::new(local, shape)
+        })
 }
 
 #[cfg(test)]

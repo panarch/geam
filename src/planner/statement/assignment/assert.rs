@@ -585,16 +585,10 @@ pub fn main() {
                     origin: VariableOrigin::generated(),
                 },
                 crate::plan::Expr::function(FunctionExpr::int(IntFunctionExpr::reference(
-                    IntFunctionReference::new(
-                        crate::plan::monomorphic_function_instantiation(
-                            0,
-                            crate::plan::FunctionShape::new(
-                                Vec::new(),
-                                crate::plan::ValueShape::Int,
-                            ),
-                        ),
-                        Vec::new(),
-                    ),
+                    IntFunctionReference::new(crate::plan::monomorphic_function_instantiation(
+                        0,
+                        crate::plan::FunctionShape::new(Vec::new(), crate::plan::ValueShape::Int),
+                    )),
                 ))),
             ),
         ];

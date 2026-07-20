@@ -1154,11 +1154,11 @@ mod tests {
     };
     use crate::plan::{
         BitArrayExpr, BoolExpr, CustomConstructorRefinement, CustomExpr, CustomFieldAccess,
-        CustomLocal, CustomLocalId, CustomType, CustomTypeName, CustomValueShape, Expr, FloatExpr,
-        FunctionExpr, FunctionReference, FunctionShape, FunctionType, GenericExpr, GenericLocal,
-        GenericLocalId, IntExpr, IntListLocalId, ListFunctionExpr, ListFunctionReference,
-        ListLocal, NilExpr, PanicExpr, PanicSite, Step, StringExpr, TupleExpr, TypeParameterId,
-        UtfCodepointExpr, UtfCodepointLocalId, ValueShape, ValueStorageShape, ValueType,
+        CustomLocalId, CustomType, CustomTypeName, CustomValueShape, Expr, FloatExpr, FunctionExpr,
+        FunctionReference, FunctionShape, FunctionType, GenericExpr, GenericLocal, GenericLocalId,
+        IntExpr, IntListLocalId, ListFunctionExpr, ListFunctionReference, ListLocal, NilExpr,
+        PanicExpr, PanicSite, Step, StringExpr, TupleExpr, TypeParameterId, UtfCodepointExpr,
+        UtfCodepointLocalId, ValueShape, ValueStorageShape, ValueType,
         monomorphic_function_instantiation,
     };
     use num_bigint::BigInt;
@@ -1252,13 +1252,11 @@ mod tests {
         );
 
         let function_type = FunctionType::new(Vec::new(), ValueType::Int);
-        let function = FunctionExpr::reference(FunctionReference::new(
-            monomorphic_function_instantiation(
+        let function =
+            FunctionExpr::reference(FunctionReference::new(monomorphic_function_instantiation(
                 0,
                 FunctionShape::from_function_type(function_type.clone()),
-            ),
-            Vec::new(),
-        ));
+            )));
         assert_eq!(
             ListExpr::value(
                 vec![Expr::function(function.clone())],
@@ -1305,13 +1303,10 @@ mod tests {
                 vec![ValueShape::Custom(custom_shape.clone())],
                 ValueShape::Int,
             );
-            FunctionExpr::reference(FunctionReference::new(
-                monomorphic_function_instantiation(id, shape.clone()),
-                vec![crate::plan::ParamLocal::Custom(CustomLocal::from_shape(
-                    CustomLocalId(0),
-                    custom_shape,
-                ))],
-            ))
+            FunctionExpr::reference(FunctionReference::new(monomorphic_function_instantiation(
+                id,
+                shape.clone(),
+            )))
             .with_resolved_shape(shape)
             .expect("function shape has the same nominal type")
         };
@@ -1454,7 +1449,7 @@ mod tests {
         );
 
         let list_function = ListFunctionExpr::reference(
-            ListFunctionReference::new(list_function_instantiation(0, ValueShape::Int), Vec::new()),
+            ListFunctionReference::new(list_function_instantiation(0, ValueShape::Int)),
             ValueType::Int,
         );
         assert_eq!(
@@ -1730,10 +1725,7 @@ mod tests {
             assert_eq!(
                 ListExpr::function_call(
                     ListFunctionExpr::reference(
-                        ListFunctionReference::new(
-                            list_function_instantiation(0, item_shape),
-                            Vec::new(),
-                        ),
+                        ListFunctionReference::new(list_function_instantiation(0, item_shape)),
                         item_type.clone()
                     ),
                     Vec::new(),
@@ -2019,13 +2011,10 @@ mod tests {
         assert_eq!(
             ListExpr::spread(
                 vec![Expr::function(FunctionExpr::reference(
-                    FunctionReference::new(
-                        monomorphic_function_instantiation(
-                            0,
-                            FunctionShape::from_function_type(function_type.clone()),
-                        ),
-                        Vec::new(),
-                    )
+                    FunctionReference::new(monomorphic_function_instantiation(
+                        0,
+                        FunctionShape::from_function_type(function_type.clone()),
+                    ))
                 ))],
                 ListExpr::value(
                     Vec::new(),

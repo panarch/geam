@@ -98,10 +98,11 @@ fn pair(callback: fn() -> Int) {
                 "main",
                 int_return_tail_call(
                     1,
-                    [int_function_arg(
-                        0,
-                        int_function_closure(2, Vec::<LocalId>::new(), []),
-                    )],
+                    [int_function_arg(int_function_closure(
+                        2,
+                        Vec::<LocalId>::new(),
+                        [],
+                    ))],
                 ),
             ),
             [function(
@@ -139,17 +140,18 @@ pub fn main() {
                 "main",
                 int_return_tail_call(
                     1,
-                    [int_function_arg(
-                        0,
-                        int_function_closure(2, [LocalId::Int(IntLocalId(0))], []),
-                    )],
+                    [int_function_arg(int_function_closure(
+                        2,
+                        [LocalId::Int(IntLocalId(0))],
+                        [],
+                    ))],
                 ),
             ),
             [function(
                 "with_value",
                 call_int_function(
                     local_int_function(0, "continue", [ValueType::Int]),
-                    [int_function_call_arg(0, int(1))],
+                    [int_function_call_arg(int(1))],
                 ),
             )
             .param_int_function(0, "continue", [ValueType::Int])],
@@ -200,20 +202,20 @@ pub fn main() {
         let callback = int_function_closure(
             2,
             [LocalId::Int(IntLocalId(0))],
-            [capture_int(1, local_int(0, "base"))],
+            [capture_int(local_int(0, "base"))],
         );
         let expected = module_with_anonymous(
             "main",
             function(
                 "main",
-                int_return_tail_call(1, [int_function_arg(0, callback)]),
+                int_return_tail_call(1, [int_function_arg(callback)]),
             )
             .let_int(0, "base", int(10)),
             [function(
                 "with_value",
                 call_int_function(
                     local_int_function(0, "continue", [ValueType::Int]),
-                    [int_function_call_arg(0, int(32))],
+                    [int_function_call_arg(int(32))],
                 ),
             )
             .param_int_function(0, "continue", [ValueType::Int])],
@@ -221,7 +223,10 @@ pub fn main() {
                 "<anonymous:0>",
                 local_int(0, "value").add_int(local_int(1, "base")),
             )
-            .param_int(0, "value")],
+            .param_int(0, "value")
+            .capture(crate::plan::ParamSlot::from_local(ParamLocal::int(
+                IntLocalId(1),
+            )))],
         );
 
         assert_eq!(actual, expected);
@@ -249,11 +254,12 @@ pub fn main() {
                 int_return_tail_call(
                     1,
                     [
-                        int_arg(0, int(41)),
-                        int_function_arg(
-                            0,
-                            int_function_closure(2, [LocalId::Int(IntLocalId(0))], []),
-                        ),
+                        int_arg(int(41)),
+                        int_function_arg(int_function_closure(
+                            2,
+                            [LocalId::Int(IntLocalId(0))],
+                            [],
+                        )),
                     ],
                 ),
             ),
@@ -261,7 +267,7 @@ pub fn main() {
                 "with_value",
                 call_int_function(
                     local_int_function(0, "continue", [ValueType::Int]),
-                    [int_function_call_arg(0, local_int(0, "value"))],
+                    [int_function_call_arg(local_int(0, "value"))],
                 ),
             )
             .param_int(0, "value")
@@ -299,13 +305,13 @@ pub fn main() {
             "main",
             function(
                 "main",
-                int_return_tail_call(1, [int_function_arg(0, anonymous_ref)]),
+                int_return_tail_call(1, [int_function_arg(anonymous_ref)]),
             ),
             [function(
                 "with_pair",
                 call_int_function(
                     local_int_function(0, "continue", [tuple_type.clone()]),
-                    [tuple_arg(0, tuple([int(1), int(2)]))],
+                    [tuple_arg(tuple([int(1), int(2)]))],
                 ),
             )
             .param_int_function(0, "continue", [tuple_type])],
@@ -393,17 +399,18 @@ pub fn main() {
                 "main",
                 int_return_tail_call(
                     1,
-                    [int_function_arg(
-                        0,
-                        int_function_closure(2, [LocalId::Int(IntLocalId(0))], []),
-                    )],
+                    [int_function_arg(int_function_closure(
+                        2,
+                        [LocalId::Int(IntLocalId(0))],
+                        [],
+                    ))],
                 ),
             ),
             [function(
                 "with_value",
                 call_int_function(
                     local_int_function(0, "continue", [ValueType::Int]),
-                    [int_function_call_arg(0, int(1))],
+                    [int_function_call_arg(int(1))],
                 ),
             )
             .param_int_function(0, "continue", [ValueType::Int])],
@@ -446,27 +453,21 @@ pub fn main() {
                 "main",
                 int_return_tail_call(
                     1,
-                    [int_function_arg(
-                        0,
-                        int_function_closure(
-                            2,
-                            [ParamLocal::tuple(TupleLocalId(0), outer_type.to_vec())],
-                            [],
-                        ),
-                    )],
+                    [int_function_arg(int_function_closure(
+                        2,
+                        [ParamLocal::tuple(TupleLocalId(0), outer_type.to_vec())],
+                        [],
+                    ))],
                 ),
             ),
             [function(
                 "with_pair",
                 call_int_function(
                     local_int_function(0, "continue", [outer_value_type.clone()]),
-                    [tuple_arg(
-                        0,
-                        tuple([
-                            Expr::from(int(1)),
-                            Expr::from(tuple([Expr::from(int(2)), Expr::from(int(3))])),
-                        ]),
-                    )],
+                    [tuple_arg(tuple([
+                        Expr::from(int(1)),
+                        Expr::from(tuple([Expr::from(int(2)), Expr::from(int(3))])),
+                    ]))],
                 ),
             )
             .param_int_function(0, "continue", [outer_value_type])],

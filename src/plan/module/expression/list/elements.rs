@@ -469,13 +469,11 @@ mod tests {
         );
 
         let function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
-        let function = FunctionExpr::reference(FunctionReference::new(
-            monomorphic_function_instantiation(
+        let function =
+            FunctionExpr::reference(FunctionReference::new(monomorphic_function_instantiation(
                 0,
                 FunctionShape::from_function_type(function_type.clone()),
-            ),
-            Vec::new(),
-        ));
+            )));
         assert_eq!(
             ListElements::from_exprs(
                 ValueType::Function(Box::new(function_type.clone())),
@@ -574,13 +572,11 @@ mod tests {
             }),
         );
 
-        let function = FunctionExpr::reference(FunctionReference::new(
-            monomorphic_function_instantiation(
+        let function =
+            FunctionExpr::reference(FunctionReference::new(monomorphic_function_instantiation(
                 0,
                 FunctionShape::from_function_type(FunctionType::new(Vec::new(), ValueType::Int)),
-            ),
-            Vec::new(),
-        ));
+            )));
         assert_eq!(
             ListElements::from_exprs(
                 ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::String))),
@@ -749,13 +745,11 @@ mod tests {
         );
         let nested_value = StoredListExpr::Int(IntListExpr::value(IntListItem, Vec::new()));
         let int_to_int = FunctionType::new(vec![ValueType::Int], ValueType::Int);
-        let function_value = FunctionExpr::reference(FunctionReference::new(
-            monomorphic_function_instantiation(
+        let function_value =
+            FunctionExpr::reference(FunctionReference::new(monomorphic_function_instantiation(
                 0,
                 FunctionShape::from_function_type(int_to_int.clone()),
-            ),
-            Vec::new(),
-        ));
+            )));
 
         assert_eq!(
             ListSpreadElements::from_parts(

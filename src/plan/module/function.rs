@@ -37,17 +37,22 @@ use crate::plan::{ValueRepresentation, ValueShape};
 pub struct FunctionTemplate {
     signature: FunctionTemplateSignature,
     name: EcoString,
-    params: Vec<Param>,
+    entry: FunctionEntry,
     steps: Vec<Step>,
     return_: ReturnExpr,
     frame_layout: FrameLayout,
 }
 
 #[derive(Debug, PartialEq)]
+pub(crate) struct FunctionEntry {
+    params: Box<[Param]>,
+    captures: Box<[ParamSlot]>,
+}
+
+#[derive(Debug, PartialEq)]
 pub struct Param {
-    local: ParamLocal,
+    slot: ParamSlot,
     binding: ParamBinding,
-    shape: crate::plan::ValueShape,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,6 +60,12 @@ pub(crate) struct ParamSlot {
     local: ParamLocal,
     shape: crate::plan::ValueShape,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ParamPosition(usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CapturePosition(usize);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParamBinding {
@@ -1123,6 +1134,18 @@ impl FunctionTemplate {
         steps: Vec<Step>,
         return_: ReturnExpr,
     ) -> Self {
+        Self::with_captures(id, name, params, Vec::new(), steps, return_)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_captures(
+        id: FunctionTemplateId,
+        name: EcoString,
+        params: Vec<Param>,
+        captures: Vec<ParamSlot>,
+        steps: Vec<Step>,
+        return_: ReturnExpr,
+    ) -> Self {
         let signature = FunctionTemplateSignature::new(
             id,
             TypeScheme::new(0),
@@ -1131,13 +1154,14 @@ impl FunctionTemplate {
                 crate::plan::ValueShape::from_value_type(return_.value_type()),
             ),
         );
-        Self::from_signature(signature, name, params, steps, return_)
+        Self::from_signature(signature, name, params, captures, steps, return_)
     }
 
     pub(crate) fn from_signature(
         signature: FunctionTemplateSignature,
         name: EcoString,
         params: Vec<Param>,
+        captures: Vec<ParamSlot>,
         steps: Vec<Step>,
         return_: ReturnExpr,
     ) -> Self {
@@ -1146,7 +1170,7 @@ impl FunctionTemplate {
         Self {
             signature,
             name,
-            params,
+            entry: FunctionEntry::new(params, captures),
             steps,
             return_,
             frame_layout,
@@ -1170,7 +1194,11 @@ impl FunctionTemplate {
     }
 
     pub fn params(&self) -> &[Param] {
-        &self.params
+        self.entry.params()
+    }
+
+    pub(crate) fn entry(&self) -> &FunctionEntry {
+        &self.entry
     }
 
     pub fn steps(&self) -> &[Step] {
@@ -2119,9 +2147,8 @@ impl Param {
         shape: crate::plan::ValueShape,
     ) -> Self {
         Self {
-            local,
+            slot: ParamSlot::new(local, shape),
             binding: ParamBinding::Named(name),
-            shape,
         }
     }
 
@@ -2133,9 +2160,8 @@ impl Param {
 
     pub(crate) fn discard_shape(local: ParamLocal, shape: crate::plan::ValueShape) -> Self {
         Self {
-            local,
+            slot: ParamSlot::new(local, shape),
             binding: ParamBinding::Discard,
-            shape,
         }
     }
 
@@ -2151,11 +2177,48 @@ impl Param {
     }
 
     pub(crate) fn local(&self) -> &ParamLocal {
-        &self.local
+        self.slot.local()
     }
 
     pub(crate) fn shape(&self) -> &crate::plan::ValueShape {
-        &self.shape
+        self.slot.shape()
+    }
+}
+
+impl FunctionEntry {
+    pub(crate) fn new(params: Vec<Param>, captures: Vec<ParamSlot>) -> Self {
+        Self {
+            params: params.into_boxed_slice(),
+            captures: captures.into_boxed_slice(),
+        }
+    }
+
+    pub(crate) fn params(&self) -> &[Param] {
+        &self.params
+    }
+
+    pub(crate) fn captures(&self) -> &[ParamSlot] {
+        &self.captures
+    }
+}
+
+impl ParamPosition {
+    pub(crate) fn new(index: usize) -> Self {
+        Self(index)
+    }
+
+    pub(crate) fn index(self) -> usize {
+        self.0
+    }
+}
+
+impl CapturePosition {
+    pub(crate) fn new(index: usize) -> Self {
+        Self(index)
+    }
+
+    pub(crate) fn index(self) -> usize {
+        self.0
     }
 }
 
@@ -2170,10 +2233,6 @@ impl ParamSlot {
 
     pub(crate) fn shape(&self) -> &crate::plan::ValueShape {
         &self.shape
-    }
-
-    pub(crate) fn value_type(&self) -> ValueType {
-        self.shape.value_type()
     }
 
     #[cfg(test)]
@@ -2340,11 +2399,12 @@ impl ParamLocal {
 #[cfg(test)]
 mod tests {
     use super::{
-        BitArrayListReturn, BoolListReturn, CustomFunctionReturn, CustomListReturn, CustomReturn,
-        FloatListReturn, FunctionFunctionReturn, FunctionListReturn, FunctionTemplate,
-        GenericFunctionReturn, GenericListReturn, GenericReturn, IntListReturn, ListListReturn,
-        ListReturn, NilListReturn, Param, ParamBinding, ParamLocal, ParameterListListReturn,
-        ReturnBody, ReturnBodyKind, ReturnExpr, StringListReturn, TupleListReturn,
+        BitArrayListReturn, BoolListReturn, CapturePosition, CustomFunctionReturn,
+        CustomListReturn, CustomReturn, FloatListReturn, FunctionFunctionReturn,
+        FunctionListReturn, FunctionTemplate, GenericFunctionReturn, GenericListReturn,
+        GenericReturn, IntListReturn, ListListReturn, ListReturn, NilListReturn, Param,
+        ParamBinding, ParamLocal, ParamPosition, ParamSlot, ParameterListListReturn, ReturnBody,
+        ReturnBodyKind, ReturnExpr, StringListReturn, TupleListReturn,
     };
     use crate::plan::{
         BitArrayExpr, BoolExpr, BoolFunctionLocalId, BoolLocalId, CustomConstructorRefinement,
@@ -2536,6 +2596,42 @@ mod tests {
             &ReturnExpr::int_body(ReturnBody::expr(IntExpr::value(BigInt::from(1))))
         );
         assert_eq!(function.frame_layout().ints(), 1);
+    }
+
+    #[test]
+    fn function_entry_owns_ordered_parameter_and_capture_destinations() {
+        let function = FunctionTemplate::with_captures(
+            FunctionTemplateId::new(0),
+            "anonymous".into(),
+            vec![
+                Param::named(ParamLocal::int(IntLocalId(0)), "first".into()),
+                Param::discard(ParamLocal::string(crate::plan::StringLocalId(0))),
+            ],
+            vec![
+                ParamSlot::from_local(ParamLocal::bool(BoolLocalId(0))),
+                ParamSlot::from_local(ParamLocal::utf_codepoint(UtfCodepointLocalId(0))),
+            ],
+            Vec::new(),
+            ReturnExpr::int_body(ReturnBody::expr(IntExpr::value(BigInt::from(1)))),
+        );
+        let entry = function.entry();
+
+        assert_eq!(
+            entry.params(),
+            &[
+                Param::named(ParamLocal::int(IntLocalId(0)), "first".into()),
+                Param::discard(ParamLocal::string(crate::plan::StringLocalId(0))),
+            ],
+        );
+        assert_eq!(
+            entry.captures(),
+            &[
+                ParamSlot::from_local(ParamLocal::bool(BoolLocalId(0))),
+                ParamSlot::from_local(ParamLocal::utf_codepoint(UtfCodepointLocalId(0))),
+            ],
+        );
+        assert_eq!(ParamPosition::new(1).index(), 1);
+        assert_eq!(CapturePosition::new(1).index(), 1);
     }
 
     #[test]
@@ -2952,7 +3048,6 @@ mod tests {
             vec![crate::plan::Expr::function(
                 crate::plan::FunctionExpr::reference(crate::plan::FunctionReference::new(
                     function_instantiation,
-                    Vec::new(),
                 )),
             )],
             ValueType::Function(Box::new(function_type.clone())),

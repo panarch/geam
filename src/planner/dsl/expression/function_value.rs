@@ -11,11 +11,10 @@ use crate::plan::{
     FunctionReference, FunctionShape, FunctionType, GenericFunctionExpr, GenericFunctionReference,
     GenericFunctionType, IntFunctionExpr, IntFunctionLocalId, IntFunctionReference,
     ListFunctionExpr, ListFunctionLocal, ListFunctionReference, NilFunctionExpr,
-    NilFunctionLocalId, NilFunctionReference, ParamLocal, ParamSlot, RuntimeFunctionId,
-    StringFunctionExpr, StringFunctionLocalId, StringFunctionReference, TupleFunctionExpr,
-    TupleFunctionLocalId, TupleFunctionReference, TypeParameterId, UtfCodepointFunctionExpr,
-    UtfCodepointFunctionLocalId, UtfCodepointFunctionReference, ValueShape, ValueType,
-    monomorphic_function_instantiation,
+    NilFunctionLocalId, NilFunctionReference, ParamLocal, RuntimeFunctionId, StringFunctionExpr,
+    StringFunctionLocalId, StringFunctionReference, TupleFunctionExpr, TupleFunctionLocalId,
+    TupleFunctionReference, TypeParameterId, UtfCodepointFunctionExpr, UtfCodepointFunctionLocalId,
+    UtfCodepointFunctionReference, ValueShape, ValueType, monomorphic_function_instantiation,
 };
 
 use ecow::EcoString;
@@ -127,7 +126,6 @@ pub(crate) fn function_ref(
     let (template, return_) = runtime_function_template(&target);
     Function(FunctionExpr::reference(FunctionReference::new(
         instantiation(template, &params, return_),
-        params,
     )))
 }
 
@@ -146,10 +144,11 @@ pub(crate) fn generic_function_ref(
     );
 
     Function(FunctionExpr::generic(GenericFunctionExpr::reference(
-        GenericFunctionReference::new(
-            instantiation(template, &params, ValueShape::Parameter(return_parameter)),
-            params,
-        ),
+        GenericFunctionReference::new(instantiation(
+            template,
+            &params,
+            ValueShape::Parameter(return_parameter),
+        )),
         type_,
     )))
 }
@@ -164,7 +163,6 @@ pub(crate) fn int_function_ref(
         .collect::<Vec<_>>();
     IntFunction(IntFunctionExpr::reference(IntFunctionReference::new(
         instantiation(template, &params, ValueShape::Int),
-        params,
     )))
 }
 
@@ -181,7 +179,6 @@ pub(crate) fn int_function_closure(
 
     IntFunction(IntFunctionExpr::closure(
         instantiation(template, &params, ValueShape::Int),
-        params,
         captures.into_iter().collect(),
         type_,
     ))
@@ -197,7 +194,6 @@ pub(crate) fn string_function_ref(
         .collect::<Vec<_>>();
     StringFunction(StringFunctionExpr::reference(StringFunctionReference::new(
         instantiation(template, &params, ValueShape::String),
-        params,
     )))
 }
 
@@ -210,10 +206,7 @@ pub(crate) fn bit_array_function_ref(
         .map(IntoParamLocal::into_param_local)
         .collect::<Vec<_>>();
     BitArrayFunction(BitArrayFunctionExpr::reference(
-        BitArrayFunctionReference::new(
-            instantiation(template, &params, ValueShape::BitArray),
-            params,
-        ),
+        BitArrayFunctionReference::new(instantiation(template, &params, ValueShape::BitArray)),
     ))
 }
 
@@ -230,7 +223,6 @@ pub(crate) fn bit_array_function_closure(
 
     BitArrayFunction(BitArrayFunctionExpr::closure(
         instantiation(template, &params, ValueShape::BitArray),
-        params,
         captures.into_iter().collect(),
         type_,
     ))
@@ -245,10 +237,11 @@ pub(crate) fn utf_codepoint_function_ref(
         .map(IntoParamLocal::into_param_local)
         .collect::<Vec<_>>();
     UtfCodepointFunction(UtfCodepointFunctionExpr::reference(
-        UtfCodepointFunctionReference::new(
-            instantiation(template, &params, ValueShape::UtfCodepoint),
-            params,
-        ),
+        UtfCodepointFunctionReference::new(instantiation(
+            template,
+            &params,
+            ValueShape::UtfCodepoint,
+        )),
     ))
 }
 
@@ -265,7 +258,6 @@ pub(crate) fn utf_codepoint_function_closure(
 
     UtfCodepointFunction(UtfCodepointFunctionExpr::closure(
         instantiation(template, &params, ValueShape::UtfCodepoint),
-        params,
         captures.into_iter().collect(),
         type_,
     ))
@@ -281,7 +273,6 @@ pub(crate) fn float_function_ref(
         .collect::<Vec<_>>();
     FloatFunction(FloatFunctionExpr::reference(FloatFunctionReference::new(
         instantiation(template, &params, ValueShape::Float),
-        params,
     )))
 }
 
@@ -298,7 +289,6 @@ pub(crate) fn float_function_closure(
 
     FloatFunction(FloatFunctionExpr::closure(
         instantiation(template, &params, ValueShape::Float),
-        params,
         captures.into_iter().collect(),
         type_,
     ))
@@ -314,7 +304,6 @@ pub(crate) fn bool_function_ref(
         .collect::<Vec<_>>();
     BoolFunction(BoolFunctionExpr::reference(BoolFunctionReference::new(
         instantiation(template, &params, ValueShape::Bool),
-        params,
     )))
 }
 
@@ -328,7 +317,6 @@ pub(crate) fn nil_function_ref(
         .collect::<Vec<_>>();
     NilFunction(NilFunctionExpr::reference(NilFunctionReference::new(
         instantiation(template, &params, ValueShape::Nil),
-        params,
     )))
 }
 
@@ -351,7 +339,6 @@ pub(crate) fn tuple_function_ref(
             &params,
             ValueShape::from_value_type(ValueType::Tuple(return_type)),
         ),
-        params,
     )))
 }
 
@@ -366,14 +353,11 @@ pub(crate) fn list_function_ref(
         .map(IntoParamLocal::into_param_local)
         .collect::<Vec<_>>();
     ListFunction(ListFunctionExpr::reference(
-        ListFunctionReference::new(
-            instantiation(
-                template,
-                &params,
-                ValueShape::List(Box::new(ValueShape::from_value_type(item_type.clone()))),
-            ),
-            params,
-        ),
+        ListFunctionReference::new(instantiation(
+            template,
+            &params,
+            ValueShape::List(Box::new(ValueShape::from_value_type(item_type.clone()))),
+        )),
         item_type,
     ))
 }
@@ -400,7 +384,6 @@ pub(crate) fn tuple_function_closure(
             &params,
             ValueShape::from_value_type(ValueType::Tuple(return_type.clone())),
         ),
-        params,
         captures.into_iter().collect(),
         type_,
         return_type,
@@ -419,13 +402,12 @@ pub(crate) fn list_function_closure(
         .collect::<Vec<_>>();
     let item_type = item_type.into_value_type();
 
-    ListFunction(ListFunctionExpr::closure_slots(
+    ListFunction(ListFunctionExpr::closure(
         instantiation(
             template,
             &params,
             ValueShape::List(Box::new(ValueShape::from_value_type(item_type.clone()))),
         ),
-        params.into_iter().map(ParamSlot::from_local).collect(),
         captures.into_iter().collect(),
         item_type,
     ))
@@ -460,7 +442,7 @@ pub(crate) fn function_function_ref(
         ))),
     );
     FunctionFunction(FunctionFunctionExpr::reference(
-        FunctionFunctionReference::new(function, params),
+        FunctionFunctionReference::new(function),
         return_type,
     ))
 }
@@ -486,7 +468,6 @@ pub(crate) fn function_function_closure(
             &params,
             ValueShape::Function(Box::new(FunctionShape::from_function_type(return_type))),
         ),
-        params,
         captures.into_iter().collect(),
         type_,
     ))
@@ -693,14 +674,11 @@ mod tests {
                 RuntimeFunctionId::Int(crate::plan::IntFunctionId(0)),
                 [crate::plan::LocalId::Int(crate::plan::IntLocalId(0))],
             )),
-            FunctionExpr::reference(FunctionReference::new(
-                instantiation(
-                    0,
-                    &[ParamLocal::int(crate::plan::IntLocalId(0))],
-                    ValueShape::Int,
-                ),
-                vec![ParamLocal::int(crate::plan::IntLocalId(0))],
-            )),
+            FunctionExpr::reference(FunctionReference::new(instantiation(
+                0,
+                &[ParamLocal::int(crate::plan::IntLocalId(0))],
+                ValueShape::Int,
+            ))),
         );
         assert_eq!(
             string_function_ref(
@@ -708,14 +686,11 @@ mod tests {
                 [crate::plan::LocalId::String(crate::plan::StringLocalId(0))]
             )
             .0,
-            StringFunctionExpr::reference(StringFunctionReference::new(
-                instantiation(
-                    1,
-                    &[ParamLocal::string(crate::plan::StringLocalId(0))],
-                    ValueShape::String,
-                ),
-                vec![ParamLocal::string(crate::plan::StringLocalId(0))],
-            )),
+            StringFunctionExpr::reference(StringFunctionReference::new(instantiation(
+                1,
+                &[ParamLocal::string(crate::plan::StringLocalId(0))],
+                ValueShape::String,
+            ))),
         );
         assert_eq!(
             bit_array_function_ref(
@@ -725,14 +700,11 @@ mod tests {
                 )],
             )
             .0,
-            BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(
-                instantiation(
-                    8,
-                    &[ParamLocal::bit_array(crate::plan::BitArrayLocalId(0))],
-                    ValueShape::BitArray,
-                ),
-                vec![ParamLocal::bit_array(crate::plan::BitArrayLocalId(0))],
-            )),
+            BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(instantiation(
+                8,
+                &[ParamLocal::bit_array(crate::plan::BitArrayLocalId(0))],
+                ValueShape::BitArray,
+            ))),
         );
         assert_eq!(
             utf_codepoint_function_ref(
@@ -742,18 +714,13 @@ mod tests {
                 )],
             )
             .0,
-            UtfCodepointFunctionExpr::reference(UtfCodepointFunctionReference::new(
-                instantiation(
-                    9,
-                    &[ParamLocal::utf_codepoint(crate::plan::UtfCodepointLocalId(
-                        0
-                    ),)],
-                    ValueShape::UtfCodepoint,
-                ),
-                vec![ParamLocal::utf_codepoint(crate::plan::UtfCodepointLocalId(
+            UtfCodepointFunctionExpr::reference(UtfCodepointFunctionReference::new(instantiation(
+                9,
+                &[ParamLocal::utf_codepoint(crate::plan::UtfCodepointLocalId(
                     0
                 ),)],
-            )),
+                ValueShape::UtfCodepoint,
+            ))),
         );
         assert_eq!(
             float_function_ref(
@@ -761,36 +728,27 @@ mod tests {
                 [crate::plan::LocalId::Float(crate::plan::FloatLocalId(0))]
             )
             .0,
-            FloatFunctionExpr::reference(FloatFunctionReference::new(
-                instantiation(
-                    2,
-                    &[ParamLocal::float(crate::plan::FloatLocalId(0))],
-                    ValueShape::Float,
-                ),
-                vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
-            )),
+            FloatFunctionExpr::reference(FloatFunctionReference::new(instantiation(
+                2,
+                &[ParamLocal::float(crate::plan::FloatLocalId(0))],
+                ValueShape::Float,
+            ))),
         );
         assert_eq!(
             bool_function_ref(3, [crate::plan::LocalId::Bool(crate::plan::BoolLocalId(0))]).0,
-            BoolFunctionExpr::reference(BoolFunctionReference::new(
-                instantiation(
-                    3,
-                    &[ParamLocal::bool(crate::plan::BoolLocalId(0))],
-                    ValueShape::Bool,
-                ),
-                vec![ParamLocal::bool(crate::plan::BoolLocalId(0))],
-            )),
+            BoolFunctionExpr::reference(BoolFunctionReference::new(instantiation(
+                3,
+                &[ParamLocal::bool(crate::plan::BoolLocalId(0))],
+                ValueShape::Bool,
+            ))),
         );
         assert_eq!(
             nil_function_ref(4, [crate::plan::LocalId::Nil(crate::plan::NilLocalId(0))]).0,
-            NilFunctionExpr::reference(NilFunctionReference::new(
-                instantiation(
-                    4,
-                    &[ParamLocal::nil(crate::plan::NilLocalId(0))],
-                    ValueShape::Nil,
-                ),
-                vec![ParamLocal::nil(crate::plan::NilLocalId(0))],
-            )),
+            NilFunctionExpr::reference(NilFunctionReference::new(instantiation(
+                4,
+                &[ParamLocal::nil(crate::plan::NilLocalId(0))],
+                ValueShape::Nil,
+            ))),
         );
         assert_eq!(
             tuple_function_ref(
@@ -799,14 +757,11 @@ mod tests {
                 [ValueType::Int, ValueType::String],
             )
             .0,
-            TupleFunctionExpr::reference(TupleFunctionReference::new(
-                instantiation(
-                    5,
-                    &[ParamLocal::int(crate::plan::IntLocalId(0))],
-                    ValueShape::Tuple(vec![ValueShape::Int, ValueShape::String].into_boxed_slice(),),
-                ),
-                vec![ParamLocal::int(crate::plan::IntLocalId(0))],
-            ),),
+            TupleFunctionExpr::reference(TupleFunctionReference::new(instantiation(
+                5,
+                &[ParamLocal::int(crate::plan::IntLocalId(0))],
+                ValueShape::Tuple(vec![ValueShape::Int, ValueShape::String].into_boxed_slice(),),
+            )),),
         );
         assert_eq!(
             list_function_ref(
@@ -816,14 +771,11 @@ mod tests {
             )
             .0,
             ListFunctionExpr::reference(
-                ListFunctionReference::new(
-                    instantiation(
-                        6,
-                        &[ParamLocal::int(crate::plan::IntLocalId(0))],
-                        ValueShape::List(Box::new(ValueShape::Int)),
-                    ),
-                    vec![ParamLocal::int(crate::plan::IntLocalId(0))],
-                ),
+                ListFunctionReference::new(instantiation(
+                    6,
+                    &[ParamLocal::int(crate::plan::IntLocalId(0))],
+                    ValueShape::List(Box::new(ValueShape::Int)),
+                )),
                 ValueType::Int,
             ),
         );
@@ -837,8 +789,7 @@ mod tests {
                     7,
                     &[ParamLocal::int(crate::plan::IntLocalId(0))],
                     ValueShape::Int,
-                ),
-                vec![ParamLocal::int(crate::plan::IntLocalId(0))],
+                )
             ))),
         );
 
@@ -853,20 +804,14 @@ mod tests {
                 parameter,
             )),
             FunctionExpr::generic(GenericFunctionExpr::reference(
-                GenericFunctionReference::new(
-                    instantiation(
-                        10,
-                        &[ParamLocal::generic(crate::plan::GenericLocal::new(
-                            crate::plan::GenericLocalId(0),
-                            parameter,
-                        ))],
-                        ValueShape::Parameter(parameter),
-                    ),
-                    vec![ParamLocal::generic(crate::plan::GenericLocal::new(
+                GenericFunctionReference::new(instantiation(
+                    10,
+                    &[ParamLocal::generic(crate::plan::GenericLocal::new(
                         crate::plan::GenericLocalId(0),
                         parameter,
                     ))],
-                ),
+                    ValueShape::Parameter(parameter),
+                )),
                 GenericFunctionType::new(vec![ValueShape::Parameter(parameter)], parameter),
             )),
         );
@@ -902,14 +847,11 @@ mod tests {
                     )),
                     Vec::<ParamLocal>::new(),
                 )),
-                FunctionExpr::reference(FunctionReference::new(
-                    instantiation(
-                        template,
-                        &[],
-                        ValueShape::List(Box::new(ValueShape::from_value_type(item_type))),
-                    ),
-                    Vec::new(),
-                )),
+                FunctionExpr::reference(FunctionReference::new(instantiation(
+                    template,
+                    &[],
+                    ValueShape::List(Box::new(ValueShape::from_value_type(item_type))),
+                ))),
             );
         }
     }
@@ -950,16 +892,13 @@ mod tests {
                 )
                 .0,
                 FunctionFunctionExpr::reference(
-                    FunctionFunctionReference::new(
-                        instantiation(
-                            template,
-                            &[],
-                            ValueShape::Function(Box::new(FunctionShape::from_function_type(
-                                returned_type.clone(),
-                            ))),
-                        ),
-                        Vec::new(),
-                    ),
+                    FunctionFunctionReference::new(instantiation(
+                        template,
+                        &[],
+                        ValueShape::Function(Box::new(FunctionShape::from_function_type(
+                            returned_type.clone(),
+                        ))),
+                    )),
                     returned_type,
                 ),
             );
@@ -1127,7 +1066,6 @@ mod tests {
                     &[ParamLocal::int(crate::plan::IntLocalId(0))],
                     ValueShape::Int,
                 ),
-                vec![ParamLocal::int(crate::plan::IntLocalId(0))],
                 Vec::new(),
                 FunctionType::new(vec![ValueType::Int], ValueType::Int),
             ),
@@ -1145,7 +1083,6 @@ mod tests {
                     &[ParamLocal::bit_array(crate::plan::BitArrayLocalId(0))],
                     ValueShape::BitArray,
                 ),
-                vec![ParamLocal::bit_array(crate::plan::BitArrayLocalId(0))],
                 Vec::new(),
                 FunctionType::new(vec![ValueType::BitArray], ValueType::BitArray),
             ),
@@ -1167,9 +1104,6 @@ mod tests {
                     ),)],
                     ValueShape::UtfCodepoint,
                 ),
-                vec![ParamLocal::utf_codepoint(crate::plan::UtfCodepointLocalId(
-                    0
-                ),)],
                 Vec::new(),
                 FunctionType::new(vec![ValueType::UtfCodepoint], ValueType::UtfCodepoint,),
             ),
@@ -1178,10 +1112,7 @@ mod tests {
             float_function_closure(
                 0,
                 [ParamLocal::float(crate::plan::FloatLocalId(0))],
-                [crate::planner::dsl::expression::capture_float(
-                    0,
-                    float(1.0)
-                )],
+                [crate::planner::dsl::expression::capture_float(float(1.0))],
             )
             .0,
             FloatFunctionExpr::closure(
@@ -1190,11 +1121,7 @@ mod tests {
                     &[ParamLocal::float(crate::plan::FloatLocalId(0))],
                     ValueShape::Float,
                 ),
-                vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
-                vec![crate::planner::dsl::expression::capture_float(
-                    0,
-                    float(1.0)
-                )],
+                vec![crate::planner::dsl::expression::capture_float(float(1.0))],
                 FunctionType::new(vec![ValueType::Float], ValueType::Float),
             ),
         );
@@ -1202,7 +1129,7 @@ mod tests {
             function_function_closure(
                 FunctionFunctionId::Int(IntFunctionFunctionId(0)),
                 Vec::<ParamLocal>::new(),
-                [crate::planner::dsl::expression::capture_int(0, int(1))],
+                [crate::planner::dsl::expression::capture_int(int(1))],
                 FunctionType::new(vec![ValueType::Int], ValueType::Int),
             )
             .0,
@@ -1214,8 +1141,7 @@ mod tests {
                         FunctionType::new(vec![ValueType::Int], ValueType::Int),
                     ))),
                 ),
-                Vec::new(),
-                vec![crate::planner::dsl::expression::capture_int(0, int(1))],
+                vec![crate::planner::dsl::expression::capture_int(int(1))],
                 crate::plan::FunctionFunctionType::new(
                     Vec::new(),
                     FunctionType::new(vec![ValueType::Int], ValueType::Int),
@@ -1226,7 +1152,7 @@ mod tests {
             tuple_function_closure(
                 0,
                 [ParamLocal::int(crate::plan::IntLocalId(0))],
-                [crate::planner::dsl::expression::capture_int(0, int(1))],
+                [crate::planner::dsl::expression::capture_int(int(1))],
                 [ValueType::Int, ValueType::String],
             )
             .0,
@@ -1236,8 +1162,7 @@ mod tests {
                     &[ParamLocal::int(crate::plan::IntLocalId(0))],
                     ValueShape::Tuple(vec![ValueShape::Int, ValueShape::String].into_boxed_slice(),),
                 ),
-                vec![ParamLocal::int(crate::plan::IntLocalId(0))],
-                vec![crate::planner::dsl::expression::capture_int(0, int(1))],
+                vec![crate::planner::dsl::expression::capture_int(int(1))],
                 FunctionType::new(
                     vec![ValueType::Int],
                     ValueType::Tuple(vec![ValueType::Int, ValueType::String]),
@@ -1249,7 +1174,7 @@ mod tests {
             list_function_closure(
                 0,
                 [ParamLocal::int(crate::plan::IntLocalId(0))],
-                [crate::planner::dsl::expression::capture_int(0, int(1))],
+                [crate::planner::dsl::expression::capture_int(int(1))],
                 ValueType::String,
             )
             .0,
@@ -1259,8 +1184,7 @@ mod tests {
                     &[ParamLocal::int(crate::plan::IntLocalId(0))],
                     ValueShape::List(Box::new(ValueShape::String)),
                 ),
-                vec![ParamLocal::int(crate::plan::IntLocalId(0))],
-                vec![crate::planner::dsl::expression::capture_int(0, int(1))],
+                vec![crate::planner::dsl::expression::capture_int(int(1))],
                 ValueType::String,
             ),
         );

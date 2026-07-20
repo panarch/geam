@@ -400,10 +400,7 @@ mod tests {
     }
 
     fn tuple_function_expr() -> TupleFunctionExpr {
-        TupleFunctionExpr::reference(TupleFunctionReference::new(
-            function_instantiation(),
-            Vec::new(),
-        ))
+        TupleFunctionExpr::reference(TupleFunctionReference::new(function_instantiation()))
     }
 
     fn function_instantiation() -> FunctionInstantiation {

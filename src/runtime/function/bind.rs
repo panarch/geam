@@ -777,25 +777,23 @@ fn bind_list_capture(frame: &mut Frame, value: &EvaluatedListCapture) {
 mod tests {
     use super::{bind_captures, bind_list_capture};
     use crate::plan::{
-        BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionLocalId, BitArrayListExpr,
-        BitArrayListLocalId, BitArrayLocalId, BoolExpr, BoolFunctionExpr, BoolFunctionLocalId,
-        BoolListExpr, BoolListLocalId, CaptureArg, CustomConstructorDefinition, CustomExpr,
-        CustomFieldDefinition, CustomFunctionExpr, CustomFunctionLocal, CustomFunctionLocalId,
-        CustomFunctionType, CustomListLocalId, CustomLocal, CustomLocalId, CustomType,
-        CustomTypeDefinition, CustomTypeName, CustomTypePublicity, CustomTypeTemplate, Expr,
-        FloatExpr, FloatFunctionExpr, FloatFunctionLocalId, FloatListExpr, FloatListLocalId,
-        FunctionExpr, FunctionFunctionExpr, FunctionFunctionLocal, FunctionFunctionLocalId,
-        FunctionFunctionType, FunctionListLocalId, FunctionTemplate, FunctionTemplateId,
-        FunctionType, GenericFunctionExpr, GenericFunctionLocal, GenericFunctionLocalId,
-        GenericFunctionType, GenericListLocalId, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
-        IntFunctionId, IntFunctionLocalId, IntListExpr, IntListLocalId, IntLocalId, ListExpr,
-        ListFunctionExpr, ListFunctionLocal, ListListExpr, ListListLocalId, ListLocal,
-        ListLocalExpr, ModulePlan, NilExpr, NilFunctionExpr, NilFunctionLocalId, NilListExpr,
-        NilListLocalId, NilLocalId, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr,
-        StringFunctionExpr, StringFunctionLocalId, StringListExpr, StringListLocalId,
-        StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleListExpr,
-        TupleListLocalId, TupleLocalId, TypeParameterId, TypedFunctionExpr, UtfCodepointExpr,
-        UtfCodepointFunctionExpr, UtfCodepointFunctionLocalId, UtfCodepointListExpr,
+        BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionLocalId, BitArrayListLocalId,
+        BitArrayLocalId, BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, BoolListLocalId,
+        CaptureArg, CustomConstructorDefinition, CustomExpr, CustomFieldDefinition,
+        CustomFunctionExpr, CustomFunctionLocal, CustomFunctionLocalId, CustomFunctionType,
+        CustomListLocalId, CustomLocalId, CustomType, CustomTypeDefinition, CustomTypeName,
+        CustomTypePublicity, CustomTypeTemplate, FloatExpr, FloatFunctionExpr,
+        FloatFunctionLocalId, FloatListLocalId, FunctionExpr, FunctionFunctionExpr,
+        FunctionFunctionLocal, FunctionFunctionLocalId, FunctionFunctionType, FunctionListLocalId,
+        FunctionTemplate, FunctionTemplateId, FunctionType, GenericFunctionExpr,
+        GenericFunctionLocal, GenericFunctionLocalId, GenericFunctionType, GenericListLocalId,
+        IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
+        IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr, ListFunctionLocal, ListListLocalId,
+        ListLocal, ModulePlan, NilExpr, NilFunctionExpr, NilFunctionLocalId, NilListLocalId,
+        NilLocalId, PanicExpr, PanicSite, ParamLocal, ParamSlot, ReturnExpr, StringExpr,
+        StringFunctionExpr, StringFunctionLocalId, StringListLocalId, StringLocalId, TupleExpr,
+        TupleFunctionExpr, TupleFunctionLocalId, TupleListLocalId, TupleLocalId, TypeParameterId,
+        UtfCodepointExpr, UtfCodepointFunctionExpr, UtfCodepointFunctionLocalId,
         UtfCodepointListLocalId, UtfCodepointLocalId, ValueShape, ValueType,
     };
     use crate::runtime::frame::Frame;
@@ -1358,189 +1356,299 @@ pub fn main() {
         );
         let custom_function_type = CustomFunctionType::new(Vec::new(), custom_type.clone());
         let captures = [
-            CaptureArg::int(IntLocalId(0), IntExpr::panic(panic())),
-            CaptureArg::string(StringLocalId(0), StringExpr::panic(panic())),
-            CaptureArg::bit_array(BitArrayLocalId(0), BitArrayExpr::panic(panic())),
-            CaptureArg::utf_codepoint(UtfCodepointLocalId(0), UtfCodepointExpr::panic(panic())),
-            CaptureArg::custom(
-                CustomLocalId(0),
-                CustomExpr::panic(panic(), custom_type.clone()),
+            (
+                CaptureArg::new(crate::plan::Expr::int(IntExpr::panic(panic()))),
+                ParamLocal::int(IntLocalId(0)),
             ),
-            CaptureArg::float(crate::plan::FloatLocalId(0), FloatExpr::panic(panic())),
-            CaptureArg::bool(crate::plan::BoolLocalId(0), BoolExpr::panic(panic())),
-            CaptureArg::nil(NilLocalId(0), NilExpr::panic(panic())),
-            CaptureArg::tuple(
-                TupleLocalId(0),
-                TupleExpr::panic(panic(), vec![ValueType::Int]),
+            (
+                CaptureArg::new(crate::plan::Expr::string(StringExpr::panic(panic()))),
+                ParamLocal::string(StringLocalId(0)),
             ),
-            CaptureArg::list(ListLocalExpr::Int {
-                local: IntListLocalId(0),
-                value: IntListExpr::from(ListExpr::panic(panic(), ValueType::Int)),
-            }),
-            CaptureArg::list(ListLocalExpr::String {
-                local: StringListLocalId(0),
-                value: StringListExpr::from(ListExpr::panic(panic(), ValueType::String)),
-            }),
-            CaptureArg::list(ListLocalExpr::BitArray {
-                local: BitArrayListLocalId(0),
-                value: BitArrayListExpr::from(ListExpr::panic(panic(), ValueType::BitArray)),
-            }),
-            CaptureArg::list(ListLocalExpr::UtfCodepoint {
-                local: UtfCodepointListLocalId(0),
-                value: UtfCodepointListExpr::from(ListExpr::panic(
+            (
+                CaptureArg::new(crate::plan::Expr::bit_array(BitArrayExpr::panic(panic()))),
+                ParamLocal::bit_array(BitArrayLocalId(0)),
+            ),
+            (
+                CaptureArg::new(crate::plan::Expr::utf_codepoint(UtfCodepointExpr::panic(
+                    panic(),
+                ))),
+                ParamLocal::utf_codepoint(UtfCodepointLocalId(0)),
+            ),
+            (
+                CaptureArg::new(crate::plan::Expr::custom(CustomExpr::panic(
+                    panic(),
+                    custom_type.clone(),
+                ))),
+                ParamLocal::custom(CustomLocalId(0), custom_type.clone()),
+            ),
+            (
+                CaptureArg::new(crate::plan::Expr::float(FloatExpr::panic(panic()))),
+                ParamLocal::float(crate::plan::FloatLocalId(0)),
+            ),
+            (
+                CaptureArg::new(crate::plan::Expr::bool(BoolExpr::panic(panic()))),
+                ParamLocal::bool(crate::plan::BoolLocalId(0)),
+            ),
+            (
+                CaptureArg::new(crate::plan::Expr::nil(NilExpr::panic(panic()))),
+                ParamLocal::nil(NilLocalId(0)),
+            ),
+            (
+                CaptureArg::new(crate::plan::Expr::tuple(TupleExpr::panic(
+                    panic(),
+                    vec![ValueType::Int],
+                ))),
+                ParamLocal::tuple(TupleLocalId(0), vec![ValueType::Int]),
+            ),
+            (
+                CaptureArg::new(crate::plan::Expr::list(ListExpr::panic(
+                    panic(),
+                    ValueType::Int,
+                ))),
+                ParamLocal::list(ListLocal::int(IntListLocalId(0))),
+            ),
+            (
+                CaptureArg::new(crate::plan::Expr::list(ListExpr::panic(
+                    panic(),
+                    ValueType::String,
+                ))),
+                ParamLocal::list(ListLocal::string(StringListLocalId(0))),
+            ),
+            (
+                CaptureArg::new(crate::plan::Expr::list(ListExpr::panic(
+                    panic(),
+                    ValueType::BitArray,
+                ))),
+                ParamLocal::list(ListLocal::bit_array(BitArrayListLocalId(0))),
+            ),
+            (
+                CaptureArg::new(crate::plan::Expr::list(ListExpr::panic(
                     panic(),
                     ValueType::UtfCodepoint,
-                )),
-            }),
-            CaptureArg::list(ListLocalExpr::Custom {
-                local: CustomListLocalId(0),
-                item_type: custom_type.clone(),
-                value: ListExpr::panic(panic(), ValueType::Custom(custom_type.clone()))
-                    .into_custom()
-                    .expect("custom list panic must preserve its item family"),
-            }),
-            CaptureArg::list(ListLocalExpr::Float {
-                local: FloatListLocalId(0),
-                value: FloatListExpr::from(ListExpr::panic(panic(), ValueType::Float)),
-            }),
-            CaptureArg::list(ListLocalExpr::Bool {
-                local: BoolListLocalId(0),
-                value: BoolListExpr::from(ListExpr::panic(panic(), ValueType::Bool)),
-            }),
-            CaptureArg::list(ListLocalExpr::Nil {
-                local: NilListLocalId(0),
-                value: NilListExpr::from(ListExpr::panic(panic(), ValueType::Nil)),
-            }),
-            CaptureArg::list(ListLocalExpr::Tuple {
-                local: TupleListLocalId(0),
-                item_type: vec![ValueType::Int],
-                value: TupleListExpr::from(ListExpr::panic(
+                ))),
+                ParamLocal::list(ListLocal::utf_codepoint(UtfCodepointListLocalId(0))),
+            ),
+            (
+                CaptureArg::new(crate::plan::Expr::list(ListExpr::panic(
+                    panic(),
+                    ValueType::Custom(custom_type.clone()),
+                ))),
+                ParamLocal::list(ListLocal::custom(CustomListLocalId(0), custom_type.clone())),
+            ),
+            (
+                CaptureArg::new(crate::plan::Expr::list(ListExpr::panic(
+                    panic(),
+                    ValueType::Float,
+                ))),
+                ParamLocal::list(ListLocal::float(FloatListLocalId(0))),
+            ),
+            (
+                CaptureArg::new(crate::plan::Expr::list(ListExpr::panic(
+                    panic(),
+                    ValueType::Bool,
+                ))),
+                ParamLocal::list(ListLocal::bool(BoolListLocalId(0))),
+            ),
+            (
+                CaptureArg::new(crate::plan::Expr::list(ListExpr::panic(
+                    panic(),
+                    ValueType::Nil,
+                ))),
+                ParamLocal::list(ListLocal::nil(NilListLocalId(0))),
+            ),
+            (
+                CaptureArg::new(crate::plan::Expr::list(ListExpr::panic(
                     panic(),
                     ValueType::Tuple(vec![ValueType::Int]),
-                )),
-            }),
-            CaptureArg::list(ListLocalExpr::List {
-                local: ListListLocalId(0),
-                item_type: Box::new(ValueType::Int),
-                value: ListListExpr::from(ListExpr::panic(
+                ))),
+                ParamLocal::list(ListLocal::tuple(TupleListLocalId(0), vec![ValueType::Int])),
+            ),
+            (
+                CaptureArg::new(crate::plan::Expr::list(ListExpr::panic(
                     panic(),
                     ValueType::List(Box::new(ValueType::Int)),
-                )),
-            }),
-            CaptureArg::list(ListLocalExpr::Function {
-                local: FunctionListLocalId(0),
-                item_type: int_function_type.clone(),
-                value: crate::plan::FunctionListExpr::from(ListExpr::panic(
+                ))),
+                ParamLocal::list(ListLocal::list(ListListLocalId(0), ValueType::Int)),
+            ),
+            (
+                CaptureArg::new(crate::plan::Expr::list(ListExpr::panic(
                     panic(),
                     ValueType::Function(Box::new(int_function_type.clone())),
+                ))),
+                ParamLocal::list(ListLocal::function(
+                    FunctionListLocalId(0),
+                    int_function_type.clone(),
                 )),
-            }),
-            CaptureArg::list(ListLocalExpr::Generic {
-                local: GenericListLocalId(0),
-                parameter: TypeParameterId(0),
-                value: ListExpr::panic(panic(), ValueType::Parameter(TypeParameterId(0)))
-                    .into_generic()
-                    .expect("generic list panic should retain its item parameter"),
-            }),
-            CaptureArg::list(ListLocalExpr::ParameterList {
-                local: ListListLocalId(1),
-                parameter: TypeParameterId(0),
-                value: ListExpr::panic(
+            ),
+            (
+                CaptureArg::new(crate::plan::Expr::list(ListExpr::panic(
+                    panic(),
+                    ValueType::Parameter(TypeParameterId(0)),
+                ))),
+                ParamLocal::list(ListLocal::generic(
+                    GenericListLocalId(0),
+                    TypeParameterId(0),
+                )),
+            ),
+            (
+                CaptureArg::new(crate::plan::Expr::list(ListExpr::panic(
                     panic(),
                     ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(0)))),
-                )
-                .into_parameter_list()
-                .expect("nested generic list panic should retain its item parameter"),
-            }),
-            CaptureArg::int_function(
-                IntFunctionLocalId(0),
-                IntFunctionExpr::panic(panic(), int_function_type.clone()),
+                ))),
+                ParamLocal::list(ListLocal::list(
+                    ListListLocalId(1),
+                    ValueType::Parameter(TypeParameterId(0)),
+                )),
             ),
-            CaptureArg::string_function(
-                StringFunctionLocalId(0),
-                StringFunctionExpr::panic(panic(), function_type(ValueType::String)),
+            (
+                CaptureArg::new(crate::plan::Expr::function(
+                    IntFunctionExpr::panic(panic(), int_function_type.clone()).into(),
+                )),
+                ParamLocal::int_function(IntFunctionLocalId(0), int_function_type.clone()),
             ),
-            CaptureArg::bit_array_function(
-                BitArrayFunctionLocalId(0),
-                BitArrayFunctionExpr::panic(panic(), function_type(ValueType::BitArray)),
+            (
+                CaptureArg::new(crate::plan::Expr::function(
+                    StringFunctionExpr::panic(panic(), function_type(ValueType::String)).into(),
+                )),
+                ParamLocal::string_function(
+                    StringFunctionLocalId(0),
+                    function_type(ValueType::String),
+                ),
             ),
-            CaptureArg::utf_codepoint_function(
-                UtfCodepointFunctionLocalId(0),
-                UtfCodepointFunctionExpr::panic(panic(), function_type(ValueType::UtfCodepoint)),
+            (
+                CaptureArg::new(crate::plan::Expr::function(
+                    BitArrayFunctionExpr::panic(panic(), function_type(ValueType::BitArray)).into(),
+                )),
+                ParamLocal::bit_array_function(
+                    BitArrayFunctionLocalId(0),
+                    function_type(ValueType::BitArray),
+                ),
             ),
-            CaptureArg::custom_function(
-                CustomFunctionLocalId(0),
-                CustomFunctionExpr::panic(panic(), custom_function_type),
+            (
+                CaptureArg::new(crate::plan::Expr::function(
+                    UtfCodepointFunctionExpr::panic(
+                        panic(),
+                        function_type(ValueType::UtfCodepoint),
+                    )
+                    .into(),
+                )),
+                ParamLocal::utf_codepoint_function(
+                    UtfCodepointFunctionLocalId(0),
+                    function_type(ValueType::UtfCodepoint),
+                ),
             ),
-            CaptureArg::float_function(
-                FloatFunctionLocalId(0),
-                FloatFunctionExpr::panic(panic(), function_type(ValueType::Float)),
+            (
+                CaptureArg::new(crate::plan::Expr::function(FunctionExpr::custom(
+                    CustomFunctionExpr::panic(panic(), custom_function_type.clone()),
+                ))),
+                ParamLocal::custom_function(CustomFunctionLocal::new(
+                    CustomFunctionLocalId(0),
+                    custom_function_type,
+                )),
             ),
-            CaptureArg::bool_function(
-                BoolFunctionLocalId(0),
-                BoolFunctionExpr::panic(panic(), function_type(ValueType::Bool)),
+            (
+                CaptureArg::new(crate::plan::Expr::function(
+                    FloatFunctionExpr::panic(panic(), function_type(ValueType::Float)).into(),
+                )),
+                ParamLocal::float_function(
+                    FloatFunctionLocalId(0),
+                    function_type(ValueType::Float),
+                ),
             ),
-            CaptureArg::nil_function(
-                NilFunctionLocalId(0),
-                NilFunctionExpr::panic(panic(), function_type(ValueType::Nil)),
+            (
+                CaptureArg::new(crate::plan::Expr::function(
+                    BoolFunctionExpr::panic(panic(), function_type(ValueType::Bool)).into(),
+                )),
+                ParamLocal::bool_function(BoolFunctionLocalId(0), function_type(ValueType::Bool)),
             ),
-            CaptureArg::tuple_function(
-                TupleFunctionLocalId(0),
-                TupleFunctionExpr::panic(
-                    panic(),
+            (
+                CaptureArg::new(crate::plan::Expr::function(
+                    NilFunctionExpr::panic(panic(), function_type(ValueType::Nil)).into(),
+                )),
+                ParamLocal::nil_function(NilFunctionLocalId(0), function_type(ValueType::Nil)),
+            ),
+            (
+                CaptureArg::new(crate::plan::Expr::function(
+                    TupleFunctionExpr::panic(
+                        panic(),
+                        function_type(ValueType::Tuple(vec![ValueType::Int])),
+                    )
+                    .into(),
+                )),
+                ParamLocal::tuple_function(
+                    TupleFunctionLocalId(0),
                     function_type(ValueType::Tuple(vec![ValueType::Int])),
                 ),
             ),
-            CaptureArg::list_function(
-                ListFunctionLocal::from_item_type(0, list_function_type.clone(), ValueType::Int),
-                ListFunctionExpr::panic(panic(), list_function_type, ValueType::Int),
+            (
+                CaptureArg::new(crate::plan::Expr::function(
+                    ListFunctionExpr::panic(panic(), list_function_type.clone(), ValueType::Int)
+                        .into(),
+                )),
+                ParamLocal::list_function(ListFunctionLocal::from_item_type(
+                    0,
+                    list_function_type,
+                    ValueType::Int,
+                )),
             ),
-            CaptureArg::function_function(
-                FunctionFunctionLocalId(0),
-                FunctionFunctionExpr::panic(panic(), function_function_type),
+            (
+                CaptureArg::new(crate::plan::Expr::function(
+                    FunctionFunctionExpr::panic(panic(), function_function_type.clone()).into(),
+                )),
+                ParamLocal::function_function(FunctionFunctionLocal::new(
+                    FunctionFunctionLocalId(0),
+                    function_function_type,
+                )),
             ),
-            CaptureArg::generic_function_expr(
-                GenericFunctionLocal::new(
+            (
+                CaptureArg::new(crate::plan::Expr::function(
+                    FunctionExpr::generic_with_shape(
+                        GenericFunctionExpr::panic(
+                            panic(),
+                            GenericFunctionType::new(
+                                vec![ValueShape::Parameter(TypeParameterId(0))],
+                                TypeParameterId(0),
+                            ),
+                        ),
+                        crate::plan::FunctionShape::new(
+                            vec![ValueShape::Parameter(TypeParameterId(0))],
+                            ValueShape::Parameter(TypeParameterId(0)),
+                        ),
+                    ),
+                )),
+                ParamLocal::generic_function(GenericFunctionLocal::new(
                     GenericFunctionLocalId(0),
                     GenericFunctionType::new(
                         vec![ValueShape::Parameter(TypeParameterId(0))],
                         TypeParameterId(0),
                     ),
-                ),
-                TypedFunctionExpr::new(
-                    crate::plan::FunctionShape::new(
-                        vec![ValueShape::Parameter(TypeParameterId(0))],
-                        ValueShape::Parameter(TypeParameterId(0)),
-                    ),
-                    GenericFunctionExpr::panic(
-                        panic(),
-                        GenericFunctionType::new(
-                            vec![ValueShape::Parameter(TypeParameterId(0))],
-                            TypeParameterId(0),
+                )),
+            ),
+            (
+                CaptureArg::new(crate::plan::Expr::function(
+                    FunctionExpr::generic_with_shape(
+                        GenericFunctionExpr::panic(
+                            panic(),
+                            GenericFunctionType::new(vec![ValueShape::Int], TypeParameterId(0)),
+                        ),
+                        crate::plan::FunctionShape::new(
+                            vec![ValueShape::Int],
+                            ValueShape::Parameter(TypeParameterId(0)),
                         ),
                     ),
-                ),
-            ),
-            CaptureArg::generic_function_expr(
-                GenericFunctionLocal::new(
+                )),
+                ParamLocal::generic_function(GenericFunctionLocal::new(
                     GenericFunctionLocalId(1),
                     GenericFunctionType::new(vec![ValueShape::Int], TypeParameterId(0)),
-                ),
-                TypedFunctionExpr::new(
-                    crate::plan::FunctionShape::new(
-                        vec![ValueShape::Int],
-                        ValueShape::Parameter(TypeParameterId(0)),
-                    ),
-                    GenericFunctionExpr::panic(
-                        panic(),
-                        GenericFunctionType::new(vec![ValueShape::Int], TypeParameterId(0)),
-                    ),
-                ),
+                )),
             ),
         ];
 
-        for capture in captures {
-            assert_eq!(run_module_capture(capture).to_string(), "panic: capture",);
+        for (capture, local) in captures {
+            assert_eq!(
+                run_module_capture(capture, local).to_string(),
+                "panic: capture",
+            );
         }
     }
 
@@ -1580,175 +1688,15 @@ pub fn main() {
         }
     }
 
-    fn run_module_capture(capture: CaptureArg) -> ExecutionError {
-        let custom_type = CustomType::new(
-            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
-            Vec::new(),
-        );
+    fn run_module_capture(capture: CaptureArg, local: ParamLocal) -> ExecutionError {
         let function_type = FunctionType::new(Vec::new(), ValueType::Int);
-        let list_function_type =
-            FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int)));
-        let custom_function_type = CustomFunctionType::new(Vec::new(), custom_type.clone());
-        let function_function_type = FunctionFunctionType::new(Vec::new(), function_type.clone());
-        let generic_function_type = GenericFunctionType::new(
-            vec![ValueShape::Parameter(TypeParameterId(0))],
-            TypeParameterId(0),
-        );
-        let never_function_type =
-            GenericFunctionType::new(vec![ValueShape::Int], TypeParameterId(0));
-        let target_values = vec![
-            Expr::int(IntExpr::local_get(IntLocalId(0), "capture".into())),
-            Expr::string(StringExpr::local_get(StringLocalId(0), "capture".into())),
-            Expr::bit_array(BitArrayExpr::local_get(
-                BitArrayLocalId(0),
-                "capture".into(),
-            )),
-            Expr::utf_codepoint(UtfCodepointExpr::local_get(
-                UtfCodepointLocalId(0),
-                "capture".into(),
-            )),
-            Expr::custom(CustomExpr::local_get(
-                CustomLocal::new(CustomLocalId(0), custom_type.clone()),
-                "capture".into(),
-            )),
-            Expr::float(FloatExpr::local_get(
-                crate::plan::FloatLocalId(0),
-                "capture".into(),
-            )),
-            Expr::bool(BoolExpr::local_get(
-                crate::plan::BoolLocalId(0),
-                "capture".into(),
-            )),
-            Expr::nil(NilExpr::local_get(NilLocalId(0), "capture".into())),
-            Expr::tuple(TupleExpr::local_get(
-                TupleLocalId(0),
-                "capture".into(),
-                vec![ValueType::Int],
-            )),
-            Expr::list(ListExpr::local_get(
-                ListLocal::int(IntListLocalId(0)),
-                "capture".into(),
-            )),
-            Expr::list(ListExpr::local_get(
-                ListLocal::string(StringListLocalId(0)),
-                "capture".into(),
-            )),
-            Expr::list(ListExpr::local_get(
-                ListLocal::bit_array(BitArrayListLocalId(0)),
-                "capture".into(),
-            )),
-            Expr::list(ListExpr::local_get(
-                ListLocal::utf_codepoint(UtfCodepointListLocalId(0)),
-                "capture".into(),
-            )),
-            Expr::list(ListExpr::local_get(
-                ListLocal::custom(CustomListLocalId(0), custom_type.clone()),
-                "capture".into(),
-            )),
-            Expr::list(ListExpr::local_get(
-                ListLocal::float(FloatListLocalId(0)),
-                "capture".into(),
-            )),
-            Expr::list(ListExpr::local_get(
-                ListLocal::bool(BoolListLocalId(0)),
-                "capture".into(),
-            )),
-            Expr::list(ListExpr::local_get(
-                ListLocal::nil(NilListLocalId(0)),
-                "capture".into(),
-            )),
-            Expr::list(ListExpr::local_get(
-                ListLocal::tuple(TupleListLocalId(0), vec![ValueType::Int]),
-                "capture".into(),
-            )),
-            Expr::list(ListExpr::local_get(
-                ListLocal::list(ListListLocalId(0), ValueType::Int),
-                "capture".into(),
-            )),
-            Expr::list(ListExpr::local_get(
-                ListLocal::function(FunctionListLocalId(0), function_type.clone()),
-                "capture".into(),
-            )),
-            Expr::list(ListExpr::local_get(
-                ListLocal::generic(GenericListLocalId(0), TypeParameterId(0)),
-                "capture".into(),
-            )),
-            Expr::list(ListExpr::local_get(
-                ListLocal::list(ListListLocalId(1), ValueType::Parameter(TypeParameterId(0))),
-                "capture".into(),
-            )),
-            Expr::function(FunctionExpr::int(IntFunctionExpr::local_get(
-                IntFunctionLocalId(0),
-                "capture".into(),
-                function_type.clone(),
-            ))),
-            Expr::function(FunctionExpr::string(StringFunctionExpr::local_get(
-                StringFunctionLocalId(0),
-                "capture".into(),
-                FunctionType::new(Vec::new(), ValueType::String),
-            ))),
-            Expr::function(FunctionExpr::bit_array(BitArrayFunctionExpr::local_get(
-                BitArrayFunctionLocalId(0),
-                "capture".into(),
-                FunctionType::new(Vec::new(), ValueType::BitArray),
-            ))),
-            Expr::function(FunctionExpr::utf_codepoint(
-                UtfCodepointFunctionExpr::local_get(
-                    UtfCodepointFunctionLocalId(0),
-                    "capture".into(),
-                    FunctionType::new(Vec::new(), ValueType::UtfCodepoint),
-                ),
-            )),
-            Expr::function(FunctionExpr::custom(CustomFunctionExpr::local_get(
-                CustomFunctionLocal::new(CustomFunctionLocalId(0), custom_function_type.clone()),
-                "capture".into(),
-            ))),
-            Expr::function(FunctionExpr::float(FloatFunctionExpr::local_get(
-                FloatFunctionLocalId(0),
-                "capture".into(),
-                FunctionType::new(Vec::new(), ValueType::Float),
-            ))),
-            Expr::function(FunctionExpr::bool(BoolFunctionExpr::local_get(
-                BoolFunctionLocalId(0),
-                "capture".into(),
-                FunctionType::new(Vec::new(), ValueType::Bool),
-            ))),
-            Expr::function(FunctionExpr::nil(NilFunctionExpr::local_get(
-                NilFunctionLocalId(0),
-                "capture".into(),
-                FunctionType::new(Vec::new(), ValueType::Nil),
-            ))),
-            Expr::function(FunctionExpr::tuple(TupleFunctionExpr::local_get(
-                TupleFunctionLocalId(0),
-                "capture".into(),
-                FunctionType::new(Vec::new(), ValueType::Tuple(vec![ValueType::Int])),
-            ))),
-            Expr::function(FunctionExpr::list(ListFunctionExpr::local_get(
-                ListFunctionLocal::from_item_type(0, list_function_type.clone(), ValueType::Int),
-                "capture".into(),
-            ))),
-            Expr::function(FunctionExpr::function(FunctionFunctionExpr::local_get(
-                FunctionFunctionLocal::new(FunctionFunctionLocalId(0), function_function_type),
-                "capture".into(),
-            ))),
-            Expr::function(FunctionExpr::generic(GenericFunctionExpr::local_get(
-                GenericFunctionLocal::new(GenericFunctionLocalId(0), generic_function_type),
-                "capture".into(),
-            ))),
-            Expr::function(FunctionExpr::generic(GenericFunctionExpr::local_get(
-                GenericFunctionLocal::new(GenericFunctionLocalId(1), never_function_type),
-                "capture".into(),
-            ))),
-        ];
-        let target_types = target_values.iter().map(Expr::value_type).collect();
-        let target = FunctionTemplate::new(
+        let capture_shape = capture.value().shape().clone();
+        let target = FunctionTemplate::with_captures(
             FunctionTemplateId::new(1),
             "target".into(),
             Vec::new(),
-            vec![Step::evaluate(Expr::tuple(TupleExpr::value(
-                target_values,
-                target_types,
-            )))],
+            vec![ParamSlot::new(local, capture_shape)],
+            Vec::new(),
             ReturnExpr::int(
                 IntFunctionId(0),
                 IntExpr::panic(PanicExpr::panic_at(None, PanicSite::unknown())),
@@ -1759,7 +1707,6 @@ pub fn main() {
                 1,
                 crate::plan::FunctionShape::from_function_type(function_type.clone()),
             ),
-            Vec::new(),
             vec![capture],
             function_type,
         );

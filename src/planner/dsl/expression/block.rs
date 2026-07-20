@@ -223,21 +223,15 @@ mod tests {
         let generic_type = GenericFunctionType::new(Vec::new(), parameter);
         let generic_shape = generic_type.shape();
         let generic = GenericFunctionExpr::reference(
-            GenericFunctionReference::new(
-                monomorphic_function_instantiation(0, generic_shape),
-                Vec::new(),
-            ),
+            GenericFunctionReference::new(monomorphic_function_instantiation(0, generic_shape)),
             generic_type,
         );
         let custom_shape = CustomValueShape::any(custom_type());
         let custom = CustomFunctionExpr::reference(
-            CustomFunctionReference::new(
-                monomorphic_function_instantiation(
-                    0,
-                    FunctionShape::new(Vec::new(), ValueShape::Custom(custom_shape.clone())),
-                ),
-                Vec::new(),
-            ),
+            CustomFunctionReference::new(monomorphic_function_instantiation(
+                0,
+                FunctionShape::new(Vec::new(), ValueShape::Custom(custom_shape.clone())),
+            )),
             custom_shape,
         );
         let returned_function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
