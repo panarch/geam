@@ -196,8 +196,8 @@ mod tests {
     use crate::plan::execution::{
         CallArg, CallArgKind, CustomConstruction, CustomExpr, CustomExprKind, CustomFieldAccess,
         CustomLocalExpr, FunctionFunctionId, FunctionReturnFamily, GenericFunctionExpr,
-        GenericFunctionExprKind, GenericFunctionFunctionId, ReturnBody,
-        ReturnBodyKind as ExecutionReturnBodyKind, RuntimeFunctionId, TypedListExprKind,
+        GenericFunctionExprKind, GenericFunctionFunctionId, ReturnBlock, ReturnGraph,
+        RuntimeFunctionId, TypedListExprKind,
     };
     use crate::plan::{
         BoolExpr, CaptureArg, Expr, FloatExpr, FunctionExpr, FunctionListExpr, FunctionListItem,
@@ -758,10 +758,10 @@ pub fn main() {
     }
 
     fn expression_return<Expression, Function>(
-        body: &ReturnBody<Expression, Function>,
+        graph: &ReturnGraph<Expression, Function>,
     ) -> &Expression {
-        match body.kind() {
-            ExecutionReturnBodyKind::Expr(expression) => expression,
+        match graph.block(graph.entry()) {
+            ReturnBlock::Return(expression) => expression,
             _ => panic!("expected an expression return body"),
         }
     }
@@ -785,10 +785,10 @@ pub fn main() {
     }
 
     fn expect_tail_call(
-        body: &ReturnBody<GenericFunctionExpr, GenericFunctionFunctionId>,
+        graph: &ReturnGraph<GenericFunctionExpr, GenericFunctionFunctionId>,
     ) -> (&GenericFunctionFunctionId, &[CallArg]) {
-        match body.kind() {
-            ExecutionReturnBodyKind::TailCall { function, args } => (function, args),
+        match graph.block(graph.entry()) {
+            ReturnBlock::TailCall { function, args } => (function, args),
             _ => panic!("expected a tail-call return body"),
         }
     }

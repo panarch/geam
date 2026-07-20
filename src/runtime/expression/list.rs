@@ -1434,7 +1434,7 @@ mod tests {
         ParameterListExprKind, ParameterListFunctionId, ParameterListListItem, RuntimeFunctionId,
         StringListItem, TupleListItem, UtfCodepointListItem,
     };
-    use crate::plan::execution::{ReturnBody, ReturnBodyKind};
+    use crate::plan::execution::{ReturnBlock, ReturnGraph};
     use crate::plan::module::{GenericListExpr, GenericListReturn};
     use crate::plan::{
         BoolExpr, BoolListCaseBranches, Expr, FloatExpr, FunctionShape, FunctionTemplate,
@@ -2653,24 +2653,24 @@ pub fn main() {
     }
 
     fn expect_expression_return<Expression, Function>(
-        body: &ReturnBody<Expression, Function>,
+        graph: &ReturnGraph<Expression, Function>,
     ) -> &Expression {
-        match body.kind() {
-            ReturnBodyKind::Expr(expression) => expression,
+        match graph.block(graph.entry()) {
+            ReturnBlock::Return(expression) => expression,
             _ => panic!("expected a list expression return body"),
         }
     }
 
     fn expect_nested_list_binding<Expression, Function>(
-        body: &ReturnBody<Expression, Function>,
+        graph: &ReturnGraph<Expression, Function>,
     ) -> &crate::plan::execution::ListLocalExpr {
-        let ReturnBodyKind::Block { return_, .. } = body.kind() else {
+        let ReturnBlock::Steps { next, .. } = graph.block(graph.entry()) else {
             panic!("expected a block return body");
         };
-        let ReturnBodyKind::BoolCase { true_, .. } = return_.kind() else {
+        let ReturnBlock::BoolBranch { true_, .. } = graph.block(*next) else {
             panic!("expected a Bool case return body");
         };
-        let ReturnBodyKind::Block { steps, .. } = true_.kind() else {
+        let ReturnBlock::Steps { steps, .. } = graph.block(*true_) else {
             panic!("expected a binding block return body");
         };
         let crate::plan::execution::StepKind::LetList { value } = steps[0].kind() else {
@@ -2866,10 +2866,10 @@ pub fn main() {
     }
 
     fn parameter_list_tail_call(
-        body: &ReturnBody<ParameterListExpr, ParameterListFunctionId>,
+        graph: &ReturnGraph<ParameterListExpr, ParameterListFunctionId>,
     ) -> (ParameterListFunctionId, &[CallArg]) {
-        match body.kind() {
-            ReturnBodyKind::TailCall { function, args } => (*function, args),
+        match graph.block(graph.entry()) {
+            ReturnBlock::TailCall { function, args } => (*function, args),
             _ => panic!("expected a parameter-list tail call"),
         }
     }
@@ -2889,10 +2889,10 @@ pub fn main() {
     }
 
     fn parameter_list_expression_return(
-        body: &ReturnBody<ParameterListExpr, ParameterListFunctionId>,
+        graph: &ReturnGraph<ParameterListExpr, ParameterListFunctionId>,
     ) -> &ParameterListExpr {
-        match body.kind() {
-            ReturnBodyKind::Expr(expression) => expression,
+        match graph.block(graph.entry()) {
+            ReturnBlock::Return(expression) => expression,
             _ => panic!("expected a parameter-list expression return"),
         }
     }

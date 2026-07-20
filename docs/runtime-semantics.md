@@ -76,6 +76,19 @@ function references retain their stable reference identity, while each
 evaluation of a closure or constructor-function constant creates a fresh
 instance identity as described above.
 
+## Return Control Flow
+
+Module plans retain source-oriented recursive return bodies for inspection.
+Execution lowering flattens each executable return body into an immutable graph
+whose blocks are numbered deterministically in child-first source order. The
+runtime follows that graph with an iterative cursor, including nested branches
+and step blocks, and returns to the existing function loop when it reaches a
+tail call.
+
+Block targets are private execution-plan structure. They are created only while
+freezing a complete graph and are trusted by the runtime rather than checked as
+a source-visible failure boundary.
+
 ## Numeric Division By Zero
 
 Integer division and remainder by zero are normalized because Gleam defines

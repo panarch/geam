@@ -9,7 +9,7 @@ use crate::plan::execution::{
     IntFunctionFunctionId, IntFunctionId, IntListFunctionId, ListFunctionFunctionId,
     ListFunctionId, ListListFunctionId, NeverFunctionFunctionId, NeverFunctionId,
     NilFunctionFunctionId, NilFunctionId, NilListFunctionId, ParameterListFunctionId,
-    ParameterListListFunctionId, ReturnBody, ReturnBodyKind, StringFunctionFunctionId,
+    ParameterListListFunctionId, ReturnBlock, ReturnGraph, StringFunctionFunctionId,
     StringFunctionId, StringListFunctionId, TupleFunctionFunctionId, TupleFunctionId,
     TupleListFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
     UtfCodepointListFunctionId,
@@ -62,7 +62,7 @@ pub(super) fn run_never_loop(
     loop {
         let runtime_function = plan.never_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
-        let outcome = eval_return_body(
+        let outcome = eval_return_graph(
             plan,
             state,
             &mut frame,
@@ -106,11 +106,11 @@ fn bind_tail_arguments(
     Ok(next)
 }
 
-fn eval_return_body<'a, Expression, Function, Value, Eval>(
+fn eval_return_graph<'a, Expression, Function, Value, Eval>(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
     frame: &mut Frame,
-    body: &'a ReturnBody<Expression, Function>,
+    graph: &'a ReturnGraph<Expression, Function>,
     eval_expression: Eval,
 ) -> ExecutionResult<ReturnOutcome<'a, Value, Function>>
 where
@@ -118,70 +118,78 @@ where
     Eval: Copy
         + Fn(&ExecutionPlan, &mut RuntimeState, &mut Frame, &Expression) -> ExecutionResult<Value>,
 {
-    match body.kind() {
-        ReturnBodyKind::Expr(expression) => {
-            eval_expression(plan, state, frame, expression).map(ReturnOutcome::Value)
-        }
-        ReturnBodyKind::Never(expression) => {
-            eval_never_expr(plan, state, frame, expression).map(|never| match never {})
-        }
-        ReturnBodyKind::TailCall { function, args } => Ok(ReturnOutcome::TailCall {
-            function: function.clone(),
-            args,
-        }),
-        ReturnBodyKind::BoolCase {
-            subject,
-            true_,
-            false_,
-        } => {
-            if eval_bool_expr(plan, state, frame, subject)? {
-                eval_return_body(plan, state, frame, true_, eval_expression)
-            } else {
-                eval_return_body(plan, state, frame, false_, eval_expression)
+    let mut cursor = graph.entry();
+    loop {
+        match graph.block(cursor) {
+            ReturnBlock::Return(expression) => {
+                return eval_expression(plan, state, frame, expression).map(ReturnOutcome::Value);
             }
-        }
-        ReturnBodyKind::IntCase {
-            subject,
-            clauses,
-            fallback,
-        } => {
-            let subject = eval_int_expr(plan, state, frame, subject)?;
-            for (pattern, branch) in clauses {
-                if pattern == &subject {
-                    return eval_return_body(plan, state, frame, branch, eval_expression);
+            ReturnBlock::Never(expression) => {
+                return eval_never_expr(plan, state, frame, expression).map(|never| match never {});
+            }
+            ReturnBlock::TailCall { function, args } => {
+                return Ok(ReturnOutcome::TailCall {
+                    function: function.clone(),
+                    args,
+                });
+            }
+            ReturnBlock::BoolBranch {
+                subject,
+                true_,
+                false_,
+            } => {
+                cursor = if eval_bool_expr(plan, state, frame, subject)? {
+                    *true_
+                } else {
+                    *false_
+                };
+            }
+            ReturnBlock::IntSwitch {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                let subject = eval_int_expr(plan, state, frame, subject)?;
+                cursor = *fallback;
+                for (pattern, target) in clauses {
+                    if pattern == &subject {
+                        cursor = *target;
+                        break;
+                    }
                 }
             }
-            eval_return_body(plan, state, frame, fallback, eval_expression)
-        }
-        ReturnBodyKind::FloatCase {
-            subject,
-            clauses,
-            fallback,
-        } => {
-            let subject = eval_float_expr(plan, state, frame, subject)?;
-            for (pattern, branch) in clauses {
-                if pattern == &subject {
-                    return eval_return_body(plan, state, frame, branch, eval_expression);
+            ReturnBlock::FloatSwitch {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                let subject = eval_float_expr(plan, state, frame, subject)?;
+                cursor = *fallback;
+                for (pattern, target) in clauses {
+                    if pattern == &subject {
+                        cursor = *target;
+                        break;
+                    }
                 }
             }
-            eval_return_body(plan, state, frame, fallback, eval_expression)
-        }
-        ReturnBodyKind::StringCase {
-            subject,
-            clauses,
-            fallback,
-        } => {
-            let subject = eval_string_expr(plan, state, frame, subject)?;
-            for (pattern, branch) in clauses {
-                if pattern == &subject {
-                    return eval_return_body(plan, state, frame, branch, eval_expression);
+            ReturnBlock::StringSwitch {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                let subject = eval_string_expr(plan, state, frame, subject)?;
+                cursor = *fallback;
+                for (pattern, target) in clauses {
+                    if pattern == &subject {
+                        cursor = *target;
+                        break;
+                    }
                 }
             }
-            eval_return_body(plan, state, frame, fallback, eval_expression)
-        }
-        ReturnBodyKind::Block { steps, return_ } => {
-            execute_steps(plan, state, steps, frame)?;
-            eval_return_body(plan, state, frame, return_, eval_expression)
+            ReturnBlock::Steps { steps, next } => {
+                execute_steps(plan, state, steps, frame)?;
+                cursor = *next;
+            }
         }
     }
 }
@@ -196,7 +204,7 @@ pub(super) fn run_int_loop(
         let runtime_function = plan.int_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let eval = eval_int_expr;
-        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_graph(plan, state, &mut frame, runtime_function.return_(), eval)?;
         match outcome {
             ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
@@ -221,7 +229,7 @@ pub(super) fn run_float_loop(
         let runtime_function = plan.float_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let eval = eval_float_expr;
-        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_graph(plan, state, &mut frame, runtime_function.return_(), eval)?;
         match outcome {
             ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
@@ -246,7 +254,7 @@ pub(super) fn run_string_loop(
         let runtime_function = plan.string_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let eval = eval_string_expr;
-        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_graph(plan, state, &mut frame, runtime_function.return_(), eval)?;
         match outcome {
             ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
@@ -270,7 +278,7 @@ pub(super) fn run_bit_array_loop(
     loop {
         let runtime_function = plan.bit_array_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
-        let outcome = eval_return_body(
+        let outcome = eval_return_graph(
             plan,
             state,
             &mut frame,
@@ -300,7 +308,7 @@ pub(super) fn run_utf_codepoint_loop(
     loop {
         let runtime_function = plan.utf_codepoint_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
-        let outcome = eval_return_body(
+        let outcome = eval_return_graph(
             plan,
             state,
             &mut frame,
@@ -332,7 +340,7 @@ pub(super) fn run_custom_loop(
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let return_ = runtime_function.return_();
         let type_id = return_.type_id();
-        let outcome = eval_return_body(
+        let outcome = eval_return_graph(
             plan,
             state,
             &mut frame,
@@ -364,7 +372,7 @@ pub(super) fn run_bool_loop(
         let runtime_function = plan.bool_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let eval = eval_bool_expr;
-        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_graph(plan, state, &mut frame, runtime_function.return_(), eval)?;
         match outcome {
             ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
@@ -389,7 +397,7 @@ pub(super) fn run_nil_loop(
         let runtime_function = plan.nil_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let eval = eval_nil_expr;
-        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_graph(plan, state, &mut frame, runtime_function.return_(), eval)?;
         match outcome {
             ReturnOutcome::Value(()) => return finish_return(state, frame, ()),
             ReturnOutcome::TailCall {
@@ -414,7 +422,7 @@ pub(super) fn run_tuple_loop(
         let runtime_function = plan.tuple_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let eval = eval_tuple_expr;
-        let outcome = eval_return_body(plan, state, &mut frame, runtime_function.return_(), eval)?;
+        let outcome = eval_return_graph(plan, state, &mut frame, runtime_function.return_(), eval)?;
         match outcome {
             ReturnOutcome::Value(value) => return finish_return(state, frame, value),
             ReturnOutcome::TailCall {
@@ -487,7 +495,7 @@ pub(super) fn run_parameter_list_loop(
     loop {
         let runtime_function = plan.parameter_list_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
-        let outcome = eval_return_body(
+        let outcome = eval_return_graph(
             plan,
             state,
             &mut frame,
@@ -517,7 +525,7 @@ pub(super) fn run_parameter_list_list_loop(
     loop {
         let runtime_function = plan.parameter_list_list_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
-        let outcome = eval_return_body(
+        let outcome = eval_return_graph(
             plan,
             state,
             &mut frame,
@@ -547,7 +555,7 @@ pub(in crate::runtime) fn run_int_list_loop(
     loop {
         let runtime_function = plan.int_list_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
-        let outcome = eval_return_body(
+        let outcome = eval_return_graph(
             plan,
             state,
             &mut frame,
@@ -577,7 +585,7 @@ pub(super) fn run_string_list_loop(
     loop {
         let runtime_function = plan.string_list_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
-        let outcome = eval_return_body(
+        let outcome = eval_return_graph(
             plan,
             state,
             &mut frame,
@@ -607,7 +615,7 @@ pub(super) fn run_bit_array_list_loop(
     loop {
         let runtime_function = plan.bit_array_list_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
-        let outcome = eval_return_body(
+        let outcome = eval_return_graph(
             plan,
             state,
             &mut frame,
@@ -637,7 +645,7 @@ pub(super) fn run_utf_codepoint_list_loop(
     loop {
         let runtime_function = plan.utf_codepoint_list_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
-        let outcome = eval_return_body(
+        let outcome = eval_return_graph(
             plan,
             state,
             &mut frame,
@@ -667,7 +675,7 @@ pub(super) fn run_custom_list_loop(
     loop {
         let runtime_function = plan.custom_list_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
-        let outcome = eval_return_body(
+        let outcome = eval_return_graph(
             plan,
             state,
             &mut frame,
@@ -697,7 +705,7 @@ pub(super) fn run_float_list_loop(
     loop {
         let runtime_function = plan.float_list_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
-        let outcome = eval_return_body(
+        let outcome = eval_return_graph(
             plan,
             state,
             &mut frame,
@@ -727,7 +735,7 @@ pub(super) fn run_bool_list_loop(
     loop {
         let runtime_function = plan.bool_list_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
-        let outcome = eval_return_body(
+        let outcome = eval_return_graph(
             plan,
             state,
             &mut frame,
@@ -757,7 +765,7 @@ pub(super) fn run_nil_list_loop(
     loop {
         let runtime_function = plan.nil_list_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
-        let outcome = eval_return_body(
+        let outcome = eval_return_graph(
             plan,
             state,
             &mut frame,
@@ -787,7 +795,7 @@ pub(super) fn run_tuple_list_loop(
     loop {
         let runtime_function = plan.tuple_list_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
-        let outcome = eval_return_body(
+        let outcome = eval_return_graph(
             plan,
             state,
             &mut frame,
@@ -817,7 +825,7 @@ pub(super) fn run_list_list_loop(
     loop {
         let runtime_function = plan.list_list_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
-        let outcome = eval_return_body(
+        let outcome = eval_return_graph(
             plan,
             state,
             &mut frame,
@@ -847,7 +855,7 @@ pub(super) fn run_function_list_loop(
     loop {
         let runtime_function = plan.function_list_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
-        let outcome = eval_return_body(
+        let outcome = eval_return_graph(
             plan,
             state,
             &mut frame,
@@ -879,7 +887,7 @@ pub(super) fn run_int_function_loop(
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let return_ = runtime_function.return_();
         let eval = eval_int_function_expr;
-        let outcome = eval_return_body(plan, state, &mut frame, return_.body(), eval)?;
+        let outcome = eval_return_graph(plan, state, &mut frame, return_.body(), eval)?;
         match outcome {
             ReturnOutcome::Value(value) => {
                 return finish_return(
@@ -911,7 +919,7 @@ pub(super) fn run_generic_function_loop(
         let runtime_function = plan.generic_function_function(&function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let return_ = runtime_function.return_();
-        let outcome = eval_return_body(
+        let outcome = eval_return_graph(
             plan,
             state,
             &mut frame,
@@ -947,7 +955,7 @@ pub(super) fn run_never_function_loop(
         let runtime_function = plan.never_function_function(&function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let return_ = runtime_function.return_();
-        let outcome = eval_return_body(
+        let outcome = eval_return_graph(
             plan,
             state,
             &mut frame,
@@ -983,7 +991,7 @@ pub(super) fn run_float_function_loop(
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let return_ = runtime_function.return_();
         let eval = eval_float_function_expr;
-        let outcome = eval_return_body(plan, state, &mut frame, return_.body(), eval)?;
+        let outcome = eval_return_graph(plan, state, &mut frame, return_.body(), eval)?;
         match outcome {
             ReturnOutcome::Value(value) => {
                 return finish_return(
@@ -1015,7 +1023,7 @@ pub(super) fn run_string_function_loop(
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let return_ = runtime_function.return_();
         let eval = eval_string_function_expr;
-        let outcome = eval_return_body(plan, state, &mut frame, return_.body(), eval)?;
+        let outcome = eval_return_graph(plan, state, &mut frame, return_.body(), eval)?;
         match outcome {
             ReturnOutcome::Value(value) => {
                 return finish_return(
@@ -1046,7 +1054,7 @@ pub(super) fn run_bit_array_function_loop(
         let runtime_function = plan.bit_array_function_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let return_ = runtime_function.return_();
-        let outcome = eval_return_body(
+        let outcome = eval_return_graph(
             plan,
             state,
             &mut frame,
@@ -1083,7 +1091,7 @@ pub(super) fn run_utf_codepoint_function_loop(
         let runtime_function = plan.utf_codepoint_function_function(function);
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let return_ = runtime_function.return_();
-        let outcome = eval_return_body(
+        let outcome = eval_return_graph(
             plan,
             state,
             &mut frame,
@@ -1121,7 +1129,7 @@ pub(super) fn run_custom_function_loop(
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let return_ = runtime_function.return_();
         let type_ = return_.type_();
-        let outcome = eval_return_body(
+        let outcome = eval_return_graph(
             plan,
             state,
             &mut frame,
@@ -1162,7 +1170,7 @@ pub(super) fn run_bool_function_loop(
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let return_ = runtime_function.return_();
         let eval = eval_bool_function_expr;
-        let outcome = eval_return_body(plan, state, &mut frame, return_.body(), eval)?;
+        let outcome = eval_return_graph(plan, state, &mut frame, return_.body(), eval)?;
         match outcome {
             ReturnOutcome::Value(value) => {
                 return finish_return(
@@ -1194,7 +1202,7 @@ pub(super) fn run_nil_function_loop(
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let return_ = runtime_function.return_();
         let eval = eval_nil_function_expr;
-        let outcome = eval_return_body(plan, state, &mut frame, return_.body(), eval)?;
+        let outcome = eval_return_graph(plan, state, &mut frame, return_.body(), eval)?;
         match outcome {
             ReturnOutcome::Value(value) => {
                 return finish_return(
@@ -1226,7 +1234,7 @@ pub(super) fn run_tuple_function_loop(
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let return_ = runtime_function.return_();
         let eval = eval_tuple_function_expr;
-        let outcome = eval_return_body(plan, state, &mut frame, return_.body(), eval)?;
+        let outcome = eval_return_graph(plan, state, &mut frame, return_.body(), eval)?;
         match outcome {
             ReturnOutcome::Value(value) => {
                 return finish_return(
@@ -1258,7 +1266,7 @@ pub(super) fn run_list_function_loop(
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let return_ = runtime_function.return_();
         let eval = eval_list_function_expr;
-        let outcome = eval_return_body(plan, state, &mut frame, return_.body(), eval)?;
+        let outcome = eval_return_graph(plan, state, &mut frame, return_.body(), eval)?;
         match outcome {
             ReturnOutcome::Value(value) => {
                 return finish_return(
@@ -1290,7 +1298,7 @@ pub(super) fn run_function_function_loop(
         execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
         let return_ = runtime_function.return_();
         let type_ = return_.type_();
-        let outcome = eval_return_body(
+        let outcome = eval_return_graph(
             plan,
             state,
             &mut frame,
@@ -1363,7 +1371,7 @@ mod tests {
     }
 
     #[test]
-    fn return_body_subject_and_block_errors_propagate() {
+    fn return_graph_subject_and_step_errors_propagate() {
         let panic = || PanicExpr::panic_at(None, PanicSite::unknown());
         let value = || ReturnBody::expr(IntExpr::value(0.into()));
         let bodies = [
@@ -1395,6 +1403,32 @@ mod tests {
                 "panic: `panic` expression evaluated.",
             );
         }
+    }
+
+    #[test]
+    fn deep_tail_position_graph_executes_without_recursive_return_traversal() {
+        let plan = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                let mut body = ReturnBody::expr(IntExpr::value(1.into()));
+                for _ in 0..16_384 {
+                    body = ReturnBody::block(Vec::new(), body);
+                }
+                let main = FunctionTemplate::new(
+                    FunctionTemplateId::new(0),
+                    "main".into(),
+                    Vec::new(),
+                    Vec::new(),
+                    ReturnExpr::int_body(body),
+                );
+                let module = ModulePlan::new("main".into(), main, Vec::new());
+                crate::ExecutionPlan::from_module_plan(module)
+            })
+            .expect("deep lowering thread should start")
+            .join()
+            .expect("deep return graph should lower");
+
+        assert_eq!(run_main(&plan), Ok(Value::Int(1.into())));
     }
 
     #[test]

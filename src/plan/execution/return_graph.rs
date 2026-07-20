@@ -20,66 +20,66 @@ use super::{
 use ecow::EcoString;
 use num_bigint::BigInt;
 
-pub(crate) type IntReturn = ReturnBody<IntExpr, IntFunctionId>;
-pub(crate) type NeverReturn = ReturnBody<NeverExpr, NeverFunctionId>;
-pub(crate) type FloatReturn = ReturnBody<FloatExpr, FloatFunctionId>;
-pub(crate) type StringReturn = ReturnBody<StringExpr, StringFunctionId>;
-pub(crate) type BitArrayReturn = ReturnBody<BitArrayExpr, BitArrayFunctionId>;
-pub(crate) type UtfCodepointReturn = ReturnBody<UtfCodepointExpr, UtfCodepointFunctionId>;
+pub(crate) type IntReturn = ReturnGraph<IntExpr, IntFunctionId>;
+pub(crate) type NeverReturn = ReturnGraph<NeverExpr, NeverFunctionId>;
+pub(crate) type FloatReturn = ReturnGraph<FloatExpr, FloatFunctionId>;
+pub(crate) type StringReturn = ReturnGraph<StringExpr, StringFunctionId>;
+pub(crate) type BitArrayReturn = ReturnGraph<BitArrayExpr, BitArrayFunctionId>;
+pub(crate) type UtfCodepointReturn = ReturnGraph<UtfCodepointExpr, UtfCodepointFunctionId>;
 pub(crate) struct CustomReturn {
     signature_shape: super::CustomValueShape,
     body_shape: super::CustomValueShape,
-    body: ReturnBody<super::CustomExprKind, usize>,
+    body: ReturnGraph<super::CustomExprKind, usize>,
 }
-pub(crate) type BoolReturn = ReturnBody<BoolExpr, BoolFunctionId>;
-pub(crate) type NilReturn = ReturnBody<NilExpr, NilFunctionId>;
-pub(crate) type TupleReturn = ReturnBody<TupleExpr, TupleFunctionId>;
-pub(crate) type ParameterListReturn = ReturnBody<ParameterListExpr, ParameterListFunctionId>;
-pub(crate) type IntListReturn = ReturnBody<IntListExpr, IntListFunctionId>;
-pub(crate) type FloatListReturn = ReturnBody<FloatListExpr, FloatListFunctionId>;
-pub(crate) type StringListReturn = ReturnBody<StringListExpr, StringListFunctionId>;
-pub(crate) type BitArrayListReturn = ReturnBody<BitArrayListExpr, BitArrayListFunctionId>;
+pub(crate) type BoolReturn = ReturnGraph<BoolExpr, BoolFunctionId>;
+pub(crate) type NilReturn = ReturnGraph<NilExpr, NilFunctionId>;
+pub(crate) type TupleReturn = ReturnGraph<TupleExpr, TupleFunctionId>;
+pub(crate) type ParameterListReturn = ReturnGraph<ParameterListExpr, ParameterListFunctionId>;
+pub(crate) type IntListReturn = ReturnGraph<IntListExpr, IntListFunctionId>;
+pub(crate) type FloatListReturn = ReturnGraph<FloatListExpr, FloatListFunctionId>;
+pub(crate) type StringListReturn = ReturnGraph<StringListExpr, StringListFunctionId>;
+pub(crate) type BitArrayListReturn = ReturnGraph<BitArrayListExpr, BitArrayListFunctionId>;
 pub(crate) type UtfCodepointListReturn =
-    ReturnBody<UtfCodepointListExpr, UtfCodepointListFunctionId>;
-pub(crate) type CustomListReturn = ReturnBody<CustomListExpr, CustomListFunctionId>;
-pub(crate) type BoolListReturn = ReturnBody<BoolListExpr, BoolListFunctionId>;
-pub(crate) type NilListReturn = ReturnBody<NilListExpr, NilListFunctionId>;
-pub(crate) type TupleListReturn = ReturnBody<TupleListExpr, TupleListFunctionId>;
+    ReturnGraph<UtfCodepointListExpr, UtfCodepointListFunctionId>;
+pub(crate) type CustomListReturn = ReturnGraph<CustomListExpr, CustomListFunctionId>;
+pub(crate) type BoolListReturn = ReturnGraph<BoolListExpr, BoolListFunctionId>;
+pub(crate) type NilListReturn = ReturnGraph<NilListExpr, NilListFunctionId>;
+pub(crate) type TupleListReturn = ReturnGraph<TupleListExpr, TupleListFunctionId>;
 pub(crate) type ParameterListListReturn =
-    ReturnBody<ParameterListListExpr, ParameterListListFunctionId>;
-pub(crate) type ListListReturn = ReturnBody<ListListExpr, ListListFunctionId>;
-pub(crate) type FunctionListReturn = ReturnBody<FunctionListExpr, FunctionListFunctionId>;
+    ReturnGraph<ParameterListListExpr, ParameterListListFunctionId>;
+pub(crate) type ListListReturn = ReturnGraph<ListListExpr, ListListFunctionId>;
+pub(crate) type FunctionListReturn = ReturnGraph<FunctionListExpr, FunctionListFunctionId>;
 pub(crate) type IntFunctionReturn =
-    TypedFunctionReturn<ReturnBody<IntFunctionExpr, IntFunctionFunctionId>>;
+    TypedFunctionReturn<ReturnGraph<IntFunctionExpr, IntFunctionFunctionId>>;
 pub(crate) type FloatFunctionReturn =
-    TypedFunctionReturn<ReturnBody<FloatFunctionExpr, FloatFunctionFunctionId>>;
+    TypedFunctionReturn<ReturnGraph<FloatFunctionExpr, FloatFunctionFunctionId>>;
 pub(crate) type StringFunctionReturn =
-    TypedFunctionReturn<ReturnBody<StringFunctionExpr, StringFunctionFunctionId>>;
+    TypedFunctionReturn<ReturnGraph<StringFunctionExpr, StringFunctionFunctionId>>;
 pub(crate) type BitArrayFunctionReturn =
-    TypedFunctionReturn<ReturnBody<BitArrayFunctionExpr, BitArrayFunctionFunctionId>>;
+    TypedFunctionReturn<ReturnGraph<BitArrayFunctionExpr, BitArrayFunctionFunctionId>>;
 pub(crate) type UtfCodepointFunctionReturn =
-    TypedFunctionReturn<ReturnBody<UtfCodepointFunctionExpr, UtfCodepointFunctionFunctionId>>;
+    TypedFunctionReturn<ReturnGraph<UtfCodepointFunctionExpr, UtfCodepointFunctionFunctionId>>;
 pub(crate) type GenericFunctionReturn =
-    TypedFunctionReturn<ReturnBody<GenericFunctionExpr, GenericFunctionFunctionId>>;
+    TypedFunctionReturn<ReturnGraph<GenericFunctionExpr, GenericFunctionFunctionId>>;
 pub(crate) type NeverFunctionReturn =
-    TypedFunctionReturn<ReturnBody<super::NeverFunctionExpr, super::NeverFunctionFunctionId>>;
+    TypedFunctionReturn<ReturnGraph<super::NeverFunctionExpr, super::NeverFunctionFunctionId>>;
 pub(crate) struct CustomFunctionReturn {
     shape: super::FunctionShape,
     type_: CustomFunctionType,
-    body: ReturnBody<CustomFunctionExprKind, usize>,
+    body: ReturnGraph<CustomFunctionExprKind, usize>,
 }
 pub(crate) type BoolFunctionReturn =
-    TypedFunctionReturn<ReturnBody<BoolFunctionExpr, BoolFunctionFunctionId>>;
+    TypedFunctionReturn<ReturnGraph<BoolFunctionExpr, BoolFunctionFunctionId>>;
 pub(crate) type NilFunctionReturn =
-    TypedFunctionReturn<ReturnBody<NilFunctionExpr, NilFunctionFunctionId>>;
+    TypedFunctionReturn<ReturnGraph<NilFunctionExpr, NilFunctionFunctionId>>;
 pub(crate) type TupleFunctionReturn =
-    TypedFunctionReturn<ReturnBody<TupleFunctionExpr, TupleFunctionFunctionId>>;
+    TypedFunctionReturn<ReturnGraph<TupleFunctionExpr, TupleFunctionFunctionId>>;
 pub(crate) type ListFunctionReturn =
-    TypedFunctionReturn<ReturnBody<ListFunctionExpr, ListFunctionFunctionId>>;
+    TypedFunctionReturn<ReturnGraph<ListFunctionExpr, ListFunctionFunctionId>>;
 pub(crate) struct FunctionFunctionReturn {
     shape: super::FunctionShape,
     type_: FunctionFunctionType,
-    body: ReturnBody<FunctionFunctionExprKind, usize>,
+    body: ReturnGraph<FunctionFunctionExprKind, usize>,
 }
 
 pub(crate) struct TypedFunctionReturn<Body> {
@@ -87,54 +87,80 @@ pub(crate) struct TypedFunctionReturn<Body> {
     body: Body,
 }
 
-pub(crate) struct ReturnBody<Expression, Function> {
-    kind: ReturnBodyKind<Expression, Function>,
+pub(crate) struct ReturnGraph<Expression, Function> {
+    entry: ReturnTarget,
+    blocks: Box<[ReturnBlock<Expression, Function>]>,
 }
 
-pub(crate) enum ReturnBodyKind<Expression, Function> {
-    Expr(Expression),
+pub(crate) enum ReturnBlock<Expression, Function> {
+    Return(Expression),
     Never(super::NeverExpr),
     TailCall {
         function: Function,
-        args: Vec<CallArg>,
+        args: Box<[CallArg]>,
     },
-    BoolCase {
+    BoolBranch {
         subject: BoolExpr,
-        true_: Box<ReturnBody<Expression, Function>>,
-        false_: Box<ReturnBody<Expression, Function>>,
+        true_: ReturnTarget,
+        false_: ReturnTarget,
     },
-    IntCase {
+    IntSwitch {
         subject: IntExpr,
-        clauses: Vec<(BigInt, ReturnBody<Expression, Function>)>,
-        fallback: Box<ReturnBody<Expression, Function>>,
+        clauses: Box<[(BigInt, ReturnTarget)]>,
+        fallback: ReturnTarget,
     },
-    FloatCase {
+    FloatSwitch {
         subject: FloatExpr,
-        clauses: Vec<(f64, ReturnBody<Expression, Function>)>,
-        fallback: Box<ReturnBody<Expression, Function>>,
+        clauses: Box<[(f64, ReturnTarget)]>,
+        fallback: ReturnTarget,
     },
-    StringCase {
+    StringSwitch {
         subject: StringExpr,
-        clauses: Vec<(EcoString, ReturnBody<Expression, Function>)>,
-        fallback: Box<ReturnBody<Expression, Function>>,
+        clauses: Box<[(EcoString, ReturnTarget)]>,
+        fallback: ReturnTarget,
     },
-    Block {
-        steps: Vec<Step>,
-        return_: Box<ReturnBody<Expression, Function>>,
+    Steps {
+        steps: Box<[Step]>,
+        next: ReturnTarget,
     },
 }
 
-impl<Expression, Function> ReturnBody<Expression, Function> {
-    pub(super) fn from_kind(kind: ReturnBodyKind<Expression, Function>) -> Self {
-        Self { kind }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ReturnTarget(usize);
+
+impl<Expression, Function> ReturnGraph<Expression, Function> {
+    pub(super) fn from_blocks(
+        entry: ReturnTarget,
+        blocks: Vec<ReturnBlock<Expression, Function>>,
+    ) -> Self {
+        Self {
+            entry,
+            blocks: blocks.into_boxed_slice(),
+        }
     }
 
-    pub(crate) fn kind(&self) -> &ReturnBodyKind<Expression, Function> {
-        &self.kind
+    pub(crate) fn entry(&self) -> ReturnTarget {
+        self.entry
     }
 
-    pub(in crate::plan::execution) fn into_kind(self) -> ReturnBodyKind<Expression, Function> {
-        self.kind
+    #[cfg(test)]
+    pub(crate) fn blocks(&self) -> &[ReturnBlock<Expression, Function>] {
+        &self.blocks
+    }
+
+    pub(crate) fn block(&self, target: ReturnTarget) -> &ReturnBlock<Expression, Function> {
+        &self.blocks[target.0]
+    }
+}
+
+impl ReturnTarget {
+    pub(super) fn from_block_index(index: usize) -> Self {
+        Self(index)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn index(self) -> usize {
+        self.0
     }
 }
 
@@ -142,7 +168,7 @@ impl CustomReturn {
     pub(in crate::plan::execution) fn from_parts(
         signature_shape: super::CustomValueShape,
         body_shape: super::CustomValueShape,
-        body: ReturnBody<super::CustomExprKind, usize>,
+        body: ReturnGraph<super::CustomExprKind, usize>,
     ) -> Self {
         Self {
             signature_shape,
@@ -165,7 +191,7 @@ impl CustomReturn {
         &self.signature_shape
     }
 
-    pub(crate) fn body(&self) -> &ReturnBody<super::CustomExprKind, usize> {
+    pub(crate) fn body(&self) -> &ReturnGraph<super::CustomExprKind, usize> {
         &self.body
     }
 
@@ -178,7 +204,7 @@ impl CustomFunctionReturn {
     pub(in crate::plan::execution) fn from_parts(
         shape: super::FunctionShape,
         type_: CustomFunctionType,
-        body: ReturnBody<CustomFunctionExprKind, usize>,
+        body: ReturnGraph<CustomFunctionExprKind, usize>,
     ) -> Self {
         Self { shape, type_, body }
     }
@@ -191,7 +217,7 @@ impl CustomFunctionReturn {
         &self.type_
     }
 
-    pub(crate) fn body(&self) -> &ReturnBody<CustomFunctionExprKind, usize> {
+    pub(crate) fn body(&self) -> &ReturnGraph<CustomFunctionExprKind, usize> {
         &self.body
     }
 
@@ -204,7 +230,7 @@ impl FunctionFunctionReturn {
     pub(in crate::plan::execution) fn from_parts(
         shape: super::FunctionShape,
         type_: FunctionFunctionType,
-        body: ReturnBody<FunctionFunctionExprKind, usize>,
+        body: ReturnGraph<FunctionFunctionExprKind, usize>,
     ) -> Self {
         Self { shape, type_, body }
     }
@@ -217,7 +243,7 @@ impl FunctionFunctionReturn {
         &self.type_
     }
 
-    pub(crate) fn body(&self) -> &ReturnBody<FunctionFunctionExprKind, usize> {
+    pub(crate) fn body(&self) -> &ReturnGraph<FunctionFunctionExprKind, usize> {
         &self.body
     }
 

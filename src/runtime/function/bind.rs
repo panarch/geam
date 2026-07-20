@@ -1080,7 +1080,7 @@ pub fn main() { caller }
             );
 
             assert_eq!(
-                super::super::return_body::run_nil_loop(&plan, &mut state, function_id, frame,),
+                super::super::return_graph::run_nil_loop(&plan, &mut state, function_id, frame,),
                 Err(ExecutionError::Invariant(
                     InvariantError::TupleIndexFamilyMismatch {
                         expected: ValueType::Function(Box::new(expected_function_type)),
@@ -1132,7 +1132,7 @@ pub fn main() { caller }
             );
 
             assert_eq!(
-                super::super::return_body::run_nil_loop(&plan, &mut state, function_id, frame,),
+                super::super::return_graph::run_nil_loop(&plan, &mut state, function_id, frame,),
                 Err(ExecutionError::Invariant(
                     InvariantError::TupleIndexFamilyMismatch {
                         expected: ValueType::Function(Box::new(expected_function_type)),

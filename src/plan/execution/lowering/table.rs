@@ -355,7 +355,7 @@ pub(super) fn lower_specialized(
                     lowered_function(
                         frame_layout,
                         steps,
-                        super::return_::never_return(body, context),
+                        super::return_graph::never_return(body, context),
                     ),
                 ));
             }
@@ -374,7 +374,7 @@ pub(super) fn lower_specialized(
             lowered_function(
                 frame_layout,
                 steps,
-                super::return_::int_return(body, context),
+                super::return_graph::int_return(body, context),
             ),
         )),
         module::ReturnExprKind::Float { body } => functions.float_functions.push((
@@ -382,7 +382,7 @@ pub(super) fn lower_specialized(
             lowered_function(
                 frame_layout,
                 steps,
-                super::return_::float_return(body, context),
+                super::return_graph::float_return(body, context),
             ),
         )),
         module::ReturnExprKind::String { body } => functions.string_functions.push((
@@ -390,7 +390,7 @@ pub(super) fn lower_specialized(
             lowered_function(
                 frame_layout,
                 steps,
-                super::return_::string_return(body, context),
+                super::return_graph::string_return(body, context),
             ),
         )),
         module::ReturnExprKind::BitArray { body } => {
@@ -399,7 +399,7 @@ pub(super) fn lower_specialized(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::bit_array_return(body, context),
+                    super::return_graph::bit_array_return(body, context),
                 ),
             ));
         }
@@ -409,7 +409,7 @@ pub(super) fn lower_specialized(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::utf_codepoint_return(body, context),
+                    super::return_graph::utf_codepoint_return(body, context),
                 ),
             ));
         }
@@ -425,7 +425,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::custom_return(body, context),
+                            super::return_graph::custom_return(body, context),
                         ),
                     ));
                 }
@@ -435,7 +435,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::custom_never_return(body, &proof, context),
+                            super::return_graph::custom_never_return(body, &proof, context),
                         ),
                     ));
                 }
@@ -446,7 +446,7 @@ pub(super) fn lower_specialized(
             lowered_function(
                 frame_layout,
                 steps,
-                super::return_::bool_return(body, context),
+                super::return_graph::bool_return(body, context),
             ),
         )),
         module::ReturnExprKind::Nil { body } => functions.nil_functions.push((
@@ -454,7 +454,7 @@ pub(super) fn lower_specialized(
             lowered_function(
                 frame_layout,
                 steps,
-                super::return_::nil_return(body, context),
+                super::return_graph::nil_return(body, context),
             ),
         )),
         module::ReturnExprKind::Tuple { type_, body } => {
@@ -471,7 +471,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::tuple_return(body, context),
+                            super::return_graph::tuple_return(body, context),
                         ),
                     ));
                 }
@@ -481,7 +481,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::tuple_never_return(body, &proof, context),
+                            super::return_graph::tuple_never_return(body, &proof, context),
                         ),
                     ));
                 }
@@ -510,7 +510,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::parameter_list_list_return(
+                            super::return_graph::parameter_list_list_return(
                                 body, parameter, type_id, context,
                             ),
                         ),
@@ -524,7 +524,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::stored_parameter_list_list_return(
+                            super::return_graph::stored_parameter_list_list_return(
                                 body, &item, type_id, context,
                             ),
                         ),
@@ -539,7 +539,7 @@ pub(super) fn lower_specialized(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::int_list_return(body, context),
+                    super::return_graph::int_list_return(body, context),
                 ),
             ));
         }
@@ -550,7 +550,7 @@ pub(super) fn lower_specialized(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::string_list_return(body, context),
+                    super::return_graph::string_list_return(body, context),
                 ),
             ));
         }
@@ -561,7 +561,7 @@ pub(super) fn lower_specialized(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::bit_array_list_return(body, context),
+                    super::return_graph::bit_array_list_return(body, context),
                 ),
             ));
         }
@@ -572,7 +572,7 @@ pub(super) fn lower_specialized(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::utf_codepoint_list_return(body, context),
+                    super::return_graph::utf_codepoint_list_return(body, context),
                 ),
             ));
         }
@@ -584,7 +584,7 @@ pub(super) fn lower_specialized(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::custom_list_return(body, type_id, context),
+                    super::return_graph::custom_list_return(body, type_id, context),
                 ),
             ));
         }
@@ -595,7 +595,7 @@ pub(super) fn lower_specialized(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::float_list_return(body, context),
+                    super::return_graph::float_list_return(body, context),
                 ),
             ));
         }
@@ -606,7 +606,7 @@ pub(super) fn lower_specialized(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::bool_list_return(body, context),
+                    super::return_graph::bool_list_return(body, context),
                 ),
             ));
         }
@@ -617,7 +617,7 @@ pub(super) fn lower_specialized(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::nil_list_return(body, context),
+                    super::return_graph::nil_list_return(body, context),
                 ),
             ));
         }
@@ -629,7 +629,7 @@ pub(super) fn lower_specialized(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::tuple_list_return(body, type_id, context),
+                    super::return_graph::tuple_list_return(body, type_id, context),
                 ),
             ));
         }
@@ -641,7 +641,7 @@ pub(super) fn lower_specialized(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::list_list_return(body, type_id, context),
+                    super::return_graph::list_list_return(body, type_id, context),
                 ),
             ));
         }
@@ -653,7 +653,7 @@ pub(super) fn lower_specialized(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::function_list_return(body, type_id, context),
+                    super::return_graph::function_list_return(body, type_id, context),
                 ),
             ));
         }
@@ -678,7 +678,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::symbolic_function_return(
+                            super::return_graph::symbolic_function_return(
                                 body,
                                 &function_shape,
                                 context,
@@ -693,7 +693,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::int_function_return(shape, body, context),
+                            super::return_graph::int_function_return(shape, body, context),
                         ),
                     ))
                 }
@@ -708,7 +708,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::symbolic_function_return(
+                            super::return_graph::symbolic_function_return(
                                 body,
                                 &function_shape,
                                 context,
@@ -723,7 +723,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::float_function_return(shape, body, context),
+                            super::return_graph::float_function_return(shape, body, context),
                         ),
                     ));
                 }
@@ -738,7 +738,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::symbolic_function_return(
+                            super::return_graph::symbolic_function_return(
                                 body,
                                 &function_shape,
                                 context,
@@ -753,7 +753,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::string_function_return(shape, body, context),
+                            super::return_graph::string_function_return(shape, body, context),
                         ),
                     ));
                 }
@@ -768,7 +768,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::symbolic_function_return(
+                            super::return_graph::symbolic_function_return(
                                 body,
                                 &function_shape,
                                 context,
@@ -783,7 +783,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::bit_array_function_return(shape, body, context),
+                            super::return_graph::bit_array_function_return(shape, body, context),
                         ),
                     ));
                 }
@@ -798,7 +798,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::symbolic_function_return(
+                            super::return_graph::symbolic_function_return(
                                 body,
                                 &function_shape,
                                 context,
@@ -813,7 +813,9 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::utf_codepoint_function_return(shape, body, context),
+                            super::return_graph::utf_codepoint_function_return(
+                                shape, body, context,
+                            ),
                         ),
                     ));
                 }
@@ -831,7 +833,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::symbolic_custom_function_return(
+                            super::return_graph::symbolic_custom_function_return(
                                 body,
                                 &function_shape,
                                 context,
@@ -845,7 +847,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::custom_never_function_return(
+                            super::return_graph::custom_never_function_return(
                                 body,
                                 &function_shape,
                                 context,
@@ -859,7 +861,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::custom_function_return(shape, body, context),
+                            super::return_graph::custom_function_return(shape, body, context),
                         ),
                     ));
                 }
@@ -874,7 +876,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::symbolic_function_return(
+                            super::return_graph::symbolic_function_return(
                                 body,
                                 &function_shape,
                                 context,
@@ -889,7 +891,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::bool_function_return(shape, body, context),
+                            super::return_graph::bool_function_return(shape, body, context),
                         ),
                     ))
                 }
@@ -904,7 +906,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::symbolic_function_return(
+                            super::return_graph::symbolic_function_return(
                                 body,
                                 &function_shape,
                                 context,
@@ -919,7 +921,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::nil_function_return(shape, body, context),
+                            super::return_graph::nil_function_return(shape, body, context),
                         ),
                     ))
                 }
@@ -933,7 +935,7 @@ pub(super) fn lower_specialized(
                     lowered_function(
                         frame_layout,
                         steps,
-                        super::return_::symbolic_function_return(
+                        super::return_graph::symbolic_function_return(
                             body,
                             &function_shape,
                             context,
@@ -947,7 +949,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::tuple_never_function_return(
+                            super::return_graph::tuple_never_function_return(
                                 body,
                                 &function_shape,
                                 context,
@@ -961,7 +963,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::tuple_function_return(shape, body, context),
+                            super::return_graph::tuple_function_return(shape, body, context),
                         ),
                     ));
                 }
@@ -980,7 +982,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::symbolic_list_function_return(
+                            super::return_graph::symbolic_list_function_return(
                                 body,
                                 &function_shape,
                                 context,
@@ -992,7 +994,8 @@ pub(super) fn lower_specialized(
                     let item = context.concrete_value_shape(
                         &crate::plan::ValueShape::from_value_type(item_type.clone()),
                     );
-                    let lowered = super::return_::list_function_return(shape, body, &item, context);
+                    let lowered =
+                        super::return_graph::list_function_return(shape, body, &item, context);
                     push_list_function_function(
                         &mut functions,
                         index,
@@ -1014,7 +1017,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::symbolic_function_function_return(
+                            super::return_graph::symbolic_function_function_return(
                                 body,
                                 &function_shape,
                                 context,
@@ -1028,7 +1031,7 @@ pub(super) fn lower_specialized(
                         lowered_function(
                             frame_layout,
                             steps,
-                            super::return_::function_function_return(shape, body, context),
+                            super::return_graph::function_function_return(shape, body, context),
                         ),
                     ));
                 }
@@ -1054,7 +1057,7 @@ fn lower_generic_return(
             lowered_function(
                 frame_layout,
                 steps,
-                super::return_::generic_int_return(body, context),
+                super::return_graph::generic_int_return(body, context),
             ),
         )),
         StoredValueShape::Float => functions.float_functions.push((
@@ -1062,7 +1065,7 @@ fn lower_generic_return(
             lowered_function(
                 frame_layout,
                 steps,
-                super::return_::generic_float_return(body, context),
+                super::return_graph::generic_float_return(body, context),
             ),
         )),
         StoredValueShape::String => functions.string_functions.push((
@@ -1070,7 +1073,7 @@ fn lower_generic_return(
             lowered_function(
                 frame_layout,
                 steps,
-                super::return_::generic_string_return(body, context),
+                super::return_graph::generic_string_return(body, context),
             ),
         )),
         StoredValueShape::BitArray => functions.bit_array_functions.push((
@@ -1078,7 +1081,7 @@ fn lower_generic_return(
             lowered_function(
                 frame_layout,
                 steps,
-                super::return_::generic_bit_array_return(body, context),
+                super::return_graph::generic_bit_array_return(body, context),
             ),
         )),
         StoredValueShape::UtfCodepoint => {
@@ -1087,7 +1090,7 @@ fn lower_generic_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_utf_codepoint_return(body, context),
+                    super::return_graph::generic_utf_codepoint_return(body, context),
                 ),
             ));
         }
@@ -1096,7 +1099,7 @@ fn lower_generic_return(
             lowered_function(
                 frame_layout,
                 steps,
-                super::return_::generic_custom_return(body, shape, context),
+                super::return_graph::generic_custom_return(body, shape, context),
             ),
         )),
         StoredValueShape::Bool => functions.bool_functions.push((
@@ -1104,7 +1107,7 @@ fn lower_generic_return(
             lowered_function(
                 frame_layout,
                 steps,
-                super::return_::generic_bool_return(body, context),
+                super::return_graph::generic_bool_return(body, context),
             ),
         )),
         StoredValueShape::Nil => functions.nil_functions.push((
@@ -1112,7 +1115,7 @@ fn lower_generic_return(
             lowered_function(
                 frame_layout,
                 steps,
-                super::return_::generic_nil_return(body, context),
+                super::return_graph::generic_nil_return(body, context),
             ),
         )),
         StoredValueShape::Tuple(elements) => functions.tuple_functions.push((
@@ -1120,7 +1123,7 @@ fn lower_generic_return(
             lowered_function(
                 frame_layout,
                 steps,
-                super::return_::generic_tuple_return(body, elements, context),
+                super::return_graph::generic_tuple_return(body, elements, context),
             ),
         )),
         StoredValueShape::List(item) => {
@@ -1166,7 +1169,9 @@ fn lower_generic_value_list_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_value_parameter_list_return(body, *parameter, context),
+                    super::return_graph::generic_value_parameter_list_return(
+                        body, *parameter, context,
+                    ),
                 ),
             ));
         }
@@ -1177,7 +1182,7 @@ fn lower_generic_value_list_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_value_int_list_return(body, context),
+                    super::return_graph::generic_value_int_list_return(body, context),
                 ),
             ));
         }
@@ -1188,7 +1193,7 @@ fn lower_generic_value_list_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_value_string_list_return(body, context),
+                    super::return_graph::generic_value_string_list_return(body, context),
                 ),
             ));
         }
@@ -1199,7 +1204,7 @@ fn lower_generic_value_list_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_value_bit_array_list_return(body, context),
+                    super::return_graph::generic_value_bit_array_list_return(body, context),
                 ),
             ));
         }
@@ -1210,7 +1215,7 @@ fn lower_generic_value_list_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_value_utf_codepoint_list_return(body, context),
+                    super::return_graph::generic_value_utf_codepoint_list_return(body, context),
                 ),
             ));
         }
@@ -1222,7 +1227,9 @@ fn lower_generic_value_list_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_value_custom_list_return(body, shape, type_id, context),
+                    super::return_graph::generic_value_custom_list_return(
+                        body, shape, type_id, context,
+                    ),
                 ),
             ));
         }
@@ -1233,7 +1240,7 @@ fn lower_generic_value_list_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_value_float_list_return(body, context),
+                    super::return_graph::generic_value_float_list_return(body, context),
                 ),
             ));
         }
@@ -1244,7 +1251,7 @@ fn lower_generic_value_list_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_value_bool_list_return(body, context),
+                    super::return_graph::generic_value_bool_list_return(body, context),
                 ),
             ));
         }
@@ -1255,7 +1262,7 @@ fn lower_generic_value_list_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_value_nil_list_return(body, context),
+                    super::return_graph::generic_value_nil_list_return(body, context),
                 ),
             ));
         }
@@ -1267,7 +1274,7 @@ fn lower_generic_value_list_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_value_tuple_list_return(
+                    super::return_graph::generic_value_tuple_list_return(
                         body, elements, type_id, context,
                     ),
                 ),
@@ -1282,7 +1289,7 @@ fn lower_generic_value_list_return(
                     lowered_function(
                         frame_layout,
                         steps,
-                        super::return_::generic_value_parameter_list_list_return(
+                        super::return_graph::generic_value_parameter_list_list_return(
                             body, parameter, type_id, context,
                         ),
                     ),
@@ -1296,7 +1303,7 @@ fn lower_generic_value_list_return(
                     lowered_function(
                         frame_layout,
                         steps,
-                        super::return_::generic_value_nested_list_return(
+                        super::return_graph::generic_value_nested_list_return(
                             body, &item, type_id, context,
                         ),
                     ),
@@ -1311,7 +1318,7 @@ fn lower_generic_value_list_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_value_function_list_return(
+                    super::return_graph::generic_value_function_list_return(
                         body, function, type_id, context,
                     ),
                 ),
@@ -1338,7 +1345,9 @@ fn lower_generic_list_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_item_parameter_list_return(body, *parameter, context),
+                    super::return_graph::generic_item_parameter_list_return(
+                        body, *parameter, context,
+                    ),
                 ),
             ));
         }
@@ -1349,7 +1358,7 @@ fn lower_generic_list_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_item_int_list_return(body, context),
+                    super::return_graph::generic_item_int_list_return(body, context),
                 ),
             ));
         }
@@ -1360,7 +1369,7 @@ fn lower_generic_list_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_item_string_list_return(body, context),
+                    super::return_graph::generic_item_string_list_return(body, context),
                 ),
             ));
         }
@@ -1371,7 +1380,7 @@ fn lower_generic_list_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_item_bit_array_list_return(body, context),
+                    super::return_graph::generic_item_bit_array_list_return(body, context),
                 ),
             ));
         }
@@ -1382,7 +1391,7 @@ fn lower_generic_list_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_item_utf_codepoint_list_return(body, context),
+                    super::return_graph::generic_item_utf_codepoint_list_return(body, context),
                 ),
             ));
         }
@@ -1394,7 +1403,9 @@ fn lower_generic_list_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_item_custom_list_return(body, shape, type_id, context),
+                    super::return_graph::generic_item_custom_list_return(
+                        body, shape, type_id, context,
+                    ),
                 ),
             ));
         }
@@ -1405,7 +1416,7 @@ fn lower_generic_list_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_item_float_list_return(body, context),
+                    super::return_graph::generic_item_float_list_return(body, context),
                 ),
             ));
         }
@@ -1416,7 +1427,7 @@ fn lower_generic_list_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_item_bool_list_return(body, context),
+                    super::return_graph::generic_item_bool_list_return(body, context),
                 ),
             ));
         }
@@ -1427,7 +1438,7 @@ fn lower_generic_list_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_item_nil_list_return(body, context),
+                    super::return_graph::generic_item_nil_list_return(body, context),
                 ),
             ));
         }
@@ -1439,7 +1450,7 @@ fn lower_generic_list_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_item_tuple_list_return(
+                    super::return_graph::generic_item_tuple_list_return(
                         body, elements, type_id, context,
                     ),
                 ),
@@ -1454,7 +1465,7 @@ fn lower_generic_list_return(
                     lowered_function(
                         frame_layout,
                         steps,
-                        super::return_::generic_item_parameter_list_list_return(
+                        super::return_graph::generic_item_parameter_list_list_return(
                             body, parameter, type_id, context,
                         ),
                     ),
@@ -1468,7 +1479,7 @@ fn lower_generic_list_return(
                     lowered_function(
                         frame_layout,
                         steps,
-                        super::return_::generic_item_nested_list_return(
+                        super::return_graph::generic_item_nested_list_return(
                             body, &item, type_id, context,
                         ),
                     ),
@@ -1483,7 +1494,7 @@ fn lower_generic_list_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_item_function_list_return(
+                    super::return_graph::generic_item_function_list_return(
                         body, function, type_id, context,
                     ),
                 ),
@@ -1507,7 +1518,7 @@ fn lower_generic_value_function_return(
             lowered_function(
                 frame_layout,
                 steps,
-                super::return_::generic_value_generic_function_return(body, function, context),
+                super::return_graph::generic_value_generic_function_return(body, function, context),
             ),
         )),
         FunctionRepresentation::Never(_) => functions.never_function_functions.push((
@@ -1515,7 +1526,7 @@ fn lower_generic_value_function_return(
             lowered_function(
                 frame_layout,
                 steps,
-                super::return_::generic_value_never_function_return(body, function, context),
+                super::return_graph::generic_value_never_function_return(body, function, context),
             ),
         )),
         FunctionRepresentation::Executable(StoredValueShape::Int) => {
@@ -1524,7 +1535,7 @@ fn lower_generic_value_function_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_value_int_function_return(body, function, context),
+                    super::return_graph::generic_value_int_function_return(body, function, context),
                 ),
             ))
         }
@@ -1534,7 +1545,9 @@ fn lower_generic_value_function_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_value_float_function_return(body, function, context),
+                    super::return_graph::generic_value_float_function_return(
+                        body, function, context,
+                    ),
                 ),
             ))
         }
@@ -1544,7 +1557,9 @@ fn lower_generic_value_function_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_value_string_function_return(body, function, context),
+                    super::return_graph::generic_value_string_function_return(
+                        body, function, context,
+                    ),
                 ),
             ))
         }
@@ -1554,7 +1569,7 @@ fn lower_generic_value_function_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_value_bit_array_function_return(
+                    super::return_graph::generic_value_bit_array_function_return(
                         body, function, context,
                     ),
                 ),
@@ -1566,7 +1581,7 @@ fn lower_generic_value_function_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_value_utf_codepoint_function_return(
+                    super::return_graph::generic_value_utf_codepoint_function_return(
                         body, function, context,
                     ),
                 ),
@@ -1578,7 +1593,7 @@ fn lower_generic_value_function_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_value_custom_function_return(
+                    super::return_graph::generic_value_custom_function_return(
                         body, function, &return_, context,
                     ),
                 ),
@@ -1590,7 +1605,9 @@ fn lower_generic_value_function_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_value_bool_function_return(body, function, context),
+                    super::return_graph::generic_value_bool_function_return(
+                        body, function, context,
+                    ),
                 ),
             ))
         }
@@ -1600,7 +1617,7 @@ fn lower_generic_value_function_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_value_nil_function_return(body, function, context),
+                    super::return_graph::generic_value_nil_function_return(body, function, context),
                 ),
             ))
         }
@@ -1610,13 +1627,16 @@ fn lower_generic_value_function_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_value_tuple_function_return(body, function, context),
+                    super::return_graph::generic_value_tuple_function_return(
+                        body, function, context,
+                    ),
                 ),
             ))
         }
         FunctionRepresentation::Executable(StoredValueShape::List(item)) => {
-            let lowered =
-                super::return_::generic_value_list_function_return(body, function, &item, context);
+            let lowered = super::return_graph::generic_value_list_function_return(
+                body, function, &item, context,
+            );
             push_list_function_function(
                 functions,
                 index,
@@ -1630,7 +1650,7 @@ fn lower_generic_value_function_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_value_function_function_return(
+                    super::return_graph::generic_value_function_function_return(
                         body, function, &return_, context,
                     ),
                 ),
@@ -1654,7 +1674,9 @@ fn lower_generic_function_return(
             lowered_function(
                 frame_layout,
                 steps,
-                super::return_::generic_result_generic_function_return(body, function, context),
+                super::return_graph::generic_result_generic_function_return(
+                    body, function, context,
+                ),
             ),
         )),
         FunctionRepresentation::Never(_) => functions.never_function_functions.push((
@@ -1662,7 +1684,7 @@ fn lower_generic_function_return(
             lowered_function(
                 frame_layout,
                 steps,
-                super::return_::generic_result_never_function_return(body, function, context),
+                super::return_graph::generic_result_never_function_return(body, function, context),
             ),
         )),
         FunctionRepresentation::Executable(StoredValueShape::Int) => {
@@ -1671,7 +1693,9 @@ fn lower_generic_function_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_result_int_function_return(body, function, context),
+                    super::return_graph::generic_result_int_function_return(
+                        body, function, context,
+                    ),
                 ),
             ))
         }
@@ -1681,7 +1705,9 @@ fn lower_generic_function_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_result_float_function_return(body, function, context),
+                    super::return_graph::generic_result_float_function_return(
+                        body, function, context,
+                    ),
                 ),
             ))
         }
@@ -1691,7 +1717,9 @@ fn lower_generic_function_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_result_string_function_return(body, function, context),
+                    super::return_graph::generic_result_string_function_return(
+                        body, function, context,
+                    ),
                 ),
             ))
         }
@@ -1701,7 +1729,7 @@ fn lower_generic_function_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_result_bit_array_function_return(
+                    super::return_graph::generic_result_bit_array_function_return(
                         body, function, context,
                     ),
                 ),
@@ -1713,7 +1741,7 @@ fn lower_generic_function_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_result_utf_codepoint_function_return(
+                    super::return_graph::generic_result_utf_codepoint_function_return(
                         body, function, context,
                     ),
                 ),
@@ -1725,7 +1753,7 @@ fn lower_generic_function_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_result_custom_function_return(
+                    super::return_graph::generic_result_custom_function_return(
                         body, function, &return_, context,
                     ),
                 ),
@@ -1737,7 +1765,9 @@ fn lower_generic_function_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_result_bool_function_return(body, function, context),
+                    super::return_graph::generic_result_bool_function_return(
+                        body, function, context,
+                    ),
                 ),
             ))
         }
@@ -1747,7 +1777,9 @@ fn lower_generic_function_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_result_nil_function_return(body, function, context),
+                    super::return_graph::generic_result_nil_function_return(
+                        body, function, context,
+                    ),
                 ),
             ))
         }
@@ -1757,13 +1789,16 @@ fn lower_generic_function_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_result_tuple_function_return(body, function, context),
+                    super::return_graph::generic_result_tuple_function_return(
+                        body, function, context,
+                    ),
                 ),
             ))
         }
         FunctionRepresentation::Executable(StoredValueShape::List(item)) => {
-            let lowered =
-                super::return_::generic_result_list_function_return(body, function, &item, context);
+            let lowered = super::return_graph::generic_result_list_function_return(
+                body, function, &item, context,
+            );
             push_list_function_function(
                 functions,
                 index,
@@ -1777,7 +1812,7 @@ fn lower_generic_function_return(
                 lowered_function(
                     frame_layout,
                     steps,
-                    super::return_::generic_result_function_function_return(
+                    super::return_graph::generic_result_function_function_return(
                         body, function, &return_, context,
                     ),
                 ),
