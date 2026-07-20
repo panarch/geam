@@ -3,8 +3,8 @@ use crate::plan::{
     BitArrayExpr, BitArrayExprKind, BitArraySegment, BoolExpr, BoolExprKind, CustomExpr,
     CustomExprKind, Expr, ExprKind, FloatExpr, FloatExprKind, GenericExpr, GenericExprKind,
     IntExpr, IntExprKind, ListElements, ListExpr, ListItem, ListLocal, ListLocalExpr, NilExpr,
-    NilExprKind, PanicExpr, StringExpr, StringExprKind, TupleExpr, TupleExprKind, TypedListExpr,
-    TypedListExprKind, UtfCodepointExpr, UtfCodepointExprKind,
+    NilExprKind, PanicExpr, StoredListExpr, StringExpr, StringExprKind, TupleExpr, TupleExprKind,
+    TypedListExpr, TypedListExprKind, UtfCodepointExpr, UtfCodepointExprKind, ValueType,
 };
 
 impl FrameLayout {
@@ -98,6 +98,7 @@ impl FrameLayout {
     pub(in crate::plan::module::frame) fn include_int_expr(&mut self, expression: &IntExpr) {
         match expression.kind() {
             IntExprKind::Value(_) => {}
+            IntExprKind::Constant(_) => {}
             IntExprKind::Panic(panic) => self.include_panic_expr(panic),
             IntExprKind::LocalGet { local, .. } => self.include_int(*local),
             IntExprKind::Call { args, .. } => self.include_call_args(args),
@@ -169,6 +170,7 @@ impl FrameLayout {
     pub(in crate::plan::module::frame) fn include_string_expr(&mut self, expression: &StringExpr) {
         match expression.kind() {
             StringExprKind::Value(_) => {}
+            StringExprKind::Constant(_) => {}
             StringExprKind::Panic(panic) => self.include_panic_expr(panic),
             StringExprKind::LocalGet { local, .. } => self.include_string(*local),
             StringExprKind::Call { args, .. } => self.include_call_args(args),
@@ -238,6 +240,7 @@ impl FrameLayout {
         expression: &BitArrayExpr,
     ) {
         match expression.kind() {
+            BitArrayExprKind::Constant(_) => {}
             BitArrayExprKind::Value(segments) => {
                 for segment in segments {
                     match segment {
@@ -399,6 +402,7 @@ impl FrameLayout {
         kind: &CustomExprKind,
     ) {
         match kind {
+            CustomExprKind::Constant(_) => {}
             CustomExprKind::Constructor(construction) => {
                 for field in construction.fields() {
                     self.include_expr(field);
@@ -466,6 +470,7 @@ impl FrameLayout {
     pub(in crate::plan::module::frame) fn include_bool_expr(&mut self, expression: &BoolExpr) {
         match expression.kind() {
             BoolExprKind::Value(_) => {}
+            BoolExprKind::Constant(_) => {}
             BoolExprKind::Panic(panic) => self.include_panic_expr(panic),
             BoolExprKind::LocalGet { local, .. } => self.include_bool(*local),
             BoolExprKind::Call { args, .. } => self.include_call_args(args),
@@ -659,6 +664,7 @@ impl FrameLayout {
     pub(in crate::plan::module::frame) fn include_nil_expr(&mut self, expression: &NilExpr) {
         match expression.kind() {
             NilExprKind::Value => {}
+            NilExprKind::Constant(_) => {}
             NilExprKind::Panic(panic) => self.include_panic_expr(panic),
             NilExprKind::LocalGet { local, .. } => self.include_nil(*local),
             NilExprKind::Call { args, .. } => self.include_call_args(args),
@@ -721,6 +727,7 @@ impl FrameLayout {
     pub(in crate::plan::module::frame) fn include_float_expr(&mut self, expression: &FloatExpr) {
         match expression.kind() {
             FloatExprKind::Value(_) => {}
+            FloatExprKind::Constant(_) => {}
             FloatExprKind::Panic(panic) => self.include_panic_expr(panic),
             FloatExprKind::LocalGet { local, .. } => self.include_float(*local),
             FloatExprKind::Call { args, .. } => self.include_call_args(args),
@@ -789,6 +796,7 @@ impl FrameLayout {
 
     pub(in crate::plan::module::frame) fn include_tuple_expr(&mut self, expression: &TupleExpr) {
         match expression.kind() {
+            TupleExprKind::Constant(_) => {}
             TupleExprKind::Value(elements) => {
                 for element in elements {
                     self.include_expr(element);
@@ -856,6 +864,7 @@ impl FrameLayout {
     pub(in crate::plan::module::frame) fn include_list_expr(&mut self, expression: &ListExpr) {
         match expression {
             ListExpr::Generic(expression) => self.include_typed_list_expr(expression),
+            ListExpr::ParameterList(expression) => self.include_typed_list_expr(expression),
             ListExpr::Int(expression) => self.include_typed_list_expr(expression),
             ListExpr::String(expression) => self.include_typed_list_expr(expression),
             ListExpr::BitArray(expression) => self.include_typed_list_expr(expression),
@@ -867,6 +876,23 @@ impl FrameLayout {
             ListExpr::Tuple(expression) => self.include_typed_list_expr(expression),
             ListExpr::List(expression) => self.include_typed_list_expr(expression),
             ListExpr::Function(expression) => self.include_typed_list_expr(expression),
+        }
+    }
+
+    fn include_stored_list_expr(&mut self, expression: &StoredListExpr) {
+        match expression {
+            StoredListExpr::ParameterList(expression) => self.include_typed_list_expr(expression),
+            StoredListExpr::Int(expression) => self.include_typed_list_expr(expression),
+            StoredListExpr::String(expression) => self.include_typed_list_expr(expression),
+            StoredListExpr::BitArray(expression) => self.include_typed_list_expr(expression),
+            StoredListExpr::UtfCodepoint(expression) => self.include_typed_list_expr(expression),
+            StoredListExpr::Custom(expression) => self.include_typed_list_expr(expression),
+            StoredListExpr::Float(expression) => self.include_typed_list_expr(expression),
+            StoredListExpr::Bool(expression) => self.include_typed_list_expr(expression),
+            StoredListExpr::Nil(expression) => self.include_typed_list_expr(expression),
+            StoredListExpr::Tuple(expression) => self.include_typed_list_expr(expression),
+            StoredListExpr::List(expression) => self.include_typed_list_expr(expression),
+            StoredListExpr::Function(expression) => self.include_typed_list_expr(expression),
         }
     }
 
@@ -885,6 +911,14 @@ impl FrameLayout {
                     local: *local,
                     parameter: *parameter,
                 });
+            }
+            ListLocalExpr::ParameterList {
+                local,
+                parameter,
+                value,
+            } => {
+                self.include_typed_list_expr(value);
+                self.include_list(ListLocal::list(*local, ValueType::Parameter(*parameter)));
             }
             ListLocalExpr::Int { local, value } => {
                 self.include_typed_list_expr(value);
@@ -962,6 +996,7 @@ impl FrameLayout {
         kind: &TypedListExprKind<Item>,
     ) {
         match kind {
+            TypedListExprKind::Constant(_) => {}
             TypedListExprKind::Value(elements) => self.include_typed_list_elements(item, elements),
             TypedListExprKind::Panic(panic) => self.include_panic_expr(panic),
             TypedListExprKind::Spread { elements, tail } => {
@@ -978,7 +1013,10 @@ impl FrameLayout {
             }
             TypedListExprKind::TupleIndex { tuple, .. } => self.include_tuple_expr(tuple),
             TypedListExprKind::CustomField(access) => self.include_custom_expr(access.source()),
-            TypedListExprKind::ListIndex(source) => self.include_typed_list_expr(source.list()),
+            TypedListExprKind::ListIndex(source) => {
+                let source = Item::index_source_to_facade(source.list().clone());
+                self.include_list_expr(&source);
+            }
             TypedListExprKind::DropFirst { list, .. } => {
                 self.include_typed_list_expr_kind(item, list)
             }
@@ -1047,6 +1085,11 @@ impl FrameLayout {
                     self.include_generic_expr(value);
                 }
             }
+            ListElements::ParameterList { values, .. } => {
+                for value in values {
+                    self.include_typed_list_expr(value);
+                }
+            }
             ListElements::Int(values) => {
                 for value in values {
                     self.include_int_expr(value);
@@ -1094,7 +1137,7 @@ impl FrameLayout {
             }
             ListElements::List { values, .. } => {
                 for value in values {
-                    self.include_list_expr(value);
+                    self.include_stored_list_expr(value);
                 }
             }
             ListElements::Function { values, .. } => {

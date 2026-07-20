@@ -1,8 +1,8 @@
 use crate::plan::{
-    BoolExpr, CaptureArg, CustomFieldAccess, FloatExpr, FunctionFunctionExpr,
-    FunctionInstantiation, FunctionListExpr, FunctionShape, GenericFunctionLocal,
-    GenericFunctionReference, IntExpr, PanicExpr, ParamSlot, Step, StringExpr, TupleExpr,
-    TypeParameterId,
+    BoolExpr, CaptureArg, ConstantGenericFunctionInstantiation, CustomFieldAccess, FloatExpr,
+    FunctionFunctionExpr, FunctionInstantiation, FunctionListExpr, FunctionShape,
+    GenericFunctionLocal, GenericFunctionReference, IntExpr, PanicExpr, ParamSlot, Step,
+    StringExpr, TupleExpr, TypeParameterId,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -15,6 +15,7 @@ pub(crate) struct GenericFunctionExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum GenericFunctionExprKind {
+    Constant(ConstantGenericFunctionInstantiation),
     Reference(GenericFunctionReference),
     Closure {
         function: FunctionInstantiation,
@@ -70,6 +71,16 @@ pub(crate) enum GenericFunctionExprKind {
 }
 
 impl GenericFunctionExpr {
+    pub(crate) fn constant(
+        value: ConstantGenericFunctionInstantiation,
+        type_: crate::plan::GenericFunctionType,
+    ) -> Self {
+        Self {
+            type_,
+            kind: GenericFunctionExprKind::Constant(value),
+        }
+    }
+
     pub(crate) fn reference(
         reference: GenericFunctionReference,
         type_: crate::plan::GenericFunctionType,

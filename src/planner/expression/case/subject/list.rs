@@ -2006,6 +2006,7 @@ pub fn main() {
                     AssertPattern::custom(CustomPattern::new(
                         constructor,
                         vec![AssertPattern::Int(1.into())],
+                        None,
                     )),
                 )),
                 branch_bindings: Vec::new(),

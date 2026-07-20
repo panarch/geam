@@ -33,6 +33,7 @@ pub(crate) struct CustomValueShapeDescriptor {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ValueShapeDescriptor {
+    Parameter(crate::plan::TypeParameterId),
     Int,
     Float,
     String,
@@ -479,6 +480,7 @@ pub fn main() -> Wrapper(#(
   fn(Int) -> String,
   Choice,
 )) {
+  let _ = identity
   panic
 }
 "#,
@@ -486,7 +488,7 @@ pub fn main() -> Wrapper(#(
         let shape = plan
             .custom_function(plan.custom_function_id(1))
             .return_()
-            .shape();
+            .signature_shape();
 
         assert_eq!(
             plan.custom_shape_refinement(shape),
@@ -523,6 +525,29 @@ pub fn main() -> Wrapper(#(
         );
     }
 
+    #[test]
+    fn execution_shapes_materialize_unresolved_phantom_parameters() {
+        let plan = execution_plan(
+            r#"
+pub type Phantom(value) { Phantom }
+pub fn main() { Phantom }
+"#,
+        );
+        let shape_id = main_custom_shape(&plan);
+        let shape =
+            super::CustomValueShape::new(plan.value_shapes.custom(shape_id).type_id(), shape_id);
+
+        assert_eq!(
+            plan.custom_shape_value_type(&shape),
+            crate::plan::CustomType::new(
+                crate::plan::CustomTypeName::new("geam".into(), "main".into(), "Phantom".into(),),
+                vec![crate::plan::ValueType::Parameter(
+                    crate::plan::TypeParameterId(0),
+                )],
+            ),
+        );
+    }
+
     fn execution_plan(source: &str) -> ExecutionPlan {
         let typed = crate::compile_typed_module("main", "main.gleam", source)
             .expect("source should compile");
@@ -534,7 +559,7 @@ pub fn main() -> Wrapper(#(
         let RuntimeFunctionId::Custom(id) = plan.main_runtime() else {
             panic!("expected a custom main function");
         };
-        plan.custom_function(id).return_().shape().shape_id()
+        plan.custom_function(id).return_().body_shape().shape_id()
     }
 
     fn function_shape(

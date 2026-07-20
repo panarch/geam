@@ -19,12 +19,19 @@ pub(in crate::runtime) fn eval_float_expr(
 ) -> Result<f64, ExecutionError> {
     match expression.kind() {
         FloatExprKind::Value(value) => Ok(*value),
+        FloatExprKind::Constant(id) => eval_float_expr(plan, state, frame, plan.constant(*id)),
         FloatExprKind::LocalGet { local, .. } => Ok(frame.get_float(*local)),
-        FloatExprKind::Call { function, args } => {
-            function::run_float_call(plan, state, *function, args, frame)
-        }
-        FloatExprKind::FunctionCall { function, args } => {
-            function::run_float_function_call(plan, state, function, args, frame)
+        FloatExprKind::Call(call) => super::eval_direct_call(
+            plan,
+            state,
+            frame,
+            call,
+            |plan, state, function, args, frame| {
+                function::run_float_call(plan, state, *function, args, frame)
+            },
+        ),
+        FloatExprKind::FunctionCall(call) => {
+            super::eval_function_call(plan, state, frame, call, function::run_float_function_call)
         }
         FloatExprKind::TupleIndex { tuple, index } => {
             match project_tuple_expr(plan, state, frame, tuple, *index, ValueType::Float)? {
@@ -146,6 +153,8 @@ fn add_half(value: Float) -> Float { value +. 0.5 }
 pub fn main() {
   let local = 1.0
   let function = add_half
+  let true_selector = True
+  let false_selector = False
   #(
     local,
     add_half(1.0),
@@ -157,8 +166,8 @@ pub fn main() {
     2.0 *. 3.0,
     7.0 /. 2.0,
     7.0 /. 0.0,
-    case True { True -> 1.0 False -> 0.0 },
-    case False { True -> 1.0 False -> 0.0 },
+    case true_selector { True -> 1.0 False -> 0.0 },
+    case false_selector { True -> 1.0 False -> 0.0 },
     case 1 { 1 -> 2.0 _ -> 0.0 },
     case 2 { 1 -> 2.0 _ -> 3.0 },
     case "one" { "one" -> 1.0 _ -> 0.0 },

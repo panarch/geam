@@ -1,9 +1,10 @@
 use super::{
-    BoolExpr, CallArg, CustomFieldAccess, CustomFunctionExpr, CustomListExpr, FloatExpr, IntExpr,
-    PanicExpr, StringExpr, TupleExpr,
+    BoolExpr, CustomFieldAccess, CustomFunctionExpr, CustomListExpr, DirectCall, FloatExpr,
+    FunctionCall, IntExpr, NeverExpr, PanicExpr, StringExpr, TupleExpr,
 };
 use crate::plan::execution::{
-    CustomConstructorId, CustomFunctionId, CustomLocal, CustomTypeId, CustomValueShape, Step,
+    ConstantId, CustomConstructorId, CustomFunctionId, CustomLocal, CustomTypeId, CustomValueShape,
+    Step,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -23,25 +24,15 @@ pub(crate) struct CustomConstruction {
     fields: Box<[super::Expr]>,
 }
 
-pub(crate) struct CustomCallArguments {
-    values: Box<[CallArg]>,
-}
-
-pub(crate) struct CustomFunctionCall {
-    function: Box<CustomFunctionExpr>,
-    arguments: CustomCallArguments,
-}
-
 pub(crate) enum CustomExprKind {
+    Never(NeverExpr),
     Constructor(CustomConstruction),
+    Constant(ConstantId<CustomExpr>),
     LocalGet {
         local: CustomLocal,
     },
-    Call {
-        function: CustomFunctionId,
-        args: Vec<CallArg>,
-    },
-    FunctionCall(CustomFunctionCall),
+    Call(DirectCall<CustomFunctionId>),
+    FunctionCall(FunctionCall<CustomFunctionExpr>),
     TupleIndex {
         tuple: Box<TupleExpr>,
         index: usize,
@@ -126,25 +117,5 @@ impl CustomConstruction {
 
     pub(crate) fn fields(&self) -> &[super::Expr] {
         &self.fields
-    }
-}
-
-impl CustomFunctionCall {
-    pub(in crate::plan::execution) fn from_parts(
-        function: CustomFunctionExpr,
-        arguments: Box<[CallArg]>,
-    ) -> Self {
-        Self {
-            function: Box::new(function),
-            arguments: CustomCallArguments { values: arguments },
-        }
-    }
-
-    pub(crate) fn function(&self) -> &CustomFunctionExpr {
-        &self.function
-    }
-
-    pub(crate) fn arguments(&self) -> &[CallArg] {
-        &self.arguments.values
     }
 }

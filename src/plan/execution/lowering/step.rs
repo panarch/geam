@@ -1,226 +1,434 @@
 use super::expression::{
-    bit_array_expr, bit_array_function_expr, bool_expr, custom_expr, custom_function_expr, expr,
-    float_expr, function_function_expr, int_expr, int_function_expr, list_function_expr, nil_expr,
-    nil_function_expr, string_expr, string_function_expr, tuple_expr, tuple_function_expr,
+    bit_array_expr, bit_array_function_expr, bool_expr, custom_expr, expr, float_expr,
+    function_function_expr, int_expr, int_function_expr, list_function_expr, nil_expr,
+    nil_function_expr, string_expr, string_function_expr, symbolic_bit_array_function_expr,
+    symbolic_bool_function_expr, symbolic_float_function_expr, symbolic_function_function_expr,
+    symbolic_int_function_expr, symbolic_list_function_expr, symbolic_nil_function_expr,
+    symbolic_string_function_expr, symbolic_utf_codepoint_function_expr, tuple_expr,
     typed_function_expr, utf_codepoint_expr, utf_codepoint_function_expr,
 };
-use super::id::{
-    custom_function_local, custom_local, function_function_local, list_function_local, list_local,
-};
+use super::id::{custom_local, function_function_local, list_function_local, list_local};
+use super::specialization::Representability;
 use crate::plan::{execution, module};
+
+macro_rules! primitive_function_step {
+    (
+        $context:expr,
+        $local:expr,
+        $value:expr,
+        $local_kind:ident,
+        $lower:expr,
+        $symbolic:expr,
+        $step:ident,
+        $execution_local:ident
+    ) => {{
+        let shape = $context.concrete_function_shape($value.shape());
+        if matches!(
+            $context.function_representation(&shape),
+            super::specialization::FunctionRepresentation::Symbolic
+        ) {
+            super::expression::symbolic_function_step(
+                super::frame::LocalKey::new(super::frame::LocalKind::$local_kind, $local.0),
+                $value.shape(),
+                $value.expression(),
+                $context,
+                $symbolic,
+            )
+        } else {
+            typed_function_expr($value, $context, $lower).map(|value| execution::StepKind::$step {
+                local: execution::$execution_local(
+                    $context.mapped_local(super::frame::LocalKind::$local_kind, $local.0),
+                ),
+                value,
+            })
+        }
+    }};
+}
 
 pub(super) fn steps(
     steps: &[module::Step],
     context: &mut super::LoweringContext,
-) -> Vec<execution::Step> {
-    steps.iter().map(|step| lower_step(step, context)).collect()
+) -> Representability<Vec<execution::Step>> {
+    Representability::collect(steps.iter().map(|step| lower_step(step, context)))
 }
 
-fn lower_step(step: &module::Step, context: &mut super::LoweringContext) -> execution::Step {
+pub(super) enum StepsUntilNever {
+    Complete(Vec<execution::Step>),
+    Diverging {
+        prefix: Vec<execution::Step>,
+        expression: execution::NeverExpr,
+    },
+}
+
+pub(super) fn steps_until_never(
+    steps: &[module::Step],
+    context: &mut super::LoweringContext,
+) -> Representability<StepsUntilNever> {
+    let mut prefix = Vec::with_capacity(steps.len());
+    for step in steps {
+        if let Some(expression) = guaranteed_let_assert_failure(step, context) {
+            return expression.map(|expression| StepsUntilNever::Diverging { prefix, expression });
+        }
+        let kind = match lower_step_kind(step, context) {
+            Representability::Inhabited(kind) => kind,
+            Representability::Uninhabited => return Representability::Uninhabited,
+        };
+        match kind {
+            execution::StepKind::Evaluate(expression) => match expression.into_kind() {
+                execution::ExprKind::Never(expression) => {
+                    return Representability::Inhabited(StepsUntilNever::Diverging {
+                        prefix,
+                        expression,
+                    });
+                }
+                kind => prefix.push(execution::Step::from_kind(execution::StepKind::Evaluate(
+                    execution::Expr::from_kind(kind),
+                ))),
+            },
+            kind => prefix.push(execution::Step::from_kind(kind)),
+        }
+    }
+    Representability::Inhabited(StepsUntilNever::Complete(prefix))
+}
+
+fn guaranteed_let_assert_failure(
+    step: &module::Step,
+    context: &mut super::LoweringContext,
+) -> Option<Representability<execution::NeverExpr>> {
+    let module::StepKind::AssertPattern {
+        subject,
+        pattern,
+        message,
+        site,
+        pattern_span,
+    } = step.kind()
+    else {
+        return None;
+    };
+    if !parameter_list_is_empty(subject, context) || !list_pattern_requires_item(pattern) {
+        return None;
+    }
+
+    Some(
+        Representability::transpose_option(
+            message
+                .as_ref()
+                .map(|message| string_expr(message, context)),
+        )
+        .map(|message| {
+            execution::NeverExpr::from_kind(execution::NeverExprKind::LetAssert {
+                subject: assert_subject(subject, context),
+                message: message.map(Box::new),
+                site: site.clone(),
+                pattern_span: *pattern_span,
+            })
+        }),
+    )
+}
+
+fn parameter_list_is_empty(
+    subject: &module::AssertSubject,
+    context: &super::LoweringContext,
+) -> bool {
+    let module::AssertSubject::List(module::ListLocal::Generic { parameter, .. }) = subject else {
+        return false;
+    };
+    matches!(
+        context.concrete_parameter(*parameter),
+        super::specialization::SpecializedValueShape::Parameter(_)
+    )
+}
+
+fn list_pattern_requires_item(pattern: &module::AssertPattern) -> bool {
+    match pattern {
+        module::AssertPattern::List(pattern) => !pattern.elements().is_empty(),
+        module::AssertPattern::Alias { pattern, .. } => list_pattern_requires_item(pattern),
+        _ => false,
+    }
+}
+
+fn lower_step(
+    step: &module::Step,
+    context: &mut super::LoweringContext,
+) -> Representability<execution::Step> {
+    lower_step_kind(step, context).map(execution::Step::from_kind)
+}
+
+fn lower_step_kind(
+    step: &module::Step,
+    context: &mut super::LoweringContext,
+) -> Representability<execution::StepKind> {
     use execution::StepKind as E;
     use module::StepKind as M;
 
-    execution::Step::from_kind(match step.kind() {
+    match step.kind() {
         M::LetGeneric { local, value, .. } => {
-            return execution::Step::from_kind(super::expression::generic_step(
-                *local, value, context,
-            ));
+            super::expression::generic_step(*local, value, context)
         }
         M::LetInt {
             local,
             name: _,
             value,
-        } => E::LetInt {
+        } => int_expr(value, context).map(|value| E::LetInt {
             local: execution::IntLocalId(
                 context.mapped_local(super::frame::LocalKind::Int, local.0),
             ),
-            value: int_expr(value, context),
-        },
+            value,
+        }),
         M::LetFloat {
             local,
             name: _,
             value,
-        } => E::LetFloat {
+        } => float_expr(value, context).map(|value| E::LetFloat {
             local: execution::FloatLocalId(
                 context.mapped_local(super::frame::LocalKind::Float, local.0),
             ),
-            value: float_expr(value, context),
-        },
+            value,
+        }),
         M::LetString {
             local,
             name: _,
             value,
-        } => E::LetString {
+        } => string_expr(value, context).map(|value| E::LetString {
             local: execution::StringLocalId(
                 context.mapped_local(super::frame::LocalKind::String, local.0),
             ),
-            value: string_expr(value, context),
-        },
+            value,
+        }),
         M::LetBitArray {
             local,
             name: _,
             value,
-        } => E::LetBitArray {
+        } => bit_array_expr(value, context).map(|value| E::LetBitArray {
             local: execution::BitArrayLocalId(
                 context.mapped_local(super::frame::LocalKind::BitArray, local.0),
             ),
-            value: bit_array_expr(value, context),
-        },
+            value,
+        }),
         M::LetUtfCodepoint {
             local,
             name: _,
             value,
-        } => E::LetUtfCodepoint {
+        } => utf_codepoint_expr(value, context).map(|value| E::LetUtfCodepoint {
             local: execution::UtfCodepointLocalId(
                 context.mapped_local(super::frame::LocalKind::UtfCodepoint, local.0),
             ),
-            value: utf_codepoint_expr(value, context),
-        },
-        M::LetCustom { binding, name: _ } => E::LetCustom(execution::CustomLocalExpr::new(
-            custom_local(binding.local(), context),
-            custom_expr(binding.value(), context),
-        )),
+            value,
+        }),
+        M::LetCustom { binding, name: _ } => custom_expr(binding.value(), context).map(|value| {
+            E::LetCustom(execution::CustomLocalExpr::new(
+                custom_local(binding.local(), context),
+                value,
+            ))
+        }),
         M::LetBool {
             local,
             name: _,
             value,
-        } => E::LetBool {
+        } => bool_expr(value, context).map(|value| E::LetBool {
             local: execution::BoolLocalId(
                 context.mapped_local(super::frame::LocalKind::Bool, local.0),
             ),
-            value: bool_expr(value, context),
-        },
+            value,
+        }),
         M::LetNil {
             local,
             name: _,
             value,
-        } => E::LetNil {
+        } => nil_expr(value, context).map(|value| E::LetNil {
             local: execution::NilLocalId(
                 context.mapped_local(super::frame::LocalKind::Nil, local.0),
             ),
-            value: nil_expr(value, context),
-        },
+            value,
+        }),
         M::LetTuple {
             local,
             name: _,
             value,
-        } => E::LetTuple {
+        } => tuple_expr(value, context).map(|value| E::LetTuple {
             local: execution::TupleLocalId(
                 context.mapped_local(super::frame::LocalKind::Tuple, local.0),
             ),
-            value: tuple_expr(value, context),
-        },
-        M::LetList { name: _, value } => E::LetList {
-            value: super::expression::list_local_expr(value, context),
-        },
+            value,
+        }),
+        M::LetList { name: _, value } => {
+            super::expression::list_local_expr(value, context).map(|value| E::LetList { value })
+        }
         M::LetIntFunction {
             local,
             name: _,
             value,
-        } => E::LetIntFunction {
-            local: execution::IntFunctionLocalId(
-                context.mapped_local(super::frame::LocalKind::IntFunction, local.0),
-            ),
-            value: typed_function_expr(value, context, int_function_expr),
-        },
+        } => primitive_function_step!(
+            context,
+            local,
+            value,
+            IntFunction,
+            int_function_expr,
+            symbolic_int_function_expr,
+            LetIntFunction,
+            IntFunctionLocalId
+        ),
         M::LetFloatFunction {
             local,
             name: _,
             value,
-        } => E::LetFloatFunction {
-            local: execution::FloatFunctionLocalId(
-                context.mapped_local(super::frame::LocalKind::FloatFunction, local.0),
-            ),
-            value: typed_function_expr(value, context, super::expression::float_function_expr),
-        },
+        } => primitive_function_step!(
+            context,
+            local,
+            value,
+            FloatFunction,
+            super::expression::float_function_expr,
+            symbolic_float_function_expr,
+            LetFloatFunction,
+            FloatFunctionLocalId
+        ),
         M::LetStringFunction {
             local,
             name: _,
             value,
-        } => E::LetStringFunction {
-            local: execution::StringFunctionLocalId(
-                context.mapped_local(super::frame::LocalKind::StringFunction, local.0),
-            ),
-            value: typed_function_expr(value, context, string_function_expr),
-        },
+        } => primitive_function_step!(
+            context,
+            local,
+            value,
+            StringFunction,
+            string_function_expr,
+            symbolic_string_function_expr,
+            LetStringFunction,
+            StringFunctionLocalId
+        ),
         M::LetBitArrayFunction {
             local,
             name: _,
             value,
-        } => E::LetBitArrayFunction {
-            local: execution::BitArrayFunctionLocalId(
-                context.mapped_local(super::frame::LocalKind::BitArrayFunction, local.0),
-            ),
-            value: typed_function_expr(value, context, bit_array_function_expr),
-        },
+        } => primitive_function_step!(
+            context,
+            local,
+            value,
+            BitArrayFunction,
+            bit_array_function_expr,
+            symbolic_bit_array_function_expr,
+            LetBitArrayFunction,
+            BitArrayFunctionLocalId
+        ),
         M::LetUtfCodepointFunction {
             local,
             name: _,
             value,
-        } => E::LetUtfCodepointFunction {
-            local: execution::UtfCodepointFunctionLocalId(
-                context.mapped_local(super::frame::LocalKind::UtfCodepointFunction, local.0),
-            ),
-            value: typed_function_expr(value, context, utf_codepoint_function_expr),
-        },
+        } => primitive_function_step!(
+            context,
+            local,
+            value,
+            UtfCodepointFunction,
+            utf_codepoint_function_expr,
+            symbolic_utf_codepoint_function_expr,
+            LetUtfCodepointFunction,
+            UtfCodepointFunctionLocalId
+        ),
         M::LetCustomFunction {
             local,
             name: _,
             value,
-        } => E::LetCustomFunction {
-            local: custom_function_local(local, context),
-            value: typed_function_expr(value, context, custom_function_expr),
-        },
+        } => super::expression::specialized_typed_custom_function_binding(
+            context.mapped_local(super::frame::LocalKind::CustomFunction, local.id().0),
+            value,
+            context,
+        )
+        .map(super::expression::specialized_function_step),
         M::LetBoolFunction {
             local,
             name: _,
             value,
-        } => E::LetBoolFunction {
-            local: execution::BoolFunctionLocalId(
-                context.mapped_local(super::frame::LocalKind::BoolFunction, local.0),
-            ),
-            value: typed_function_expr(value, context, super::expression::bool_function_expr),
-        },
+        } => primitive_function_step!(
+            context,
+            local,
+            value,
+            BoolFunction,
+            super::expression::bool_function_expr,
+            symbolic_bool_function_expr,
+            LetBoolFunction,
+            BoolFunctionLocalId
+        ),
         M::LetNilFunction {
             local,
             name: _,
             value,
-        } => E::LetNilFunction {
-            local: execution::NilFunctionLocalId(
-                context.mapped_local(super::frame::LocalKind::NilFunction, local.0),
-            ),
-            value: typed_function_expr(value, context, nil_function_expr),
-        },
+        } => primitive_function_step!(
+            context,
+            local,
+            value,
+            NilFunction,
+            nil_function_expr,
+            symbolic_nil_function_expr,
+            LetNilFunction,
+            NilFunctionLocalId
+        ),
         M::LetTupleFunction {
             local,
             name: _,
             value,
-        } => E::LetTupleFunction {
-            local: execution::TupleFunctionLocalId(
-                context.mapped_local(super::frame::LocalKind::TupleFunction, local.0),
-            ),
-            value: typed_function_expr(value, context, tuple_function_expr),
-        },
+        } => super::expression::specialized_typed_tuple_function_binding(
+            context.mapped_local(super::frame::LocalKind::TupleFunction, local.0),
+            value,
+            context,
+        )
+        .map(super::expression::specialized_function_step),
         M::LetListFunction {
             local,
             name: _,
             value,
-        } => E::LetListFunction {
-            local: list_function_local(local, context),
-            value: typed_function_expr(value, context, list_function_expr),
-        },
+        } => {
+            let shape = context.concrete_function_shape(value.shape());
+            if matches!(
+                context.function_representation(&shape),
+                super::specialization::FunctionRepresentation::Symbolic
+            ) {
+                super::expression::symbolic_function_step(
+                    super::frame::list_function_local_key(local),
+                    value.shape(),
+                    value.expression(),
+                    context,
+                    symbolic_list_function_expr,
+                )
+            } else {
+                typed_function_expr(value, context, list_function_expr).map(|value| {
+                    E::LetListFunction {
+                        local: list_function_local(local, context),
+                        value,
+                    }
+                })
+            }
+        }
         M::LetFunctionFunction {
             local,
             name: _,
             value,
-        } => E::LetFunctionFunction {
-            local: function_function_local(local, context),
-            value: typed_function_expr(value, context, function_function_expr),
-        },
+        } => {
+            let shape = context.concrete_function_shape(value.shape());
+            if matches!(
+                context.function_representation(&shape),
+                super::specialization::FunctionRepresentation::Symbolic
+            ) {
+                super::expression::symbolic_function_step(
+                    super::frame::LocalKey::new(
+                        super::frame::LocalKind::FunctionFunction,
+                        local.id().0,
+                    ),
+                    value.shape(),
+                    value.expression(),
+                    context,
+                    symbolic_function_function_expr,
+                )
+            } else {
+                typed_function_expr(value, context, function_function_expr).map(|value| {
+                    E::LetFunctionFunction {
+                        local: function_function_local(local, context),
+                        value,
+                    }
+                })
+            }
+        }
         M::LetGenericFunction { local, value, .. } => {
-            return execution::Step::from_kind(super::expression::generic_function_step(
-                local, value, context,
-            ));
+            super::expression::generic_function_step(local, value, context)
         }
         M::AssertPattern {
             subject,
@@ -228,32 +436,42 @@ fn lower_step(step: &module::Step, context: &mut super::LoweringContext) -> exec
             message,
             site,
             pattern_span,
-        } => E::AssertPattern {
-            subject: assert_subject(subject, context),
-            pattern: assert_pattern(pattern, context),
-            message: message
+        } => Representability::transpose_option(
+            message
                 .as_ref()
                 .map(|message| string_expr(message, context)),
+        )
+        .map(|message| E::AssertPattern {
+            subject: assert_subject(subject, context),
+            pattern: assert_pattern(pattern, context),
+            message,
             site: site.clone(),
             pattern_span: *pattern_span,
-        },
-        M::BindCustomFields { local, pattern } => E::BindCustomFields {
-            local: custom_local(local, context),
-            pattern: custom_binding_pattern(pattern, context),
-        },
+        }),
+        M::BindCustomFields { local, pattern } => {
+            custom_binding_pattern(pattern, context).map(|pattern| E::BindCustomFields {
+                local: custom_local(local, context),
+                pattern,
+            })
+        }
         M::AssertBool {
             condition,
             message,
             site,
-        } => E::AssertBool {
-            condition: bool_expr(condition, context),
-            message: message
-                .as_ref()
-                .map(|message| string_expr(message, context)),
-            site: site.clone(),
-        },
-        M::Evaluate(value) => E::Evaluate(expr(value, context)),
-    })
+        } => bool_expr(condition, context).and_then(|condition| {
+            Representability::transpose_option(
+                message
+                    .as_ref()
+                    .map(|message| string_expr(message, context)),
+            )
+            .map(|message| E::AssertBool {
+                condition,
+                message,
+                site: site.clone(),
+            })
+        }),
+        M::Evaluate(value) => expr(value, context).map(E::Evaluate),
+    }
 }
 
 fn assert_subject(
@@ -298,48 +516,71 @@ fn assert_subject(
 fn custom_binding_pattern(
     pattern: &module::CustomBindingPattern,
     context: &mut super::LoweringContext,
-) -> execution::CustomBindingPattern {
-    execution::CustomBindingPattern::new(
-        context.custom_constructor(pattern.constructor().clone()),
-        pattern
-            .fields()
+) -> Representability<execution::CustomBindingPattern> {
+    custom_field_binding_pattern(pattern.constructor(), pattern.fields(), context)
+}
+
+pub(super) fn custom_field_binding_pattern(
+    constructor: &crate::plan::CustomConstructor,
+    fields: &[module::TotalBindingPattern],
+    context: &mut super::LoweringContext,
+) -> Representability<execution::CustomBindingPattern> {
+    Representability::collect(
+        fields
             .iter()
-            .map(|field| total_binding_pattern(field, context))
-            .collect(),
+            .map(|field| total_binding_pattern(field, context)),
     )
+    .map(|fields| {
+        execution::CustomBindingPattern::new(
+            context.custom_constructor(constructor.clone()),
+            fields,
+        )
+    })
 }
 
 fn total_binding_pattern(
     pattern: &module::TotalBindingPattern,
     context: &mut super::LoweringContext,
-) -> execution::TotalBindingPattern {
+) -> Representability<execution::TotalBindingPattern> {
     let kind = match pattern.kind() {
-        module::TotalBindingPatternKind::Bind(binding) => {
-            execution::TotalBindingPatternKind::Bind(assert_binding(binding, context))
+        module::TotalBindingPatternKind::Bind(binding) => match assert_binding(binding, context) {
+            super::specialization::StorageErasure::Stored(binding) => {
+                Representability::Inhabited(execution::TotalBindingPatternKind::Bind(binding))
+            }
+            super::specialization::StorageErasure::Erased => Representability::Uninhabited,
+        },
+        module::TotalBindingPatternKind::Discard => {
+            Representability::Inhabited(execution::TotalBindingPatternKind::Discard)
         }
-        module::TotalBindingPatternKind::Discard => execution::TotalBindingPatternKind::Discard,
-        module::TotalBindingPatternKind::Tuple(elements) => {
-            execution::TotalBindingPatternKind::Tuple(
-                elements
-                    .iter()
-                    .map(|element| total_binding_pattern(element, context))
-                    .collect(),
-            )
-        }
-        module::TotalBindingPatternKind::List(tail) => {
-            execution::TotalBindingPatternKind::List(assert_tail(tail, context))
-        }
+        module::TotalBindingPatternKind::Tuple(elements) => Representability::collect(
+            elements
+                .iter()
+                .map(|element| total_binding_pattern(element, context)),
+        )
+        .map(execution::TotalBindingPatternKind::Tuple),
+        module::TotalBindingPatternKind::List(tail) => Representability::Inhabited(
+            execution::TotalBindingPatternKind::List(assert_tail(tail, context)),
+        ),
         module::TotalBindingPatternKind::Custom(pattern) => {
-            execution::TotalBindingPatternKind::Custom(custom_binding_pattern(pattern, context))
+            custom_binding_pattern(pattern, context).map(execution::TotalBindingPatternKind::Custom)
         }
         module::TotalBindingPatternKind::Alias { pattern, binding } => {
-            execution::TotalBindingPatternKind::Alias {
-                pattern: Box::new(total_binding_pattern(pattern, context)),
-                binding: assert_binding(binding, context),
-            }
+            total_binding_pattern(pattern, context).and_then(|pattern| {
+                match assert_binding(binding, context) {
+                    super::specialization::StorageErasure::Stored(binding) => {
+                        Representability::Inhabited(execution::TotalBindingPatternKind::Alias {
+                            pattern: Box::new(pattern),
+                            binding,
+                        })
+                    }
+                    super::specialization::StorageErasure::Erased => Representability::Uninhabited,
+                }
+            })
         }
     };
-    execution::TotalBindingPattern::new(context.value_type(pattern.type_().clone()), kind)
+    kind.map(|kind| {
+        execution::TotalBindingPattern::new(context.value_type(pattern.type_().clone()), kind)
+    })
 }
 
 pub(super) fn assert_pattern(
@@ -347,9 +588,12 @@ pub(super) fn assert_pattern(
     context: &mut super::LoweringContext,
 ) -> execution::AssertPattern {
     match pattern {
-        module::AssertPattern::Bind(binding) => {
-            execution::AssertPattern::Bind(assert_binding(binding, context))
-        }
+        module::AssertPattern::Bind(binding) => match assert_binding(binding, context) {
+            super::specialization::StorageErasure::Stored(binding) => {
+                execution::AssertPattern::Bind(binding)
+            }
+            super::specialization::StorageErasure::Erased => execution::AssertPattern::Discard,
+        },
         module::AssertPattern::Discard => execution::AssertPattern::Discard,
         module::AssertPattern::Int(value) => execution::AssertPattern::Int(value.clone()),
         module::AssertPattern::Float(value) => execution::AssertPattern::Float(*value),
@@ -398,10 +642,17 @@ pub(super) fn assert_pattern(
                 .as_ref()
                 .map(|binding| string_assert_binding(binding, context)),
         },
-        module::AssertPattern::Alias { pattern, binding } => execution::AssertPattern::Alias {
-            pattern: Box::new(assert_pattern(pattern, context)),
-            binding: assert_binding(binding, context),
-        },
+        module::AssertPattern::Alias { pattern, binding } => {
+            match assert_binding(binding, context) {
+                super::specialization::StorageErasure::Stored(binding) => {
+                    execution::AssertPattern::Alias {
+                        pattern: Box::new(assert_pattern(pattern, context)),
+                        binding,
+                    }
+                }
+                super::specialization::StorageErasure::Erased => assert_pattern(pattern, context),
+            }
+        }
     }
 }
 
@@ -417,8 +668,8 @@ fn string_assert_binding(
 fn assert_binding(
     binding: &module::AssertBinding,
     context: &mut super::LoweringContext,
-) -> execution::AssertBinding {
-    execution::AssertBinding::new(super::param::param_slot(binding.slot(), context))
+) -> super::specialization::StorageErasure<execution::AssertBinding> {
+    super::param::param_slot(binding.slot(), context).map(execution::AssertBinding::new)
 }
 
 fn assert_tail(
@@ -435,6 +686,10 @@ fn assert_tail(
 
 #[cfg(test)]
 mod tests {
+    use super::super::specialization::{
+        Representability, RepresentationContext, SpecializationKey, SpecializedTypeSubstitution,
+    };
+    use super::super::{FunctionTemplates, LoweringContext};
     use crate::plan::execution::{
         AssertBinding, AssertPattern, AssertSubject, BitArrayBindingPattern, BitArrayLocalId,
         BitArrayPatternSegment, BitArrayPatternSizeExpr, BitArrayPatternValue, ExecutionPlan,
@@ -442,6 +697,101 @@ mod tests {
         ListFunctionId, ListListFunctionId, ListListTypeId, ListLocal, ListLocalExpr, ParamLocal,
         RuntimeFunctionId, Step, StepKind,
     };
+    use std::collections::HashSet;
+
+    #[test]
+    fn provisional_parameter_bindings_propagate_storage_erasure() {
+        let parameter = crate::plan::TypeParameterId(0);
+        let main_id = crate::plan::FunctionTemplateId::new(0);
+        let source_local =
+            crate::plan::GenericLocal::new(crate::plan::GenericLocalId(0), parameter);
+        let binding_local =
+            crate::plan::GenericLocal::new(crate::plan::GenericLocalId(1), parameter);
+        let subject = crate::plan::AssertSubject::List(crate::plan::ListLocal::generic(
+            crate::plan::GenericListLocalId(0),
+            parameter,
+        ));
+        let step = crate::plan::Step::let_generic(
+            binding_local,
+            "bound".into(),
+            crate::plan::GenericExpr::local_get(source_local, "source".into()),
+        );
+        let guaranteed_failure = crate::plan::Step::assert_pattern_at(
+            subject.clone(),
+            crate::plan::AssertPattern::list(crate::plan::ListAssertPattern::new(
+                crate::plan::ValueType::Parameter(parameter),
+                vec![crate::plan::AssertPattern::Discard],
+                None,
+            )),
+            Some(crate::plan::StringExpr::value("message".into())),
+            crate::plan::PanicSite::unknown(),
+            crate::plan::SourceSpan::new(1, 2),
+        );
+        let main = crate::plan::FunctionTemplate::new(
+            main_id,
+            "main".into(),
+            Vec::new(),
+            vec![step.clone(), guaranteed_failure.clone()],
+            crate::plan::ReturnExpr::int(
+                crate::plan::IntFunctionId(0),
+                crate::plan::IntExpr::value(0.into()),
+            ),
+        );
+        let templates = FunctionTemplates::new(main, Vec::new(), Vec::new());
+        let mut context = LoweringContext::new(
+            &templates,
+            SpecializationKey::monomorphic(main_id),
+            RepresentationContext::new(Vec::new()),
+            crate::plan::ConstantTemplates::from_entries(Vec::new()),
+            HashSet::new(),
+        );
+        context.reserve_locals(&SpecializationKey::monomorphic(main_id));
+        let binding = crate::plan::AssertBinding::new(
+            crate::plan::ParamLocal::generic(binding_local),
+            "bound".into(),
+            crate::plan::ValueShape::Parameter(parameter),
+        );
+        let direct = crate::plan::TotalBindingPattern::bind(binding.clone());
+        let alias = crate::plan::TotalBindingPattern::alias(
+            crate::plan::TotalBindingPattern::discard(crate::plan::ValueType::Parameter(parameter)),
+            binding.clone(),
+        );
+        let list_alias = crate::plan::AssertPattern::alias(
+            crate::plan::AssertPattern::list(crate::plan::ListAssertPattern::new(
+                crate::plan::ValueType::Parameter(parameter),
+                vec![crate::plan::AssertPattern::Discard],
+                None,
+            )),
+            binding,
+        );
+        assert!(super::parameter_list_is_empty(&subject, &context));
+        context.substitution = SpecializedTypeSubstitution::instantiate(
+            &crate::plan::TypeSubstitution::from_arguments(vec![crate::plan::ValueShape::Int]),
+            &SpecializedTypeSubstitution::empty(),
+        );
+        assert!(!super::parameter_list_is_empty(&subject, &context));
+        context.substitution = SpecializedTypeSubstitution::empty();
+        assert!(!super::list_pattern_requires_item(
+            &crate::plan::AssertPattern::Discard,
+        ));
+        assert!(super::list_pattern_requires_item(&list_alias));
+        assert_eq!(
+            super::steps_until_never(&[step], &mut context).map(|_| ()),
+            Representability::Uninhabited,
+        );
+        assert_eq!(
+            super::total_binding_pattern(&direct, &mut context).map(|_| ()),
+            Representability::Uninhabited,
+        );
+        assert_eq!(
+            super::total_binding_pattern(&alias, &mut context).map(|_| ()),
+            Representability::Uninhabited,
+        );
+        assert_eq!(
+            super::steps_until_never(&[guaranteed_failure], &mut context).map(|_| ()),
+            Representability::Inhabited(()),
+        );
+    }
 
     #[test]
     fn lowering_removes_bit_array_pattern_names_and_preserves_typed_bindings() {

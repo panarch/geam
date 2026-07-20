@@ -1,14 +1,23 @@
 use super::{
     BitArrayListExpr, BoolListExpr, CustomListExpr, FloatListExpr, FunctionListExpr, IntListExpr,
-    ListListExpr, NilListExpr, StringListExpr, TupleListExpr, UtfCodepointListExpr,
+    ListListExpr, NilListExpr, ParameterListExpr, ParameterListListExpr, StringListExpr,
+    TupleListExpr, UtfCodepointListExpr,
 };
 use crate::plan::execution::{
     BitArrayListLocalId, BoolListLocalId, CustomListLocalId, FloatListLocalId, FunctionListLocalId,
-    IntListLocalId, ListListLocalId, NilListLocalId, StringListLocalId, TupleListLocalId,
-    UtfCodepointListLocalId,
+    IntListLocalId, ListListLocalId, NilListLocalId, ParameterListListLocalId,
+    ParameterListLocalId, StringListLocalId, TupleListLocalId, UtfCodepointListLocalId,
 };
 
 pub(crate) enum ListLocalExpr {
+    Parameter {
+        local: ParameterListLocalId,
+        value: ParameterListExpr,
+    },
+    ParameterList {
+        local: ParameterListListLocalId,
+        value: ParameterListListExpr,
+    },
     Int {
         local: IntListLocalId,
         value: IntListExpr,

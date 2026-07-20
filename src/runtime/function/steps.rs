@@ -4,36 +4,39 @@ use crate::plan::execution::{
     AssertBinding, AssertPattern, AssertSubject, BitArrayFunctionLocalId, BitArrayLocalId,
     BoolFunctionLocalId, BoolLocalId, CustomBindingPattern, CustomConstructorId,
     CustomFunctionLocal, CustomLocal, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocal,
-    IntFunctionLocalId, IntLocalId, ListAssertPattern, ListAssertTail, ListFunctionLocal,
-    NilFunctionLocalId, NilLocalId, ParamLocal, StepKind, StringFunctionLocalId, StringLocalId,
-    TotalBindingPattern, TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId,
-    UtfCodepointLocalId,
+    GenericFunctionLocal, IntFunctionLocalId, IntLocalId, ListAssertPattern, ListAssertTail,
+    ListFunctionLocal, NeverFunctionLocal, NilFunctionLocalId, NilLocalId, ParamLocal, StepKind,
+    StringFunctionLocalId, StringLocalId, TotalBindingPattern, TupleFunctionLocalId, TupleLocalId,
+    UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
     eval_bit_array_expr, eval_bit_array_function_expr, eval_bit_array_list_expr, eval_bool_expr,
     eval_bool_function_expr, eval_bool_list_expr, eval_custom_expr, eval_custom_function_expr,
     eval_custom_list_expr, eval_expr, eval_float_expr, eval_float_function_expr,
-    eval_float_list_expr, eval_function_function_expr, eval_function_list_expr, eval_int_expr,
-    eval_int_function_expr, eval_int_list_expr, eval_list_function_expr, eval_list_list_expr,
-    eval_nil_expr, eval_nil_function_expr, eval_nil_list_expr, eval_string_expr,
-    eval_string_function_expr, eval_string_list_expr, eval_tuple_expr, eval_tuple_function_expr,
-    eval_tuple_list_expr, eval_typed_custom_function_expr, eval_typed_function_expr,
-    eval_utf_codepoint_expr, eval_utf_codepoint_function_expr, eval_utf_codepoint_list_expr,
-    get_list_value,
+    eval_float_list_expr, eval_function_function_expr, eval_function_list_expr,
+    eval_generic_function_expr, eval_int_expr, eval_int_function_expr, eval_int_list_expr,
+    eval_list_function_expr, eval_list_list_expr, eval_never_function_expr, eval_nil_expr,
+    eval_nil_function_expr, eval_nil_list_expr, eval_parameter_list_expr,
+    eval_parameter_list_list_expr, eval_string_expr, eval_string_function_expr,
+    eval_string_list_expr, eval_tuple_expr, eval_tuple_function_expr, eval_tuple_list_expr,
+    eval_typed_custom_function_expr, eval_typed_function_expr, eval_utf_codepoint_expr,
+    eval_utf_codepoint_function_expr, eval_utf_codepoint_list_expr, get_list_value,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::state::{ListValueId, RuntimeState};
 use crate::runtime::{
     EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCustomFunction,
     EvaluatedCustomValue, EvaluatedFloatFunction, EvaluatedFunctionFunction,
-    EvaluatedFunctionValue, EvaluatedFunctionValueKind, EvaluatedIntFunction, EvaluatedListCapture,
-    EvaluatedListFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
+    EvaluatedFunctionValue, EvaluatedFunctionValueKind, EvaluatedGenericFunction,
+    EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction, EvaluatedNeverFunction,
+    EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
     EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
 use crate::runtime::{ExecutionError, PanicKind};
 use ecow::EcoString;
 use num_bigint::BigInt;
+use std::convert::Infallible;
 
 pub(in crate::runtime) fn execute_steps(
     plan: &ExecutionPlan,
@@ -120,6 +123,21 @@ pub(in crate::runtime) fn execute_steps(
                 )?;
                 frame.set_custom_function(local, value);
             }
+            StepKind::LetGenericFunction { local, value, .. } => {
+                let value = eval_typed_function_expr(
+                    plan,
+                    state,
+                    frame,
+                    value,
+                    eval_generic_function_expr,
+                )?;
+                frame.set_generic_function(local, value);
+            }
+            StepKind::LetNeverFunction { local, value, .. } => {
+                let value =
+                    eval_typed_function_expr(plan, state, frame, value, eval_never_function_expr)?;
+                frame.set_never_function(local, value);
+            }
             StepKind::LetFloatFunction { local, value, .. } => {
                 let value =
                     eval_typed_function_expr(plan, state, frame, value, eval_float_function_expr)?;
@@ -167,17 +185,16 @@ pub(in crate::runtime) fn execute_steps(
                 if match_assert_pattern(plan, state, frame, pattern, &value, &mut bindings)?
                     .is_none()
                 {
-                    let message = match message {
-                        Some(message) => Some(eval_string_expr(plan, state, frame, message)?),
-                        None => None,
-                    };
-                    return Err(ExecutionError::let_assert_panic(
-                        plan.source_context(),
-                        message,
-                        site.clone(),
-                        crate::runtime::materialize::value(plan, state, value),
+                    return fail_let_assert(
+                        plan,
+                        state,
+                        frame,
+                        subject,
+                        message.as_ref(),
+                        site,
                         *pattern_span,
-                    ));
+                    )
+                    .map(|never| match never {});
                 }
                 for binding in bindings {
                     frame_set_binding(frame, binding);
@@ -185,6 +202,13 @@ pub(in crate::runtime) fn execute_steps(
             }
             StepKind::BindCustomFields { local, pattern } => {
                 let value = frame.get_custom(*local);
+                let bindings = bind_custom_fields(plan, pattern, &value)?;
+                for binding in bindings {
+                    frame_set_binding(frame, binding);
+                }
+            }
+            StepKind::BindCustomValueFields { value, pattern } => {
+                let value = eval_custom_expr(plan, state, frame, value)?;
                 let bindings = bind_custom_fields(plan, pattern, &value)?;
                 for binding in bindings {
                     frame_set_binding(frame, binding);
@@ -216,6 +240,29 @@ pub(in crate::runtime) fn execute_steps(
 
     state.drain_releases();
     Ok(())
+}
+
+pub(in crate::runtime) fn fail_let_assert(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    frame: &mut Frame,
+    subject: &AssertSubject,
+    message: Option<&crate::plan::execution::StringExpr>,
+    site: &crate::plan::PanicSite,
+    pattern_span: crate::plan::SourceSpan,
+) -> ExecutionResult<Infallible> {
+    let value = assert_subject_value(frame, subject);
+    let message = match message {
+        Some(message) => Some(eval_string_expr(plan, state, frame, message)?),
+        None => None,
+    };
+    Err(ExecutionError::let_assert_panic(
+        plan.source_context(),
+        message,
+        site.clone(),
+        crate::runtime::materialize::value(plan, state, value),
+        pattern_span,
+    ))
 }
 
 fn assert_subject_value(frame: &Frame, subject: &AssertSubject) -> EvaluatedValue {
@@ -253,6 +300,8 @@ enum PendingBinding {
     BitArrayFunction(BitArrayFunctionLocalId, EvaluatedBitArrayFunction),
     UtfCodepointFunction(UtfCodepointFunctionLocalId, EvaluatedUtfCodepointFunction),
     CustomFunction(CustomFunctionLocal, EvaluatedCustomFunction),
+    GenericFunction(GenericFunctionLocal, EvaluatedGenericFunction),
+    NeverFunction(NeverFunctionLocal, EvaluatedNeverFunction),
     BoolFunction(BoolFunctionLocalId, EvaluatedBoolFunction),
     NilFunction(NilFunctionLocalId, EvaluatedNilFunction),
     TupleFunction(TupleFunctionLocalId, EvaluatedTupleFunction),
@@ -284,7 +333,7 @@ fn match_list_assert_pattern(
     pattern: &ListAssertPattern,
     value: &ListValueId,
 ) -> ExecutionResult<Option<Vec<PendingBinding>>> {
-    let values = state.evaluated_values(plan, value);
+    let values = state.evaluated_values(value);
     if let Some(tail) = pattern.tail() {
         if values.len() < pattern.elements().len() {
             return Ok(None);
@@ -676,6 +725,12 @@ fn pending_function_binding(
         (ParamLocal::CustomFunction(local), EvaluatedFunctionValueKind::Custom(value)) => {
             Some(PendingBinding::CustomFunction(local.clone(), value.clone()))
         }
+        (ParamLocal::GenericFunction(local), EvaluatedFunctionValueKind::Generic(value)) => Some(
+            PendingBinding::GenericFunction(local.clone(), value.clone()),
+        ),
+        (ParamLocal::NeverFunction(local), EvaluatedFunctionValueKind::Never(value)) => {
+            Some(PendingBinding::NeverFunction(local.clone(), value.clone()))
+        }
         (ParamLocal::BoolFunction { local, .. }, EvaluatedFunctionValueKind::Bool(value)) => {
             Some(PendingBinding::BoolFunction(*local, value.clone()))
         }
@@ -700,6 +755,14 @@ fn pending_list_binding(
     value: ListValueId,
 ) -> Option<EvaluatedListCapture> {
     match (local, value) {
+        (
+            crate::plan::execution::ListLocal::Parameter { local, .. },
+            ListValueId::Parameter(value),
+        ) => Some(EvaluatedListCapture::Parameter { local, value }),
+        (
+            crate::plan::execution::ListLocal::ParameterList { local, .. },
+            ListValueId::ParameterList(value),
+        ) => Some(EvaluatedListCapture::ParameterList { local, value }),
         (crate::plan::execution::ListLocal::Int { local, .. }, ListValueId::Int(value)) => {
             Some(EvaluatedListCapture::Int { local, value })
         }
@@ -762,6 +825,8 @@ fn frame_set_binding(frame: &mut Frame, binding: PendingBinding) {
             frame.set_utf_codepoint_function(local, value)
         }
         PendingBinding::CustomFunction(local, value) => frame.set_custom_function(&local, value),
+        PendingBinding::GenericFunction(local, value) => frame.set_generic_function(&local, value),
+        PendingBinding::NeverFunction(local, value) => frame.set_never_function(&local, value),
         PendingBinding::BoolFunction(local, value) => frame.set_bool_function(local, value),
         PendingBinding::NilFunction(local, value) => frame.set_nil_function(local, value),
         PendingBinding::TupleFunction(local, value) => frame.set_tuple_function(local, value),
@@ -779,6 +844,14 @@ fn execute_let_list(
     value: &crate::plan::execution::ListLocalExpr,
 ) -> ExecutionResult<()> {
     match value {
+        crate::plan::execution::ListLocalExpr::Parameter { local, value } => {
+            let value = eval_parameter_list_expr(plan, state, frame, value)?;
+            frame.set_parameter_list(*local, value);
+        }
+        crate::plan::execution::ListLocalExpr::ParameterList { local, value } => {
+            let value = eval_parameter_list_list_expr(plan, state, frame, value)?;
+            frame.set_parameter_list_list(*local, value);
+        }
         crate::plan::execution::ListLocalExpr::Int { local, value } => {
             let value = eval_int_list_expr(plan, state, frame, value)?;
             frame.set_int_list(*local, value);
@@ -829,6 +902,10 @@ fn execute_let_list(
 
 fn frame_set_list_binding(frame: &mut Frame, value: EvaluatedListCapture) {
     match value {
+        EvaluatedListCapture::Parameter { local, value } => frame.set_parameter_list(local, value),
+        EvaluatedListCapture::ParameterList { local, value } => {
+            frame.set_parameter_list_list(local, value)
+        }
         EvaluatedListCapture::Int { local, value } => frame.set_int_list(local, value),
         EvaluatedListCapture::String { local, value } => frame.set_string_list(local, value),
         EvaluatedListCapture::BitArray { local, value } => frame.set_bit_array_list(local, value),
@@ -855,7 +932,7 @@ mod tests {
     use crate::plan::execution::{
         AssertPattern, AssertSubject, CustomLocal, FunctionFunctionId, IntFunctionFunctionId,
         IntFunctionId, IntListLocalId, IntLocalId, ListAssertPattern, ListLocal, Step, StepKind,
-        StringFunctionId, StringLocalId,
+        StringFunctionId, StringLocalId, TupleLocalId,
     };
     use crate::runtime::expression::eval_custom_expr;
     use crate::runtime::frame::Frame;
@@ -864,6 +941,155 @@ mod tests {
         EvaluatedCustomValue, EvaluatedFunctionFunction, EvaluatedFunctionValue,
         EvaluatedListCapture, EvaluatedValue, ExecutionError, ListValue,
     };
+
+    #[test]
+    fn source_steps_bind_generic_and_never_function_locals() {
+        let plan = crate::runtime::plan_src(
+            r#"
+fn identity(value) { value }
+fn diverge(_value: Int) -> value { panic }
+
+pub fn main() {
+  let generic = identity
+  let never = diverge
+  #(generic, never)
+}
+"#,
+        );
+        let value = crate::run_main(&plan).expect("generic function locals should execute");
+        assert_eq!(
+            value.value_type(),
+            ValueType::Tuple(vec![
+                ValueType::Function(Box::new(crate::plan::FunctionType::new(
+                    vec![ValueType::Parameter(crate::plan::TypeParameterId(0))],
+                    ValueType::Parameter(crate::plan::TypeParameterId(0)),
+                ))),
+                ValueType::Function(Box::new(crate::plan::FunctionType::new(
+                    vec![ValueType::Int],
+                    ValueType::Parameter(crate::plan::TypeParameterId(1)),
+                ))),
+            ]),
+        );
+    }
+
+    #[test]
+    fn let_assert_binds_generic_and_never_function_values() {
+        let value = crate::runtime::run_src(
+            r#"
+fn identity(value) { value }
+fn diverge(_value: Int) -> value { panic }
+
+pub fn main() {
+  let assert [generic] = [identity]
+  let assert [never] = [diverge]
+  #(generic, never)
+}
+"#,
+        );
+
+        assert_eq!(
+            value.value_type(),
+            ValueType::Tuple(vec![
+                ValueType::Function(Box::new(crate::plan::FunctionType::new(
+                    vec![ValueType::Parameter(crate::plan::TypeParameterId(0))],
+                    ValueType::Parameter(crate::plan::TypeParameterId(0)),
+                ))),
+                ValueType::Function(Box::new(crate::plan::FunctionType::new(
+                    vec![ValueType::Int],
+                    ValueType::Parameter(crate::plan::TypeParameterId(1)),
+                ))),
+            ]),
+        );
+    }
+
+    #[test]
+    fn function_local_binding_errors_propagate_for_remaining_callable_families() {
+        let sources = [
+            r#"
+fn identity(value) { value }
+pub fn main() {
+  let function = case False {
+    True -> identity
+    False -> panic as "binding"
+  }
+  function
+}
+"#,
+            r#"
+fn diverge(_value: Int) -> value { panic }
+pub fn main() {
+  let function = case False {
+    True -> diverge
+    False -> panic as "binding"
+  }
+  function
+}
+"#,
+            r#"
+pub fn main() {
+  let function: fn() -> BitArray = panic as "binding"
+  function
+}
+"#,
+            r#"
+pub fn main() {
+  let function: fn() -> UtfCodepoint = panic as "binding"
+  function
+}
+"#,
+            r#"
+pub type Boxed { Boxed }
+pub fn main() {
+  let function: fn() -> Boxed = panic as "binding"
+  function
+}
+"#,
+            r#"
+pub fn main() {
+  let function: fn() -> fn() -> Int = panic as "binding"
+  function
+}
+"#,
+        ];
+
+        for source in sources {
+            assert_eq!(
+                crate::runtime::run_src_error(source).to_string(),
+                "panic: binding",
+            );
+        }
+    }
+
+    #[test]
+    fn let_assert_binds_parameter_lists_at_each_recursive_storage_level() {
+        assert_eq!(
+            crate::runtime::run_src(
+                r#"
+fn bind(values: List(value), selector: Bool) {
+  let assert #(bound, True) = #(values, selector)
+  bound
+}
+
+fn bind_nested(values: List(List(value)), selector: Bool) {
+  let assert #(bound, True) = #(values, selector)
+  bound
+}
+
+pub fn main() {
+  #(bind([], True), bind_nested([], True))
+}
+"#,
+            ),
+            crate::runtime::Value::Tuple(vec![
+                crate::runtime::Value::List(ListValue::empty(ValueType::Parameter(
+                    crate::plan::TypeParameterId(0),
+                ))),
+                crate::runtime::Value::List(ListValue::empty(ValueType::List(Box::new(
+                    ValueType::Parameter(crate::plan::TypeParameterId(1)),
+                )))),
+            ]),
+        );
+    }
 
     #[test]
     fn source_steps_bind_and_assert_exact_values() {
@@ -1090,6 +1316,8 @@ pub fn main() {
             "List(Bool)",
             "List(Nil)",
             "List(#(Int))",
+            "List(value)",
+            "List(List(value))",
             "List(List(Int))",
             "List(fn() -> Int)",
             "fn() -> Int",
@@ -1890,6 +2118,88 @@ pub fn main() {
     }
 
     #[test]
+    fn certain_custom_binding_propagates_projection_and_field_invariants() {
+        let tuple_plan = crate::runtime::plan_src(
+            r#"
+pub type Empty
+
+fn select(subject: #(Result(Int, error))) -> Int {
+  let _ = case subject {
+    #(Ok(value)) -> value
+    _ -> 0
+  }
+  0
+}
+
+pub fn main() {
+  let result: Result(Int, Empty) = Ok(1)
+  select(#(result))
+}
+"#,
+        );
+        let tuple_function = tuple_plan.int_function(IntFunctionId(1));
+        assert_eq!(tuple_function.steps().len(), 1);
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(tuple_function.frame_layout(), &mut state);
+        frame.set_tuple(TupleLocalId(0), vec![EvaluatedValue::Int(0.into())]);
+        let ok = tuple_plan.custom_constructor_id(0, 0);
+        assert_eq!(
+            execute_steps(&tuple_plan, &mut state, tuple_function.steps(), &mut frame,),
+            Err(ExecutionError::TupleIndexFamilyMismatch {
+                expected: ValueType::Custom(tuple_plan.custom_value_type(ok.type_id())),
+                actual: ValueType::Int,
+            }),
+        );
+
+        let custom_plan = crate::runtime::plan_src(
+            r#"
+pub type Empty
+
+fn select(result: Result(Int, error)) -> Int {
+  let _ = case result {
+    Ok(value) -> value
+    Error(_) -> 0
+  }
+  0
+}
+
+pub fn main() {
+  let result: Result(Int, Empty) = Ok(1)
+  select(result)
+}
+"#,
+        );
+        let custom_function = custom_plan.int_function(IntFunctionId(1));
+        assert_eq!(custom_function.steps().len(), 1);
+        let local = custom_function.frame_layout().customs()[0];
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(custom_function.frame_layout(), &mut state);
+        let constructor = custom_plan.custom_constructor_id(local.type_id().index(), 0);
+        frame.set_custom(
+            local,
+            EvaluatedCustomValue::from_fields(
+                constructor,
+                vec![EvaluatedValue::String("wrong".into())].into_boxed_slice(),
+            ),
+        );
+        assert_eq!(
+            execute_steps(
+                &custom_plan,
+                &mut state,
+                custom_function.steps(),
+                &mut frame,
+            ),
+            Err(ExecutionError::CustomFieldFamilyMismatch {
+                custom_type: custom_plan.custom_value_type(constructor.type_id()),
+                constructor: custom_plan.custom_constructor(constructor).name().clone(),
+                field_index: 0,
+                expected: ValueType::Int,
+                actual: ValueType::String,
+            }),
+        );
+    }
+
+    #[test]
     fn custom_total_binding_reports_structural_field_family_mismatches() {
         let plan = crate::runtime::plan_src(
             r#"
@@ -1897,6 +2207,7 @@ pub type Inner { Inner(Int) }
 pub type Fields { Fields(#(Int), List(Int), Inner, Int) }
 fn strings() { ["wrong"] }
 pub fn main() {
+  let _ = strings
   let ignored = 0
   let value = Fields(#(1), [2], Inner(3), 4)
   let Fields(#(tuple) as whole_tuple, [..items], Inner(inner), _ as alias) = value
@@ -2218,6 +2529,7 @@ pub fn main() {
 fn strings() -> List(String) { [] }
 fn target() { 1 }
 pub fn main() {
+  let _ = strings
   let assert [_, ..rest] = [1]
   let assert [values] = [[1]]
   let assert [function] = [target]

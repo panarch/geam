@@ -2,8 +2,10 @@ mod bit_array;
 mod bool;
 mod custom;
 mod float;
+mod generic;
 mod int;
 mod list;
+mod never;
 mod nil;
 mod returning_function;
 mod string;
@@ -25,8 +27,10 @@ pub(in crate::runtime) use self::{
     bool::eval_bool_function_expr,
     custom::{eval_custom_function_expr, eval_custom_function_expr_kind},
     float::eval_float_function_expr,
+    generic::{eval_generic_function_expr, eval_generic_function_expr_kind},
     int::eval_int_function_expr,
     list::eval_list_function_expr,
+    never::{eval_never_function_expr, eval_never_function_expr_kind},
     nil::eval_nil_function_expr,
     returning_function::{eval_function_function_expr, eval_function_function_expr_kind},
     string::eval_string_function_expr,
@@ -41,6 +45,12 @@ pub(in crate::runtime) fn eval_function_expr(
     expression: &FunctionExpr,
 ) -> Result<EvaluatedFunctionValue, ExecutionError> {
     let value: EvaluatedFunctionValue = match expression.kind() {
+        FunctionExprKind::Generic(expression) => {
+            eval_generic_function_expr(plan, state, frame, expression)?.into()
+        }
+        FunctionExprKind::Never(expression) => {
+            eval_never_function_expr(plan, state, frame, expression)?.into()
+        }
         FunctionExprKind::Int(expression) => {
             eval_int_function_expr(plan, state, frame, expression)?.into()
         }
@@ -142,6 +152,29 @@ fn expect_function_list(expression: crate::plan::ListExpr) -> crate::plan::Funct
 #[cfg(test)]
 mod tests {
     use crate::runtime::run_main;
+
+    #[test]
+    fn function_expression_propagates_never_function_errors() {
+        let plan = crate::runtime::plan_src(
+            r#"
+fn diverge(_value: Int) -> value { panic }
+
+pub fn main() {
+  [case False {
+    True -> diverge
+    False -> panic as "function"
+  }]
+}
+"#,
+        );
+
+        assert_eq!(
+            run_main(&plan)
+                .expect_err("function list element should propagate its panic")
+                .to_string(),
+            "panic: function",
+        );
+    }
 
     #[test]
     fn compound_function_tuple_projections_propagate_tuple_errors() {

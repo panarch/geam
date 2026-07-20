@@ -3,8 +3,8 @@ use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{FunctionReturnFamily, TupleFunctionExpr, TupleFunctionExprKind};
 use crate::runtime::expression::{
-    eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
-    project_function_list_expr, project_tuple_expr,
+    eval_bool_expr, eval_direct_call, eval_float_expr, eval_function_call, eval_int_expr,
+    eval_panic_expr, eval_string_expr, project_function_list_expr, project_tuple_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -20,29 +20,40 @@ pub(in crate::runtime) fn eval_tuple_function_expr(
     expression: &TupleFunctionExpr,
 ) -> Result<EvaluatedTupleFunction, ExecutionError> {
     match expression.kind() {
+        TupleFunctionExprKind::Constant(value) => {
+            eval_tuple_function_expr(plan, state, frame, plan.constant(*value))
+        }
         TupleFunctionExprKind::Reference(reference) => Ok(EvaluatedTupleFunction::reference(
             *reference.function(),
             reference.param_locals(),
             Vec::new(),
             expression.type_().clone(),
         )),
-        TupleFunctionExprKind::Closure(template) => Ok(EvaluatedTupleFunction::closure(
-            *template.function(),
-            template.param_locals(),
-            function::eval_capture_args(plan, state, frame, template.captures())?,
+        TupleFunctionExprKind::Closure(closure) => Ok(EvaluatedTupleFunction::closure(
+            *closure.function(),
+            closure.param_locals(),
+            function::eval_capture_args(plan, state, frame, closure.captures())?,
             expression.type_().clone(),
         )),
         TupleFunctionExprKind::LocalGet { local, .. } => Ok(frame.get_tuple_function(*local)),
-        TupleFunctionExprKind::Call { function, args, .. } => {
-            function::run_tuple_function_returning_function_call(
-                plan, state, *function, args, frame,
-            )
-        }
-        TupleFunctionExprKind::FunctionCall {
-            function: callee,
-            args,
-            ..
-        } => function::run_tuple_function_function_call(plan, state, callee.as_ref(), args, frame),
+        TupleFunctionExprKind::Call(call) => eval_direct_call(
+            plan,
+            state,
+            frame,
+            call,
+            |plan, state, function, args, frame| {
+                function::run_tuple_function_returning_function_call(
+                    plan, state, *function, args, frame,
+                )
+            },
+        ),
+        TupleFunctionExprKind::FunctionCall(call) => eval_function_call(
+            plan,
+            state,
+            frame,
+            call,
+            function::run_tuple_function_function_call,
+        ),
         TupleFunctionExprKind::TupleIndex {
             tuple,
             index,
@@ -270,6 +281,22 @@ pub fn main() {
                     fallback(),
                 ),
                 "bool subject",
+            ),
+            (
+                TupleFunctionExpr::bool_case(
+                    BoolExpr::not(BoolExpr::value(false)),
+                    TupleFunctionExpr::panic(panic("true branch"), type_.clone()),
+                    fallback(),
+                ),
+                "true branch",
+            ),
+            (
+                TupleFunctionExpr::bool_case(
+                    BoolExpr::not(BoolExpr::value(true)),
+                    fallback(),
+                    TupleFunctionExpr::panic(panic("false branch"), type_.clone()),
+                ),
+                "false branch",
             ),
             (
                 TupleFunctionExpr::int_case(

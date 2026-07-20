@@ -112,6 +112,10 @@ fn capture_callable(function: fn(value) -> value) -> fn() -> fn(value) -> value 
   fn() { function }
 }
 
+fn capture_list(value: value) -> fn() -> List(value) {
+  fn() { [value] }
+}
+
 fn call_through_anonymous(value: value, function: fn(value) -> value) -> value {
   let invoke = fn(callable: fn(value) -> value) { callable(value) }
   invoke(function)
@@ -486,6 +490,7 @@ fn assert_generic_return_owners() {
   assert generic_string_callable("selected", identity, identity)(1) == 1
   assert generic_float_callable(1.0, identity, identity)(1) == 1
   assert generic_block_callable(identity)(1) == 1
+  assert capture_list("one")() == ["one"]
 
   assert choose_int_function(1.0)(1) == 1
   assert choose_string_function(1.0)("one") == "one"

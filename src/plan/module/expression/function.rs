@@ -13,10 +13,11 @@ mod typed;
 mod utf_codepoint;
 
 use crate::plan::{
-    BitArrayFunctionReference, BoolFunctionReference, CustomFieldAccess, CustomFunctionReference,
-    FloatFunctionReference, FunctionFunctionReference, FunctionReference, FunctionShape,
-    FunctionType, IntFunctionReference, ListFunctionReference, NilFunctionReference,
-    StringFunctionReference, TupleFunctionReference, UtfCodepointFunctionReference, ValueShape,
+    BitArrayFunctionReference, BoolFunctionReference, ConstantFunctionInstantiation,
+    CustomFieldAccess, CustomFunctionReference, FloatFunctionReference, FunctionFunctionReference,
+    FunctionReference, FunctionShape, FunctionType, IntFunctionReference, ListFunctionReference,
+    NilFunctionReference, StringFunctionReference, TupleFunctionReference,
+    UtfCodepointFunctionReference, ValueShape,
 };
 
 pub use self::{
@@ -80,6 +81,82 @@ pub(crate) enum TypedFunctionExprKind {
 }
 
 impl FunctionExpr {
+    pub(in crate::plan::module) fn constant(value: ConstantFunctionInstantiation) -> Self {
+        match value {
+            ConstantFunctionInstantiation::Generic(value) => {
+                let shape = value.shape().clone();
+                let type_ = crate::plan::GenericFunctionType::new(
+                    shape.argument_shapes().to_vec(),
+                    *value.return_(),
+                );
+                Self::generic_with_shape(GenericFunctionExpr::constant(value, type_), shape)
+            }
+            ConstantFunctionInstantiation::Int(value) => {
+                let shape = value.shape().clone();
+                Self::int_with_shape(IntFunctionExpr::constant(value, shape.type_()), shape)
+            }
+            ConstantFunctionInstantiation::String(value) => {
+                let shape = value.shape().clone();
+                Self::string_with_shape(StringFunctionExpr::constant(value, shape.type_()), shape)
+            }
+            ConstantFunctionInstantiation::BitArray(value) => {
+                let shape = value.shape().clone();
+                Self::bit_array_with_shape(
+                    BitArrayFunctionExpr::constant(value, shape.type_()),
+                    shape,
+                )
+            }
+            ConstantFunctionInstantiation::UtfCodepoint(value) => {
+                let shape = value.shape().clone();
+                Self::utf_codepoint_with_shape(
+                    UtfCodepointFunctionExpr::constant(value, shape.type_()),
+                    shape,
+                )
+            }
+            ConstantFunctionInstantiation::Custom(value) => {
+                let shape = value.shape().clone();
+                let type_ = crate::plan::CustomFunctionType::from_shapes(
+                    shape.argument_shapes().to_vec(),
+                    value.return_().clone(),
+                );
+                Self::with_typed_shape(
+                    FunctionExprKind::Custom(CustomFunctionExpr::constant(value, type_)),
+                    shape,
+                )
+            }
+            ConstantFunctionInstantiation::Float(value) => {
+                let shape = value.shape().clone();
+                Self::float_with_shape(FloatFunctionExpr::constant(value, shape.type_()), shape)
+            }
+            ConstantFunctionInstantiation::Bool(value) => {
+                let shape = value.shape().clone();
+                Self::bool_with_shape(BoolFunctionExpr::constant(value, shape.type_()), shape)
+            }
+            ConstantFunctionInstantiation::Nil(value) => {
+                let shape = value.shape().clone();
+                Self::nil_with_shape(NilFunctionExpr::constant(value, shape.type_()), shape)
+            }
+            ConstantFunctionInstantiation::Tuple(value) => {
+                let shape = value.shape().clone();
+                Self::tuple_with_shape(TupleFunctionExpr::constant(value, shape.type_()), shape)
+            }
+            ConstantFunctionInstantiation::List(value) => {
+                let shape = value.shape().clone();
+                let type_ = shape.type_();
+                let item_type = value.return_().value_type();
+                Self::list_with_shape(ListFunctionExpr::constant(value, type_, item_type), shape)
+            }
+            ConstantFunctionInstantiation::Function(value) => {
+                let shape = value.shape().clone();
+                let type_ = crate::plan::FunctionFunctionType::from_shapes(
+                    shape.argument_shapes().to_vec(),
+                    value.return_().as_ref().clone(),
+                );
+                Self::function_with_shape(FunctionFunctionExpr::constant(value, type_), shape)
+            }
+        }
+    }
+
     fn new(kind: FunctionExprKind) -> Self {
         let shape = match &kind {
             FunctionExprKind::Generic(expression) => expression.shape(),

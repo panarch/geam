@@ -1,8 +1,8 @@
 use crate::plan::{
-    ConstantBitArraySegment, ConstantFunction, ConstantInstantiation,
-    ConstantListConstructionError, ConstantTemplate, ConstantTemplateId, ConstantTemplateSignature,
-    ConstantTemplates, ConstantValue, CustomConstructorRefinement, CustomValueShape, Endianness,
-    FloatBitSize, FunctionShape, StringEncoding, TypeScheme, ValueShape, ValueType,
+    ConstantBitArraySegment, ConstantInstantiation, ConstantListConstructionError,
+    ConstantTemplate, ConstantTemplateId, ConstantTemplateSignature, ConstantTemplates,
+    ConstantValue, CustomConstructorRefinement, CustomValueShape, Endianness, FloatBitSize,
+    FunctionShape, StringEncoding, TypeScheme, ValueShape, ValueType,
 };
 use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
 use crate::planner::error::{
@@ -55,9 +55,21 @@ enum ConstantStorageFamily {
     NilList,
     Tuple,
     TupleList,
+    ParameterListList,
     ListList,
-    Function,
     FunctionList,
+    GenericFunction,
+    IntFunction,
+    StringFunction,
+    BitArrayFunction,
+    UtfCodepointFunction,
+    CustomFunction,
+    FloatFunction,
+    BoolFunction,
+    NilFunction,
+    TupleFunction,
+    ListFunction,
+    FunctionFunction,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -157,11 +169,11 @@ impl ConstantRegistry {
         instantiate_constant(template.signature(), actual)
     }
 
-    pub(in crate::planner) fn materialize(
+    pub(in crate::planner) fn reference(
         &self,
-        instantiation: &ConstantInstantiation,
+        instantiation: ConstantInstantiation,
     ) -> crate::plan::Expr {
-        self.templates.materialize(instantiation)
+        ConstantTemplates::reference(instantiation)
     }
 
     pub(in crate::planner) fn into_templates(self) -> ConstantTemplates {
@@ -202,7 +214,20 @@ impl ConstantStorageShape {
             Self::Bool => ConstantStorageFamily::Bool,
             Self::Nil => ConstantStorageFamily::Nil,
             Self::Tuple(_) => ConstantStorageFamily::Tuple,
-            Self::Function(_) => ConstantStorageFamily::Function,
+            Self::Function(shape) => match shape.return_shape() {
+                ValueShape::Parameter(_) => ConstantStorageFamily::GenericFunction,
+                ValueShape::Int => ConstantStorageFamily::IntFunction,
+                ValueShape::String => ConstantStorageFamily::StringFunction,
+                ValueShape::BitArray => ConstantStorageFamily::BitArrayFunction,
+                ValueShape::UtfCodepoint => ConstantStorageFamily::UtfCodepointFunction,
+                ValueShape::Custom(_) => ConstantStorageFamily::CustomFunction,
+                ValueShape::Float => ConstantStorageFamily::FloatFunction,
+                ValueShape::Bool => ConstantStorageFamily::BoolFunction,
+                ValueShape::Nil => ConstantStorageFamily::NilFunction,
+                ValueShape::Tuple(_) => ConstantStorageFamily::TupleFunction,
+                ValueShape::List(_) => ConstantStorageFamily::ListFunction,
+                ValueShape::Function(_) => ConstantStorageFamily::FunctionFunction,
+            },
             Self::List(item) => match item.as_ref() {
                 ValueShape::Parameter(_) => ConstantStorageFamily::GenericList,
                 ValueShape::Int => ConstantStorageFamily::IntList,
@@ -214,7 +239,12 @@ impl ConstantStorageShape {
                 ValueShape::Bool => ConstantStorageFamily::BoolList,
                 ValueShape::Nil => ConstantStorageFamily::NilList,
                 ValueShape::Tuple(_) => ConstantStorageFamily::TupleList,
-                ValueShape::List(_) => ConstantStorageFamily::ListList,
+                ValueShape::List(item) => match item.representation() {
+                    crate::plan::ValueRepresentation::Uninhabited(_) => {
+                        ConstantStorageFamily::ParameterListList
+                    }
+                    crate::plan::ValueRepresentation::Stored(_) => ConstantStorageFamily::ListList,
+                },
                 ValueShape::Function(_) => ConstantStorageFamily::FunctionList,
             },
         }
@@ -394,7 +424,7 @@ fn plan_var(
             };
             Ok(ConstantValue::function(
                 (**actual).clone(),
-                ConstantFunction::Reference(function.reference(instantiation)),
+                function.reference(instantiation),
             ))
         }
         ValueConstructorVariant::Record { .. } => {
@@ -464,9 +494,18 @@ fn plan_record(
                     Vec::new().into_boxed_slice(),
                 ))
             }
-            ValueShape::Function(shape) if !constructor.fields().is_empty() => Ok(
-                ConstantValue::function(*shape, ConstantFunction::Constructor(constructor)),
-            ),
+            ValueShape::Function(shape) if !constructor.fields().is_empty() => {
+                let ValueShape::Custom(return_) = shape.return_shape().clone() else {
+                    return Err(invalid_expression_shape_error(
+                        InvalidExpressionShapeKind::RecordConstructor,
+                    ));
+                };
+                Ok(ConstantValue::constructor_function(
+                    *shape,
+                    return_,
+                    constructor,
+                ))
+            }
             _ => Err(invalid_expression_shape_error(
                 InvalidExpressionShapeKind::RecordConstructor,
             )),
@@ -767,9 +806,9 @@ fn invalid_expression_type_for_value(expected: ValueType, actual: ValueType) -> 
 #[allow(clippy::arc_with_non_send_sync)]
 mod tests {
     use super::{
-        ConstantRegistry, ConstantSignatures, ConstantStorageFamily, ConstantStorageShape,
-        StaticSegmentKind, StaticSegmentOptions, plan_bit_array_segment, plan_value,
-        static_segment_options,
+        ConstantRegistry, ConstantSignatures, ConstantStorageFamily, ConstantStorageIndices,
+        ConstantStorageShape, StaticSegmentKind, StaticSegmentOptions, plan_bit_array_segment,
+        plan_value, static_segment_options,
     };
     use crate::plan::{
         ConstantBitArraySegment, ConstantTemplates, CustomType, CustomTypeName, CustomValueShape,
@@ -897,6 +936,69 @@ mod tests {
                 .expect("every list item shape has a constant storage family");
             assert_eq!(storage.family(), expected);
         }
+    }
+
+    #[test]
+    fn constant_storage_families_preserve_function_return_partitions() {
+        let parameter = TypeParameterId(0);
+        let custom = CustomValueShape::any(CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        ));
+        let nested_function = FunctionShape::new(Vec::new(), ValueShape::Int);
+        let cases = [
+            (
+                ValueShape::Parameter(parameter),
+                ConstantStorageFamily::GenericFunction,
+            ),
+            (ValueShape::Int, ConstantStorageFamily::IntFunction),
+            (ValueShape::String, ConstantStorageFamily::StringFunction),
+            (
+                ValueShape::BitArray,
+                ConstantStorageFamily::BitArrayFunction,
+            ),
+            (
+                ValueShape::UtfCodepoint,
+                ConstantStorageFamily::UtfCodepointFunction,
+            ),
+            (
+                ValueShape::Custom(custom),
+                ConstantStorageFamily::CustomFunction,
+            ),
+            (ValueShape::Float, ConstantStorageFamily::FloatFunction),
+            (ValueShape::Bool, ConstantStorageFamily::BoolFunction),
+            (ValueShape::Nil, ConstantStorageFamily::NilFunction),
+            (
+                ValueShape::Tuple(vec![ValueShape::Int].into_boxed_slice()),
+                ConstantStorageFamily::TupleFunction,
+            ),
+            (
+                ValueShape::List(Box::new(ValueShape::Int)),
+                ConstantStorageFamily::ListFunction,
+            ),
+            (
+                ValueShape::Function(Box::new(nested_function)),
+                ConstantStorageFamily::FunctionFunction,
+            ),
+        ];
+
+        for (return_shape, expected) in cases {
+            let storage = ConstantStorageShape::try_from_shape(ValueShape::Function(Box::new(
+                FunctionShape::new(Vec::new(), return_shape),
+            )))
+            .expect("every function return shape has a constant storage family");
+            assert_eq!(storage.family(), expected);
+        }
+    }
+
+    #[test]
+    fn constant_storage_indices_are_independent_per_function_return_family() {
+        let mut indices = ConstantStorageIndices::default();
+
+        assert_eq!(indices.reserve(ConstantStorageFamily::IntFunction), 0);
+        assert_eq!(indices.reserve(ConstantStorageFamily::StringFunction), 0);
+        assert_eq!(indices.reserve(ConstantStorageFamily::IntFunction), 1);
+        assert_eq!(indices.reserve(ConstantStorageFamily::StringFunction), 1);
     }
 
     #[test]
@@ -1303,6 +1405,14 @@ mod tests {
                 None,
                 result_constructor(),
                 result_type.clone()
+            )),
+            Err(record_shape.clone()),
+        );
+        assert_eq!(
+            plan_fixture(record_constant(
+                None,
+                result_constructor(),
+                type_::fn_(vec![type_::int()], type_::int()),
             )),
             Err(record_shape.clone()),
         );

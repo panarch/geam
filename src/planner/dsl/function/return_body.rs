@@ -118,8 +118,12 @@ impl FunctionReturn {
             Self::List(ListReturn::Tuple { item_type, body }) => {
                 ReturnExpr::tuple_list_body(item_type, body)
             }
-            Self::List(ListReturn::List { item_type, body }) => {
-                ReturnExpr::list_list_body(item_type, body)
+            Self::List(ListReturn::ParameterList {
+                item_parameter,
+                body,
+            }) => ReturnExpr::parameter_list_list_body(item_parameter, body),
+            Self::List(ListReturn::List { item_shape, body }) => {
+                ReturnExpr::list_list_body(item_shape, body)
             }
             Self::List(ListReturn::Function { item_type, body }) => {
                 ReturnExpr::function_list_body(item_type, body)
@@ -188,7 +192,7 @@ impl FunctionReturn {
 #[cfg(test)]
 mod tests {
     use super::FunctionReturn;
-    use crate::plan::module::{CustomListReturn, GenericListReturn};
+    use crate::plan::module::{CustomListReturn, GenericListReturn, ParameterListListReturn};
     use crate::plan::{
         CustomExpr, CustomFunctionExpr, CustomFunctionLocalId, CustomFunctionReturn, CustomLocalId,
         CustomReturn, CustomType, CustomTypeName, Expr, FunctionFunctionId, FunctionFunctionReturn,
@@ -349,7 +353,7 @@ mod tests {
             FunctionReturn::from(list(Vec::<Expr>::new(), ValueType::List(list_item.clone())))
                 .build(),
             ReturnExpr::list_list_body(
-                list_item.clone(),
+                crate::plan::ValueStorageShape::Int,
                 crate::plan::ListListReturn::expr(
                     crate::plan::ListExpr::from(list(
                         Vec::<Expr>::new(),
@@ -357,6 +361,27 @@ mod tests {
                     ))
                     .into_list()
                     .expect("expression should be List(List)"),
+                ),
+            ),
+        );
+
+        let parameter = TypeParameterId(0);
+        let parameter_list_item = Box::new(ValueType::Parameter(parameter));
+        assert_eq!(
+            FunctionReturn::from(list(
+                Vec::<Expr>::new(),
+                ValueType::List(parameter_list_item.clone()),
+            ))
+            .build(),
+            ReturnExpr::parameter_list_list_body(
+                parameter,
+                ParameterListListReturn::expr(
+                    crate::plan::ListExpr::from(list(
+                        Vec::<Expr>::new(),
+                        ValueType::List(parameter_list_item),
+                    ))
+                    .into_parameter_list()
+                    .expect("expression should be List(List(parameter))"),
                 ),
             ),
         );

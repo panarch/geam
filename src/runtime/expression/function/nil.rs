@@ -3,8 +3,8 @@ use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{FunctionReturnFamily, NilFunctionExpr, NilFunctionExprKind};
 use crate::runtime::expression::{
-    eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
-    project_function_list_expr, project_tuple_expr,
+    eval_bool_expr, eval_direct_call, eval_float_expr, eval_function_call, eval_int_expr,
+    eval_panic_expr, eval_string_expr, project_function_list_expr, project_tuple_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -20,6 +20,9 @@ pub(in crate::runtime) fn eval_nil_function_expr(
     expression: &NilFunctionExpr,
 ) -> Result<EvaluatedNilFunction, ExecutionError> {
     match expression.kind() {
+        NilFunctionExprKind::Constant(value) => {
+            eval_nil_function_expr(plan, state, frame, plan.constant(*value))
+        }
         NilFunctionExprKind::Reference(reference) => Ok(EvaluatedNilFunction::reference(
             *reference.function(),
             reference.param_locals(),
@@ -30,25 +33,35 @@ pub(in crate::runtime) fn eval_nil_function_expr(
                 crate::plan::execution::ValueType::Nil,
             ),
         )),
-        NilFunctionExprKind::Closure(template) => Ok(EvaluatedNilFunction::closure(
-            *template.function(),
-            template.param_locals(),
-            function::eval_capture_args(plan, state, frame, template.captures())?,
+        NilFunctionExprKind::Closure(closure) => Ok(EvaluatedNilFunction::closure(
+            *closure.function(),
+            closure.param_locals(),
+            function::eval_capture_args(plan, state, frame, closure.captures())?,
             crate::runtime::evaluated::function_type_from_slots(
                 plan,
-                template.params(),
+                closure.params(),
                 crate::plan::execution::ValueType::Nil,
             ),
         )),
         NilFunctionExprKind::LocalGet { local, .. } => Ok(frame.get_nil_function(*local)),
-        NilFunctionExprKind::Call { function, args, .. } => {
-            function::run_nil_function_returning_function_call(plan, state, *function, args, frame)
-        }
-        NilFunctionExprKind::FunctionCall {
-            function: callee,
-            args,
-            ..
-        } => function::run_nil_function_function_call(plan, state, callee.as_ref(), args, frame),
+        NilFunctionExprKind::Call(call) => eval_direct_call(
+            plan,
+            state,
+            frame,
+            call,
+            |plan, state, function, args, frame| {
+                function::run_nil_function_returning_function_call(
+                    plan, state, *function, args, frame,
+                )
+            },
+        ),
+        NilFunctionExprKind::FunctionCall(call) => eval_function_call(
+            plan,
+            state,
+            frame,
+            call,
+            function::run_nil_function_function_call,
+        ),
         NilFunctionExprKind::TupleIndex {
             tuple,
             index,
@@ -254,6 +267,22 @@ pub fn main() {
                     fallback(),
                 ),
                 "bool subject",
+            ),
+            (
+                NilFunctionExpr::bool_case(
+                    BoolExpr::not(BoolExpr::value(false)),
+                    NilFunctionExpr::panic(panic("true branch"), type_.clone()),
+                    fallback(),
+                ),
+                "true branch",
+            ),
+            (
+                NilFunctionExpr::bool_case(
+                    BoolExpr::not(BoolExpr::value(true)),
+                    fallback(),
+                    NilFunctionExpr::panic(panic("false branch"), type_.clone()),
+                ),
+                "false branch",
             ),
             (
                 NilFunctionExpr::int_case(

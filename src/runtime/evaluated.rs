@@ -10,8 +10,9 @@ use crate::plan::execution::{
     BitArrayFunctionId, BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionId,
     BoolFunctionLocalId, BoolLocalId, CustomConstructorId, CustomFunctionId, CustomFunctionLocal,
     CustomLocal, CustomTypeId, FloatFunctionId, FloatFunctionLocalId, FloatLocalId,
-    FunctionFunctionId, FunctionFunctionLocal, FunctionReturnFamily, FunctionType, IntFunctionId,
-    IntFunctionLocalId, IntLocalId, ListFunctionId, ListFunctionLocal, NilFunctionId,
+    FunctionFunctionId, FunctionFunctionLocal, FunctionReturnFamily, FunctionType,
+    GenericCallableId, GenericFunctionLocal, IntFunctionId, IntFunctionLocalId, IntLocalId,
+    ListFunctionId, ListFunctionLocal, NeverFunctionId, NeverFunctionLocal, NilFunctionId,
     NilFunctionLocalId, NilLocalId, ParamLocal, StringFunctionId, StringFunctionLocalId,
     StringLocalId, TupleFunctionId, TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionId,
     UtfCodepointFunctionLocalId, UtfCodepointLocalId,
@@ -91,13 +92,16 @@ pub(in crate::runtime) struct EvaluatedFunction<Id> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::runtime) struct FunctionReferenceIdentity {
-    table: FunctionTableIdentity,
-    index: usize,
+pub(in crate::runtime) enum FunctionReferenceIdentity {
+    Table {
+        table: FunctionTableIdentity,
+        index: usize,
+    },
+    Generic(GenericCallableId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FunctionTableIdentity {
+pub(in crate::runtime) enum FunctionTableIdentity {
     Value(FunctionReturnFamily),
     List(ListFunctionReturnFamily),
     Function(FunctionReturnFamily),
@@ -105,7 +109,9 @@ enum FunctionTableIdentity {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ListFunctionReturnFamily {
+pub(in crate::runtime) enum ListFunctionReturnFamily {
+    Parameter,
+    ParameterList,
     Int,
     String,
     BitArray,
@@ -150,6 +156,8 @@ pub(in crate::runtime) type EvaluatedStringFunction = EvaluatedFunction<StringFu
 pub(in crate::runtime) type EvaluatedBitArrayFunction = EvaluatedFunction<BitArrayFunctionId>;
 pub(in crate::runtime) type EvaluatedUtfCodepointFunction =
     EvaluatedFunction<UtfCodepointFunctionId>;
+pub(in crate::runtime) type EvaluatedGenericFunction = EvaluatedFunction<GenericCallableId>;
+pub(in crate::runtime) type EvaluatedNeverFunction = EvaluatedFunction<NeverFunctionId>;
 #[derive(Debug, Clone, PartialEq)]
 pub(in crate::runtime) enum EvaluatedCustomFunction {
     Function(EvaluatedFunction<CustomFunctionId>),
@@ -163,31 +171,43 @@ pub(in crate::runtime) type EvaluatedFunctionFunction = EvaluatedFunction<Functi
 
 impl FunctionReferenceIdentity {
     fn value(family: FunctionReturnFamily, index: usize) -> Self {
-        Self {
+        Self::Table {
             table: FunctionTableIdentity::Value(family),
             index,
         }
     }
 
     fn list(family: ListFunctionReturnFamily, index: usize) -> Self {
-        Self {
+        Self::Table {
             table: FunctionTableIdentity::List(family),
             index,
         }
     }
 
     fn function(family: FunctionReturnFamily, index: usize) -> Self {
-        Self {
+        Self::Table {
             table: FunctionTableIdentity::Function(family),
             index,
         }
     }
 
     fn returning_list_function(family: ListFunctionReturnFamily, index: usize) -> Self {
-        Self {
+        Self::Table {
             table: FunctionTableIdentity::ReturningListFunction(family),
             index,
         }
+    }
+}
+
+impl FunctionReferenceId for GenericCallableId {
+    fn reference_identity(&self) -> FunctionReferenceIdentity {
+        FunctionReferenceIdentity::Generic(self.clone())
+    }
+}
+
+impl FunctionReferenceId for NeverFunctionId {
+    fn reference_identity(&self) -> FunctionReferenceIdentity {
+        FunctionReferenceIdentity::value(FunctionReturnFamily::Never, self.0)
     }
 }
 
@@ -248,6 +268,12 @@ impl FunctionReferenceId for TupleFunctionId {
 impl FunctionReferenceId for ListFunctionId {
     fn reference_identity(&self) -> FunctionReferenceIdentity {
         match self {
+            Self::Parameter(id) => {
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::Parameter, id.index())
+            }
+            Self::ParameterList(id) => {
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::ParameterList, id.index())
+            }
             Self::Int(id) => {
                 FunctionReferenceIdentity::list(ListFunctionReturnFamily::Int, id.index())
             }
@@ -288,6 +314,12 @@ impl FunctionReferenceId for ListFunctionId {
 impl FunctionReferenceId for FunctionFunctionId {
     fn reference_identity(&self) -> FunctionReferenceIdentity {
         match self {
+            Self::Generic(id) => {
+                FunctionReferenceIdentity::function(FunctionReturnFamily::Generic, id.index())
+            }
+            Self::Never(id) => {
+                FunctionReferenceIdentity::function(FunctionReturnFamily::Never, id.index())
+            }
             Self::Int(id) => FunctionReferenceIdentity::function(FunctionReturnFamily::Int, id.0),
             Self::Float(id) => {
                 FunctionReferenceIdentity::function(FunctionReturnFamily::Float, id.0)
@@ -310,6 +342,18 @@ impl FunctionReferenceId for FunctionFunctionId {
                 FunctionReferenceIdentity::function(FunctionReturnFamily::Tuple, id.0)
             }
             Self::List(id) => match id {
+                crate::plan::execution::ListFunctionFunctionId::Parameter { id, .. } => {
+                    FunctionReferenceIdentity::returning_list_function(
+                        ListFunctionReturnFamily::Parameter,
+                        id.0,
+                    )
+                }
+                crate::plan::execution::ListFunctionFunctionId::ParameterList { id, .. } => {
+                    FunctionReferenceIdentity::returning_list_function(
+                        ListFunctionReturnFamily::ParameterList,
+                        id.0,
+                    )
+                }
                 crate::plan::execution::ListFunctionFunctionId::Int { id, .. } => {
                     FunctionReferenceIdentity::returning_list_function(
                         ListFunctionReturnFamily::Int,
@@ -405,6 +449,8 @@ pub(in crate::runtime) struct EvaluatedFunctionValue {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(in crate::runtime) enum EvaluatedFunctionValueKind {
+    Generic(EvaluatedGenericFunction),
+    Never(EvaluatedNeverFunction),
     Int(EvaluatedIntFunction),
     Float(EvaluatedFloatFunction),
     String(EvaluatedStringFunction),
@@ -505,10 +551,26 @@ pub(in crate::runtime) enum EvaluatedCaptureKind {
         local: FunctionFunctionLocal,
         value: EvaluatedFunctionFunction,
     },
+    GenericFunction {
+        local: GenericFunctionLocal,
+        value: EvaluatedGenericFunction,
+    },
+    NeverFunction {
+        local: NeverFunctionLocal,
+        value: EvaluatedNeverFunction,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub(in crate::runtime) enum EvaluatedListCapture {
+    Parameter {
+        local: crate::plan::execution::ParameterListLocalId,
+        value: super::state::ParameterListValueId,
+    },
+    ParameterList {
+        local: crate::plan::execution::ParameterListListLocalId,
+        value: super::state::ParameterListListValueId,
+    },
     Int {
         local: crate::plan::execution::IntListLocalId,
         value: super::state::IntListValueId,
@@ -707,6 +769,8 @@ macro_rules! evaluated_function_value_from {
     };
 }
 
+evaluated_function_value_from!(EvaluatedGenericFunction, Generic);
+evaluated_function_value_from!(EvaluatedNeverFunction, Never);
 evaluated_function_value_from!(EvaluatedIntFunction, Int);
 evaluated_function_value_from!(EvaluatedFloatFunction, Float);
 evaluated_function_value_from!(EvaluatedStringFunction, String);
@@ -730,6 +794,8 @@ impl EvaluatedFunctionValue {
 
     pub(in crate::runtime) fn type_(&self) -> &FunctionType {
         match &self.kind {
+            EvaluatedFunctionValueKind::Generic(value) => value.type_(),
+            EvaluatedFunctionValueKind::Never(value) => value.type_(),
             EvaluatedFunctionValueKind::Int(value) => value.type_(),
             EvaluatedFunctionValueKind::Float(value) => value.type_(),
             EvaluatedFunctionValueKind::String(value) => value.type_(),
@@ -746,6 +812,12 @@ impl EvaluatedFunctionValue {
 
     pub(in crate::runtime) fn with_type(self, type_: FunctionType) -> Self {
         let kind = match self.kind {
+            EvaluatedFunctionValueKind::Generic(value) => {
+                EvaluatedFunctionValueKind::Generic(value.with_type(type_))
+            }
+            EvaluatedFunctionValueKind::Never(value) => {
+                EvaluatedFunctionValueKind::Never(value.with_type(type_))
+            }
             EvaluatedFunctionValueKind::Int(value) => {
                 EvaluatedFunctionValueKind::Int(value.with_type(type_))
             }
@@ -787,6 +859,8 @@ impl EvaluatedFunctionValue {
 impl EvaluatedFunctionValueKind {
     pub(in crate::runtime) fn family(&self) -> FunctionReturnFamily {
         match self {
+            Self::Generic(_) => FunctionReturnFamily::Generic,
+            Self::Never(_) => FunctionReturnFamily::Never,
             Self::Int(_) => FunctionReturnFamily::Int,
             Self::Float(_) => FunctionReturnFamily::Float,
             Self::String(_) => FunctionReturnFamily::String,
@@ -856,6 +930,20 @@ impl EvaluatedCapture {
         value: EvaluatedIntFunction,
     ) -> Self {
         Self::from_kind(EvaluatedCaptureKind::IntFunction { local, value })
+    }
+
+    pub(in crate::runtime) fn generic_function(
+        local: GenericFunctionLocal,
+        value: EvaluatedGenericFunction,
+    ) -> Self {
+        Self::from_kind(EvaluatedCaptureKind::GenericFunction { local, value })
+    }
+
+    pub(in crate::runtime) fn never_function(
+        local: NeverFunctionLocal,
+        value: EvaluatedNeverFunction,
+    ) -> Self {
+        Self::from_kind(EvaluatedCaptureKind::NeverFunction { local, value })
     }
 
     pub(in crate::runtime) fn float_function(
@@ -979,8 +1067,8 @@ fn lists_equal(
         return false;
     }
 
-    let left = state.evaluated_values(plan, left);
-    let right = state.evaluated_values(plan, right);
+    let left = state.evaluated_values(left);
+    let right = state.evaluated_values(right);
     left.len() == right.len()
         && left
             .iter()
@@ -990,6 +1078,12 @@ fn lists_equal(
 
 fn functions_equal(left: &EvaluatedFunctionValue, right: &EvaluatedFunctionValue) -> bool {
     match (left.kind(), right.kind()) {
+        (EvaluatedFunctionValueKind::Generic(left), EvaluatedFunctionValueKind::Generic(right)) => {
+            function_values_equal(left, right)
+        }
+        (EvaluatedFunctionValueKind::Never(left), EvaluatedFunctionValueKind::Never(right)) => {
+            function_values_equal(left, right)
+        }
         (EvaluatedFunctionValueKind::Int(left), EvaluatedFunctionValueKind::Int(right)) => {
             function_values_equal(left, right)
         }
@@ -1055,10 +1149,10 @@ mod tests {
     use super::{
         EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
         EvaluatedCustomFunction, EvaluatedFloatFunction, EvaluatedFunctionFunction,
-        EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedListFunction, EvaluatedNilFunction,
-        EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedUtfCodepointFunction,
-        EvaluatedValue, FunctionReferenceId, FunctionReferenceIdentity, ListFunctionReturnFamily,
-        values_equal,
+        EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedListFunction,
+        EvaluatedNeverFunction, EvaluatedNilFunction, EvaluatedStringFunction,
+        EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue, FunctionReferenceId,
+        FunctionReferenceIdentity, ListFunctionReturnFamily, values_equal,
     };
     use crate::plan::ValueType;
     use crate::plan::execution::{
@@ -1066,8 +1160,9 @@ mod tests {
         BoolListFunctionFunctionId, CustomListFunctionFunctionId, FloatFunctionId,
         FloatListFunctionFunctionId, FunctionFunctionId, FunctionListFunctionFunctionId,
         IntFunctionFunctionId, IntFunctionId, IntListFunctionFunctionId, IntLocalId,
-        ListFunctionFunctionId, ListFunctionId, ListListFunctionFunctionId, NilFunctionId,
-        NilListFunctionFunctionId, ParamLocal, StringFunctionId, StringListFunctionFunctionId,
+        ListFunctionFunctionId, ListFunctionId, ListListFunctionFunctionId, NeverFunctionId,
+        NilFunctionId, NilListFunctionFunctionId, ParamLocal, ParameterListFunctionFunctionId,
+        ParameterListListFunctionFunctionId, StringFunctionId, StringListFunctionFunctionId,
         TupleFunctionId, TupleListFunctionFunctionId, UtfCodepointFunctionId,
         UtfCodepointListFunctionFunctionId,
     };
@@ -1089,8 +1184,29 @@ fn nils() -> List(Nil) { [] }
 fn tuples() -> List(#(Int)) { [] }
 fn lists() -> List(List(Int)) { [] }
 fn functions() -> List(fn() -> Int) { [] }
+fn parameters(values: List(value)) { values }
+fn parameter_lists(values: List(List(value))) { values }
 fn take_function_function(value: fn() -> fn() -> Int) { 0 }
-pub fn main() { 0 }
+pub fn main() {
+  let _ = #(
+    ints,
+    strings,
+    bit_arrays,
+    utf_codepoints,
+    customs,
+    custom,
+    floats,
+    bools,
+    nils,
+    tuples,
+    lists,
+    functions,
+    take_function_function,
+  )
+  let _ = parameters([])
+  let _ = parameter_lists([[]])
+  0
+}
 "#;
 
     #[test]
@@ -1186,7 +1302,20 @@ pub fn main() { 0 }
                 crate::plan::execution::ValueType::Custom(constructor_id.type_id()),
             ),
         );
+        let never_function = EvaluatedNeverFunction::reference(
+            NeverFunctionId(0),
+            Vec::new(),
+            Vec::new(),
+            crate::plan::execution::FunctionType::new(
+                Vec::new(),
+                crate::plan::execution::ValueType::Parameter(crate::plan::TypeParameterId(0)),
+            ),
+        );
         let function_pairs = [
+            (
+                EvaluatedFunctionValue::from(never_function.clone()),
+                EvaluatedFunctionValue::from(never_function),
+            ),
             (
                 EvaluatedFunctionValue::from(int_function.clone()),
                 EvaluatedFunctionValue::from(int_function.clone()),
@@ -1471,11 +1600,11 @@ pub fn main() { 0 }
         let nested_lists = (
             state.list(
                 plan.list_list_function_id(0).type_id(),
-                vec![left_child.into_core()],
+                vec![left_child.into()],
             ),
             state.list(
                 plan.list_list_function_id(0).type_id(),
-                vec![right_child.into_core()],
+                vec![right_child.into()],
             ),
         );
         let function_lists = (
@@ -1645,6 +1774,8 @@ pub fn main() { 0 }
     fn list_function_reference_identity_uses_item_family_table_target() {
         let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
         let ids = [
+            ListFunctionId::Parameter(plan.parameter_list_function_id(0)),
+            ListFunctionId::ParameterList(plan.parameter_list_list_function_id(0)),
             ListFunctionId::Int(plan.int_list_function_id(0)),
             ListFunctionId::String(plan.string_list_function_id(0)),
             ListFunctionId::BitArray(plan.bit_array_list_function_id(0)),
@@ -1661,6 +1792,8 @@ pub fn main() { 0 }
         assert_eq!(
             ids.map(|id| id.reference_identity()),
             [
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::Parameter, 0),
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::ParameterList, 0),
                 FunctionReferenceIdentity::list(ListFunctionReturnFamily::Int, 0),
                 FunctionReferenceIdentity::list(ListFunctionReturnFamily::String, 0),
                 FunctionReferenceIdentity::list(ListFunctionReturnFamily::BitArray, 0),
@@ -1684,6 +1817,16 @@ pub fn main() { 0 }
             crate::plan::execution::ValueType::Int,
         );
         let ids = [
+            ListFunctionFunctionId::Parameter {
+                id: ParameterListFunctionFunctionId(0),
+                type_: type_.clone(),
+                list_type: plan.parameter_list_function_id(0).type_id(),
+            },
+            ListFunctionFunctionId::ParameterList {
+                id: ParameterListListFunctionFunctionId(0),
+                type_: type_.clone(),
+                list_type: plan.parameter_list_list_function_id(0).type_id(),
+            },
             ListFunctionFunctionId::Int {
                 id: IntListFunctionFunctionId(0),
                 type_: type_.clone(),
@@ -1744,6 +1887,14 @@ pub fn main() { 0 }
         assert_eq!(
             ids.map(|id| FunctionFunctionId::List(id).reference_identity()),
             [
+                FunctionReferenceIdentity::returning_list_function(
+                    ListFunctionReturnFamily::Parameter,
+                    0,
+                ),
+                FunctionReferenceIdentity::returning_list_function(
+                    ListFunctionReturnFamily::ParameterList,
+                    0,
+                ),
                 FunctionReferenceIdentity::returning_list_function(
                     ListFunctionReturnFamily::Int,
                     0,

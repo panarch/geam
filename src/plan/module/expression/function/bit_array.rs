@@ -2,9 +2,9 @@ use crate::plan::CustomFieldAccess;
 #[cfg(test)]
 use crate::plan::ParamLocal;
 use crate::plan::{
-    BitArrayFunctionLocalId, BitArrayFunctionReference, BoolExpr, CaptureArg, FloatExpr,
-    FunctionFunctionExpr, FunctionInstantiation, FunctionListExpr, FunctionType, IntExpr,
-    PanicExpr, ParamSlot, Step, StringExpr, TupleExpr,
+    BitArrayFunctionLocalId, BitArrayFunctionReference, BoolExpr, CaptureArg,
+    ConstantBitArrayFunctionInstantiation, FloatExpr, FunctionFunctionExpr, FunctionInstantiation,
+    FunctionListExpr, FunctionType, IntExpr, PanicExpr, ParamSlot, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -17,6 +17,7 @@ pub struct BitArrayFunctionExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum BitArrayFunctionExprKind {
+    Constant(ConstantBitArrayFunctionInstantiation),
     Reference(BitArrayFunctionReference),
     Closure {
         function: FunctionInstantiation,
@@ -76,6 +77,16 @@ pub(crate) enum BitArrayFunctionExprKind {
 }
 
 impl BitArrayFunctionExpr {
+    pub(crate) fn constant(
+        value: ConstantBitArrayFunctionInstantiation,
+        type_: FunctionType,
+    ) -> Self {
+        Self {
+            type_,
+            kind: BitArrayFunctionExprKind::Constant(value),
+        }
+    }
+
     pub(crate) fn reference(value: BitArrayFunctionReference) -> Self {
         let type_ = value.instantiation().shape().type_();
         Self {

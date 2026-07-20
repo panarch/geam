@@ -2,7 +2,9 @@ use super::{
     BitArrayFunctionExpr, BitArrayListExpr, BoolExpr, CallArg, CustomFieldAccess, FloatExpr,
     IntExpr, PanicExpr, StringExpr, TupleExpr, UtfCodepointExpr,
 };
-use crate::plan::{BitArrayLocalId, FunctionInstantiation, PanicSite, Step};
+use crate::plan::{
+    BitArrayLocalId, ConstantBitArrayReference, FunctionInstantiation, PanicSite, Step,
+};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -100,6 +102,7 @@ pub struct BitArrayExpr {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum BitArrayExprKind {
     Value(Vec<BitArraySegment>),
+    Constant(ConstantBitArrayReference),
     LocalGet {
         local: BitArrayLocalId,
         name: EcoString,
@@ -151,6 +154,10 @@ pub(crate) enum BitArrayExprKind {
 impl BitArrayExpr {
     pub(crate) fn value(segments: Vec<BitArraySegment>) -> Self {
         Self::new(BitArrayExprKind::Value(segments))
+    }
+
+    pub(in crate::plan::module) fn constant(reference: ConstantBitArrayReference) -> Self {
+        Self::new(BitArrayExprKind::Constant(reference))
     }
 
     pub(crate) fn local_get(local: BitArrayLocalId, name: EcoString) -> Self {

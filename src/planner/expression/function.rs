@@ -323,7 +323,7 @@ mod tests {
     };
     use crate::planner::error::{
         InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
-        InvalidPipelineShapeReason, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+        InvalidPipelineShapeReason, InvalidTypedAstReason, PlanError,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
@@ -819,23 +819,6 @@ pub fn main() {
         );
 
         assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn reject_profile_anonymous_function_with_unresolved_generic_return() {
-        assert_eq!(
-            plan_module(compile(
-                r#"
-pub fn main() {
-  fn() { Ok(1) }
-  1
-}
-"#,
-            )),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::GenericFunction,
-            }),
-        );
     }
 
     #[test]

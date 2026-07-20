@@ -2,20 +2,26 @@ use super::{
     BitArrayListExpr, BitArrayListItem, BoolListExpr, BoolListItem, CustomListExpr, CustomListItem,
     FloatListExpr, FloatListItem, FunctionListExpr, FunctionListItem, GenericListExpr,
     GenericListItem, IntListExpr, IntListItem, ListExpr, ListItem, ListListExpr, ListListItem,
-    NilListExpr, NilListItem, StringListExpr, StringListItem, TupleListExpr, TupleListItem,
-    UtfCodepointListExpr, UtfCodepointListItem,
+    NilListExpr, NilListItem, ParameterListListExpr, ParameterListListItem, StoredListExpr,
+    StringListExpr, StringListItem, TupleListExpr, TupleListItem, UtfCodepointListExpr,
+    UtfCodepointListItem,
 };
 use crate::plan::{
     BitArrayExpr, BoolExpr, CustomExpr, CustomType, Expr, FloatExpr, FunctionExpr, FunctionType,
     GenericExpr, IntExpr, NilExpr, StringExpr, TupleExpr, TypeParameterId, UtfCodepointExpr,
-    ValueType,
+    ValueRepresentation, ValueShape, ValueStorageShape, ValueType,
 };
+use vec1::Vec1;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ListElements {
     Generic {
         parameter: TypeParameterId,
         values: Vec<GenericExpr>,
+    },
+    ParameterList {
+        parameter: TypeParameterId,
+        values: Vec<GenericListExpr>,
     },
     Int(Vec<IntExpr>),
     String(Vec<StringExpr>),
@@ -33,8 +39,8 @@ pub(crate) enum ListElements {
         values: Vec<TupleExpr>,
     },
     List {
-        item_type: Box<ValueType>,
-        values: Vec<ListExpr>,
+        item_shape: ValueStorageShape,
+        values: Vec<StoredListExpr>,
     },
     Function {
         item_type: FunctionType,
@@ -45,51 +51,55 @@ pub(crate) enum ListElements {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ListSpreadElements {
     Generic {
-        values: Vec<GenericExpr>,
+        values: Vec1<GenericExpr>,
         tail: GenericListExpr,
     },
+    ParameterList {
+        values: Vec1<GenericListExpr>,
+        tail: ParameterListListExpr,
+    },
     Int {
-        values: Vec<IntExpr>,
+        values: Vec1<IntExpr>,
         tail: IntListExpr,
     },
     String {
-        values: Vec<StringExpr>,
+        values: Vec1<StringExpr>,
         tail: StringListExpr,
     },
     BitArray {
-        values: Vec<BitArrayExpr>,
+        values: Vec1<BitArrayExpr>,
         tail: BitArrayListExpr,
     },
     UtfCodepoint {
-        values: Vec<UtfCodepointExpr>,
+        values: Vec1<UtfCodepointExpr>,
         tail: UtfCodepointListExpr,
     },
     Custom {
-        values: Vec<CustomExpr>,
+        values: Vec1<CustomExpr>,
         tail: CustomListExpr,
     },
     Float {
-        values: Vec<FloatExpr>,
+        values: Vec1<FloatExpr>,
         tail: FloatListExpr,
     },
     Bool {
-        values: Vec<BoolExpr>,
+        values: Vec1<BoolExpr>,
         tail: BoolListExpr,
     },
     Nil {
-        values: Vec<NilExpr>,
+        values: Vec1<NilExpr>,
         tail: NilListExpr,
     },
     Tuple {
-        values: Vec<TupleExpr>,
+        values: Vec1<TupleExpr>,
         tail: TupleListExpr,
     },
     List {
-        values: Vec<ListExpr>,
+        values: Vec1<StoredListExpr>,
         tail: ListListExpr,
     },
     Function {
-        values: Vec<FunctionExpr>,
+        values: Vec1<FunctionExpr>,
         tail: FunctionListExpr,
     },
 }
@@ -98,6 +108,12 @@ pub(crate) enum ListSpreadElements {
 pub(crate) struct ListElementTypeMismatch {
     pub(crate) expected: ValueType,
     pub(crate) actual: ValueType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ListSpreadConstructionError {
+    EmptyPrefix,
+    ElementTypeMismatch(ListElementTypeMismatch),
 }
 
 impl ListElements {
@@ -123,7 +139,14 @@ impl ListElements {
                 list_elements_from_exprs(TupleListItem { item_type }, values)
             }
             ValueType::List(item_type) => {
-                list_elements_from_exprs(ListListItem { item_type }, values)
+                match ValueShape::from_value_type(*item_type).representation() {
+                    ValueRepresentation::Uninhabited(parameter) => {
+                        list_elements_from_exprs(ParameterListListItem::new(parameter), values)
+                    }
+                    ValueRepresentation::Stored(item_shape) => {
+                        list_elements_from_exprs(ListListItem::new(item_shape), values)
+                    }
+                }
             }
             ValueType::Function(item_type) => list_elements_from_exprs(
                 FunctionListItem {
@@ -137,6 +160,9 @@ impl ListElements {
     pub(crate) fn item_type(&self) -> ValueType {
         match self {
             Self::Generic { parameter, .. } => ValueType::Parameter(*parameter),
+            Self::ParameterList { parameter, .. } => {
+                ValueType::List(Box::new(ValueType::Parameter(*parameter)))
+            }
             Self::Int(_) => ValueType::Int,
             Self::String(_) => ValueType::String,
             Self::BitArray(_) => ValueType::BitArray,
@@ -146,7 +172,7 @@ impl ListElements {
             Self::Bool(_) => ValueType::Bool,
             Self::Nil(_) => ValueType::Nil,
             Self::Tuple { item_type, .. } => ValueType::Tuple(item_type.clone()),
-            Self::List { item_type, .. } => ValueType::List(item_type.clone()),
+            Self::List { item_shape, .. } => ValueType::List(Box::new(item_shape.value_type())),
             Self::Function { item_type, .. } => ValueType::Function(Box::new(item_type.clone())),
         }
     }
@@ -156,7 +182,7 @@ impl ListSpreadElements {
     pub(crate) fn from_parts(
         elements: ListElements,
         tail: ListExpr,
-    ) -> Result<Self, ListElementTypeMismatch> {
+    ) -> Result<Self, ListSpreadConstructionError> {
         let expected = elements.item_type();
         let actual = tail.element_type();
 
@@ -166,38 +192,53 @@ impl ListSpreadElements {
                 values,
             } => {
                 let Some(tail) = tail.into_generic() else {
-                    return Err(ListElementTypeMismatch { expected, actual });
+                    return Err(spread_element_type_mismatch(expected, actual));
                 };
                 if tail.element_type() != expected {
-                    return Err(ListElementTypeMismatch {
-                        expected,
-                        actual: tail.element_type(),
-                    });
+                    return Err(spread_element_type_mismatch(expected, tail.element_type()));
                 }
+                let values = non_empty_spread_values(values)?;
                 Ok(Self::Generic { values, tail })
+            }
+            ListElements::ParameterList {
+                parameter: _,
+                values,
+            } => {
+                let Some(tail) = tail.into_parameter_list() else {
+                    return Err(spread_element_type_mismatch(expected, actual));
+                };
+                if tail.element_type() != expected {
+                    return Err(spread_element_type_mismatch(expected, tail.element_type()));
+                }
+                let values = non_empty_spread_values(values)?;
+                Ok(Self::ParameterList { values, tail })
             }
             ListElements::Int(values) => {
                 let Some(tail) = tail.into_int() else {
-                    return Err(ListElementTypeMismatch { expected, actual });
+                    return Err(spread_element_type_mismatch(expected, actual));
                 };
+                let values = non_empty_spread_values(values)?;
                 Ok(Self::Int { values, tail })
             }
             ListElements::String(values) => {
                 let Some(tail) = tail.into_string() else {
-                    return Err(ListElementTypeMismatch { expected, actual });
+                    return Err(spread_element_type_mismatch(expected, actual));
                 };
+                let values = non_empty_spread_values(values)?;
                 Ok(Self::String { values, tail })
             }
             ListElements::BitArray(values) => {
                 let Some(tail) = tail.into_bit_array() else {
-                    return Err(ListElementTypeMismatch { expected, actual });
+                    return Err(spread_element_type_mismatch(expected, actual));
                 };
+                let values = non_empty_spread_values(values)?;
                 Ok(Self::BitArray { values, tail })
             }
             ListElements::UtfCodepoint(values) => {
                 let Some(tail) = tail.into_utf_codepoint() else {
-                    return Err(ListElementTypeMismatch { expected, actual });
+                    return Err(spread_element_type_mismatch(expected, actual));
                 };
+                let values = non_empty_spread_values(values)?;
                 Ok(Self::UtfCodepoint { values, tail })
             }
             ListElements::Custom {
@@ -205,32 +246,33 @@ impl ListSpreadElements {
                 values,
             } => {
                 let Some(tail) = tail.into_custom() else {
-                    return Err(ListElementTypeMismatch { expected, actual });
+                    return Err(spread_element_type_mismatch(expected, actual));
                 };
                 if tail.element_type() != expected {
-                    return Err(ListElementTypeMismatch {
-                        expected,
-                        actual: tail.element_type(),
-                    });
+                    return Err(spread_element_type_mismatch(expected, tail.element_type()));
                 }
+                let values = non_empty_spread_values(values)?;
                 Ok(Self::Custom { values, tail })
             }
             ListElements::Float(values) => {
                 let Some(tail) = tail.into_float() else {
-                    return Err(ListElementTypeMismatch { expected, actual });
+                    return Err(spread_element_type_mismatch(expected, actual));
                 };
+                let values = non_empty_spread_values(values)?;
                 Ok(Self::Float { values, tail })
             }
             ListElements::Bool(values) => {
                 let Some(tail) = tail.into_bool() else {
-                    return Err(ListElementTypeMismatch { expected, actual });
+                    return Err(spread_element_type_mismatch(expected, actual));
                 };
+                let values = non_empty_spread_values(values)?;
                 Ok(Self::Bool { values, tail })
             }
             ListElements::Nil(values) => {
                 let Some(tail) = tail.into_nil() else {
-                    return Err(ListElementTypeMismatch { expected, actual });
+                    return Err(spread_element_type_mismatch(expected, actual));
                 };
+                let values = non_empty_spread_values(values)?;
                 Ok(Self::Nil { values, tail })
             }
             ListElements::Tuple {
@@ -238,29 +280,25 @@ impl ListSpreadElements {
                 values,
             } => {
                 let Some(tail) = tail.into_tuple() else {
-                    return Err(ListElementTypeMismatch { expected, actual });
+                    return Err(spread_element_type_mismatch(expected, actual));
                 };
                 if tail.element_type() != expected {
-                    return Err(ListElementTypeMismatch {
-                        expected,
-                        actual: tail.element_type(),
-                    });
+                    return Err(spread_element_type_mismatch(expected, tail.element_type()));
                 }
+                let values = non_empty_spread_values(values)?;
                 Ok(Self::Tuple { values, tail })
             }
             ListElements::List {
-                item_type: _,
+                item_shape: _,
                 values,
             } => {
                 let Some(tail) = tail.into_list() else {
-                    return Err(ListElementTypeMismatch { expected, actual });
+                    return Err(spread_element_type_mismatch(expected, actual));
                 };
                 if tail.element_type() != expected {
-                    return Err(ListElementTypeMismatch {
-                        expected,
-                        actual: tail.element_type(),
-                    });
+                    return Err(spread_element_type_mismatch(expected, tail.element_type()));
                 }
+                let values = non_empty_spread_values(values)?;
                 Ok(Self::List { values, tail })
             }
             ListElements::Function {
@@ -268,18 +306,29 @@ impl ListSpreadElements {
                 values,
             } => {
                 let Some(tail) = tail.into_function() else {
-                    return Err(ListElementTypeMismatch { expected, actual });
+                    return Err(spread_element_type_mismatch(expected, actual));
                 };
                 if tail.element_type() != expected {
-                    return Err(ListElementTypeMismatch {
-                        expected,
-                        actual: tail.element_type(),
-                    });
+                    return Err(spread_element_type_mismatch(expected, tail.element_type()));
                 }
+                let values = non_empty_spread_values(values)?;
                 Ok(Self::Function { values, tail })
             }
         }
     }
+}
+
+fn non_empty_spread_values<Value>(
+    values: Vec<Value>,
+) -> Result<Vec1<Value>, ListSpreadConstructionError> {
+    Vec1::try_from_vec(values).map_err(|_| ListSpreadConstructionError::EmptyPrefix)
+}
+
+fn spread_element_type_mismatch(
+    expected: ValueType,
+    actual: ValueType,
+) -> ListSpreadConstructionError {
+    ListSpreadConstructionError::ElementTypeMismatch(ListElementTypeMismatch { expected, actual })
 }
 
 fn list_elements_from_exprs<Item: ListItem>(
@@ -292,12 +341,16 @@ fn list_elements_from_exprs<Item: ListItem>(
 
 #[cfg(test)]
 mod tests {
-    use super::{ListElementTypeMismatch, ListElements, ListSpreadElements};
+    use super::{
+        ListElementTypeMismatch, ListElements, ListSpreadConstructionError, ListSpreadElements,
+    };
+    use crate::plan::module::{GenericListExpr, GenericListItem};
     use crate::plan::{
-        BitArrayExpr, BoolExpr, CustomExpr, CustomLocalId, CustomType, CustomTypeName, Expr,
-        FloatExpr, FunctionExpr, FunctionReference, FunctionShape, FunctionType, GenericExpr,
-        GenericLocal, GenericLocalId, IntExpr, ListExpr, NilExpr, StringExpr, TupleExpr,
-        TypeParameterId, UtfCodepointExpr, UtfCodepointLocalId, ValueType,
+        BitArrayExpr, BoolExpr, CustomExpr, CustomLocal, CustomLocalId, CustomType, CustomTypeName,
+        Expr, FloatExpr, FunctionExpr, FunctionReference, FunctionShape, FunctionType, GenericExpr,
+        GenericLocal, GenericLocalId, IntExpr, IntListExpr, IntListItem, ListExpr, NilExpr,
+        StoredListExpr, StringExpr, StringListExpr, StringListItem, TupleExpr, TypeParameterId,
+        UtfCodepointExpr, UtfCodepointLocalId, ValueStorageShape, ValueType,
         monomorphic_function_instantiation,
     };
 
@@ -407,8 +460,11 @@ mod tests {
                 vec![Expr::list(nested.clone())],
             ),
             Ok(ListElements::List {
-                item_type: Box::new(ValueType::String),
-                values: vec![nested],
+                item_shape: ValueStorageShape::String,
+                values: vec![StoredListExpr::String(StringListExpr::value(
+                    StringListItem,
+                    Vec::new()
+                ),)],
             }),
         );
 
@@ -507,6 +563,17 @@ mod tests {
             }),
         );
 
+        assert_eq!(
+            ListElements::from_exprs(
+                ValueType::List(Box::new(ValueType::Parameter(first_parameter))),
+                vec![Expr::list(ListExpr::value(Vec::new(), ValueType::Int))],
+            ),
+            Err(ListElementTypeMismatch {
+                expected: ValueType::List(Box::new(ValueType::Parameter(first_parameter))),
+                actual: ValueType::List(Box::new(ValueType::Int)),
+            }),
+        );
+
         let function = FunctionExpr::reference(FunctionReference::new(
             monomorphic_function_instantiation(
                 0,
@@ -576,7 +643,7 @@ mod tests {
         );
         assert_eq!(
             ListElements::List {
-                item_type: Box::new(ValueType::Bool),
+                item_shape: ValueStorageShape::Bool,
                 values: Vec::new(),
             }
             .item_type(),
@@ -593,37 +660,167 @@ mod tests {
     }
 
     #[test]
+    fn spread_parts_reject_empty_prefix_for_every_item_family() {
+        let parameter = TypeParameterId(0);
+        let custom = custom_type("Token");
+        let function = FunctionType::new(vec![ValueType::Int], ValueType::Int);
+        let cases = vec![
+            (
+                ListElements::Generic {
+                    parameter,
+                    values: Vec::new(),
+                },
+                ValueType::Parameter(parameter),
+            ),
+            (
+                ListElements::ParameterList {
+                    parameter,
+                    values: Vec::new(),
+                },
+                ValueType::List(Box::new(ValueType::Parameter(parameter))),
+            ),
+            (ListElements::Int(Vec::new()), ValueType::Int),
+            (ListElements::String(Vec::new()), ValueType::String),
+            (ListElements::BitArray(Vec::new()), ValueType::BitArray),
+            (
+                ListElements::UtfCodepoint(Vec::new()),
+                ValueType::UtfCodepoint,
+            ),
+            (
+                ListElements::Custom {
+                    item_type: custom.clone(),
+                    values: Vec::new(),
+                },
+                ValueType::Custom(custom),
+            ),
+            (ListElements::Float(Vec::new()), ValueType::Float),
+            (ListElements::Bool(Vec::new()), ValueType::Bool),
+            (ListElements::Nil(Vec::new()), ValueType::Nil),
+            (
+                ListElements::Tuple {
+                    item_type: vec![ValueType::Int],
+                    values: Vec::new(),
+                },
+                ValueType::Tuple(vec![ValueType::Int]),
+            ),
+            (
+                ListElements::List {
+                    item_shape: ValueStorageShape::Int,
+                    values: Vec::new(),
+                },
+                ValueType::List(Box::new(ValueType::Int)),
+            ),
+            (
+                ListElements::Function {
+                    item_type: function.clone(),
+                    values: Vec::new(),
+                },
+                ValueType::Function(Box::new(function)),
+            ),
+        ];
+
+        for (elements, item_type) in cases {
+            assert_eq!(
+                ListSpreadElements::from_parts(elements, ListExpr::value(Vec::new(), item_type),),
+                Err(ListSpreadConstructionError::EmptyPrefix),
+            );
+        }
+    }
+
+    #[test]
     fn spread_parts_reject_wrong_tail_family_and_nested_metadata() {
         let first_custom = custom_type("First");
         let second_custom = custom_type("Second");
         let first_parameter = TypeParameterId(0);
         let second_parameter = TypeParameterId(1);
+        let generic_value = GenericExpr::local_get(
+            GenericLocal::new(GenericLocalId(0), first_parameter),
+            "value".into(),
+        );
+        let parameter_list_value =
+            GenericListExpr::value(GenericListItem::new(first_parameter), Vec::new());
+        let custom_value = CustomExpr::local_get(
+            CustomLocal::new(CustomLocalId(0), first_custom.clone()),
+            "custom".into(),
+        );
+        let tuple_value = TupleExpr::value(
+            vec![Expr::int(IntExpr::value(1.into()))],
+            vec![ValueType::Int],
+        );
+        let nested_value = StoredListExpr::Int(IntListExpr::value(IntListItem, Vec::new()));
+        let int_to_int = FunctionType::new(vec![ValueType::Int], ValueType::Int);
+        let function_value = FunctionExpr::reference(FunctionReference::new(
+            monomorphic_function_instantiation(
+                0,
+                FunctionShape::from_function_type(int_to_int.clone()),
+            ),
+            Vec::new(),
+        ));
 
         assert_eq!(
             ListSpreadElements::from_parts(
                 ListElements::Generic {
                     parameter: first_parameter,
-                    values: Vec::new(),
+                    values: vec![generic_value.clone()],
                 },
                 ListExpr::value(Vec::new(), ValueType::Int),
             ),
-            Err(ListElementTypeMismatch {
-                expected: ValueType::Parameter(first_parameter),
-                actual: ValueType::Int,
-            }),
+            Err(ListSpreadConstructionError::ElementTypeMismatch(
+                ListElementTypeMismatch {
+                    expected: ValueType::Parameter(first_parameter),
+                    actual: ValueType::Int,
+                },
+            )),
+        );
+
+        assert_eq!(
+            ListSpreadElements::from_parts(
+                ListElements::ParameterList {
+                    parameter: first_parameter,
+                    values: vec![parameter_list_value.clone()],
+                },
+                ListExpr::value(Vec::new(), ValueType::Int),
+            ),
+            Err(ListSpreadConstructionError::ElementTypeMismatch(
+                ListElementTypeMismatch {
+                    expected: ValueType::List(Box::new(ValueType::Parameter(first_parameter))),
+                    actual: ValueType::Int,
+                },
+            )),
+        );
+        assert_eq!(
+            ListSpreadElements::from_parts(
+                ListElements::ParameterList {
+                    parameter: first_parameter,
+                    values: vec![parameter_list_value],
+                },
+                ListExpr::try_value(
+                    Vec::new(),
+                    ValueType::List(Box::new(ValueType::Parameter(second_parameter))),
+                )
+                .expect("empty nested parameter list"),
+            ),
+            Err(ListSpreadConstructionError::ElementTypeMismatch(
+                ListElementTypeMismatch {
+                    expected: ValueType::List(Box::new(ValueType::Parameter(first_parameter))),
+                    actual: ValueType::List(Box::new(ValueType::Parameter(second_parameter))),
+                },
+            )),
         );
         assert_eq!(
             ListSpreadElements::from_parts(
                 ListElements::Generic {
                     parameter: first_parameter,
-                    values: Vec::new(),
+                    values: vec![generic_value],
                 },
                 ListExpr::value(Vec::new(), ValueType::Parameter(second_parameter)),
             ),
-            Err(ListElementTypeMismatch {
-                expected: ValueType::Parameter(first_parameter),
-                actual: ValueType::Parameter(second_parameter),
-            }),
+            Err(ListSpreadConstructionError::ElementTypeMismatch(
+                ListElementTypeMismatch {
+                    expected: ValueType::Parameter(first_parameter),
+                    actual: ValueType::Parameter(second_parameter),
+                },
+            )),
         );
 
         assert_eq!(
@@ -631,46 +828,54 @@ mod tests {
                 ListElements::String(vec![StringExpr::value("head".into())]),
                 ListExpr::value(Vec::new(), ValueType::Int),
             ),
-            Err(ListElementTypeMismatch {
-                expected: ValueType::String,
-                actual: ValueType::Int,
-            }),
+            Err(ListSpreadConstructionError::ElementTypeMismatch(
+                ListElementTypeMismatch {
+                    expected: ValueType::String,
+                    actual: ValueType::Int,
+                },
+            )),
         );
         assert_eq!(
             ListSpreadElements::from_parts(
                 ListElements::Custom {
                     item_type: first_custom.clone(),
-                    values: Vec::new(),
+                    values: vec![custom_value.clone()],
                 },
                 ListExpr::value(Vec::new(), ValueType::Int),
             ),
-            Err(ListElementTypeMismatch {
-                expected: ValueType::Custom(first_custom.clone()),
-                actual: ValueType::Int,
-            }),
+            Err(ListSpreadConstructionError::ElementTypeMismatch(
+                ListElementTypeMismatch {
+                    expected: ValueType::Custom(first_custom.clone()),
+                    actual: ValueType::Int,
+                },
+            )),
         );
         assert_eq!(
             ListSpreadElements::from_parts(
                 ListElements::Custom {
                     item_type: first_custom.clone(),
-                    values: Vec::new(),
+                    values: vec![custom_value],
                 },
                 ListExpr::value(Vec::new(), ValueType::Custom(second_custom.clone())),
             ),
-            Err(ListElementTypeMismatch {
-                expected: ValueType::Custom(first_custom),
-                actual: ValueType::Custom(second_custom),
-            }),
+            Err(ListSpreadConstructionError::ElementTypeMismatch(
+                ListElementTypeMismatch {
+                    expected: ValueType::Custom(first_custom),
+                    actual: ValueType::Custom(second_custom),
+                },
+            )),
         );
         assert_eq!(
             ListSpreadElements::from_parts(
                 ListElements::BitArray(vec![BitArrayExpr::value(Vec::new())]),
                 ListExpr::value(Vec::new(), ValueType::Int),
             ),
-            Err(ListElementTypeMismatch {
-                expected: ValueType::BitArray,
-                actual: ValueType::Int,
-            }),
+            Err(ListSpreadConstructionError::ElementTypeMismatch(
+                ListElementTypeMismatch {
+                    expected: ValueType::BitArray,
+                    actual: ValueType::Int,
+                },
+            )),
         );
         assert_eq!(
             ListSpreadElements::from_parts(
@@ -680,124 +885,143 @@ mod tests {
                 )]),
                 ListExpr::value(Vec::new(), ValueType::Int),
             ),
-            Err(ListElementTypeMismatch {
-                expected: ValueType::UtfCodepoint,
-                actual: ValueType::Int,
-            }),
+            Err(ListSpreadConstructionError::ElementTypeMismatch(
+                ListElementTypeMismatch {
+                    expected: ValueType::UtfCodepoint,
+                    actual: ValueType::Int,
+                },
+            )),
         );
         assert_eq!(
             ListSpreadElements::from_parts(
                 ListElements::Float(vec![FloatExpr::value(1.5)]),
                 ListExpr::value(Vec::new(), ValueType::Int),
             ),
-            Err(ListElementTypeMismatch {
-                expected: ValueType::Float,
-                actual: ValueType::Int,
-            }),
+            Err(ListSpreadConstructionError::ElementTypeMismatch(
+                ListElementTypeMismatch {
+                    expected: ValueType::Float,
+                    actual: ValueType::Int,
+                },
+            )),
         );
         assert_eq!(
             ListSpreadElements::from_parts(
                 ListElements::Bool(vec![BoolExpr::value(true)]),
                 ListExpr::value(Vec::new(), ValueType::Int),
             ),
-            Err(ListElementTypeMismatch {
-                expected: ValueType::Bool,
-                actual: ValueType::Int,
-            }),
+            Err(ListSpreadConstructionError::ElementTypeMismatch(
+                ListElementTypeMismatch {
+                    expected: ValueType::Bool,
+                    actual: ValueType::Int,
+                },
+            )),
         );
         assert_eq!(
             ListSpreadElements::from_parts(
                 ListElements::Nil(vec![NilExpr::value()]),
                 ListExpr::value(Vec::new(), ValueType::Int),
             ),
-            Err(ListElementTypeMismatch {
-                expected: ValueType::Nil,
-                actual: ValueType::Int,
-            }),
+            Err(ListSpreadConstructionError::ElementTypeMismatch(
+                ListElementTypeMismatch {
+                    expected: ValueType::Nil,
+                    actual: ValueType::Int,
+                },
+            )),
         );
         assert_eq!(
             ListSpreadElements::from_parts(
                 ListElements::Tuple {
                     item_type: vec![ValueType::Int],
-                    values: Vec::new(),
+                    values: vec![tuple_value.clone()],
                 },
                 ListExpr::value(Vec::new(), ValueType::String),
             ),
-            Err(ListElementTypeMismatch {
-                expected: ValueType::Tuple(vec![ValueType::Int]),
-                actual: ValueType::String,
-            }),
+            Err(ListSpreadConstructionError::ElementTypeMismatch(
+                ListElementTypeMismatch {
+                    expected: ValueType::Tuple(vec![ValueType::Int]),
+                    actual: ValueType::String,
+                },
+            )),
         );
         assert_eq!(
             ListSpreadElements::from_parts(
                 ListElements::Tuple {
                     item_type: vec![ValueType::Int],
-                    values: Vec::new(),
+                    values: vec![tuple_value],
                 },
                 ListExpr::value(Vec::new(), ValueType::Tuple(vec![ValueType::String])),
             ),
-            Err(ListElementTypeMismatch {
-                expected: ValueType::Tuple(vec![ValueType::Int]),
-                actual: ValueType::Tuple(vec![ValueType::String]),
-            }),
+            Err(ListSpreadConstructionError::ElementTypeMismatch(
+                ListElementTypeMismatch {
+                    expected: ValueType::Tuple(vec![ValueType::Int]),
+                    actual: ValueType::Tuple(vec![ValueType::String]),
+                },
+            )),
         );
         assert_eq!(
             ListSpreadElements::from_parts(
                 ListElements::List {
-                    item_type: Box::new(ValueType::Int),
-                    values: Vec::new(),
+                    item_shape: ValueStorageShape::Int,
+                    values: vec![nested_value.clone()],
                 },
                 ListExpr::value(Vec::new(), ValueType::String),
             ),
-            Err(ListElementTypeMismatch {
-                expected: ValueType::List(Box::new(ValueType::Int)),
-                actual: ValueType::String,
-            }),
+            Err(ListSpreadConstructionError::ElementTypeMismatch(
+                ListElementTypeMismatch {
+                    expected: ValueType::List(Box::new(ValueType::Int)),
+                    actual: ValueType::String,
+                },
+            )),
         );
         assert_eq!(
             ListSpreadElements::from_parts(
                 ListElements::List {
-                    item_type: Box::new(ValueType::Int),
-                    values: Vec::new(),
+                    item_shape: ValueStorageShape::Int,
+                    values: vec![nested_value],
                 },
                 ListExpr::value(Vec::new(), ValueType::List(Box::new(ValueType::String))),
             ),
-            Err(ListElementTypeMismatch {
-                expected: ValueType::List(Box::new(ValueType::Int)),
-                actual: ValueType::List(Box::new(ValueType::String)),
-            }),
+            Err(ListSpreadConstructionError::ElementTypeMismatch(
+                ListElementTypeMismatch {
+                    expected: ValueType::List(Box::new(ValueType::Int)),
+                    actual: ValueType::List(Box::new(ValueType::String)),
+                },
+            )),
         );
 
-        let int_to_int = FunctionType::new(vec![ValueType::Int], ValueType::Int);
         let int_to_string = FunctionType::new(vec![ValueType::Int], ValueType::String);
         assert_eq!(
             ListSpreadElements::from_parts(
                 ListElements::Function {
                     item_type: int_to_int.clone(),
-                    values: Vec::new(),
+                    values: vec![function_value.clone()],
                 },
                 ListExpr::value(Vec::new(), ValueType::String),
             ),
-            Err(ListElementTypeMismatch {
-                expected: ValueType::Function(Box::new(int_to_int.clone())),
-                actual: ValueType::String,
-            }),
+            Err(ListSpreadConstructionError::ElementTypeMismatch(
+                ListElementTypeMismatch {
+                    expected: ValueType::Function(Box::new(int_to_int.clone())),
+                    actual: ValueType::String,
+                },
+            )),
         );
         assert_eq!(
             ListSpreadElements::from_parts(
                 ListElements::Function {
                     item_type: int_to_int.clone(),
-                    values: Vec::new(),
+                    values: vec![function_value],
                 },
                 ListExpr::value(
                     Vec::new(),
                     ValueType::Function(Box::new(int_to_string.clone()))
                 ),
             ),
-            Err(ListElementTypeMismatch {
-                expected: ValueType::Function(Box::new(int_to_int)),
-                actual: ValueType::Function(Box::new(int_to_string)),
-            }),
+            Err(ListSpreadConstructionError::ElementTypeMismatch(
+                ListElementTypeMismatch {
+                    expected: ValueType::Function(Box::new(int_to_int)),
+                    actual: ValueType::Function(Box::new(int_to_string)),
+                },
+            )),
         );
     }
 }

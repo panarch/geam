@@ -3,8 +3,8 @@ use super::{
     PanicExpr, StringExpr, TupleExpr,
 };
 use crate::plan::{
-    CustomConstructor, CustomConstructorRefinement, CustomLocal, CustomLocalId, CustomType,
-    CustomValueShape, FunctionInstantiation, Step, ValueShape,
+    ConstantCustomReference, CustomConstructor, CustomConstructorRefinement, CustomLocal,
+    CustomLocalId, CustomType, CustomValueShape, FunctionInstantiation, Step, ValueShape,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -61,6 +61,7 @@ pub(crate) struct CustomFunctionCall {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum CustomExprKind {
     Constructor(CustomConstruction),
+    Constant(ConstantCustomReference),
     LocalGet {
         local: CustomLocal,
         name: EcoString,
@@ -124,6 +125,11 @@ pub(crate) fn custom_constructor_expr(constructor: CustomConstructor) -> super::
 }
 
 impl CustomExpr {
+    pub(in crate::plan::module) fn constant(reference: ConstantCustomReference) -> Self {
+        let shape = reference.shape().clone();
+        Self::new(shape, CustomExprKind::Constant(reference))
+    }
+
     #[cfg(test)]
     pub(crate) fn try_constructor(
         constructor: CustomConstructor,

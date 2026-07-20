@@ -832,6 +832,17 @@ pub(super) fn plan_binding_pattern_in_context(
             .map(|element| plan_binding_pattern_in_context(element, context))
             .collect::<Result<Vec<_>, _>>()
             .map(BindingPattern::Tuple),
+        Pattern::List {
+            elements,
+            tail,
+            type_,
+            ..
+        } => plan_tail_only_list_binding_pattern_in_context(
+            elements,
+            tail.map(|tail| *tail),
+            type_,
+            context,
+        ),
         Pattern::Constructor {
             arguments,
             constructor,
@@ -955,6 +966,39 @@ fn plan_tail_only_list_binding_pattern(
     };
     let element_type = *element_type;
     let tail = plan_list_tail_binding(tail, element_type.clone())?;
+
+    Ok(BindingPattern::ListTail { tail, element_type })
+}
+
+fn plan_tail_only_list_binding_pattern_in_context(
+    elements: Vec<TypedPattern>,
+    tail: Option<gleam_core::ast::TailPattern<std::sync::Arc<gleam_core::type_::Type>>>,
+    type_: std::sync::Arc<gleam_core::type_::Type>,
+    context: &PlanContext<'_>,
+) -> Result<BindingPattern, PlanError> {
+    if !elements.is_empty() {
+        return Err(invalid_binding_pattern());
+    }
+
+    let tail = tail.ok_or_else(invalid_binding_pattern)?;
+    let ValueShape::List(element_shape) = context.value_shape_in_scope(type_.as_ref()) else {
+        return Err(invalid_binding_pattern());
+    };
+    let expected_tail_shape = ValueShape::List(element_shape.clone());
+    let element_type = element_shape.value_type();
+    let tail = match tail.pattern {
+        Pattern::Variable { name, type_, .. }
+            if context.value_shape_in_scope(type_.as_ref()) == expected_tail_shape =>
+        {
+            ListTailBinding::Named(name)
+        }
+        Pattern::Discard { type_, .. }
+            if context.value_shape_in_scope(type_.as_ref()) == expected_tail_shape =>
+        {
+            ListTailBinding::Discard
+        }
+        _ => return Err(invalid_binding_pattern()),
+    };
 
     Ok(BindingPattern::ListTail { tail, element_type })
 }
@@ -2913,6 +2957,73 @@ pub fn main() {
             }),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::InvalidPattern,
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_contextual_list_binding_shapes() {
+        let module = "main".into();
+        let functions = HashMap::<ecow::EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let context = PlanContext::new(&module, &functions, &mut anonymous);
+        let tail = |pattern| {
+            Some(Box::new(TailPattern {
+                location: dummy_span(),
+                pattern,
+            }))
+        };
+
+        assert_eq!(
+            plan_binding_pattern_in_context(
+                Pattern::List {
+                    location: dummy_span(),
+                    elements: Vec::new(),
+                    tail: tail(Pattern::Discard {
+                        location: dummy_span(),
+                        name: "_".into(),
+                        type_: type_::int(),
+                    }),
+                    type_: type_::int(),
+                },
+                &context,
+            ),
+            Err(invalid_binding_pattern()),
+        );
+        assert_eq!(
+            plan_binding_pattern_in_context(
+                Pattern::List {
+                    location: dummy_span(),
+                    elements: Vec::new(),
+                    tail: tail(Pattern::Int {
+                        location: dummy_span(),
+                        value: "1".into(),
+                        int_value: BigInt::from(1),
+                    }),
+                    type_: type_::list(type_::int()),
+                },
+                &context,
+            ),
+            Err(invalid_binding_pattern()),
+        );
+    }
+
+    #[test]
+    fn tail_only_list_binding_propagates_unsupported_element_type() {
+        let list_type = type_::list(type_::generic_var(0));
+        let tail = TailPattern {
+            location: dummy_span(),
+            pattern: Pattern::Discard {
+                location: dummy_span(),
+                name: "_".into(),
+                type_: list_type.clone(),
+            },
+        };
+
+        assert_eq!(
+            super::plan_tail_only_list_binding_pattern(Vec::new(), Some(tail), list_type),
+            Err(PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::UnsupportedListElementType,
             }),
         );
     }

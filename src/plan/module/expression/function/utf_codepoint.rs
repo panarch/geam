@@ -2,9 +2,10 @@ use crate::plan::CustomFieldAccess;
 #[cfg(test)]
 use crate::plan::ParamLocal;
 use crate::plan::{
-    BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionInstantiation, FunctionListExpr,
-    FunctionType, IntExpr, PanicExpr, ParamSlot, Step, StringExpr, TupleExpr,
-    UtfCodepointFunctionLocalId, UtfCodepointFunctionReference,
+    BoolExpr, CaptureArg, ConstantUtfCodepointFunctionInstantiation, FloatExpr,
+    FunctionFunctionExpr, FunctionInstantiation, FunctionListExpr, FunctionType, IntExpr,
+    PanicExpr, ParamSlot, Step, StringExpr, TupleExpr, UtfCodepointFunctionLocalId,
+    UtfCodepointFunctionReference,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -17,6 +18,7 @@ pub struct UtfCodepointFunctionExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum UtfCodepointFunctionExprKind {
+    Constant(ConstantUtfCodepointFunctionInstantiation),
     Reference(UtfCodepointFunctionReference),
     Closure {
         function: FunctionInstantiation,
@@ -76,6 +78,16 @@ pub(crate) enum UtfCodepointFunctionExprKind {
 }
 
 impl UtfCodepointFunctionExpr {
+    pub(crate) fn constant(
+        value: ConstantUtfCodepointFunctionInstantiation,
+        type_: FunctionType,
+    ) -> Self {
+        Self {
+            type_,
+            kind: UtfCodepointFunctionExprKind::Constant(value),
+        }
+    }
+
     pub(crate) fn reference(value: UtfCodepointFunctionReference) -> Self {
         let type_ = value.instantiation().shape().type_();
         Self {

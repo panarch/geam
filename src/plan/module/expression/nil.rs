@@ -2,7 +2,7 @@ use super::{
     BoolExpr, CallArg, CustomFieldAccess, FloatExpr, IntExpr, NilFunctionExpr, NilListExpr,
     PanicExpr, StringExpr, TupleExpr,
 };
-use crate::plan::{FunctionInstantiation, NilLocalId, Step};
+use crate::plan::{ConstantNilReference, FunctionInstantiation, NilLocalId, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -14,6 +14,7 @@ pub struct NilExpr {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum NilExprKind {
     Value,
+    Constant(ConstantNilReference),
     LocalGet {
         local: NilLocalId,
         name: EcoString,
@@ -66,6 +67,12 @@ impl NilExpr {
     pub(crate) fn value() -> Self {
         Self {
             kind: NilExprKind::Value,
+        }
+    }
+
+    pub(in crate::plan::module) fn constant(reference: ConstantNilReference) -> Self {
+        Self {
+            kind: NilExprKind::Constant(reference),
         }
     }
 

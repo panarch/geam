@@ -37,6 +37,12 @@ pub(crate) struct TypeSubstitution {
 }
 
 impl TypeSubstitution {
+    pub(crate) fn from_arguments(arguments: Vec<ValueShape>) -> Self {
+        Self {
+            arguments: arguments.into_boxed_slice(),
+        }
+    }
+
     pub(crate) fn identity(scheme: &TypeScheme) -> Self {
         Self {
             arguments: scheme
@@ -53,8 +59,11 @@ impl TypeSubstitution {
         &self.arguments
     }
 
-    pub(crate) fn get(&self, parameter: TypeParameterId) -> &ValueShape {
-        &self.arguments[parameter.index()]
+    pub(crate) fn resolve(&self, parameter: TypeParameterId) -> ValueShape {
+        match self.arguments.get(parameter.index()) {
+            Some(shape) => shape.clone(),
+            None => ValueShape::Parameter(parameter),
+        }
     }
 
     pub(crate) fn substitute(&self, outer: &Self) -> Self {
@@ -208,6 +217,34 @@ mod tests {
                 ValueShape::Parameter(TypeParameterId(0)),
                 ValueShape::Parameter(TypeParameterId(1)),
             ],
+        );
+    }
+
+    #[test]
+    fn empty_outer_substitution_preserves_unresolved_parameters() {
+        let substitution = TypeSubstitution::from_arguments(Vec::new());
+        let shape = ValueShape::List(Box::new(ValueShape::Parameter(TypeParameterId(6))));
+
+        assert_eq!(shape.substitute(&substitution), shape);
+    }
+
+    #[test]
+    fn partial_substitution_preserves_parameters_outside_its_domain() {
+        let substitution = TypeSubstitution::from_arguments(vec![ValueShape::Int]);
+        let shape = ValueShape::Tuple(
+            vec![
+                ValueShape::Parameter(TypeParameterId(0)),
+                ValueShape::Parameter(TypeParameterId(1)),
+            ]
+            .into_boxed_slice(),
+        );
+
+        assert_eq!(
+            shape.substitute(&substitution),
+            ValueShape::Tuple(
+                vec![ValueShape::Int, ValueShape::Parameter(TypeParameterId(1)),]
+                    .into_boxed_slice(),
+            ),
         );
     }
 }

@@ -39,7 +39,7 @@ pub use self::{
     utf_codepoint::UtfCodepointExpr,
 };
 pub(crate) use self::{
-    arg::{CallArgKind, CaptureArg, CaptureArgKind},
+    arg::{CallArgKind, CallArgStorage, CaptureArg, CaptureArgKind, PotentiallyUninhabitedCallArg},
     bit_array::{
         BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayExprKind, BitArraySegment, Endianness,
         FloatBitSize, StringEncoding,
@@ -65,7 +65,8 @@ pub(crate) use self::{
         CustomListExpr, CustomListItem, FloatListExpr, FloatListItem, FunctionListExpr,
         FunctionListItem, GenericListExpr, GenericListItem, IntListExpr, IntListItem,
         ListCaseBranches, ListElements, ListExpr, ListItem, ListListExpr, ListListItem,
-        ListLocalExpr, ListSpreadElements, NilListExpr, NilListItem, StringListExpr,
+        ListLocalExpr, ListSpreadConstructionError, ListSpreadElements, NilListExpr, NilListItem,
+        ParameterListListExpr, ParameterListListItem, StoredListExpr, StringListExpr,
         StringListItem, TupleListExpr, TupleListItem, TypedListExpr, TypedListExprKind,
         TypedListReturnKind, UtfCodepointListExpr, UtfCodepointListItem,
     },

@@ -8,8 +8,8 @@ use crate::runtime::evaluated::{
     EvaluatedCustomFunction, EvaluatedFunctionValueKind, EvaluatedValue,
 };
 use crate::runtime::expression::{
-    eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
-    project_function_list_expr, project_tuple_expr,
+    eval_bool_expr, eval_direct_call, eval_float_expr, eval_function_call, eval_int_expr,
+    eval_panic_expr, eval_string_expr, project_function_list_expr, project_tuple_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::state::RuntimeState;
@@ -38,6 +38,9 @@ pub(in crate::runtime) fn eval_custom_function_expr_kind(
     kind: &CustomFunctionExprKind,
 ) -> Result<EvaluatedCustomFunction, ExecutionError> {
     match kind {
+        CustomFunctionExprKind::Constant(value) => {
+            eval_custom_function_expr(plan, state, frame, plan.constant(*value))
+        }
         CustomFunctionExprKind::Constructor(constructor) => Ok(
             EvaluatedCustomFunction::constructor(*constructor, type_.to_function_type()),
         ),
@@ -51,25 +54,35 @@ pub(in crate::runtime) fn eval_custom_function_expr_kind(
                 crate::plan::execution::ValueType::Custom(type_.return_().type_id()),
             ),
         )),
-        CustomFunctionExprKind::Closure(template) => Ok(EvaluatedCustomFunction::closure(
-            *template.function(),
-            template.param_locals(),
-            function::eval_capture_args(plan, state, frame, template.captures())?,
+        CustomFunctionExprKind::Closure(closure) => Ok(EvaluatedCustomFunction::closure(
+            *closure.function(),
+            closure.param_locals(),
+            function::eval_capture_args(plan, state, frame, closure.captures())?,
             type_.to_function_type(),
         )),
         CustomFunctionExprKind::LocalGet { local } => Ok(frame.get_custom_function(local)),
-        CustomFunctionExprKind::Call { function, args } => {
-            function::run_custom_function_returning_function_call(
-                plan,
-                state,
-                function.clone(),
-                args,
-                frame,
-            )
-        }
-        CustomFunctionExprKind::FunctionCall { function, args } => {
-            function::run_custom_function_function_call(plan, state, function, args, frame)
-        }
+        CustomFunctionExprKind::Call(call) => eval_direct_call(
+            plan,
+            state,
+            frame,
+            call,
+            |plan, state, function, args, frame| {
+                function::run_custom_function_returning_function_call(
+                    plan,
+                    state,
+                    function.clone(),
+                    args,
+                    frame,
+                )
+            },
+        ),
+        CustomFunctionExprKind::FunctionCall(call) => eval_function_call(
+            plan,
+            state,
+            frame,
+            call,
+            function::run_custom_function_function_call,
+        ),
         CustomFunctionExprKind::TupleIndex { tuple, index } => {
             let expected =
                 ValueType::Function(Box::new(plan.function_type(&type_.to_function_type())));
@@ -180,13 +193,14 @@ pub(in crate::runtime) fn eval_custom_function_expr_kind(
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExpr, CaptureArg, CustomFunctionExpr, CustomFunctionLocal, CustomFunctionLocalId,
-        CustomFunctionReference, CustomFunctionReturn, CustomFunctionType, CustomReturn,
-        CustomType, CustomTypeDefinition, CustomTypeName, CustomTypePublicity, Expr, FloatExpr,
-        FunctionExpr, FunctionListExpr, FunctionShape, FunctionTemplate, FunctionTemplateId,
-        FunctionType, IntExpr, IntFunctionExpr, IntFunctionId, IntFunctionReference, IntLocalId,
-        ListExpr, ModulePlan, PanicExpr, PanicSite, Param, ParamLocal, ReturnExpr, Step,
-        StringExpr, TupleExpr, ValueShape, ValueType, monomorphic_function_instantiation,
+        BoolExpr, CaptureArg, CustomConstructorDefinition, CustomFunctionExpr, CustomFunctionLocal,
+        CustomFunctionLocalId, CustomFunctionReference, CustomFunctionReturn, CustomFunctionType,
+        CustomReturn, CustomType, CustomTypeDefinition, CustomTypeName, CustomTypePublicity, Expr,
+        FloatExpr, FunctionExpr, FunctionListExpr, FunctionShape, FunctionTemplate,
+        FunctionTemplateId, FunctionType, IntExpr, IntFunctionExpr, IntFunctionId,
+        IntFunctionReference, IntLocalId, ListExpr, ModulePlan, PanicExpr, PanicSite, Param,
+        ParamLocal, ReturnExpr, Step, StringExpr, TupleExpr, ValueShape, ValueType,
+        monomorphic_function_instantiation,
     };
     use crate::runtime::{ExecutionError, run_main};
 
@@ -397,6 +411,16 @@ pub fn main() {
                 type_.clone(),
             ),
             CustomFunctionExpr::bool_case(BoolExpr::panic(panic()), fallback(), fallback()),
+            CustomFunctionExpr::bool_case(
+                BoolExpr::not(BoolExpr::value(false)),
+                CustomFunctionExpr::panic(panic(), type_.clone()),
+                fallback(),
+            ),
+            CustomFunctionExpr::bool_case(
+                BoolExpr::not(BoolExpr::value(true)),
+                fallback(),
+                CustomFunctionExpr::panic(panic(), type_.clone()),
+            ),
             CustomFunctionExpr::int_case(IntExpr::panic(panic()), Vec::new(), fallback()),
             CustomFunctionExpr::string_case(StringExpr::panic(panic()), Vec::new(), fallback()),
             CustomFunctionExpr::float_case(FloatExpr::panic(panic()), Vec::new(), fallback()),
@@ -491,7 +515,11 @@ pub fn main() {
             CustomTypePublicity::Private,
             false,
             Vec::new(),
-            Vec::new(),
+            vec![CustomConstructorDefinition::new(
+                "Boxed".into(),
+                0,
+                Vec::new(),
+            )],
         )
     }
 

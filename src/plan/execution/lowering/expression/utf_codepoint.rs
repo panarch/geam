@@ -1,88 +1,120 @@
+use super::super::specialization::Representability;
 use super::{
-    bool_expr, call_args, custom_field_access, float_expr, int_expr, panic_expr, string_expr,
-    tuple_expr, utf_codepoint_function_expr, utf_codepoint_list_expr,
+    custom_field_access, float_expr, int_expr, panic_expr, string_expr, tuple_expr,
+    utf_codepoint_function_expr, utf_codepoint_list_expr,
 };
 use crate::plan::{execution, module};
 
 pub(in crate::plan::execution::lowering) fn utf_codepoint_expr(
     expression: &module::UtfCodepointExpr,
     context: &mut super::super::LoweringContext,
-) -> execution::UtfCodepointExpr {
+) -> Representability<execution::UtfCodepointExpr> {
     use execution::UtfCodepointExprKind as E;
     use module::UtfCodepointExprKind as M;
 
-    execution::UtfCodepointExpr::from_kind(match expression.kind() {
-        M::LocalGet { local, name: _ } => E::LocalGet {
+    let kind = match expression.kind() {
+        M::LocalGet { local, name: _ } => Representability::Inhabited(E::LocalGet {
             local: execution::UtfCodepointLocalId(
                 context.mapped_local(super::super::frame::LocalKind::UtfCodepoint, local.0),
             ),
-        },
-        M::Call { function, args } => E::Call {
-            function: context.utf_codepoint_function_id(function),
-            args: super::direct_call_args(function, args, context),
-        },
-        M::FunctionCall { function, args } => E::FunctionCall {
-            function: Box::new(utf_codepoint_function_expr(function, context)),
-            args: call_args(args, context),
-        },
-        M::TupleIndex { tuple, index } => E::TupleIndex {
-            tuple: Box::new(tuple_expr(tuple, context)),
+        }),
+        M::Call { function, args } => {
+            super::direct_call(function, args, context, |function, context| {
+                context.utf_codepoint_function_id(function)
+            })
+            .map(E::Call)
+        }
+        M::FunctionCall { function, args } => super::function_call(
+            args,
+            context,
+            |context| utf_codepoint_function_expr(function, context),
+            |context| super::function::evaluated_utf_codepoint_function_expr(function, context),
+        )
+        .map(E::FunctionCall),
+        M::TupleIndex { tuple, index } => tuple_expr(tuple, context).map(|tuple| E::TupleIndex {
+            tuple: Box::new(tuple),
             index: *index,
-        },
-        M::CustomField(access) => E::CustomField(custom_field_access(access, context)),
-        M::ListIndex { list, index } => E::ListIndex {
-            list: Box::new(utf_codepoint_list_expr(list, context)),
-            index: *index,
-        },
-        M::Panic(value) => E::Panic(panic_expr(value, context)),
+        }),
+        M::CustomField(access) => custom_field_access(access, context).map(E::CustomField),
+        M::ListIndex { list, index } => {
+            utf_codepoint_list_expr(list, context).map(|list| E::ListIndex {
+                list: Box::new(list),
+                index: *index,
+            })
+        }
+        M::Panic(value) => panic_expr(value, context).map(E::Panic),
         M::BoolCase {
             subject,
             true_,
             false_,
-        } => E::BoolCase {
-            subject: Box::new(bool_expr(subject, context)),
-            true_: Box::new(utf_codepoint_expr(true_, context)),
-            false_: Box::new(utf_codepoint_expr(false_, context)),
-        },
+        } => super::bool_case_into(
+            subject,
+            context,
+            |context| utf_codepoint_expr(true_, context),
+            |context| utf_codepoint_expr(false_, context),
+            execution::UtfCodepointExpr::into_kind,
+            |subject, true_, false_| E::BoolCase {
+                subject: Box::new(subject),
+                true_: Box::new(true_),
+                false_: Box::new(false_),
+            },
+        ),
         M::IntCase {
             subject,
             clauses,
             fallback,
-        } => E::IntCase {
-            subject: Box::new(int_expr(subject, context)),
-            clauses: clauses
-                .iter()
-                .map(|(pattern, branch)| (pattern.clone(), utf_codepoint_expr(branch, context)))
-                .collect(),
-            fallback: Box::new(utf_codepoint_expr(fallback, context)),
-        },
+        } => int_expr(subject, context).and_then(|subject| {
+            Representability::collect(clauses.iter().map(|(pattern, branch)| {
+                utf_codepoint_expr(branch, context).map(|branch| (pattern.clone(), branch))
+            }))
+            .and_then(|clauses| {
+                utf_codepoint_expr(fallback, context).map(|fallback| E::IntCase {
+                    subject: Box::new(subject),
+                    clauses,
+                    fallback: Box::new(fallback),
+                })
+            })
+        }),
         M::StringCase {
             subject,
             clauses,
             fallback,
-        } => E::StringCase {
-            subject: Box::new(string_expr(subject, context)),
-            clauses: clauses
-                .iter()
-                .map(|(pattern, branch)| (pattern.clone(), utf_codepoint_expr(branch, context)))
-                .collect(),
-            fallback: Box::new(utf_codepoint_expr(fallback, context)),
-        },
+        } => string_expr(subject, context).and_then(|subject| {
+            Representability::collect(clauses.iter().map(|(pattern, branch)| {
+                utf_codepoint_expr(branch, context).map(|branch| (pattern.clone(), branch))
+            }))
+            .and_then(|clauses| {
+                utf_codepoint_expr(fallback, context).map(|fallback| E::StringCase {
+                    subject: Box::new(subject),
+                    clauses,
+                    fallback: Box::new(fallback),
+                })
+            })
+        }),
         M::FloatCase {
             subject,
             clauses,
             fallback,
-        } => E::FloatCase {
-            subject: Box::new(float_expr(subject, context)),
-            clauses: clauses
-                .iter()
-                .map(|(pattern, branch)| (*pattern, utf_codepoint_expr(branch, context)))
-                .collect(),
-            fallback: Box::new(utf_codepoint_expr(fallback, context)),
-        },
-        M::Block { steps, return_ } => E::Block {
-            steps: super::super::step::steps(steps, context),
-            return_: Box::new(utf_codepoint_expr(return_, context)),
-        },
-    })
+        } => float_expr(subject, context).and_then(|subject| {
+            Representability::collect(clauses.iter().map(|(pattern, branch)| {
+                utf_codepoint_expr(branch, context).map(|branch| (*pattern, branch))
+            }))
+            .and_then(|clauses| {
+                utf_codepoint_expr(fallback, context).map(|fallback| E::FloatCase {
+                    subject: Box::new(subject),
+                    clauses,
+                    fallback: Box::new(fallback),
+                })
+            })
+        }),
+        M::Block { steps, return_ } => {
+            super::super::step::steps(steps, context).and_then(|steps| {
+                utf_codepoint_expr(return_, context).map(|return_| E::Block {
+                    steps,
+                    return_: Box::new(return_),
+                })
+            })
+        }
+    };
+    kind.map(execution::UtfCodepointExpr::from_kind)
 }

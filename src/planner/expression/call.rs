@@ -254,27 +254,9 @@ mod tests {
     use crate::planner::support::{compile, dummy_span};
     use crate::planner::{
         InvalidCallShapeReason, InvalidCustomTypeReason, InvalidTypedAstReason, PlanError,
-        UnsupportedExpressionKind,
     };
     use gleam_core::ast::{ImplicitCallArgOrigin, Statement, TypedExpr, TypedModule};
     use gleam_core::type_::{self, ValueConstructorVariant, error::VariableOrigin};
-
-    #[test]
-    fn reject_profile_polymorphic_result_constructor_call() {
-        assert_eq!(
-            plan_module(compile(
-                r#"
-pub fn main() {
-  Ok(1)
-  1
-}
-"#,
-            )),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::GenericFunction,
-            }),
-        );
-    }
 
     #[test]
     fn reject_margin_module_constant_call_shape() {

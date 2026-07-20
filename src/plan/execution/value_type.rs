@@ -36,6 +36,12 @@ primitive_list_type_id!(BoolListTypeId);
 primitive_list_type_id!(NilListTypeId);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct ParameterListTypeId {
+    list_type: ListTypeId,
+    item: plan::TypeParameterId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct TupleItemTypeId(usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -54,6 +60,12 @@ pub(crate) struct ListListTypeId {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct ParameterListListTypeId {
+    list_type: ListTypeId,
+    item_type: ParameterListTypeId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct FunctionListTypeId {
     list_type: ListTypeId,
     item_type: FunctionItemTypeId,
@@ -67,6 +79,7 @@ pub(crate) struct CustomListTypeId {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum ListStorageTypeId {
+    Parameter(ParameterListTypeId),
     Int(IntListTypeId),
     String(StringListTypeId),
     BitArray(BitArrayListTypeId),
@@ -75,6 +88,7 @@ pub(crate) enum ListStorageTypeId {
     Bool(BoolListTypeId),
     Nil(NilListTypeId),
     Tuple(TupleListTypeId),
+    ParameterList(ParameterListListTypeId),
     List(ListListTypeId),
     Function(FunctionListTypeId),
     Custom(CustomListTypeId),
@@ -82,6 +96,7 @@ pub(crate) enum ListStorageTypeId {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum ValueType {
+    Parameter(plan::TypeParameterId),
     Int,
     Float,
     String,
@@ -106,6 +121,12 @@ pub(crate) struct CustomFunctionType {
     type_: FunctionType,
     arguments: Box<[super::ValueShapeId]>,
     return_: super::CustomValueShape,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct GenericFunctionType {
+    type_: FunctionType,
+    shape: super::FunctionShape,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -149,8 +170,10 @@ list_type_id!(UtfCodepointListTypeId);
 list_type_id!(FloatListTypeId);
 list_type_id!(BoolListTypeId);
 list_type_id!(NilListTypeId);
+list_type_id!(ParameterListTypeId);
 list_type_id!(TupleListTypeId);
 list_type_id!(ListListTypeId);
+list_type_id!(ParameterListListTypeId);
 list_type_id!(FunctionListTypeId);
 list_type_id!(CustomListTypeId);
 
@@ -161,6 +184,16 @@ impl CustomTypeId {
 
     pub(crate) fn index(self) -> usize {
         self.0
+    }
+}
+
+impl ParameterListTypeId {
+    pub(super) fn new(list_type: ListTypeId, item: plan::TypeParameterId) -> Self {
+        Self { list_type, item }
+    }
+
+    pub(crate) fn item(self) -> plan::TypeParameterId {
+        self.item
     }
 }
 
@@ -217,6 +250,19 @@ impl CustomFunctionType {
     }
 }
 
+impl GenericFunctionType {
+    pub(in crate::plan::execution) fn from_shapes(
+        type_: FunctionType,
+        shape: super::FunctionShape,
+    ) -> Self {
+        Self { type_, shape }
+    }
+
+    pub(crate) fn to_function_type(&self) -> FunctionType {
+        self.type_.clone()
+    }
+}
+
 impl FunctionFunctionType {
     pub(in crate::plan::execution) fn from_shapes(
         type_: FunctionType,
@@ -253,7 +299,21 @@ impl ListListTypeId {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn item_type(self) -> ListTypeId {
+        self.item_type
+    }
+}
+
+impl ParameterListListTypeId {
+    pub(super) fn new(list_type: ListTypeId, item_type: ParameterListTypeId) -> Self {
+        Self {
+            list_type,
+            item_type,
+        }
+    }
+
+    pub(crate) fn item_type(self) -> ParameterListTypeId {
         self.item_type
     }
 }
@@ -325,6 +385,7 @@ impl ListTypeTable {
         custom_types: &super::custom_type::CustomTypeTable,
     ) -> plan::ValueType {
         match value {
+            ValueType::Parameter(parameter) => plan::ValueType::Parameter(*parameter),
             ValueType::Int => plan::ValueType::Int,
             ValueType::Float => plan::ValueType::Float,
             ValueType::String => plan::ValueType::String,
@@ -375,6 +436,7 @@ impl ListTypeTable {
         custom_types: &super::custom_type::CustomTypeTable,
     ) -> plan::ValueType {
         match self.storage_type(id) {
+            ListStorageTypeId::Parameter(id) => plan::ValueType::Parameter(id.item()),
             ListStorageTypeId::Int(_) => plan::ValueType::Int,
             ListStorageTypeId::String(_) => plan::ValueType::String,
             ListStorageTypeId::BitArray(_) => plan::ValueType::BitArray,
@@ -384,6 +446,9 @@ impl ListTypeTable {
             ListStorageTypeId::Nil(_) => plan::ValueType::Nil,
             ListStorageTypeId::Tuple(id) => {
                 plan::ValueType::Tuple(self.tuple_item_type(id, custom_types))
+            }
+            ListStorageTypeId::ParameterList(id) => {
+                plan::ValueType::List(Box::new(plan::ValueType::Parameter(id.item_type().item())))
             }
             ListStorageTypeId::List(id) => {
                 plan::ValueType::List(Box::new(self.nested_list_item_type(id, custom_types)))

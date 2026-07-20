@@ -2,9 +2,9 @@ use crate::plan::CustomFieldAccess;
 #[cfg(test)]
 use crate::plan::ParamLocal;
 use crate::plan::{
-    BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionInstantiation, FunctionListExpr,
-    FunctionType, IntExpr, PanicExpr, ParamSlot, Step, StringExpr, StringFunctionLocalId,
-    StringFunctionReference, TupleExpr,
+    BoolExpr, CaptureArg, ConstantStringFunctionInstantiation, FloatExpr, FunctionFunctionExpr,
+    FunctionInstantiation, FunctionListExpr, FunctionType, IntExpr, PanicExpr, ParamSlot, Step,
+    StringExpr, StringFunctionLocalId, StringFunctionReference, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -17,6 +17,7 @@ pub struct StringFunctionExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum StringFunctionExprKind {
+    Constant(ConstantStringFunctionInstantiation),
     Reference(StringFunctionReference),
     Closure {
         function: FunctionInstantiation,
@@ -76,6 +77,16 @@ pub(crate) enum StringFunctionExprKind {
 }
 
 impl StringFunctionExpr {
+    pub(crate) fn constant(
+        value: ConstantStringFunctionInstantiation,
+        type_: FunctionType,
+    ) -> Self {
+        Self {
+            type_,
+            kind: StringFunctionExprKind::Constant(value),
+        }
+    }
+
     pub(crate) fn reference(value: StringFunctionReference) -> Self {
         let type_ = value.instantiation().shape().type_();
         Self {

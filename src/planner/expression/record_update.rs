@@ -417,7 +417,10 @@ pub fn main() {
             plan.main_function().return_(),
             &ReturnExpr::custom_body(CustomReturn::block(
                 vec![Step::let_custom(local, local_name, source)],
-                CustomReturn::expr(updated),
+                CustomReturn::with_signature_shape(
+                    crate::plan::CustomValueShape::any(type_),
+                    updated,
+                ),
             )),
         );
     }
@@ -473,7 +476,10 @@ pub fn main() {
             plan.main_function().return_(),
             &ReturnExpr::custom_body(CustomReturn::block(
                 vec![Step::let_custom(local, local_name, source)],
-                CustomReturn::expr(updated),
+                CustomReturn::with_signature_shape(
+                    crate::plan::CustomValueShape::any(type_),
+                    updated,
+                ),
             )),
         );
     }
@@ -521,7 +527,10 @@ pub fn main() {
             plan.main_function().return_(),
             &ReturnExpr::custom_body(CustomReturn::block(
                 vec![Step::let_custom(local, local_name, source)],
-                CustomReturn::expr(updated),
+                CustomReturn::with_signature_shape(
+                    crate::plan::CustomValueShape::any(type_),
+                    updated,
+                ),
             )),
         );
     }

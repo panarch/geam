@@ -201,7 +201,10 @@ fn plan_list(
     };
     let elements = match crate::plan::ListSpreadElements::from_parts(elements, tail) {
         Ok(elements) => elements,
-        Err(_) => {
+        Err(crate::plan::ListSpreadConstructionError::EmptyPrefix) => {
+            return invalid_expression_shape(InvalidExpressionShapeKind::Invalid);
+        }
+        Err(crate::plan::ListSpreadConstructionError::ElementTypeMismatch(_)) => {
             return Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionType {
                     expected: InvalidExpressionType::List,
@@ -351,11 +354,9 @@ fn plan_record_constructor(
     {
         return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
     }
-    let shape = crate::plan::ValueShape::from_gleam(constructor.type_.as_ref()).ok_or(
-        PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::GenericFunction,
-        },
-    )?;
+    let Some(shape) = crate::plan::ValueShape::from_gleam(constructor.type_.as_ref()) else {
+        return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
+    };
     let constructor = context.custom_constructor(&constructor)?;
     if usize::from(*arity) != constructor.fields().len() {
         return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
@@ -379,17 +380,16 @@ fn invalid_expression_shape(kind: InvalidExpressionShapeKind) -> Result<Expr, Pl
 mod tests {
     use super::{plan, plan_record, plan_record_constructor, plan_var};
     use crate::plan::{
-        ConstantFunction, ConstantTemplate, ConstantTemplateId, ConstantTemplateSignature,
-        ConstantTemplates, ConstantValue, CustomConstructor, CustomConstructorField, CustomExpr,
-        CustomReturn, CustomType, CustomTypeName, Expr, FunctionReference, FunctionShape,
-        FunctionTemplateId, FunctionTemplateSignature, IntLocalId, LocalId, ParamBinding,
-        ParamLocal, ParamSlot, ReturnExpr, TypeScheme, ValueShape, ValueType,
-        monomorphic_function_instantiation,
+        ConstantTemplate, ConstantTemplateId, ConstantTemplateSignature, ConstantTemplates,
+        ConstantValue, CustomConstructor, CustomConstructorField, CustomConstructorRefinement,
+        CustomExpr, CustomReturn, CustomType, CustomTypeName, CustomValueShape, Expr,
+        FunctionReference, FunctionShape, FunctionTemplateId, FunctionTemplateSignature,
+        IntLocalId, ParamBinding, ParamLocal, ParamSlot, ReturnExpr, Step, TypeParameterId,
+        TypeScheme, ValueShape, ValueType, monomorphic_function_instantiation,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, FunctionParam, PlanContext};
     use crate::planner::dsl::{
-        bool_, call_int_function, float, function, int, int_function_call_arg, int_function_ref,
-        list, list_spread, local_int, module, nil, string, tuple,
+        function, int, int_function_call_arg, list, list_spread, local_int, module, string, tuple,
     };
     use crate::planner::error::{
         InvalidCustomTypeReason, InvalidExpressionShapeKind, InvalidExpressionType,
@@ -494,23 +494,33 @@ pub fn main() {
                 ConstantValue::int(1.into()),
             ),
         ];
+        let constants = ConstantTemplates::from_entries(entries);
+        let reference = |id: usize| {
+            ConstantTemplates::reference(
+                constants
+                    .header(ConstantTemplateId(id))
+                    .signature()
+                    .try_instantiate(Vec::new())
+                    .expect("a monomorphic constant signature should instantiate"),
+            )
+        };
         let expected = module(
             "main",
             function(
                 "main",
                 tuple([
-                    Expr::from(int(1)),
-                    Expr::from(float(1.5)),
-                    Expr::from(string("ge").concatenate(string("am"))),
-                    Expr::from(tuple([Expr::from(int(1)), Expr::from(string("one"))])),
-                    Expr::from(bool_(true)),
-                    Expr::from(bool_(false)),
-                    Expr::from(nil()),
+                    reference(6),
+                    reference(5),
+                    reference(4),
+                    reference(3),
+                    reference(2),
+                    reference(1),
+                    reference(0),
                 ]),
             ),
             [],
         )
-        .with_constants(ConstantTemplates::from_entries(entries));
+        .with_constants(constants);
 
         assert_eq!(actual, expected);
     }
@@ -555,19 +565,10 @@ pub fn main() {
             Some(ConstantValue::reference(rest_instantiation)),
         )
         .expect("values has a matching Int list tail");
-        let expected = module(
-            "main",
-            function(
-                "main",
-                list_spread(
-                    [int(1)],
-                    list([int(2), int(3)], ValueType::Int),
-                    ValueType::Int,
-                ),
-            ),
-            [],
-        )
-        .with_constants(ConstantTemplates::from_entries(vec![
+        let values_instantiation = values_signature
+            .try_instantiate(Vec::new())
+            .expect("a monomorphic list constant should instantiate");
+        let constants = ConstantTemplates::from_entries(vec![
             (
                 ConstantTemplate::new(rest_signature, "rest".into()),
                 rest_value,
@@ -576,7 +577,20 @@ pub fn main() {
                 ConstantTemplate::new(values_signature, "values".into()),
                 values_value,
             ),
-        ]));
+        ]);
+        let expected = module(
+            "main",
+            function(
+                "main",
+                crate::planner::dsl::return_list(crate::plan::ListReturn::expr(
+                    ConstantTemplates::reference(values_instantiation)
+                        .into_list()
+                        .expect("a list constant reference should retain its family"),
+                )),
+            ),
+            [],
+        )
+        .with_constants(constants);
 
         assert_eq!(actual, expected);
     }
@@ -606,26 +620,35 @@ pub fn main() {
         );
         let value = ConstantValue::function(
             function_shape.clone(),
-            ConstantFunction::Reference(FunctionReference::from_slots(
+            FunctionReference::from_slots(
                 monomorphic_function_instantiation(1, function_shape),
                 vec![ParamSlot::from_local(ParamLocal::int(IntLocalId(0)))],
-            )),
+            ),
         );
+        let instantiation = signature
+            .try_instantiate(Vec::new())
+            .expect("a monomorphic function constant should instantiate");
+        let constants = ConstantTemplates::from_entries(vec![(
+            ConstantTemplate::new(signature, "f".into()),
+            value,
+        )]);
+        let function_expr = ConstantTemplates::reference(instantiation)
+            .into_function()
+            .expect("a function constant reference should retain its family")
+            .into_int()
+            .expect("the referenced function should return Int");
         let expected = module(
             "main",
             function(
                 "main",
-                call_int_function(
-                    int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
-                    [int_function_call_arg(0, int(41))],
-                ),
+                crate::plan::IntReturn::expr(crate::plan::IntExpr::function_call(
+                    function_expr,
+                    vec![int_function_call_arg(0, int(41))],
+                )),
             ),
             [function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value")],
         )
-        .with_constants(ConstantTemplates::from_entries(vec![(
-            ConstantTemplate::new(signature, "f".into()),
-            value,
-        )]));
+        .with_constants(constants);
 
         assert_eq!(actual, expected);
     }
@@ -818,8 +841,10 @@ pub fn main() { answer }
         generic_constructor.type_ = type_::generic_var(0);
         assert_eq!(
             plan_record_constructor(generic_constructor, &context),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::GenericFunction,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                },
             }),
         );
     }
@@ -859,14 +884,22 @@ pub fn main() { empty }
             CustomTypeName::new("geam".into(), "main".into(), "Token".into()),
             Vec::new(),
         );
-        let constructor = CustomConstructor::new(type_.clone(), "Empty".into(), 0, Vec::new());
+        let instantiation = plan.constants()[0]
+            .signature()
+            .try_instantiate(Vec::new())
+            .expect("a monomorphic custom constant should instantiate");
+        let expected = ConstantTemplates::reference(instantiation)
+            .into_custom()
+            .expect("a custom constant reference should retain its family");
 
         assert_eq!(
             plan.main_function().return_(),
-            &ReturnExpr::custom_body(CustomReturn::expr(
-                CustomExpr::try_constructor(constructor, Vec::new())
-                    .expect("test custom construction should be valid"),
-            ),),
+            &ReturnExpr::custom_body(CustomReturn::expr(expected)),
+        );
+        assert_eq!(plan.constants()[0].name(), "empty");
+        assert_eq!(
+            plan.constants()[0].signature().shape().value_type(),
+            ValueType::Custom(type_)
         );
     }
 
@@ -898,24 +931,25 @@ pub fn main() { older_lucy }
                 CustomConstructorField::new(Some("age".into()), ValueType::Int),
             ],
         );
+        let instantiation = plan.constants()[1]
+            .signature()
+            .try_instantiate(Vec::new())
+            .expect("a monomorphic custom constant should instantiate");
+        let expected = ConstantTemplates::reference(instantiation)
+            .into_custom()
+            .expect("a custom constant reference should retain its family");
 
         assert_eq!(
             plan.main_function().return_(),
-            &ReturnExpr::custom_body(CustomReturn::expr(
-                CustomExpr::try_constructor(
-                    constructor,
-                    vec![Expr::from(string("Lucy")), Expr::from(int(31))],
-                )
-                .expect("test custom construction should be valid"),
-            ),),
+            &ReturnExpr::custom_body(CustomReturn::expr(expected)),
         );
+        assert_eq!(constructor.fields().len(), 2);
     }
 
     #[test]
-    fn reject_profile_polymorphic_custom_constructor_constant() {
-        assert_eq!(
-            plan_module(compile(
-                r#"
+    fn plan_polymorphic_custom_constructor_constant() {
+        let plan = plan_module(compile(
+            r#"
 pub type Boxed(value) {
   Boxed(value)
 }
@@ -927,10 +961,35 @@ pub fn main() {
   1
 }
 "#,
-            )),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::GenericFunction,
-            }),
+        ))
+        .expect("a symbolic constructor constant should plan");
+        let parameter = TypeParameterId(0);
+        let custom_shape = CustomValueShape::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            vec![ValueShape::Parameter(parameter)],
+            CustomConstructorRefinement::Any,
+        );
+        let function_shape = FunctionShape::new(
+            vec![ValueShape::Parameter(parameter)],
+            ValueShape::Custom(custom_shape),
+        );
+        let signature = ConstantTemplateSignature::function(
+            ConstantTemplateId(0),
+            0,
+            TypeScheme::new(1),
+            function_shape,
+        );
+        let instantiation = signature
+            .try_instantiate(vec![ValueShape::Parameter(parameter)])
+            .expect("the identity substitution should instantiate the constructor constant");
+
+        assert_eq!(
+            plan.constants(),
+            &[ConstantTemplate::new(signature, "make".into())],
+        );
+        assert_eq!(
+            plan.main_function().steps(),
+            &[Step::evaluate(ConstantTemplates::reference(instantiation))],
         );
     }
 
@@ -981,6 +1040,24 @@ pub fn main() {
                 elements: Vec::new(),
                 type_: type_::list(type_::int()),
                 tail: Some(Box::new(invalid())),
+            }),
+            invalid_error,
+        );
+        assert_eq!(
+            plan_constant_literal(Constant::List {
+                location: dummy_span(),
+                elements: Vec::new(),
+                type_: type_::list(type_::int()),
+                tail: Some(Box::new(Constant::List {
+                    location: dummy_span(),
+                    elements: vec![Constant::Int {
+                        location: dummy_span(),
+                        value: "1".into(),
+                        int_value: 1.into(),
+                    }],
+                    type_: type_::list(type_::int()),
+                    tail: None,
+                })),
             }),
             invalid_error,
         );

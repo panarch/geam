@@ -1,11 +1,12 @@
-use super::{ListItem, ListListExpr};
+use super::ListItem;
 use crate::plan::execution::{
-    BoolExpr, CallArg, CustomFieldAccess, FloatExpr, IntExpr, ListFunctionExpr, PanicExpr, Step,
-    StringExpr, TupleExpr,
+    BoolExpr, CustomFieldAccess, DirectCall, FloatExpr, FunctionCall, IntExpr, ListFunctionExpr,
+    PanicExpr, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
 use std::marker::PhantomData;
+use vec1::Vec1;
 
 pub(crate) struct TypedListExpr<Item: ListItem> {
     pub(super) item: Item,
@@ -13,28 +14,23 @@ pub(crate) struct TypedListExpr<Item: ListItem> {
 }
 
 pub(crate) struct ListIndexSource<Item: ListItem> {
-    list: Box<ListListExpr>,
+    list: Box<Item::IndexSource>,
     index: usize,
     result_item: PhantomData<fn() -> Item>,
 }
 
 pub(crate) enum TypedListExprKind<Item: ListItem> {
     Value(Vec<Item::ElementExpr>),
+    Constant(Item::Constant),
     Spread {
-        elements: Vec<Item::ElementExpr>,
+        elements: Vec1<Item::ElementExpr>,
         tail: Box<TypedListExprKind<Item>>,
     },
     LocalGet {
         local: Item::Local,
     },
-    Call {
-        function: Item::Function,
-        args: Vec<CallArg>,
-    },
-    FunctionCall {
-        function: Box<ListFunctionExpr>,
-        args: Vec<CallArg>,
-    },
+    Call(DirectCall<Item::Function>),
+    FunctionCall(FunctionCall<ListFunctionExpr>),
     TupleIndex {
         tuple: Box<TupleExpr>,
         index: usize,
@@ -73,11 +69,11 @@ pub(crate) enum TypedListExprKind<Item: ListItem> {
 }
 
 impl<Item: ListItem> ListIndexSource<Item> {
-    pub(in crate::plan::execution) fn from_parts(list: ListListExpr, index: usize) -> Self {
+    pub(in crate::plan::execution) fn from_parts(list: Item::IndexSource, index: usize) -> Self {
         Self::new(list, index)
     }
 
-    pub(super) fn new(list: ListListExpr, index: usize) -> Self {
+    pub(super) fn new(list: Item::IndexSource, index: usize) -> Self {
         Self {
             list: Box::new(list),
             index,
@@ -85,7 +81,7 @@ impl<Item: ListItem> ListIndexSource<Item> {
         }
     }
 
-    pub(crate) fn list(&self) -> &ListListExpr {
+    pub(crate) fn list(&self) -> &Item::IndexSource {
         &self.list
     }
 

@@ -5,11 +5,13 @@ use crate::plan::execution::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionFunctionId,
     BoolFunctionId, BoolListFunctionId, CallArg, CustomFunctionFunctionId, CustomFunctionId,
     CustomListFunctionId, FloatFunctionFunctionId, FloatFunctionId, FloatListFunctionId,
-    FunctionFunctionFunctionId, FunctionListFunctionId, IntFunctionFunctionId, IntFunctionId,
-    IntListFunctionId, ListFunctionFunctionId, ListFunctionId, ListListFunctionId,
-    NilFunctionFunctionId, NilFunctionId, NilListFunctionId, ReturnBody, ReturnBodyKind,
-    StringFunctionFunctionId, StringFunctionId, StringListFunctionId, TupleFunctionFunctionId,
-    TupleFunctionId, TupleListFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+    FunctionFunctionFunctionId, FunctionListFunctionId, GenericFunctionFunctionId,
+    IntFunctionFunctionId, IntFunctionId, IntListFunctionId, ListFunctionFunctionId,
+    ListFunctionId, ListListFunctionId, NeverFunctionFunctionId, NeverFunctionId,
+    NilFunctionFunctionId, NilFunctionId, NilListFunctionId, ParameterListFunctionId,
+    ParameterListListFunctionId, ReturnBody, ReturnBodyKind, StringFunctionFunctionId,
+    StringFunctionId, StringListFunctionId, TupleFunctionFunctionId, TupleFunctionId,
+    TupleListFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
     UtfCodepointListFunctionId,
 };
 use crate::runtime::error::ExecutionResult;
@@ -18,22 +20,26 @@ use crate::runtime::expression::{
     eval_bool_function_expr, eval_bool_list_expr, eval_custom_expr_kind,
     eval_custom_function_expr_kind, eval_custom_list_expr, eval_float_expr,
     eval_float_function_expr, eval_float_list_expr, eval_function_function_expr_kind,
-    eval_function_list_expr, eval_int_expr, eval_int_function_expr, eval_int_list_expr,
-    eval_list_function_expr, eval_list_list_expr, eval_nil_expr, eval_nil_function_expr,
-    eval_nil_list_expr, eval_string_expr, eval_string_function_expr, eval_string_list_expr,
-    eval_tuple_expr, eval_tuple_function_expr, eval_tuple_list_expr, eval_utf_codepoint_expr,
-    eval_utf_codepoint_function_expr, eval_utf_codepoint_list_expr,
+    eval_function_list_expr, eval_generic_function_expr_kind, eval_int_expr,
+    eval_int_function_expr, eval_int_list_expr, eval_list_function_expr, eval_list_list_expr,
+    eval_never_expr, eval_never_function_expr_kind, eval_nil_expr, eval_nil_function_expr,
+    eval_nil_list_expr, eval_parameter_list_expr, eval_parameter_list_list_expr, eval_string_expr,
+    eval_string_function_expr, eval_string_list_expr, eval_tuple_expr, eval_tuple_function_expr,
+    eval_tuple_list_expr, eval_utf_codepoint_expr, eval_utf_codepoint_function_expr,
+    eval_utf_codepoint_list_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::state::{
     BitArrayListValueId, BoolListValueId, CustomListValueId, FloatListValueId, FunctionListValueId,
-    IntListValueId, ListListValueId, ListValueId, NilListValueId, RuntimeState, StringListValueId,
-    TupleListValueId, UtfCodepointListValueId,
+    IntListValueId, ListListValueId, ListValueId, NilListValueId, ParameterListListValueId,
+    ParameterListValueId, RuntimeState, StringListValueId, TupleListValueId,
+    UtfCodepointListValueId,
 };
 use crate::runtime::{
     EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCustomFunction,
-    EvaluatedCustomValue, EvaluatedFloatFunction, EvaluatedFunctionFunction, EvaluatedIntFunction,
-    EvaluatedListFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
+    EvaluatedCustomValue, EvaluatedFloatFunction, EvaluatedFunctionFunction,
+    EvaluatedGenericFunction, EvaluatedIntFunction, EvaluatedListFunction, EvaluatedNeverFunction,
+    EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
     EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
 use ecow::EcoString;
@@ -45,6 +51,36 @@ enum ReturnOutcome<'a, Value, Function> {
         function: Function,
         args: &'a [CallArg],
     },
+}
+
+pub(super) fn run_never_loop(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    mut function: NeverFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<std::convert::Infallible> {
+    loop {
+        let runtime_function = plan.never_function(function);
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
+        let outcome = eval_return_body(
+            plan,
+            state,
+            &mut frame,
+            runtime_function.return_(),
+            eval_never_expr,
+        )?;
+        match outcome {
+            ReturnOutcome::Value(never) => match never {},
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.never_function(next).frame_layout();
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
 }
 
 fn finish_return<Value>(
@@ -85,6 +121,9 @@ where
     match body.kind() {
         ReturnBodyKind::Expr(expression) => {
             eval_expression(plan, state, frame, expression).map(ReturnOutcome::Value)
+        }
+        ReturnBodyKind::Never(expression) => {
+            eval_never_expr(plan, state, frame, expression).map(|never| match never {})
         }
         ReturnBodyKind::TailCall { function, args } => Ok(ReturnOutcome::TailCall {
             function: function.clone(),
@@ -397,6 +436,12 @@ pub(super) fn run_list_loop(
     frame: Frame,
 ) -> ExecutionResult<ListValueId> {
     match function {
+        ListFunctionId::Parameter(function) => {
+            run_parameter_list_loop(plan, state, function, frame).map(Into::into)
+        }
+        ListFunctionId::ParameterList(function) => {
+            run_parameter_list_list_loop(plan, state, function, frame).map(Into::into)
+        }
         ListFunctionId::Int(function) => {
             run_int_list_loop(plan, state, function, frame).map(Into::into)
         }
@@ -429,6 +474,66 @@ pub(super) fn run_list_loop(
         }
         ListFunctionId::Function(function) => {
             run_function_list_loop(plan, state, function, frame).map(Into::into)
+        }
+    }
+}
+
+pub(super) fn run_parameter_list_loop(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    mut function: ParameterListFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<ParameterListValueId> {
+    loop {
+        let runtime_function = plan.parameter_list_function(function);
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
+        let outcome = eval_return_body(
+            plan,
+            state,
+            &mut frame,
+            runtime_function.return_(),
+            eval_parameter_list_expr,
+        )?;
+        match outcome {
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.parameter_list_function(next).frame_layout();
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
+}
+
+pub(super) fn run_parameter_list_list_loop(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    mut function: ParameterListListFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<ParameterListListValueId> {
+    loop {
+        let runtime_function = plan.parameter_list_list_function(function);
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
+        let outcome = eval_return_body(
+            plan,
+            state,
+            &mut frame,
+            runtime_function.return_(),
+            eval_parameter_list_list_expr,
+        )?;
+        match outcome {
+            ReturnOutcome::Value(value) => return finish_return(state, frame, value),
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.parameter_list_list_function(next).frame_layout();
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
+                function = next;
+            }
         }
     }
 }
@@ -788,6 +893,78 @@ pub(super) fn run_int_function_loop(
                 args,
             } => {
                 let frame_layout = plan.int_function_function(next).frame_layout();
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
+}
+
+pub(super) fn run_generic_function_loop(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    mut function: GenericFunctionFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<EvaluatedGenericFunction> {
+    loop {
+        let type_ = function.type_().clone();
+        let runtime_function = plan.generic_function_function(&function);
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
+        let return_ = runtime_function.return_();
+        let outcome = eval_return_body(
+            plan,
+            state,
+            &mut frame,
+            return_.body(),
+            |plan, state, frame, expression| {
+                eval_generic_function_expr_kind(plan, state, frame, &type_, expression.kind())
+            },
+        )?;
+        match outcome {
+            ReturnOutcome::Value(value) => {
+                return finish_return(state, frame, value.with_type(type_.to_function_type()));
+            }
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.generic_function_function(&next).frame_layout();
+                frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
+                function = next;
+            }
+        }
+    }
+}
+
+pub(super) fn run_never_function_loop(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    mut function: NeverFunctionFunctionId,
+    mut frame: Frame,
+) -> ExecutionResult<EvaluatedNeverFunction> {
+    loop {
+        let type_ = function.type_().clone();
+        let runtime_function = plan.never_function_function(&function);
+        execute_steps(plan, state, runtime_function.steps(), &mut frame)?;
+        let return_ = runtime_function.return_();
+        let outcome = eval_return_body(
+            plan,
+            state,
+            &mut frame,
+            return_.body(),
+            |plan, state, frame, expression| {
+                eval_never_function_expr_kind(plan, state, frame, &type_, expression.kind())
+            },
+        )?;
+        match outcome {
+            ReturnOutcome::Value(value) => {
+                return finish_return(state, frame, value.with_type(type_.to_function_type()));
+            }
+            ReturnOutcome::TailCall {
+                function: next,
+                args,
+            } => {
+                let frame_layout = plan.never_function_function(&next).frame_layout();
                 frame = bind_tail_arguments(plan, state, args, frame, frame_layout)?;
                 function = next;
             }
@@ -1338,6 +1515,7 @@ pub fn main() {
     #[test]
     fn function_loops_propagate_step_errors_for_every_return_family() {
         let return_shapes = [
+            ("value", "panic"),
             ("Int", "0"),
             ("String", "\"\""),
             ("BitArray", "<<>>"),
@@ -1354,6 +1532,8 @@ pub fn main() {
             ("List(Bool)", "[]"),
             ("List(Nil)", "[]"),
             ("List(#(Int))", "[]"),
+            ("List(value)", "[]"),
+            ("List(List(value))", "[[]]"),
             ("List(List(Int))", "[]"),
             ("List(fn() -> Int)", "[]"),
             ("fn() -> Int", "fn() { 0 }"),
@@ -1365,6 +1545,8 @@ pub fn main() {
             ("fn() -> Nil", "fn() { Nil }"),
             ("fn() -> #(Int)", "fn() { #(0) }"),
             ("fn() -> List(Int)", "fn() { [] }"),
+            ("fn(value) -> value", "fn(value) { value }"),
+            ("fn(Int) -> value", "fn(_value) { panic }"),
             ("fn() -> fn() -> Int", "fn() { fn() { 0 } }"),
         ];
 
@@ -1395,6 +1577,7 @@ pub fn main() {
     #[test]
     fn function_loops_propagate_tail_argument_errors_for_every_return_family() {
         let return_types = [
+            "value",
             "Int",
             "String",
             "BitArray",
@@ -1411,6 +1594,8 @@ pub fn main() {
             "List(Bool)",
             "List(Nil)",
             "List(#(Int))",
+            "List(value)",
+            "List(List(value))",
             "List(List(Int))",
             "List(fn() -> Int)",
             "fn() -> Int",
@@ -1422,6 +1607,8 @@ pub fn main() {
             "fn() -> Nil",
             "fn() -> #(Int)",
             "fn() -> List(Int)",
+            "fn(value) -> value",
+            "fn(Int) -> value",
             "fn() -> fn() -> Int",
         ];
 

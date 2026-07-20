@@ -1,8 +1,8 @@
 use super::{
-    BoolExpr, CallArg, CustomFieldAccess, FloatExpr, IntFunctionExpr, IntListExpr, PanicExpr,
-    StringExpr, TupleExpr,
+    BoolExpr, CustomFieldAccess, DirectCall, FloatExpr, FunctionCall, IntFunctionExpr, IntListExpr,
+    PanicExpr, StringExpr, TupleExpr,
 };
-use crate::plan::execution::{IntFunctionId, IntLocalId, Step};
+use crate::plan::execution::{ConstantId, IntFunctionId, IntLocalId, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -12,17 +12,12 @@ pub struct IntExpr {
 
 pub(crate) enum IntExprKind {
     Value(BigInt),
+    Constant(ConstantId<IntExpr>),
     LocalGet {
         local: IntLocalId,
     },
-    Call {
-        function: IntFunctionId,
-        args: Vec<CallArg>,
-    },
-    FunctionCall {
-        function: Box<IntFunctionExpr>,
-        args: Vec<CallArg>,
-    },
+    Call(DirectCall<IntFunctionId>),
+    FunctionCall(FunctionCall<IntFunctionExpr>),
     TupleIndex {
         tuple: Box<TupleExpr>,
         index: usize,
@@ -83,6 +78,10 @@ pub(crate) enum IntExprKind {
 impl IntExpr {
     pub(in crate::plan::execution) fn from_kind(kind: IntExprKind) -> Self {
         Self { kind }
+    }
+
+    pub(in crate::plan::execution) fn into_kind(self) -> IntExprKind {
+        self.kind
     }
 
     pub(crate) fn kind(&self) -> &IntExprKind {

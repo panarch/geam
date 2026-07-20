@@ -4,8 +4,8 @@ use crate::plan::execution::{
     ExecutionPlan, FunctionReturnFamily, UtfCodepointFunctionExpr, UtfCodepointFunctionExprKind,
 };
 use crate::runtime::expression::{
-    eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
-    project_function_list_expr, project_tuple_expr,
+    eval_bool_expr, eval_direct_call, eval_float_expr, eval_function_call, eval_int_expr,
+    eval_panic_expr, eval_string_expr, project_function_list_expr, project_tuple_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -21,6 +21,9 @@ pub(in crate::runtime) fn eval_utf_codepoint_function_expr(
     expression: &UtfCodepointFunctionExpr,
 ) -> Result<EvaluatedUtfCodepointFunction, ExecutionError> {
     match expression.kind() {
+        UtfCodepointFunctionExprKind::Constant(value) => {
+            eval_utf_codepoint_function_expr(plan, state, frame, plan.constant(*value))
+        }
         UtfCodepointFunctionExprKind::Reference(reference) => {
             Ok(EvaluatedUtfCodepointFunction::reference(
                 *reference.function(),
@@ -33,14 +36,14 @@ pub(in crate::runtime) fn eval_utf_codepoint_function_expr(
                 ),
             ))
         }
-        UtfCodepointFunctionExprKind::Closure(template) => {
+        UtfCodepointFunctionExprKind::Closure(closure) => {
             Ok(EvaluatedUtfCodepointFunction::closure(
-                *template.function(),
-                template.param_locals(),
-                function::eval_capture_args(plan, state, frame, template.captures())?,
+                *closure.function(),
+                closure.param_locals(),
+                function::eval_capture_args(plan, state, frame, closure.captures())?,
                 crate::runtime::evaluated::function_type_from_slots(
                     plan,
-                    template.params(),
+                    closure.params(),
                     crate::plan::execution::ValueType::UtfCodepoint,
                 ),
             ))
@@ -48,21 +51,23 @@ pub(in crate::runtime) fn eval_utf_codepoint_function_expr(
         UtfCodepointFunctionExprKind::LocalGet { local, .. } => {
             Ok(frame.get_utf_codepoint_function(*local))
         }
-        UtfCodepointFunctionExprKind::Call { function, args, .. } => {
-            function::run_utf_codepoint_function_returning_function_call(
-                plan, state, *function, args, frame,
-            )
-        }
-        UtfCodepointFunctionExprKind::FunctionCall {
-            function: callee,
-            args,
-            ..
-        } => function::run_utf_codepoint_function_function_call(
+        UtfCodepointFunctionExprKind::Call(call) => eval_direct_call(
             plan,
             state,
-            callee.as_ref(),
-            args,
             frame,
+            call,
+            |plan, state, function, args, frame| {
+                function::run_utf_codepoint_function_returning_function_call(
+                    plan, state, *function, args, frame,
+                )
+            },
+        ),
+        UtfCodepointFunctionExprKind::FunctionCall(call) => eval_function_call(
+            plan,
+            state,
+            frame,
+            call,
+            function::run_utf_codepoint_function_function_call,
         ),
         UtfCodepointFunctionExprKind::TupleIndex {
             tuple,
@@ -253,6 +258,22 @@ mod tests {
                     fallback(),
                 ),
                 "bool subject",
+            ),
+            (
+                UtfCodepointFunctionExpr::bool_case(
+                    BoolExpr::not(BoolExpr::value(false)),
+                    UtfCodepointFunctionExpr::panic(panic("true branch"), type_.clone()),
+                    fallback(),
+                ),
+                "true branch",
+            ),
+            (
+                UtfCodepointFunctionExpr::bool_case(
+                    BoolExpr::not(BoolExpr::value(true)),
+                    fallback(),
+                    UtfCodepointFunctionExpr::panic(panic("false branch"), type_.clone()),
+                ),
+                "false branch",
             ),
             (
                 UtfCodepointFunctionExpr::int_case(

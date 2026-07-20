@@ -1,17 +1,29 @@
-use super::{ListElementTypeMismatch, ListElements, ListExpr, TypedListExpr};
+use super::{
+    GenericListExpr, ListElementTypeMismatch, ListElements, ListExpr, ListListExpr,
+    ParameterListListExpr, StoredListExpr, TypedListExpr,
+};
 use crate::plan::{
-    BitArrayExpr, BitArrayListLocalId, BoolExpr, BoolListLocalId, CustomExpr, CustomListLocalId,
-    CustomType, Expr, ExprKind, FloatExpr, FloatListLocalId, FunctionExpr, FunctionInstantiation,
-    FunctionListLocalId, FunctionType, GenericExpr, GenericListLocalId, IntExpr, IntListLocalId,
-    ListListLocalId, ListLocal, NilExpr, NilListLocalId, StringExpr, StringListLocalId, TupleExpr,
-    TupleListLocalId, TypeParameterId, UtfCodepointExpr, UtfCodepointListLocalId, ValueType,
+    BitArrayExpr, BitArrayListLocalId, BoolExpr, BoolListLocalId,
+    ConstantBitArrayListInstantiation, ConstantBoolListInstantiation,
+    ConstantCustomListInstantiation, ConstantFloatListInstantiation,
+    ConstantFunctionListInstantiation, ConstantGenericListInstantiation,
+    ConstantIntListInstantiation, ConstantListListInstantiation, ConstantNilListInstantiation,
+    ConstantParameterListListInstantiation, ConstantStringListInstantiation,
+    ConstantTupleListInstantiation, ConstantUtfCodepointListInstantiation, CustomExpr,
+    CustomListLocalId, CustomType, Expr, ExprKind, FloatExpr, FloatListLocalId, FunctionExpr,
+    FunctionInstantiation, FunctionListLocalId, FunctionType, GenericExpr, GenericListLocalId,
+    IntExpr, IntListLocalId, ListListLocalId, ListLocal, NilExpr, NilListLocalId, StringExpr,
+    StringListLocalId, TupleExpr, TupleListLocalId, TypeParameterId, UtfCodepointExpr,
+    UtfCodepointListLocalId, ValueStorageShape, ValueType,
 };
 use std::fmt::Debug;
 
 pub(crate) trait ListItem: Debug + Clone + PartialEq {
     type ElementExpr: Debug + Clone + PartialEq;
+    type IndexSource: Debug + Clone + PartialEq;
     type Local: Debug + Clone + PartialEq;
     type Function: Debug + Clone + PartialEq;
+    type Constant: Debug + Clone + PartialEq;
 
     fn value_type(&self) -> ValueType;
 
@@ -24,6 +36,8 @@ pub(crate) trait ListItem: Debug + Clone + PartialEq {
 
     fn elements_to_facade(item: Self, values: Vec<Self::ElementExpr>) -> ListElements;
 
+    fn index_source_to_facade(source: Self::IndexSource) -> ListExpr;
+
     fn expr_to_facade(expression: TypedListExpr<Self>) -> ListExpr
     where
         Self: Sized;
@@ -35,6 +49,21 @@ pub(crate) struct IntListItem;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct GenericListItem {
     parameter: TypeParameterId,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ParameterListListItem {
+    parameter: TypeParameterId,
+}
+
+impl ParameterListListItem {
+    pub(crate) fn new(parameter: TypeParameterId) -> Self {
+        Self { parameter }
+    }
+
+    pub(crate) fn parameter(&self) -> TypeParameterId {
+        self.parameter
+    }
 }
 
 impl GenericListItem {
@@ -77,7 +106,7 @@ pub(crate) struct TupleListItem {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ListListItem {
-    pub(super) item_type: Box<ValueType>,
+    item_shape: ValueStorageShape,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,12 +125,16 @@ impl TupleListItem {
 }
 
 impl ListListItem {
-    pub(crate) fn new(item_type: Box<ValueType>) -> Self {
-        Self { item_type }
+    pub(crate) fn new(item_shape: ValueStorageShape) -> Self {
+        Self { item_shape }
     }
 
     pub(crate) fn item_type(&self) -> Box<ValueType> {
-        self.item_type.clone()
+        Box::new(self.item_shape.value_type())
+    }
+
+    pub(crate) fn item_shape(&self) -> &ValueStorageShape {
+        &self.item_shape
     }
 }
 
@@ -127,8 +160,10 @@ impl CustomListItem {
 
 impl ListItem for GenericListItem {
     type ElementExpr = GenericExpr;
+    type IndexSource = ParameterListListExpr;
     type Local = GenericListLocalId;
     type Function = FunctionInstantiation;
+    type Constant = ConstantGenericListInstantiation;
 
     fn value_type(&self) -> ValueType {
         ValueType::Parameter(self.parameter)
@@ -164,8 +199,62 @@ impl ListItem for GenericListItem {
         }
     }
 
+    fn index_source_to_facade(source: Self::IndexSource) -> ListExpr {
+        ListExpr::ParameterList(source)
+    }
+
     fn expr_to_facade(expression: TypedListExpr<Self>) -> ListExpr {
         ListExpr::Generic(expression)
+    }
+}
+
+impl ListItem for ParameterListListItem {
+    type ElementExpr = GenericListExpr;
+    type IndexSource = ListListExpr;
+    type Local = ListListLocalId;
+    type Function = FunctionInstantiation;
+    type Constant = ConstantParameterListListInstantiation;
+
+    fn value_type(&self) -> ValueType {
+        ValueType::List(Box::new(ValueType::Parameter(self.parameter)))
+    }
+
+    fn local_to_facade(&self, local: Self::Local) -> ListLocal {
+        ListLocal::list(local, ValueType::Parameter(self.parameter))
+    }
+
+    fn elements_from_exprs(
+        item: &Self,
+        values: Vec<Expr>,
+    ) -> Result<Vec<Self::ElementExpr>, ListElementTypeMismatch> {
+        values
+            .into_iter()
+            .map(|value| match value {
+                Expr {
+                    kind: ExprKind::List(ListExpr::Generic(value)),
+                    ..
+                } if value.item().parameter() == item.parameter => Ok(value),
+                value => Err(ListElementTypeMismatch {
+                    expected: item.value_type(),
+                    actual: value.value_type(),
+                }),
+            })
+            .collect()
+    }
+
+    fn elements_to_facade(item: Self, values: Vec<Self::ElementExpr>) -> ListElements {
+        ListElements::ParameterList {
+            parameter: item.parameter,
+            values,
+        }
+    }
+
+    fn index_source_to_facade(source: Self::IndexSource) -> ListExpr {
+        ListExpr::List(source)
+    }
+
+    fn expr_to_facade(expression: TypedListExpr<Self>) -> ListExpr {
+        ListExpr::ParameterList(expression)
     }
 }
 
@@ -175,6 +264,7 @@ macro_rules! primitive_list_item {
         $expr:ty,
         $local:ty,
         $function:ty,
+        $constant:ty,
         $value_type:expr,
         $expr_pattern:pat => $expr_value:expr,
         $elements_variant:ident,
@@ -183,8 +273,10 @@ macro_rules! primitive_list_item {
     ) => {
         impl ListItem for $item {
             type ElementExpr = $expr;
+            type IndexSource = ListListExpr;
             type Local = $local;
             type Function = FunctionInstantiation;
+            type Constant = $constant;
 
             fn value_type(&self) -> ValueType {
                 $value_type
@@ -217,6 +309,10 @@ macro_rules! primitive_list_item {
                 ListElements::$elements_variant(values)
             }
 
+            fn index_source_to_facade(source: Self::IndexSource) -> ListExpr {
+                ListExpr::List(source)
+            }
+
             fn expr_to_facade(expression: TypedListExpr<Self>) -> ListExpr {
                 $facade_variant(expression)
             }
@@ -229,6 +325,7 @@ primitive_list_item!(
     IntExpr,
     IntListLocalId,
     IntListFunctionId,
+    ConstantIntListInstantiation,
     ValueType::Int,
     ExprKind::Int(value) => value,
     Int,
@@ -241,6 +338,7 @@ primitive_list_item!(
     StringExpr,
     StringListLocalId,
     StringListFunctionId,
+    ConstantStringListInstantiation,
     ValueType::String,
     ExprKind::String(value) => value,
     String,
@@ -253,6 +351,7 @@ primitive_list_item!(
     BitArrayExpr,
     BitArrayListLocalId,
     BitArrayListFunctionId,
+    ConstantBitArrayListInstantiation,
     ValueType::BitArray,
     ExprKind::BitArray(value) => value,
     BitArray,
@@ -265,6 +364,7 @@ primitive_list_item!(
     UtfCodepointExpr,
     UtfCodepointListLocalId,
     UtfCodepointListFunctionId,
+    ConstantUtfCodepointListInstantiation,
     ValueType::UtfCodepoint,
     ExprKind::UtfCodepoint(value) => value,
     UtfCodepoint,
@@ -277,6 +377,7 @@ primitive_list_item!(
     FloatExpr,
     FloatListLocalId,
     FloatListFunctionId,
+    ConstantFloatListInstantiation,
     ValueType::Float,
     ExprKind::Float(value) => value,
     Float,
@@ -289,6 +390,7 @@ primitive_list_item!(
     BoolExpr,
     BoolListLocalId,
     BoolListFunctionId,
+    ConstantBoolListInstantiation,
     ValueType::Bool,
     ExprKind::Bool(value) => value,
     Bool,
@@ -301,6 +403,7 @@ primitive_list_item!(
     NilExpr,
     NilListLocalId,
     NilListFunctionId,
+    ConstantNilListInstantiation,
     ValueType::Nil,
     ExprKind::Nil(value) => value,
     Nil,
@@ -310,8 +413,10 @@ primitive_list_item!(
 
 impl ListItem for TupleListItem {
     type ElementExpr = TupleExpr;
+    type IndexSource = ListListExpr;
     type Local = TupleListLocalId;
     type Function = FunctionInstantiation;
+    type Constant = ConstantTupleListInstantiation;
 
     fn value_type(&self) -> ValueType {
         ValueType::Tuple(self.item_type.clone())
@@ -347,6 +452,10 @@ impl ListItem for TupleListItem {
         }
     }
 
+    fn index_source_to_facade(source: Self::IndexSource) -> ListExpr {
+        ListExpr::List(source)
+    }
+
     fn expr_to_facade(expression: TypedListExpr<Self>) -> ListExpr {
         ListExpr::Tuple(expression)
     }
@@ -354,8 +463,10 @@ impl ListItem for TupleListItem {
 
 impl ListItem for CustomListItem {
     type ElementExpr = CustomExpr;
+    type IndexSource = ListListExpr;
     type Local = CustomListLocalId;
     type Function = FunctionInstantiation;
+    type Constant = ConstantCustomListInstantiation;
 
     fn value_type(&self) -> ValueType {
         ValueType::Custom(self.item_type.clone())
@@ -391,22 +502,28 @@ impl ListItem for CustomListItem {
         }
     }
 
+    fn index_source_to_facade(source: Self::IndexSource) -> ListExpr {
+        ListExpr::List(source)
+    }
+
     fn expr_to_facade(expression: TypedListExpr<Self>) -> ListExpr {
         ListExpr::Custom(expression)
     }
 }
 
 impl ListItem for ListListItem {
-    type ElementExpr = ListExpr;
+    type ElementExpr = StoredListExpr;
+    type IndexSource = ListListExpr;
     type Local = ListListLocalId;
     type Function = FunctionInstantiation;
+    type Constant = ConstantListListInstantiation;
 
     fn value_type(&self) -> ValueType {
-        ValueType::List(self.item_type.clone())
+        ValueType::List(self.item_type())
     }
 
     fn local_to_facade(&self, local: Self::Local) -> ListLocal {
-        ListLocal::list(local, self.item_type.as_ref().clone())
+        ListLocal::list(local, self.item_shape.value_type())
     }
 
     fn elements_from_exprs(
@@ -415,24 +532,36 @@ impl ListItem for ListListItem {
     ) -> Result<Vec<Self::ElementExpr>, ListElementTypeMismatch> {
         values
             .into_iter()
-            .map(|value| match value {
-                Expr {
-                    kind: ExprKind::List(value),
-                    ..
-                } if value.element_type() == item.item_type.as_ref().clone() => Ok(value),
-                value => Err(ListElementTypeMismatch {
-                    expected: item.value_type(),
-                    actual: value.value_type(),
-                }),
+            .map(|value| {
+                let actual = value.value_type();
+                match value {
+                    Expr {
+                        kind: ExprKind::List(value),
+                        ..
+                    } if value.element_type() == item.item_shape.value_type() => {
+                        StoredListExpr::try_from_facade(value).ok_or(ListElementTypeMismatch {
+                            expected: item.value_type(),
+                            actual,
+                        })
+                    }
+                    _ => Err(ListElementTypeMismatch {
+                        expected: item.value_type(),
+                        actual,
+                    }),
+                }
             })
             .collect()
     }
 
     fn elements_to_facade(item: Self, values: Vec<Self::ElementExpr>) -> ListElements {
         ListElements::List {
-            item_type: item.item_type,
+            item_shape: item.item_shape,
             values,
         }
+    }
+
+    fn index_source_to_facade(source: Self::IndexSource) -> ListExpr {
+        ListExpr::List(source)
     }
 
     fn expr_to_facade(expression: TypedListExpr<Self>) -> ListExpr {
@@ -442,8 +571,10 @@ impl ListItem for ListListItem {
 
 impl ListItem for FunctionListItem {
     type ElementExpr = FunctionExpr;
+    type IndexSource = ListListExpr;
     type Local = FunctionListLocalId;
     type Function = FunctionInstantiation;
+    type Constant = ConstantFunctionListInstantiation;
 
     fn value_type(&self) -> ValueType {
         ValueType::Function(Box::new(self.item_type.clone()))
@@ -479,6 +610,10 @@ impl ListItem for FunctionListItem {
         }
     }
 
+    fn index_source_to_facade(source: Self::IndexSource) -> ListExpr {
+        ListExpr::List(source)
+    }
+
     fn expr_to_facade(expression: TypedListExpr<Self>) -> ListExpr {
         ListExpr::Function(expression)
     }
@@ -497,7 +632,7 @@ mod tests {
             vec![ValueType::Int, ValueType::String],
         );
 
-        let list_item = ListListItem::new(Box::new(ValueType::Bool));
+        let list_item = ListListItem::new(crate::plan::ValueStorageShape::Bool);
         assert_eq!(list_item.item_type(), Box::new(ValueType::Bool));
 
         let function_type = FunctionType::new(vec![ValueType::Int], ValueType::String);

@@ -150,13 +150,15 @@ fn plan_tuple_case_pattern_with_context(
     context: &mut PlanContext<'_>,
 ) -> Result<TupleCasePattern, PlanError> {
     match pattern {
-        Pattern::Variable { name, type_, .. } if matches_type(type_.as_ref(), &subject_type) => {
+        Pattern::Variable { name, type_, .. }
+            if matches_type(type_.as_ref(), &subject_type, context) =>
+        {
             Ok(TupleCasePattern::any().with_binding(name, value))
         }
         Pattern::Variable { .. } => Err(invalid_case_shape(
             InvalidCaseShapeReason::PatternTypeMismatch,
         )),
-        Pattern::Discard { type_, .. } if matches_type(type_.as_ref(), &subject_type) => {
+        Pattern::Discard { type_, .. } if matches_type(type_.as_ref(), &subject_type, context) => {
             Ok(TupleCasePattern::any())
         }
         Pattern::Discard { .. } => Err(invalid_case_shape(
@@ -228,7 +230,7 @@ fn plan_tuple_case_pattern_with_context(
             type_: ref pattern_type,
             ..
         } if matches!(&subject_type, ValueType::Custom(_))
-            && matches_type(pattern_type.as_ref(), &subject_type) =>
+            && matches_type(pattern_type.as_ref(), &subject_type, context) =>
         {
             let Some(value) = value.into_custom() else {
                 return Err(invalid_case_shape(
@@ -419,8 +421,8 @@ fn total_custom_binding_steps(
     ]
 }
 
-fn matches_type(type_: &Type, subject_type: &ValueType) -> bool {
-    ValueType::from_gleam(type_) == Some(subject_type.clone())
+fn matches_type(type_: &Type, subject_type: &ValueType, context: &mut PlanContext<'_>) -> bool {
+    context.value_shape(type_).value_type() == *subject_type
 }
 
 fn bind_tuple_case_subject(subject: TupleExpr, context: &mut PlanContext<'_>) -> (Step, Expr) {
@@ -1865,6 +1867,7 @@ pub fn main() {
                     AssertPattern::custom(CustomPattern::new(
                         constructor,
                         vec![AssertPattern::Int(1.into())],
+                        None,
                     )),
                 )),
                 branch_bindings: Vec::new(),

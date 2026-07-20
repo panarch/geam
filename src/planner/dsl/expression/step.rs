@@ -59,6 +59,11 @@ pub(crate) fn let_list_step(local: usize, name: impl Into<EcoString>, value: Lis
             parameter: value.item().parameter(),
             value,
         },
+        ListExpr::ParameterList(value) => ListLocalExpr::ParameterList {
+            local: ListListLocalId(local),
+            parameter: value.item().parameter(),
+            value,
+        },
         ListExpr::Int(value) => ListLocalExpr::Int {
             local: IntListLocalId(local),
             value,
@@ -271,6 +276,30 @@ mod tests {
                     ))
                     .into_generic()
                     .expect("expected generic list"),
+                },
+            ),
+        );
+        let parameter = TypeParameterId(0);
+        assert_eq!(
+            let_list_step(
+                17,
+                "nested_generic_values",
+                list(
+                    [list(Vec::<Expr>::new(), ValueType::Parameter(parameter))],
+                    ValueType::List(Box::new(ValueType::Parameter(parameter))),
+                ),
+            ),
+            Step::let_list_expr(
+                "nested_generic_values".into(),
+                ListLocalExpr::ParameterList {
+                    local: ListListLocalId(17),
+                    parameter,
+                    value: ListExpr::from(list(
+                        [list(Vec::<Expr>::new(), ValueType::Parameter(parameter))],
+                        ValueType::List(Box::new(ValueType::Parameter(parameter))),
+                    ))
+                    .into_parameter_list()
+                    .expect("expected parameter-item nested list"),
                 },
             ),
         );

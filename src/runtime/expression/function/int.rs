@@ -3,8 +3,8 @@ use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{FunctionReturnFamily, IntFunctionExpr, IntFunctionExprKind};
 use crate::runtime::expression::{
-    eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
-    project_function_list_expr, project_tuple_expr,
+    eval_bool_expr, eval_direct_call, eval_float_expr, eval_function_call, eval_int_expr,
+    eval_panic_expr, eval_string_expr, project_function_list_expr, project_tuple_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -20,6 +20,9 @@ pub(in crate::runtime) fn eval_int_function_expr(
     expression: &IntFunctionExpr,
 ) -> Result<EvaluatedIntFunction, ExecutionError> {
     match expression.kind() {
+        IntFunctionExprKind::Constant(value) => {
+            eval_int_function_expr(plan, state, frame, plan.constant(*value))
+        }
         IntFunctionExprKind::Reference(reference) => Ok(EvaluatedIntFunction::reference(
             *reference.function(),
             reference.param_locals(),
@@ -30,25 +33,35 @@ pub(in crate::runtime) fn eval_int_function_expr(
                 crate::plan::execution::ValueType::Int,
             ),
         )),
-        IntFunctionExprKind::Closure(template) => Ok(EvaluatedIntFunction::closure(
-            *template.function(),
-            template.param_locals(),
-            function::eval_capture_args(plan, state, frame, template.captures())?,
+        IntFunctionExprKind::Closure(closure) => Ok(EvaluatedIntFunction::closure(
+            *closure.function(),
+            closure.param_locals(),
+            function::eval_capture_args(plan, state, frame, closure.captures())?,
             crate::runtime::evaluated::function_type_from_slots(
                 plan,
-                template.params(),
+                closure.params(),
                 crate::plan::execution::ValueType::Int,
             ),
         )),
         IntFunctionExprKind::LocalGet { local, .. } => Ok(frame.get_int_function(*local)),
-        IntFunctionExprKind::Call { function, args, .. } => {
-            function::run_int_function_returning_function_call(plan, state, *function, args, frame)
-        }
-        IntFunctionExprKind::FunctionCall {
-            function: callee,
-            args,
-            ..
-        } => function::run_int_function_function_call(plan, state, callee.as_ref(), args, frame),
+        IntFunctionExprKind::Call(call) => eval_direct_call(
+            plan,
+            state,
+            frame,
+            call,
+            |plan, state, function, args, frame| {
+                function::run_int_function_returning_function_call(
+                    plan, state, *function, args, frame,
+                )
+            },
+        ),
+        IntFunctionExprKind::FunctionCall(call) => eval_function_call(
+            plan,
+            state,
+            frame,
+            call,
+            function::run_int_function_function_call,
+        ),
         IntFunctionExprKind::TupleIndex {
             tuple,
             index,
@@ -260,6 +273,22 @@ pub fn main() {
                     fallback(),
                 ),
                 "bool subject",
+            ),
+            (
+                IntFunctionExpr::bool_case(
+                    BoolExpr::not(BoolExpr::value(false)),
+                    IntFunctionExpr::panic(panic("true branch"), type_.clone()),
+                    fallback(),
+                ),
+                "true branch",
+            ),
+            (
+                IntFunctionExpr::bool_case(
+                    BoolExpr::not(BoolExpr::value(true)),
+                    fallback(),
+                    IntFunctionExpr::panic(panic("false branch"), type_.clone()),
+                ),
+                "false branch",
             ),
             (
                 IntFunctionExpr::int_case(

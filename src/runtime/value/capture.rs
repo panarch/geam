@@ -3,15 +3,17 @@ use num_bigint::BigInt;
 
 use super::{
     BitArrayFunctionValue, BitArrayValue, BoolFunctionValue, CustomFunctionValue, CustomValue,
-    FloatFunctionValue, FunctionFunctionValue, IntFunctionValue, ListFunctionValue, ListValue,
-    NilFunctionValue, StringFunctionValue, TupleFunctionValue, UtfCodepointFunctionValue, Value,
+    FloatFunctionValue, FunctionFunctionValue, GenericFunctionValue, IntFunctionValue,
+    ListFunctionValue, ListValue, NeverFunctionValue, NilFunctionValue, StringFunctionValue,
+    TupleFunctionValue, UtfCodepointFunctionValue, Value,
 };
 use crate::plan::execution::{
     BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
     BoolListLocalId, BoolLocalId, CustomFunctionLocalId, CustomListLocalId, CustomLocal,
     FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionFunctionLocalId,
-    FunctionListLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionLocal,
-    ListListLocalId, NilFunctionLocalId, NilListLocalId, NilLocalId, StringFunctionLocalId,
+    FunctionListLocalId, GenericFunctionLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId,
+    ListFunctionLocal, ListListLocalId, NeverFunctionLocalId, NilFunctionLocalId, NilListLocalId,
+    NilLocalId, ParameterListListLocalId, ParameterListLocalId, StringFunctionLocalId,
     StringListLocalId, StringLocalId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
     UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
 };
@@ -84,6 +86,14 @@ pub(crate) enum CaptureValueKind {
         local: CustomFunctionLocalId,
         value: CustomFunctionValue,
     },
+    GenericFunction {
+        local: GenericFunctionLocalId,
+        value: GenericFunctionValue,
+    },
+    NeverFunction {
+        local: NeverFunctionLocalId,
+        value: NeverFunctionValue,
+    },
     BoolFunction {
         local: BoolFunctionLocalId,
         value: BoolFunctionValue,
@@ -108,6 +118,15 @@ pub(crate) enum CaptureValueKind {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum CaptureListValue {
+    Parameter {
+        local: ParameterListLocalId,
+        item_type: crate::plan::TypeParameterId,
+    },
+    ParameterList {
+        local: ParameterListListLocalId,
+        item_type: crate::plan::TypeParameterId,
+        len: usize,
+    },
     Int {
         local: IntListLocalId,
         value: Vec<BigInt>,
@@ -264,6 +283,21 @@ impl CaptureValue {
     ) -> Self {
         Self {
             kind: CaptureValueKind::CustomFunction { local, value },
+        }
+    }
+
+    pub(crate) fn generic_function(
+        local: GenericFunctionLocalId,
+        value: GenericFunctionValue,
+    ) -> Self {
+        Self {
+            kind: CaptureValueKind::GenericFunction { local, value },
+        }
+    }
+
+    pub(crate) fn never_function(local: NeverFunctionLocalId, value: NeverFunctionValue) -> Self {
+        Self {
+            kind: CaptureValueKind::NeverFunction { local, value },
         }
     }
 

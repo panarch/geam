@@ -7,6 +7,7 @@ mod float;
 mod function;
 mod int;
 mod list;
+mod never;
 mod nil;
 mod panic;
 mod string;
@@ -22,8 +23,9 @@ pub use self::{
     float::FloatExpr,
     function::{
         BitArrayFunctionExpr, BoolFunctionExpr, CustomFunctionExpr, FloatFunctionExpr,
-        FunctionExpr, FunctionFunctionExpr, IntFunctionExpr, ListFunctionExpr, NilFunctionExpr,
-        StringFunctionExpr, TupleFunctionExpr, UtfCodepointFunctionExpr,
+        FunctionExpr, FunctionFunctionExpr, GenericFunctionExpr, IntFunctionExpr, ListFunctionExpr,
+        NeverFunctionExpr, NilFunctionExpr, StringFunctionExpr, TupleFunctionExpr,
+        UtfCodepointFunctionExpr,
     },
     int::IntExpr,
     nil::NilExpr,
@@ -32,30 +34,32 @@ pub use self::{
     utf_codepoint::UtfCodepointExpr,
 };
 pub(crate) use self::{
-    arg::{CallArgKind, CaptureArg, CaptureArgKind},
+    arg::{CallArgKind, CaptureArg, CaptureArgKind, DirectCall, FunctionCall},
     bit_array::{
         BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayExprKind, BitArraySegment, Endianness,
         FloatBitSize, StringEncoding,
     },
     bool::BoolExprKind,
-    custom::{CustomConstruction, CustomExprKind, CustomFunctionCall, CustomLocalExpr},
+    custom::{CustomConstruction, CustomExprKind, CustomLocalExpr},
     custom_field::CustomFieldAccess,
     float::FloatExprKind,
     function::{
         BitArrayFunctionExprKind, BoolFunctionExprKind, CustomFunctionExprKind,
-        FloatFunctionExprKind, FunctionExprKind, FunctionFunctionExprKind, IntFunctionExprKind,
-        ListFunctionExprKind, NilFunctionExprKind, StringFunctionExprKind, TupleFunctionExprKind,
-        UtfCodepointFunctionExprKind,
+        FloatFunctionExprKind, FunctionExprKind, FunctionFunctionExprKind, GenericFunctionExprKind,
+        IntFunctionExprKind, ListFunctionExprKind, NeverFunctionExprKind, NilFunctionExprKind,
+        StringFunctionExprKind, TupleFunctionExprKind, UtfCodepointFunctionExprKind,
     },
     int::IntExprKind,
     list::{
         BitArrayListExpr, BitArrayListItem, BoolListExpr, BoolListItem, CustomListExpr,
         CustomListItem, FloatListExpr, FloatListItem, FunctionListExpr, FunctionListItem,
         IntListExpr, IntListItem, ListExpr, ListIndexSource, ListItem, ListListExpr, ListListItem,
-        ListLocalExpr, NilListExpr, NilListItem, StringListExpr, StringListItem, TupleListExpr,
-        TupleListItem, TypedListExpr, TypedListExprKind, UtfCodepointListExpr,
-        UtfCodepointListItem,
+        ListLocalExpr, NilListExpr, NilListItem, ParameterListExpr, ParameterListExprKind,
+        ParameterListIndexSource, ParameterListItem, ParameterListListExpr, ParameterListListItem,
+        StoredListExpr, StringListExpr, StringListItem, TupleListExpr, TupleListItem,
+        TypedListExpr, TypedListExprKind, UtfCodepointListExpr, UtfCodepointListItem,
     },
+    never::{NeverExpr, NeverExprKind},
     nil::NilExprKind,
     panic::{PanicExpr, PanicExprKind},
     string::StringExprKind,
@@ -68,6 +72,7 @@ pub struct Expr {
 }
 
 pub(crate) enum ExprKind {
+    Never(NeverExpr),
     Int(IntExpr),
     String(StringExpr),
     BitArray(BitArrayExpr),
@@ -88,5 +93,9 @@ impl Expr {
 
     pub(crate) fn kind(&self) -> &ExprKind {
         &self.kind
+    }
+
+    pub(in crate::plan::execution) fn into_kind(self) -> ExprKind {
+        self.kind
     }
 }

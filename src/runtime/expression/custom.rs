@@ -1,6 +1,7 @@
 use super::{
-    eval_bool_expr, eval_custom_field, eval_expr, eval_float_expr, eval_int_expr, eval_panic_expr,
-    eval_string_expr, project_custom_list_expr, project_tuple_expr,
+    eval_bool_expr, eval_custom_field, eval_direct_call, eval_expr, eval_float_expr,
+    eval_function_call, eval_int_expr, eval_panic_expr, eval_string_expr, project_custom_list_expr,
+    project_tuple_expr,
 };
 use crate::plan::ValueType;
 use crate::plan::execution::{CustomExpr, CustomExprKind, ExecutionPlan};
@@ -26,6 +27,10 @@ pub(in crate::runtime) fn eval_custom_expr_kind(
     kind: &CustomExprKind,
 ) -> Result<EvaluatedCustomValue, ExecutionError> {
     match kind {
+        CustomExprKind::Never(expression) => {
+            super::never::eval_never_expr(plan, state, frame, expression)
+                .map(|never| match never {})
+        }
         CustomExprKind::Constructor(construction) => {
             let fields = construction
                 .fields()
@@ -37,12 +42,19 @@ pub(in crate::runtime) fn eval_custom_expr_kind(
                 fields.into_boxed_slice(),
             ))
         }
+        CustomExprKind::Constant(id) => eval_custom_expr(plan, state, frame, plan.constant(*id)),
         CustomExprKind::LocalGet { local } => Ok(frame.get_custom(*local)),
-        CustomExprKind::Call { function, args } => {
-            function::run_custom_call(plan, state, *function, args, frame)
-        }
+        CustomExprKind::Call(call) => eval_direct_call(
+            plan,
+            state,
+            frame,
+            call,
+            |plan, state, function, args, frame| {
+                function::run_custom_call(plan, state, *function, args, frame)
+            },
+        ),
         CustomExprKind::FunctionCall(call) => {
-            function::run_custom_function_call(plan, state, call, frame)
+            eval_function_call(plan, state, frame, call, function::run_custom_function_call)
         }
         CustomExprKind::TupleIndex { tuple, index } => {
             let expected = ValueType::Custom(plan.custom_value_type(type_id));
@@ -161,14 +173,16 @@ fn unbox(value: Boxed) -> Int {
 pub fn main() {
   let local = Boxed(1)
   let function = boxed
+  let true_selector = True
+  let false_selector = False
   #(
     unbox(local),
     unbox(boxed(2)),
     unbox(function(3)),
     unbox(#(Boxed(4)).0),
     case [Boxed(5)] { [Boxed(value)] -> value _ -> 0 },
-    unbox(case True { True -> Boxed(6) False -> Boxed(0) }),
-    unbox(case False { True -> Boxed(0) False -> Boxed(7) }),
+    unbox(case true_selector { True -> Boxed(6) False -> Boxed(0) }),
+    unbox(case false_selector { True -> Boxed(0) False -> Boxed(7) }),
     unbox(case 1 { 1 -> Boxed(8) _ -> Boxed(0) }),
     unbox(case 0 { 1 -> Boxed(0) _ -> Boxed(9) }),
     unbox(case "hit" { "hit" -> Boxed(10) _ -> Boxed(0) }),

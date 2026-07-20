@@ -1,134 +1,25 @@
-use super::id::{list_function_local_at, list_local_at};
 use crate::plan::module;
-
-pub(super) fn param_local(
-    local: &module::ParamLocal,
-    context: &mut super::LoweringContext,
-) -> super::super::ParamLocal {
-    let index = context.local_index(super::frame::param_local_key(local));
-    param_local_at(index, local, context)
-}
-
-fn param_local_at(
-    index: usize,
-    local: &module::ParamLocal,
-    context: &mut super::LoweringContext,
-) -> super::super::ParamLocal {
-    use super::super as execution;
-
-    match local {
-        module::ParamLocal::Generic(local) => {
-            let shape = context.concrete_parameter(local.parameter());
-            super::frame::value_local_at(&shape, index, context)
-        }
-        module::ParamLocal::GenericFunction(local) => {
-            let shape = context.concrete_function_shape(&local.type_().shape());
-            super::frame::function_local_as_param(super::frame::function_local_at(
-                &shape, index, context,
-            ))
-        }
-        module::ParamLocal::Int(_local) => execution::ParamLocal::Int(execution::IntLocalId(index)),
-        module::ParamLocal::Float(_local) => {
-            execution::ParamLocal::Float(execution::FloatLocalId(index))
-        }
-        module::ParamLocal::String(_local) => {
-            execution::ParamLocal::String(execution::StringLocalId(index))
-        }
-        module::ParamLocal::BitArray(_local) => {
-            execution::ParamLocal::BitArray(execution::BitArrayLocalId(index))
-        }
-        module::ParamLocal::UtfCodepoint(_local) => {
-            execution::ParamLocal::UtfCodepoint(execution::UtfCodepointLocalId(index))
-        }
-        module::ParamLocal::Custom(local) => {
-            execution::ParamLocal::Custom(execution::CustomLocal::new(
-                execution::CustomLocalId(index),
-                context.custom_value_shape(local.shape().clone()),
-            ))
-        }
-        module::ParamLocal::Bool(_local) => {
-            execution::ParamLocal::Bool(execution::BoolLocalId(index))
-        }
-        module::ParamLocal::Nil(_local) => execution::ParamLocal::Nil(execution::NilLocalId(index)),
-        module::ParamLocal::Tuple { local: _, type_ } => execution::ParamLocal::Tuple {
-            local: execution::TupleLocalId(index),
-            type_: type_
-                .iter()
-                .cloned()
-                .map(|type_| context.value_type(type_))
-                .collect(),
-        },
-        module::ParamLocal::List(local) => {
-            execution::ParamLocal::List(list_local_at(index, local, context))
-        }
-        module::ParamLocal::IntFunction { local: _, type_ } => execution::ParamLocal::IntFunction {
-            local: execution::IntFunctionLocalId(index),
-            type_: context.function_type(type_.clone()),
-        },
-        module::ParamLocal::FloatFunction { local: _, type_ } => {
-            execution::ParamLocal::FloatFunction {
-                local: execution::FloatFunctionLocalId(index),
-                type_: context.function_type(type_.clone()),
-            }
-        }
-        module::ParamLocal::StringFunction { local: _, type_ } => {
-            execution::ParamLocal::StringFunction {
-                local: execution::StringFunctionLocalId(index),
-                type_: context.function_type(type_.clone()),
-            }
-        }
-        module::ParamLocal::BitArrayFunction { local: _, type_ } => {
-            execution::ParamLocal::BitArrayFunction {
-                local: execution::BitArrayFunctionLocalId(index),
-                type_: context.function_type(type_.clone()),
-            }
-        }
-        module::ParamLocal::UtfCodepointFunction { local: _, type_ } => {
-            execution::ParamLocal::UtfCodepointFunction {
-                local: execution::UtfCodepointFunctionLocalId(index),
-                type_: context.function_type(type_.clone()),
-            }
-        }
-        module::ParamLocal::CustomFunction(local) => {
-            execution::ParamLocal::CustomFunction(execution::CustomFunctionLocal::new(
-                execution::CustomFunctionLocalId(index),
-                context.custom_function_type(local.type_().clone()),
-            ))
-        }
-        module::ParamLocal::BoolFunction { local: _, type_ } => {
-            execution::ParamLocal::BoolFunction {
-                local: execution::BoolFunctionLocalId(index),
-                type_: context.function_type(type_.clone()),
-            }
-        }
-        module::ParamLocal::NilFunction { local: _, type_ } => execution::ParamLocal::NilFunction {
-            local: execution::NilFunctionLocalId(index),
-            type_: context.function_type(type_.clone()),
-        },
-        module::ParamLocal::TupleFunction { local: _, type_ } => {
-            execution::ParamLocal::TupleFunction {
-                local: execution::TupleFunctionLocalId(index),
-                type_: context.function_type(type_.clone()),
-            }
-        }
-        module::ParamLocal::ListFunction(local) => {
-            execution::ParamLocal::ListFunction(list_function_local_at(index, local, context))
-        }
-        module::ParamLocal::FunctionFunction(local) => {
-            execution::ParamLocal::FunctionFunction(execution::FunctionFunctionLocal::new(
-                execution::FunctionFunctionLocalId(index),
-                context.function_function_type(local.type_().clone()),
-            ))
-        }
-    }
-}
 
 pub(super) fn param_slot(
     slot: &module::ParamSlot,
     context: &mut super::LoweringContext,
-) -> super::super::ParamSlot {
+) -> super::specialization::StorageErasure<super::super::ParamSlot> {
     let shape = context.value_shape(slot.shape().clone());
-    super::super::ParamSlot::new(param_local(slot.local(), context), shape)
+    let key = super::frame::param_local_key(slot.local());
+    match context.specialization_locals[&context.current_specialization].allocation(key) {
+        super::frame::AllocatedLocal::Stored {
+            index,
+            shape: stored,
+        } => {
+            let local = super::frame::stored_value_local_at(&stored, index, context);
+            super::specialization::StorageErasure::Stored(super::super::ParamSlot::new(
+                local, shape,
+            ))
+        }
+        super::frame::AllocatedLocal::Uninhabited(_) => {
+            super::specialization::StorageErasure::Erased
+        }
+    }
 }
 
 pub(super) fn target_param_slot(
@@ -136,9 +27,10 @@ pub(super) fn target_param_slot(
     slot: &module::ParamSlot,
     context: &mut super::LoweringContext,
 ) -> super::super::ParamSlot {
-    let target = context.target_local(function, super::frame::param_local_key(slot.local()));
-    let shape = context.types.value_shape(target.shape());
-    let local = super::frame::value_local_at(target.shape(), target.index(), context);
+    let target =
+        context.stored_symbolic_target_local(function, super::frame::param_local_key(slot.local()));
+    let shape = context.types.value_shape(&target.shape().to_specialized());
+    let local = super::frame::stored_value_local_at(target.shape(), target.index(), context);
     super::super::ParamSlot::new(local, shape)
 }
 
@@ -190,12 +82,14 @@ fn apply(make: fn(Int) -> Boxed, value: Int) { make(value) }
 
 pub fn main() {
   let captured = 1
+  let constructor = Boxed
+  let function = apply
   let closure = fn(make: fn(Int) -> Boxed, value: Int) {
     let _ = captured
     make(value)
   }
+  let _ = constructor(0)
   closure(Boxed, 0)
-  let function = apply
   function(Boxed, 1)
 }
 "#,

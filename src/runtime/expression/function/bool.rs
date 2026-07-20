@@ -3,8 +3,8 @@ use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{BoolFunctionExpr, BoolFunctionExprKind, FunctionReturnFamily};
 use crate::runtime::expression::{
-    eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
-    project_function_list_expr, project_tuple_expr,
+    eval_bool_expr, eval_direct_call, eval_float_expr, eval_function_call, eval_int_expr,
+    eval_panic_expr, eval_string_expr, project_function_list_expr, project_tuple_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -20,6 +20,9 @@ pub(in crate::runtime) fn eval_bool_function_expr(
     expression: &BoolFunctionExpr,
 ) -> Result<EvaluatedBoolFunction, ExecutionError> {
     match expression.kind() {
+        BoolFunctionExprKind::Constant(value) => {
+            eval_bool_function_expr(plan, state, frame, plan.constant(*value))
+        }
         BoolFunctionExprKind::Reference(reference) => Ok(EvaluatedBoolFunction::reference(
             *reference.function(),
             reference.param_locals(),
@@ -30,25 +33,35 @@ pub(in crate::runtime) fn eval_bool_function_expr(
                 crate::plan::execution::ValueType::Bool,
             ),
         )),
-        BoolFunctionExprKind::Closure(template) => Ok(EvaluatedBoolFunction::closure(
-            *template.function(),
-            template.param_locals(),
-            function::eval_capture_args(plan, state, frame, template.captures())?,
+        BoolFunctionExprKind::Closure(closure) => Ok(EvaluatedBoolFunction::closure(
+            *closure.function(),
+            closure.param_locals(),
+            function::eval_capture_args(plan, state, frame, closure.captures())?,
             crate::runtime::evaluated::function_type_from_slots(
                 plan,
-                template.params(),
+                closure.params(),
                 crate::plan::execution::ValueType::Bool,
             ),
         )),
         BoolFunctionExprKind::LocalGet { local, .. } => Ok(frame.get_bool_function(*local)),
-        BoolFunctionExprKind::Call { function, args, .. } => {
-            function::run_bool_function_returning_function_call(plan, state, *function, args, frame)
-        }
-        BoolFunctionExprKind::FunctionCall {
-            function: callee,
-            args,
-            ..
-        } => function::run_bool_function_function_call(plan, state, callee.as_ref(), args, frame),
+        BoolFunctionExprKind::Call(call) => eval_direct_call(
+            plan,
+            state,
+            frame,
+            call,
+            |plan, state, function, args, frame| {
+                function::run_bool_function_returning_function_call(
+                    plan, state, *function, args, frame,
+                )
+            },
+        ),
+        BoolFunctionExprKind::FunctionCall(call) => eval_function_call(
+            plan,
+            state,
+            frame,
+            call,
+            function::run_bool_function_function_call,
+        ),
         BoolFunctionExprKind::TupleIndex {
             tuple,
             index,
@@ -263,6 +276,22 @@ pub fn main() {
                     fallback(),
                 ),
                 "bool subject",
+            ),
+            (
+                BoolFunctionExpr::bool_case(
+                    BoolExpr::not(BoolExpr::value(false)),
+                    BoolFunctionExpr::panic(panic("true branch"), type_.clone()),
+                    fallback(),
+                ),
+                "true branch",
+            ),
+            (
+                BoolFunctionExpr::bool_case(
+                    BoolExpr::not(BoolExpr::value(true)),
+                    fallback(),
+                    BoolFunctionExpr::panic(panic("false branch"), type_.clone()),
+                ),
+                "false branch",
             ),
             (
                 BoolFunctionExpr::int_case(

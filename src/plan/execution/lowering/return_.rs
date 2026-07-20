@@ -1,17 +1,18 @@
 use super::LoweringContext;
 use super::expression::{
-    bit_array_expr, bit_array_function_expr, bit_array_list_expr, bool_expr, bool_function_expr,
-    bool_list_expr, custom_expr_kind, custom_function_expr_kind, custom_list_expr,
-    direct_call_args, float_expr, float_function_expr, float_list_expr,
-    function_function_expr_kind, function_list_expr, generic_bit_array_expr,
+    bit_array_expr, bit_array_function_expr, bit_array_list_expr, bool_case, bool_expr,
+    bool_function_expr, bool_list_expr, concrete_parameter_list_list_expr, custom_expr_kind,
+    custom_function_expr_kind, custom_list_expr, direct_call, float_expr, float_function_expr,
+    float_list_expr, function_function_expr_kind, function_list_expr, generic_bit_array_expr,
     generic_bit_array_function_expr, generic_bit_array_list_expr, generic_bool_expr,
     generic_bool_function_expr, generic_bool_list_expr, generic_custom_expr_kind,
     generic_custom_function_expr_kind, generic_custom_list_expr, generic_float_expr,
     generic_float_function_expr, generic_float_list_expr, generic_function_function_expr_kind,
     generic_function_list_expr, generic_int_expr, generic_int_function_expr, generic_int_list_expr,
-    generic_list_function_expr, generic_nested_list_expr, generic_nil_expr,
-    generic_nil_function_expr, generic_nil_list_expr, generic_string_expr,
-    generic_string_function_expr, generic_string_list_expr, generic_tuple_expr,
+    generic_list_function_expr, generic_never_function_expr, generic_nil_expr,
+    generic_nil_function_expr, generic_nil_list_expr, generic_parameter_list_list_expr,
+    generic_stored_nested_list_expr, generic_string_expr, generic_string_function_expr,
+    generic_string_list_expr, generic_symbolic_function_expr, generic_tuple_expr,
     generic_tuple_function_expr, generic_tuple_list_expr, generic_utf_codepoint_expr,
     generic_utf_codepoint_function_expr, generic_utf_codepoint_list_expr,
     generic_value_bit_array_function_expr, generic_value_bit_array_list_expr,
@@ -19,24 +20,186 @@ use super::expression::{
     generic_value_custom_function_expr_kind, generic_value_custom_list_expr,
     generic_value_float_function_expr, generic_value_float_list_expr,
     generic_value_function_function_expr_kind, generic_value_function_list_expr,
-    generic_value_int_function_expr, generic_value_int_list_expr, generic_value_list_function_expr,
-    generic_value_nested_list_expr, generic_value_nil_function_expr, generic_value_nil_list_expr,
-    generic_value_string_function_expr, generic_value_string_list_expr,
-    generic_value_tuple_function_expr, generic_value_tuple_list_expr,
-    generic_value_utf_codepoint_function_expr, generic_value_utf_codepoint_list_expr, int_expr,
-    int_function_expr, int_list_expr, list_function_expr, list_list_expr, nil_expr,
-    nil_function_expr, nil_list_expr, string_expr, string_function_expr, string_list_expr,
-    tuple_expr, tuple_function_expr, tuple_list_expr, utf_codepoint_expr,
-    utf_codepoint_function_expr, utf_codepoint_list_expr,
+    generic_value_generic_function_expr, generic_value_int_function_expr,
+    generic_value_int_list_expr, generic_value_list_function_expr,
+    generic_value_never_function_expr, generic_value_nil_function_expr,
+    generic_value_nil_list_expr, generic_value_parameter_list_list_expr,
+    generic_value_stored_nested_list_expr, generic_value_string_function_expr,
+    generic_value_string_list_expr, generic_value_tuple_function_expr,
+    generic_value_tuple_list_expr, generic_value_utf_codepoint_function_expr,
+    generic_value_utf_codepoint_list_expr, int_expr, int_function_expr, int_list_expr,
+    list_function_expr, list_list_expr, nil_expr, nil_function_expr, nil_list_expr,
+    parameter_list_expr, parameter_list_value_expr, string_expr, string_function_expr,
+    string_list_expr, tuple_expr, tuple_function_expr, tuple_list_expr,
+    unresolved_parameter_list_list_expr, utf_codepoint_expr, utf_codepoint_function_expr,
+    utf_codepoint_list_expr,
 };
+use super::specialization::Representability;
 use crate::plan::{execution, module};
+
+pub(super) fn never_return(
+    body: &module::GenericReturn,
+    context: &mut LoweringContext,
+) -> Representability<execution::NeverReturn> {
+    never_return_body(body, context, |expression, context| {
+        super::expression::never_expr(expression, context)
+    })
+}
+
+pub(super) fn tuple_never_return(
+    body: &module::TupleReturn,
+    proof: &super::specialization::UninhabitedTupleValueShape,
+    context: &mut LoweringContext,
+) -> Representability<execution::NeverReturn> {
+    never_return_body(body, context, |expression, context| {
+        super::expression::tuple_never_expr(expression, proof, context)
+    })
+}
+
+pub(super) fn custom_never_return(
+    body: &module::CustomReturn,
+    proof: &super::specialization::UninhabitedCustomValueShape,
+    context: &mut LoweringContext,
+) -> Representability<execution::NeverReturn> {
+    never_return_body(body.body(), context, |kind, context| {
+        super::expression::custom_never_expr_kind(kind, proof, context)
+    })
+}
+
+fn never_return_body<ModuleExpression>(
+    body: &module::ReturnBody<ModuleExpression, module::FunctionInstantiation>,
+    context: &mut LoweringContext,
+    lower_expression: impl Copy
+    + Fn(
+        &ModuleExpression,
+        &mut LoweringContext,
+    ) -> Representability<execution::NeverExpr>,
+) -> Representability<execution::NeverReturn> {
+    use execution::ReturnBodyKind as E;
+    use module::ReturnBodyKind as M;
+
+    if let Some(expression) = context.take_return_divergence() {
+        return Representability::Inhabited(execution::ReturnBody::from_kind(E::Never(expression)));
+    }
+
+    let kind = match body.kind() {
+        M::Expr(expression) => lower_expression(expression, context).map(E::Expr),
+        M::TailCall { function, args } => {
+            direct_call(function, args, context, |function, context| {
+                context.never_function_id(function)
+            })
+            .map(|call| match call {
+                execution::DirectCall::Executable { function, args } => {
+                    E::TailCall { function, args }
+                }
+                execution::DirectCall::Diverging(expression) => E::Never(expression),
+            })
+        }
+        M::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => bool_case(
+            subject,
+            context,
+            |context| {
+                never_return_body(true_, context, lower_expression)
+                    .map(execution::ReturnBody::into_kind)
+            },
+            |context| {
+                never_return_body(false_, context, lower_expression)
+                    .map(execution::ReturnBody::into_kind)
+            },
+            |subject, true_, false_| E::BoolCase {
+                subject,
+                true_: Box::new(execution::ReturnBody::from_kind(true_)),
+                false_: Box::new(execution::ReturnBody::from_kind(false_)),
+            },
+        ),
+        M::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => int_expr(subject, context).and_then(|subject| {
+            Representability::collect(clauses.iter().map(|(pattern, branch)| {
+                never_return_body(branch, context, lower_expression)
+                    .map(|branch| (pattern.clone(), branch))
+            }))
+            .and_then(|clauses| {
+                never_return_body(fallback, context, lower_expression).map(|fallback| E::IntCase {
+                    subject,
+                    clauses,
+                    fallback: Box::new(fallback),
+                })
+            })
+        }),
+        M::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => float_expr(subject, context).and_then(|subject| {
+            Representability::collect(clauses.iter().map(|(pattern, branch)| {
+                never_return_body(branch, context, lower_expression)
+                    .map(|branch| (*pattern, branch))
+            }))
+            .and_then(|clauses| {
+                never_return_body(fallback, context, lower_expression).map(|fallback| {
+                    E::FloatCase {
+                        subject,
+                        clauses,
+                        fallback: Box::new(fallback),
+                    }
+                })
+            })
+        }),
+        M::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => string_expr(subject, context).and_then(|subject| {
+            Representability::collect(clauses.iter().map(|(pattern, branch)| {
+                never_return_body(branch, context, lower_expression)
+                    .map(|branch| (pattern.clone(), branch))
+            }))
+            .and_then(|clauses| {
+                never_return_body(fallback, context, lower_expression).map(|fallback| {
+                    E::StringCase {
+                        subject,
+                        clauses,
+                        fallback: Box::new(fallback),
+                    }
+                })
+            })
+        }),
+        M::Block { steps, return_ } => {
+            super::step::steps_until_never(steps, context).and_then(|steps| match steps {
+                super::step::StepsUntilNever::Complete(steps) => {
+                    never_return_body(return_, context, lower_expression).map(|return_| E::Block {
+                        steps,
+                        return_: Box::new(return_),
+                    })
+                }
+                super::step::StepsUntilNever::Diverging { prefix, expression } => {
+                    Representability::Inhabited(E::Never(execution::NeverExpr::from_kind(
+                        execution::NeverExprKind::Block {
+                            steps: prefix,
+                            return_: Box::new(expression),
+                        },
+                    )))
+                }
+            })
+        }
+    };
+
+    kind.map(execution::ReturnBody::from_kind)
+}
 
 macro_rules! generic_primitive_return {
     ($lower:ident, $return:ty, $expression:ident, $function:ident) => {
         pub(super) fn $lower(
             body: &module::GenericReturn,
             context: &mut LoweringContext,
-        ) -> $return {
+        ) -> Representability<$return> {
             return_body(body, context, $expression, |function, context| {
                 context.$function(function)
             })
@@ -89,24 +252,28 @@ generic_primitive_return!(
 
 pub(super) fn generic_custom_return(
     body: &module::GenericReturn,
-    shape: &super::specialization::ConcreteCustomValueShape,
+    shape: &super::specialization::SpecializedCustomValueShape,
     context: &mut LoweringContext,
-) -> execution::CustomReturn {
+) -> Representability<execution::CustomReturn> {
     let lowered_shape = context.lower_concrete_custom_shape(shape);
     let body = return_body(
         body,
         context,
         |expression, context| generic_custom_expr_kind(expression, shape, context),
-        |function, context| context.custom_function_id(function, shape).index(),
+        |function, context| {
+            context
+                .custom_function_id(function, shape)
+                .map(|function| function.index())
+        },
     );
-    execution::CustomReturn::from_parts(lowered_shape, body)
+    body.map(|body| execution::CustomReturn::from_parts(lowered_shape, lowered_shape, body))
 }
 
 pub(super) fn generic_tuple_return(
     body: &module::GenericReturn,
-    elements: &[super::specialization::ConcreteValueShape],
+    elements: &[super::specialization::SpecializedValueShape],
     context: &mut LoweringContext,
-) -> execution::TupleReturn {
+) -> Representability<execution::TupleReturn> {
     return_body(
         body,
         context,
@@ -120,7 +287,7 @@ macro_rules! generic_value_primitive_list_return {
         pub(super) fn $lower(
             body: &module::GenericReturn,
             context: &mut LoweringContext,
-        ) -> $return {
+        ) -> Representability<$return> {
             return_body(body, context, $expression, |function, context| {
                 context.$function(function)
             })
@@ -173,10 +340,10 @@ generic_value_primitive_list_return!(
 
 pub(super) fn generic_value_custom_list_return(
     body: &module::GenericReturn,
-    shape: &super::specialization::ConcreteCustomValueShape,
+    shape: &super::specialization::SpecializedCustomValueShape,
     type_id: execution::CustomListTypeId,
     context: &mut LoweringContext,
-) -> execution::CustomListReturn {
+) -> Representability<execution::CustomListReturn> {
     return_body(
         body,
         context,
@@ -187,10 +354,10 @@ pub(super) fn generic_value_custom_list_return(
 
 pub(super) fn generic_value_tuple_list_return(
     body: &module::GenericReturn,
-    elements: &[super::specialization::ConcreteValueShape],
+    elements: &[super::specialization::SpecializedValueShape],
     type_id: execution::TupleListTypeId,
     context: &mut LoweringContext,
-) -> execution::TupleListReturn {
+) -> Representability<execution::TupleListReturn> {
     return_body(
         body,
         context,
@@ -201,24 +368,53 @@ pub(super) fn generic_value_tuple_list_return(
 
 pub(super) fn generic_value_nested_list_return(
     body: &module::GenericReturn,
-    item: &super::specialization::ConcreteValueShape,
+    item: &super::specialization::StoredValueShape,
     type_id: execution::ListListTypeId,
     context: &mut LoweringContext,
-) -> execution::ListListReturn {
+) -> Representability<execution::ListListReturn> {
     return_body(
         body,
         context,
-        |expression, context| generic_value_nested_list_expr(expression, item, context),
+        |expression, context| generic_value_stored_nested_list_expr(expression, item, context),
         move |function, context| context.list_list_function_id(function, type_id),
+    )
+}
+
+pub(super) fn generic_value_parameter_list_return(
+    body: &module::GenericReturn,
+    parameter: crate::plan::TypeParameterId,
+    context: &mut LoweringContext,
+) -> Representability<execution::ParameterListReturn> {
+    return_body(
+        body,
+        context,
+        |expression, context| parameter_list_value_expr(expression, parameter, context),
+        move |function, context| context.parameter_list_function_id(function, parameter),
+    )
+}
+
+pub(super) fn generic_value_parameter_list_list_return(
+    body: &module::GenericReturn,
+    parameter: crate::plan::TypeParameterId,
+    type_id: execution::ParameterListListTypeId,
+    context: &mut LoweringContext,
+) -> Representability<execution::ParameterListListReturn> {
+    return_body(
+        body,
+        context,
+        |expression, context| {
+            generic_value_parameter_list_list_expr(expression, parameter, context)
+        },
+        move |function, context| context.parameter_list_list_function_id(function, type_id),
     )
 }
 
 pub(super) fn generic_value_function_list_return(
     body: &module::GenericReturn,
-    function_shape: &super::specialization::ConcreteFunctionShape,
+    function_shape: &super::specialization::SpecializedFunctionShape,
     type_id: execution::FunctionListTypeId,
     context: &mut LoweringContext,
-) -> execution::FunctionListReturn {
+) -> Representability<execution::FunctionListReturn> {
     return_body(
         body,
         context,
@@ -232,7 +428,7 @@ macro_rules! generic_item_primitive_list_return {
         pub(super) fn $lower(
             body: &module::GenericListReturn,
             context: &mut LoweringContext,
-        ) -> $return {
+        ) -> Representability<$return> {
             return_body(body, context, $expression, |function, context| {
                 context.$function(function)
             })
@@ -285,10 +481,10 @@ generic_item_primitive_list_return!(
 
 pub(super) fn generic_item_custom_list_return(
     body: &module::GenericListReturn,
-    shape: &super::specialization::ConcreteCustomValueShape,
+    shape: &super::specialization::SpecializedCustomValueShape,
     type_id: execution::CustomListTypeId,
     context: &mut LoweringContext,
-) -> execution::CustomListReturn {
+) -> Representability<execution::CustomListReturn> {
     return_body(
         body,
         context,
@@ -299,10 +495,10 @@ pub(super) fn generic_item_custom_list_return(
 
 pub(super) fn generic_item_tuple_list_return(
     body: &module::GenericListReturn,
-    elements: &[super::specialization::ConcreteValueShape],
+    elements: &[super::specialization::SpecializedValueShape],
     type_id: execution::TupleListTypeId,
     context: &mut LoweringContext,
-) -> execution::TupleListReturn {
+) -> Representability<execution::TupleListReturn> {
     return_body(
         body,
         context,
@@ -313,24 +509,51 @@ pub(super) fn generic_item_tuple_list_return(
 
 pub(super) fn generic_item_nested_list_return(
     body: &module::GenericListReturn,
-    item: &super::specialization::ConcreteValueShape,
+    item: &super::specialization::StoredValueShape,
     type_id: execution::ListListTypeId,
     context: &mut LoweringContext,
-) -> execution::ListListReturn {
+) -> Representability<execution::ListListReturn> {
     return_body(
         body,
         context,
-        |expression, context| generic_nested_list_expr(expression, item, context),
+        |expression, context| generic_stored_nested_list_expr(expression, item, context),
         move |function, context| context.list_list_function_id(function, type_id),
+    )
+}
+
+pub(super) fn generic_item_parameter_list_return(
+    body: &module::GenericListReturn,
+    parameter: crate::plan::TypeParameterId,
+    context: &mut LoweringContext,
+) -> Representability<execution::ParameterListReturn> {
+    return_body(
+        body,
+        context,
+        |expression, context| parameter_list_expr(expression, parameter, context),
+        move |function, context| context.parameter_list_function_id(function, parameter),
+    )
+}
+
+pub(super) fn generic_item_parameter_list_list_return(
+    body: &module::GenericListReturn,
+    parameter: crate::plan::TypeParameterId,
+    type_id: execution::ParameterListListTypeId,
+    context: &mut LoweringContext,
+) -> Representability<execution::ParameterListListReturn> {
+    return_body(
+        body,
+        context,
+        |expression, context| generic_parameter_list_list_expr(expression, parameter, context),
+        move |function, context| context.parameter_list_list_function_id(function, type_id),
     )
 }
 
 pub(super) fn generic_item_function_list_return(
     body: &module::GenericListReturn,
-    function_shape: &super::specialization::ConcreteFunctionShape,
+    function_shape: &super::specialization::SpecializedFunctionShape,
     type_id: execution::FunctionListTypeId,
     context: &mut LoweringContext,
-) -> execution::FunctionListReturn {
+) -> Representability<execution::FunctionListReturn> {
     return_body(
         body,
         context,
@@ -343,19 +566,21 @@ macro_rules! generic_value_primitive_function_return {
     ($lower:ident, $return:ty, $expression:ident, $function:ident) => {
         pub(super) fn $lower(
             body: &module::GenericReturn,
-            function_shape: &super::specialization::ConcreteFunctionShape,
+            function_shape: &super::specialization::SpecializedFunctionShape,
             context: &mut LoweringContext,
-        ) -> $return {
+        ) -> Representability<$return> {
             let lowered = return_body(
                 body,
                 context,
                 |expression, context| $expression(expression, function_shape, context),
                 |function, context| context.$function(function),
             );
-            execution::TypedFunctionReturn::new(
-                context.function_shape(function_shape.to_module_shape()),
-                lowered,
-            )
+            lowered.map(|lowered| {
+                execution::TypedFunctionReturn::new(
+                    context.lower_concrete_function_shape(function_shape),
+                    lowered,
+                )
+            })
         }
     };
 }
@@ -405,9 +630,9 @@ generic_value_primitive_function_return!(
 
 pub(super) fn generic_value_tuple_function_return(
     body: &module::GenericReturn,
-    function_shape: &super::specialization::ConcreteFunctionShape,
+    function_shape: &super::specialization::SpecializedFunctionShape,
     context: &mut LoweringContext,
-) -> execution::TupleFunctionReturn {
+) -> Representability<execution::TupleFunctionReturn> {
     let lowered = return_body(
         body,
         context,
@@ -416,26 +641,16 @@ pub(super) fn generic_value_tuple_function_return(
         },
         |function, context| context.tuple_function_function_id(function),
     );
-    execution::TypedFunctionReturn::new(
-        context.function_shape(function_shape.to_module_shape()),
-        lowered,
-    )
+    specialized_typed_function_return(function_shape, lowered, context)
 }
 
 pub(super) fn generic_value_custom_function_return(
     body: &module::GenericReturn,
-    function_shape: &super::specialization::ConcreteFunctionShape,
-    return_shape: &super::specialization::ConcreteCustomValueShape,
+    function_shape: &super::specialization::SpecializedFunctionShape,
+    return_shape: &super::specialization::SpecializedCustomValueShape,
     context: &mut LoweringContext,
-) -> execution::CustomFunctionReturn {
-    let type_ = context.custom_function_type(crate::plan::CustomFunctionType::from_shapes(
-        function_shape
-            .arguments()
-            .iter()
-            .map(super::specialization::ConcreteValueShape::to_module_shape)
-            .collect(),
-        return_shape.to_module_shape(),
-    ));
+) -> Representability<execution::CustomFunctionReturn> {
+    let type_ = context.specialized_custom_function_type(function_shape.arguments(), return_shape);
     let lowered = return_body(
         body,
         context,
@@ -445,22 +660,19 @@ pub(super) fn generic_value_custom_function_return(
         |function, context| {
             context
                 .custom_function_function_id(function, type_.clone())
-                .index()
+                .map(|function| function.index())
         },
     );
-    execution::CustomFunctionReturn::from_parts(
-        context.function_shape(function_shape.to_module_shape()),
-        type_,
-        lowered,
-    )
+    let shape = context.lower_concrete_function_shape(function_shape);
+    lowered.map(|lowered| execution::CustomFunctionReturn::from_parts(shape, type_, lowered))
 }
 
 pub(super) fn generic_value_list_function_return(
     body: &module::GenericReturn,
-    function_shape: &super::specialization::ConcreteFunctionShape,
-    item: &super::specialization::ConcreteValueShape,
+    function_shape: &super::specialization::SpecializedFunctionShape,
+    item: &super::specialization::SpecializedValueShape,
     context: &mut LoweringContext,
-) -> execution::ListFunctionReturn {
+) -> Representability<execution::ListFunctionReturn> {
     let lowered = return_body(
         body,
         context,
@@ -469,26 +681,17 @@ pub(super) fn generic_value_list_function_return(
         },
         |function, context| context.list_function_function_id(function, function_shape, item),
     );
-    execution::TypedFunctionReturn::new(
-        context.function_shape(function_shape.to_module_shape()),
-        lowered,
-    )
+    specialized_typed_function_return(function_shape, lowered, context)
 }
 
 pub(super) fn generic_value_function_function_return(
     body: &module::GenericReturn,
-    function_shape: &super::specialization::ConcreteFunctionShape,
-    return_shape: &super::specialization::ConcreteFunctionShape,
+    function_shape: &super::specialization::SpecializedFunctionShape,
+    return_shape: &super::specialization::SpecializedFunctionShape,
     context: &mut LoweringContext,
-) -> execution::FunctionFunctionReturn {
-    let type_ = context.function_function_type(crate::plan::FunctionFunctionType::from_shapes(
-        function_shape
-            .arguments()
-            .iter()
-            .map(super::specialization::ConcreteValueShape::to_module_shape)
-            .collect(),
-        return_shape.to_module_shape(),
-    ));
+) -> Representability<execution::FunctionFunctionReturn> {
+    let type_ =
+        context.specialized_function_function_type(function_shape.arguments(), return_shape);
     let lowered = return_body(
         body,
         context,
@@ -498,30 +701,63 @@ pub(super) fn generic_value_function_function_return(
         |function, context| {
             context
                 .function_function_function_id(function, type_.clone())
-                .index()
+                .map(|function| function.index())
         },
     );
-    execution::FunctionFunctionReturn::from_parts(
-        context.function_shape(function_shape.to_module_shape()),
-        type_,
-        lowered,
-    )
+    let shape = context.lower_concrete_function_shape(function_shape);
+    lowered.map(|lowered| execution::FunctionFunctionReturn::from_parts(shape, type_, lowered))
+}
+
+pub(super) fn generic_value_generic_function_return(
+    body: &module::GenericReturn,
+    function_shape: &super::specialization::SpecializedFunctionShape,
+    context: &mut LoweringContext,
+) -> Representability<execution::GenericFunctionReturn> {
+    let type_ = context.generic_function_type(function_shape);
+    let lowered = return_body(
+        body,
+        context,
+        |expression, context| {
+            generic_value_generic_function_expr(expression, function_shape, context)
+        },
+        |function, context| context.generic_function_function_id(function, type_.clone()),
+    );
+    specialized_typed_function_return(function_shape, lowered, context)
+}
+
+pub(super) fn generic_value_never_function_return(
+    body: &module::GenericReturn,
+    function_shape: &super::specialization::SpecializedFunctionShape,
+    context: &mut LoweringContext,
+) -> Representability<execution::NeverFunctionReturn> {
+    let type_ = context.generic_function_type(function_shape);
+    let lowered = return_body(
+        body,
+        context,
+        |expression, context| {
+            generic_value_never_function_expr(expression, function_shape, context)
+        },
+        |function, context| context.never_function_function_id(function, type_.clone()),
+    );
+    specialized_typed_function_return(function_shape, lowered, context)
 }
 
 macro_rules! generic_result_primitive_function_return {
     ($lower:ident, $return:ty, $expression:ident, $function:ident) => {
         pub(super) fn $lower(
             body: &module::GenericFunctionReturn,
-            function_shape: &super::specialization::ConcreteFunctionShape,
+            function_shape: &super::specialization::SpecializedFunctionShape,
             context: &mut LoweringContext,
-        ) -> $return {
+        ) -> Representability<$return> {
             let lowered = return_body(body, context, $expression, |function, context| {
                 context.$function(function)
             });
-            execution::TypedFunctionReturn::new(
-                context.function_shape(function_shape.to_module_shape()),
-                lowered,
-            )
+            lowered.map(|lowered| {
+                execution::TypedFunctionReturn::new(
+                    context.lower_concrete_function_shape(function_shape),
+                    lowered,
+                )
+            })
         }
     };
 }
@@ -571,35 +807,25 @@ generic_result_primitive_function_return!(
 
 pub(super) fn generic_result_tuple_function_return(
     body: &module::GenericFunctionReturn,
-    function_shape: &super::specialization::ConcreteFunctionShape,
+    function_shape: &super::specialization::SpecializedFunctionShape,
     context: &mut LoweringContext,
-) -> execution::TupleFunctionReturn {
+) -> Representability<execution::TupleFunctionReturn> {
     let lowered = return_body(
         body,
         context,
         generic_tuple_function_expr,
         |function, context| context.tuple_function_function_id(function),
     );
-    execution::TypedFunctionReturn::new(
-        context.function_shape(function_shape.to_module_shape()),
-        lowered,
-    )
+    specialized_typed_function_return(function_shape, lowered, context)
 }
 
 pub(super) fn generic_result_custom_function_return(
     body: &module::GenericFunctionReturn,
-    function_shape: &super::specialization::ConcreteFunctionShape,
-    return_shape: &super::specialization::ConcreteCustomValueShape,
+    function_shape: &super::specialization::SpecializedFunctionShape,
+    return_shape: &super::specialization::SpecializedCustomValueShape,
     context: &mut LoweringContext,
-) -> execution::CustomFunctionReturn {
-    let type_ = context.custom_function_type(crate::plan::CustomFunctionType::from_shapes(
-        function_shape
-            .arguments()
-            .iter()
-            .map(super::specialization::ConcreteValueShape::to_module_shape)
-            .collect(),
-        return_shape.to_module_shape(),
-    ));
+) -> Representability<execution::CustomFunctionReturn> {
+    let type_ = context.specialized_custom_function_type(function_shape.arguments(), return_shape);
     let lowered = return_body(
         body,
         context,
@@ -609,48 +835,36 @@ pub(super) fn generic_result_custom_function_return(
         |function, context| {
             context
                 .custom_function_function_id(function, type_.clone())
-                .index()
+                .map(|function| function.index())
         },
     );
-    execution::CustomFunctionReturn::from_parts(
-        context.function_shape(function_shape.to_module_shape()),
-        type_,
-        lowered,
-    )
+    let shape = context.lower_concrete_function_shape(function_shape);
+    lowered.map(|lowered| execution::CustomFunctionReturn::from_parts(shape, type_, lowered))
 }
 
 pub(super) fn generic_result_list_function_return(
     body: &module::GenericFunctionReturn,
-    function_shape: &super::specialization::ConcreteFunctionShape,
-    item: &super::specialization::ConcreteValueShape,
+    function_shape: &super::specialization::SpecializedFunctionShape,
+    item: &super::specialization::SpecializedValueShape,
     context: &mut LoweringContext,
-) -> execution::ListFunctionReturn {
+) -> Representability<execution::ListFunctionReturn> {
     let lowered = return_body(
         body,
         context,
         |expression, context| generic_list_function_expr(expression, item, context),
         |function, context| context.list_function_function_id(function, function_shape, item),
     );
-    execution::TypedFunctionReturn::new(
-        context.function_shape(function_shape.to_module_shape()),
-        lowered,
-    )
+    specialized_typed_function_return(function_shape, lowered, context)
 }
 
 pub(super) fn generic_result_function_function_return(
     body: &module::GenericFunctionReturn,
-    function_shape: &super::specialization::ConcreteFunctionShape,
-    return_shape: &super::specialization::ConcreteFunctionShape,
+    function_shape: &super::specialization::SpecializedFunctionShape,
+    return_shape: &super::specialization::SpecializedFunctionShape,
     context: &mut LoweringContext,
-) -> execution::FunctionFunctionReturn {
-    let type_ = context.function_function_type(crate::plan::FunctionFunctionType::from_shapes(
-        function_shape
-            .arguments()
-            .iter()
-            .map(super::specialization::ConcreteValueShape::to_module_shape)
-            .collect(),
-        return_shape.to_module_shape(),
-    ));
+) -> Representability<execution::FunctionFunctionReturn> {
+    let type_ =
+        context.specialized_function_function_type(function_shape.arguments(), return_shape);
     let lowered = return_body(
         body,
         context,
@@ -660,20 +874,47 @@ pub(super) fn generic_result_function_function_return(
         |function, context| {
             context
                 .function_function_function_id(function, type_.clone())
-                .index()
+                .map(|function| function.index())
         },
     );
-    execution::FunctionFunctionReturn::from_parts(
-        context.function_shape(function_shape.to_module_shape()),
-        type_,
-        lowered,
-    )
+    let shape = context.lower_concrete_function_shape(function_shape);
+    lowered.map(|lowered| execution::FunctionFunctionReturn::from_parts(shape, type_, lowered))
+}
+
+pub(super) fn generic_result_generic_function_return(
+    body: &module::GenericFunctionReturn,
+    function_shape: &super::specialization::SpecializedFunctionShape,
+    context: &mut LoweringContext,
+) -> Representability<execution::GenericFunctionReturn> {
+    let type_ = context.generic_function_type(function_shape);
+    let lowered = return_body(
+        body,
+        context,
+        generic_symbolic_function_expr,
+        |function, context| context.generic_function_function_id(function, type_.clone()),
+    );
+    specialized_typed_function_return(function_shape, lowered, context)
+}
+
+pub(super) fn generic_result_never_function_return(
+    body: &module::GenericFunctionReturn,
+    function_shape: &super::specialization::SpecializedFunctionShape,
+    context: &mut LoweringContext,
+) -> Representability<execution::NeverFunctionReturn> {
+    let type_ = context.generic_function_type(function_shape);
+    let lowered = return_body(
+        body,
+        context,
+        generic_never_function_expr,
+        |function, context| context.never_function_function_id(function, type_.clone()),
+    );
+    specialized_typed_function_return(function_shape, lowered, context)
 }
 
 pub(super) fn int_return(
     body: &module::IntReturn,
     context: &mut LoweringContext,
-) -> execution::IntReturn {
+) -> Representability<execution::IntReturn> {
     return_body(body, context, int_expr, |function, context| {
         context.int_function_id(function)
     })
@@ -682,7 +923,7 @@ pub(super) fn int_return(
 pub(super) fn float_return(
     body: &module::FloatReturn,
     context: &mut LoweringContext,
-) -> execution::FloatReturn {
+) -> Representability<execution::FloatReturn> {
     return_body(body, context, float_expr, |function, context| {
         context.float_function_id(function)
     })
@@ -691,7 +932,7 @@ pub(super) fn float_return(
 pub(super) fn string_return(
     body: &module::StringReturn,
     context: &mut LoweringContext,
-) -> execution::StringReturn {
+) -> Representability<execution::StringReturn> {
     return_body(body, context, string_expr, |function, context| {
         context.string_function_id(function)
     })
@@ -700,7 +941,7 @@ pub(super) fn string_return(
 pub(super) fn bit_array_return(
     body: &module::BitArrayReturn,
     context: &mut LoweringContext,
-) -> execution::BitArrayReturn {
+) -> Representability<execution::BitArrayReturn> {
     return_body(body, context, bit_array_expr, |function, context| {
         context.bit_array_function_id(function)
     })
@@ -709,7 +950,7 @@ pub(super) fn bit_array_return(
 pub(super) fn utf_codepoint_return(
     body: &module::UtfCodepointReturn,
     context: &mut LoweringContext,
-) -> execution::UtfCodepointReturn {
+) -> Representability<execution::UtfCodepointReturn> {
     return_body(body, context, utf_codepoint_expr, |function, context| {
         context.utf_codepoint_function_id(function)
     })
@@ -718,22 +959,45 @@ pub(super) fn utf_codepoint_return(
 pub(super) fn custom_return(
     body: &module::CustomReturn,
     context: &mut LoweringContext,
-) -> execution::CustomReturn {
-    let shape = context.concrete_custom_value_shape(body.shape());
-    let lowered_shape = context.lower_concrete_custom_shape(&shape);
-    let body = return_body(
-        body.body(),
-        context,
-        |kind, context| custom_expr_kind(kind, &shape, context),
-        |function, context| context.custom_function_id(function, &shape).index(),
-    );
-    execution::CustomReturn::from_parts(lowered_shape, body)
+) -> Representability<execution::CustomReturn> {
+    let signature_shape = context.concrete_custom_value_shape(body.signature_shape());
+    let body_shape = context.concrete_custom_value_shape(body.shape());
+    let lowered_signature_shape = context.lower_concrete_custom_shape(&signature_shape);
+    let lowered_body_shape = context.lower_concrete_custom_shape(&body_shape);
+    let body = match context.representations.custom_inhabitation(&body_shape) {
+        super::specialization::CompoundInhabitation::Inhabited => return_body(
+            body.body(),
+            context,
+            |kind, context| custom_expr_kind(kind, &body_shape, context),
+            |function, context| {
+                context
+                    .custom_function_id(function, &signature_shape)
+                    .map(|function| function.index())
+            },
+        ),
+        super::specialization::CompoundInhabitation::Uninhabited(proof) => return_body(
+            body.body(),
+            context,
+            |kind, context| {
+                super::expression::custom_never_expr_kind(kind, &proof, context)
+                    .map(execution::CustomExprKind::Never)
+            },
+            |function, context| {
+                context
+                    .custom_function_id(function, &signature_shape)
+                    .map(|function| function.index())
+            },
+        ),
+    };
+    body.map(|body| {
+        execution::CustomReturn::from_parts(lowered_signature_shape, lowered_body_shape, body)
+    })
 }
 
 pub(super) fn bool_return(
     body: &module::BoolReturn,
     context: &mut LoweringContext,
-) -> execution::BoolReturn {
+) -> Representability<execution::BoolReturn> {
     return_body(body, context, bool_expr, |function, context| {
         context.bool_function_id(function)
     })
@@ -742,7 +1006,7 @@ pub(super) fn bool_return(
 pub(super) fn nil_return(
     body: &module::NilReturn,
     context: &mut LoweringContext,
-) -> execution::NilReturn {
+) -> Representability<execution::NilReturn> {
     return_body(body, context, nil_expr, |function, context| {
         context.nil_function_id(function)
     })
@@ -751,7 +1015,7 @@ pub(super) fn nil_return(
 pub(super) fn tuple_return(
     body: &module::TupleReturn,
     context: &mut LoweringContext,
-) -> execution::TupleReturn {
+) -> Representability<execution::TupleReturn> {
     return_body(body, context, tuple_expr, |function, context| {
         context.tuple_function_id(function)
     })
@@ -759,7 +1023,7 @@ pub(super) fn tuple_return(
 pub(super) fn int_list_return(
     body: &module::IntListReturn,
     context: &mut LoweringContext,
-) -> execution::IntListReturn {
+) -> Representability<execution::IntListReturn> {
     return_body(body, context, int_list_expr, |function, context| {
         context.int_list_function_id(function)
     })
@@ -768,7 +1032,7 @@ pub(super) fn int_list_return(
 pub(super) fn string_list_return(
     body: &module::StringListReturn,
     context: &mut LoweringContext,
-) -> execution::StringListReturn {
+) -> Representability<execution::StringListReturn> {
     return_body(body, context, string_list_expr, |function, context| {
         context.string_list_function_id(function)
     })
@@ -777,7 +1041,7 @@ pub(super) fn string_list_return(
 pub(super) fn bit_array_list_return(
     body: &module::BitArrayListReturn,
     context: &mut LoweringContext,
-) -> execution::BitArrayListReturn {
+) -> Representability<execution::BitArrayListReturn> {
     return_body(body, context, bit_array_list_expr, |function, context| {
         context.bit_array_list_function_id(function)
     })
@@ -786,7 +1050,7 @@ pub(super) fn bit_array_list_return(
 pub(super) fn utf_codepoint_list_return(
     body: &module::UtfCodepointListReturn,
     context: &mut LoweringContext,
-) -> execution::UtfCodepointListReturn {
+) -> Representability<execution::UtfCodepointListReturn> {
     return_body(
         body,
         context,
@@ -799,7 +1063,7 @@ pub(super) fn custom_list_return(
     body: &module::CustomListReturn,
     type_id: execution::CustomListTypeId,
     context: &mut LoweringContext,
-) -> execution::CustomListReturn {
+) -> Representability<execution::CustomListReturn> {
     return_body(body, context, custom_list_expr, move |function, context| {
         context.custom_list_function_id(function, type_id)
     })
@@ -808,7 +1072,7 @@ pub(super) fn custom_list_return(
 pub(super) fn float_list_return(
     body: &module::FloatListReturn,
     context: &mut LoweringContext,
-) -> execution::FloatListReturn {
+) -> Representability<execution::FloatListReturn> {
     return_body(body, context, float_list_expr, |function, context| {
         context.float_list_function_id(function)
     })
@@ -817,7 +1081,7 @@ pub(super) fn float_list_return(
 pub(super) fn bool_list_return(
     body: &module::BoolListReturn,
     context: &mut LoweringContext,
-) -> execution::BoolListReturn {
+) -> Representability<execution::BoolListReturn> {
     return_body(body, context, bool_list_expr, |function, context| {
         context.bool_list_function_id(function)
     })
@@ -826,7 +1090,7 @@ pub(super) fn bool_list_return(
 pub(super) fn nil_list_return(
     body: &module::NilListReturn,
     context: &mut LoweringContext,
-) -> execution::NilListReturn {
+) -> Representability<execution::NilListReturn> {
     return_body(body, context, nil_list_expr, |function, context| {
         context.nil_list_function_id(function)
     })
@@ -836,7 +1100,7 @@ pub(super) fn tuple_list_return(
     body: &module::TupleListReturn,
     type_id: execution::TupleListTypeId,
     context: &mut LoweringContext,
-) -> execution::TupleListReturn {
+) -> Representability<execution::TupleListReturn> {
     return_body(body, context, tuple_list_expr, move |function, context| {
         context.tuple_list_function_id(function, type_id)
     })
@@ -846,17 +1110,45 @@ pub(super) fn list_list_return(
     body: &module::ListListReturn,
     type_id: execution::ListListTypeId,
     context: &mut LoweringContext,
-) -> execution::ListListReturn {
+) -> Representability<execution::ListListReturn> {
     return_body(body, context, list_list_expr, move |function, context| {
         context.list_list_function_id(function, type_id)
     })
+}
+
+pub(super) fn parameter_list_list_return(
+    body: &module::ParameterListListReturn,
+    parameter: crate::plan::TypeParameterId,
+    type_id: execution::ParameterListListTypeId,
+    context: &mut LoweringContext,
+) -> Representability<execution::ParameterListListReturn> {
+    return_body(
+        body,
+        context,
+        |expression, context| unresolved_parameter_list_list_expr(expression, parameter, context),
+        move |function, context| context.parameter_list_list_function_id(function, type_id),
+    )
+}
+
+pub(super) fn stored_parameter_list_list_return(
+    body: &module::ParameterListListReturn,
+    item: &super::specialization::StoredValueShape,
+    type_id: execution::ListListTypeId,
+    context: &mut LoweringContext,
+) -> Representability<execution::ListListReturn> {
+    return_body(
+        body,
+        context,
+        |expression, context| concrete_parameter_list_list_expr(expression, item, context),
+        move |function, context| context.list_list_function_id(function, type_id),
+    )
 }
 
 pub(super) fn function_list_return(
     body: &module::FunctionListReturn,
     type_id: execution::FunctionListTypeId,
     context: &mut LoweringContext,
-) -> execution::FunctionListReturn {
+) -> Representability<execution::FunctionListReturn> {
     return_body(
         body,
         context,
@@ -868,68 +1160,68 @@ pub(super) fn int_function_return(
     shape: &crate::plan::FunctionShape,
     body: &module::IntFunctionReturn,
     context: &mut LoweringContext,
-) -> execution::IntFunctionReturn {
+) -> Representability<execution::IntFunctionReturn> {
     let body = return_body(body, context, int_function_expr, |function, context| {
         context.int_function_function_id(function)
     });
-    execution::TypedFunctionReturn::new(context.function_shape(shape.clone()), body)
+    typed_function_return(shape.clone(), body, context)
 }
 
 pub(super) fn float_function_return(
     shape: &crate::plan::FunctionShape,
     body: &module::FloatFunctionReturn,
     context: &mut LoweringContext,
-) -> execution::FloatFunctionReturn {
+) -> Representability<execution::FloatFunctionReturn> {
     let body = return_body(body, context, float_function_expr, |function, context| {
         context.float_function_function_id(function)
     });
-    execution::TypedFunctionReturn::new(context.function_shape(shape.clone()), body)
+    typed_function_return(shape.clone(), body, context)
 }
 
 pub(super) fn string_function_return(
     shape: &crate::plan::FunctionShape,
     body: &module::StringFunctionReturn,
     context: &mut LoweringContext,
-) -> execution::StringFunctionReturn {
+) -> Representability<execution::StringFunctionReturn> {
     let body = return_body(body, context, string_function_expr, |function, context| {
         context.string_function_function_id(function)
     });
-    execution::TypedFunctionReturn::new(context.function_shape(shape.clone()), body)
+    typed_function_return(shape.clone(), body, context)
 }
 
 pub(super) fn bit_array_function_return(
     shape: &crate::plan::FunctionShape,
     body: &module::BitArrayFunctionReturn,
     context: &mut LoweringContext,
-) -> execution::BitArrayFunctionReturn {
+) -> Representability<execution::BitArrayFunctionReturn> {
     let body = return_body(
         body,
         context,
         bit_array_function_expr,
         |function, context| context.bit_array_function_function_id(function),
     );
-    execution::TypedFunctionReturn::new(context.function_shape(shape.clone()), body)
+    typed_function_return(shape.clone(), body, context)
 }
 
 pub(super) fn utf_codepoint_function_return(
     shape: &crate::plan::FunctionShape,
     body: &module::UtfCodepointFunctionReturn,
     context: &mut LoweringContext,
-) -> execution::UtfCodepointFunctionReturn {
+) -> Representability<execution::UtfCodepointFunctionReturn> {
     let body = return_body(
         body,
         context,
         utf_codepoint_function_expr,
         |function, context| context.utf_codepoint_function_function_id(function),
     );
-    execution::TypedFunctionReturn::new(context.function_shape(shape.clone()), body)
+    typed_function_return(shape.clone(), body, context)
 }
 
 pub(super) fn custom_function_return(
     shape: &crate::plan::FunctionShape,
     body: &module::CustomFunctionReturn,
     context: &mut LoweringContext,
-) -> execution::CustomFunctionReturn {
+) -> Representability<execution::CustomFunctionReturn> {
     let return_shape = context.concrete_custom_value_shape(body.type_().return_());
     let type_ = context.custom_function_type(body.type_().clone());
     let lowered = return_body(
@@ -939,67 +1231,132 @@ pub(super) fn custom_function_return(
         |function, context| {
             context
                 .custom_function_function_id(function, type_.clone())
-                .index()
+                .map(|function| function.index())
         },
     );
-    execution::CustomFunctionReturn::from_parts(
-        context.function_shape(shape.clone()),
-        type_,
-        lowered,
-    )
+    let shape = context.function_shape(shape.clone());
+    lowered.map(|lowered| execution::CustomFunctionReturn::from_parts(shape, type_, lowered))
+}
+
+pub(super) fn symbolic_custom_function_return(
+    body: &module::CustomFunctionReturn,
+    function_shape: &super::specialization::SpecializedFunctionShape,
+    context: &mut LoweringContext,
+) -> Representability<execution::GenericFunctionReturn> {
+    let type_ = context.generic_function_type(function_shape);
+    let lowered = return_body(
+        body.body(),
+        context,
+        |kind, context| {
+            super::expression::symbolic_custom_function_expr_kind(kind, function_shape, context)
+                .map(|kind| execution::GenericFunctionExpr::from_parts(type_.clone(), kind))
+        },
+        |function, context| context.generic_function_function_id(function, type_.clone()),
+    );
+    specialized_typed_function_return(function_shape, lowered, context)
+}
+
+pub(super) fn custom_never_function_return(
+    body: &module::CustomFunctionReturn,
+    function_shape: &super::specialization::SpecializedFunctionShape,
+    context: &mut LoweringContext,
+) -> Representability<execution::NeverFunctionReturn> {
+    let type_ = context.generic_function_type(function_shape);
+    let lowered = return_body(
+        body.body(),
+        context,
+        |kind, context| {
+            super::expression::custom_never_function_expr_kind(kind, &type_, context)
+                .map(|kind| execution::NeverFunctionExpr::from_parts(type_.clone(), kind))
+        },
+        |function, context| context.never_function_function_id(function, type_.clone()),
+    );
+    specialized_typed_function_return(function_shape, lowered, context)
 }
 
 pub(super) fn bool_function_return(
     shape: &crate::plan::FunctionShape,
     body: &module::BoolFunctionReturn,
     context: &mut LoweringContext,
-) -> execution::BoolFunctionReturn {
+) -> Representability<execution::BoolFunctionReturn> {
     let body = return_body(body, context, bool_function_expr, |function, context| {
         context.bool_function_function_id(function)
     });
-    execution::TypedFunctionReturn::new(context.function_shape(shape.clone()), body)
+    typed_function_return(shape.clone(), body, context)
 }
 
 pub(super) fn nil_function_return(
     shape: &crate::plan::FunctionShape,
     body: &module::NilFunctionReturn,
     context: &mut LoweringContext,
-) -> execution::NilFunctionReturn {
+) -> Representability<execution::NilFunctionReturn> {
     let body = return_body(body, context, nil_function_expr, |function, context| {
         context.nil_function_function_id(function)
     });
-    execution::TypedFunctionReturn::new(context.function_shape(shape.clone()), body)
+    typed_function_return(shape.clone(), body, context)
 }
 
 pub(super) fn tuple_function_return(
     shape: &crate::plan::FunctionShape,
     body: &module::TupleFunctionReturn,
     context: &mut LoweringContext,
-) -> execution::TupleFunctionReturn {
+) -> Representability<execution::TupleFunctionReturn> {
     let body = return_body(body, context, tuple_function_expr, |function, context| {
         context.tuple_function_function_id(function)
     });
-    execution::TypedFunctionReturn::new(context.function_shape(shape.clone()), body)
+    typed_function_return(shape.clone(), body, context)
+}
+
+pub(super) fn tuple_never_function_return(
+    body: &module::TupleFunctionReturn,
+    function_shape: &super::specialization::SpecializedFunctionShape,
+    context: &mut LoweringContext,
+) -> Representability<execution::NeverFunctionReturn> {
+    let type_ = context.generic_function_type(function_shape);
+    let lowered = return_body(
+        body,
+        context,
+        super::expression::tuple_never_function_expr,
+        |function, context| context.never_function_function_id(function, type_.clone()),
+    );
+    specialized_typed_function_return(function_shape, lowered, context)
 }
 
 pub(super) fn list_function_return(
     shape: &crate::plan::FunctionShape,
     body: &module::ListFunctionReturn,
-    item: &crate::plan::execution::lowering::specialization::ConcreteValueShape,
+    item: &crate::plan::execution::lowering::specialization::SpecializedValueShape,
     context: &mut LoweringContext,
-) -> execution::ListFunctionReturn {
+) -> Representability<execution::ListFunctionReturn> {
     let concrete = context.concrete_function_shape(shape);
     let body = return_body(body, context, list_function_expr, |function, context| {
         context.list_function_function_id(function, &concrete, item)
     });
-    execution::TypedFunctionReturn::new(context.function_shape(shape.clone()), body)
+    typed_function_return(shape.clone(), body, context)
+}
+
+pub(super) fn symbolic_list_function_return(
+    body: &module::ListFunctionReturn,
+    function_shape: &super::specialization::SpecializedFunctionShape,
+    context: &mut LoweringContext,
+) -> Representability<execution::GenericFunctionReturn> {
+    let type_ = context.generic_function_type(function_shape);
+    let lowered = return_body(
+        body,
+        context,
+        |expression, context| {
+            super::expression::symbolic_list_function_expr(expression, function_shape, context)
+        },
+        |function, context| context.generic_function_function_id(function, type_.clone()),
+    );
+    specialized_typed_function_return(function_shape, lowered, context)
 }
 
 pub(super) fn function_function_return(
     shape: &crate::plan::FunctionShape,
     body: &module::FunctionFunctionReturn,
     context: &mut LoweringContext,
-) -> execution::FunctionFunctionReturn {
+) -> Representability<execution::FunctionFunctionReturn> {
     let return_shape = context.concrete_function_shape(body.type_().return_shape());
     let type_ = context.function_function_type(body.type_().clone());
     let lowered = return_body(
@@ -1009,137 +1366,215 @@ pub(super) fn function_function_return(
         |function, context| {
             context
                 .function_function_function_id(function, type_.clone())
-                .index()
+                .map(|function| function.index())
         },
     );
-    execution::FunctionFunctionReturn::from_parts(
-        context.function_shape(shape.clone()),
-        type_,
-        lowered,
-    )
+    let shape = context.function_shape(shape.clone());
+    lowered.map(|lowered| execution::FunctionFunctionReturn::from_parts(shape, type_, lowered))
+}
+
+pub(super) fn symbolic_function_function_return(
+    body: &module::FunctionFunctionReturn,
+    function_shape: &super::specialization::SpecializedFunctionShape,
+    context: &mut LoweringContext,
+) -> Representability<execution::GenericFunctionReturn> {
+    let type_ = context.generic_function_type(function_shape);
+    let lowered = return_body(
+        body.body(),
+        context,
+        |kind, context| {
+            super::expression::symbolic_function_function_expr_kind(kind, function_shape, context)
+                .map(|kind| execution::GenericFunctionExpr::from_parts(type_.clone(), kind))
+        },
+        |function, context| context.generic_function_function_id(function, type_.clone()),
+    );
+    specialized_typed_function_return(function_shape, lowered, context)
+}
+
+fn typed_function_return<Body>(
+    shape: crate::plan::FunctionShape,
+    body: Representability<Body>,
+    context: &mut LoweringContext,
+) -> Representability<execution::TypedFunctionReturn<Body>> {
+    let shape = context.function_shape(shape);
+    body.map(|body| execution::TypedFunctionReturn::new(shape, body))
+}
+
+fn specialized_typed_function_return<Body>(
+    shape: &super::specialization::SpecializedFunctionShape,
+    body: Representability<Body>,
+    context: &mut LoweringContext,
+) -> Representability<execution::TypedFunctionReturn<Body>> {
+    let shape = context.lower_concrete_function_shape(shape);
+    body.map(|body| execution::TypedFunctionReturn::new(shape, body))
+}
+
+pub(super) fn symbolic_function_return<ModuleExpression>(
+    body: &module::ReturnBody<ModuleExpression, module::FunctionInstantiation>,
+    function_shape: &super::specialization::SpecializedFunctionShape,
+    context: &mut LoweringContext,
+    lower_expression: impl Copy
+    + Fn(
+        &ModuleExpression,
+        &super::specialization::SpecializedFunctionShape,
+        &mut LoweringContext,
+    ) -> Representability<execution::GenericFunctionExpr>,
+) -> Representability<execution::GenericFunctionReturn> {
+    let type_ = context.generic_function_type(function_shape);
+    let lowered = return_body(
+        body,
+        context,
+        |expression, context| lower_expression(expression, function_shape, context),
+        |function, context| context.generic_function_function_id(function, type_.clone()),
+    );
+    specialized_typed_function_return(function_shape, lowered, context)
 }
 
 fn return_body<ModuleExpression, ExecutionExpression, ExecutionFunction>(
     body: &module::ReturnBody<ModuleExpression, module::FunctionInstantiation>,
     context: &mut LoweringContext,
-    lower_expression: impl Copy + Fn(&ModuleExpression, &mut LoweringContext) -> ExecutionExpression,
+    lower_expression: impl Copy
+    + Fn(
+        &ModuleExpression,
+        &mut LoweringContext,
+    ) -> Representability<ExecutionExpression>,
     lower_function: impl Copy
-    + Fn(&module::FunctionInstantiation, &mut LoweringContext) -> ExecutionFunction,
-) -> execution::ReturnBody<ExecutionExpression, ExecutionFunction> {
+    + Fn(
+        &module::FunctionInstantiation,
+        &mut LoweringContext,
+    ) -> Representability<ExecutionFunction>,
+) -> Representability<execution::ReturnBody<ExecutionExpression, ExecutionFunction>> {
     use execution::ReturnBodyKind as E;
     use module::ReturnBodyKind as M;
 
+    if let Some(expression) = context.take_return_divergence() {
+        return Representability::Inhabited(execution::ReturnBody::from_kind(E::Never(expression)));
+    }
+
     let kind = match body.kind() {
-        M::Expr(expression) => E::Expr(lower_expression(expression, context)),
-        M::TailCall { function, args } => E::TailCall {
-            function: lower_function(function, context),
-            args: direct_call_args(function, args, context),
-        },
+        M::Expr(expression) => lower_expression(expression, context).map(E::Expr),
+        M::TailCall { function, args } => {
+            direct_call(function, args, context, lower_function).map(|call| match call {
+                execution::DirectCall::Executable { function, args } => {
+                    E::TailCall { function, args }
+                }
+                execution::DirectCall::Diverging(expression) => E::Never(expression),
+            })
+        }
         M::BoolCase {
             subject,
             true_,
             false_,
-        } => E::BoolCase {
-            subject: bool_expr(subject, context),
-            true_: Box::new(return_body(
-                true_,
-                context,
-                lower_expression,
-                lower_function,
-            )),
-            false_: Box::new(return_body(
-                false_,
-                context,
-                lower_expression,
-                lower_function,
-            )),
-        },
+        } => bool_case(
+            subject,
+            context,
+            |context| {
+                return_body(true_, context, lower_expression, lower_function)
+                    .map(execution::ReturnBody::into_kind)
+            },
+            |context| {
+                return_body(false_, context, lower_expression, lower_function)
+                    .map(execution::ReturnBody::into_kind)
+            },
+            |subject, true_, false_| E::BoolCase {
+                subject,
+                true_: Box::new(execution::ReturnBody::from_kind(true_)),
+                false_: Box::new(execution::ReturnBody::from_kind(false_)),
+            },
+        ),
         M::IntCase {
             subject,
             clauses,
             fallback,
-        } => E::IntCase {
-            subject: int_expr(subject, context),
-            clauses: clauses
-                .iter()
-                .map(|(pattern, branch)| {
-                    (
-                        pattern.clone(),
-                        return_body(branch, context, lower_expression, lower_function),
-                    )
+        } => int_expr(subject, context).and_then(|subject| {
+            Representability::collect(clauses.iter().map(|(pattern, branch)| {
+                return_body(branch, context, lower_expression, lower_function)
+                    .map(|branch| (pattern.clone(), branch))
+            }))
+            .and_then(|clauses| {
+                return_body(fallback, context, lower_expression, lower_function).map(|fallback| {
+                    E::IntCase {
+                        subject,
+                        clauses,
+                        fallback: Box::new(fallback),
+                    }
                 })
-                .collect(),
-            fallback: Box::new(return_body(
-                fallback,
-                context,
-                lower_expression,
-                lower_function,
-            )),
-        },
+            })
+        }),
         M::FloatCase {
             subject,
             clauses,
             fallback,
-        } => E::FloatCase {
-            subject: float_expr(subject, context),
-            clauses: clauses
-                .iter()
-                .map(|(pattern, branch)| {
-                    (
-                        *pattern,
-                        return_body(branch, context, lower_expression, lower_function),
-                    )
+        } => float_expr(subject, context).and_then(|subject| {
+            Representability::collect(clauses.iter().map(|(pattern, branch)| {
+                return_body(branch, context, lower_expression, lower_function)
+                    .map(|branch| (*pattern, branch))
+            }))
+            .and_then(|clauses| {
+                return_body(fallback, context, lower_expression, lower_function).map(|fallback| {
+                    E::FloatCase {
+                        subject,
+                        clauses,
+                        fallback: Box::new(fallback),
+                    }
                 })
-                .collect(),
-            fallback: Box::new(return_body(
-                fallback,
-                context,
-                lower_expression,
-                lower_function,
-            )),
-        },
+            })
+        }),
         M::StringCase {
             subject,
             clauses,
             fallback,
-        } => E::StringCase {
-            subject: string_expr(subject, context),
-            clauses: clauses
-                .iter()
-                .map(|(pattern, branch)| {
-                    (
-                        pattern.clone(),
-                        return_body(branch, context, lower_expression, lower_function),
-                    )
+        } => string_expr(subject, context).and_then(|subject| {
+            Representability::collect(clauses.iter().map(|(pattern, branch)| {
+                return_body(branch, context, lower_expression, lower_function)
+                    .map(|branch| (pattern.clone(), branch))
+            }))
+            .and_then(|clauses| {
+                return_body(fallback, context, lower_expression, lower_function).map(|fallback| {
+                    E::StringCase {
+                        subject,
+                        clauses,
+                        fallback: Box::new(fallback),
+                    }
                 })
-                .collect(),
-            fallback: Box::new(return_body(
-                fallback,
-                context,
-                lower_expression,
-                lower_function,
-            )),
-        },
-        M::Block { steps, return_ } => E::Block {
-            steps: super::step::steps(steps, context),
-            return_: Box::new(return_body(
-                return_,
-                context,
-                lower_expression,
-                lower_function,
-            )),
-        },
+            })
+        }),
+        M::Block { steps, return_ } => {
+            super::step::steps_until_never(steps, context).and_then(|steps| match steps {
+                super::step::StepsUntilNever::Complete(steps) => {
+                    return_body(return_, context, lower_expression, lower_function).map(|return_| {
+                        E::Block {
+                            steps,
+                            return_: Box::new(return_),
+                        }
+                    })
+                }
+                super::step::StepsUntilNever::Diverging { prefix, expression } => {
+                    Representability::Inhabited(E::Never(execution::NeverExpr::from_kind(
+                        execution::NeverExprKind::Block {
+                            steps: prefix,
+                            return_: Box::new(expression),
+                        },
+                    )))
+                }
+            })
+        }
     };
 
-    execution::ReturnBody::from_kind(kind)
+    kind.map(execution::ReturnBody::from_kind)
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::specialization::{
+        Representability, RepresentationContext, SpecializationKey,
+    };
+    use super::super::{FunctionTemplates, LoweringContext};
     use crate::plan::execution::{
         ExecutionPlan, FunctionFunctionId, ListFunctionId, ListListFunctionId, ReturnBody,
         ReturnBodyKind, RuntimeFunctionId,
     };
+    use std::collections::HashSet;
 
     #[test]
     fn lowering_seals_custom_callable_return_type_around_tail_indices() {
@@ -1198,19 +1633,119 @@ fn repeat(values: List(List(Int))) -> List(List(Int)) {
   repeat(values)
 }
 
-pub fn main() -> List(List(Int)) { [] }
+pub fn main() -> List(List(Int)) {
+  let _ = repeat
+  []
+}
 "#;
         let typed = crate::compile_typed_module("main", "main.gleam", source)
             .expect("source should compile");
         let module_plan = crate::plan_module(typed).expect("source should plan");
         let plan = crate::ExecutionPlan::from_module_plan(module_plan);
         let function = plan.list_list_function_id(1);
-        let next = expect_tail_call(plan.list_list_function(function).return_());
+        let (next, argument_count) = expect_tail_call(plan.list_list_function(function).return_());
         let main = expect_list_list_main(&plan);
 
         assert_eq!(*next, function);
+        assert_eq!(argument_count, 1);
         assert_eq!(next.type_id(), function.type_id());
         assert_eq!(main.type_id(), function.type_id());
+    }
+
+    #[test]
+    fn lowering_preserves_tail_calls_in_exact_uninhabited_custom_body_refinements() {
+        let parameter = crate::plan::TypeParameterId(0);
+        let type_name =
+            crate::plan::CustomTypeName::new("geam".into(), "main".into(), "Maybe".into());
+        let definition = crate::plan::CustomTypeDefinition::new(
+            type_name.clone(),
+            crate::plan::CustomTypePublicity::Private,
+            false,
+            vec![crate::plan::CustomTypeParameterId(0)],
+            vec![
+                crate::plan::CustomConstructorDefinition::new("None".into(), 0, Vec::new()),
+                crate::plan::CustomConstructorDefinition::new(
+                    "Some".into(),
+                    1,
+                    vec![crate::plan::CustomFieldDefinition::new(
+                        None,
+                        crate::plan::CustomTypeTemplate::Parameter(
+                            crate::plan::CustomTypeParameterId(0),
+                        ),
+                    )],
+                ),
+            ],
+        );
+        let type_ = crate::plan::CustomType::new(
+            type_name.clone(),
+            vec![crate::plan::ValueType::Parameter(parameter)],
+        );
+        let signature_shape = crate::plan::CustomValueShape::any(type_);
+        let body_shape = crate::plan::CustomValueShape::new(
+            type_name,
+            vec![crate::plan::ValueShape::Parameter(parameter)],
+            crate::plan::CustomConstructorRefinement::Exact(1),
+        );
+        let target_id = crate::plan::FunctionTemplateId::new(1);
+        let target_signature = crate::plan::FunctionTemplateSignature::new(
+            target_id,
+            crate::plan::TypeScheme::new(0),
+            crate::plan::FunctionShape::new(
+                Vec::new(),
+                crate::plan::ValueShape::Custom(signature_shape.clone()),
+            ),
+        );
+        let target = crate::plan::FunctionTemplate::from_signature(
+            target_signature,
+            "always_some".into(),
+            Vec::new(),
+            Vec::new(),
+            crate::plan::ReturnExpr::custom_body(crate::plan::CustomReturn::with_signature_shape(
+                signature_shape.clone(),
+                crate::plan::CustomExpr::panic_shape(
+                    crate::plan::PanicExpr::panic_at(None, crate::plan::PanicSite::unknown()),
+                    body_shape.clone(),
+                ),
+            )),
+        );
+        let main_id = crate::plan::FunctionTemplateId::new(0);
+        let main = crate::plan::FunctionTemplate::new(
+            main_id,
+            "main".into(),
+            Vec::new(),
+            Vec::new(),
+            crate::plan::ReturnExpr::int(
+                crate::plan::IntFunctionId(0),
+                crate::plan::IntExpr::value(0.into()),
+            ),
+        );
+        let templates = FunctionTemplates::new(main, vec![target], Vec::new());
+        let mut context = LoweringContext::new(
+            &templates,
+            SpecializationKey::monomorphic(main_id),
+            RepresentationContext::new(vec![definition]),
+            crate::plan::ConstantTemplates::from_entries(Vec::new()),
+            HashSet::new(),
+        );
+        let function = crate::plan::monomorphic_function_instantiation(
+            1,
+            crate::plan::FunctionShape::new(
+                Vec::new(),
+                crate::plan::ValueShape::Custom(signature_shape.clone()),
+            ),
+        );
+        let body = crate::plan::CustomReturn::with_signature_shape(
+            signature_shape,
+            crate::plan::CustomExpr::call(function, Vec::new(), body_shape),
+        );
+
+        assert_eq!(
+            super::custom_return(&body, &mut context).map(|body| {
+                let (function, argument_count) = expect_tail_call(body.body());
+                (*function, argument_count)
+            }),
+            Representability::Inhabited((0, 0)),
+        );
     }
 
     #[test]
@@ -1235,11 +1770,11 @@ pub fn main() -> List(List(Int)) { [] }
         ExecutionPlan::from_module_plan(module_plan)
     }
 
-    fn expect_tail_call<Expression>(
-        body: &ReturnBody<Expression, ListListFunctionId>,
-    ) -> &ListListFunctionId {
+    fn expect_tail_call<Expression, Function>(
+        body: &ReturnBody<Expression, Function>,
+    ) -> (&Function, usize) {
         match body.kind() {
-            ReturnBodyKind::TailCall { function, .. } => function,
+            ReturnBodyKind::TailCall { function, args } => (function, args.len()),
             _ => panic!("expected a tail-call return body"),
         }
     }

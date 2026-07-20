@@ -2,10 +2,10 @@ use super::returning_function::FunctionFunctionCallMismatch;
 #[cfg(test)]
 use crate::plan::ParamLocal;
 use crate::plan::{
-    BoolExpr, CaptureArg, CustomConstructor, CustomFieldAccess, CustomFunctionLocal,
-    CustomFunctionReference, CustomFunctionType, FloatExpr, FunctionFunctionExpr,
-    FunctionInstantiation, FunctionListExpr, FunctionType, IntExpr, PanicExpr, ParamSlot, Step,
-    StringExpr, TupleExpr,
+    BoolExpr, CaptureArg, ConstantCustomFunctionInstantiation, CustomConstructor,
+    CustomFieldAccess, CustomFunctionLocal, CustomFunctionReference, CustomFunctionType, FloatExpr,
+    FunctionFunctionExpr, FunctionInstantiation, FunctionListExpr, FunctionType, IntExpr,
+    PanicExpr, ParamSlot, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -18,6 +18,7 @@ pub struct CustomFunctionExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum CustomFunctionExprKind {
+    Constant(ConstantCustomFunctionInstantiation),
     Constructor(CustomConstructor),
     Reference(CustomFunctionReference),
     Closure {
@@ -74,6 +75,16 @@ pub(crate) enum CustomFunctionExprKind {
 }
 
 impl CustomFunctionExpr {
+    pub(crate) fn constant(
+        value: ConstantCustomFunctionInstantiation,
+        type_: CustomFunctionType,
+    ) -> Self {
+        Self {
+            type_,
+            kind: CustomFunctionExprKind::Constant(value),
+        }
+    }
+
     pub(crate) fn constructor(constructor: CustomConstructor) -> Self {
         let type_ = CustomFunctionType::from_shapes(
             constructor

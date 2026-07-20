@@ -6,6 +6,7 @@ mod float;
 mod function;
 mod int;
 mod list;
+mod never;
 mod nil;
 mod string;
 mod tuple;
@@ -28,26 +29,75 @@ pub(super) use self::{
     function::{
         eval_bit_array_function_expr, eval_bool_function_expr, eval_custom_function_expr,
         eval_custom_function_expr_kind, eval_float_function_expr, eval_function_expr,
-        eval_function_function_expr, eval_function_function_expr_kind, eval_int_function_expr,
-        eval_list_function_expr, eval_nil_function_expr, eval_string_function_expr,
-        eval_tuple_function_expr, eval_typed_custom_function_expr, eval_typed_function_expr,
-        eval_utf_codepoint_function_expr,
+        eval_function_function_expr, eval_function_function_expr_kind, eval_generic_function_expr,
+        eval_generic_function_expr_kind, eval_int_function_expr, eval_list_function_expr,
+        eval_never_function_expr, eval_never_function_expr_kind, eval_nil_function_expr,
+        eval_string_function_expr, eval_tuple_function_expr, eval_typed_custom_function_expr,
+        eval_typed_function_expr, eval_utf_codepoint_function_expr,
     },
     int::eval_int_expr,
     list::{
         eval_bit_array_list_expr, eval_bool_list_expr, eval_custom_list_expr, eval_float_list_expr,
         eval_function_list_expr, eval_int_list_expr, eval_list_expr, eval_list_list_expr,
-        eval_nil_list_expr, eval_string_list_expr, eval_tuple_list_expr,
-        eval_utf_codepoint_list_expr, get_list_value, project_bit_array_list_expr,
-        project_bool_list_expr, project_custom_list_expr, project_float_list_expr,
-        project_function_list_expr, project_int_list_expr, project_nil_list_expr,
-        project_string_list_expr, project_tuple_list_expr, project_utf_codepoint_list_expr,
+        eval_nil_list_expr, eval_parameter_list_expr, eval_parameter_list_list_expr,
+        eval_string_list_expr, eval_tuple_list_expr, eval_utf_codepoint_list_expr, get_list_value,
+        project_bit_array_list_expr, project_bool_list_expr, project_custom_list_expr,
+        project_float_list_expr, project_function_list_expr, project_int_list_expr,
+        project_nil_list_expr, project_string_list_expr, project_tuple_list_expr,
+        project_utf_codepoint_list_expr,
     },
+    never::eval_never_expr,
     nil::eval_nil_expr,
     string::eval_string_expr,
     tuple::{eval_tuple_expr, project_tuple_expr},
     utf_codepoint::eval_utf_codepoint_expr,
 };
+
+fn eval_direct_call<Function, Value>(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    frame: &mut Frame,
+    call: &crate::plan::execution::DirectCall<Function>,
+    executable: impl FnOnce(
+        &ExecutionPlan,
+        &mut RuntimeState,
+        &Function,
+        &[crate::plan::execution::CallArg],
+        &mut Frame,
+    ) -> crate::runtime::error::ExecutionResult<Value>,
+) -> crate::runtime::error::ExecutionResult<Value> {
+    match call {
+        crate::plan::execution::DirectCall::Executable { function, args } => {
+            executable(plan, state, function, args, frame)
+        }
+        crate::plan::execution::DirectCall::Diverging(expression) => {
+            eval_never_expr(plan, state, frame, expression).map(|never| match never {})
+        }
+    }
+}
+
+fn eval_function_call<Function, Value>(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    frame: &mut Frame,
+    call: &crate::plan::execution::FunctionCall<Function>,
+    executable: impl FnOnce(
+        &ExecutionPlan,
+        &mut RuntimeState,
+        &Function,
+        &[crate::plan::execution::CallArg],
+        &mut Frame,
+    ) -> crate::runtime::error::ExecutionResult<Value>,
+) -> crate::runtime::error::ExecutionResult<Value> {
+    match call {
+        crate::plan::execution::FunctionCall::Executable { function, args } => {
+            executable(plan, state, function, args, frame)
+        }
+        crate::plan::execution::FunctionCall::Diverging(expression) => {
+            eval_never_expr(plan, state, frame, expression).map(|never| match never {})
+        }
+    }
+}
 
 pub(super) fn eval_expr(
     plan: &ExecutionPlan,
@@ -56,6 +106,9 @@ pub(super) fn eval_expr(
     expression: &Expr,
 ) -> Result<EvaluatedValue, ExecutionError> {
     match expression.kind() {
+        ExprKind::Never(expression) => {
+            eval_never_expr(plan, state, frame, expression).map(|never| match never {})
+        }
         ExprKind::Int(expression) => Ok(EvaluatedValue::Int(eval_int_expr(
             plan, state, frame, expression,
         )?)),
@@ -179,6 +232,26 @@ pub fn main() -> Int { todo as fail_message() }
     }
 
     #[test]
+    fn nested_diverging_generic_expression_propagates_its_source_panic() {
+        assert_eq!(
+            crate::runtime::run_src_error(
+                r#"
+fn fail() -> value { panic as "nested generic value failed" }
+fn value() -> Int {
+  1 + {
+    let _ = fail()
+    2
+  }
+}
+pub fn main() { value() }
+"#,
+            )
+            .to_string(),
+            "panic: nested generic value failed",
+        );
+    }
+
+    #[test]
     fn empty_expression_panics_preserve_their_source_kind() {
         let cases = [
             (
@@ -202,6 +275,100 @@ pub fn main() -> Int { todo as fail_message() }
         for (source, expected) in cases {
             assert_eq!(crate::runtime::run_src_error(source).to_string(), expected);
         }
+    }
+
+    #[test]
+    fn generic_specializations_take_false_bool_case_branches_for_every_value_family() {
+        let value = crate::runtime::run_src(
+            r#"
+pub type Boxed(value) {
+  Boxed(value)
+}
+
+fn codepoint(value: Int) -> UtfCodepoint {
+  let assert <<value:utf8_codepoint>> = <<value>>
+  value
+}
+
+fn choose(selector: Bool, first: value, second: value) {
+  case selector {
+    True -> first
+    False -> second
+  }
+}
+
+fn identity(value) {
+  value
+}
+
+pub fn main() {
+  let int_function =
+    choose(False, fn(_value: Int) { 1 }, fn(_value: Int) { 2 })
+  let float_function =
+    choose(False, fn(_value: Int) { 1.0 }, fn(_value: Int) { 2.0 })
+  let string_function =
+    choose(False, fn(_value: Int) { "first" }, fn(_value: Int) { "second" })
+  let bit_array_function =
+    choose(False, fn(_value: Int) { <<1>> }, fn(_value: Int) { <<2>> })
+  let utf_codepoint_function = choose(
+    False,
+    fn(_value: Int) { codepoint(65) },
+    fn(_value: Int) { codepoint(66) },
+  )
+  let custom_function = choose(
+    False,
+    fn(_value: Int) { Boxed(1) },
+    fn(_value: Int) { Boxed(2) },
+  )
+  let bool_function =
+    choose(False, fn(_value: Int) { True }, fn(_value: Int) { False })
+  let nil_function =
+    choose(False, fn(_value: Int) { Nil }, fn(_value: Int) { Nil })
+  let tuple_function = choose(
+    False,
+    fn(_value: Int) { #(1, "first") },
+    fn(_value: Int) { #(2, "second") },
+  )
+  let list_function =
+    choose(False, fn(_value: Int) { [1] }, fn(_value: Int) { [2] })
+  let function_function = choose(
+    False,
+    fn(_value: Int) { fn(value: Int) { value + 1 } },
+    fn(_value: Int) { fn(value: Int) { value + 2 } },
+  )
+  let symbolic_function = choose(False, identity, identity)
+
+  #(
+    choose(False, 1, 2) == 2,
+    choose(False, 1.0, 2.0) == 2.0,
+    choose(False, "first", "second") == "second",
+    choose(False, <<1>>, <<2>>) == <<2>>,
+    choose(False, codepoint(65), codepoint(66)) == codepoint(66),
+    choose(False, Boxed(1), Boxed(2)) == Boxed(2),
+    choose(False, True, False) == False,
+    choose(False, Nil, Nil) == Nil,
+    choose(False, #(1, "first"), #(2, "second")) == #(2, "second"),
+    choose(False, [1], [2]) == [2],
+    choose(False, [], []) == [],
+    choose(False, [[]], [[]]) == [[]],
+    int_function(0) == 2,
+    float_function(0) == 2.0,
+    string_function(0) == "second",
+    bit_array_function(0) == <<2>>,
+    utf_codepoint_function(0) == codepoint(66),
+    custom_function(0) == Boxed(2),
+    bool_function(0) == False,
+    nil_function(0) == Nil,
+    tuple_function(0) == #(2, "second"),
+    list_function(0) == [2],
+    function_function(0)(1) == 3,
+    symbolic_function(3) == 3,
+  )
+}
+"#,
+        );
+
+        assert_eq!(value, Value::Tuple(vec![Value::Bool(true); 24]));
     }
 
     #[test]
@@ -233,7 +400,30 @@ fn tuple_function(value: #(fn() -> #(Int))) { value.0 }
 fn list_function(value: #(fn() -> List(Int))) { value.0 }
 fn function_function(value: #(fn() -> fn() -> Int)) { value.0 }
 
-pub fn main() { function_function }
+pub fn main() {
+  let _ = int_value
+  let _ = string_value
+  let _ = float_value
+  let _ = bool_value
+  let _ = nil_value
+  let _ = tuple_value
+  let _ = int_list
+  let _ = string_list
+  let _ = float_list
+  let _ = bool_list
+  let _ = nil_list
+  let _ = tuple_list
+  let _ = list_list
+  let _ = function_list
+  let _ = int_function
+  let _ = string_function
+  let _ = float_function
+  let _ = bool_function
+  let _ = nil_function
+  let _ = tuple_function
+  let _ = list_function
+  function_function
+}
 "#,
         );
         let function_function_id = expect_function_function_function_id(
@@ -760,7 +950,12 @@ pub fn main() { function_function }
 fn codepoint(value: #(UtfCodepoint)) { value.0 }
 fn codepoints(value: #(List(UtfCodepoint))) { value.0 }
 fn codepoint_function(value: #(fn() -> UtfCodepoint)) { value.0 }
-pub fn main() { Nil }
+pub fn main() {
+  let _ = codepoint
+  let _ = codepoints
+  let _ = codepoint_function
+  Nil
+}
 "#,
         );
 
@@ -894,7 +1089,30 @@ fn tuple_function() -> fn() -> #(Int) { tuple_function() }
 fn list_function() -> fn() -> List(Int) { list_function() }
 fn function_function() -> fn() -> fn() -> Int { function_function() }
 
-pub fn main() { function_function }
+pub fn main() {
+  let _ = int_value
+  let _ = string_value
+  let _ = float_value
+  let _ = bool_value
+  let _ = nil_value
+  let _ = tuple_value
+  let _ = int_list
+  let _ = string_list
+  let _ = float_list
+  let _ = bool_list
+  let _ = nil_list
+  let _ = tuple_list
+  let _ = list_list
+  let _ = function_list
+  let _ = int_function
+  let _ = string_function
+  let _ = float_function
+  let _ = bool_function
+  let _ = nil_function
+  let _ = tuple_function
+  let _ = list_function
+  function_function
+}
 "#,
         );
         let function_function_id = expect_function_function_function_id(
@@ -1074,7 +1292,12 @@ pub fn main() { function_function }
 fn codepoint() -> UtfCodepoint { codepoint() }
 fn codepoints() -> List(UtfCodepoint) { codepoints() }
 fn codepoint_function() -> fn() -> UtfCodepoint { codepoint_function() }
-pub fn main() { Nil }
+pub fn main() {
+  let _ = codepoint
+  let _ = codepoints
+  let _ = codepoint_function
+  Nil
+}
 "#,
         );
 

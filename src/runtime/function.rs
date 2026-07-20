@@ -2,51 +2,57 @@ mod bind;
 pub(in crate::runtime) mod return_body;
 mod steps;
 
-pub(in crate::runtime) use bind::eval_capture_args;
-pub(in crate::runtime) use steps::{execute_steps, match_and_apply_assert_pattern};
+pub(in crate::runtime) use bind::{eval_call_argument_values, eval_capture_args};
+pub(in crate::runtime) use steps::{
+    execute_steps, fail_let_assert, match_and_apply_assert_pattern,
+};
 
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BoolFunctionFunctionId, BoolFunctionId,
     CallArg, CustomFunctionFunctionId, CustomFunctionId, FloatFunctionFunctionId, FloatFunctionId,
-    FunctionFunctionFunctionId, FunctionReturnFamily, IntFunctionFunctionId, IntFunctionId,
-    ListFunctionFunctionId, ListFunctionId, NilFunctionFunctionId, NilFunctionId,
-    RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId,
-    TupleFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+    FunctionFunctionFunctionId, FunctionReturnFamily, GenericFunctionFunctionId,
+    IntFunctionFunctionId, IntFunctionId, ListFunctionFunctionId, ListFunctionId,
+    NeverFunctionFunctionId, NeverFunctionId, NilFunctionFunctionId, NilFunctionId,
+    ParameterListFunctionId, ParameterListListFunctionId, RuntimeFunctionId,
+    StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId, TupleFunctionId,
+    UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
 };
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::expression::{
     eval_bit_array_function_expr, eval_bool_function_expr, eval_custom_function_expr,
     eval_float_function_expr, eval_function_function_expr, eval_int_function_expr,
-    eval_list_function_expr, eval_nil_function_expr, eval_string_function_expr,
-    eval_tuple_function_expr, eval_utf_codepoint_function_expr,
+    eval_list_function_expr, eval_never_function_expr, eval_nil_function_expr,
+    eval_string_function_expr, eval_tuple_function_expr, eval_utf_codepoint_function_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::state::{
     BitArrayListValueId, BoolListValueId, CustomListValueId, FloatListValueId, FunctionListValueId,
-    IntListValueId, ListListValueId, ListValueId, NilListValueId, RuntimeState, StringListValueId,
-    TupleListValueId, UtfCodepointListValueId,
+    IntListValueId, ListListValueId, ListValueId, NilListValueId, ParameterListListValueId,
+    ParameterListValueId, RuntimeState, StringListValueId, TupleListValueId,
+    UtfCodepointListValueId,
 };
 use crate::runtime::{
     EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCustomFunction,
     EvaluatedCustomValue, EvaluatedFloatFunction, EvaluatedFunctionFunction,
-    EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedListFunction, EvaluatedNilFunction,
-    EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
-    ExecutionError, Value,
+    EvaluatedFunctionValue, EvaluatedGenericFunction, EvaluatedIntFunction, EvaluatedListFunction,
+    EvaluatedNeverFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
+    EvaluatedUtfCodepointFunction, EvaluatedValue, ExecutionError, Value,
 };
-use bind::{bind_arguments, bind_function_value_arguments, eval_call_argument_values};
+use bind::{bind_arguments, bind_function_value_arguments};
 use ecow::EcoString;
 use num_bigint::BigInt;
 use return_body::{
     run_bit_array_function_loop, run_bit_array_list_loop, run_bit_array_loop,
     run_bool_function_loop, run_bool_list_loop, run_bool_loop, run_custom_function_loop,
     run_custom_list_loop, run_custom_loop, run_float_function_loop, run_float_list_loop,
-    run_float_loop, run_function_function_loop, run_function_list_loop, run_int_function_loop,
-    run_int_list_loop, run_int_loop, run_list_function_loop, run_list_list_loop, run_list_loop,
-    run_nil_function_loop, run_nil_list_loop, run_nil_loop, run_string_function_loop,
-    run_string_list_loop, run_string_loop, run_tuple_function_loop, run_tuple_list_loop,
-    run_tuple_loop, run_utf_codepoint_function_loop, run_utf_codepoint_list_loop,
-    run_utf_codepoint_loop,
+    run_float_loop, run_function_function_loop, run_function_list_loop, run_generic_function_loop,
+    run_int_function_loop, run_int_list_loop, run_int_loop, run_list_function_loop,
+    run_list_list_loop, run_list_loop, run_never_function_loop, run_never_loop,
+    run_nil_function_loop, run_nil_list_loop, run_nil_loop, run_parameter_list_list_loop,
+    run_parameter_list_loop, run_string_function_loop, run_string_list_loop, run_string_loop,
+    run_tuple_function_loop, run_tuple_list_loop, run_tuple_loop, run_utf_codepoint_function_loop,
+    run_utf_codepoint_list_loop, run_utf_codepoint_loop,
 };
 
 pub(super) fn run_main(plan: &ExecutionPlan) -> ExecutionResult<Value> {
@@ -54,6 +60,10 @@ pub(super) fn run_main(plan: &ExecutionPlan) -> ExecutionResult<Value> {
     let empty_layout = crate::plan::execution::FrameLayout::default();
     let mut caller_frame = Frame::new(&empty_layout, &mut state);
     let value = match plan.main_runtime() {
+        RuntimeFunctionId::Never(function) => {
+            return run_never_call(plan, &mut state, function, &[], &mut caller_frame)
+                .map(|never| match never {});
+        }
         RuntimeFunctionId::Int(function) => {
             run_int_call(plan, &mut state, function, &[], &mut caller_frame)
                 .map(EvaluatedValue::Int)
@@ -99,6 +109,23 @@ pub(super) fn run_main(plan: &ExecutionPlan) -> ExecutionResult<Value> {
     }?;
     state.drain_releases();
     Ok(crate::runtime::materialize::value(plan, &state, value))
+}
+
+pub(in crate::runtime) fn run_never_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: NeverFunctionId,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<std::convert::Infallible> {
+    let frame = bind_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        plan.never_function(function).frame_layout(),
+    )?;
+    run_never_loop(plan, state, function, frame)
 }
 
 pub(super) fn run_int_call(
@@ -271,6 +298,23 @@ pub(super) fn run_list_call(
     run_list_loop(plan, state, function, frame)
 }
 
+pub(in crate::runtime) fn run_parameter_list_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: ParameterListFunctionId,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<ParameterListValueId> {
+    let frame = bind_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        plan.parameter_list_function(function).frame_layout(),
+    )?;
+    run_parameter_list_loop(plan, state, function, frame)
+}
+
 pub(in crate::runtime) fn run_int_list_call(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
@@ -424,6 +468,23 @@ pub(in crate::runtime) fn run_tuple_list_call(
     run_tuple_list_loop(plan, state, function, frame)
 }
 
+pub(in crate::runtime) fn run_parameter_list_list_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: ParameterListListFunctionId,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<ParameterListListValueId> {
+    let frame = bind_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        plan.parameter_list_list_function(function).frame_layout(),
+    )?;
+    run_parameter_list_list_loop(plan, state, function, frame)
+}
+
 pub(in crate::runtime) fn run_list_list_call(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
@@ -477,6 +538,26 @@ pub(in crate::runtime) fn run_int_function_call(
         function.captures(),
     )?;
     run_int_loop(plan, state, function.runtime_id(), frame)
+}
+
+pub(in crate::runtime) fn run_never_function_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: &crate::plan::execution::NeverFunctionExpr,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<std::convert::Infallible> {
+    let function = eval_never_function_expr(plan, state, caller_frame, function)?;
+    let runtime_function = plan.never_function(function.runtime_id());
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        runtime_function.frame_layout(),
+        function.captures(),
+    )?;
+    run_never_loop(plan, state, function.runtime_id(), frame)
 }
 
 pub(in crate::runtime) fn run_string_function_call(
@@ -543,10 +624,11 @@ pub(in crate::runtime) fn run_utf_codepoint_function_call(
 pub(in crate::runtime) fn run_custom_function_call(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
-    call: &crate::plan::execution::CustomFunctionCall,
+    expression: &crate::plan::execution::CustomFunctionExpr,
+    arguments: &[CallArg],
     caller_frame: &mut Frame,
 ) -> ExecutionResult<EvaluatedCustomValue> {
-    let function = eval_custom_function_expr(plan, state, caller_frame, call.function())?;
+    let function = eval_custom_function_expr(plan, state, caller_frame, expression)?;
     match function {
         EvaluatedCustomFunction::Function(function) => {
             let runtime_id = function.runtime_id();
@@ -554,7 +636,7 @@ pub(in crate::runtime) fn run_custom_function_call(
             let frame = bind_function_value_arguments(
                 plan,
                 state,
-                call.arguments(),
+                arguments,
                 caller_frame,
                 runtime_function.frame_layout(),
                 function.captures(),
@@ -562,7 +644,7 @@ pub(in crate::runtime) fn run_custom_function_call(
             run_custom_loop(plan, state, runtime_id, frame)
         }
         EvaluatedCustomFunction::Constructor(function) => {
-            let fields = eval_call_argument_values(plan, state, call.arguments(), caller_frame)?;
+            let fields = eval_call_argument_values(plan, state, arguments, caller_frame)?;
             Ok(EvaluatedCustomValue::from_fields(
                 function.runtime_id(),
                 fields.into_boxed_slice(),
@@ -678,6 +760,31 @@ pub(in crate::runtime) fn run_int_list_function_call(
         function.captures(),
     )?;
     run_int_list_loop(plan, state, runtime_id, frame)
+}
+
+pub(in crate::runtime) fn run_parameter_list_function_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: &crate::plan::execution::ListFunctionExpr,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<ParameterListValueId> {
+    let function = eval_list_function_expr(plan, state, caller_frame, function)?;
+    let ListFunctionId::Parameter(runtime_id) = function.runtime_id() else {
+        return Err(ExecutionError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::List,
+            actual: FunctionReturnFamily::List,
+        });
+    };
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        plan.parameter_list_function(runtime_id).frame_layout(),
+        function.captures(),
+    )?;
+    run_parameter_list_loop(plan, state, runtime_id, frame)
 }
 
 pub(in crate::runtime) fn run_string_list_function_call(
@@ -905,6 +1012,31 @@ pub(in crate::runtime) fn run_list_list_function_call(
     run_list_list_loop(plan, state, runtime_id, frame)
 }
 
+pub(in crate::runtime) fn run_parameter_list_list_function_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: &crate::plan::execution::ListFunctionExpr,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<ParameterListListValueId> {
+    let function = eval_list_function_expr(plan, state, caller_frame, function)?;
+    let ListFunctionId::ParameterList(runtime_id) = function.runtime_id() else {
+        return Err(ExecutionError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::List,
+            actual: FunctionReturnFamily::List,
+        });
+    };
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        plan.parameter_list_list_function(runtime_id).frame_layout(),
+        function.captures(),
+    )?;
+    run_parameter_list_list_loop(plan, state, runtime_id, frame)
+}
+
 pub(in crate::runtime) fn run_function_list_function_call(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
@@ -935,6 +1067,8 @@ fn list_function_frame_layout<'a>(
     function: &ListFunctionId,
 ) -> &'a crate::plan::execution::FrameLayout {
     match function {
+        ListFunctionId::Parameter(id) => plan.parameter_list_function(*id).frame_layout(),
+        ListFunctionId::ParameterList(id) => plan.parameter_list_list_function(*id).frame_layout(),
         ListFunctionId::Int(id) => plan.int_list_function(*id).frame_layout(),
         ListFunctionId::String(id) => plan.string_list_function(*id).frame_layout(),
         ListFunctionId::BitArray(id) => plan.bit_array_list_function(*id).frame_layout(),
@@ -964,6 +1098,40 @@ pub(in crate::runtime) fn run_int_function_returning_function_call(
         plan.int_function_function(function).frame_layout(),
     )?;
     run_int_function_loop(plan, state, function, frame)
+}
+
+pub(in crate::runtime) fn run_generic_function_returning_function_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: &GenericFunctionFunctionId,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<EvaluatedGenericFunction> {
+    let frame = bind_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        plan.generic_function_function(function).frame_layout(),
+    )?;
+    run_generic_function_loop(plan, state, function.clone(), frame)
+}
+
+pub(in crate::runtime) fn run_never_function_returning_function_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: &NeverFunctionFunctionId,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<EvaluatedNeverFunction> {
+    let frame = bind_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        plan.never_function_function(function).frame_layout(),
+    )?;
+    run_never_function_loop(plan, state, function.clone(), frame)
 }
 
 pub(in crate::runtime) fn run_float_function_returning_function_call(
@@ -1163,6 +1331,60 @@ pub(in crate::runtime) fn run_int_function_function_call(
         function.captures(),
     )?;
     run_int_function_loop(plan, state, function_id, frame)
+}
+
+pub(in crate::runtime) fn run_generic_function_function_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: &crate::plan::execution::FunctionFunctionExpr,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<EvaluatedGenericFunction> {
+    let function = eval_function_function_expr(plan, state, caller_frame, function)?;
+    let runtime_id = function.runtime_id();
+    let function_id = runtime_id
+        .generic()
+        .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::Generic,
+            actual: runtime_id.family(),
+        })?;
+    let frame_layout = plan.generic_function_function(&function_id).frame_layout();
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        frame_layout,
+        function.captures(),
+    )?;
+    run_generic_function_loop(plan, state, function_id, frame)
+}
+
+pub(in crate::runtime) fn run_never_function_function_call(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    function: &crate::plan::execution::FunctionFunctionExpr,
+    args: &[CallArg],
+    caller_frame: &mut Frame,
+) -> ExecutionResult<EvaluatedNeverFunction> {
+    let function = eval_function_function_expr(plan, state, caller_frame, function)?;
+    let runtime_id = function.runtime_id();
+    let function_id = runtime_id
+        .never()
+        .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::Never,
+            actual: runtime_id.family(),
+        })?;
+    let frame_layout = plan.never_function_function(&function_id).frame_layout();
+    let frame = bind_function_value_arguments(
+        plan,
+        state,
+        args,
+        caller_frame,
+        frame_layout,
+        function.captures(),
+    )?;
+    run_never_function_loop(plan, state, function_id, frame)
 }
 
 pub(in crate::runtime) fn run_float_function_function_call(
@@ -1452,6 +1674,14 @@ fn run_function_returning_function_call(
     caller_frame: &mut Frame,
 ) -> ExecutionResult<EvaluatedFunctionValue> {
     match function {
+        crate::plan::execution::FunctionFunctionId::Generic(function) => {
+            run_generic_function_returning_function_call(plan, state, &function, args, caller_frame)
+                .map(Into::into)
+        }
+        crate::plan::execution::FunctionFunctionId::Never(function) => {
+            run_never_function_returning_function_call(plan, state, &function, args, caller_frame)
+                .map(Into::into)
+        }
         crate::plan::execution::FunctionFunctionId::Int(function) => {
             run_int_function_returning_function_call(plan, state, function, args, caller_frame)
                 .map(Into::into)
@@ -1517,10 +1747,12 @@ mod tests {
         run_bit_array_function_loop, run_bit_array_list_loop, run_bool_function_loop,
         run_bool_list_loop, run_custom_function_loop, run_custom_list_loop,
         run_float_function_loop, run_float_list_loop, run_function_function_loop,
-        run_function_list_loop, run_int_function_loop, run_int_list_loop, run_list_function_loop,
-        run_list_list_loop, run_nil_function_loop, run_nil_list_loop, run_string_function_loop,
-        run_string_list_loop, run_tuple_function_loop, run_tuple_list_loop,
-        run_utf_codepoint_function_loop, run_utf_codepoint_list_loop,
+        run_function_list_loop, run_generic_function_loop, run_int_function_loop,
+        run_int_list_loop, run_list_function_loop, run_list_list_loop, run_never_function_loop,
+        run_nil_function_loop, run_nil_list_loop, run_parameter_list_list_loop,
+        run_parameter_list_loop, run_string_function_loop, run_string_list_loop,
+        run_tuple_function_loop, run_tuple_list_loop, run_utf_codepoint_function_loop,
+        run_utf_codepoint_list_loop,
     };
     use crate::plan::execution::{
         BoolFunctionFunctionId, CallArg, FloatFunctionFunctionId, FunctionFunctionId,
@@ -1604,6 +1836,8 @@ mod tests {
     #[test]
     fn list_function_value_calls_propagate_callee_panics() {
         let sources = [
+            "pub fn main() -> List(value) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
+            "pub fn main() -> List(List(value)) { case True { True -> panic as \"callee\" False -> fn() { [[]] } }() }",
             "pub fn main() -> List(Int) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
             "pub fn main() -> List(String) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
             "pub fn main() -> List(BitArray) { case True { True -> panic as \"callee\" False -> fn() { [] } }() }",
@@ -1634,6 +1868,8 @@ mod tests {
     #[test]
     fn function_returning_function_value_calls_propagate_callee_and_argument_panics() {
         let callee_sources = [
+            "pub fn main() -> fn(value) -> value { case True { True -> panic as \"callee\" False -> fn() { fn(value) { value } } }() }",
+            "pub fn main() -> fn(Int) -> value { case True { True -> panic as \"callee\" False -> fn() { fn(_value) { panic } } }() }",
             "pub fn main() -> fn() -> Int { case True { True -> panic as \"callee\" False -> fn() { fn() { 0 } } }() }",
             "pub fn main() -> fn() -> String { case True { True -> panic as \"callee\" False -> fn() { fn() { \"\" } } }() }",
             "pub fn main() -> fn() -> BitArray { case True { True -> panic as \"callee\" False -> fn() { fn() { <<>> } } }() }",
@@ -1656,6 +1892,7 @@ mod tests {
             "fn callee(value: Int) -> fn() -> #(Int) { fn() { #(value) } } pub fn main() { let function = callee function(panic as \"argument\") }",
             "fn callee(value: Int) -> fn() -> List(Int) { fn() { [value] } } pub fn main() { let function = callee function(panic as \"argument\") }",
             "fn callee(value: Int) -> fn() -> fn() -> Int { fn() { fn() { value } } } pub fn main() { let function = callee function(panic as \"argument\") }",
+            "fn callee(value: Int) -> fn(item) -> item { fn(item) { item } } pub fn main() { let function = callee function(panic as \"argument\") }",
         ];
 
         for source in callee_sources {
@@ -1687,6 +1924,17 @@ mod tests {
     }
 
     #[test]
+    fn never_function_value_calls_propagate_callee_panics() {
+        assert_eq!(
+            crate::runtime::run_src_error(
+                "pub fn main() -> value { case True { True -> panic as \"callee\" False -> fn() { panic } }() }",
+            )
+            .to_string(),
+            "panic: callee",
+        );
+    }
+
+    #[test]
     fn direct_calls_propagate_argument_panics_for_every_return_family() {
         let sources = [
             "fn callee(value: Int) -> Int { value } pub fn main() { let _ = callee(panic) 0 }",
@@ -1707,6 +1955,8 @@ mod tests {
             "fn callee(value: Int) -> List(#(Int)) { [] } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> List(List(Int)) { [] } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> List(fn() -> Int) { [] } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> List(item) { [] } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> List(List(item)) { [[]] } pub fn main() { let _ = callee(panic) 0 }",
         ];
 
         for source in sources {
@@ -1724,6 +1974,33 @@ mod tests {
                 "panic: `panic` expression evaluated.",
             );
         }
+    }
+
+    #[test]
+    fn generic_function_arguments_propagate_panics_across_callable_boundaries() {
+        let sources = [
+            "fn accept(function: fn(value) -> value) { 0 } pub fn main() { accept(panic) }",
+            "fn accept(function: fn(value) -> value) { 0 } pub fn main() { let call = accept call(panic) }",
+            "pub type Box(value) { Box(fn(value) -> value) } pub fn main() { Box(panic) }",
+        ];
+
+        for source in sources {
+            assert_eq!(
+                crate::runtime::run_src_error(source).to_string(),
+                "panic: `panic` expression evaluated.",
+            );
+        }
+    }
+
+    #[test]
+    fn returned_never_function_value_calls_propagate_argument_failure_before_the_callee() {
+        assert_eq!(
+            crate::runtime::run_src_error(include_str!(
+                "../../tests/fixtures/execution_errors/functions/generic_never_returned_function_value_argument_failure.gleam"
+            ))
+            .to_string(),
+            "let_assert: Pattern match failed, no pattern matched the value.",
+        );
     }
 
     #[test]
@@ -1771,6 +2048,8 @@ mod tests {
             "fn callee(value: Int) -> List(#(Int)) { [] } pub fn main() { let function = callee function(panic) }",
             "fn callee(value: Int) -> List(List(Int)) { [] } pub fn main() { let function = callee function(panic) }",
             "fn callee(value: Int) -> List(fn() -> Int) { [] } pub fn main() { let function = callee function(panic) }",
+            "fn callee(value: Int) -> List(item) { [] } pub fn main() { let function = callee function(panic) }",
+            "fn callee(value: Int) -> List(List(item)) { [[]] } pub fn main() { let function = callee function(panic) }",
         ];
 
         for source in sources {
@@ -1804,7 +2083,26 @@ fn nils(function: fn() -> List(Nil)) { function() }
 fn tuples(function: fn() -> List(#(Int))) { function() }
 fn lists(function: fn() -> List(List(Int))) { function() }
 fn functions(function: fn() -> List(fn() -> Int)) { function() }
-pub fn main() { Nil }
+fn empty() -> List(value) { [] }
+fn nested() -> List(List(value)) { [[]] }
+fn parameters(function: fn() -> List(value)) -> List(value) { function() }
+fn parameter_lists(function: fn() -> List(List(value))) -> List(List(value)) { function() }
+pub fn main() {
+  let _ = ints
+  let _ = strings
+  let _ = bit_arrays
+  let _ = utf_codepoints
+  let _ = customs
+  let _ = floats
+  let _ = bools
+  let _ = nils
+  let _ = tuples
+  let _ = lists
+  let _ = functions
+  let _ = parameters(empty)
+  let _ = parameter_lists(nested)
+  Nil
+}
 "#,
         );
         let wrong_int = crate::runtime::EvaluatedListFunction::reference(
@@ -1974,11 +2272,42 @@ pub fn main() { Nil }
         let mut frame = Frame::new(function.frame_layout(), &mut state);
         frame.set_list_function(
             function.frame_layout().list_functions()[0].clone(),
-            wrong_int,
+            wrong_int.clone(),
         );
         assert_eq!(
             run_function_list_loop(&plan, &mut state, plan.function_list_function_id(0), frame,)
                 .expect_err("direct-mutated list function family must fail"),
+            expected,
+        );
+
+        let function = plan.parameter_list_function(plan.parameter_list_function_id(1));
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        frame.set_list_function(
+            function.frame_layout().list_functions()[0].clone(),
+            wrong_int.clone(),
+        );
+        assert_eq!(
+            run_parameter_list_loop(&plan, &mut state, plan.parameter_list_function_id(1), frame,)
+                .expect_err("direct-mutated parameter list function family must fail"),
+            expected,
+        );
+
+        let function = plan.parameter_list_list_function(plan.parameter_list_list_function_id(1));
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        frame.set_list_function(
+            function.frame_layout().list_functions()[0].clone(),
+            wrong_int,
+        );
+        assert_eq!(
+            run_parameter_list_list_loop(
+                &plan,
+                &mut state,
+                plan.parameter_list_list_function_id(1),
+                frame,
+            )
+            .expect_err("direct-mutated nested parameter list function family must fail"),
             expected,
         );
     }
@@ -1996,6 +2325,7 @@ pub fn main() { Nil }
             "fn callee(value: Int) -> fn() -> #(Int) { panic } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> fn() -> List(Int) { panic } pub fn main() { let _ = callee(panic) 0 }",
             "fn callee(value: Int) -> fn() -> fn() -> Int { panic } pub fn main() { let _ = callee(panic) 0 }",
+            "fn callee(value: Int) -> fn(item) -> item { fn(item) { item } } pub fn main() { let _ = callee(panic) 0 }",
             "pub type Boxed { Boxed(Int) } fn callee(value: Int) -> fn() -> Boxed { fn() { Boxed(value) } } pub fn main() { let _ = callee(panic) 0 }",
         ];
 
@@ -2024,7 +2354,17 @@ fn tuple_function(provider: fn() -> fn() -> #(Int)) { provider() }
 fn list_function(provider: fn() -> fn() -> List(Int)) { provider() }
 fn function_function(provider: fn() -> fn() -> fn() -> Int) { provider() }
 
-pub fn main() { #(list_function, custom_function, function_function) }
+pub fn main() {
+  let _ = int_function
+  let _ = string_function
+  let _ = bit_array_function
+  let _ = utf_codepoint_function
+  let _ = float_function
+  let _ = bool_function
+  let _ = nil_function
+  let _ = tuple_function
+  #(list_function, custom_function, function_function)
+}
 "#,
         );
         let mut functions = expect_tuple_values(
@@ -2227,6 +2567,70 @@ pub fn main() { #(list_function, custom_function, function_function) }
     }
 
     #[test]
+    fn generic_function_function_calls_reject_wrong_return_families() {
+        let plan = crate::runtime::plan_src(
+            r#"
+fn generic_function(provider: fn() -> fn(value) -> value) { provider() }
+fn never_function(provider: fn() -> fn(Int) -> value) { provider() }
+pub fn main() { #(generic_function, never_function) }
+"#,
+        );
+        let mut functions = expect_tuple_values(
+            run_main(&plan).expect("main should return the generic function providers"),
+        );
+        let never_function_id = expect_function_function_id(
+            functions
+                .pop()
+                .expect("function tuple should contain never_function"),
+        )
+        .never()
+        .expect("never_function should return a never function");
+        let generic_function_id = expect_function_function_id(
+            functions
+                .pop()
+                .expect("function tuple should contain generic_function"),
+        )
+        .generic()
+        .expect("generic_function should return a generic function");
+        assert_eq!(functions, Vec::new());
+        let wrong_int = crate::runtime::EvaluatedFunctionFunction::reference(
+            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+            Vec::new(),
+            Vec::new(),
+            crate::plan::execution::FunctionType::new(
+                Vec::new(),
+                crate::plan::execution::ValueType::Int,
+            ),
+        );
+
+        let function = plan.generic_function_function(&generic_function_id);
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        let local = function.frame_layout().function_functions()[0].clone();
+        frame.set_function_function(&local, wrong_int.clone());
+        assert_eq!(
+            run_generic_function_loop(&plan, &mut state, generic_function_id, frame),
+            Err(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::Generic,
+                actual: FunctionReturnFamily::Int,
+            }),
+        );
+
+        let function = plan.never_function_function(&never_function_id);
+        let mut state = crate::runtime::RuntimeState::new();
+        let mut frame = Frame::new(function.frame_layout(), &mut state);
+        let local = function.frame_layout().function_functions()[0].clone();
+        frame.set_function_function(&local, wrong_int);
+        assert_eq!(
+            run_never_function_loop(&plan, &mut state, never_function_id, frame),
+            Err(ExecutionError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::Never,
+                actual: FunctionReturnFamily::Int,
+            }),
+        );
+    }
+
+    #[test]
     fn function_list_projections_reject_wrong_return_families() {
         let plan = crate::runtime::plan_src(
             r#"
@@ -2265,7 +2669,17 @@ fn function_function(values: List(fn() -> fn() -> Int)) {
   case values { [value, ..] -> value _ -> panic }
 }
 
-pub fn main() { #(list_function, custom_function, function_function) }
+pub fn main() {
+  let _ = int_function
+  let _ = string_function
+  let _ = bit_array_function
+  let _ = utf_codepoint_function
+  let _ = float_function
+  let _ = bool_function
+  let _ = nil_function
+  let _ = tuple_function
+  #(list_function, custom_function, function_function)
+}
 "#,
         );
         let mut functions = expect_tuple_values(

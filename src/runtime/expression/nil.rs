@@ -19,15 +19,22 @@ pub(in crate::runtime) fn eval_nil_expr(
 ) -> Result<(), ExecutionError> {
     match expression.kind() {
         NilExprKind::Value => Ok(()),
+        NilExprKind::Constant(id) => eval_nil_expr(plan, state, frame, plan.constant(*id)),
         NilExprKind::LocalGet { local, .. } => {
             frame.get_nil(*local);
             Ok(())
         }
-        NilExprKind::Call { function, args } => {
-            function::run_nil_call(plan, state, *function, args, frame)
-        }
-        NilExprKind::FunctionCall { function, args } => {
-            function::run_nil_function_call(plan, state, function, args, frame)
+        NilExprKind::Call(call) => super::eval_direct_call(
+            plan,
+            state,
+            frame,
+            call,
+            |plan, state, function, args, frame| {
+                function::run_nil_call(plan, state, *function, args, frame)
+            },
+        ),
+        NilExprKind::FunctionCall(call) => {
+            super::eval_function_call(plan, state, frame, call, function::run_nil_function_call)
         }
         NilExprKind::TupleIndex { tuple, index } => {
             match project_tuple_expr(plan, state, frame, tuple, *index, ValueType::Nil)? {
@@ -134,14 +141,16 @@ fn nil_value() -> Nil { Nil }
 pub fn main() {
   let local = Nil
   let function = nil_value
+  let true_selector = True
+  let false_selector = False
   #(
     local,
     nil_value(),
     function(),
     #(Nil).0,
     case [Nil] { [value] -> value _ -> Nil },
-    case True { True -> Nil False -> Nil },
-    case False { True -> Nil False -> Nil },
+    case true_selector { True -> Nil False -> Nil },
+    case false_selector { True -> Nil False -> Nil },
     case 1 { 1 -> Nil _ -> Nil },
     case 2 { 1 -> Nil _ -> Nil },
     case "one" { "one" -> Nil _ -> Nil },

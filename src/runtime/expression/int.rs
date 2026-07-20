@@ -20,12 +20,19 @@ pub(in crate::runtime) fn eval_int_expr(
 ) -> Result<BigInt, ExecutionError> {
     match expression.kind() {
         IntExprKind::Value(value) => Ok(value.clone()),
+        IntExprKind::Constant(id) => eval_int_expr(plan, state, frame, plan.constant(*id)),
         IntExprKind::LocalGet { local, .. } => Ok(frame.get_int(*local)),
-        IntExprKind::Call { function, args } => {
-            function::run_int_call(plan, state, *function, args, frame)
-        }
-        IntExprKind::FunctionCall { function, args } => {
-            function::run_int_function_call(plan, state, function, args, frame)
+        IntExprKind::Call(call) => super::eval_direct_call(
+            plan,
+            state,
+            frame,
+            call,
+            |plan, state, function, args, frame| {
+                function::run_int_call(plan, state, *function, args, frame)
+            },
+        ),
+        IntExprKind::FunctionCall(call) => {
+            super::eval_function_call(plan, state, frame, call, function::run_int_function_call)
         }
         IntExprKind::TupleIndex { tuple, index } => {
             match project_tuple_expr(plan, state, frame, tuple, *index, ValueType::Int)? {

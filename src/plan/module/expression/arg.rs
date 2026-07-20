@@ -11,7 +11,7 @@ use crate::plan::{
     FunctionFunctionLocal, FunctionFunctionLocalId, GenericFunctionLocal, GenericLocal,
     IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId,
     ParamLocal, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
-    UtfCodepointFunctionLocalId, UtfCodepointLocalId,
+    UtfCodepointFunctionLocalId, UtfCodepointLocalId, ValueType,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -107,6 +107,17 @@ pub(crate) enum CallArgKind {
         local: GenericFunctionLocal,
         value: FunctionExpr,
     },
+}
+
+pub(crate) enum CallArgStorage<'a> {
+    Stored(crate::plan::ValueStorageShape),
+    PotentiallyUninhabited(PotentiallyUninhabitedCallArg<'a>),
+}
+
+pub(crate) enum PotentiallyUninhabitedCallArg<'a> {
+    Generic(&'a GenericExpr),
+    Tuple(&'a TupleExpr),
+    Custom(&'a CustomExpr),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -317,6 +328,16 @@ impl Expr {
                 Some(CallArg::list(ListLocalExpr::Tuple {
                     local: *local,
                     item_type: item_type.clone(),
+                    value,
+                }))
+            }
+            (
+                ParamLocal::List(ListLocal::List { local, item_type }),
+                ExprKind::List(ListExpr::ParameterList(value)),
+            ) if item_type.as_ref() == &ValueType::Parameter(value.item().parameter()) => {
+                Some(CallArg::list(ListLocalExpr::ParameterList {
+                    local: *local,
+                    parameter: value.item().parameter(),
                     value,
                 }))
             }
@@ -689,6 +710,90 @@ impl CallArg {
         &self.kind
     }
 
+    pub(crate) fn storage(&self) -> CallArgStorage<'_> {
+        use crate::plan::ValueStorageShape as S;
+
+        match &self.kind {
+            CallArgKind::Parametric { value, .. } => match value.kind() {
+                ExprKind::Generic(value) => CallArgStorage::PotentiallyUninhabited(
+                    PotentiallyUninhabitedCallArg::Generic(value),
+                ),
+                ExprKind::Tuple(value) => CallArgStorage::PotentiallyUninhabited(
+                    PotentiallyUninhabitedCallArg::Tuple(value),
+                ),
+                ExprKind::Custom(value) => CallArgStorage::PotentiallyUninhabited(
+                    PotentiallyUninhabitedCallArg::Custom(value),
+                ),
+                ExprKind::Int(_) => CallArgStorage::Stored(S::Int),
+                ExprKind::Float(_) => CallArgStorage::Stored(S::Float),
+                ExprKind::String(_) => CallArgStorage::Stored(S::String),
+                ExprKind::BitArray(_) => CallArgStorage::Stored(S::BitArray),
+                ExprKind::UtfCodepoint(_) => CallArgStorage::Stored(S::UtfCodepoint),
+                ExprKind::Bool(_) => CallArgStorage::Stored(S::Bool),
+                ExprKind::Nil(_) => CallArgStorage::Stored(S::Nil),
+                ExprKind::List(value) => {
+                    CallArgStorage::Stored(S::List(Box::new(value.item_shape().clone())))
+                }
+                ExprKind::Function(value) => {
+                    CallArgStorage::Stored(S::Function(Box::new(value.shape().clone())))
+                }
+            },
+            CallArgKind::Tuple { value, .. } => {
+                CallArgStorage::PotentiallyUninhabited(PotentiallyUninhabitedCallArg::Tuple(value))
+            }
+            CallArgKind::Custom(value) => CallArgStorage::PotentiallyUninhabited(
+                PotentiallyUninhabitedCallArg::Custom(value.value()),
+            ),
+            CallArgKind::Int { .. } => CallArgStorage::Stored(S::Int),
+            CallArgKind::Float { .. } => CallArgStorage::Stored(S::Float),
+            CallArgKind::String { .. } => CallArgStorage::Stored(S::String),
+            CallArgKind::BitArray { .. } => CallArgStorage::Stored(S::BitArray),
+            CallArgKind::UtfCodepoint { .. } => CallArgStorage::Stored(S::UtfCodepoint),
+            CallArgKind::Bool { .. } => CallArgStorage::Stored(S::Bool),
+            CallArgKind::Nil { .. } => CallArgStorage::Stored(S::Nil),
+            CallArgKind::List(value) => {
+                CallArgStorage::Stored(S::List(Box::new(value.item_shape().clone())))
+            }
+            CallArgKind::IntFunction { value, .. } => {
+                CallArgStorage::Stored(S::Function(Box::new(value.shape().clone())))
+            }
+            CallArgKind::StringFunction { value, .. } => {
+                CallArgStorage::Stored(S::Function(Box::new(value.shape().clone())))
+            }
+            CallArgKind::BitArrayFunction { value, .. } => {
+                CallArgStorage::Stored(S::Function(Box::new(value.shape().clone())))
+            }
+            CallArgKind::UtfCodepointFunction { value, .. } => {
+                CallArgStorage::Stored(S::Function(Box::new(value.shape().clone())))
+            }
+            CallArgKind::CustomFunction { value, .. } => {
+                CallArgStorage::Stored(S::Function(Box::new(value.shape().clone())))
+            }
+            CallArgKind::FloatFunction { value, .. } => {
+                CallArgStorage::Stored(S::Function(Box::new(value.shape().clone())))
+            }
+            CallArgKind::BoolFunction { value, .. } => {
+                CallArgStorage::Stored(S::Function(Box::new(value.shape().clone())))
+            }
+            CallArgKind::NilFunction { value, .. } => {
+                CallArgStorage::Stored(S::Function(Box::new(value.shape().clone())))
+            }
+            CallArgKind::TupleFunction { value, .. } => {
+                CallArgStorage::Stored(S::Function(Box::new(value.shape().clone())))
+            }
+            CallArgKind::ListFunction { value, .. } => {
+                CallArgStorage::Stored(S::Function(Box::new(value.shape().clone())))
+            }
+            CallArgKind::FunctionFunction { value, .. } => {
+                CallArgStorage::Stored(S::Function(Box::new(value.shape().clone())))
+            }
+            CallArgKind::GenericFunction { value, .. } => {
+                CallArgStorage::Stored(S::Function(Box::new(value.shape().clone())))
+            }
+        }
+    }
+
+    #[cfg(test)]
     pub(crate) fn parameter_shape(&self) -> crate::plan::ValueShape {
         match &self.kind {
             CallArgKind::Parametric { slot, .. } => slot.shape().clone(),
@@ -1031,8 +1136,9 @@ mod tests {
         NilLocalId, PanicExpr, PanicSite, ParamLocal, StringExpr, StringFunctionExpr,
         StringFunctionLocalId, StringFunctionReference, StringListLocalId, StringLocalId,
         TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleFunctionReference,
-        TupleListLocalId, TupleLocalId, TypeParameterId, ValueShape, ValueType,
-        monomorphic_function_instantiation,
+        TupleListLocalId, TupleLocalId, TypeParameterId, UtfCodepointExpr,
+        UtfCodepointFunctionExpr, UtfCodepointFunctionLocalId, UtfCodepointLocalId, ValueShape,
+        ValueType, monomorphic_function_instantiation,
     };
     use num_bigint::BigInt;
 
@@ -1092,6 +1198,85 @@ mod tests {
                 local: function_local,
                 value: TypedFunctionExpr::new(function_type.shape(), function),
             },
+        );
+    }
+
+    #[test]
+    fn call_arg_parameter_shapes_preserve_compound_family_metadata() {
+        let panic = || PanicExpr::panic_at(None, PanicSite::unknown());
+
+        assert_eq!(
+            CallArg::bit_array(BitArrayLocalId(0), BitArrayExpr::value(Vec::new()))
+                .parameter_shape(),
+            ValueShape::BitArray,
+        );
+        assert_eq!(
+            CallArg::utf_codepoint(UtfCodepointLocalId(0), UtfCodepointExpr::panic(panic()))
+                .parameter_shape(),
+            ValueShape::UtfCodepoint,
+        );
+
+        let custom_type = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        );
+        let custom = CustomExpr::panic(panic(), custom_type.clone());
+        assert_eq!(
+            CallArg::custom(CustomLocalExpr::from_parts(
+                CustomLocal::new(CustomLocalId(0), custom_type.clone()),
+                custom,
+            ))
+            .parameter_shape(),
+            ValueShape::Custom(crate::plan::CustomValueShape::any(custom_type.clone())),
+        );
+
+        let bit_array_function_type =
+            FunctionType::new(vec![ValueType::BitArray], ValueType::BitArray);
+        assert_eq!(
+            CallArg::bit_array_function(
+                BitArrayFunctionLocalId(0),
+                BitArrayFunctionExpr::panic(panic(), bit_array_function_type.clone()),
+            )
+            .parameter_shape(),
+            ValueShape::Function(Box::new(FunctionShape::from_function_type(
+                bit_array_function_type,
+            ))),
+        );
+
+        let utf_codepoint_function_type =
+            FunctionType::new(vec![ValueType::UtfCodepoint], ValueType::UtfCodepoint);
+        let utf_codepoint = Expr::function(FunctionExpr::utf_codepoint(
+            UtfCodepointFunctionExpr::panic(panic(), utf_codepoint_function_type.clone()),
+        ))
+        .into_call_arg(&ParamLocal::utf_codepoint_function(
+            UtfCodepointFunctionLocalId(0),
+            utf_codepoint_function_type.clone(),
+        ))
+        .expect("a UTF codepoint callable should accept its exact function expression");
+        assert_eq!(
+            utf_codepoint.parameter_shape(),
+            ValueShape::Function(Box::new(FunctionShape::from_function_type(
+                utf_codepoint_function_type,
+            ))),
+        );
+
+        let custom_function_type =
+            CustomFunctionType::new(vec![ValueType::Int], custom_type.clone());
+        let custom_function = Expr::function(FunctionExpr::custom(CustomFunctionExpr::panic(
+            panic(),
+            custom_function_type.clone(),
+        )))
+        .into_call_arg(&ParamLocal::custom_function(CustomFunctionLocal::new(
+            CustomFunctionLocalId(0),
+            custom_function_type.clone(),
+        )))
+        .expect("a custom callable should accept its exact function expression");
+        assert_eq!(
+            custom_function.parameter_shape(),
+            ValueShape::Function(Box::new(FunctionShape::new(
+                custom_function_type.argument_shapes().to_vec(),
+                ValueShape::Custom(custom_function_type.return_().clone()),
+            ))),
         );
     }
 
@@ -1627,6 +1812,26 @@ mod tests {
                 local: ListListLocalId(6),
                 item_type: Box::new(nested_item_type),
                 value: nested.into_list().expect("expected nested list"),
+            })),
+        );
+
+        let parameter = crate::plan::TypeParameterId(0);
+        let parameter_list = crate::plan::ParameterListListExpr::local_get(
+            crate::plan::ParameterListListItem::new(parameter),
+            ListListLocalId(7),
+            "parameter_lists".into(),
+        );
+        assert_eq!(
+            Expr::list(ListExpr::ParameterList(parameter_list.clone())).into_call_arg(
+                &ParamLocal::list(ListLocal::list(
+                    ListListLocalId(8),
+                    ValueType::Parameter(parameter),
+                )),
+            ),
+            Some(CallArg::list(ListLocalExpr::ParameterList {
+                local: ListListLocalId(8),
+                parameter,
+                value: parameter_list,
             })),
         );
 

@@ -2,16 +2,17 @@ use super::evaluated::{
     EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture, EvaluatedCaptureKind,
     EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedFloatFunction,
     EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedFunctionValueKind,
-    EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction, EvaluatedNilFunction,
-    EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
+    EvaluatedGenericFunction, EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction,
+    EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
+    EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
 use super::state::{ListValueId, RuntimeState};
 use super::{
     BitArrayFunctionValue, BitArrayValue, BoolFunctionValue, CaptureListValue, CaptureValue,
     CustomFieldValue, CustomFunctionValue, CustomFunctionValueTarget, CustomValue,
-    FloatFunctionValue, FunctionFunctionValue, FunctionValue, FunctionValueKind, IntFunctionValue,
-    ListFunctionValue, ListValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue,
-    UtfCodepointFunctionValue, Value,
+    FloatFunctionValue, FunctionFunctionValue, FunctionValue, FunctionValueKind,
+    GenericFunctionValue, IntFunctionValue, ListFunctionValue, ListValue, NeverFunctionValue,
+    NilFunctionValue, StringFunctionValue, TupleFunctionValue, UtfCodepointFunctionValue, Value,
 };
 use crate::plan::execution::ExecutionPlan;
 
@@ -40,6 +41,9 @@ pub(super) fn value(plan: &ExecutionPlan, state: &RuntimeState, value: Evaluated
 
 fn list(plan: &ExecutionPlan, state: &RuntimeState, value: &ListValueId) -> ListValue {
     match value {
+        ListValueId::Parameter(value) => {
+            ListValue::empty(crate::plan::ValueType::Parameter(value.type_id().item()))
+        }
         ListValueId::Int(value) => ListValue::int(state.int_values(value).to_vec()),
         ListValueId::String(value) => ListValue::string(state.string_values(value).to_vec()),
         ListValueId::BitArray(value) => ListValue::bit_array(
@@ -78,19 +82,21 @@ fn list(plan: &ExecutionPlan, state: &RuntimeState, value: &ListValueId) -> List
                 })
                 .collect(),
         ),
+        ListValueId::ParameterList(value) => {
+            let item_type = crate::plan::ValueType::Parameter(value.type_id().item_type().item());
+            ListValue::from_evaluated_list(
+                item_type.clone(),
+                vec![ListValue::empty(item_type); state.parameter_list_list_len(value)],
+            )
+        }
         ListValueId::List(value) => ListValue::from_evaluated_list(
             plan.nested_list_item_type(value.type_id()),
             state
                 .list_values(value)
                 .iter()
                 .cloned()
-                .map(|core| {
-                    list(
-                        plan,
-                        state,
-                        &ListValueId::from_core(plan, value.type_id().item_type(), core),
-                    )
-                })
+                .map(super::state::StoredListValueId::into_value)
+                .map(|value| list(plan, state, &value))
                 .collect(),
         ),
         ListValueId::Function(value) => ListValue::from_evaluated_function(
@@ -111,6 +117,12 @@ fn function(
     value: EvaluatedFunctionValue,
 ) -> FunctionValue {
     let kind = match value.kind() {
+        EvaluatedFunctionValueKind::Generic(value) => {
+            FunctionValueKind::Generic(generic_function(plan, state, value))
+        }
+        EvaluatedFunctionValueKind::Never(value) => {
+            FunctionValueKind::Never(never_function(plan, state, value))
+        }
         EvaluatedFunctionValueKind::Int(value) => {
             FunctionValueKind::Int(int_function(plan, state, value))
         }
@@ -175,6 +187,32 @@ fn int_function(
     value: &EvaluatedIntFunction,
 ) -> IntFunctionValue {
     IntFunctionValue::new_with_captures(
+        value.runtime_id(),
+        value.params().to_vec(),
+        captures(plan, state, value.captures()),
+        plan.function_type(value.type_()),
+    )
+}
+
+fn generic_function(
+    plan: &ExecutionPlan,
+    state: &RuntimeState,
+    value: &EvaluatedGenericFunction,
+) -> GenericFunctionValue {
+    GenericFunctionValue::from_evaluated(
+        value.runtime_id().clone(),
+        value.params().to_vec(),
+        captures(plan, state, value.captures()),
+        plan.function_type(value.type_()),
+    )
+}
+
+fn never_function(
+    plan: &ExecutionPlan,
+    state: &RuntimeState,
+    value: &crate::runtime::EvaluatedNeverFunction,
+) -> NeverFunctionValue {
+    NeverFunctionValue::from_evaluated(
         value.runtime_id(),
         value.params().to_vec(),
         captures(plan, state, value.captures()),
@@ -329,13 +367,8 @@ fn nested_list_values(
         .list_values(value)
         .iter()
         .cloned()
-        .map(|core| {
-            list(
-                plan,
-                state,
-                &ListValueId::from_core(plan, value.type_id().item_type(), core),
-            )
-        })
+        .map(super::state::StoredListValueId::into_value)
+        .map(|value| list(plan, state, &value))
         .collect()
 }
 
@@ -395,6 +428,12 @@ fn capture(plan: &ExecutionPlan, state: &RuntimeState, value: &EvaluatedCapture)
         EvaluatedCaptureKind::CustomFunction { local, value } => {
             CaptureValue::custom_function(local.id(), custom_function(plan, state, value))
         }
+        EvaluatedCaptureKind::GenericFunction { local, value } => {
+            CaptureValue::generic_function(local.id(), generic_function(plan, state, value))
+        }
+        EvaluatedCaptureKind::NeverFunction { local, value } => {
+            CaptureValue::never_function(local.id(), never_function(plan, state, value))
+        }
         EvaluatedCaptureKind::BoolFunction { local, value } => {
             CaptureValue::bool_function(*local, bool_function(plan, state, value))
         }
@@ -419,6 +458,15 @@ fn list_capture(
     value: &EvaluatedListCapture,
 ) -> CaptureListValue {
     match value {
+        EvaluatedListCapture::Parameter { local, value } => CaptureListValue::Parameter {
+            local: *local,
+            item_type: value.type_id().item(),
+        },
+        EvaluatedListCapture::ParameterList { local, value } => CaptureListValue::ParameterList {
+            local: *local,
+            item_type: value.type_id().item_type().item(),
+            len: state.parameter_list_list_len(value),
+        },
         EvaluatedListCapture::Int { local, value } => CaptureListValue::Int {
             local: *local,
             value: state.int_values(value).to_vec(),
@@ -509,7 +557,7 @@ mod tests {
         UtfCodepointFunctionId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
         UtfCodepointLocalId,
     };
-    use crate::plan::{FunctionType, ValueType};
+    use crate::plan::{FunctionType, TypeParameterId, ValueType};
     use crate::runtime::evaluated::{
         EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
         EvaluatedCustomFunction, EvaluatedFloatFunction, EvaluatedFunctionFunction,
@@ -542,7 +590,27 @@ fn nested_customs() -> List(List(Boxed)) { [] }
 fn functions() -> List(fn() -> Int) { [] }
 fn take_custom_function(value: fn() -> Boxed) { 0 }
 fn take_function_function(value: fn() -> fn() -> Int) { 0 }
-pub fn main() { 0 }
+pub fn main() {
+  let _ = #(
+    ints,
+    strings,
+    bit_arrays,
+    utf_codepoints,
+    custom,
+    take_custom,
+    customs,
+    floats,
+    bools,
+    nils,
+    tuples,
+    lists,
+    nested_customs,
+    functions,
+    take_custom_function,
+    take_function_function,
+  )
+  0
+}
 "#;
 
     #[test]
@@ -609,7 +677,7 @@ pub fn main() { 0 }
         let nested_child = state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
         let nested_list = state.list(
             plan.list_list_function_id(0).type_id(),
-            vec![nested_child.into_core()],
+            vec![nested_child.into()],
         );
         let function_list = state.function(
             plan.function_list_function_id(0).type_id(),
@@ -880,7 +948,7 @@ pub fn main() { 0 }
         let nested_child = state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
         let nested_list = state.list(
             plan.list_list_function_id(0).type_id(),
-            vec![nested_child.into_core()],
+            vec![nested_child.into()],
         );
         let function_list = state.function(
             plan.function_list_function_id(0).type_id(),
@@ -1184,6 +1252,75 @@ pub fn main() { 0 }
                     FunctionType::new(vec![ValueType::Int], ValueType::Int),
                 ),
             )),
+        );
+    }
+
+    #[test]
+    fn source_materialization_preserves_generic_and_never_function_types() {
+        let captured = crate::runtime::run_src(include_str!(
+            "../../tests/fixtures/execution/functions/generic_materialized_capture_families.gleam"
+        ));
+        assert_eq!(
+            captured.value_type(),
+            ValueType::Function(Box::new(FunctionType::new(
+                Vec::new(),
+                ValueType::Tuple(vec![
+                    ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(0)))),
+                    ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Parameter(
+                        TypeParameterId(1),
+                    ))))),
+                    ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Int)))),
+                    ValueType::Function(Box::new(FunctionType::new(
+                        vec![ValueType::Parameter(TypeParameterId(2))],
+                        ValueType::Parameter(TypeParameterId(2)),
+                    ))),
+                    ValueType::Function(Box::new(FunctionType::new(
+                        vec![ValueType::Int],
+                        ValueType::Parameter(TypeParameterId(3)),
+                    ))),
+                ]),
+            ))),
+        );
+
+        let generic = crate::runtime::run_src(include_str!(
+            "../../tests/fixtures/execution/functions/generic_function_main.gleam"
+        ));
+        assert_eq!(
+            generic.value_type(),
+            ValueType::Tuple(vec![
+                ValueType::Function(Box::new(FunctionType::new(
+                    vec![ValueType::Parameter(TypeParameterId(0))],
+                    ValueType::Parameter(TypeParameterId(0)),
+                ))),
+                ValueType::Function(Box::new(FunctionType::new(
+                    vec![ValueType::Parameter(TypeParameterId(1))],
+                    ValueType::Parameter(TypeParameterId(1)),
+                ))),
+                ValueType::Function(Box::new(FunctionType::new(
+                    vec![ValueType::Parameter(TypeParameterId(2))],
+                    ValueType::Parameter(TypeParameterId(2)),
+                ))),
+            ]),
+        );
+
+        let never = crate::runtime::run_src(include_str!(
+            "../../tests/fixtures/execution/functions/generic_never_function_materialization.gleam"
+        ));
+        assert_eq!(
+            never.value_type(),
+            ValueType::Tuple(vec![
+                ValueType::Function(Box::new(FunctionType::new(
+                    vec![ValueType::Int],
+                    ValueType::Parameter(TypeParameterId(0)),
+                ))),
+                ValueType::Function(Box::new(FunctionType::new(
+                    Vec::new(),
+                    ValueType::Function(Box::new(FunctionType::new(
+                        vec![ValueType::Int],
+                        ValueType::Parameter(TypeParameterId(1)),
+                    ))),
+                ))),
+            ]),
         );
     }
 }

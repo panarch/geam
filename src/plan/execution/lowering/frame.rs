@@ -1,4 +1,6 @@
-use super::specialization::{ConcreteFunctionShape, ConcreteValueShape};
+use super::specialization::{
+    FunctionRepresentation, SpecializedFunctionShape, SpecializedValueShape, StoredValueShape,
+};
 use super::{LoweringContext, SpecializedFunctionLocal};
 use crate::plan::{execution, module};
 use std::collections::{HashMap, HashSet};
@@ -71,14 +73,24 @@ pub(super) struct LocalAllocationTemplate {
 
 #[derive(Clone)]
 pub(super) struct LocalAllocationPlan {
-    entries: Box<[(LocalKey, ConcreteValueShape)]>,
+    stored_shapes: Box<[StoredValueShape]>,
     allocations: HashMap<LocalKey, LocalAllocation>,
+    uninhabited: HashMap<LocalKey, crate::plan::TypeParameterId>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct LocalAllocation {
-    entry: usize,
     index: usize,
+    shape: StoredValueShape,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum AllocatedLocal {
+    Stored {
+        index: usize,
+        shape: StoredValueShape,
+    },
+    Uninhabited(crate::plan::TypeParameterId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -92,6 +104,7 @@ enum StorageFamily {
     Bool,
     Nil,
     Tuple,
+    ParameterList,
     IntList,
     StringList,
     BitArrayList,
@@ -102,6 +115,7 @@ enum StorageFamily {
     NilList,
     TupleList,
     ListList,
+    ParameterListList,
     FunctionList,
     IntFunction,
     FloatFunction,
@@ -112,6 +126,8 @@ enum StorageFamily {
     BoolFunction,
     NilFunction,
     TupleFunction,
+    GenericFunction,
+    NeverFunction,
     IntListFunction,
     StringListFunction,
     BitArrayListFunction,
@@ -157,32 +173,41 @@ impl LocalAllocationTemplate {
 
     pub(super) fn specialize(
         &self,
-        substitution: &super::specialization::ConcreteTypeSubstitution,
+        substitution: &super::specialization::SpecializedTypeSubstitution,
+        representations: &super::specialization::RepresentationContext,
     ) -> LocalAllocationPlan {
-        let entries = self
-            .entries
-            .iter()
-            .map(|(key, shape)| (*key, ConcreteValueShape::instantiate(shape, substitution)))
-            .collect::<Vec<_>>()
-            .into_boxed_slice();
         let mut next = HashMap::<StorageFamily, usize>::new();
-        let mut allocations = HashMap::with_capacity(entries.len());
+        let mut allocations = HashMap::with_capacity(self.entries.len());
+        let mut uninhabited = HashMap::new();
+        let mut stored_shapes = Vec::new();
 
-        for (entry, (key, shape)) in entries.iter().enumerate() {
-            let index = next.entry(StorageFamily::of(shape)).or_default();
+        for (key, shape) in &self.entries {
+            let shape = SpecializedValueShape::instantiate(shape, substitution);
+            let stored = match representations.representation(&shape) {
+                super::specialization::ValueRepresentation::Uninhabited(parameter) => {
+                    uninhabited.insert(*key, parameter);
+                    continue;
+                }
+                super::specialization::ValueRepresentation::Stored(stored) => stored,
+            };
+            let index = next
+                .entry(StorageFamily::of(&stored, representations))
+                .or_default();
             allocations.insert(
                 *key,
                 LocalAllocation {
-                    entry,
                     index: *index,
+                    shape: stored.clone(),
                 },
             );
+            stored_shapes.push(stored);
             *index += 1;
         }
 
         LocalAllocationPlan {
-            entries,
+            stored_shapes: stored_shapes.into_boxed_slice(),
             allocations,
+            uninhabited,
         }
     }
 }
@@ -192,86 +217,119 @@ impl LocalAllocationPlan {
         self.allocations[&key].index
     }
 
-    pub(super) fn shape(&self, key: LocalKey) -> &ConcreteValueShape {
-        &self.entries[self.allocations[&key].entry].1
+    pub(super) fn allocation(&self, key: LocalKey) -> AllocatedLocal {
+        match self.allocations.get(&key) {
+            Some(allocation) => AllocatedLocal::Stored {
+                index: allocation.index,
+                shape: allocation.shape.clone(),
+            },
+            None => AllocatedLocal::Uninhabited(self.uninhabited[&key]),
+        }
     }
 
-    pub(super) fn entries(&self) -> &[(LocalKey, ConcreteValueShape)] {
-        &self.entries
+    pub(super) fn stored_allocation(&self, key: LocalKey) -> (usize, StoredValueShape) {
+        let allocation = &self.allocations[&key];
+        (allocation.index, allocation.shape.clone())
+    }
+
+    pub(super) fn stored_shapes(&self) -> &[StoredValueShape] {
+        &self.stored_shapes
     }
 }
 
 impl ParameterPrefix {
-    pub(super) fn allocate(&mut self, shape: &ConcreteValueShape) -> usize {
-        let index = self.next.entry(StorageFamily::of(shape)).or_default();
+    pub(super) fn allocate_stored(
+        &mut self,
+        stored: StoredValueShape,
+        representations: &super::specialization::RepresentationContext,
+    ) -> (usize, StoredValueShape) {
+        let index = self
+            .next
+            .entry(StorageFamily::of(&stored, representations))
+            .or_default();
         let allocated = *index;
         *index += 1;
-        allocated
+        (allocated, stored)
     }
 }
 
 impl StorageFamily {
-    fn of(shape: &ConcreteValueShape) -> Self {
+    fn of(
+        shape: &StoredValueShape,
+        representations: &super::specialization::RepresentationContext,
+    ) -> Self {
         match shape {
-            ConcreteValueShape::Int => Self::Int,
-            ConcreteValueShape::Float => Self::Float,
-            ConcreteValueShape::String => Self::String,
-            ConcreteValueShape::BitArray => Self::BitArray,
-            ConcreteValueShape::UtfCodepoint => Self::UtfCodepoint,
-            ConcreteValueShape::Custom(_) => Self::Custom,
-            ConcreteValueShape::Bool => Self::Bool,
-            ConcreteValueShape::Nil => Self::Nil,
-            ConcreteValueShape::Tuple(_) => Self::Tuple,
-            ConcreteValueShape::List(item) => Self::list(item),
-            ConcreteValueShape::Function(function) => Self::function(function.return_()),
+            StoredValueShape::Int => Self::Int,
+            StoredValueShape::Float => Self::Float,
+            StoredValueShape::String => Self::String,
+            StoredValueShape::BitArray => Self::BitArray,
+            StoredValueShape::UtfCodepoint => Self::UtfCodepoint,
+            StoredValueShape::Custom(_) => Self::Custom,
+            StoredValueShape::Bool => Self::Bool,
+            StoredValueShape::Nil => Self::Nil,
+            StoredValueShape::Tuple(_) => Self::Tuple,
+            StoredValueShape::List(item) => Self::list(item),
+            StoredValueShape::Function(function) => Self::function(function, representations),
         }
     }
 
-    fn list(item: &ConcreteValueShape) -> Self {
+    fn list(item: &SpecializedValueShape) -> Self {
         match item {
-            ConcreteValueShape::Int => Self::IntList,
-            ConcreteValueShape::String => Self::StringList,
-            ConcreteValueShape::BitArray => Self::BitArrayList,
-            ConcreteValueShape::UtfCodepoint => Self::UtfCodepointList,
-            ConcreteValueShape::Custom(_) => Self::CustomList,
-            ConcreteValueShape::Float => Self::FloatList,
-            ConcreteValueShape::Bool => Self::BoolList,
-            ConcreteValueShape::Nil => Self::NilList,
-            ConcreteValueShape::Tuple(_) => Self::TupleList,
-            ConcreteValueShape::List(_) => Self::ListList,
-            ConcreteValueShape::Function(_) => Self::FunctionList,
+            SpecializedValueShape::Parameter(_) => Self::ParameterList,
+            SpecializedValueShape::Int => Self::IntList,
+            SpecializedValueShape::String => Self::StringList,
+            SpecializedValueShape::BitArray => Self::BitArrayList,
+            SpecializedValueShape::UtfCodepoint => Self::UtfCodepointList,
+            SpecializedValueShape::Custom(_) => Self::CustomList,
+            SpecializedValueShape::Float => Self::FloatList,
+            SpecializedValueShape::Bool => Self::BoolList,
+            SpecializedValueShape::Nil => Self::NilList,
+            SpecializedValueShape::Tuple(_) => Self::TupleList,
+            SpecializedValueShape::List(item) => match item.as_ref() {
+                SpecializedValueShape::Parameter(_) => Self::ParameterListList,
+                _ => Self::ListList,
+            },
+            SpecializedValueShape::Function(_) => Self::FunctionList,
         }
     }
 
-    fn function(return_: &ConcreteValueShape) -> Self {
-        match return_ {
-            ConcreteValueShape::Int => Self::IntFunction,
-            ConcreteValueShape::Float => Self::FloatFunction,
-            ConcreteValueShape::String => Self::StringFunction,
-            ConcreteValueShape::BitArray => Self::BitArrayFunction,
-            ConcreteValueShape::UtfCodepoint => Self::UtfCodepointFunction,
-            ConcreteValueShape::Custom(_) => Self::CustomFunction,
-            ConcreteValueShape::Bool => Self::BoolFunction,
-            ConcreteValueShape::Nil => Self::NilFunction,
-            ConcreteValueShape::Tuple(_) => Self::TupleFunction,
-            ConcreteValueShape::List(item) => Self::list_function(item),
-            ConcreteValueShape::Function(_) => Self::FunctionFunction,
+    fn function(
+        function: &SpecializedFunctionShape,
+        representations: &super::specialization::RepresentationContext,
+    ) -> Self {
+        match function.representation(representations) {
+            FunctionRepresentation::Symbolic => Self::GenericFunction,
+            FunctionRepresentation::Never(_) => Self::NeverFunction,
+            FunctionRepresentation::Executable(return_) => match return_ {
+                StoredValueShape::Int => Self::IntFunction,
+                StoredValueShape::Float => Self::FloatFunction,
+                StoredValueShape::String => Self::StringFunction,
+                StoredValueShape::BitArray => Self::BitArrayFunction,
+                StoredValueShape::UtfCodepoint => Self::UtfCodepointFunction,
+                StoredValueShape::Custom(_) => Self::CustomFunction,
+                StoredValueShape::Bool => Self::BoolFunction,
+                StoredValueShape::Nil => Self::NilFunction,
+                StoredValueShape::Tuple(_) => Self::TupleFunction,
+                StoredValueShape::List(item) => Self::list_function(&item),
+                StoredValueShape::Function(_) => Self::FunctionFunction,
+            },
         }
     }
 
-    fn list_function(item: &ConcreteValueShape) -> Self {
+    fn list_function(item: &SpecializedValueShape) -> Self {
         match item {
-            ConcreteValueShape::Int => Self::IntListFunction,
-            ConcreteValueShape::String => Self::StringListFunction,
-            ConcreteValueShape::BitArray => Self::BitArrayListFunction,
-            ConcreteValueShape::UtfCodepoint => Self::UtfCodepointListFunction,
-            ConcreteValueShape::Custom(_) => Self::CustomListFunction,
-            ConcreteValueShape::Float => Self::FloatListFunction,
-            ConcreteValueShape::Bool => Self::BoolListFunction,
-            ConcreteValueShape::Nil => Self::NilListFunction,
-            ConcreteValueShape::Tuple(_) => Self::TupleListFunction,
-            ConcreteValueShape::List(_) => Self::ListListFunction,
-            ConcreteValueShape::Function(_) => Self::FunctionListFunction,
+            SpecializedValueShape::Parameter(_) => Self::GenericFunction,
+            SpecializedValueShape::Int => Self::IntListFunction,
+            SpecializedValueShape::String => Self::StringListFunction,
+            SpecializedValueShape::BitArray => Self::BitArrayListFunction,
+            SpecializedValueShape::UtfCodepoint => Self::UtfCodepointListFunction,
+            SpecializedValueShape::Custom(_) => Self::CustomListFunction,
+            SpecializedValueShape::Float => Self::FloatListFunction,
+            SpecializedValueShape::Bool => Self::BoolListFunction,
+            SpecializedValueShape::Nil => Self::NilListFunction,
+            SpecializedValueShape::Tuple(_) => Self::TupleListFunction,
+            SpecializedValueShape::List(_) => Self::ListListFunction,
+            SpecializedValueShape::Function(_) => Self::FunctionListFunction,
         }
     }
 }
@@ -567,13 +625,14 @@ fn push_function_entries(
         parts.nil_functions,
         crate::plan::ValueShape::Nil,
     );
-    push_counted_function_entries(
-        entries,
-        included,
-        LocalKind::TupleFunction,
-        parts.tuple_functions,
-        crate::plan::ValueShape::Tuple(Box::new([])),
-    );
+    for (local, shape) in parts.tuple_functions {
+        push_template_entry(
+            entries,
+            included,
+            LocalKey::new(LocalKind::TupleFunction, local.0),
+            crate::plan::ValueShape::Function(Box::new(shape.clone())),
+        );
+    }
     for local in parts.list_functions {
         let (kind, index, type_) = list_function_local_parts(local);
         push_template_entry(
@@ -745,11 +804,11 @@ fn list_function_local_parts(
 }
 
 pub(super) fn frame_layout(context: &mut LoweringContext) -> execution::FrameLayout {
-    let entries = context.current_local_entries().to_vec();
+    let entries = context.current_local_shapes();
     let mut slots = execution::frame::FrameSlots::default();
     let mut nils = 0;
 
-    for (_, shape) in entries {
+    for shape in entries {
         allocate_value_local(&shape, &mut slots, &mut nils, context);
     }
 
@@ -758,7 +817,7 @@ pub(super) fn frame_layout(context: &mut LoweringContext) -> execution::FrameLay
 
 pub(super) fn generic_list_returning_function_local(
     local: &crate::plan::GenericFunctionLocal,
-    item: &ConcreteValueShape,
+    item: &SpecializedValueShape,
     context: &mut LoweringContext,
 ) -> execution::ListFunctionLocal {
     let shape = context.concrete_function_shape(&local.type_().shape());
@@ -771,171 +830,189 @@ pub(super) fn generic_list_returning_function_local(
     )
 }
 
-pub(super) fn value_local_at(
-    shape: &ConcreteValueShape,
+pub(super) fn stored_value_local_at(
+    shape: &StoredValueShape,
     index: usize,
     context: &mut LoweringContext,
 ) -> execution::ParamLocal {
     match shape {
-        ConcreteValueShape::Int => execution::ParamLocal::Int(execution::IntLocalId(index)),
-        ConcreteValueShape::Float => execution::ParamLocal::Float(execution::FloatLocalId(index)),
-        ConcreteValueShape::String => {
-            execution::ParamLocal::String(execution::StringLocalId(index))
-        }
-        ConcreteValueShape::BitArray => {
+        StoredValueShape::Int => execution::ParamLocal::Int(execution::IntLocalId(index)),
+        StoredValueShape::Float => execution::ParamLocal::Float(execution::FloatLocalId(index)),
+        StoredValueShape::String => execution::ParamLocal::String(execution::StringLocalId(index)),
+        StoredValueShape::BitArray => {
             execution::ParamLocal::BitArray(execution::BitArrayLocalId(index))
         }
-        ConcreteValueShape::UtfCodepoint => {
+        StoredValueShape::UtfCodepoint => {
             execution::ParamLocal::UtfCodepoint(execution::UtfCodepointLocalId(index))
         }
-        ConcreteValueShape::Custom(shape) => {
+        StoredValueShape::Custom(shape) => {
             execution::ParamLocal::Custom(execution::CustomLocal::new(
                 execution::CustomLocalId(index),
                 context.lower_concrete_custom_shape(shape),
             ))
         }
-        ConcreteValueShape::Bool => execution::ParamLocal::Bool(execution::BoolLocalId(index)),
-        ConcreteValueShape::Nil => execution::ParamLocal::Nil(execution::NilLocalId(index)),
-        ConcreteValueShape::Tuple(elements) => execution::ParamLocal::Tuple {
+        StoredValueShape::Bool => execution::ParamLocal::Bool(execution::BoolLocalId(index)),
+        StoredValueShape::Nil => execution::ParamLocal::Nil(execution::NilLocalId(index)),
+        StoredValueShape::Tuple(elements) => execution::ParamLocal::Tuple {
             local: execution::TupleLocalId(index),
             type_: elements
                 .iter()
                 .map(|element| context.lower_concrete_value_type(element))
                 .collect(),
         },
-        ConcreteValueShape::List(item) => {
+        StoredValueShape::List(item) => {
             execution::ParamLocal::List(list_local_at(item, index, context))
         }
-        ConcreteValueShape::Function(function) => {
+        StoredValueShape::Function(function) => {
             function_local_as_param(function_local_at(function, index, context))
         }
     }
 }
 
 pub(super) fn list_local_at(
-    item: &ConcreteValueShape,
+    item: &SpecializedValueShape,
     index: usize,
     context: &mut LoweringContext,
 ) -> execution::ListLocal {
     match item {
-        ConcreteValueShape::Int => execution::ListLocal::Int {
+        SpecializedValueShape::Parameter(parameter) => execution::ListLocal::Parameter {
+            local: execution::ParameterListLocalId(index),
+            type_id: context.parameter_list_type(*parameter),
+        },
+        SpecializedValueShape::Int => execution::ListLocal::Int {
             local: execution::IntListLocalId(index),
             type_id: context.int_list_type(),
         },
-        ConcreteValueShape::String => execution::ListLocal::String {
+        SpecializedValueShape::String => execution::ListLocal::String {
             local: execution::StringListLocalId(index),
             type_id: context.string_list_type(),
         },
-        ConcreteValueShape::BitArray => execution::ListLocal::BitArray {
+        SpecializedValueShape::BitArray => execution::ListLocal::BitArray {
             local: execution::BitArrayListLocalId(index),
             type_id: context.bit_array_list_type(),
         },
-        ConcreteValueShape::UtfCodepoint => execution::ListLocal::UtfCodepoint {
+        SpecializedValueShape::UtfCodepoint => execution::ListLocal::UtfCodepoint {
             local: execution::UtfCodepointListLocalId(index),
             type_id: context.utf_codepoint_list_type(),
         },
-        ConcreteValueShape::Custom(custom) => execution::ListLocal::Custom {
+        SpecializedValueShape::Custom(custom) => execution::ListLocal::Custom {
             local: execution::CustomListLocalId(index),
-            type_id: context.custom_list_type(custom.to_module_shape().type_().clone()),
+            type_id: context.specialized_custom_list_type(custom),
         },
-        ConcreteValueShape::Float => execution::ListLocal::Float {
+        SpecializedValueShape::Float => execution::ListLocal::Float {
             local: execution::FloatListLocalId(index),
             type_id: context.float_list_type(),
         },
-        ConcreteValueShape::Bool => execution::ListLocal::Bool {
+        SpecializedValueShape::Bool => execution::ListLocal::Bool {
             local: execution::BoolListLocalId(index),
             type_id: context.bool_list_type(),
         },
-        ConcreteValueShape::Nil => execution::ListLocal::Nil {
+        SpecializedValueShape::Nil => execution::ListLocal::Nil {
             local: execution::NilListLocalId(index),
             type_id: context.nil_list_type(),
         },
-        ConcreteValueShape::Tuple(elements) => execution::ListLocal::Tuple {
+        SpecializedValueShape::Tuple(elements) => execution::ListLocal::Tuple {
             local: execution::TupleListLocalId(index),
-            type_id: context.tuple_list_type(
-                elements
-                    .iter()
-                    .map(ConcreteValueShape::value_type)
-                    .collect(),
-            ),
+            type_id: context.specialized_tuple_list_type(elements),
         },
-        ConcreteValueShape::List(item) => execution::ListLocal::List {
-            local: execution::ListListLocalId(index),
-            type_id: context.list_list_type(item.value_type()),
+        SpecializedValueShape::List(item) => match context.specialized_list_list_type(item) {
+            super::value_type::NestedListTypeId::Parameter(type_id) => {
+                execution::ListLocal::ParameterList {
+                    local: execution::ParameterListListLocalId(index),
+                    type_id,
+                }
+            }
+            super::value_type::NestedListTypeId::Stored(type_id) => execution::ListLocal::List {
+                local: execution::ListListLocalId(index),
+                type_id,
+            },
         },
-        ConcreteValueShape::Function(function) => execution::ListLocal::Function {
+        SpecializedValueShape::Function(function) => execution::ListLocal::Function {
             local: execution::FunctionListLocalId(index),
-            type_id: context.function_list_type(function.to_module_shape().type_()),
+            type_id: context.specialized_function_list_type(function),
         },
     }
 }
 
 pub(super) fn function_local_at(
-    shape: &ConcreteFunctionShape,
+    shape: &SpecializedFunctionShape,
     index: usize,
     context: &mut LoweringContext,
 ) -> SpecializedFunctionLocal {
     let type_ = context.lower_concrete_function_type(shape);
-    match shape.return_() {
-        ConcreteValueShape::Int => SpecializedFunctionLocal::Int {
-            local: execution::IntFunctionLocalId(index),
-            type_,
-        },
-        ConcreteValueShape::Float => SpecializedFunctionLocal::Float {
-            local: execution::FloatFunctionLocalId(index),
-            type_,
-        },
-        ConcreteValueShape::String => SpecializedFunctionLocal::String {
-            local: execution::StringFunctionLocalId(index),
-            type_,
-        },
-        ConcreteValueShape::BitArray => SpecializedFunctionLocal::BitArray {
-            local: execution::BitArrayFunctionLocalId(index),
-            type_,
-        },
-        ConcreteValueShape::UtfCodepoint => SpecializedFunctionLocal::UtfCodepoint {
-            local: execution::UtfCodepointFunctionLocalId(index),
-            type_,
-        },
-        ConcreteValueShape::Custom(custom) => {
-            let type_ = context.custom_function_type(crate::plan::CustomFunctionType::from_shapes(
-                shape
-                    .arguments()
-                    .iter()
-                    .map(ConcreteValueShape::to_module_shape)
-                    .collect(),
-                custom.to_module_shape(),
-            ));
+    match context.function_representation(shape) {
+        FunctionRepresentation::Symbolic => {
+            SpecializedFunctionLocal::Generic(execution::GenericFunctionLocal::new(
+                execution::GenericFunctionLocalId(index),
+                context.generic_function_type(shape),
+            ))
+        }
+        FunctionRepresentation::Never(_) => {
+            SpecializedFunctionLocal::Never(execution::NeverFunctionLocal::new(
+                execution::NeverFunctionLocalId(index),
+                context.generic_function_type(shape),
+            ))
+        }
+        FunctionRepresentation::Executable(StoredValueShape::Int) => {
+            SpecializedFunctionLocal::Int {
+                local: execution::IntFunctionLocalId(index),
+                type_,
+            }
+        }
+        FunctionRepresentation::Executable(StoredValueShape::Float) => {
+            SpecializedFunctionLocal::Float {
+                local: execution::FloatFunctionLocalId(index),
+                type_,
+            }
+        }
+        FunctionRepresentation::Executable(StoredValueShape::String) => {
+            SpecializedFunctionLocal::String {
+                local: execution::StringFunctionLocalId(index),
+                type_,
+            }
+        }
+        FunctionRepresentation::Executable(StoredValueShape::BitArray) => {
+            SpecializedFunctionLocal::BitArray {
+                local: execution::BitArrayFunctionLocalId(index),
+                type_,
+            }
+        }
+        FunctionRepresentation::Executable(StoredValueShape::UtfCodepoint) => {
+            SpecializedFunctionLocal::UtfCodepoint {
+                local: execution::UtfCodepointFunctionLocalId(index),
+                type_,
+            }
+        }
+        FunctionRepresentation::Executable(StoredValueShape::Custom(custom)) => {
+            let type_ = context.specialized_custom_function_type(shape.arguments(), &custom);
             SpecializedFunctionLocal::Custom(execution::CustomFunctionLocal::new(
                 execution::CustomFunctionLocalId(index),
                 type_,
             ))
         }
-        ConcreteValueShape::Bool => SpecializedFunctionLocal::Bool {
-            local: execution::BoolFunctionLocalId(index),
-            type_,
-        },
-        ConcreteValueShape::Nil => SpecializedFunctionLocal::Nil {
-            local: execution::NilFunctionLocalId(index),
-            type_,
-        },
-        ConcreteValueShape::Tuple(_) => SpecializedFunctionLocal::Tuple {
-            local: execution::TupleFunctionLocalId(index),
-            type_,
-        },
-        ConcreteValueShape::List(item) => {
-            SpecializedFunctionLocal::List(list_function_local_at(item, type_, index, context))
+        FunctionRepresentation::Executable(StoredValueShape::Bool) => {
+            SpecializedFunctionLocal::Bool {
+                local: execution::BoolFunctionLocalId(index),
+                type_,
+            }
         }
-        ConcreteValueShape::Function(returned) => {
-            let type_ =
-                context.function_function_type(crate::plan::FunctionFunctionType::from_shapes(
-                    shape
-                        .arguments()
-                        .iter()
-                        .map(ConcreteValueShape::to_module_shape)
-                        .collect(),
-                    returned.to_module_shape(),
-                ));
+        FunctionRepresentation::Executable(StoredValueShape::Nil) => {
+            SpecializedFunctionLocal::Nil {
+                local: execution::NilFunctionLocalId(index),
+                type_,
+            }
+        }
+        FunctionRepresentation::Executable(StoredValueShape::Tuple(_)) => {
+            SpecializedFunctionLocal::Tuple {
+                local: execution::TupleFunctionLocalId(index),
+                type_,
+            }
+        }
+        FunctionRepresentation::Executable(StoredValueShape::List(item)) => {
+            SpecializedFunctionLocal::List(list_function_local_at(&item, type_, index, context))
+        }
+        FunctionRepresentation::Executable(StoredValueShape::Function(returned)) => {
+            let type_ = context.specialized_function_function_type(shape.arguments(), &returned);
             SpecializedFunctionLocal::Function(execution::FunctionFunctionLocal::new(
                 execution::FunctionFunctionLocalId(index),
                 type_,
@@ -945,7 +1022,7 @@ pub(super) fn function_local_at(
 }
 
 pub(super) fn list_function_local_at(
-    item: &ConcreteValueShape,
+    item: &SpecializedValueShape,
     type_: execution::FunctionType,
     index: usize,
     context: &mut LoweringContext,
@@ -953,102 +1030,109 @@ pub(super) fn list_function_local_at(
     use execution::ListFunctionLocal as L;
 
     match item {
-        ConcreteValueShape::Int => L::Int {
+        SpecializedValueShape::Parameter(parameter) => L::Parameter {
+            local: execution::ParameterListFunctionLocalId(index),
+            type_,
+            list_type: context.parameter_list_type(*parameter),
+        },
+        SpecializedValueShape::Int => L::Int {
             local: execution::IntListFunctionLocalId(index),
             type_,
             list_type: context.int_list_type(),
         },
-        ConcreteValueShape::String => L::String {
+        SpecializedValueShape::String => L::String {
             local: execution::StringListFunctionLocalId(index),
             type_,
             list_type: context.string_list_type(),
         },
-        ConcreteValueShape::BitArray => L::BitArray {
+        SpecializedValueShape::BitArray => L::BitArray {
             local: execution::BitArrayListFunctionLocalId(index),
             type_,
             list_type: context.bit_array_list_type(),
         },
-        ConcreteValueShape::UtfCodepoint => L::UtfCodepoint {
+        SpecializedValueShape::UtfCodepoint => L::UtfCodepoint {
             local: execution::UtfCodepointListFunctionLocalId(index),
             type_,
             list_type: context.utf_codepoint_list_type(),
         },
-        ConcreteValueShape::Custom(custom) => L::Custom {
+        SpecializedValueShape::Custom(custom) => L::Custom {
             local: execution::CustomListFunctionLocalId(index),
             type_,
-            list_type: context.custom_list_type(custom.to_module_shape().type_().clone()),
+            list_type: context.specialized_custom_list_type(custom),
         },
-        ConcreteValueShape::Float => L::Float {
+        SpecializedValueShape::Float => L::Float {
             local: execution::FloatListFunctionLocalId(index),
             type_,
             list_type: context.float_list_type(),
         },
-        ConcreteValueShape::Bool => L::Bool {
+        SpecializedValueShape::Bool => L::Bool {
             local: execution::BoolListFunctionLocalId(index),
             type_,
             list_type: context.bool_list_type(),
         },
-        ConcreteValueShape::Nil => L::Nil {
+        SpecializedValueShape::Nil => L::Nil {
             local: execution::NilListFunctionLocalId(index),
             type_,
             list_type: context.nil_list_type(),
         },
-        ConcreteValueShape::Tuple(elements) => L::Tuple {
+        SpecializedValueShape::Tuple(elements) => L::Tuple {
             local: execution::TupleListFunctionLocalId(index),
             type_,
-            list_type: context.tuple_list_type(
-                elements
-                    .iter()
-                    .map(ConcreteValueShape::value_type)
-                    .collect(),
-            ),
+            list_type: context.specialized_tuple_list_type(elements),
         },
-        ConcreteValueShape::List(item) => L::List {
-            local: execution::ListListFunctionLocalId(index),
-            type_,
-            list_type: context.list_list_type(item.value_type()),
+        SpecializedValueShape::List(item) => match context.specialized_list_list_type(item) {
+            super::value_type::NestedListTypeId::Parameter(list_type) => L::ParameterList {
+                local: execution::ParameterListListFunctionLocalId(index),
+                type_,
+                list_type,
+            },
+            super::value_type::NestedListTypeId::Stored(list_type) => L::List {
+                local: execution::ListListFunctionLocalId(index),
+                type_,
+                list_type,
+            },
         },
-        ConcreteValueShape::Function(function) => L::Function {
+        SpecializedValueShape::Function(function) => L::Function {
             local: execution::FunctionListFunctionLocalId(index),
             type_,
-            list_type: context.function_list_type(function.to_module_shape().type_()),
+            list_type: context.specialized_function_list_type(function),
         },
     }
 }
 
 fn allocate_value_local(
-    shape: &ConcreteValueShape,
+    shape: &StoredValueShape,
     slots: &mut execution::frame::FrameSlots,
     nils: &mut usize,
     context: &mut LoweringContext,
 ) -> execution::ParamLocal {
     match shape {
-        ConcreteValueShape::Int => {
+        StoredValueShape::Int => {
             let local = execution::IntLocalId(slots.ints);
             slots.ints += 1;
             execution::ParamLocal::Int(local)
         }
-        ConcreteValueShape::Float => {
+        StoredValueShape::Float => {
             let local = execution::FloatLocalId(slots.floats);
             slots.floats += 1;
             execution::ParamLocal::Float(local)
         }
-        ConcreteValueShape::String => {
+        StoredValueShape::String => {
             let local = execution::StringLocalId(slots.strings);
             slots.strings += 1;
             execution::ParamLocal::String(local)
         }
-        ConcreteValueShape::BitArray => {
+        StoredValueShape::BitArray => {
             let local = execution::BitArrayLocalId(slots.bit_arrays);
             slots.bit_arrays += 1;
             execution::ParamLocal::BitArray(local)
         }
-        ConcreteValueShape::UtfCodepoint => {
+        StoredValueShape::UtfCodepoint => {
             let local = execution::UtfCodepointLocalId(slots.utf_codepoints);
             slots.utf_codepoints += 1;
             execution::ParamLocal::UtfCodepoint(local)
         }
-        ConcreteValueShape::Custom(shape) => {
+        StoredValueShape::Custom(shape) => {
             let local = execution::CustomLocal::new(
                 execution::CustomLocalId(slots.customs.len()),
                 context.lower_concrete_custom_shape(shape),
@@ -1056,17 +1140,17 @@ fn allocate_value_local(
             slots.customs.push(local);
             execution::ParamLocal::Custom(local)
         }
-        ConcreteValueShape::Bool => {
+        StoredValueShape::Bool => {
             let local = execution::BoolLocalId(slots.bools);
             slots.bools += 1;
             execution::ParamLocal::Bool(local)
         }
-        ConcreteValueShape::Nil => {
+        StoredValueShape::Nil => {
             let local = execution::NilLocalId(*nils);
             *nils += 1;
             execution::ParamLocal::Nil(local)
         }
-        ConcreteValueShape::Tuple(elements) => {
+        StoredValueShape::Tuple(elements) => {
             let local = execution::TupleLocalId(slots.tuples);
             slots.tuples += 1;
             execution::ParamLocal::Tuple {
@@ -1077,89 +1161,98 @@ fn allocate_value_local(
                     .collect(),
             }
         }
-        ConcreteValueShape::List(item) => {
+        StoredValueShape::List(item) => {
             execution::ParamLocal::List(allocate_list_local(item, slots, context))
         }
-        ConcreteValueShape::Function(function) => {
+        StoredValueShape::Function(function) => {
             function_local_as_param(allocate_function_local(function, slots, context))
         }
     }
 }
 
 fn allocate_list_local(
-    item: &ConcreteValueShape,
+    item: &SpecializedValueShape,
     slots: &mut execution::frame::FrameSlots,
     context: &mut LoweringContext,
 ) -> execution::ListLocal {
     match item {
-        ConcreteValueShape::Int => push_list_local(
+        SpecializedValueShape::Parameter(parameter) => push_list_local(
+            &mut slots.parameter_lists,
+            context.parameter_list_type(*parameter),
+            execution::ParameterListLocalId,
+            |local, type_id| execution::ListLocal::Parameter { local, type_id },
+        ),
+        SpecializedValueShape::Int => push_list_local(
             &mut slots.int_lists,
             context.int_list_type(),
             execution::IntListLocalId,
             |local, type_id| execution::ListLocal::Int { local, type_id },
         ),
-        ConcreteValueShape::String => push_list_local(
+        SpecializedValueShape::String => push_list_local(
             &mut slots.string_lists,
             context.string_list_type(),
             execution::StringListLocalId,
             |local, type_id| execution::ListLocal::String { local, type_id },
         ),
-        ConcreteValueShape::BitArray => push_list_local(
+        SpecializedValueShape::BitArray => push_list_local(
             &mut slots.bit_array_lists,
             context.bit_array_list_type(),
             execution::BitArrayListLocalId,
             |local, type_id| execution::ListLocal::BitArray { local, type_id },
         ),
-        ConcreteValueShape::UtfCodepoint => push_list_local(
+        SpecializedValueShape::UtfCodepoint => push_list_local(
             &mut slots.utf_codepoint_lists,
             context.utf_codepoint_list_type(),
             execution::UtfCodepointListLocalId,
             |local, type_id| execution::ListLocal::UtfCodepoint { local, type_id },
         ),
-        ConcreteValueShape::Custom(custom) => push_list_local(
+        SpecializedValueShape::Custom(custom) => push_list_local(
             &mut slots.custom_lists,
-            context.custom_list_type(custom.to_module_shape().type_().clone()),
+            context.specialized_custom_list_type(custom),
             execution::CustomListLocalId,
             |local, type_id| execution::ListLocal::Custom { local, type_id },
         ),
-        ConcreteValueShape::Float => push_list_local(
+        SpecializedValueShape::Float => push_list_local(
             &mut slots.float_lists,
             context.float_list_type(),
             execution::FloatListLocalId,
             |local, type_id| execution::ListLocal::Float { local, type_id },
         ),
-        ConcreteValueShape::Bool => push_list_local(
+        SpecializedValueShape::Bool => push_list_local(
             &mut slots.bool_lists,
             context.bool_list_type(),
             execution::BoolListLocalId,
             |local, type_id| execution::ListLocal::Bool { local, type_id },
         ),
-        ConcreteValueShape::Nil => push_list_local(
+        SpecializedValueShape::Nil => push_list_local(
             &mut slots.nil_lists,
             context.nil_list_type(),
             execution::NilListLocalId,
             |local, type_id| execution::ListLocal::Nil { local, type_id },
         ),
-        ConcreteValueShape::Tuple(elements) => push_list_local(
+        SpecializedValueShape::Tuple(elements) => push_list_local(
             &mut slots.tuple_lists,
-            context.tuple_list_type(
-                elements
-                    .iter()
-                    .map(ConcreteValueShape::value_type)
-                    .collect(),
-            ),
+            context.specialized_tuple_list_type(elements),
             execution::TupleListLocalId,
             |local, type_id| execution::ListLocal::Tuple { local, type_id },
         ),
-        ConcreteValueShape::List(item) => push_list_local(
-            &mut slots.list_lists,
-            context.list_list_type(item.value_type()),
-            execution::ListListLocalId,
-            |local, type_id| execution::ListLocal::List { local, type_id },
-        ),
-        ConcreteValueShape::Function(function) => push_list_local(
+        SpecializedValueShape::List(item) => match context.specialized_list_list_type(item) {
+            super::value_type::NestedListTypeId::Parameter(type_id) => push_list_local(
+                &mut slots.parameter_list_lists,
+                type_id,
+                execution::ParameterListListLocalId,
+                |local, type_id| execution::ListLocal::ParameterList { local, type_id },
+            ),
+            super::value_type::NestedListTypeId::Stored(type_id) => push_list_local(
+                &mut slots.list_lists,
+                type_id,
+                execution::ListListLocalId,
+                |local, type_id| execution::ListLocal::List { local, type_id },
+            ),
+        },
+        SpecializedValueShape::Function(function) => push_list_local(
             &mut slots.function_lists,
-            context.function_list_type(function.to_module_shape().type_()),
+            context.specialized_function_list_type(function),
             execution::FunctionListLocalId,
             |local, type_id| execution::ListLocal::Function { local, type_id },
         ),
@@ -1181,46 +1274,55 @@ where
 }
 
 fn allocate_function_local(
-    shape: &ConcreteFunctionShape,
+    shape: &SpecializedFunctionShape,
     slots: &mut execution::frame::FrameSlots,
     context: &mut LoweringContext,
 ) -> SpecializedFunctionLocal {
     let type_ = context.lower_concrete_function_type(shape);
-    match shape.return_() {
-        ConcreteValueShape::Int => {
+    match context.function_representation(shape) {
+        FunctionRepresentation::Symbolic => {
+            let local = execution::GenericFunctionLocal::new(
+                execution::GenericFunctionLocalId(slots.generic_functions.len()),
+                context.generic_function_type(shape),
+            );
+            slots.generic_functions.push(local.clone());
+            SpecializedFunctionLocal::Generic(local)
+        }
+        FunctionRepresentation::Never(_) => {
+            let local = execution::NeverFunctionLocal::new(
+                execution::NeverFunctionLocalId(slots.never_functions.len()),
+                context.generic_function_type(shape),
+            );
+            slots.never_functions.push(local.clone());
+            SpecializedFunctionLocal::Never(local)
+        }
+        FunctionRepresentation::Executable(StoredValueShape::Int) => {
             let local = execution::IntFunctionLocalId(slots.int_functions);
             slots.int_functions += 1;
             SpecializedFunctionLocal::Int { local, type_ }
         }
-        ConcreteValueShape::Float => {
+        FunctionRepresentation::Executable(StoredValueShape::Float) => {
             let local = execution::FloatFunctionLocalId(slots.float_functions);
             slots.float_functions += 1;
             SpecializedFunctionLocal::Float { local, type_ }
         }
-        ConcreteValueShape::String => {
+        FunctionRepresentation::Executable(StoredValueShape::String) => {
             let local = execution::StringFunctionLocalId(slots.string_functions);
             slots.string_functions += 1;
             SpecializedFunctionLocal::String { local, type_ }
         }
-        ConcreteValueShape::BitArray => {
+        FunctionRepresentation::Executable(StoredValueShape::BitArray) => {
             let local = execution::BitArrayFunctionLocalId(slots.bit_array_functions);
             slots.bit_array_functions += 1;
             SpecializedFunctionLocal::BitArray { local, type_ }
         }
-        ConcreteValueShape::UtfCodepoint => {
+        FunctionRepresentation::Executable(StoredValueShape::UtfCodepoint) => {
             let local = execution::UtfCodepointFunctionLocalId(slots.utf_codepoint_functions);
             slots.utf_codepoint_functions += 1;
             SpecializedFunctionLocal::UtfCodepoint { local, type_ }
         }
-        ConcreteValueShape::Custom(custom) => {
-            let type_ = context.custom_function_type(crate::plan::CustomFunctionType::from_shapes(
-                shape
-                    .arguments()
-                    .iter()
-                    .map(ConcreteValueShape::to_module_shape)
-                    .collect(),
-                custom.to_module_shape(),
-            ));
+        FunctionRepresentation::Executable(StoredValueShape::Custom(custom)) => {
+            let type_ = context.specialized_custom_function_type(shape.arguments(), &custom);
             let local = execution::CustomFunctionLocal::new(
                 execution::CustomFunctionLocalId(next_custom_function_id(&slots.custom_functions)),
                 type_,
@@ -1228,36 +1330,28 @@ fn allocate_function_local(
             slots.custom_functions.push(local.clone());
             SpecializedFunctionLocal::Custom(local)
         }
-        ConcreteValueShape::Bool => {
+        FunctionRepresentation::Executable(StoredValueShape::Bool) => {
             let local = execution::BoolFunctionLocalId(slots.bool_functions);
             slots.bool_functions += 1;
             SpecializedFunctionLocal::Bool { local, type_ }
         }
-        ConcreteValueShape::Nil => {
+        FunctionRepresentation::Executable(StoredValueShape::Nil) => {
             let local = execution::NilFunctionLocalId(slots.nil_functions);
             slots.nil_functions += 1;
             SpecializedFunctionLocal::Nil { local, type_ }
         }
-        ConcreteValueShape::Tuple(_) => {
+        FunctionRepresentation::Executable(StoredValueShape::Tuple(_)) => {
             let local = execution::TupleFunctionLocalId(slots.tuple_functions);
             slots.tuple_functions += 1;
             SpecializedFunctionLocal::Tuple { local, type_ }
         }
-        ConcreteValueShape::List(item) => {
-            let local = allocate_list_function_local(item, type_, &slots.list_functions, context);
+        FunctionRepresentation::Executable(StoredValueShape::List(item)) => {
+            let local = allocate_list_function_local(&item, type_, &slots.list_functions, context);
             slots.list_functions.push(local.clone());
             SpecializedFunctionLocal::List(local)
         }
-        ConcreteValueShape::Function(returned) => {
-            let type_ =
-                context.function_function_type(crate::plan::FunctionFunctionType::from_shapes(
-                    shape
-                        .arguments()
-                        .iter()
-                        .map(ConcreteValueShape::to_module_shape)
-                        .collect(),
-                    returned.to_module_shape(),
-                ));
+        FunctionRepresentation::Executable(StoredValueShape::Function(returned)) => {
+            let type_ = context.specialized_function_function_type(shape.arguments(), &returned);
             let local = execution::FunctionFunctionLocal::new(
                 execution::FunctionFunctionLocalId(next_function_function_id(
                     &slots.function_functions,
@@ -1272,6 +1366,8 @@ fn allocate_function_local(
 
 pub(super) fn function_local_as_param(local: SpecializedFunctionLocal) -> execution::ParamLocal {
     match local {
+        SpecializedFunctionLocal::Generic(local) => execution::ParamLocal::GenericFunction(local),
+        SpecializedFunctionLocal::Never(local) => execution::ParamLocal::NeverFunction(local),
         SpecializedFunctionLocal::Int { local, type_ } => {
             execution::ParamLocal::IntFunction { local, type_ }
         }
@@ -1315,7 +1411,7 @@ fn next_function_function_id(locals: &[execution::FunctionFunctionLocal]) -> usi
 }
 
 fn allocate_list_function_local(
-    item: &ConcreteValueShape,
+    item: &SpecializedValueShape,
     type_: execution::FunctionType,
     locals: &[execution::ListFunctionLocal],
     context: &mut LoweringContext,
@@ -1323,7 +1419,18 @@ fn allocate_list_function_local(
     use execution::ListFunctionLocal as L;
 
     match item {
-        ConcreteValueShape::Int => L::Int {
+        SpecializedValueShape::Parameter(parameter) => L::Parameter {
+            local: execution::ParameterListFunctionLocalId(next_list_function_id(
+                locals,
+                |local| match local {
+                    L::Parameter { local, .. } => Some(local.0),
+                    _ => None,
+                },
+            )),
+            type_,
+            list_type: context.parameter_list_type(*parameter),
+        },
+        SpecializedValueShape::Int => L::Int {
             local: execution::IntListFunctionLocalId(next_list_function_id(locals, |local| {
                 match local {
                     L::Int { local, .. } => Some(local.0),
@@ -1333,7 +1440,7 @@ fn allocate_list_function_local(
             type_,
             list_type: context.int_list_type(),
         },
-        ConcreteValueShape::String => L::String {
+        SpecializedValueShape::String => L::String {
             local: execution::StringListFunctionLocalId(next_list_function_id(locals, |local| {
                 match local {
                     L::String { local, .. } => Some(local.0),
@@ -1343,7 +1450,7 @@ fn allocate_list_function_local(
             type_,
             list_type: context.string_list_type(),
         },
-        ConcreteValueShape::BitArray => L::BitArray {
+        SpecializedValueShape::BitArray => L::BitArray {
             local: execution::BitArrayListFunctionLocalId(next_list_function_id(locals, |local| {
                 match local {
                     L::BitArray { local, .. } => Some(local.0),
@@ -1353,7 +1460,7 @@ fn allocate_list_function_local(
             type_,
             list_type: context.bit_array_list_type(),
         },
-        ConcreteValueShape::UtfCodepoint => L::UtfCodepoint {
+        SpecializedValueShape::UtfCodepoint => L::UtfCodepoint {
             local: execution::UtfCodepointListFunctionLocalId(next_list_function_id(
                 locals,
                 |local| match local {
@@ -1364,7 +1471,7 @@ fn allocate_list_function_local(
             type_,
             list_type: context.utf_codepoint_list_type(),
         },
-        ConcreteValueShape::Custom(custom) => L::Custom {
+        SpecializedValueShape::Custom(custom) => L::Custom {
             local: execution::CustomListFunctionLocalId(next_list_function_id(locals, |local| {
                 match local {
                     L::Custom { local, .. } => Some(local.0),
@@ -1372,9 +1479,9 @@ fn allocate_list_function_local(
                 }
             })),
             type_,
-            list_type: context.custom_list_type(custom.to_module_shape().type_().clone()),
+            list_type: context.specialized_custom_list_type(custom),
         },
-        ConcreteValueShape::Float => L::Float {
+        SpecializedValueShape::Float => L::Float {
             local: execution::FloatListFunctionLocalId(next_list_function_id(locals, |local| {
                 match local {
                     L::Float { local, .. } => Some(local.0),
@@ -1384,7 +1491,7 @@ fn allocate_list_function_local(
             type_,
             list_type: context.float_list_type(),
         },
-        ConcreteValueShape::Bool => L::Bool {
+        SpecializedValueShape::Bool => L::Bool {
             local: execution::BoolListFunctionLocalId(next_list_function_id(locals, |local| {
                 match local {
                     L::Bool { local, .. } => Some(local.0),
@@ -1394,7 +1501,7 @@ fn allocate_list_function_local(
             type_,
             list_type: context.bool_list_type(),
         },
-        ConcreteValueShape::Nil => L::Nil {
+        SpecializedValueShape::Nil => L::Nil {
             local: execution::NilListFunctionLocalId(next_list_function_id(locals, |local| {
                 match local {
                     L::Nil { local, .. } => Some(local.0),
@@ -1404,7 +1511,7 @@ fn allocate_list_function_local(
             type_,
             list_type: context.nil_list_type(),
         },
-        ConcreteValueShape::Tuple(elements) => L::Tuple {
+        SpecializedValueShape::Tuple(elements) => L::Tuple {
             local: execution::TupleListFunctionLocalId(next_list_function_id(locals, |local| {
                 match local {
                     L::Tuple { local, .. } => Some(local.0),
@@ -1412,24 +1519,32 @@ fn allocate_list_function_local(
                 }
             })),
             type_,
-            list_type: context.tuple_list_type(
-                elements
-                    .iter()
-                    .map(ConcreteValueShape::value_type)
-                    .collect(),
-            ),
+            list_type: context.specialized_tuple_list_type(elements),
         },
-        ConcreteValueShape::List(item) => L::List {
-            local: execution::ListListFunctionLocalId(next_list_function_id(locals, |local| {
-                match local {
-                    L::List { local, .. } => Some(local.0),
-                    _ => None,
-                }
-            })),
-            type_,
-            list_type: context.list_list_type(item.value_type()),
+        SpecializedValueShape::List(item) => match context.specialized_list_list_type(item) {
+            super::value_type::NestedListTypeId::Parameter(list_type) => L::ParameterList {
+                local: execution::ParameterListListFunctionLocalId(next_list_function_id(
+                    locals,
+                    |local| match local {
+                        L::ParameterList { local, .. } => Some(local.0),
+                        _ => None,
+                    },
+                )),
+                type_,
+                list_type,
+            },
+            super::value_type::NestedListTypeId::Stored(list_type) => L::List {
+                local: execution::ListListFunctionLocalId(next_list_function_id(locals, |local| {
+                    match local {
+                        L::List { local, .. } => Some(local.0),
+                        _ => None,
+                    }
+                })),
+                type_,
+                list_type,
+            },
         },
-        ConcreteValueShape::Function(function) => L::Function {
+        SpecializedValueShape::Function(function) => L::Function {
             local: execution::FunctionListFunctionLocalId(next_list_function_id(locals, |local| {
                 match local {
                     L::Function { local, .. } => Some(local.0),
@@ -1437,7 +1552,7 @@ fn allocate_list_function_local(
                 }
             })),
             type_,
-            list_type: context.function_list_type(function.to_module_shape().type_()),
+            list_type: context.specialized_function_list_type(function),
         },
     }
 }
@@ -1459,7 +1574,7 @@ mod tests {
         IntListFunctionLocalId, IntListTypeId, ListFunctionLocal, StringListFunctionLocalId,
         StringListTypeId, ValueType as ExecutionValueType,
     };
-    use crate::plan::{FunctionType, ValueType};
+    use crate::plan::{FunctionType, TypeParameterId, ValueType};
 
     #[test]
     fn lowering_preserves_every_execution_frame_slot_family() {
@@ -1529,7 +1644,25 @@ fn string_list_function_after_int(
   0
 }
 
-pub fn main() { 0 }
+fn parameter_list_function_after_int(
+  int_list_function: fn() -> List(Int),
+  parameter_list_function: fn() -> List(value),
+) {
+  0
+}
+
+fn int_values() {
+  [1]
+}
+
+fn empty_values() {
+  []
+}
+
+pub fn main() {
+  let _ = #(all_slots, string_list_function_after_int)
+  parameter_list_function_after_int(int_values, empty_values)
+}
 "#;
         let typed = crate::compile_typed_module("main", "main.gleam", source)
             .expect("source should compile");
@@ -1639,6 +1772,34 @@ pub fn main() { 0 }
                         ExecutionValueType::List(mixed_locals[1].list_type()),
                     ),
                     list_type: StringListTypeId::new(mixed_locals[1].list_type()),
+                },
+            ],
+        );
+
+        let parameter_layout = plan.int_function(IntFunctionId(3)).frame_layout();
+        let parameter_locals = parameter_layout.list_functions();
+        let parameter_list_type = parameter_locals[1].list_type();
+        assert_eq!(
+            parameter_locals,
+            &[
+                ListFunctionLocal::Int {
+                    local: IntListFunctionLocalId(0),
+                    type_: ExecutionFunctionType::new(
+                        Vec::new(),
+                        ExecutionValueType::List(parameter_locals[0].list_type()),
+                    ),
+                    list_type: IntListTypeId::new(parameter_locals[0].list_type()),
+                },
+                ListFunctionLocal::Parameter {
+                    local: super::super::super::ParameterListFunctionLocalId(0),
+                    type_: ExecutionFunctionType::new(
+                        Vec::new(),
+                        ExecutionValueType::List(parameter_list_type),
+                    ),
+                    list_type: super::super::super::ParameterListTypeId::new(
+                        parameter_list_type,
+                        TypeParameterId(0),
+                    ),
                 },
             ],
         );

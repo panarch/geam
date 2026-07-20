@@ -27,7 +27,6 @@ pub(super) fn plan_expr(
     expression: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    let parameter_count = context.type_parameter_count();
     let shape = context.value_shape(&expression.type_());
     let expression = match expression {
         TypedExpr::Int { int_value, .. } => Ok(Expr::int(IntExpr::value(int_value))),
@@ -37,7 +36,7 @@ pub(super) fn plan_expr(
         }
         TypedExpr::Var {
             constructor, name, ..
-        } => var::plan_var(name, constructor, shape.clone(), parameter_count, context),
+        } => var::plan_var(name, constructor, shape.clone(), context),
         TypedExpr::Call {
             type_,
             fun,
@@ -165,13 +164,7 @@ pub(super) fn plan_expr(
     } else {
         expression
     };
-    if expression.shape().parameters_are_scoped(parameter_count) {
-        Ok(expression)
-    } else {
-        Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::GenericFunction,
-        })
-    }
+    Ok(expression)
 }
 
 fn plan_panic_expr(
@@ -523,7 +516,14 @@ fn plan_list(
     };
     let elements = match crate::plan::ListSpreadElements::from_parts(elements, tail) {
         Ok(elements) => elements,
-        Err(_) => {
+        Err(crate::plan::ListSpreadConstructionError::EmptyPrefix) => {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::Invalid,
+                },
+            });
+        }
+        Err(crate::plan::ListSpreadConstructionError::ElementTypeMismatch(_)) => {
             return Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionType {
                     expected: InvalidExpressionType::List,
@@ -677,6 +677,11 @@ pub(super) fn list_index_expr(
                 .map(crate::plan::ValueShape::value_type)
                 .collect();
             Expr::tuple(TupleExpr::list_index(list, index, type_).with_shape(shape))
+        }
+        (crate::plan::ValueShape::List(item_shape), ListExpr::ParameterList(list))
+            if matches!(item_shape.as_ref(), crate::plan::ValueShape::Parameter(_)) =>
+        {
+            Expr::list(ListExpr::parameter_list_index(list, index).with_item_shape(*item_shape))
         }
         (crate::plan::ValueShape::List(item_shape), ListExpr::List(list))
             if list.item().item_type() == Box::new(item_shape.value_type()) =>
@@ -1484,6 +1489,8 @@ pub fn main() -> Int {
         let functions = HashMap::new();
         let mut anonymous = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
+        let parameter = TypeParameterId(0);
+        let site = context.panic_site(dummy_span());
         assert_eq!(
             super::plan_expr(
                 TypedExpr::Panic {
@@ -1493,9 +1500,10 @@ pub fn main() -> Int {
                 },
                 &mut context
             ),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::GenericFunction,
-            }),
+            Ok(Expr::generic(GenericExpr::panic(
+                parameter,
+                PanicExpr::panic_at(None, site.clone()),
+            ))),
         );
 
         assert_eq!(
@@ -1508,9 +1516,10 @@ pub fn main() -> Int {
                 },
                 &mut context
             ),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::GenericFunction,
-            }),
+            Ok(Expr::generic(GenericExpr::panic(
+                parameter,
+                PanicExpr::todo_at(None, site),
+            ))),
         );
 
         for kind in [
@@ -1541,29 +1550,12 @@ pub fn main() -> Int {
 
     #[test]
     fn reject_profile_expression_variants() {
-        let cases = [
-            (
-                r#"
-pub fn main() {
-  let values = [Ok(1)]
-  1
-}
-"#,
-                PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::GenericFunction,
-                },
-            ),
-            (
-                r#"pub fn main() { echo 1 }"#,
-                PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::Echo,
-                },
-            ),
-        ];
-
-        for (src, expected) in cases {
-            assert_eq!(expect_plan_error(src), expected);
-        }
+        assert_eq!(
+            expect_plan_error(r#"pub fn main() { echo 1 }"#),
+            PlanError::UnsupportedExpression {
+                kind: UnsupportedExpressionKind::Echo,
+            },
+        );
     }
 
     #[test]
@@ -1768,6 +1760,43 @@ pub fn main() {
         assert_eq!(
             super::list_index_expr(list, 1, ValueType::Parameter(parameter)),
             Ok(Expr::generic(GenericExpr::list_index(typed_list, 1))),
+        );
+
+        let nested_list = ListExpr::try_value(
+            Vec::new(),
+            ValueType::List(Box::new(ValueType::Parameter(parameter))),
+        )
+        .expect("an empty nested parameter list should preserve its item shape");
+        let typed_nested_list = nested_list
+            .clone()
+            .into_parameter_list()
+            .expect("a nested parameter item should create a parameter-list expression");
+        assert_eq!(
+            super::list_index_expr(
+                nested_list,
+                2,
+                ValueType::List(Box::new(ValueType::Parameter(parameter))),
+            ),
+            Ok(Expr::list(
+                ListExpr::parameter_list_index(typed_nested_list, 2)
+                    .with_item_shape(ValueShape::Parameter(parameter)),
+            )),
+        );
+
+        let parameter_list = ListExpr::try_value(
+            Vec::new(),
+            ValueType::List(Box::new(ValueType::Parameter(parameter))),
+        )
+        .expect("an empty nested parameter list should preserve its item shape")
+        .with_item_shape(ValueShape::List(Box::new(ValueShape::Int)));
+        assert_eq!(
+            super::list_index_expr(parameter_list, 2, ValueType::List(Box::new(ValueType::Int)),),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::List,
+                    actual: InvalidExpressionType::List,
+                },
+            }),
         );
 
         let function_shape = crate::plan::FunctionShape::new(
@@ -2622,6 +2651,24 @@ pub fn main() {
                     reason: InvalidTypedAstReason::ExpressionType {
                         expected: InvalidExpressionType::String,
                         actual: InvalidExpressionType::Int,
+                    },
+                },
+            ),
+            (
+                TypedExpr::List {
+                    location: dummy_span(),
+                    type_: type_::list(type_::int()),
+                    elements: Vec::new(),
+                    tail: Some(Box::new(TypedExpr::List {
+                        location: dummy_span(),
+                        type_: type_::list(type_::int()),
+                        elements: vec![typed_int_expr(1)],
+                        tail: None,
+                    })),
+                },
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::Invalid,
                     },
                 },
             ),

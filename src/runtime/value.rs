@@ -15,9 +15,9 @@ pub use self::custom::{CustomFieldValue, CustomValue};
 pub use self::function::FunctionValue;
 pub(crate) use self::function::{
     BitArrayFunctionValue, BoolFunctionValue, CustomFunctionValue, CustomFunctionValueTarget,
-    FloatFunctionValue, FunctionFunctionValue, FunctionValueKind, IntFunctionValue,
-    ListFunctionValue, NilFunctionValue, StringFunctionValue, TupleFunctionValue,
-    UtfCodepointFunctionValue,
+    FloatFunctionValue, FunctionFunctionValue, FunctionValueKind, GenericFunctionValue,
+    IntFunctionValue, ListFunctionValue, NeverFunctionValue, NilFunctionValue, StringFunctionValue,
+    TupleFunctionValue, UtfCodepointFunctionValue,
 };
 pub use self::list::{ListValue, ListValueItemTypeMismatch};
 

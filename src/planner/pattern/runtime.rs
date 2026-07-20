@@ -375,12 +375,16 @@ fn plan_custom_pattern(
     let is_total = fields_are_total && (constructor_count == 1 || matches_exact_constructor);
     let custom_binding = fields_are_total.then(|| PlannedCustomBinding {
         constructor: custom_constructor.clone(),
-        fields: total_fields,
+        fields: total_fields.clone(),
         source_shape,
         constructor_count,
     });
     Ok(PlannedRuntimePattern {
-        pattern: AssertPattern::custom(CustomPattern::new(custom_constructor, fields)),
+        pattern: AssertPattern::custom(CustomPattern::new(
+            custom_constructor,
+            fields,
+            fields_are_total.then_some(total_fields),
+        )),
         is_total,
         total_binding: if is_total {
             custom_binding
@@ -521,9 +525,9 @@ mod tests {
         total_bit_array_binding,
     };
     use crate::plan::{
-        AssertBinding, AssertPattern, BitArrayPattern, CustomBindingPattern, CustomTypeName,
-        GenericLocal, GenericLocalId, ParamLocal, TotalBindingPattern, TypeParameterId, ValueShape,
-        ValueType,
+        AssertBinding, AssertPattern, BitArrayPattern, CustomBindingPattern, CustomPattern,
+        CustomTypeName, GenericLocal, GenericLocalId, ParamLocal, TotalBindingPattern,
+        TypeParameterId, ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
     use crate::planner::{InvalidCustomTypeReason, InvalidTypedAstReason, PlanError};
@@ -889,6 +893,20 @@ mod tests {
                 .expect("total fields should preserve the custom binding")
                 .intrinsic_binding(),
             None,
+        );
+        let any_constructor = any
+            .custom_binding
+            .as_ref()
+            .expect("total fields should preserve the custom binding")
+            .constructor()
+            .clone();
+        assert_eq!(
+            any.pattern,
+            AssertPattern::custom(CustomPattern::new(
+                any_constructor,
+                vec![AssertPattern::Discard],
+                Some(vec![TotalBindingPattern::discard(ValueType::Int)]),
+            )),
         );
         let exact_result_shape = CustomValueShape::new(
             result_shape.type_name().clone(),

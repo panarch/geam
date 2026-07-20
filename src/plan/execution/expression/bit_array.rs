@@ -1,9 +1,9 @@
 use super::{
-    BitArrayFunctionExpr, BitArrayListExpr, BoolExpr, CallArg, CustomFieldAccess, FloatExpr,
-    IntExpr, PanicExpr, StringExpr, TupleExpr, UtfCodepointExpr,
+    BitArrayFunctionExpr, BitArrayListExpr, BoolExpr, CustomFieldAccess, DirectCall, FloatExpr,
+    FunctionCall, IntExpr, PanicExpr, StringExpr, TupleExpr, UtfCodepointExpr,
 };
 use crate::plan::PanicSite;
-use crate::plan::execution::{BitArrayFunctionId, BitArrayLocalId, Step};
+use crate::plan::execution::{BitArrayFunctionId, BitArrayLocalId, ConstantId, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -96,17 +96,12 @@ pub struct BitArrayExpr {
 
 pub(crate) enum BitArrayExprKind {
     Value(Vec<BitArraySegment>),
+    Constant(ConstantId<BitArrayExpr>),
     LocalGet {
         local: BitArrayLocalId,
     },
-    Call {
-        function: BitArrayFunctionId,
-        args: Vec<CallArg>,
-    },
-    FunctionCall {
-        function: Box<BitArrayFunctionExpr>,
-        args: Vec<CallArg>,
-    },
+    Call(DirectCall<BitArrayFunctionId>),
+    FunctionCall(FunctionCall<BitArrayFunctionExpr>),
     TupleIndex {
         tuple: Box<TupleExpr>,
         index: usize,
@@ -146,6 +141,10 @@ pub(crate) enum BitArrayExprKind {
 impl BitArrayExpr {
     pub(in crate::plan::execution) fn from_kind(kind: BitArrayExprKind) -> Self {
         Self { kind }
+    }
+
+    pub(in crate::plan::execution) fn into_kind(self) -> BitArrayExprKind {
+        self.kind
     }
 
     pub(crate) fn kind(&self) -> &BitArrayExprKind {

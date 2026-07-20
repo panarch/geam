@@ -57,6 +57,33 @@ The public Rust `FunctionValue` representation is an owned materialized value;
 its `PartialEq` implementation is not the identity used by Gleam source-level
 function equality.
 
+## Generic Execution
+
+Generic function and constant bodies are validated as parametric ModulePlan
+templates. ExecutionPlan lowering specializes concrete calls deterministically
+and keeps unresolved empty lists, phantom custom values, and callable shapes as
+symbolic metadata rather than introducing a generic runtime payload.
+
+Specialization computes an execution-viability fixed point before publishing
+runtime function IDs. Intermediate function indices are provisional; only a
+pass with no newly erased uninhabited candidates becomes the immutable function
+tables stored in `ExecutionPlan`.
+
+A bare type parameter has no successful runtime value representation. A
+specialization whose result remains bare therefore executes through the
+`Never` return family and can only stop through existing source-level behavior
+such as `panic`, `todo`, or non-returning recursion. Containers may preserve a
+parameter in their public type metadata only when their runtime payload does not
+require such a value, for example an empty `List(parameter)` or a phantom custom
+constructor.
+
+ExecutionPlan stores family-typed initializers for constants retained by
+reachable function specializations. A constant initializer is evaluated when
+its source reference is evaluated, so an unselected branch does not evaluate
+the constants it contains. Top-level function references retain their stable
+reference identity, while each evaluation of a closure or constructor-function
+constant creates a fresh instance identity as described above.
+
 ## Numeric Division By Zero
 
 Integer division and remainder by zero are normalized because Gleam defines
