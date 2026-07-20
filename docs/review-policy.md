@@ -117,6 +117,13 @@ representable without fabricating a parameter value. Constant evaluation
 strategy must preserve source evaluation order, control flow, and function
 identity.
 
+Execution return control flow is a sealed immutable graph. Consuming lowering
+must create every successor before its parent, freeze only complete graphs, and
+assign block targets deterministically in child-first source order. Runtime may
+trust targets obtained from that graph and iterate them without a second lookup
+validation boundary. Do not expose raw target construction, placeholders, or a
+parallel recursive execution-return owner.
+
 Do not use `Option` or `Result` in internal plan constructors to represent
 unsupported profile features, typed-AST margin cases, or runtime executability
 checks. Reject those cases before constructing plan data.

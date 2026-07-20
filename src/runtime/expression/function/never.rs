@@ -180,8 +180,8 @@ mod tests {
     use crate::plan::execution::{
         CallArg, CallArgKind, CustomConstruction, CustomExpr, CustomExprKind, CustomFieldAccess,
         CustomLocalExpr, FunctionFunctionId, FunctionListExpr, FunctionReturnFamily,
-        NeverFunctionExpr, NeverFunctionExprKind, NeverFunctionFunctionId, ReturnBody,
-        ReturnBodyKind, RuntimeFunctionId, TypedListExprKind,
+        NeverFunctionExpr, NeverFunctionExprKind, NeverFunctionFunctionId, ReturnBlock,
+        ReturnGraph, RuntimeFunctionId, TypedListExprKind,
     };
     use crate::plan::{
         BoolExpr, CaptureArg, Expr, FloatExpr, FunctionExpr,
@@ -689,10 +689,10 @@ pub fn main() { get(Box(diverge)) }
     }
 
     fn expression_return<Expression, Function>(
-        body: &ReturnBody<Expression, Function>,
+        graph: &ReturnGraph<Expression, Function>,
     ) -> &Expression {
-        match body.kind() {
-            ReturnBodyKind::Expr(expression) => expression,
+        match graph.block(graph.entry()) {
+            ReturnBlock::Return(expression) => expression,
             _ => panic!("expected an expression return body"),
         }
     }
@@ -714,10 +714,10 @@ pub fn main() { get(Box(diverge)) }
     }
 
     fn tail_call(
-        body: &ReturnBody<NeverFunctionExpr, NeverFunctionFunctionId>,
+        graph: &ReturnGraph<NeverFunctionExpr, NeverFunctionFunctionId>,
     ) -> (&NeverFunctionFunctionId, &[CallArg]) {
-        match body.kind() {
-            ReturnBodyKind::TailCall { function, args } => (function, args),
+        match graph.block(graph.entry()) {
+            ReturnBlock::TailCall { function, args } => (function, args),
             _ => panic!("expected a tail-call return body"),
         }
     }

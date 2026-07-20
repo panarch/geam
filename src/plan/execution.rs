@@ -8,7 +8,7 @@ mod lowering;
 mod param;
 mod pattern;
 mod reference;
-mod return_;
+mod return_graph;
 mod step;
 mod table;
 mod value_shape;
@@ -76,15 +76,16 @@ pub(crate) use pattern::{
     CustomPattern, PatternBinding, Signedness, TotalBindingPattern, TotalBindingPatternKind,
 };
 pub(crate) use reference::{ClosureTemplate, FunctionReference};
-pub(crate) use return_::{
+pub(crate) use return_graph::{
     BitArrayFunctionReturn, BitArrayListReturn, BitArrayReturn, BoolFunctionReturn, BoolListReturn,
     BoolReturn, CustomFunctionReturn, CustomListReturn, CustomReturn, FloatFunctionReturn,
     FloatListReturn, FloatReturn, FunctionFunctionReturn, FunctionListReturn,
     GenericFunctionReturn, IntFunctionReturn, IntListReturn, IntReturn, ListFunctionReturn,
     ListListReturn, NeverFunctionReturn, NeverReturn, NilFunctionReturn, NilListReturn, NilReturn,
-    ParameterListListReturn, ParameterListReturn, ReturnBody, ReturnBodyKind, StringFunctionReturn,
-    StringListReturn, StringReturn, TupleFunctionReturn, TupleListReturn, TupleReturn,
-    TypedFunctionReturn, UtfCodepointFunctionReturn, UtfCodepointListReturn, UtfCodepointReturn,
+    ParameterListListReturn, ParameterListReturn, ReturnBlock, ReturnGraph, ReturnTarget,
+    StringFunctionReturn, StringListReturn, StringReturn, TupleFunctionReturn, TupleListReturn,
+    TupleReturn, TypedFunctionReturn, UtfCodepointFunctionReturn, UtfCodepointListReturn,
+    UtfCodepointReturn,
 };
 pub(crate) use step::{
     AssertBinding, AssertPattern, AssertSubject, ListAssertPattern, ListAssertTail, Step, StepKind,

@@ -870,7 +870,7 @@ mod tests {
         CallArg, CallArgKind, CaptureArg, CaptureArgKind, ClosureTemplate, ExecutionPlan,
         FunctionCall, FunctionReference, IntExpr, IntExprKind, IntFunctionExpr,
         IntFunctionExprKind, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, IntLocalId,
-        ParamLocal, ReturnBody, ReturnBodyKind, Step, StepKind, StringExpr, StringExprKind,
+        ParamLocal, ReturnBlock, ReturnGraph, Step, StepKind, StringExpr, StringExprKind,
         StringLocalId,
     };
     use super::super::super::specialization::{
@@ -1225,10 +1225,10 @@ pub fn main() {
     }
 
     fn expect_expression_return<Expression, Function>(
-        body: &ReturnBody<Expression, Function>,
+        graph: &ReturnGraph<Expression, Function>,
     ) -> &Expression {
-        match body.kind() {
-            ReturnBodyKind::Expr(expression) => expression,
+        match graph.block(graph.entry()) {
+            ReturnBlock::Return(expression) => expression,
             _ => panic!("expected an expression return body"),
         }
     }

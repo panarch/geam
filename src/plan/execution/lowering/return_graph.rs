@@ -1,9 +1,9 @@
 use super::LoweringContext;
 use super::expression::{
-    bit_array_expr, bit_array_function_expr, bit_array_list_expr, bool_case, bool_expr,
-    bool_function_expr, bool_list_expr, concrete_parameter_list_list_expr, custom_expr_kind,
-    custom_function_expr_kind, custom_list_expr, direct_call, float_expr, float_function_expr,
-    float_list_expr, function_function_expr_kind, function_list_expr, generic_bit_array_expr,
+    bit_array_expr, bit_array_function_expr, bit_array_list_expr, bool_expr, bool_function_expr,
+    bool_list_expr, concrete_parameter_list_list_expr, custom_expr_kind, custom_function_expr_kind,
+    custom_list_expr, direct_call, float_expr, float_function_expr, float_list_expr,
+    function_function_expr_kind, function_list_expr, generic_bit_array_expr,
     generic_bit_array_function_expr, generic_bit_array_list_expr, generic_bool_expr,
     generic_bool_function_expr, generic_bool_list_expr, generic_custom_expr_kind,
     generic_custom_function_expr_kind, generic_custom_list_expr, generic_float_expr,
@@ -28,9 +28,9 @@ use super::expression::{
     generic_value_string_list_expr, generic_value_tuple_function_expr,
     generic_value_tuple_list_expr, generic_value_utf_codepoint_function_expr,
     generic_value_utf_codepoint_list_expr, int_expr, int_function_expr, int_list_expr,
-    list_function_expr, list_list_expr, nil_expr, nil_function_expr, nil_list_expr,
-    parameter_list_expr, parameter_list_value_expr, string_expr, string_function_expr,
-    string_list_expr, tuple_expr, tuple_function_expr, tuple_list_expr,
+    list_function_expr, list_list_expr, lower_bool_subject, nil_expr, nil_function_expr,
+    nil_list_expr, parameter_list_expr, parameter_list_value_expr, string_expr,
+    string_function_expr, string_list_expr, tuple_expr, tuple_function_expr, tuple_list_expr,
     unresolved_parameter_list_list_expr, utf_codepoint_expr, utf_codepoint_function_expr,
     utf_codepoint_list_expr,
 };
@@ -41,7 +41,7 @@ pub(super) fn never_return(
     body: &module::GenericReturn,
     context: &mut LoweringContext,
 ) -> Representability<execution::NeverReturn> {
-    never_return_body(body, context, |expression, context| {
+    never_return_graph(body, context, |expression, context| {
         super::expression::never_expr(expression, context)
     })
 }
@@ -51,7 +51,7 @@ pub(super) fn tuple_never_return(
     proof: &super::specialization::UninhabitedTupleValueShape,
     context: &mut LoweringContext,
 ) -> Representability<execution::NeverReturn> {
-    never_return_body(body, context, |expression, context| {
+    never_return_graph(body, context, |expression, context| {
         super::expression::tuple_never_expr(expression, proof, context)
     })
 }
@@ -61,12 +61,12 @@ pub(super) fn custom_never_return(
     proof: &super::specialization::UninhabitedCustomValueShape,
     context: &mut LoweringContext,
 ) -> Representability<execution::NeverReturn> {
-    never_return_body(body.body(), context, |kind, context| {
+    never_return_graph(body.body(), context, |kind, context| {
         super::expression::custom_never_expr_kind(kind, proof, context)
     })
 }
 
-fn never_return_body<ModuleExpression>(
+fn never_return_graph<ModuleExpression>(
     body: &module::ReturnBody<ModuleExpression, module::FunctionInstantiation>,
     context: &mut LoweringContext,
     lower_expression: impl Copy
@@ -75,123 +75,9 @@ fn never_return_body<ModuleExpression>(
         &mut LoweringContext,
     ) -> Representability<execution::NeverExpr>,
 ) -> Representability<execution::NeverReturn> {
-    use execution::ReturnBodyKind as E;
-    use module::ReturnBodyKind as M;
-
-    if let Some(expression) = context.take_return_divergence() {
-        return Representability::Inhabited(execution::ReturnBody::from_kind(E::Never(expression)));
-    }
-
-    let kind = match body.kind() {
-        M::Expr(expression) => lower_expression(expression, context).map(E::Expr),
-        M::TailCall { function, args } => {
-            direct_call(function, args, context, |function, context| {
-                context.never_function_id(function)
-            })
-            .map(|call| match call {
-                execution::DirectCall::Executable { function, args } => {
-                    E::TailCall { function, args }
-                }
-                execution::DirectCall::Diverging(expression) => E::Never(expression),
-            })
-        }
-        M::BoolCase {
-            subject,
-            true_,
-            false_,
-        } => bool_case(
-            subject,
-            context,
-            |context| {
-                never_return_body(true_, context, lower_expression)
-                    .map(execution::ReturnBody::into_kind)
-            },
-            |context| {
-                never_return_body(false_, context, lower_expression)
-                    .map(execution::ReturnBody::into_kind)
-            },
-            |subject, true_, false_| E::BoolCase {
-                subject,
-                true_: Box::new(execution::ReturnBody::from_kind(true_)),
-                false_: Box::new(execution::ReturnBody::from_kind(false_)),
-            },
-        ),
-        M::IntCase {
-            subject,
-            clauses,
-            fallback,
-        } => int_expr(subject, context).and_then(|subject| {
-            Representability::collect(clauses.iter().map(|(pattern, branch)| {
-                never_return_body(branch, context, lower_expression)
-                    .map(|branch| (pattern.clone(), branch))
-            }))
-            .and_then(|clauses| {
-                never_return_body(fallback, context, lower_expression).map(|fallback| E::IntCase {
-                    subject,
-                    clauses,
-                    fallback: Box::new(fallback),
-                })
-            })
-        }),
-        M::FloatCase {
-            subject,
-            clauses,
-            fallback,
-        } => float_expr(subject, context).and_then(|subject| {
-            Representability::collect(clauses.iter().map(|(pattern, branch)| {
-                never_return_body(branch, context, lower_expression)
-                    .map(|branch| (*pattern, branch))
-            }))
-            .and_then(|clauses| {
-                never_return_body(fallback, context, lower_expression).map(|fallback| {
-                    E::FloatCase {
-                        subject,
-                        clauses,
-                        fallback: Box::new(fallback),
-                    }
-                })
-            })
-        }),
-        M::StringCase {
-            subject,
-            clauses,
-            fallback,
-        } => string_expr(subject, context).and_then(|subject| {
-            Representability::collect(clauses.iter().map(|(pattern, branch)| {
-                never_return_body(branch, context, lower_expression)
-                    .map(|branch| (pattern.clone(), branch))
-            }))
-            .and_then(|clauses| {
-                never_return_body(fallback, context, lower_expression).map(|fallback| {
-                    E::StringCase {
-                        subject,
-                        clauses,
-                        fallback: Box::new(fallback),
-                    }
-                })
-            })
-        }),
-        M::Block { steps, return_ } => {
-            super::step::steps_until_never(steps, context).and_then(|steps| match steps {
-                super::step::StepsUntilNever::Complete(steps) => {
-                    never_return_body(return_, context, lower_expression).map(|return_| E::Block {
-                        steps,
-                        return_: Box::new(return_),
-                    })
-                }
-                super::step::StepsUntilNever::Diverging { prefix, expression } => {
-                    Representability::Inhabited(E::Never(execution::NeverExpr::from_kind(
-                        execution::NeverExprKind::Block {
-                            steps: prefix,
-                            return_: Box::new(expression),
-                        },
-                    )))
-                }
-            })
-        }
-    };
-
-    kind.map(execution::ReturnBody::from_kind)
+    return_graph(body, context, lower_expression, |function, context| {
+        context.never_function_id(function)
+    })
 }
 
 macro_rules! generic_primitive_return {
@@ -200,7 +86,7 @@ macro_rules! generic_primitive_return {
             body: &module::GenericReturn,
             context: &mut LoweringContext,
         ) -> Representability<$return> {
-            return_body(body, context, $expression, |function, context| {
+            return_graph(body, context, $expression, |function, context| {
                 context.$function(function)
             })
         }
@@ -256,7 +142,7 @@ pub(super) fn generic_custom_return(
     context: &mut LoweringContext,
 ) -> Representability<execution::CustomReturn> {
     let lowered_shape = context.lower_concrete_custom_shape(shape);
-    let body = return_body(
+    let body = return_graph(
         body,
         context,
         |expression, context| generic_custom_expr_kind(expression, shape, context),
@@ -274,7 +160,7 @@ pub(super) fn generic_tuple_return(
     elements: &[super::specialization::SpecializedValueShape],
     context: &mut LoweringContext,
 ) -> Representability<execution::TupleReturn> {
-    return_body(
+    return_graph(
         body,
         context,
         |expression, context| generic_tuple_expr(expression, elements, context),
@@ -288,7 +174,7 @@ macro_rules! generic_value_primitive_list_return {
             body: &module::GenericReturn,
             context: &mut LoweringContext,
         ) -> Representability<$return> {
-            return_body(body, context, $expression, |function, context| {
+            return_graph(body, context, $expression, |function, context| {
                 context.$function(function)
             })
         }
@@ -344,7 +230,7 @@ pub(super) fn generic_value_custom_list_return(
     type_id: execution::CustomListTypeId,
     context: &mut LoweringContext,
 ) -> Representability<execution::CustomListReturn> {
-    return_body(
+    return_graph(
         body,
         context,
         |expression, context| generic_value_custom_list_expr(expression, shape, context),
@@ -358,7 +244,7 @@ pub(super) fn generic_value_tuple_list_return(
     type_id: execution::TupleListTypeId,
     context: &mut LoweringContext,
 ) -> Representability<execution::TupleListReturn> {
-    return_body(
+    return_graph(
         body,
         context,
         |expression, context| generic_value_tuple_list_expr(expression, elements, context),
@@ -372,7 +258,7 @@ pub(super) fn generic_value_nested_list_return(
     type_id: execution::ListListTypeId,
     context: &mut LoweringContext,
 ) -> Representability<execution::ListListReturn> {
-    return_body(
+    return_graph(
         body,
         context,
         |expression, context| generic_value_stored_nested_list_expr(expression, item, context),
@@ -385,7 +271,7 @@ pub(super) fn generic_value_parameter_list_return(
     parameter: crate::plan::TypeParameterId,
     context: &mut LoweringContext,
 ) -> Representability<execution::ParameterListReturn> {
-    return_body(
+    return_graph(
         body,
         context,
         |expression, context| parameter_list_value_expr(expression, parameter, context),
@@ -399,7 +285,7 @@ pub(super) fn generic_value_parameter_list_list_return(
     type_id: execution::ParameterListListTypeId,
     context: &mut LoweringContext,
 ) -> Representability<execution::ParameterListListReturn> {
-    return_body(
+    return_graph(
         body,
         context,
         |expression, context| {
@@ -415,7 +301,7 @@ pub(super) fn generic_value_function_list_return(
     type_id: execution::FunctionListTypeId,
     context: &mut LoweringContext,
 ) -> Representability<execution::FunctionListReturn> {
-    return_body(
+    return_graph(
         body,
         context,
         |expression, context| generic_value_function_list_expr(expression, function_shape, context),
@@ -429,7 +315,7 @@ macro_rules! generic_item_primitive_list_return {
             body: &module::GenericListReturn,
             context: &mut LoweringContext,
         ) -> Representability<$return> {
-            return_body(body, context, $expression, |function, context| {
+            return_graph(body, context, $expression, |function, context| {
                 context.$function(function)
             })
         }
@@ -485,7 +371,7 @@ pub(super) fn generic_item_custom_list_return(
     type_id: execution::CustomListTypeId,
     context: &mut LoweringContext,
 ) -> Representability<execution::CustomListReturn> {
-    return_body(
+    return_graph(
         body,
         context,
         |expression, context| generic_custom_list_expr(expression, shape, context),
@@ -499,7 +385,7 @@ pub(super) fn generic_item_tuple_list_return(
     type_id: execution::TupleListTypeId,
     context: &mut LoweringContext,
 ) -> Representability<execution::TupleListReturn> {
-    return_body(
+    return_graph(
         body,
         context,
         |expression, context| generic_tuple_list_expr(expression, elements, context),
@@ -513,7 +399,7 @@ pub(super) fn generic_item_nested_list_return(
     type_id: execution::ListListTypeId,
     context: &mut LoweringContext,
 ) -> Representability<execution::ListListReturn> {
-    return_body(
+    return_graph(
         body,
         context,
         |expression, context| generic_stored_nested_list_expr(expression, item, context),
@@ -526,7 +412,7 @@ pub(super) fn generic_item_parameter_list_return(
     parameter: crate::plan::TypeParameterId,
     context: &mut LoweringContext,
 ) -> Representability<execution::ParameterListReturn> {
-    return_body(
+    return_graph(
         body,
         context,
         |expression, context| parameter_list_expr(expression, parameter, context),
@@ -540,7 +426,7 @@ pub(super) fn generic_item_parameter_list_list_return(
     type_id: execution::ParameterListListTypeId,
     context: &mut LoweringContext,
 ) -> Representability<execution::ParameterListListReturn> {
-    return_body(
+    return_graph(
         body,
         context,
         |expression, context| generic_parameter_list_list_expr(expression, parameter, context),
@@ -554,7 +440,7 @@ pub(super) fn generic_item_function_list_return(
     type_id: execution::FunctionListTypeId,
     context: &mut LoweringContext,
 ) -> Representability<execution::FunctionListReturn> {
-    return_body(
+    return_graph(
         body,
         context,
         |expression, context| generic_function_list_expr(expression, function_shape, context),
@@ -569,7 +455,7 @@ macro_rules! generic_value_primitive_function_return {
             function_shape: &super::specialization::SpecializedFunctionShape,
             context: &mut LoweringContext,
         ) -> Representability<$return> {
-            let lowered = return_body(
+            let lowered = return_graph(
                 body,
                 context,
                 |expression, context| $expression(expression, function_shape, context),
@@ -633,7 +519,7 @@ pub(super) fn generic_value_tuple_function_return(
     function_shape: &super::specialization::SpecializedFunctionShape,
     context: &mut LoweringContext,
 ) -> Representability<execution::TupleFunctionReturn> {
-    let lowered = return_body(
+    let lowered = return_graph(
         body,
         context,
         |expression, context| {
@@ -651,7 +537,7 @@ pub(super) fn generic_value_custom_function_return(
     context: &mut LoweringContext,
 ) -> Representability<execution::CustomFunctionReturn> {
     let type_ = context.specialized_custom_function_type(function_shape.arguments(), return_shape);
-    let lowered = return_body(
+    let lowered = return_graph(
         body,
         context,
         |expression, context| {
@@ -673,7 +559,7 @@ pub(super) fn generic_value_list_function_return(
     item: &super::specialization::SpecializedValueShape,
     context: &mut LoweringContext,
 ) -> Representability<execution::ListFunctionReturn> {
-    let lowered = return_body(
+    let lowered = return_graph(
         body,
         context,
         |expression, context| {
@@ -692,7 +578,7 @@ pub(super) fn generic_value_function_function_return(
 ) -> Representability<execution::FunctionFunctionReturn> {
     let type_ =
         context.specialized_function_function_type(function_shape.arguments(), return_shape);
-    let lowered = return_body(
+    let lowered = return_graph(
         body,
         context,
         |expression, context| {
@@ -714,7 +600,7 @@ pub(super) fn generic_value_generic_function_return(
     context: &mut LoweringContext,
 ) -> Representability<execution::GenericFunctionReturn> {
     let type_ = context.generic_function_type(function_shape);
-    let lowered = return_body(
+    let lowered = return_graph(
         body,
         context,
         |expression, context| {
@@ -731,7 +617,7 @@ pub(super) fn generic_value_never_function_return(
     context: &mut LoweringContext,
 ) -> Representability<execution::NeverFunctionReturn> {
     let type_ = context.generic_function_type(function_shape);
-    let lowered = return_body(
+    let lowered = return_graph(
         body,
         context,
         |expression, context| {
@@ -749,7 +635,7 @@ macro_rules! generic_result_primitive_function_return {
             function_shape: &super::specialization::SpecializedFunctionShape,
             context: &mut LoweringContext,
         ) -> Representability<$return> {
-            let lowered = return_body(body, context, $expression, |function, context| {
+            let lowered = return_graph(body, context, $expression, |function, context| {
                 context.$function(function)
             });
             lowered.map(|lowered| {
@@ -810,7 +696,7 @@ pub(super) fn generic_result_tuple_function_return(
     function_shape: &super::specialization::SpecializedFunctionShape,
     context: &mut LoweringContext,
 ) -> Representability<execution::TupleFunctionReturn> {
-    let lowered = return_body(
+    let lowered = return_graph(
         body,
         context,
         generic_tuple_function_expr,
@@ -826,7 +712,7 @@ pub(super) fn generic_result_custom_function_return(
     context: &mut LoweringContext,
 ) -> Representability<execution::CustomFunctionReturn> {
     let type_ = context.specialized_custom_function_type(function_shape.arguments(), return_shape);
-    let lowered = return_body(
+    let lowered = return_graph(
         body,
         context,
         |expression, context| {
@@ -848,7 +734,7 @@ pub(super) fn generic_result_list_function_return(
     item: &super::specialization::SpecializedValueShape,
     context: &mut LoweringContext,
 ) -> Representability<execution::ListFunctionReturn> {
-    let lowered = return_body(
+    let lowered = return_graph(
         body,
         context,
         |expression, context| generic_list_function_expr(expression, item, context),
@@ -865,7 +751,7 @@ pub(super) fn generic_result_function_function_return(
 ) -> Representability<execution::FunctionFunctionReturn> {
     let type_ =
         context.specialized_function_function_type(function_shape.arguments(), return_shape);
-    let lowered = return_body(
+    let lowered = return_graph(
         body,
         context,
         |expression, context| {
@@ -887,7 +773,7 @@ pub(super) fn generic_result_generic_function_return(
     context: &mut LoweringContext,
 ) -> Representability<execution::GenericFunctionReturn> {
     let type_ = context.generic_function_type(function_shape);
-    let lowered = return_body(
+    let lowered = return_graph(
         body,
         context,
         generic_symbolic_function_expr,
@@ -902,7 +788,7 @@ pub(super) fn generic_result_never_function_return(
     context: &mut LoweringContext,
 ) -> Representability<execution::NeverFunctionReturn> {
     let type_ = context.generic_function_type(function_shape);
-    let lowered = return_body(
+    let lowered = return_graph(
         body,
         context,
         generic_never_function_expr,
@@ -915,7 +801,7 @@ pub(super) fn int_return(
     body: &module::IntReturn,
     context: &mut LoweringContext,
 ) -> Representability<execution::IntReturn> {
-    return_body(body, context, int_expr, |function, context| {
+    return_graph(body, context, int_expr, |function, context| {
         context.int_function_id(function)
     })
 }
@@ -924,7 +810,7 @@ pub(super) fn float_return(
     body: &module::FloatReturn,
     context: &mut LoweringContext,
 ) -> Representability<execution::FloatReturn> {
-    return_body(body, context, float_expr, |function, context| {
+    return_graph(body, context, float_expr, |function, context| {
         context.float_function_id(function)
     })
 }
@@ -933,7 +819,7 @@ pub(super) fn string_return(
     body: &module::StringReturn,
     context: &mut LoweringContext,
 ) -> Representability<execution::StringReturn> {
-    return_body(body, context, string_expr, |function, context| {
+    return_graph(body, context, string_expr, |function, context| {
         context.string_function_id(function)
     })
 }
@@ -942,7 +828,7 @@ pub(super) fn bit_array_return(
     body: &module::BitArrayReturn,
     context: &mut LoweringContext,
 ) -> Representability<execution::BitArrayReturn> {
-    return_body(body, context, bit_array_expr, |function, context| {
+    return_graph(body, context, bit_array_expr, |function, context| {
         context.bit_array_function_id(function)
     })
 }
@@ -951,7 +837,7 @@ pub(super) fn utf_codepoint_return(
     body: &module::UtfCodepointReturn,
     context: &mut LoweringContext,
 ) -> Representability<execution::UtfCodepointReturn> {
-    return_body(body, context, utf_codepoint_expr, |function, context| {
+    return_graph(body, context, utf_codepoint_expr, |function, context| {
         context.utf_codepoint_function_id(function)
     })
 }
@@ -965,7 +851,7 @@ pub(super) fn custom_return(
     let lowered_signature_shape = context.lower_concrete_custom_shape(&signature_shape);
     let lowered_body_shape = context.lower_concrete_custom_shape(&body_shape);
     let body = match context.representations.custom_inhabitation(&body_shape) {
-        super::specialization::CompoundInhabitation::Inhabited => return_body(
+        super::specialization::CompoundInhabitation::Inhabited => return_graph(
             body.body(),
             context,
             |kind, context| custom_expr_kind(kind, &body_shape, context),
@@ -975,7 +861,7 @@ pub(super) fn custom_return(
                     .map(|function| function.index())
             },
         ),
-        super::specialization::CompoundInhabitation::Uninhabited(proof) => return_body(
+        super::specialization::CompoundInhabitation::Uninhabited(proof) => return_graph(
             body.body(),
             context,
             |kind, context| {
@@ -998,7 +884,7 @@ pub(super) fn bool_return(
     body: &module::BoolReturn,
     context: &mut LoweringContext,
 ) -> Representability<execution::BoolReturn> {
-    return_body(body, context, bool_expr, |function, context| {
+    return_graph(body, context, bool_expr, |function, context| {
         context.bool_function_id(function)
     })
 }
@@ -1007,7 +893,7 @@ pub(super) fn nil_return(
     body: &module::NilReturn,
     context: &mut LoweringContext,
 ) -> Representability<execution::NilReturn> {
-    return_body(body, context, nil_expr, |function, context| {
+    return_graph(body, context, nil_expr, |function, context| {
         context.nil_function_id(function)
     })
 }
@@ -1016,7 +902,7 @@ pub(super) fn tuple_return(
     body: &module::TupleReturn,
     context: &mut LoweringContext,
 ) -> Representability<execution::TupleReturn> {
-    return_body(body, context, tuple_expr, |function, context| {
+    return_graph(body, context, tuple_expr, |function, context| {
         context.tuple_function_id(function)
     })
 }
@@ -1024,7 +910,7 @@ pub(super) fn int_list_return(
     body: &module::IntListReturn,
     context: &mut LoweringContext,
 ) -> Representability<execution::IntListReturn> {
-    return_body(body, context, int_list_expr, |function, context| {
+    return_graph(body, context, int_list_expr, |function, context| {
         context.int_list_function_id(function)
     })
 }
@@ -1033,7 +919,7 @@ pub(super) fn string_list_return(
     body: &module::StringListReturn,
     context: &mut LoweringContext,
 ) -> Representability<execution::StringListReturn> {
-    return_body(body, context, string_list_expr, |function, context| {
+    return_graph(body, context, string_list_expr, |function, context| {
         context.string_list_function_id(function)
     })
 }
@@ -1042,7 +928,7 @@ pub(super) fn bit_array_list_return(
     body: &module::BitArrayListReturn,
     context: &mut LoweringContext,
 ) -> Representability<execution::BitArrayListReturn> {
-    return_body(body, context, bit_array_list_expr, |function, context| {
+    return_graph(body, context, bit_array_list_expr, |function, context| {
         context.bit_array_list_function_id(function)
     })
 }
@@ -1051,7 +937,7 @@ pub(super) fn utf_codepoint_list_return(
     body: &module::UtfCodepointListReturn,
     context: &mut LoweringContext,
 ) -> Representability<execution::UtfCodepointListReturn> {
-    return_body(
+    return_graph(
         body,
         context,
         utf_codepoint_list_expr,
@@ -1064,7 +950,7 @@ pub(super) fn custom_list_return(
     type_id: execution::CustomListTypeId,
     context: &mut LoweringContext,
 ) -> Representability<execution::CustomListReturn> {
-    return_body(body, context, custom_list_expr, move |function, context| {
+    return_graph(body, context, custom_list_expr, move |function, context| {
         context.custom_list_function_id(function, type_id)
     })
 }
@@ -1073,7 +959,7 @@ pub(super) fn float_list_return(
     body: &module::FloatListReturn,
     context: &mut LoweringContext,
 ) -> Representability<execution::FloatListReturn> {
-    return_body(body, context, float_list_expr, |function, context| {
+    return_graph(body, context, float_list_expr, |function, context| {
         context.float_list_function_id(function)
     })
 }
@@ -1082,7 +968,7 @@ pub(super) fn bool_list_return(
     body: &module::BoolListReturn,
     context: &mut LoweringContext,
 ) -> Representability<execution::BoolListReturn> {
-    return_body(body, context, bool_list_expr, |function, context| {
+    return_graph(body, context, bool_list_expr, |function, context| {
         context.bool_list_function_id(function)
     })
 }
@@ -1091,7 +977,7 @@ pub(super) fn nil_list_return(
     body: &module::NilListReturn,
     context: &mut LoweringContext,
 ) -> Representability<execution::NilListReturn> {
-    return_body(body, context, nil_list_expr, |function, context| {
+    return_graph(body, context, nil_list_expr, |function, context| {
         context.nil_list_function_id(function)
     })
 }
@@ -1101,7 +987,7 @@ pub(super) fn tuple_list_return(
     type_id: execution::TupleListTypeId,
     context: &mut LoweringContext,
 ) -> Representability<execution::TupleListReturn> {
-    return_body(body, context, tuple_list_expr, move |function, context| {
+    return_graph(body, context, tuple_list_expr, move |function, context| {
         context.tuple_list_function_id(function, type_id)
     })
 }
@@ -1111,7 +997,7 @@ pub(super) fn list_list_return(
     type_id: execution::ListListTypeId,
     context: &mut LoweringContext,
 ) -> Representability<execution::ListListReturn> {
-    return_body(body, context, list_list_expr, move |function, context| {
+    return_graph(body, context, list_list_expr, move |function, context| {
         context.list_list_function_id(function, type_id)
     })
 }
@@ -1122,7 +1008,7 @@ pub(super) fn parameter_list_list_return(
     type_id: execution::ParameterListListTypeId,
     context: &mut LoweringContext,
 ) -> Representability<execution::ParameterListListReturn> {
-    return_body(
+    return_graph(
         body,
         context,
         |expression, context| unresolved_parameter_list_list_expr(expression, parameter, context),
@@ -1136,7 +1022,7 @@ pub(super) fn stored_parameter_list_list_return(
     type_id: execution::ListListTypeId,
     context: &mut LoweringContext,
 ) -> Representability<execution::ListListReturn> {
-    return_body(
+    return_graph(
         body,
         context,
         |expression, context| concrete_parameter_list_list_expr(expression, item, context),
@@ -1149,7 +1035,7 @@ pub(super) fn function_list_return(
     type_id: execution::FunctionListTypeId,
     context: &mut LoweringContext,
 ) -> Representability<execution::FunctionListReturn> {
-    return_body(
+    return_graph(
         body,
         context,
         function_list_expr,
@@ -1161,7 +1047,7 @@ pub(super) fn int_function_return(
     body: &module::IntFunctionReturn,
     context: &mut LoweringContext,
 ) -> Representability<execution::IntFunctionReturn> {
-    let body = return_body(body, context, int_function_expr, |function, context| {
+    let body = return_graph(body, context, int_function_expr, |function, context| {
         context.int_function_function_id(function)
     });
     typed_function_return(shape.clone(), body, context)
@@ -1172,7 +1058,7 @@ pub(super) fn float_function_return(
     body: &module::FloatFunctionReturn,
     context: &mut LoweringContext,
 ) -> Representability<execution::FloatFunctionReturn> {
-    let body = return_body(body, context, float_function_expr, |function, context| {
+    let body = return_graph(body, context, float_function_expr, |function, context| {
         context.float_function_function_id(function)
     });
     typed_function_return(shape.clone(), body, context)
@@ -1183,7 +1069,7 @@ pub(super) fn string_function_return(
     body: &module::StringFunctionReturn,
     context: &mut LoweringContext,
 ) -> Representability<execution::StringFunctionReturn> {
-    let body = return_body(body, context, string_function_expr, |function, context| {
+    let body = return_graph(body, context, string_function_expr, |function, context| {
         context.string_function_function_id(function)
     });
     typed_function_return(shape.clone(), body, context)
@@ -1194,7 +1080,7 @@ pub(super) fn bit_array_function_return(
     body: &module::BitArrayFunctionReturn,
     context: &mut LoweringContext,
 ) -> Representability<execution::BitArrayFunctionReturn> {
-    let body = return_body(
+    let body = return_graph(
         body,
         context,
         bit_array_function_expr,
@@ -1208,7 +1094,7 @@ pub(super) fn utf_codepoint_function_return(
     body: &module::UtfCodepointFunctionReturn,
     context: &mut LoweringContext,
 ) -> Representability<execution::UtfCodepointFunctionReturn> {
-    let body = return_body(
+    let body = return_graph(
         body,
         context,
         utf_codepoint_function_expr,
@@ -1224,7 +1110,7 @@ pub(super) fn custom_function_return(
 ) -> Representability<execution::CustomFunctionReturn> {
     let return_shape = context.concrete_custom_value_shape(body.type_().return_());
     let type_ = context.custom_function_type(body.type_().clone());
-    let lowered = return_body(
+    let lowered = return_graph(
         body.body(),
         context,
         |kind, context| custom_function_expr_kind(kind, &return_shape, &type_, context),
@@ -1244,7 +1130,7 @@ pub(super) fn symbolic_custom_function_return(
     context: &mut LoweringContext,
 ) -> Representability<execution::GenericFunctionReturn> {
     let type_ = context.generic_function_type(function_shape);
-    let lowered = return_body(
+    let lowered = return_graph(
         body.body(),
         context,
         |kind, context| {
@@ -1262,7 +1148,7 @@ pub(super) fn custom_never_function_return(
     context: &mut LoweringContext,
 ) -> Representability<execution::NeverFunctionReturn> {
     let type_ = context.generic_function_type(function_shape);
-    let lowered = return_body(
+    let lowered = return_graph(
         body.body(),
         context,
         |kind, context| {
@@ -1279,7 +1165,7 @@ pub(super) fn bool_function_return(
     body: &module::BoolFunctionReturn,
     context: &mut LoweringContext,
 ) -> Representability<execution::BoolFunctionReturn> {
-    let body = return_body(body, context, bool_function_expr, |function, context| {
+    let body = return_graph(body, context, bool_function_expr, |function, context| {
         context.bool_function_function_id(function)
     });
     typed_function_return(shape.clone(), body, context)
@@ -1290,7 +1176,7 @@ pub(super) fn nil_function_return(
     body: &module::NilFunctionReturn,
     context: &mut LoweringContext,
 ) -> Representability<execution::NilFunctionReturn> {
-    let body = return_body(body, context, nil_function_expr, |function, context| {
+    let body = return_graph(body, context, nil_function_expr, |function, context| {
         context.nil_function_function_id(function)
     });
     typed_function_return(shape.clone(), body, context)
@@ -1301,7 +1187,7 @@ pub(super) fn tuple_function_return(
     body: &module::TupleFunctionReturn,
     context: &mut LoweringContext,
 ) -> Representability<execution::TupleFunctionReturn> {
-    let body = return_body(body, context, tuple_function_expr, |function, context| {
+    let body = return_graph(body, context, tuple_function_expr, |function, context| {
         context.tuple_function_function_id(function)
     });
     typed_function_return(shape.clone(), body, context)
@@ -1313,7 +1199,7 @@ pub(super) fn tuple_never_function_return(
     context: &mut LoweringContext,
 ) -> Representability<execution::NeverFunctionReturn> {
     let type_ = context.generic_function_type(function_shape);
-    let lowered = return_body(
+    let lowered = return_graph(
         body,
         context,
         super::expression::tuple_never_function_expr,
@@ -1329,7 +1215,7 @@ pub(super) fn list_function_return(
     context: &mut LoweringContext,
 ) -> Representability<execution::ListFunctionReturn> {
     let concrete = context.concrete_function_shape(shape);
-    let body = return_body(body, context, list_function_expr, |function, context| {
+    let body = return_graph(body, context, list_function_expr, |function, context| {
         context.list_function_function_id(function, &concrete, item)
     });
     typed_function_return(shape.clone(), body, context)
@@ -1341,7 +1227,7 @@ pub(super) fn symbolic_list_function_return(
     context: &mut LoweringContext,
 ) -> Representability<execution::GenericFunctionReturn> {
     let type_ = context.generic_function_type(function_shape);
-    let lowered = return_body(
+    let lowered = return_graph(
         body,
         context,
         |expression, context| {
@@ -1359,7 +1245,7 @@ pub(super) fn function_function_return(
 ) -> Representability<execution::FunctionFunctionReturn> {
     let return_shape = context.concrete_function_shape(body.type_().return_shape());
     let type_ = context.function_function_type(body.type_().clone());
-    let lowered = return_body(
+    let lowered = return_graph(
         body.body(),
         context,
         |kind, context| function_function_expr_kind(kind, &return_shape, &type_, context),
@@ -1379,7 +1265,7 @@ pub(super) fn symbolic_function_function_return(
     context: &mut LoweringContext,
 ) -> Representability<execution::GenericFunctionReturn> {
     let type_ = context.generic_function_type(function_shape);
-    let lowered = return_body(
+    let lowered = return_graph(
         body.body(),
         context,
         |kind, context| {
@@ -1421,7 +1307,7 @@ pub(super) fn symbolic_function_return<ModuleExpression>(
     ) -> Representability<execution::GenericFunctionExpr>,
 ) -> Representability<execution::GenericFunctionReturn> {
     let type_ = context.generic_function_type(function_shape);
-    let lowered = return_body(
+    let lowered = return_graph(
         body,
         context,
         |expression, context| lower_expression(expression, function_shape, context),
@@ -1430,7 +1316,7 @@ pub(super) fn symbolic_function_return<ModuleExpression>(
     specialized_typed_function_return(function_shape, lowered, context)
 }
 
-fn return_body<ModuleExpression, ExecutionExpression, ExecutionFunction>(
+fn return_graph<ModuleExpression, ExecutionExpression, ExecutionFunction>(
     body: &module::ReturnBody<ModuleExpression, module::FunctionInstantiation>,
     context: &mut LoweringContext,
     lower_expression: impl Copy
@@ -1443,62 +1329,138 @@ fn return_body<ModuleExpression, ExecutionExpression, ExecutionFunction>(
         &module::FunctionInstantiation,
         &mut LoweringContext,
     ) -> Representability<ExecutionFunction>,
-) -> Representability<execution::ReturnBody<ExecutionExpression, ExecutionFunction>> {
-    use execution::ReturnBodyKind as E;
-    use module::ReturnBodyKind as M;
+) -> Representability<execution::ReturnGraph<ExecutionExpression, ExecutionFunction>> {
+    let mut builder = ReturnGraphBuilder::new();
 
-    if let Some(expression) = context.take_return_divergence() {
-        return Representability::Inhabited(execution::ReturnBody::from_kind(E::Never(expression)));
+    let entry = if let Some(expression) = context.take_return_divergence() {
+        Representability::Inhabited(builder.push(execution::ReturnBlock::Never(expression)))
+    } else {
+        lower_return_target(
+            body,
+            context,
+            lower_expression,
+            lower_function,
+            &mut builder,
+        )
+    };
+
+    entry.map(|entry| builder.freeze(entry))
+}
+
+struct ReturnGraphBuilder<Expression, Function> {
+    blocks: Vec<execution::ReturnBlock<Expression, Function>>,
+}
+
+impl<Expression, Function> ReturnGraphBuilder<Expression, Function> {
+    fn new() -> Self {
+        Self { blocks: Vec::new() }
     }
 
-    let kind = match body.kind() {
-        M::Expr(expression) => lower_expression(expression, context).map(E::Expr),
+    fn push(
+        &mut self,
+        block: execution::ReturnBlock<Expression, Function>,
+    ) -> execution::ReturnTarget {
+        let target = execution::ReturnTarget::from_block_index(self.blocks.len());
+        self.blocks.push(block);
+        target
+    }
+
+    fn freeze(
+        self,
+        entry: execution::ReturnTarget,
+    ) -> execution::ReturnGraph<Expression, Function> {
+        execution::ReturnGraph::from_blocks(entry, self.blocks)
+    }
+}
+
+fn lower_return_target<ModuleExpression, ExecutionExpression, ExecutionFunction>(
+    body: &module::ReturnBody<ModuleExpression, module::FunctionInstantiation>,
+    context: &mut LoweringContext,
+    lower_expression: impl Copy
+    + Fn(
+        &ModuleExpression,
+        &mut LoweringContext,
+    ) -> Representability<ExecutionExpression>,
+    lower_function: impl Copy
+    + Fn(
+        &module::FunctionInstantiation,
+        &mut LoweringContext,
+    ) -> Representability<ExecutionFunction>,
+    builder: &mut ReturnGraphBuilder<ExecutionExpression, ExecutionFunction>,
+) -> Representability<execution::ReturnTarget> {
+    use module::ReturnBodyKind as M;
+
+    match body.kind() {
+        M::Expr(expression) => lower_expression(expression, context)
+            .map(|expression| builder.push(execution::ReturnBlock::Return(expression))),
         M::TailCall { function, args } => {
             direct_call(function, args, context, lower_function).map(|call| match call {
                 execution::DirectCall::Executable { function, args } => {
-                    E::TailCall { function, args }
+                    builder.push(execution::ReturnBlock::TailCall {
+                        function,
+                        args: args.into_boxed_slice(),
+                    })
                 }
-                execution::DirectCall::Diverging(expression) => E::Never(expression),
+                execution::DirectCall::Diverging(expression) => {
+                    builder.push(execution::ReturnBlock::Never(expression))
+                }
             })
         }
         M::BoolCase {
             subject,
             true_,
             false_,
-        } => bool_case(
-            subject,
-            context,
-            |context| {
-                return_body(true_, context, lower_expression, lower_function)
-                    .map(execution::ReturnBody::into_kind)
-            },
-            |context| {
-                return_body(false_, context, lower_expression, lower_function)
-                    .map(execution::ReturnBody::into_kind)
-            },
-            |subject, true_, false_| E::BoolCase {
-                subject,
-                true_: Box::new(execution::ReturnBody::from_kind(true_)),
-                false_: Box::new(execution::ReturnBody::from_kind(false_)),
-            },
-        ),
+        } => bool_expr(subject, context).and_then(|subject| match lower_bool_subject(subject) {
+            super::expression::LoweredBoolSubject::True(steps) => {
+                lower_return_target(true_, context, lower_expression, lower_function, builder)
+                    .map(|target| prepend_steps(builder, steps, target))
+            }
+            super::expression::LoweredBoolSubject::False(steps) => {
+                lower_return_target(false_, context, lower_expression, lower_function, builder)
+                    .map(|target| prepend_steps(builder, steps, target))
+            }
+            super::expression::LoweredBoolSubject::Dynamic(subject) => {
+                lower_return_target(true_, context, lower_expression, lower_function, builder)
+                    .and_then(|true_| {
+                        lower_return_target(
+                            false_,
+                            context,
+                            lower_expression,
+                            lower_function,
+                            builder,
+                        )
+                        .map(|false_| {
+                            builder.push(execution::ReturnBlock::BoolBranch {
+                                subject,
+                                true_,
+                                false_,
+                            })
+                        })
+                    })
+            }
+        }),
         M::IntCase {
             subject,
             clauses,
             fallback,
         } => int_expr(subject, context).and_then(|subject| {
-            Representability::collect(clauses.iter().map(|(pattern, branch)| {
-                return_body(branch, context, lower_expression, lower_function)
-                    .map(|branch| (pattern.clone(), branch))
-            }))
-            .and_then(|clauses| {
-                return_body(fallback, context, lower_expression, lower_function).map(|fallback| {
-                    E::IntCase {
-                        subject,
-                        clauses,
-                        fallback: Box::new(fallback),
-                    }
-                })
+            let clauses = lower_clauses(
+                clauses,
+                context,
+                lower_expression,
+                lower_function,
+                builder,
+                |pattern| pattern.clone(),
+            );
+            clauses.and_then(|clauses| {
+                lower_return_target(fallback, context, lower_expression, lower_function, builder)
+                    .map(|fallback| {
+                        builder.push(execution::ReturnBlock::IntSwitch {
+                            subject,
+                            clauses: clauses.into_boxed_slice(),
+                            fallback,
+                        })
+                    })
             })
         }),
         M::FloatCase {
@@ -1506,18 +1468,23 @@ fn return_body<ModuleExpression, ExecutionExpression, ExecutionFunction>(
             clauses,
             fallback,
         } => float_expr(subject, context).and_then(|subject| {
-            Representability::collect(clauses.iter().map(|(pattern, branch)| {
-                return_body(branch, context, lower_expression, lower_function)
-                    .map(|branch| (*pattern, branch))
-            }))
-            .and_then(|clauses| {
-                return_body(fallback, context, lower_expression, lower_function).map(|fallback| {
-                    E::FloatCase {
-                        subject,
-                        clauses,
-                        fallback: Box::new(fallback),
-                    }
-                })
+            let clauses = lower_clauses(
+                clauses,
+                context,
+                lower_expression,
+                lower_function,
+                builder,
+                |pattern| *pattern,
+            );
+            clauses.and_then(|clauses| {
+                lower_return_target(fallback, context, lower_expression, lower_function, builder)
+                    .map(|fallback| {
+                        builder.push(execution::ReturnBlock::FloatSwitch {
+                            subject,
+                            clauses: clauses.into_boxed_slice(),
+                            fallback,
+                        })
+                    })
             })
         }),
         M::StringCase {
@@ -1525,43 +1492,93 @@ fn return_body<ModuleExpression, ExecutionExpression, ExecutionFunction>(
             clauses,
             fallback,
         } => string_expr(subject, context).and_then(|subject| {
-            Representability::collect(clauses.iter().map(|(pattern, branch)| {
-                return_body(branch, context, lower_expression, lower_function)
-                    .map(|branch| (pattern.clone(), branch))
-            }))
-            .and_then(|clauses| {
-                return_body(fallback, context, lower_expression, lower_function).map(|fallback| {
-                    E::StringCase {
-                        subject,
-                        clauses,
-                        fallback: Box::new(fallback),
-                    }
-                })
+            let clauses = lower_clauses(
+                clauses,
+                context,
+                lower_expression,
+                lower_function,
+                builder,
+                |pattern| pattern.clone(),
+            );
+            clauses.and_then(|clauses| {
+                lower_return_target(fallback, context, lower_expression, lower_function, builder)
+                    .map(|fallback| {
+                        builder.push(execution::ReturnBlock::StringSwitch {
+                            subject,
+                            clauses: clauses.into_boxed_slice(),
+                            fallback,
+                        })
+                    })
             })
         }),
         M::Block { steps, return_ } => {
             super::step::steps_until_never(steps, context).and_then(|steps| match steps {
                 super::step::StepsUntilNever::Complete(steps) => {
-                    return_body(return_, context, lower_expression, lower_function).map(|return_| {
-                        E::Block {
-                            steps,
-                            return_: Box::new(return_),
-                        }
-                    })
+                    lower_return_target(return_, context, lower_expression, lower_function, builder)
+                        .map(|next| {
+                            builder.push(execution::ReturnBlock::Steps {
+                                steps: steps.into_boxed_slice(),
+                                next,
+                            })
+                        })
                 }
                 super::step::StepsUntilNever::Diverging { prefix, expression } => {
-                    Representability::Inhabited(E::Never(execution::NeverExpr::from_kind(
-                        execution::NeverExprKind::Block {
+                    Representability::Inhabited(builder.push(execution::ReturnBlock::Never(
+                        execution::NeverExpr::from_kind(execution::NeverExprKind::Block {
                             steps: prefix,
                             return_: Box::new(expression),
-                        },
+                        }),
                     )))
                 }
             })
         }
-    };
+    }
+}
 
-    kind.map(execution::ReturnBody::from_kind)
+fn prepend_steps<Expression, Function>(
+    builder: &mut ReturnGraphBuilder<Expression, Function>,
+    steps: Vec<execution::Step>,
+    next: execution::ReturnTarget,
+) -> execution::ReturnTarget {
+    if steps.is_empty() {
+        next
+    } else {
+        builder.push(execution::ReturnBlock::Steps {
+            steps: steps.into_boxed_slice(),
+            next,
+        })
+    }
+}
+
+fn lower_clauses<
+    ModuleExpression,
+    ExecutionExpression,
+    ExecutionFunction,
+    Pattern,
+    LoweredPattern,
+>(
+    clauses: &[(
+        Pattern,
+        module::ReturnBody<ModuleExpression, module::FunctionInstantiation>,
+    )],
+    context: &mut LoweringContext,
+    lower_expression: impl Copy
+    + Fn(
+        &ModuleExpression,
+        &mut LoweringContext,
+    ) -> Representability<ExecutionExpression>,
+    lower_function: impl Copy
+    + Fn(
+        &module::FunctionInstantiation,
+        &mut LoweringContext,
+    ) -> Representability<ExecutionFunction>,
+    builder: &mut ReturnGraphBuilder<ExecutionExpression, ExecutionFunction>,
+    lower_pattern: impl Copy + Fn(&Pattern) -> LoweredPattern,
+) -> Representability<Vec<(LoweredPattern, execution::ReturnTarget)>> {
+    Representability::collect(clauses.iter().map(|(pattern, branch)| {
+        lower_return_target(branch, context, lower_expression, lower_function, builder)
+            .map(|target| (lower_pattern(pattern), target))
+    }))
 }
 
 #[cfg(test)]
@@ -1571,8 +1588,8 @@ mod tests {
     };
     use super::super::{FunctionTemplates, LoweringContext};
     use crate::plan::execution::{
-        ExecutionPlan, FunctionFunctionId, ListFunctionId, ListListFunctionId, ReturnBody,
-        ReturnBodyKind, RuntimeFunctionId,
+        ExecutionPlan, FunctionFunctionId, IntFunctionId, ListFunctionId, ListListFunctionId,
+        ReturnBlock, ReturnGraph, RuntimeFunctionId,
     };
     use std::collections::HashSet;
 
@@ -1749,6 +1766,117 @@ pub fn main() -> List(List(Int)) {
     }
 
     #[test]
+    fn lowering_freezes_return_blocks_in_child_first_postorder() {
+        let plan = execution_plan(
+            r#"
+fn choose(flag: Bool, number: Int, decimal: Float, text: String) -> Int {
+  case flag {
+    True -> case number {
+      1 -> choose(flag, number, decimal, text)
+      _ -> {
+        let next = number
+        next
+      }
+    }
+    False -> case decimal {
+      1.5 -> 20
+      _ -> case text {
+        "x" -> 30
+        _ -> 40
+      }
+    }
+  }
+}
+
+pub fn main() { choose(False, 0, 0.0, "") }
+"#,
+        );
+        let graph = plan.int_function(IntFunctionId(1)).return_();
+
+        assert_eq!(graph.entry().index(), 9);
+        assert_eq!(
+            summarize_graph(graph),
+            vec![
+                ReturnBlockSummary::TailCall { argument_count: 4 },
+                ReturnBlockSummary::Return,
+                ReturnBlockSummary::Steps {
+                    step_count: 1,
+                    next: 1,
+                },
+                ReturnBlockSummary::IntSwitch {
+                    clauses: vec![(1.into(), 0)],
+                    fallback: 2,
+                },
+                ReturnBlockSummary::Return,
+                ReturnBlockSummary::Return,
+                ReturnBlockSummary::Return,
+                ReturnBlockSummary::StringSwitch {
+                    clauses: vec![("x".into(), 5)],
+                    fallback: 6,
+                },
+                ReturnBlockSummary::FloatSwitch {
+                    clauses: vec![(1.5, 4)],
+                    fallback: 7,
+                },
+                ReturnBlockSummary::BoolBranch {
+                    true_: 3,
+                    false_: 8,
+                },
+            ],
+        );
+    }
+
+    #[test]
+    fn lowering_static_bool_keeps_only_the_selected_graph_branch_and_prefix_steps() {
+        let plan = execution_plan(
+            r#"
+fn selected() -> Int {
+  case {
+    let prefix = 1
+    True
+  } {
+    True -> 10
+    False -> panic as "unselected"
+  }
+}
+
+pub fn main() { selected() }
+"#,
+        );
+        let graph = plan.int_function(IntFunctionId(1)).return_();
+
+        assert_eq!(graph.entry().index(), 1);
+        assert_eq!(
+            summarize_graph(graph),
+            vec![
+                ReturnBlockSummary::Return,
+                ReturnBlockSummary::Steps {
+                    step_count: 1,
+                    next: 0,
+                },
+            ],
+        );
+    }
+
+    #[test]
+    fn lowering_source_stop_return_freezes_one_never_block() {
+        let plan = execution_plan(
+            r#"
+fn stop() -> value { panic as "stop" }
+fn consume(value: value) -> Int { consume(value) }
+
+pub fn main() { consume(stop()) }
+"#,
+        );
+        let main = IntFunctionId(0);
+        assert_eq!(plan.main_runtime(), RuntimeFunctionId::Int(main));
+        let graph = plan.int_function(main).return_();
+
+        assert_eq!(graph.entry().index(), 0);
+        assert_eq!(summarize_graph(graph), vec![ReturnBlockSummary::Never]);
+    }
+
+    #[test]
     #[should_panic(expected = "expected a tail-call return body")]
     fn tail_call_fixture_guard_rejects_expression_return() {
         let plan = execution_plan("pub fn main() -> List(List(Int)) { [] }");
@@ -1771,10 +1899,10 @@ pub fn main() -> List(List(Int)) {
     }
 
     fn expect_tail_call<Expression, Function>(
-        body: &ReturnBody<Expression, Function>,
+        graph: &ReturnGraph<Expression, Function>,
     ) -> (&Function, usize) {
-        match body.kind() {
-            ReturnBodyKind::TailCall { function, args } => (function, args.len()),
+        match graph.block(graph.entry()) {
+            ReturnBlock::TailCall { function, args } => (function, args.len()),
             _ => panic!("expected a tail-call return body"),
         }
     }
@@ -1784,5 +1912,85 @@ pub fn main() -> List(List(Int)) {
             RuntimeFunctionId::List(ListFunctionId::List(main)) => main,
             _ => panic!("expected a List(List) main function"),
         }
+    }
+
+    #[derive(Debug, PartialEq)]
+    enum ReturnBlockSummary {
+        Return,
+        Never,
+        TailCall {
+            argument_count: usize,
+        },
+        BoolBranch {
+            true_: usize,
+            false_: usize,
+        },
+        IntSwitch {
+            clauses: Vec<(num_bigint::BigInt, usize)>,
+            fallback: usize,
+        },
+        FloatSwitch {
+            clauses: Vec<(f64, usize)>,
+            fallback: usize,
+        },
+        StringSwitch {
+            clauses: Vec<(String, usize)>,
+            fallback: usize,
+        },
+        Steps {
+            step_count: usize,
+            next: usize,
+        },
+    }
+
+    fn summarize_graph(
+        graph: &ReturnGraph<crate::plan::execution::IntExpr, IntFunctionId>,
+    ) -> Vec<ReturnBlockSummary> {
+        graph
+            .blocks()
+            .iter()
+            .map(|block| match block {
+                ReturnBlock::Return(_) => ReturnBlockSummary::Return,
+                ReturnBlock::Never(_) => ReturnBlockSummary::Never,
+                ReturnBlock::TailCall { args, .. } => ReturnBlockSummary::TailCall {
+                    argument_count: args.len(),
+                },
+                ReturnBlock::BoolBranch { true_, false_, .. } => ReturnBlockSummary::BoolBranch {
+                    true_: true_.index(),
+                    false_: false_.index(),
+                },
+                ReturnBlock::IntSwitch {
+                    clauses, fallback, ..
+                } => ReturnBlockSummary::IntSwitch {
+                    clauses: clauses
+                        .iter()
+                        .map(|(pattern, target)| (pattern.clone(), target.index()))
+                        .collect(),
+                    fallback: fallback.index(),
+                },
+                ReturnBlock::FloatSwitch {
+                    clauses, fallback, ..
+                } => ReturnBlockSummary::FloatSwitch {
+                    clauses: clauses
+                        .iter()
+                        .map(|(pattern, target)| (*pattern, target.index()))
+                        .collect(),
+                    fallback: fallback.index(),
+                },
+                ReturnBlock::StringSwitch {
+                    clauses, fallback, ..
+                } => ReturnBlockSummary::StringSwitch {
+                    clauses: clauses
+                        .iter()
+                        .map(|(pattern, target)| (pattern.to_string(), target.index()))
+                        .collect(),
+                    fallback: fallback.index(),
+                },
+                ReturnBlock::Steps { steps, next } => ReturnBlockSummary::Steps {
+                    step_count: steps.len(),
+                    next: next.index(),
+                },
+            })
+            .collect()
     }
 }

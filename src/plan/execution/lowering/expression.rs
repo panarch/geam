@@ -83,7 +83,7 @@ pub(super) trait WithLoweredSteps<Output>: Sized {
     fn with_lowered_steps(self, steps: Vec<execution::Step>) -> Output;
 }
 
-enum LoweredBoolSubject {
+pub(super) enum LoweredBoolSubject {
     True(Vec<execution::Step>),
     False(Vec<execution::Step>),
     Dynamic(execution::BoolExpr),
@@ -128,7 +128,7 @@ pub(super) fn bool_case_into<Branch: WithLoweredSteps<Output>, Output>(
     })
 }
 
-fn lower_bool_subject(subject: execution::BoolExpr) -> LoweredBoolSubject {
+pub(super) fn lower_bool_subject(subject: execution::BoolExpr) -> LoweredBoolSubject {
     use execution::BoolExprKind as E;
 
     match subject.into_kind() {
@@ -412,17 +412,6 @@ where
         Self::Block {
             steps,
             return_: Box::new(self),
-        }
-    }
-}
-
-impl<Expression, Function> WithLoweredSteps<execution::ReturnBodyKind<Expression, Function>>
-    for execution::ReturnBodyKind<Expression, Function>
-{
-    fn with_lowered_steps(self, steps: Vec<execution::Step>) -> Self {
-        Self::Block {
-            steps,
-            return_: Box::new(execution::ReturnBody::from_kind(self)),
         }
     }
 }

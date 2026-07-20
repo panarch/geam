@@ -202,8 +202,8 @@ mod tests {
     use crate::plan::execution::{
         BoolFunctionFunctionId, BoolFunctionId, FloatFunctionFunctionId, FloatFunctionId,
         FunctionFunctionExprKind, FunctionFunctionFunctionId, FunctionFunctionReturn,
-        IntFunctionFunctionId, IntFunctionId, NilFunctionFunctionId, NilFunctionId, ReturnBody,
-        ReturnBodyKind, StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId,
+        IntFunctionFunctionId, IntFunctionId, NilFunctionFunctionId, NilFunctionId, ReturnBlock,
+        ReturnGraph, StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId,
         TupleFunctionId, TupleLocalId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
     };
     use crate::plan::{FunctionType, ValueType};
@@ -1425,10 +1425,10 @@ pub fn main() {
     }
 
     fn expression_return<Expression, Function>(
-        body: &ReturnBody<Expression, Function>,
+        graph: &ReturnGraph<Expression, Function>,
     ) -> Option<&Expression> {
-        match body.kind() {
-            ReturnBodyKind::Expr(expression) => Some(expression),
+        match graph.block(graph.entry()) {
+            ReturnBlock::Return(expression) => Some(expression),
             _ => None,
         }
     }
@@ -1436,8 +1436,9 @@ pub fn main() {
     fn function_function_expression_return(
         body: &FunctionFunctionReturn,
     ) -> Option<&FunctionFunctionExprKind> {
-        match body.body().kind() {
-            ReturnBodyKind::Expr(expression) => Some(expression),
+        let graph = body.body();
+        match graph.block(graph.entry()) {
+            ReturnBlock::Return(expression) => Some(expression),
             _ => None,
         }
     }

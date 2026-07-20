@@ -1,5 +1,5 @@
 mod bind;
-pub(in crate::runtime) mod return_body;
+pub(in crate::runtime) mod return_graph;
 mod steps;
 
 pub(in crate::runtime) use bind::{eval_call_argument_values, eval_capture_args};
@@ -42,7 +42,7 @@ use crate::runtime::{
 use bind::{bind_arguments, bind_function_value_arguments};
 use ecow::EcoString;
 use num_bigint::BigInt;
-use return_body::{
+use return_graph::{
     run_bit_array_function_loop, run_bit_array_list_loop, run_bit_array_loop,
     run_bool_function_loop, run_bool_list_loop, run_bool_loop, run_custom_function_loop,
     run_custom_list_loop, run_custom_loop, run_float_function_loop, run_float_list_loop,
@@ -1780,9 +1780,8 @@ mod tests {
     use crate::plan::execution::{
         BoolFunctionFunctionId, CallArg, FloatFunctionFunctionId, FunctionFunctionId,
         FunctionListLocalId, FunctionReturnFamily, IntFunctionFunctionId, IntFunctionId,
-        ListFunctionId, NilFunctionFunctionId, ReturnBody, ReturnBodyKind,
-        StringFunctionFunctionId, StringFunctionId, TupleFunctionFunctionId,
-        UtfCodepointFunctionFunctionId,
+        ListFunctionId, NilFunctionFunctionId, ReturnBlock, ReturnGraph, StringFunctionFunctionId,
+        StringFunctionId, TupleFunctionFunctionId, UtfCodepointFunctionFunctionId,
     };
     use crate::runtime::FunctionValueKind;
     use crate::runtime::frame::Frame;
@@ -3014,10 +3013,10 @@ pub fn main() {
     }
 
     fn expect_tail_call_args<Expression, Function>(
-        body: &ReturnBody<Expression, Function>,
+        graph: &ReturnGraph<Expression, Function>,
     ) -> &[CallArg] {
-        match body.kind() {
-            ReturnBodyKind::TailCall { args, .. } => args,
+        match graph.block(graph.entry()) {
+            ReturnBlock::TailCall { args, .. } => args,
             _ => panic!("expected a tail-call return body"),
         }
     }

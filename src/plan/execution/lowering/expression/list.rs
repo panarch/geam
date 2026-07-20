@@ -1837,8 +1837,9 @@ mod tests {
     };
     use super::super::super::{FunctionTemplates, LoweringContext};
     use crate::plan::execution::{
-        ExecutionPlan, IntListFunctionId, ListFunctionId, ListItem, ListLocalExpr, ReturnBody,
-        ReturnBodyKind, RuntimeFunctionId, Step, StepKind, TypedListExpr, TypedListExprKind,
+        ExecutionPlan, IntListFunctionId, ListFunctionId, ListItem, ListLocalExpr, ReturnBlock,
+        ReturnGraph, ReturnTarget, RuntimeFunctionId, Step, StepKind, TypedListExpr,
+        TypedListExprKind,
     };
     use crate::plan::module::{GenericListReturn, ParameterListListReturn};
     use std::collections::HashSet;
@@ -2084,9 +2085,10 @@ pub fn main() {
         let module_plan = crate::plan_module(typed).expect("source should plan");
         let plan = crate::ExecutionPlan::from_module_plan(module_plan);
         let main = expect_int_list_main(&plan);
-        let (_, return_) = expect_block(plan.int_list_function(main).return_());
-        let true_ = expect_bool_case_true(return_);
-        let (steps, _) = expect_block(true_);
+        let graph = plan.int_list_function(main).return_();
+        let (_, branch) = expect_steps(graph, graph.entry());
+        let true_ = expect_bool_branch_true(graph, branch);
+        let (steps, _) = expect_steps(graph, true_);
         let value = expect_int_list_binding(&steps[0]);
         let source = expect_list_index(value);
 
@@ -2109,7 +2111,8 @@ pub fn main() {
     fn block_return_fixture_guard_rejects_expression_return() {
         let plan = execution_plan("pub fn main() -> List(Int) { [] }");
         let main = expect_int_list_main(&plan);
-        let _ = expect_block(plan.int_list_function(main).return_());
+        let graph = plan.int_list_function(main).return_();
+        let _ = expect_steps(graph, graph.entry());
     }
 
     #[test]
@@ -2117,7 +2120,8 @@ pub fn main() {
     fn bool_case_fixture_guard_rejects_expression_return() {
         let plan = execution_plan("pub fn main() -> List(Int) { [] }");
         let main = expect_int_list_main(&plan);
-        let _ = expect_bool_case_true(plan.int_list_function(main).return_());
+        let graph = plan.int_list_function(main).return_();
+        let _ = expect_bool_branch_true(graph, graph.entry());
     }
 
     #[test]
@@ -2133,7 +2137,8 @@ pub fn main() {
     fn list_index_fixture_guard_rejects_list_value() {
         let plan = execution_plan("pub fn main() -> List(Int) { [] }");
         let main = expect_int_list_main(&plan);
-        let value = expect_expression(plan.int_list_function(main).return_());
+        let graph = plan.int_list_function(main).return_();
+        let value = expect_return(graph, graph.entry());
         let _ = expect_list_index(value);
     }
 
@@ -2151,7 +2156,8 @@ pub fn main() {
 "#,
         );
         let main = expect_int_list_main(&plan);
-        let _ = expect_expression(plan.int_list_function(main).return_());
+        let graph = plan.int_list_function(main).return_();
+        let _ = expect_return(graph, graph.entry());
     }
 
     fn execution_plan(source: &str) -> ExecutionPlan {
@@ -2168,20 +2174,22 @@ pub fn main() {
         }
     }
 
-    fn expect_block<Expression, Function>(
-        body: &ReturnBody<Expression, Function>,
-    ) -> (&[Step], &ReturnBody<Expression, Function>) {
-        match body.kind() {
-            ReturnBodyKind::Block { steps, return_ } => (steps, return_),
+    fn expect_steps<Expression, Function>(
+        graph: &ReturnGraph<Expression, Function>,
+        target: ReturnTarget,
+    ) -> (&[Step], ReturnTarget) {
+        match graph.block(target) {
+            ReturnBlock::Steps { steps, next } => (steps, *next),
             _ => panic!("expected a block return body"),
         }
     }
 
-    fn expect_bool_case_true<Expression, Function>(
-        body: &ReturnBody<Expression, Function>,
-    ) -> &ReturnBody<Expression, Function> {
-        match body.kind() {
-            ReturnBodyKind::BoolCase { true_, .. } => true_,
+    fn expect_bool_branch_true<Expression, Function>(
+        graph: &ReturnGraph<Expression, Function>,
+        target: ReturnTarget,
+    ) -> ReturnTarget {
+        match graph.block(target) {
+            ReturnBlock::BoolBranch { true_, .. } => *true_,
             _ => panic!("expected a Bool case return body"),
         }
     }
@@ -2204,11 +2212,12 @@ pub fn main() {
         }
     }
 
-    fn expect_expression<Expression, Function>(
-        body: &ReturnBody<Expression, Function>,
+    fn expect_return<Expression, Function>(
+        graph: &ReturnGraph<Expression, Function>,
+        target: ReturnTarget,
     ) -> &Expression {
-        match body.kind() {
-            ReturnBodyKind::Expr(expression) => expression,
+        match graph.block(target) {
+            ReturnBlock::Return(expression) => expression,
             _ => panic!("expected an expression return body"),
         }
     }

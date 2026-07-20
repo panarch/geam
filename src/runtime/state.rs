@@ -723,7 +723,7 @@ mod tests {
     };
     use crate::plan::execution::{ListFunctionId, ListStorageTypeId, RuntimeFunctionId};
     use crate::runtime::frame::Frame;
-    use crate::runtime::function::return_body::run_int_list_loop;
+    use crate::runtime::function::return_graph::run_int_list_loop;
     use crate::runtime::{
         EvaluatedBitArray, EvaluatedCapture, EvaluatedFunctionValue, EvaluatedIntFunction,
         EvaluatedValue,
