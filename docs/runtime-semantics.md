@@ -85,9 +85,10 @@ runtime follows that graph with an iterative cursor, including nested branches
 and step blocks, and returns to the existing function loop when it reaches a
 tail call.
 
-Block targets are private execution-plan structure. They are created only while
-freezing a complete graph and are trusted by the runtime rather than checked as
-a source-visible failure boundary.
+Block targets are private execution-plan structure. The lowering-local graph
+builder creates them, and only a complete frozen graph publishes them to the
+runtime, where they are trusted rather than checked as a source-visible failure
+boundary.
 
 ## Numeric Division By Zero
 
