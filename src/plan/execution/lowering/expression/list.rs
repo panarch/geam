@@ -1840,6 +1840,7 @@ mod tests {
         ExecutionPlan, IntListFunctionId, ListFunctionId, ListItem, ListLocalExpr, ReturnBody,
         ReturnBodyKind, RuntimeFunctionId, Step, StepKind, TypedListExpr, TypedListExprKind,
     };
+    use crate::plan::module::{GenericListReturn, ParameterListListReturn};
     use std::collections::HashSet;
 
     fn nested_list_lowering_context(substitution: crate::plan::ValueShape) -> LoweringContext {
@@ -1878,7 +1879,7 @@ mod tests {
             Vec::new(),
             crate::plan::ReturnExpr::generic_list_body(
                 parameter,
-                crate::plan::module::GenericListReturn::expr(generic_list),
+                GenericListReturn::expr(generic_list),
             ),
         );
 
@@ -1906,7 +1907,7 @@ mod tests {
             Vec::new(),
             crate::plan::ReturnExpr::parameter_list_list_body(
                 parameter,
-                crate::plan::module::ParameterListListReturn::expr(parameter_list),
+                ParameterListListReturn::expr(parameter_list),
             ),
         );
 

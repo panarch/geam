@@ -2,6 +2,7 @@ use super::{
     BoolExpr, CallArg, CustomFieldAccess, CustomFunctionExpr, CustomListExpr, FloatExpr, IntExpr,
     PanicExpr, StringExpr, TupleExpr,
 };
+use crate::plan::module::constant::MaterializedConstantCustomConstruction;
 use crate::plan::{
     ConstantCustomReference, CustomConstructor, CustomConstructorRefinement, CustomLocal,
     CustomLocalId, CustomType, CustomValueShape, FunctionInstantiation, Step, ValueShape,
@@ -299,7 +300,7 @@ impl CustomExpr {
 
 impl CustomConstruction {
     pub(in crate::plan::module) fn from_constant(
-        construction: crate::plan::module::constant::MaterializedConstantCustomConstruction,
+        construction: MaterializedConstantCustomConstruction,
     ) -> Self {
         let (constructor, fields) = construction.into_parts();
         Self {

@@ -1,7 +1,8 @@
 use super::{ParameterListItem, ParameterListListExpr};
 use crate::plan::execution::{
     BoolExpr, ConstantId, CustomFieldAccess, DirectCall, FloatExpr, FunctionCall, IntExpr,
-    ListFunctionExpr, NeverExpr, PanicExpr, Step, StringExpr, TupleExpr,
+    ListFunctionExpr, NeverExpr, PanicExpr, ParameterListFunctionId, ParameterListLocalId, Step,
+    StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -21,9 +22,9 @@ pub(crate) enum ParameterListExprKind {
     Never(NeverExpr),
     Constant(ConstantId<ParameterListExpr>),
     LocalGet {
-        local: crate::plan::execution::ParameterListLocalId,
+        local: ParameterListLocalId,
     },
-    Call(DirectCall<crate::plan::execution::ParameterListFunctionId>),
+    Call(DirectCall<ParameterListFunctionId>),
     FunctionCall(FunctionCall<ListFunctionExpr>),
     TupleIndex {
         tuple: Box<TupleExpr>,

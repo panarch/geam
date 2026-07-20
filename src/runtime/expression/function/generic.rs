@@ -186,9 +186,9 @@ pub(in crate::runtime) fn eval_generic_function_expr_kind(
 mod tests {
     use crate::plan::execution::{
         CallArg, CallArgKind, CustomConstruction, CustomExpr, CustomExprKind, CustomFieldAccess,
-        CustomLocalExpr, FunctionFunctionId, GenericFunctionExpr, GenericFunctionExprKind,
-        GenericFunctionFunctionId, ReturnBody, ReturnBodyKind as ExecutionReturnBodyKind,
-        RuntimeFunctionId, TypedListExprKind,
+        CustomLocalExpr, FunctionFunctionId, FunctionReturnFamily, GenericFunctionExpr,
+        GenericFunctionExprKind, GenericFunctionFunctionId, ReturnBody,
+        ReturnBodyKind as ExecutionReturnBodyKind, RuntimeFunctionId, TypedListExprKind,
     };
     use crate::plan::{
         BoolExpr, CaptureArg, Expr, FloatExpr, FunctionExpr, FunctionListExpr, FunctionListItem,
@@ -221,7 +221,7 @@ mod tests {
 
         assert_eq!(
             EvaluatedFunctionValue::from(value).kind().family(),
-            crate::plan::execution::FunctionReturnFamily::Generic,
+            FunctionReturnFamily::Generic,
         );
     }
 
@@ -520,8 +520,8 @@ pub fn main() {
         assert_eq!(
             eval_generic_function_expr(&plan, &mut state, &mut frame, expression),
             Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: crate::plan::execution::FunctionReturnFamily::Generic,
-                actual: crate::plan::execution::FunctionReturnFamily::Int,
+                expected: FunctionReturnFamily::Generic,
+                actual: FunctionReturnFamily::Int,
             }),
         );
     }
@@ -728,9 +728,7 @@ pub fn main() {
         )
     }
 
-    fn main_generic_function_id(
-        plan: &crate::ExecutionPlan,
-    ) -> crate::plan::execution::GenericFunctionFunctionId {
+    fn main_generic_function_id(plan: &crate::ExecutionPlan) -> GenericFunctionFunctionId {
         match plan.main_runtime() {
             RuntimeFunctionId::Function {
                 id: FunctionFunctionId::Generic(id),
@@ -741,7 +739,7 @@ pub fn main() {
     }
 
     fn expression_return<Expression, Function>(
-        body: &crate::plan::execution::ReturnBody<Expression, Function>,
+        body: &ReturnBody<Expression, Function>,
     ) -> &Expression {
         match body.kind() {
             ExecutionReturnBodyKind::Expr(expression) => expression,
