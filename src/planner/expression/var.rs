@@ -380,7 +380,7 @@ pub fn main() {
                     "apply",
                     call_int_function(
                         local_int_function(0, "function", [LocalId::Int(IntLocalId(0))]),
-                        [int_function_call_arg(0, local_int(0, "value"))],
+                        [int_function_call_arg(local_int(0, "value"))],
                     ),
                 )
                 .param_int_function(0, "function", [ValueType::Int])

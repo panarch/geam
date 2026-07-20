@@ -101,13 +101,8 @@ fn plan_anonymous_with_captures(
 
     let planned = planned?;
     let instantiation = info.signature.identity_instantiation();
-    let value = closure_expr(
-        instantiation,
-        info.param_slots(),
-        planned.captures.clone(),
-        &function_shape,
-    );
-    let function = anonymous_function_plan(info, name, planned);
+    let (function, captures) = anonymous_function_plan(info, name, planned);
+    let value = closure_expr(instantiation, captures, &function_shape);
     context.push_anonymous_function(function);
     value
         .with_resolved_shape(function_shape)
@@ -178,7 +173,6 @@ fn invalid_capture_literal_shape() -> PlanError {
 
 fn closure_expr(
     function: crate::plan::FunctionInstantiation,
-    params: Vec<crate::plan::ParamSlot>,
     captures: Vec<CaptureArg>,
     shape: &FunctionShape,
 ) -> FunctionExpr {
@@ -187,27 +181,25 @@ fn closure_expr(
         ValueShape::Parameter(parameter) => {
             FunctionExpr::generic(crate::plan::GenericFunctionExpr::closure(
                 function,
-                params,
                 captures,
                 crate::plan::GenericFunctionType::new(shape.argument_shapes().to_vec(), *parameter),
             ))
         }
-        ValueShape::Int => FunctionExpr::int(crate::plan::IntFunctionExpr::closure_slots(
-            function, params, captures, type_,
+        ValueShape::Int => FunctionExpr::int(crate::plan::IntFunctionExpr::closure(
+            function, captures, type_,
         )),
-        ValueShape::String => FunctionExpr::string(crate::plan::StringFunctionExpr::closure_slots(
-            function, params, captures, type_,
+        ValueShape::String => FunctionExpr::string(crate::plan::StringFunctionExpr::closure(
+            function, captures, type_,
         )),
         ValueShape::BitArray => FunctionExpr::bit_array(
-            crate::plan::BitArrayFunctionExpr::closure_slots(function, params, captures, type_),
+            crate::plan::BitArrayFunctionExpr::closure(function, captures, type_),
         ),
         ValueShape::UtfCodepoint => FunctionExpr::utf_codepoint(
-            crate::plan::UtfCodepointFunctionExpr::closure_slots(function, params, captures, type_),
+            crate::plan::UtfCodepointFunctionExpr::closure(function, captures, type_),
         ),
         ValueShape::Custom(return_shape) => {
-            FunctionExpr::custom(crate::plan::CustomFunctionExpr::closure_slots(
+            FunctionExpr::custom(crate::plan::CustomFunctionExpr::closure(
                 function,
-                params,
                 captures,
                 crate::plan::CustomFunctionType::from_shapes(
                     shape.argument_shapes().to_vec(),
@@ -215,34 +207,31 @@ fn closure_expr(
                 ),
             ))
         }
-        ValueShape::Float => FunctionExpr::float(crate::plan::FloatFunctionExpr::closure_slots(
-            function, params, captures, type_,
+        ValueShape::Float => FunctionExpr::float(crate::plan::FloatFunctionExpr::closure(
+            function, captures, type_,
         )),
-        ValueShape::Bool => FunctionExpr::bool(crate::plan::BoolFunctionExpr::closure_slots(
-            function, params, captures, type_,
+        ValueShape::Bool => FunctionExpr::bool(crate::plan::BoolFunctionExpr::closure(
+            function, captures, type_,
         )),
-        ValueShape::Nil => FunctionExpr::nil(crate::plan::NilFunctionExpr::closure_slots(
-            function, params, captures, type_,
+        ValueShape::Nil => FunctionExpr::nil(crate::plan::NilFunctionExpr::closure(
+            function, captures, type_,
         )),
         ValueShape::Tuple(return_shape) => {
-            FunctionExpr::tuple(crate::plan::TupleFunctionExpr::closure_slots(
+            FunctionExpr::tuple(crate::plan::TupleFunctionExpr::closure(
                 function,
-                params,
                 captures,
                 type_,
                 return_shape.iter().map(ValueShape::value_type).collect(),
             ))
         }
-        ValueShape::List(item) => FunctionExpr::list(crate::plan::ListFunctionExpr::closure_slots(
+        ValueShape::List(item) => FunctionExpr::list(crate::plan::ListFunctionExpr::closure(
             function,
-            params,
             captures,
             item.value_type(),
         )),
         ValueShape::Function(return_shape) => {
-            FunctionExpr::function(crate::plan::FunctionFunctionExpr::closure_slots(
+            FunctionExpr::function(crate::plan::FunctionFunctionExpr::closure(
                 function,
-                params,
                 captures,
                 crate::plan::FunctionFunctionType::from_shapes(
                     shape.argument_shapes().to_vec(),
@@ -313,7 +302,7 @@ mod tests {
     use crate::plan::{
         Expr, FunctionFunctionId, FunctionShape, FunctionType, IntExpr, IntFunctionFunctionId,
         IntFunctionId, IntLocalId, LocalId, PanicExpr, PanicSite, ParamLocal, ReturnExpr,
-        SourceSpan, StringExpr, ValueType,
+        SourceSpan, StringExpr, TupleLocalId, ValueType,
     };
     use crate::planner::dsl::{
         call_int_function, capture_int, capture_tuple, function, function_function_closure, int,
@@ -356,7 +345,7 @@ pub fn main() {
                 "main",
                 call_int_function(
                     local_int_function(0, "add_one", [LocalId::Int(IntLocalId(0))]),
-                    [int_function_call_arg(0, int(41))],
+                    [int_function_call_arg(int(41))],
                 ),
             )
             .step(let_int_function_step(0, "add_one", add_one)),
@@ -421,14 +410,14 @@ pub fn main() {
                 "main",
                 call_int_function(
                     local_int_function(0, "wrapped", [LocalId::Int(IntLocalId(0))]),
-                    [int_function_call_arg(0, int(41))],
+                    [int_function_call_arg(int(41))],
                 ),
             )
             .step(let_int_function_step(0, "wrapped", wrapped)),
             [function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value")],
             [function(
                 "<anonymous:0>",
-                int_return_tail_call(1, [int_arg(0, local_int(0, "value"))]),
+                int_return_tail_call(1, [int_arg(local_int(0, "value"))]),
             )
             .param_int(0, "value")],
         );
@@ -562,10 +551,12 @@ pub fn main() {
                 .evaluate(int_function_closure(
                     1,
                     Vec::<LocalId>::new(),
-                    [capture_int(0, local_int(0, "value"))],
+                    [capture_int(local_int(0, "value"))],
                 )),
             [],
-            [function("<anonymous:0>", local_int(0, "value"))],
+            [function("<anonymous:0>", local_int(0, "value")).capture(
+                crate::plan::ParamSlot::from_local(ParamLocal::int(IntLocalId(0))),
+            )],
         );
 
         assert_eq!(actual, expected);
@@ -591,7 +582,7 @@ pub fn main() {
                 .evaluate(function_function_closure(
                     FunctionFunctionId::Int(IntFunctionFunctionId(1)),
                     Vec::<ParamLocal>::new(),
-                    [capture_int(0, local_int(0, "value"))],
+                    [capture_int(local_int(0, "value"))],
                     returned_function_type.clone(),
                 )),
             [],
@@ -601,10 +592,15 @@ pub fn main() {
                     int_function_closure(
                         2,
                         Vec::<LocalId>::new(),
-                        [capture_int(0, local_int(0, "value"))],
+                        [capture_int(local_int(0, "value"))],
                     ),
+                )
+                .capture(crate::plan::ParamSlot::from_local(ParamLocal::int(
+                    IntLocalId(0),
+                ))),
+                function("<anonymous:1>", local_int(0, "value")).capture(
+                    crate::plan::ParamSlot::from_local(ParamLocal::int(IntLocalId(0))),
                 ),
-                function("<anonymous:1>", local_int(0, "value")),
             ],
         );
 
@@ -620,7 +616,6 @@ pub fn main() {
         ));
         let expression = super::closure_expr(
             crate::plan::monomorphic_function_instantiation(0, shape.clone()),
-            Vec::<crate::plan::ParamSlot>::new(),
             Vec::new(),
             &shape,
         );
@@ -650,7 +645,7 @@ pub fn main() {
                 tuple_function_closure(
                     1,
                     Vec::<LocalId>::new(),
-                    [capture_tuple(0, local_tuple(0, "pair", pair_type.clone()))],
+                    [capture_tuple(local_tuple(0, "pair", pair_type.clone()))],
                     pair_type.clone(),
                 ),
             )
@@ -660,7 +655,14 @@ pub fn main() {
                 tuple([Expr::from(int(1)), Expr::from(string("one"))]),
             )),
             [],
-            [function("<anonymous:0>", local_tuple(0, "pair", pair_type))],
+            [
+                function("<anonymous:0>", local_tuple(0, "pair", pair_type.clone())).capture(
+                    crate::plan::ParamSlot::from_local(ParamLocal::tuple(
+                        TupleLocalId(0),
+                        pair_type.to_vec(),
+                    )),
+                ),
+            ],
         );
 
         assert_eq!(actual, expected);
@@ -692,7 +694,7 @@ pub fn main() {
                 "main",
                 call_int_function(
                     local_int_function(0, "add_one", [LocalId::Int(IntLocalId(0))]),
-                    [int_function_call_arg(0, int(41))],
+                    [int_function_call_arg(int(41))],
                 ),
             )
             .step(let_int_function_step(0, "add_one", add_one)),
@@ -705,10 +707,7 @@ pub fn main() {
                 "<anonymous:0>",
                 int_return_tail_call(
                     1,
-                    [
-                        int_arg(0, int(1)),
-                        int_arg(1, local_int(0, CAPTURE_VARIABLE)),
-                    ],
+                    [int_arg(int(1)), int_arg(local_int(0, CAPTURE_VARIABLE))],
                 ),
             )
             .param_int(0, CAPTURE_VARIABLE)],
@@ -743,7 +742,7 @@ pub fn main() {
                 "main",
                 call_int_function(
                     local_int_function(0, "add_one", [LocalId::Int(IntLocalId(0))]),
-                    [int_function_call_arg(0, int(41))],
+                    [int_function_call_arg(int(41))],
                 ),
             )
             .step(let_int_function_step(0, "add_one", add_one)),
@@ -756,10 +755,7 @@ pub fn main() {
                 "<anonymous:0>",
                 int_return_tail_call(
                     1,
-                    [
-                        int_arg(0, int(1)),
-                        int_arg(1, local_int(0, CAPTURE_VARIABLE)),
-                    ],
+                    [int_arg(int(1)), int_arg(local_int(0, CAPTURE_VARIABLE))],
                 ),
             )
             .param_int(0, CAPTURE_VARIABLE)],
@@ -787,7 +783,7 @@ pub fn main() {
         let add_base = int_function_closure(
             2,
             [LocalId::Int(IntLocalId(0))],
-            [capture_int(1, local_int(0, "base"))],
+            [capture_int(local_int(0, "base"))],
         );
         let expected = module_with_anonymous(
             "main",
@@ -795,7 +791,7 @@ pub fn main() {
                 "main",
                 call_int_function(
                     local_int_function(0, "add_base", [LocalId::Int(IntLocalId(0))]),
-                    [int_function_call_arg(0, int(41))],
+                    [int_function_call_arg(int(41))],
                 ),
             )
             .step(let_int_step(0, "base", int(1)))
@@ -810,12 +806,15 @@ pub fn main() {
                 int_return_tail_call(
                     1,
                     [
-                        int_arg(0, local_int(1, "base")),
-                        int_arg(1, local_int(0, CAPTURE_VARIABLE)),
+                        int_arg(local_int(1, "base")),
+                        int_arg(local_int(0, CAPTURE_VARIABLE)),
                     ],
                 ),
             )
-            .param_int(0, CAPTURE_VARIABLE)],
+            .param_int(0, CAPTURE_VARIABLE)
+            .capture(crate::plan::ParamSlot::from_local(ParamLocal::int(
+                IntLocalId(1),
+            )))],
         );
 
         assert_eq!(actual, expected);

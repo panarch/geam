@@ -1,10 +1,8 @@
 use crate::plan::CustomFieldAccess;
-#[cfg(test)]
-use crate::plan::ParamLocal;
 use crate::plan::{
     BoolExpr, CaptureArg, ConstantUtfCodepointFunctionInstantiation, FloatExpr,
     FunctionFunctionExpr, FunctionInstantiation, FunctionListExpr, FunctionType, IntExpr,
-    PanicExpr, ParamSlot, Step, StringExpr, TupleExpr, UtfCodepointFunctionLocalId,
+    PanicExpr, Step, StringExpr, TupleExpr, UtfCodepointFunctionLocalId,
     UtfCodepointFunctionReference,
 };
 use ecow::EcoString;
@@ -22,7 +20,6 @@ pub(crate) enum UtfCodepointFunctionExprKind {
     Reference(UtfCodepointFunctionReference),
     Closure {
         function: FunctionInstantiation,
-        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
     },
     LocalGet {
@@ -96,35 +93,15 @@ impl UtfCodepointFunctionExpr {
         }
     }
 
-    pub(crate) fn closure_slots(
+    pub(crate) fn closure(
         function: FunctionInstantiation,
-        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
         type_: FunctionType,
     ) -> Self {
         Self {
             type_,
-            kind: UtfCodepointFunctionExprKind::Closure {
-                function,
-                params,
-                captures,
-            },
+            kind: UtfCodepointFunctionExprKind::Closure { function, captures },
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn closure(
-        function: FunctionInstantiation,
-        params: Vec<ParamLocal>,
-        captures: Vec<CaptureArg>,
-        type_: FunctionType,
-    ) -> Self {
-        Self::closure_slots(
-            function,
-            params.into_iter().map(ParamSlot::from_local).collect(),
-            captures,
-            type_,
-        )
     }
 
     pub(crate) fn local_get(
@@ -292,9 +269,8 @@ mod tests {
     use super::{UtfCodepointFunctionExpr, UtfCodepointFunctionExprKind};
     use crate::plan::{
         BoolExpr, Expr, FunctionFunctionExpr, FunctionFunctionReference, FunctionInstantiation,
-        FunctionShape, FunctionType, IntExpr, ParamLocal, Step, StringExpr,
-        UtfCodepointFunctionLocalId, UtfCodepointFunctionReference, UtfCodepointLocalId,
-        ValueShape, ValueType, monomorphic_function_instantiation,
+        FunctionShape, FunctionType, IntExpr, Step, StringExpr, UtfCodepointFunctionLocalId,
+        UtfCodepointFunctionReference, ValueShape, ValueType, monomorphic_function_instantiation,
     };
 
     #[test]
@@ -302,23 +278,18 @@ mod tests {
         assert_eq!(
             function_value().kind(),
             &UtfCodepointFunctionExprKind::Reference(UtfCodepointFunctionReference::new(
-                function_instantiation(),
-                vec![ParamLocal::utf_codepoint(UtfCodepointLocalId(0))],
+                function_instantiation()
             )),
         );
         assert_eq!(
             UtfCodepointFunctionExpr::closure(
                 function_instantiation(),
-                vec![ParamLocal::utf_codepoint(UtfCodepointLocalId(0))],
                 Vec::new(),
                 function_type(),
             )
             .kind(),
             &UtfCodepointFunctionExprKind::Closure {
                 function: function_instantiation(),
-                params: vec![crate::plan::ParamSlot::from_local(
-                    ParamLocal::utf_codepoint(UtfCodepointLocalId(0))
-                )],
                 captures: Vec::new(),
             },
         );
@@ -441,7 +412,6 @@ mod tests {
     fn function_value() -> UtfCodepointFunctionExpr {
         UtfCodepointFunctionExpr::reference(UtfCodepointFunctionReference::new(
             function_instantiation(),
-            vec![ParamLocal::utf_codepoint(UtfCodepointLocalId(0))],
         ))
     }
 
@@ -451,7 +421,7 @@ mod tests {
 
     fn function_function_value() -> FunctionFunctionExpr {
         FunctionFunctionExpr::reference(
-            FunctionFunctionReference::new(function_returning_function_instantiation(), Vec::new()),
+            FunctionFunctionReference::new(function_returning_function_instantiation()),
             function_type(),
         )
     }

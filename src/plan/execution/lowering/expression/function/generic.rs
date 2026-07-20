@@ -49,10 +49,7 @@ macro_rules! symbolic_primitive_function_expr {
                     target: context.generic_callable_id(reference.instantiation()),
                 }),
                 M::Closure {
-                    function,
-                    params: _,
-                    captures,
-                    ..
+                    function, captures, ..
                 } => super::super::symbolic_capture_args(function, captures, context)
                     .map(|captures| symbolic_closure(function, captures, context)),
                 M::LocalGet { local, name: _ } => Representability::Inhabited(E::LocalGet {
@@ -262,18 +259,12 @@ macro_rules! primitive_generic_function_expr {
                     })
                     .map(E::Reference)
                 }
-                M::Closure {
-                    function,
-                    params,
-                    captures,
-                } => super::closure_template(
-                    function,
-                    params,
-                    captures,
-                    context,
-                    |function, context| context.$function_id(function),
-                )
-                .map(E::Closure),
+                M::Closure { function, captures } => {
+                    super::closure_template(function, captures, context, |function, context| {
+                        context.$function_id(function)
+                    })
+                    .map(E::Closure)
+                }
                 M::LocalGet { local, name: _ } => Representability::Inhabited(E::LocalGet {
                     local: execution::$local(context.generic_function_local_index(local.id())),
                 }),
@@ -468,14 +459,12 @@ pub(in crate::plan::execution::lowering) fn generic_tuple_function_expr(
             })
             .map(E::Reference)
         }
-        M::Closure {
-            function,
-            params,
-            captures,
-        } => super::closure_template(function, params, captures, context, |function, context| {
-            context.tuple_function_id(function)
-        })
-        .map(E::Closure),
+        M::Closure { function, captures } => {
+            super::closure_template(function, captures, context, |function, context| {
+                context.tuple_function_id(function)
+            })
+            .map(E::Closure)
+        }
         M::LocalGet { local, name: _ } => Representability::Inhabited(E::LocalGet {
             local: execution::TupleFunctionLocalId(
                 context.generic_function_local_index(local.id()),
@@ -615,12 +604,10 @@ pub(in crate::plan::execution::lowering) fn symbolic_list_function_expr_kind(
         M::Reference(reference) => Representability::Inhabited(E::Reference {
             target: context.generic_callable_id(reference.instantiation()),
         }),
-        M::Closure {
-            function,
-            params: _,
-            captures,
-        } => super::super::symbolic_capture_args(function, captures, context)
-            .map(|captures| symbolic_closure(function, captures, context)),
+        M::Closure { function, captures } => {
+            super::super::symbolic_capture_args(function, captures, context)
+                .map(|captures| symbolic_closure(function, captures, context))
+        }
         M::LocalGet { local, name: _ } => Representability::Inhabited(E::LocalGet {
             local: execution::GenericFunctionLocal::new(
                 execution::GenericFunctionLocalId(
@@ -774,12 +761,10 @@ pub(in crate::plan::execution::lowering) fn symbolic_function_function_expr_kind
         M::Reference(reference) => Representability::Inhabited(E::Reference {
             target: context.generic_callable_id(reference.instantiation()),
         }),
-        M::Closure {
-            function,
-            params: _,
-            captures,
-        } => super::super::symbolic_capture_args(function, captures, context)
-            .map(|captures| symbolic_closure(function, captures, context)),
+        M::Closure { function, captures } => {
+            super::super::symbolic_capture_args(function, captures, context)
+                .map(|captures| symbolic_closure(function, captures, context))
+        }
         M::LocalGet { local, name: _ } => Representability::Inhabited(E::LocalGet {
             local: execution::GenericFunctionLocal::new(
                 execution::GenericFunctionLocalId(context.mapped_local(
@@ -922,12 +907,10 @@ pub(in crate::plan::execution::lowering) fn symbolic_custom_function_expr_kind(
         M::Reference(reference) => Representability::Inhabited(E::Reference {
             target: context.generic_callable_id(reference.instantiation()),
         }),
-        M::Closure {
-            function,
-            params: _,
-            captures,
-        } => super::super::symbolic_capture_args(function, captures, context)
-            .map(|captures| symbolic_closure(function, captures, context)),
+        M::Closure { function, captures } => {
+            super::super::symbolic_capture_args(function, captures, context)
+                .map(|captures| symbolic_closure(function, captures, context))
+        }
         M::LocalGet { local, name: _ } => Representability::Inhabited(E::LocalGet {
             local: execution::GenericFunctionLocal::new(
                 execution::GenericFunctionLocalId(context.mapped_local(
@@ -1065,12 +1048,10 @@ pub(in crate::plan::execution::lowering) fn generic_symbolic_function_expr(
         M::Reference(reference) => Representability::Inhabited(E::Reference {
             target: context.generic_callable_id(reference.instantiation()),
         }),
-        M::Closure {
-            function,
-            params: _,
-            captures,
-        } => super::super::symbolic_capture_args(function, captures, context)
-            .map(|captures| symbolic_closure(function, captures, context)),
+        M::Closure { function, captures } => {
+            super::super::symbolic_capture_args(function, captures, context)
+                .map(|captures| symbolic_closure(function, captures, context))
+        }
         M::LocalGet { local, name: _ } => Representability::Inhabited(E::LocalGet {
             local: execution::GenericFunctionLocal::new(
                 execution::GenericFunctionLocalId(context.generic_function_local_index(local.id())),

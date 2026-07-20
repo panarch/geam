@@ -1,10 +1,8 @@
 use crate::plan::CustomFieldAccess;
-#[cfg(test)]
-use crate::plan::ParamLocal;
 use crate::plan::{
     BoolExpr, BoolFunctionLocalId, BoolFunctionReference, CaptureArg,
     ConstantBoolFunctionInstantiation, FloatExpr, FunctionFunctionExpr, FunctionInstantiation,
-    FunctionListExpr, FunctionType, IntExpr, PanicExpr, ParamSlot, Step, StringExpr, TupleExpr,
+    FunctionListExpr, FunctionType, IntExpr, PanicExpr, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -21,7 +19,6 @@ pub(crate) enum BoolFunctionExprKind {
     Reference(BoolFunctionReference),
     Closure {
         function: FunctionInstantiation,
-        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
     },
     LocalGet {
@@ -92,35 +89,15 @@ impl BoolFunctionExpr {
         }
     }
 
-    pub(crate) fn closure_slots(
+    pub(crate) fn closure(
         function: FunctionInstantiation,
-        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
         type_: FunctionType,
     ) -> Self {
         Self {
             type_,
-            kind: BoolFunctionExprKind::Closure {
-                function,
-                params,
-                captures,
-            },
+            kind: BoolFunctionExprKind::Closure { function, captures },
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn closure(
-        function: FunctionInstantiation,
-        params: Vec<ParamLocal>,
-        captures: Vec<CaptureArg>,
-        type_: FunctionType,
-    ) -> Self {
-        Self::closure_slots(
-            function,
-            params.into_iter().map(ParamSlot::from_local).collect(),
-            captures,
-            type_,
-        )
     }
 
     pub(crate) fn local_get(
@@ -287,34 +264,22 @@ impl BoolFunctionExpr {
 mod tests {
     use super::{BoolFunctionExpr, BoolFunctionExprKind};
     use crate::plan::{
-        BoolExpr, BoolFunctionLocalId, BoolFunctionReference, BoolLocalId, Expr,
-        FunctionFunctionExpr, FunctionFunctionReference, FunctionInstantiation, FunctionShape,
-        FunctionType, IntExpr, ParamLocal, Step, StringExpr, ValueShape, ValueType,
-        monomorphic_function_instantiation,
+        BoolExpr, BoolFunctionLocalId, BoolFunctionReference, Expr, FunctionFunctionExpr,
+        FunctionFunctionReference, FunctionInstantiation, FunctionShape, FunctionType, IntExpr,
+        Step, StringExpr, ValueShape, ValueType, monomorphic_function_instantiation,
     };
 
     #[test]
     fn bool_function_expr_kind_accessors() {
         assert_eq!(
             function_value().kind(),
-            &BoolFunctionExprKind::Reference(BoolFunctionReference::new(
-                function_instantiation(),
-                vec![ParamLocal::bool(BoolLocalId(0))],
-            )),
+            &BoolFunctionExprKind::Reference(BoolFunctionReference::new(function_instantiation())),
         );
         assert_eq!(
-            BoolFunctionExpr::closure(
-                function_instantiation(),
-                vec![ParamLocal::bool(BoolLocalId(0))],
-                Vec::new(),
-                function_type(),
-            )
-            .kind(),
+            BoolFunctionExpr::closure(function_instantiation(), Vec::new(), function_type(),)
+                .kind(),
             &BoolFunctionExprKind::Closure {
                 function: function_instantiation(),
-                params: vec![crate::plan::ParamSlot::from_local(ParamLocal::bool(
-                    BoolLocalId(0)
-                ))],
                 captures: Vec::new(),
             },
         );
@@ -422,10 +387,7 @@ mod tests {
     }
 
     fn function_value() -> BoolFunctionExpr {
-        BoolFunctionExpr::reference(BoolFunctionReference::new(
-            function_instantiation(),
-            vec![ParamLocal::bool(BoolLocalId(0))],
-        ))
+        BoolFunctionExpr::reference(BoolFunctionReference::new(function_instantiation()))
     }
 
     fn function_type() -> FunctionType {
@@ -434,7 +396,7 @@ mod tests {
 
     fn function_function_value() -> FunctionFunctionExpr {
         FunctionFunctionExpr::reference(
-            FunctionFunctionReference::new(function_returning_function_instantiation(), Vec::new()),
+            FunctionFunctionReference::new(function_returning_function_instantiation()),
             function_type(),
         )
     }

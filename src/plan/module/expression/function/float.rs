@@ -1,10 +1,8 @@
 use crate::plan::CustomFieldAccess;
-#[cfg(test)]
-use crate::plan::ParamLocal;
 use crate::plan::{
     BoolExpr, CaptureArg, ConstantFloatFunctionInstantiation, FloatExpr, FloatFunctionLocalId,
     FloatFunctionReference, FunctionFunctionExpr, FunctionInstantiation, FunctionListExpr,
-    FunctionType, IntExpr, PanicExpr, ParamSlot, Step, StringExpr, TupleExpr,
+    FunctionType, IntExpr, PanicExpr, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -21,7 +19,6 @@ pub(crate) enum FloatFunctionExprKind {
     Reference(FloatFunctionReference),
     Closure {
         function: FunctionInstantiation,
-        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
     },
     LocalGet {
@@ -92,35 +89,15 @@ impl FloatFunctionExpr {
         }
     }
 
-    pub(crate) fn closure_slots(
+    pub(crate) fn closure(
         function: FunctionInstantiation,
-        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
         type_: FunctionType,
     ) -> Self {
         Self {
             type_,
-            kind: FloatFunctionExprKind::Closure {
-                function,
-                params,
-                captures,
-            },
+            kind: FloatFunctionExprKind::Closure { function, captures },
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn closure(
-        function: FunctionInstantiation,
-        params: Vec<ParamLocal>,
-        captures: Vec<CaptureArg>,
-        type_: FunctionType,
-    ) -> Self {
-        Self::closure_slots(
-            function,
-            params.into_iter().map(ParamSlot::from_local).collect(),
-            captures,
-            type_,
-        )
     }
 
     pub(crate) fn local_get(
@@ -287,9 +264,9 @@ impl FloatFunctionExpr {
 mod tests {
     use super::{FloatFunctionExpr, FloatFunctionExprKind};
     use crate::plan::{
-        BoolExpr, Expr, FloatExpr, FloatFunctionLocalId, FloatFunctionReference, FloatLocalId,
+        BoolExpr, Expr, FloatExpr, FloatFunctionLocalId, FloatFunctionReference,
         FunctionFunctionExpr, FunctionFunctionReference, FunctionInstantiation, FunctionShape,
-        FunctionType, IntExpr, ParamLocal, Step, StringExpr, ValueShape, ValueType,
+        FunctionType, IntExpr, Step, StringExpr, ValueShape, ValueType,
         monomorphic_function_instantiation,
     };
 
@@ -301,24 +278,19 @@ mod tests {
         );
         assert_eq!(
             float_function_value().kind(),
-            &FloatFunctionExprKind::Reference(FloatFunctionReference::new(
-                function_instantiation(),
-                vec![ParamLocal::float(FloatLocalId(0))],
-            )),
+            &FloatFunctionExprKind::Reference(
+                FloatFunctionReference::new(function_instantiation())
+            ),
         );
         assert_eq!(
             FloatFunctionExpr::closure(
                 function_instantiation(),
-                vec![ParamLocal::float(FloatLocalId(0))],
                 Vec::new(),
                 float_function_type(),
             )
             .kind(),
             &FloatFunctionExprKind::Closure {
                 function: function_instantiation(),
-                params: vec![crate::plan::ParamSlot::from_local(ParamLocal::float(
-                    FloatLocalId(0)
-                ))],
                 captures: Vec::new(),
             },
         );
@@ -461,10 +433,7 @@ mod tests {
     }
 
     fn float_function_value() -> FloatFunctionExpr {
-        FloatFunctionExpr::reference(FloatFunctionReference::new(
-            function_instantiation(),
-            vec![ParamLocal::float(FloatLocalId(0))],
-        ))
+        FloatFunctionExpr::reference(FloatFunctionReference::new(function_instantiation()))
     }
 
     fn float_function_type() -> FunctionType {
@@ -473,7 +442,7 @@ mod tests {
 
     fn function_function_value() -> FunctionFunctionExpr {
         FunctionFunctionExpr::reference(
-            FunctionFunctionReference::new(function_returning_function_instantiation(), Vec::new()),
+            FunctionFunctionReference::new(function_returning_function_instantiation()),
             float_function_type(),
         )
     }

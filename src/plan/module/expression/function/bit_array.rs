@@ -1,10 +1,8 @@
 use crate::plan::CustomFieldAccess;
-#[cfg(test)]
-use crate::plan::ParamLocal;
 use crate::plan::{
     BitArrayFunctionLocalId, BitArrayFunctionReference, BoolExpr, CaptureArg,
     ConstantBitArrayFunctionInstantiation, FloatExpr, FunctionFunctionExpr, FunctionInstantiation,
-    FunctionListExpr, FunctionType, IntExpr, PanicExpr, ParamSlot, Step, StringExpr, TupleExpr,
+    FunctionListExpr, FunctionType, IntExpr, PanicExpr, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -21,7 +19,6 @@ pub(crate) enum BitArrayFunctionExprKind {
     Reference(BitArrayFunctionReference),
     Closure {
         function: FunctionInstantiation,
-        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
     },
     LocalGet {
@@ -95,35 +92,15 @@ impl BitArrayFunctionExpr {
         }
     }
 
-    pub(crate) fn closure_slots(
+    pub(crate) fn closure(
         function: FunctionInstantiation,
-        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
         type_: FunctionType,
     ) -> Self {
         Self {
             type_,
-            kind: BitArrayFunctionExprKind::Closure {
-                function,
-                params,
-                captures,
-            },
+            kind: BitArrayFunctionExprKind::Closure { function, captures },
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn closure(
-        function: FunctionInstantiation,
-        params: Vec<ParamLocal>,
-        captures: Vec<CaptureArg>,
-        type_: FunctionType,
-    ) -> Self {
-        Self::closure_slots(
-            function,
-            params.into_iter().map(ParamSlot::from_local).collect(),
-            captures,
-            type_,
-        )
     }
 
     pub(crate) fn local_get(
@@ -290,9 +267,9 @@ impl BitArrayFunctionExpr {
 mod tests {
     use super::{BitArrayFunctionExpr, BitArrayFunctionExprKind};
     use crate::plan::{
-        BitArrayExpr, BitArrayFunctionLocalId, BitArrayFunctionReference, BitArrayLocalId,
-        BoolExpr, Expr, FunctionFunctionExpr, FunctionFunctionReference, FunctionInstantiation,
-        FunctionShape, FunctionType, IntExpr, ParamLocal, Step, StringExpr, ValueShape, ValueType,
+        BitArrayExpr, BitArrayFunctionLocalId, BitArrayFunctionReference, BoolExpr, Expr,
+        FunctionFunctionExpr, FunctionFunctionReference, FunctionInstantiation, FunctionShape,
+        FunctionType, IntExpr, Step, StringExpr, ValueShape, ValueType,
         monomorphic_function_instantiation,
     };
 
@@ -301,23 +278,14 @@ mod tests {
         assert_eq!(
             function_value().kind(),
             &BitArrayFunctionExprKind::Reference(BitArrayFunctionReference::new(
-                function_instantiation(),
-                vec![ParamLocal::bit_array(BitArrayLocalId(0))],
+                function_instantiation()
             )),
         );
         assert_eq!(
-            BitArrayFunctionExpr::closure(
-                function_instantiation(),
-                vec![ParamLocal::bit_array(BitArrayLocalId(0))],
-                Vec::new(),
-                function_type(),
-            )
-            .kind(),
+            BitArrayFunctionExpr::closure(function_instantiation(), Vec::new(), function_type(),)
+                .kind(),
             &BitArrayFunctionExprKind::Closure {
                 function: function_instantiation(),
-                params: vec![crate::plan::ParamSlot::from_local(ParamLocal::bit_array(
-                    BitArrayLocalId(0)
-                ))],
                 captures: Vec::new(),
             },
         );
@@ -442,10 +410,7 @@ mod tests {
     }
 
     fn function_value() -> BitArrayFunctionExpr {
-        BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(
-            function_instantiation(),
-            vec![ParamLocal::bit_array(BitArrayLocalId(0))],
-        ))
+        BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(function_instantiation()))
     }
 
     fn function_type() -> FunctionType {
@@ -454,7 +419,7 @@ mod tests {
 
     fn function_function_value() -> FunctionFunctionExpr {
         FunctionFunctionExpr::reference(
-            FunctionFunctionReference::new(function_returning_function_instantiation(), Vec::new()),
+            FunctionFunctionReference::new(function_returning_function_instantiation()),
             function_type(),
         )
     }

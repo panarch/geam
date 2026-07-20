@@ -804,16 +804,13 @@ mod tests {
                     "function",
                     ListExpr::value(
                         vec![Expr::function(FunctionExpr::reference(
-                            FunctionReference::new(
-                                monomorphic_function_instantiation(
-                                    0,
-                                    FunctionShape::from_function_type(FunctionType::new(
-                                        Vec::new(),
-                                        ValueType::Bool,
-                                    )),
-                                ),
-                                Vec::new(),
-                            )
+                            FunctionReference::new(monomorphic_function_instantiation(
+                                0,
+                                FunctionShape::from_function_type(FunctionType::new(
+                                    Vec::new(),
+                                    ValueType::Bool,
+                                )),
+                            ))
                         ))],
                         ValueType::Function(Box::new(FunctionType::new(
                             Vec::new(),
@@ -831,16 +828,13 @@ mod tests {
                     "function",
                     ListExpr::value(
                         vec![Expr::function(FunctionExpr::reference(
-                            FunctionReference::new(
-                                monomorphic_function_instantiation(
-                                    0,
-                                    FunctionShape::from_function_type(FunctionType::new(
-                                        Vec::new(),
-                                        ValueType::Bool,
-                                    )),
-                                ),
-                                Vec::new(),
-                            )
+                            FunctionReference::new(monomorphic_function_instantiation(
+                                0,
+                                FunctionShape::from_function_type(FunctionType::new(
+                                    Vec::new(),
+                                    ValueType::Bool,
+                                )),
+                            ))
                         ))],
                         ValueType::Function(Box::new(FunctionType::new(
                             Vec::new(),

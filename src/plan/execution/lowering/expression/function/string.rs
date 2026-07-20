@@ -15,14 +15,12 @@ pub(in crate::plan::execution::lowering) fn string_function_expr(
             super::function_reference(value, context, |id, context| context.string_function_id(id))
                 .map(E::Reference)
         }
-        M::Closure {
-            function,
-            params,
-            captures,
-        } => super::closure_template(function, params, captures, context, |id, context| {
-            context.string_function_id(id)
-        })
-        .map(E::Closure),
+        M::Closure { function, captures } => {
+            super::closure_template(function, captures, context, |id, context| {
+                context.string_function_id(id)
+            })
+            .map(E::Closure)
+        }
         M::LocalGet { local, name: _ } => Representability::Inhabited(E::LocalGet {
             local: execution::StringFunctionLocalId(context.mapped_local(
                 super::super::super::frame::LocalKind::StringFunction,

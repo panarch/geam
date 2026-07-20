@@ -5,7 +5,9 @@ use crate::plan::{
     CaptureArg, CustomTypeDefinition, FunctionTemplate, Param, ParamBinding, ReturnExpr, Step,
     ValueShape,
 };
-use crate::planner::context::{AnonymousFunctions, FunctionInfo, FunctionParam, PlanContext};
+use crate::planner::context::{
+    AnonymousFunctions, FunctionInfo, FunctionParam, PlanContext, PlannedCaptures,
+};
 use crate::planner::error::{
     InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedFunctionReason,
 };
@@ -17,9 +19,9 @@ use vec1::Vec1;
 
 pub(super) struct PlannedFunctionBody {
     pub(super) params: Vec<Param>,
+    captures: PlannedCaptures,
     pub(super) steps: Vec<Step>,
     pub(super) return_: ReturnExpr,
-    pub(super) captures: Vec<CaptureArg>,
 }
 
 pub(super) fn plan_function(
@@ -68,6 +70,7 @@ pub(super) fn plan_function(
         info.signature,
         name,
         params,
+        Vec::new(),
         planned.steps,
         return_,
     ))
@@ -92,9 +95,9 @@ pub(super) fn plan_anonymous_function_body(
 
     Ok(PlannedFunctionBody {
         params,
+        captures,
         steps: planned.steps,
         return_,
-        captures,
     })
 }
 
@@ -102,13 +105,18 @@ pub(super) fn anonymous_function_plan(
     info: FunctionInfo,
     name: EcoString,
     planned: PlannedFunctionBody,
-) -> FunctionTemplate {
-    FunctionTemplate::from_signature(
-        info.signature,
-        name,
-        planned.params,
-        planned.steps,
-        planned.return_,
+) -> (FunctionTemplate, Vec<CaptureArg>) {
+    let (capture_slots, capture_sources) = planned.captures.into_parts();
+    (
+        FunctionTemplate::from_signature(
+            info.signature,
+            name,
+            planned.params,
+            capture_slots,
+            planned.steps,
+            planned.return_,
+        ),
+        capture_sources,
     )
 }
 
@@ -206,7 +214,7 @@ pub fn main() {
             "main",
             function(
                 "main",
-                int_return_tail_call(1, [int_arg(0, int(1)), int_arg(1, int(2))]),
+                int_return_tail_call(1, [int_arg(int(1)), int_arg(int(2))]),
             ),
             [
                 function("add", local_int(0, "a").add_int(local_int(1, "b")))
@@ -241,7 +249,7 @@ pub fn main() {
             "main",
             function(
                 "main",
-                int_return_tail_call(1, [int_arg(0, int(1)), int_arg(1, int(0))]),
+                int_return_tail_call(1, [int_arg(int(1)), int_arg(int(0))]),
             ),
             [function(
                 "count_down",
@@ -253,8 +261,8 @@ pub fn main() {
                         int_return_tail_call(
                             1,
                             [
-                                int_arg(0, local_int(0, "n").sub_int(int(1))),
-                                int_arg(1, local_int(1, "acc").add_int(int(1))),
+                                int_arg(local_int(0, "n").sub_int(int(1))),
+                                int_arg(local_int(1, "acc").add_int(int(1))),
                             ],
                         ),
                     ),
@@ -349,8 +357,8 @@ pub fn main() {
             function(
                 "main",
                 call_int_function(
-                    call_int_returning_function(5, [int_arg(0, int(0))], int_to_int.clone()),
-                    [int_function_call_arg(0, int(1))],
+                    call_int_returning_function(5, [int_arg(int(0))], int_to_int.clone()),
+                    [int_function_call_arg(int(1))],
                 ),
             ),
             [
@@ -376,7 +384,7 @@ pub fn main() {
                                 int_function_return_tail_call(
                                     5,
                                     int_to_int.clone(),
-                                    [int_arg(0, local_int(0, "n").sub_int(int(1)))],
+                                    [int_arg(local_int(0, "n").sub_int(int(1)))],
                                 ),
                             ),
                         ),
@@ -401,7 +409,7 @@ pub fn main() {
                                 string_function_return_tail_call(
                                     6,
                                     string_to_string.clone(),
-                                    [int_arg(0, local_int(0, "n").sub_int(int(1)))],
+                                    [int_arg(local_int(0, "n").sub_int(int(1)))],
                                 ),
                             ),
                         ),
@@ -426,7 +434,7 @@ pub fn main() {
                                 bool_function_return_tail_call(
                                     7,
                                     bool_to_bool.clone(),
-                                    [int_arg(0, local_int(0, "n").sub_int(int(1)))],
+                                    [int_arg(local_int(0, "n").sub_int(int(1)))],
                                 ),
                             ),
                         ),
@@ -451,7 +459,7 @@ pub fn main() {
                                 nil_function_return_tail_call(
                                     8,
                                     nil_to_nil.clone(),
-                                    [int_arg(0, local_int(0, "n").sub_int(int(1)))],
+                                    [int_arg(local_int(0, "n").sub_int(int(1)))],
                                 ),
                             ),
                         ),
@@ -475,7 +483,7 @@ pub fn main() {
                             function_function_return_tail_call(
                                 9,
                                 int_to_int_function.clone(),
-                                [int_arg(0, local_int(0, "n").sub_int(int(1)))],
+                                [int_arg(local_int(0, "n").sub_int(int(1)))],
                             ),
                         ),
                     )),
@@ -566,8 +574,8 @@ pub fn main() {
             function(
                 "main",
                 call_int_function(
-                    call_int_returning_function(9, [bool_arg(0, bool_(true))], int_to_int.clone()),
-                    [int_function_call_arg(0, int(1))],
+                    call_int_returning_function(9, [bool_arg(bool_(true))], int_to_int.clone()),
+                    [int_function_call_arg(int(1))],
                 ),
             ),
             [
@@ -752,12 +760,8 @@ pub fn main() {
             function(
                 "main",
                 call_int_function(
-                    call_int_returning_function(
-                        9,
-                        [string_arg(0, string("one"))],
-                        int_to_int.clone(),
-                    ),
-                    [int_function_call_arg(0, int(1))],
+                    call_int_returning_function(9, [string_arg(string("one"))], int_to_int.clone()),
+                    [int_function_call_arg(int(1))],
                 ),
             ),
             [
@@ -922,7 +926,7 @@ pub fn main() {
         .expect("source should plan");
         let expected = module(
             "main",
-            function("main", int_return_tail_call(3, [bool_arg(0, bool_(true))])),
+            function("main", int_return_tail_call(3, [bool_arg(bool_(true))])),
             [
                 function("positive", local_int(0, "value")).param_int(0, "value"),
                 function("negative", int(0).sub_int(local_int(0, "value"))).param_int(0, "value"),
@@ -930,8 +934,8 @@ pub fn main() {
                     "choose",
                     int_return_bool_case(
                         local_bool(0, "flag"),
-                        int_return_tail_call(1, [int_arg(0, int(1))]),
-                        int_return_tail_call(2, [int_arg(0, int(1))]),
+                        int_return_tail_call(1, [int_arg(int(1))]),
+                        int_return_tail_call(2, [int_arg(int(1))]),
                     ),
                 )
                 .param_bool(0, "flag"),
@@ -966,7 +970,7 @@ pub fn main() {
             "main",
             function(
                 "main",
-                call_int(1, [int_arg(0, int(1)), int_arg(1, int(2))]).add_int(int(3)),
+                call_int(1, [int_arg(int(1)), int_arg(int(2))]).add_int(int(3)),
             ),
             [
                 function("add", local_int(0, "a").add_int(local_int(1, "b")))
@@ -1002,10 +1006,7 @@ pub fn main() {
                 "main",
                 int_return_tail_call(
                     2,
-                    [int_arg(
-                        0,
-                        call_int(1, [int_arg(0, int(1)), int_arg(1, int(2))]),
-                    )],
+                    [int_arg(call_int(1, [int_arg(int(1)), int_arg(int(2))]))],
                 ),
             ),
             [
@@ -1036,8 +1037,7 @@ pub fn main() {
         .expect("source should plan");
         let expected = module(
             "main",
-            function("main", int(3))
-                .evaluate(call_int(1, [int_arg(0, int(1)), int_arg(1, int(2))])),
+            function("main", int(3)).evaluate(call_int(1, [int_arg(int(1)), int_arg(int(2))])),
             [
                 function("add", local_int(0, "a").add_int(local_int(1, "b")))
                     .param_int(0, "a")
@@ -1068,7 +1068,7 @@ pub fn main() {
             function("main", local_int(0, "value")).let_int(
                 0,
                 "value",
-                call_int(1, [int_arg(0, int(1)), int_arg(1, int(2))]),
+                call_int(1, [int_arg(int(1)), int_arg(int(2))]),
             ),
             [
                 function("add", local_int(0, "a").add_int(local_int(1, "b")))
@@ -1124,10 +1124,7 @@ pub fn main() {
                 "main",
                 call_int_function(
                     local_int_function(0, "f", [ValueType::Int, ValueType::Int]),
-                    [
-                        int_function_call_arg(0, int(1)),
-                        int_function_call_arg(1, int(2)),
-                    ],
+                    [int_function_call_arg(int(1)), int_function_call_arg(int(2))],
                 ),
             )
             .step(let_int_function_step(
@@ -1201,10 +1198,7 @@ pub fn main() {
                 "main",
                 int_return_tail_call(
                     2,
-                    [int_function_arg(
-                        0,
-                        int_function_ref(1, Vec::<LocalId>::new()),
-                    )],
+                    [int_function_arg(int_function_ref(1, Vec::<LocalId>::new()))],
                 ),
             ),
             [
@@ -1243,10 +1237,7 @@ pub fn main() {
                 "main",
                 int_return_block(
                     [let_int_step(0, "_pipe", int(1))],
-                    int_return_tail_call(
-                        1,
-                        [int_arg(0, local_int(0, "_pipe")), int_arg(1, int(0))],
-                    ),
+                    int_return_tail_call(1, [int_arg(local_int(0, "_pipe")), int_arg(int(0))]),
                 ),
             ),
             [function(
@@ -1257,8 +1248,8 @@ pub fn main() {
                     int_return_tail_call(
                         1,
                         [
-                            int_arg(0, local_int(0, "n").sub_int(int(1))),
-                            int_arg(1, local_int(1, "acc").add_int(int(1))),
+                            int_arg(local_int(0, "n").sub_int(int(1))),
+                            int_arg(local_int(1, "acc").add_int(int(1))),
                         ],
                     ),
                 ),
@@ -1350,7 +1341,7 @@ pub fn nil_main() {
             "main",
             function(
                 "main",
-                string_return_tail_call(1, [string_arg(0, string("geam"))]),
+                string_return_tail_call(1, [string_arg(string("geam"))]),
             ),
             [
                 function("string_id", local_string(0, "value")).param_string(0, "value"),
@@ -1358,9 +1349,9 @@ pub fn nil_main() {
                 function("nil_id", local_nil(0, "value")).param_nil(0, "value"),
                 function(
                     "bool_main",
-                    bool_return_tail_call(2, [bool_arg(0, bool_(true))]),
+                    bool_return_tail_call(2, [bool_arg(bool_(true))]),
                 ),
-                function("nil_main", nil_return_tail_call(3, [nil_arg(0, nil())])),
+                function("nil_main", nil_return_tail_call(3, [nil_arg(nil())])),
             ],
         );
 
@@ -1385,7 +1376,7 @@ pub fn main() {
             "main",
             function(
                 "main",
-                int_return_tail_call(1, [int_arg(0, int(1)), int_arg(1, int(2))]),
+                int_return_tail_call(1, [int_arg(int(1)), int_arg(int(2))]),
             ),
             [function("pick", local_int(1, "value"))
                 .discard_int_param(0)

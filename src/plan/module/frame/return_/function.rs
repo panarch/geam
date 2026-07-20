@@ -1617,10 +1617,10 @@ mod tests {
                                     vec![ValueShape::Int],
                                     FunctionShape::from_function_type(type_.clone()),
                                 ),
-                                vec![CallArg::int(
-                                    IntLocalId(0),
-                                    IntExpr::local_get(IntLocalId(2), "tail_arg".into()),
-                                )],
+                                vec![CallArg::new(crate::plan::Expr::int(IntExpr::local_get(
+                                    IntLocalId(2),
+                                    "tail_arg".into(),
+                                )))],
                             ),
                         )],
                         ReturnBody::expr(ListFunctionExpr::local_get(

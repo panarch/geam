@@ -1,17 +1,10 @@
-#[cfg(test)]
-use crate::plan::ParamLocal;
 use crate::plan::{
     BoolExpr, CaptureArg, ConstantListFunctionInstantiation, CustomFieldAccess, FloatExpr,
     FunctionFunctionExpr, FunctionInstantiation, FunctionListExpr, FunctionType, IntExpr,
-    ListFunctionLocal, ListFunctionReference, PanicExpr, ParamSlot, Step, StringExpr, TupleExpr,
-    ValueType,
+    ListFunctionLocal, ListFunctionReference, PanicExpr, Step, StringExpr, TupleExpr, ValueType,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
-
-fn function_type(params: &[ParamSlot], return_: ValueType) -> FunctionType {
-    FunctionType::new(params.iter().map(ParamSlot::value_type).collect(), return_)
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ListFunctionExpr {
@@ -26,7 +19,6 @@ pub(crate) enum ListFunctionExprKind {
     Reference(ListFunctionReference),
     Closure {
         function: FunctionInstantiation,
-        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
     },
     LocalGet {
@@ -103,37 +95,17 @@ impl ListFunctionExpr {
         }
     }
 
-    pub(crate) fn closure_slots(
+    pub(crate) fn closure(
         function: FunctionInstantiation,
-        params: Vec<ParamSlot>,
         captures: Vec<CaptureArg>,
         item_type: ValueType,
     ) -> Self {
-        let type_ = function_type(&params, ValueType::List(Box::new(item_type.clone())));
+        let type_ = function.shape().type_();
         Self {
             type_,
             item_type,
-            kind: ListFunctionExprKind::Closure {
-                function,
-                params,
-                captures,
-            },
+            kind: ListFunctionExprKind::Closure { function, captures },
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn closure(
-        function: FunctionInstantiation,
-        params: Vec<ParamLocal>,
-        captures: Vec<CaptureArg>,
-        item_type: ValueType,
-    ) -> Self {
-        Self::closure_slots(
-            function,
-            params.into_iter().map(ParamSlot::from_local).collect(),
-            captures,
-            item_type,
-        )
     }
 
     pub(crate) fn local_get(local: ListFunctionLocal, name: EcoString) -> Self {
@@ -325,32 +297,20 @@ mod tests {
     use super::{ListFunctionExpr, ListFunctionExprKind};
     use crate::plan::{
         BoolExpr, Expr, FunctionFunctionExpr, FunctionFunctionReference, FunctionInstantiation,
-        FunctionShape, FunctionType, IntExpr, ListExpr, ListFunctionReference, ParamLocal, Step,
-        TupleExpr, ValueShape, ValueType, monomorphic_function_instantiation,
+        FunctionShape, FunctionType, IntExpr, ListExpr, ListFunctionReference, Step, TupleExpr,
+        ValueShape, ValueType, monomorphic_function_instantiation,
     };
 
     #[test]
     fn list_function_expr_kind_accessors() {
         assert_eq!(
             list_function_value().kind(),
-            &ListFunctionExprKind::Reference(ListFunctionReference::new(
-                function_instantiation(),
-                vec![ParamLocal::int(crate::plan::IntLocalId(0))]
-            )),
+            &ListFunctionExprKind::Reference(ListFunctionReference::new(function_instantiation())),
         );
         assert_eq!(
-            ListFunctionExpr::closure(
-                function_instantiation(),
-                vec![ParamLocal::int(crate::plan::IntLocalId(0))],
-                Vec::new(),
-                element_type(),
-            )
-            .kind(),
+            ListFunctionExpr::closure(function_instantiation(), Vec::new(), element_type(),).kind(),
             &ListFunctionExprKind::Closure {
                 function: function_instantiation(),
-                params: vec![crate::plan::ParamSlot::from_local(ParamLocal::int(
-                    crate::plan::IntLocalId(0)
-                ))],
                 captures: Vec::new(),
             },
         );
@@ -490,13 +450,8 @@ mod tests {
     fn list_function_expr_type() {
         assert_eq!(list_function_value().type_(), &list_function_type());
         assert_eq!(
-            ListFunctionExpr::closure(
-                function_instantiation(),
-                vec![ParamLocal::int(crate::plan::IntLocalId(0))],
-                Vec::new(),
-                element_type(),
-            )
-            .type_(),
+            ListFunctionExpr::closure(function_instantiation(), Vec::new(), element_type(),)
+                .type_(),
             &list_function_type(),
         );
         assert_eq!(
@@ -525,10 +480,7 @@ mod tests {
 
     fn list_function_value() -> ListFunctionExpr {
         ListFunctionExpr::reference(
-            ListFunctionReference::new(
-                function_instantiation(),
-                vec![ParamLocal::int(crate::plan::IntLocalId(0))],
-            ),
+            ListFunctionReference::new(function_instantiation()),
             element_type(),
         )
     }
@@ -555,7 +507,7 @@ mod tests {
 
     fn function_function_value() -> FunctionFunctionExpr {
         FunctionFunctionExpr::reference(
-            FunctionFunctionReference::new(function_returning_function_instantiation(), Vec::new()),
+            FunctionFunctionReference::new(function_returning_function_instantiation()),
             list_function_type(),
         )
     }
@@ -587,16 +539,10 @@ mod tests {
     fn list_function_value_type_fixture() {
         assert_eq!(
             ListFunctionExpr::reference(
-                ListFunctionReference::new(
-                    monomorphic_function_instantiation(
-                        0,
-                        FunctionShape::new(
-                            Vec::new(),
-                            ValueShape::List(Box::new(ValueShape::Int)),
-                        ),
-                    ),
-                    Vec::new(),
-                ),
+                ListFunctionReference::new(monomorphic_function_instantiation(
+                    0,
+                    FunctionShape::new(Vec::new(), ValueShape::List(Box::new(ValueShape::Int)),),
+                )),
                 element_type(),
             )
             .type_(),

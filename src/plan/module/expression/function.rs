@@ -266,7 +266,7 @@ impl FunctionExpr {
     }
 
     pub(crate) fn reference(reference: FunctionReference) -> Self {
-        let (instantiation, params) = reference.into_parts();
+        let instantiation = reference.into_instantiation();
         let shape = instantiation.shape().clone();
         match shape.return_shape().clone() {
             ValueShape::Parameter(parameter) => {
@@ -276,79 +276,63 @@ impl FunctionExpr {
                 );
                 Self::generic_with_shape(
                     GenericFunctionExpr::reference(
-                        crate::plan::GenericFunctionReference::from_slots(instantiation, params),
+                        crate::plan::GenericFunctionReference::new(instantiation),
                         type_,
                     ),
                     shape,
                 )
             }
             ValueShape::Int => Self::int_with_shape(
-                IntFunctionExpr::reference(IntFunctionReference::from_slots(instantiation, params)),
+                IntFunctionExpr::reference(IntFunctionReference::new(instantiation)),
                 shape,
             ),
             ValueShape::Float => Self::float_with_shape(
-                FloatFunctionExpr::reference(FloatFunctionReference::from_slots(
-                    instantiation,
-                    params,
-                )),
+                FloatFunctionExpr::reference(FloatFunctionReference::new(instantiation)),
                 shape,
             ),
             ValueShape::String => Self::string_with_shape(
-                StringFunctionExpr::reference(StringFunctionReference::from_slots(
-                    instantiation,
-                    params,
-                )),
+                StringFunctionExpr::reference(StringFunctionReference::new(instantiation)),
                 shape,
             ),
             ValueShape::BitArray => Self::bit_array_with_shape(
-                BitArrayFunctionExpr::reference(BitArrayFunctionReference::from_slots(
-                    instantiation,
-                    params,
-                )),
+                BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(instantiation)),
                 shape,
             ),
             ValueShape::UtfCodepoint => Self::utf_codepoint_with_shape(
-                UtfCodepointFunctionExpr::reference(UtfCodepointFunctionReference::from_slots(
+                UtfCodepointFunctionExpr::reference(UtfCodepointFunctionReference::new(
                     instantiation,
-                    params,
                 )),
                 shape,
             ),
             ValueShape::Custom(return_shape) => Self::with_typed_shape(
                 FunctionExprKind::Custom(CustomFunctionExpr::reference(
-                    CustomFunctionReference::from_slots(instantiation, params),
+                    CustomFunctionReference::new(instantiation),
                     return_shape,
                 )),
                 shape,
             ),
             ValueShape::Bool => Self::bool_with_shape(
-                BoolFunctionExpr::reference(BoolFunctionReference::from_slots(
-                    instantiation,
-                    params,
-                )),
+                BoolFunctionExpr::reference(BoolFunctionReference::new(instantiation)),
                 shape,
             ),
             ValueShape::Nil => Self::nil_with_shape(
-                NilFunctionExpr::reference(NilFunctionReference::from_slots(instantiation, params)),
+                NilFunctionExpr::reference(NilFunctionReference::new(instantiation)),
                 shape,
             ),
             ValueShape::Tuple(_) => Self::tuple_with_shape(
-                TupleFunctionExpr::reference(TupleFunctionReference::from_slots(
-                    instantiation,
-                    params,
-                )),
+                TupleFunctionExpr::reference(TupleFunctionReference::new(instantiation)),
                 shape,
             ),
             ValueShape::List(item_shape) => Self::list_with_shape(
                 ListFunctionExpr::reference(
-                    ListFunctionReference::from_slots(instantiation, params),
+                    ListFunctionReference::new(instantiation),
                     item_shape.value_type(),
                 ),
                 shape,
             ),
             ValueShape::Function(return_shape) => Self::function_with_shape(
                 FunctionFunctionExpr::reference(
-                    FunctionFunctionReference::from_slots(instantiation, params),
+                    FunctionFunctionReference::new(instantiation),
                     return_shape.type_(),
                 ),
                 shape,
@@ -476,6 +460,13 @@ impl FunctionExpr {
 
     pub(crate) fn custom(expression: CustomFunctionExpr) -> Self {
         Self::new(FunctionExprKind::Custom(expression))
+    }
+
+    pub(crate) fn custom_with_shape(
+        expression: CustomFunctionExpr,
+        shape: crate::plan::FunctionShape,
+    ) -> Self {
+        Self::with_typed_shape(FunctionExprKind::Custom(expression), shape)
     }
 
     pub(crate) fn float(expression: FloatFunctionExpr) -> Self {
@@ -703,85 +694,6 @@ impl FunctionExpr {
         }
     }
 
-    pub(crate) fn into_typed_int(self) -> Option<TypedFunctionExpr<IntFunctionExpr>> {
-        match self.into_typed_kind() {
-            TypedFunctionExprKind::Int(expression) => Some(expression),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn into_typed_string(self) -> Option<TypedFunctionExpr<StringFunctionExpr>> {
-        match self.into_typed_kind() {
-            TypedFunctionExprKind::String(expression) => Some(expression),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn into_typed_bit_array(self) -> Option<TypedFunctionExpr<BitArrayFunctionExpr>> {
-        match self.into_typed_kind() {
-            TypedFunctionExprKind::BitArray(expression) => Some(expression),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn into_typed_utf_codepoint(
-        self,
-    ) -> Option<TypedFunctionExpr<UtfCodepointFunctionExpr>> {
-        match self.into_typed_kind() {
-            TypedFunctionExprKind::UtfCodepoint(expression) => Some(expression),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn into_typed_custom(self) -> Option<TypedFunctionExpr<CustomFunctionExpr>> {
-        match self.into_typed_kind() {
-            TypedFunctionExprKind::Custom(expression) => Some(expression),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn into_typed_float(self) -> Option<TypedFunctionExpr<FloatFunctionExpr>> {
-        match self.into_typed_kind() {
-            TypedFunctionExprKind::Float(expression) => Some(expression),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn into_typed_bool(self) -> Option<TypedFunctionExpr<BoolFunctionExpr>> {
-        match self.into_typed_kind() {
-            TypedFunctionExprKind::Bool(expression) => Some(expression),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn into_typed_nil(self) -> Option<TypedFunctionExpr<NilFunctionExpr>> {
-        match self.into_typed_kind() {
-            TypedFunctionExprKind::Nil(expression) => Some(expression),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn into_typed_tuple(self) -> Option<TypedFunctionExpr<TupleFunctionExpr>> {
-        match self.into_typed_kind() {
-            TypedFunctionExprKind::Tuple(expression) => Some(expression),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn into_typed_list(self) -> Option<TypedFunctionExpr<ListFunctionExpr>> {
-        match self.into_typed_kind() {
-            TypedFunctionExprKind::List(expression) => Some(expression),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn into_typed_function(self) -> Option<TypedFunctionExpr<FunctionFunctionExpr>> {
-        match self.into_typed_kind() {
-            TypedFunctionExprKind::Function(expression) => Some(expression),
-            _ => None,
-        }
-    }
-
     pub(crate) fn into_int(self) -> Option<IntFunctionExpr> {
         match self.kind {
             FunctionExprKind::Int(expression) => Some(expression),
@@ -944,7 +856,7 @@ mod tests {
         BitArrayFunctionReference, BoolFunctionReference, FloatFunctionReference,
         FunctionFunctionReference, FunctionInstantiation, FunctionReference, FunctionShape,
         FunctionType, GenericFunctionType, IntFunctionReference, ListFunctionReference,
-        NilFunctionReference, PanicExpr, PanicSite, ParamLocal, StringFunctionReference,
+        NilFunctionReference, PanicExpr, PanicSite, StringFunctionReference,
         TupleFunctionReference, TypeParameterId, UtfCodepointFunctionReference, ValueShape,
         ValueType, monomorphic_function_instantiation,
     };
@@ -994,30 +906,6 @@ mod tests {
         assert_eq!(
             FunctionExpr::function(function_function_value()).kind(),
             &FunctionExprKind::Function(function_function_value()),
-        );
-    }
-
-    #[test]
-    fn typed_function_family_conversions_reject_other_return_families() {
-        assert_eq!(
-            FunctionExpr::int(int_function_value()).into_typed_bit_array(),
-            None,
-        );
-        assert_eq!(
-            FunctionExpr::int(int_function_value()).into_typed_utf_codepoint(),
-            None,
-        );
-        assert_eq!(
-            FunctionExpr::int(int_function_value()).into_typed_custom(),
-            None,
-        );
-        assert_eq!(
-            FunctionExpr::int(int_function_value()).into_typed_float(),
-            None,
-        );
-        assert_eq!(
-            FunctionExpr::int(int_function_value()).into_typed_list(),
-            None,
         );
     }
 
@@ -1232,10 +1120,7 @@ mod tests {
     }
 
     fn int_function_reference() -> FunctionReference {
-        FunctionReference::new(
-            instantiation(int_function_type()),
-            vec![ParamLocal::int(crate::plan::IntLocalId(0))],
-        )
+        FunctionReference::new(instantiation(int_function_type()))
     }
 
     fn generic_function_value() -> GenericFunctionExpr {
@@ -1246,148 +1131,97 @@ mod tests {
     }
 
     fn string_function_reference() -> FunctionReference {
-        FunctionReference::new(
-            instantiation(string_function_type()),
-            vec![ParamLocal::string(crate::plan::StringLocalId(0))],
-        )
+        FunctionReference::new(instantiation(string_function_type()))
     }
 
     fn bit_array_function_reference() -> FunctionReference {
-        FunctionReference::new(
-            instantiation(bit_array_function_type()),
-            vec![ParamLocal::bit_array(crate::plan::BitArrayLocalId(0))],
-        )
+        FunctionReference::new(instantiation(bit_array_function_type()))
     }
 
     fn utf_codepoint_function_reference() -> FunctionReference {
-        FunctionReference::new(
-            instantiation(utf_codepoint_function_type()),
-            vec![ParamLocal::utf_codepoint(crate::plan::UtfCodepointLocalId(
-                0,
-            ))],
-        )
+        FunctionReference::new(instantiation(utf_codepoint_function_type()))
     }
 
     fn float_function_reference() -> FunctionReference {
-        FunctionReference::new(
-            instantiation(float_function_type()),
-            vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
-        )
+        FunctionReference::new(instantiation(float_function_type()))
     }
 
     fn bool_function_reference() -> FunctionReference {
-        FunctionReference::new(
-            instantiation(bool_function_type()),
-            vec![ParamLocal::bool(crate::plan::BoolLocalId(0))],
-        )
+        FunctionReference::new(instantiation(bool_function_type()))
     }
 
     fn nil_function_reference() -> FunctionReference {
-        FunctionReference::new(
-            instantiation(nil_type()),
-            vec![ParamLocal::nil(crate::plan::NilLocalId(0))],
-        )
+        FunctionReference::new(instantiation(nil_type()))
     }
 
     fn tuple_function_reference() -> FunctionReference {
-        FunctionReference::new(
-            instantiation(tuple_function_type()),
-            vec![ParamLocal::tuple(
-                crate::plan::TupleLocalId(0),
-                vec![ValueType::Int],
-            )],
-        )
+        FunctionReference::new(instantiation(tuple_function_type()))
     }
 
     fn list_function_reference() -> FunctionReference {
-        FunctionReference::new(
-            instantiation(list_function_type()),
-            vec![ParamLocal::list(crate::plan::ListLocal::int(
-                crate::plan::IntListLocalId(0),
-            ))],
-        )
+        FunctionReference::new(instantiation(list_function_type()))
     }
 
     fn function_function_reference() -> FunctionReference {
-        FunctionReference::new(instantiation(function_function_type()), Vec::new())
+        FunctionReference::new(instantiation(function_function_type()))
     }
 
     fn int_function_value() -> IntFunctionExpr {
         IntFunctionExpr::reference(IntFunctionReference::new(
             instantiation(int_function_type()),
-            vec![ParamLocal::int(crate::plan::IntLocalId(0))],
         ))
     }
 
     fn string_function_value() -> StringFunctionExpr {
-        StringFunctionExpr::reference(StringFunctionReference::new(
-            instantiation(string_function_type()),
-            vec![ParamLocal::string(crate::plan::StringLocalId(0))],
-        ))
+        StringFunctionExpr::reference(StringFunctionReference::new(instantiation(
+            string_function_type(),
+        )))
     }
 
     fn bit_array_function_value() -> BitArrayFunctionExpr {
-        BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(
-            instantiation(bit_array_function_type()),
-            vec![ParamLocal::bit_array(crate::plan::BitArrayLocalId(0))],
-        ))
+        BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(instantiation(
+            bit_array_function_type(),
+        )))
     }
 
     fn utf_codepoint_function_value() -> UtfCodepointFunctionExpr {
-        UtfCodepointFunctionExpr::reference(UtfCodepointFunctionReference::new(
-            instantiation(utf_codepoint_function_type()),
-            vec![ParamLocal::utf_codepoint(crate::plan::UtfCodepointLocalId(
-                0,
-            ))],
-        ))
+        UtfCodepointFunctionExpr::reference(UtfCodepointFunctionReference::new(instantiation(
+            utf_codepoint_function_type(),
+        )))
     }
 
     fn float_function_value() -> FloatFunctionExpr {
-        FloatFunctionExpr::reference(FloatFunctionReference::new(
-            instantiation(float_function_type()),
-            vec![ParamLocal::float(crate::plan::FloatLocalId(0))],
-        ))
+        FloatFunctionExpr::reference(FloatFunctionReference::new(instantiation(
+            float_function_type(),
+        )))
     }
 
     fn bool_function_value() -> BoolFunctionExpr {
-        BoolFunctionExpr::reference(BoolFunctionReference::new(
-            instantiation(bool_function_type()),
-            vec![ParamLocal::bool(crate::plan::BoolLocalId(0))],
-        ))
+        BoolFunctionExpr::reference(BoolFunctionReference::new(instantiation(
+            bool_function_type(),
+        )))
     }
 
     fn nil_function_value() -> NilFunctionExpr {
-        NilFunctionExpr::reference(NilFunctionReference::new(
-            instantiation(nil_type()),
-            vec![ParamLocal::nil(crate::plan::NilLocalId(0))],
-        ))
+        NilFunctionExpr::reference(NilFunctionReference::new(instantiation(nil_type())))
     }
 
     fn tuple_function_value() -> TupleFunctionExpr {
-        TupleFunctionExpr::reference(TupleFunctionReference::new(
-            instantiation(tuple_function_type()),
-            vec![ParamLocal::tuple(
-                crate::plan::TupleLocalId(0),
-                vec![ValueType::Int],
-            )],
-        ))
+        TupleFunctionExpr::reference(TupleFunctionReference::new(instantiation(
+            tuple_function_type(),
+        )))
     }
 
     fn list_function_value() -> ListFunctionExpr {
         ListFunctionExpr::reference(
-            ListFunctionReference::new(
-                instantiation(list_function_type()),
-                vec![ParamLocal::list(crate::plan::ListLocal::int(
-                    crate::plan::IntListLocalId(0),
-                ))],
-            ),
+            ListFunctionReference::new(instantiation(list_function_type())),
             ValueType::Int,
         )
     }
 
     fn function_function_value() -> FunctionFunctionExpr {
         FunctionFunctionExpr::reference(
-            FunctionFunctionReference::new(instantiation(function_function_type()), Vec::new()),
+            FunctionFunctionReference::new(instantiation(function_function_type())),
             int_function_type(),
         )
     }

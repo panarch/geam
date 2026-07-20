@@ -693,7 +693,7 @@ pub fn main() {
         .expect("source should plan");
         let expected = module(
             "main",
-            function("main", int_return_tail_call(1, [int_arg(0, int(41))])),
+            function("main", int_return_tail_call(1, [int_arg(int(41))])),
             [function("identity", local_int(0, "value")).param_int(0, "value")],
         );
 
@@ -1212,7 +1212,7 @@ pub fn main() {
             "main",
             function(
                 "main",
-                int_return_tail_call(1, [int_arg(0, int(1)), int_arg(1, int(42))]),
+                int_return_tail_call(1, [int_arg(int(1)), int_arg(int(42))]),
             ),
             [function("pick", local_int(1, "value"))
                 .discard_int_param(0)
@@ -1308,7 +1308,7 @@ pub fn main() {
         .expect("source should plan");
         let expected = module(
             "main",
-            function("main", int_return_tail_call(1, [int_arg(0, int(1))])),
+            function("main", int_return_tail_call(1, [int_arg(int(1))])),
             [function("identity", local_int(0, "local")).param_int(0, "local")],
         );
 

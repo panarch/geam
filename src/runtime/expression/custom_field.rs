@@ -201,7 +201,6 @@ mod tests {
                                 ValueType::String,
                             )),
                         ),
-                        Vec::new(),
                     ))),
                 ),
                 ValueType::Function(_) => (
@@ -214,7 +213,6 @@ mod tests {
                                 ValueType::Int,
                             )),
                         ),
-                        Vec::new(),
                     ))),
                 ),
                 _ => (ValueType::Int, Expr::int(IntExpr::value(1.into()))),
@@ -265,7 +263,6 @@ mod tests {
                                 0,
                                 FunctionShape::from_function_type(function_type.clone()),
                             ),
-                            Vec::new(),
                         ))),
                         ValueType::Function(Box::new(function_type)),
                     )
@@ -353,13 +350,10 @@ mod tests {
             )],
         );
         let actual_value = Expr::function(FunctionExpr::custom(CustomFunctionExpr::reference(
-            CustomFunctionReference::new(
-                monomorphic_function_instantiation(
-                    1,
-                    FunctionShape::from_function_type(actual_function.clone()),
-                ),
-                vec![ParamLocal::int(IntLocalId(0))],
-            ),
+            CustomFunctionReference::new(monomorphic_function_instantiation(
+                1,
+                FunctionShape::from_function_type(actual_function.clone()),
+            )),
             CustomValueShape::any(inner_type.clone()),
         )));
         let access = CustomFieldAccess::new(
@@ -423,13 +417,10 @@ mod tests {
             )],
         );
         let actual_value = Expr::function(FunctionExpr::function(FunctionFunctionExpr::reference(
-            FunctionFunctionReference::new(
-                monomorphic_function_instantiation(
-                    1,
-                    FunctionShape::from_function_type(actual_function.clone()),
-                ),
-                vec![ParamLocal::int(IntLocalId(0))],
-            ),
+            FunctionFunctionReference::new(monomorphic_function_instantiation(
+                1,
+                FunctionShape::from_function_type(actual_function.clone()),
+            )),
             returned.clone(),
         )));
         let access = CustomFieldAccess::new(

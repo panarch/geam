@@ -384,8 +384,8 @@ mod tests {
         ConstantValue, CustomConstructor, CustomConstructorField, CustomConstructorRefinement,
         CustomExpr, CustomReturn, CustomType, CustomTypeName, CustomValueShape, Expr,
         FunctionReference, FunctionShape, FunctionTemplateId, FunctionTemplateSignature,
-        IntLocalId, ParamBinding, ParamLocal, ParamSlot, ReturnExpr, Step, TypeParameterId,
-        TypeScheme, ValueShape, ValueType, monomorphic_function_instantiation,
+        IntLocalId, ParamBinding, ParamLocal, ReturnExpr, Step, TypeParameterId, TypeScheme,
+        ValueShape, ValueType, monomorphic_function_instantiation,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, FunctionParam, PlanContext};
     use crate::planner::dsl::{
@@ -620,10 +620,7 @@ pub fn main() {
         );
         let value = ConstantValue::function(
             function_shape.clone(),
-            FunctionReference::from_slots(
-                monomorphic_function_instantiation(1, function_shape),
-                vec![ParamSlot::from_local(ParamLocal::int(IntLocalId(0)))],
-            ),
+            FunctionReference::new(monomorphic_function_instantiation(1, function_shape)),
         );
         let instantiation = signature
             .try_instantiate(Vec::new())
@@ -643,7 +640,7 @@ pub fn main() {
                 "main",
                 crate::plan::IntReturn::expr(crate::plan::IntExpr::function_call(
                     function_expr,
-                    vec![int_function_call_arg(0, int(41))],
+                    vec![int_function_call_arg(int(41))],
                 )),
             ),
             [function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value")],
@@ -753,10 +750,7 @@ pub fn main() { answer }
         assert_eq!(
             plan_var(Some(constructor), &context),
             Ok(Expr::function(crate::plan::FunctionExpr::reference(
-                FunctionReference::from_slots(
-                    monomorphic_function_instantiation(0, function_shape),
-                    vec![ParamSlot::from_local(ParamLocal::int(IntLocalId(0)))],
-                ),
+                FunctionReference::new(monomorphic_function_instantiation(0, function_shape)),
             ))),
         );
     }

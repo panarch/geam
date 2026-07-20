@@ -246,11 +246,9 @@ pub fn main() {
                         1,
                         crate::plan::FunctionShape::from_function_type(type_.clone()),
                     ),
-                    Vec::new(),
-                    vec![CaptureArg::int(
-                        IntLocalId(0),
-                        IntExpr::panic(panic("capture")),
-                    )],
+                    vec![CaptureArg::new(crate::plan::Expr::int(IntExpr::panic(
+                        panic("capture"),
+                    )))],
                     type_.clone(),
                 ),
                 "capture",
@@ -343,10 +341,13 @@ pub fn main() {
     }
 
     fn run_module_int_function_expression(expression: IntFunctionExpr) -> ExecutionError {
-        let target = FunctionTemplate::new(
+        let target = FunctionTemplate::with_captures(
             FunctionTemplateId::new(1),
             "target".into(),
             Vec::new(),
+            vec![crate::plan::ParamSlot::from_local(
+                crate::plan::ParamLocal::int(IntLocalId(0)),
+            )],
             vec![Step::evaluate(Expr::int(IntExpr::local_get(
                 IntLocalId(0),
                 "capture".into(),

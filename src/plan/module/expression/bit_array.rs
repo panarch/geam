@@ -432,7 +432,6 @@ mod tests {
     fn function_expr() -> crate::plan::BitArrayFunctionExpr {
         crate::plan::BitArrayFunctionExpr::reference(BitArrayFunctionReference::new(
             function_instantiation(),
-            Vec::new(),
         ))
     }
 

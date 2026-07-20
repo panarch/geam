@@ -4,12 +4,13 @@ mod steps;
 
 pub(crate) use return_body::*;
 
-use crate::plan::{FunctionTemplate, FunctionTemplateId, Param, Step};
+use crate::plan::{FunctionTemplate, FunctionTemplateId, Param, ParamSlot, Step};
 use ecow::EcoString;
 
 pub(crate) struct FunctionDsl {
     name: EcoString,
     params: Vec<Param>,
+    captures: Vec<ParamSlot>,
     steps: Vec<Step>,
     return_: FunctionReturn,
 }
@@ -21,16 +22,29 @@ pub(crate) fn function(
     FunctionDsl {
         name: name.into(),
         params: Vec::new(),
+        captures: Vec::new(),
         steps: Vec::new(),
         return_: return_.into(),
     }
 }
 
 impl FunctionDsl {
+    pub(crate) fn capture(mut self, slot: ParamSlot) -> Self {
+        self.captures.push(slot);
+        self
+    }
+
     pub(crate) fn build(self, id: FunctionTemplateId) -> FunctionTemplate {
         let return_ = self.return_.build();
 
-        FunctionTemplate::new(id, self.name, self.params, self.steps, return_)
+        FunctionTemplate::with_captures(
+            id,
+            self.name,
+            self.params,
+            self.captures,
+            self.steps,
+            return_,
+        )
     }
 }
 

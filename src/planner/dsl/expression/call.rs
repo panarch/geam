@@ -113,17 +113,17 @@ mod tests {
     #[test]
     fn direct_call_helpers_build_call_shapes() {
         assert_eq!(
-            call_int(0, [int_arg(0, int(1))]).0,
+            call_int(0, [int_arg(int(1))]).0,
             IntExpr::call(
-                instantiation(0, &[int_arg(0, int(1))], ValueShape::Int),
-                vec![int_arg(0, int(1))]
+                instantiation(0, &[int_arg(int(1))], ValueShape::Int),
+                vec![int_arg(int(1))]
             ),
         );
         assert_eq!(
-            call_string(1, [string_arg(0, string("a"))]).0,
+            call_string(1, [string_arg(string("a"))]).0,
             StringExpr::call(
-                instantiation(1, &[string_arg(0, string("a"))], ValueShape::String),
-                vec![string_arg(0, string("a"))]
+                instantiation(1, &[string_arg(string("a"))], ValueShape::String),
+                vec![string_arg(string("a"))]
             ),
         );
         assert_eq!(
@@ -153,28 +153,28 @@ mod tests {
         let return_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
 
         assert_eq!(
-            call_int_returning_function(6, [int_arg(0, int(1))], return_type.clone()).0,
+            call_int_returning_function(6, [int_arg(int(1))], return_type.clone()).0,
             IntFunctionExpr::call(
                 instantiation(
                     6,
-                    &[int_arg(0, int(1))],
+                    &[int_arg(int(1))],
                     ValueShape::Function(Box::new(FunctionShape::from_function_type(
                         return_type.clone(),
                     ))),
                 ),
-                vec![int_arg(0, int(1))],
+                vec![int_arg(int(1))],
                 return_type,
             ),
         );
         assert_eq!(
             call_int_function(
                 int_function_ref(0, Vec::<ParamLocal>::new()),
-                [int_arg(0, int(1))],
+                [int_arg(int(1))],
             )
             .0,
             IntExpr::function_call(
                 int_function_ref(0, Vec::<ParamLocal>::new()).into(),
-                vec![int_arg(0, int(1))],
+                vec![int_arg(int(1))],
             ),
         );
     }

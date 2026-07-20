@@ -39,7 +39,7 @@ pub use self::{
     utf_codepoint::UtfCodepointExpr,
 };
 pub(crate) use self::{
-    arg::{CallArgKind, CallArgStorage, CaptureArg, CaptureArgKind, PotentiallyUninhabitedCallArg},
+    arg::{CallArgStorage, CaptureArg, PotentiallyUninhabitedCallArg},
     bit_array::{
         BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayExprKind, BitArraySegment, Endianness,
         FloatBitSize, StringEncoding,
@@ -749,13 +749,11 @@ mod tests {
         UtfCodepointExpr,
     };
     use crate::plan::{
-        BoolFunctionReference, BoolLocalId, CustomConstructorRefinement, CustomLocal, CustomType,
-        CustomTypeName, CustomValueShape, FloatFunctionReference, FloatLocalId,
-        FunctionFunctionReference, FunctionInstantiation, FunctionReference, FunctionShape,
-        FunctionType, IntFunctionReference, IntListLocalId, IntLocalId, ListFunctionReference,
-        ListLocal, NilFunctionReference, NilLocalId, ParamLocal, StringFunctionReference,
-        StringLocalId, UtfCodepointLocalId, ValueShape, ValueType,
-        monomorphic_function_instantiation,
+        BoolFunctionReference, CustomConstructorRefinement, CustomLocal, CustomType,
+        CustomTypeName, CustomValueShape, FloatFunctionReference, FunctionFunctionReference,
+        FunctionInstantiation, FunctionReference, FunctionShape, FunctionType,
+        IntFunctionReference, ListFunctionReference, NilFunctionReference, StringFunctionReference,
+        UtfCodepointLocalId, ValueShape, ValueType, monomorphic_function_instantiation,
     };
     use num_bigint::BigInt;
 
@@ -1525,48 +1523,36 @@ mod tests {
     }
 
     fn function_value() -> FunctionReference {
-        FunctionReference::new(
-            instantiation(function_type()),
-            vec![ParamLocal::int(IntLocalId(0))],
-        )
+        FunctionReference::new(instantiation(function_type()))
     }
 
     fn int_function_expr() -> IntFunctionExpr {
-        IntFunctionExpr::reference(IntFunctionReference::new(
-            instantiation(function_type()),
-            vec![ParamLocal::int(IntLocalId(0))],
-        ))
+        IntFunctionExpr::reference(IntFunctionReference::new(instantiation(function_type())))
     }
 
     fn string_function_expr() -> StringFunctionExpr {
-        StringFunctionExpr::reference(StringFunctionReference::new(
-            instantiation(FunctionType::new(
-                vec![ValueType::String],
-                ValueType::String,
-            )),
-            vec![ParamLocal::string(StringLocalId(0))],
-        ))
+        StringFunctionExpr::reference(StringFunctionReference::new(instantiation(
+            FunctionType::new(vec![ValueType::String], ValueType::String),
+        )))
     }
 
     fn float_function_expr() -> FloatFunctionExpr {
-        FloatFunctionExpr::reference(FloatFunctionReference::new(
-            instantiation(FunctionType::new(vec![ValueType::Float], ValueType::Float)),
-            vec![ParamLocal::float(FloatLocalId(0))],
-        ))
+        FloatFunctionExpr::reference(FloatFunctionReference::new(instantiation(
+            FunctionType::new(vec![ValueType::Float], ValueType::Float),
+        )))
     }
 
     fn bool_function_expr() -> BoolFunctionExpr {
-        BoolFunctionExpr::reference(BoolFunctionReference::new(
-            instantiation(FunctionType::new(vec![ValueType::Bool], ValueType::Bool)),
-            vec![ParamLocal::bool(BoolLocalId(0))],
-        ))
+        BoolFunctionExpr::reference(BoolFunctionReference::new(instantiation(
+            FunctionType::new(vec![ValueType::Bool], ValueType::Bool),
+        )))
     }
 
     fn nil_function_expr() -> NilFunctionExpr {
-        NilFunctionExpr::reference(NilFunctionReference::new(
-            instantiation(FunctionType::new(vec![ValueType::Nil], ValueType::Nil)),
-            vec![ParamLocal::nil(NilLocalId(0))],
-        ))
+        NilFunctionExpr::reference(NilFunctionReference::new(instantiation(FunctionType::new(
+            vec![ValueType::Nil],
+            ValueType::Nil,
+        ))))
     }
 
     fn list_expr() -> ListExpr {
@@ -1578,26 +1564,20 @@ mod tests {
 
     fn list_function_expr() -> ListFunctionExpr {
         ListFunctionExpr::reference(
-            ListFunctionReference::new(
-                instantiation(FunctionType::new(
-                    vec![ValueType::List(Box::new(ValueType::Int))],
-                    ValueType::List(Box::new(ValueType::Int)),
-                )),
-                vec![ParamLocal::list(ListLocal::int(IntListLocalId(0)))],
-            ),
+            ListFunctionReference::new(instantiation(FunctionType::new(
+                vec![ValueType::List(Box::new(ValueType::Int))],
+                ValueType::List(Box::new(ValueType::Int)),
+            ))),
             ValueType::Int,
         )
     }
 
     fn function_function_expr() -> FunctionFunctionExpr {
         FunctionFunctionExpr::reference(
-            FunctionFunctionReference::new(
-                instantiation(FunctionType::new(
-                    Vec::new(),
-                    ValueType::Function(Box::new(function_type())),
-                )),
+            FunctionFunctionReference::new(instantiation(FunctionType::new(
                 Vec::new(),
-            ),
+                ValueType::Function(Box::new(function_type())),
+            ))),
             function_type(),
         )
     }

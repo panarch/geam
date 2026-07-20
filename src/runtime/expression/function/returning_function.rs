@@ -266,11 +266,9 @@ pub fn main() {
                         1,
                         crate::plan::FunctionShape::from_function_type(type_.to_function_type()),
                     ),
-                    Vec::new(),
-                    vec![CaptureArg::int(
-                        IntLocalId(0),
-                        IntExpr::panic(panic("capture")),
-                    )],
+                    vec![CaptureArg::new(crate::plan::Expr::int(IntExpr::panic(
+                        panic("capture"),
+                    )))],
                     type_.clone(),
                 ),
                 "capture",
@@ -368,13 +366,10 @@ pub fn main() {
         let expected_type = FunctionFunctionType::new(Vec::new(), returned.clone());
         let actual_type = FunctionFunctionType::new(vec![ValueType::Int], returned.clone());
         let actual = FunctionFunctionExpr::reference(
-            FunctionFunctionReference::new(
-                crate::plan::monomorphic_function_instantiation(
-                    2,
-                    crate::plan::FunctionShape::from_function_type(actual_type.to_function_type()),
-                ),
-                vec![ParamLocal::int(IntLocalId(0))],
-            ),
+            FunctionFunctionReference::new(crate::plan::monomorphic_function_instantiation(
+                2,
+                crate::plan::FunctionShape::from_function_type(actual_type.to_function_type()),
+            )),
             returned,
         );
         let tuple = TupleExpr::value(
@@ -396,10 +391,13 @@ pub fn main() {
 
     fn run_module_function_function_expression(expression: FunctionFunctionExpr) -> ExecutionError {
         let returned = FunctionType::new(Vec::new(), ValueType::Int);
-        let closure_target = FunctionTemplate::new(
+        let closure_target = FunctionTemplate::with_captures(
             FunctionTemplateId::new(1),
             "closure_target".into(),
             Vec::new(),
+            vec![crate::plan::ParamSlot::from_local(ParamLocal::int(
+                IntLocalId(0),
+            ))],
             vec![Step::evaluate(Expr::int(IntExpr::local_get(
                 IntLocalId(0),
                 "capture".into(),

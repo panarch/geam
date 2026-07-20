@@ -516,10 +516,10 @@ mod tests {
         let generic_type = GenericFunctionType::new(Vec::new(), TypeParameterId(0));
         let generic_shape = generic_type.shape();
         let generic_function = GenericFunctionExpr::reference(
-            GenericFunctionReference::new(
-                crate::plan::monomorphic_function_instantiation(2, generic_shape.clone()),
-                Vec::new(),
-            ),
+            GenericFunctionReference::new(crate::plan::monomorphic_function_instantiation(
+                2,
+                generic_shape.clone(),
+            )),
             generic_type,
         );
         assert_eq!(

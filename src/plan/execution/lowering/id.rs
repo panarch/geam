@@ -249,23 +249,6 @@ pub(super) fn list_function_local_at(
     }
 }
 
-pub(super) fn list_function_local_at_target(
-    index: usize,
-    local: &module::ListFunctionLocal,
-    target: &super::StoredTargetLocal,
-    context: &mut LoweringContext,
-) -> super::super::ListFunctionLocal {
-    let function = target.function_shape(&crate::plan::FunctionShape::from_function_type(
-        local.type_().clone(),
-    ));
-    let item = super::specialization::SpecializedValueShape::instantiate(
-        &crate::plan::ValueShape::from_value_type(local.item_type()),
-        target.substitution(),
-    );
-    let type_ = context.lower_concrete_function_type(&function);
-    super::frame::list_function_local_at(&item, type_, index, context)
-}
-
 #[cfg(test)]
 mod tests {
     use crate::plan::execution::{

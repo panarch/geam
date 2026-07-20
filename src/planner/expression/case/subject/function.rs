@@ -349,13 +349,14 @@ fn internal_function_function_case_subject_name(
 #[cfg(test)]
 mod tests {
     use super::bind_function_case_subject;
+    use crate::plan::module::TypedFunctionExpr;
     use crate::plan::{
         BitArrayFunctionExpr, BitArrayFunctionLocalId, CustomConstructorRefinement,
         CustomFunctionExpr, CustomFunctionLocalId, CustomType, CustomTypeName, CustomValueShape,
         Expr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
         FunctionFunctionLocalId, FunctionType, GenericFunctionExpr, GenericFunctionLocal,
         GenericFunctionLocalId, GenericFunctionType, IntLocalId, LocalId, Step, TypeParameterId,
-        TypedFunctionExpr, ValueShape, ValueType,
+        ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
     use crate::planner::dsl::{
@@ -406,7 +407,7 @@ pub fn main() {
                         )],
                         int_return_expr(call_int_function(
                             local_int_function(1, "f", [ValueType::Int]),
-                            [int_function_call_arg(0, int(41))],
+                            [int_function_call_arg(int(41))],
                         )),
                     ),
                 ),
@@ -458,7 +459,7 @@ pub fn main() {
                         ],
                         int_return_expr(call_int_function(
                             local_int_function(2, "alias", [ValueType::Int]),
-                            [int_function_call_arg(0, int(41))],
+                            [int_function_call_arg(int(41))],
                         )),
                     ),
                 ),

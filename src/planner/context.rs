@@ -10,13 +10,14 @@ use crate::plan::{
     IntFunctionExpr, IntFunctionLocalId, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr,
     ListFunctionLocal, ListListLocalId, ListLocal, ListLocalExpr, LocalId, NilExpr,
     NilFunctionExpr, NilFunctionLocalId, NilListLocalId, NilLocalId, PanicSite, ParamBinding,
-    ParamLocal, StringExpr, StringFunctionExpr, StringFunctionLocalId, StringListLocalId,
-    StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleListLocalId,
-    TupleLocalId, TypedFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    ParamLocal, ParamSlot, StringExpr, StringFunctionExpr, StringFunctionLocalId,
+    StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId,
+    TupleListLocalId, TupleLocalId, UtfCodepointExpr, UtfCodepointFunctionExpr,
     UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId, ValueType,
 };
 use crate::plan::{
-    CustomConstructorRefinement, CustomType, CustomValueShape, FunctionShape, ValueShape,
+    CustomConstructorRefinement, CustomType, CustomValueShape, Expr, FunctionExpr, FunctionShape,
+    ValueShape,
 };
 use crate::planner::error::{
     InvalidCustomTypeReason, InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError,
@@ -62,10 +63,6 @@ impl FunctionParam {
 
     pub(super) fn shape(&self) -> &ValueShape {
         self.slot.shape()
-    }
-
-    pub(super) fn slot(&self) -> &crate::plan::ParamSlot {
-        &self.slot
     }
 }
 
@@ -151,6 +148,28 @@ enum LocalBinding {
 pub(super) struct CaptureBinding {
     name: EcoString,
     binding: LocalBinding,
+}
+
+pub(super) struct PlannedCaptures {
+    captures: Box<[PlannedCapture]>,
+}
+
+#[cfg_attr(test, derive(Debug, PartialEq))]
+struct PlannedCapture {
+    slot: ParamSlot,
+    source: CaptureArg,
+}
+
+impl PlannedCaptures {
+    pub(super) fn into_parts(self) -> (Vec<ParamSlot>, Vec<CaptureArg>) {
+        let mut slots = Vec::with_capacity(self.captures.len());
+        let mut sources = Vec::with_capacity(self.captures.len());
+        for capture in self.captures {
+            slots.push(capture.slot);
+            sources.push(capture.source);
+        }
+        (slots, sources)
+    }
 }
 
 fn invalid_local_shape() -> PlanError {
@@ -1562,12 +1581,17 @@ impl<'a> PlanContext<'a> {
         name: EcoString,
         source: ListLocal,
         item_shape: ValueShape,
-    ) -> ListLocalExpr {
+    ) -> PlannedCapture {
         let value = ListExpr::local_get(source, name.clone()).with_item_shape(item_shape.clone());
-        let (local, value) = self.next_list_local_expr(value);
-        self.bindings
-            .insert(name, LocalBinding::List { local, item_shape });
-        value
+        let local = self.next_list_local(item_shape.value_type());
+        self.bindings.insert(
+            name,
+            LocalBinding::List {
+                local: local.clone(),
+                item_shape,
+            },
+        );
+        Self::planned_capture(ParamLocal::list(local), Expr::list(value))
     }
 
     fn next_list_local(&mut self, element_type: ValueType) -> ListLocal {
@@ -2311,11 +2335,13 @@ impl<'a> PlanContext<'a> {
             .collect()
     }
 
-    pub(super) fn define_captures(&mut self, captures: Vec<CaptureBinding>) -> Vec<CaptureArg> {
-        captures
+    pub(super) fn define_captures(&mut self, captures: Vec<CaptureBinding>) -> PlannedCaptures {
+        let captures = captures
             .into_iter()
             .map(|capture| self.define_capture(capture))
-            .collect()
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        PlannedCaptures { captures }
     }
 
     pub(super) fn with_local_scope<T, E>(
@@ -2328,58 +2354,92 @@ impl<'a> PlanContext<'a> {
         result
     }
 
-    fn define_capture(&mut self, capture: CaptureBinding) -> CaptureArg {
+    fn define_capture(&mut self, capture: CaptureBinding) -> PlannedCapture {
         match capture.binding {
             LocalBinding::Primitive(LocalId::Generic(local)) => {
                 let target = self.define_generic_local(capture.name.clone(), local.parameter());
-                CaptureArg::generic(
-                    target,
-                    crate::plan::GenericExpr::local_get(local, capture.name),
+                Self::planned_capture(
+                    ParamLocal::generic(target),
+                    Expr::generic(crate::plan::GenericExpr::local_get(local, capture.name)),
                 )
             }
             LocalBinding::Primitive(LocalId::Int(local)) => {
                 let target = self.define_int_local(capture.name.clone());
-                CaptureArg::int(target, IntExpr::local_get(local, capture.name))
+                Self::planned_capture(
+                    ParamLocal::int(target),
+                    Expr::int(IntExpr::local_get(local, capture.name)),
+                )
             }
             LocalBinding::Primitive(LocalId::Float(local)) => {
                 let target = self.define_float_local(capture.name.clone());
-                CaptureArg::float(target, FloatExpr::local_get(local, capture.name))
+                Self::planned_capture(
+                    ParamLocal::float(target),
+                    Expr::float(FloatExpr::local_get(local, capture.name)),
+                )
             }
             LocalBinding::Primitive(LocalId::String(local)) => {
                 let target = self.define_string_local(capture.name.clone());
-                CaptureArg::string(target, StringExpr::local_get(local, capture.name))
+                Self::planned_capture(
+                    ParamLocal::string(target),
+                    Expr::string(StringExpr::local_get(local, capture.name)),
+                )
             }
             LocalBinding::Primitive(LocalId::BitArray(local)) => {
                 let target = self.define_bit_array_local(capture.name.clone());
-                CaptureArg::bit_array(target, BitArrayExpr::local_get(local, capture.name))
+                Self::planned_capture(
+                    ParamLocal::bit_array(target),
+                    Expr::bit_array(BitArrayExpr::local_get(local, capture.name)),
+                )
             }
             LocalBinding::Primitive(LocalId::UtfCodepoint(local)) => {
                 let target = self.define_utf_codepoint_local(capture.name.clone());
-                CaptureArg::utf_codepoint(target, UtfCodepointExpr::local_get(local, capture.name))
+                Self::planned_capture(
+                    ParamLocal::utf_codepoint(target),
+                    Expr::utf_codepoint(UtfCodepointExpr::local_get(local, capture.name)),
+                )
             }
             LocalBinding::Custom(local) => {
                 let target =
                     self.define_custom_local_shape(capture.name.clone(), local.shape().clone());
-                CaptureArg::custom(target, CustomExpr::local_get(local, capture.name))
+                Self::planned_capture(
+                    ParamLocal::Custom(crate::plan::CustomLocal::from_shape(
+                        target,
+                        local.shape().clone(),
+                    )),
+                    Expr::custom(CustomExpr::local_get(local, capture.name)),
+                )
             }
             LocalBinding::Primitive(LocalId::Bool(local)) => {
                 let target = self.define_bool_local(capture.name.clone());
-                CaptureArg::bool(target, BoolExpr::local_get(local, capture.name))
+                Self::planned_capture(
+                    ParamLocal::bool(target),
+                    Expr::bool(BoolExpr::local_get(local, capture.name)),
+                )
             }
             LocalBinding::Primitive(LocalId::Nil(local)) => {
                 let target = self.define_nil_local(capture.name.clone());
-                CaptureArg::nil(target, NilExpr::local_get(local, capture.name))
+                Self::planned_capture(
+                    ParamLocal::nil(target),
+                    Expr::nil(NilExpr::local_get(local, capture.name)),
+                )
             }
             LocalBinding::Tuple { local, shape } => {
                 let type_ = shape.iter().map(ValueShape::value_type).collect();
                 let target = self.define_tuple_local_shape(capture.name.clone(), shape.clone());
-                CaptureArg::tuple(
-                    target,
-                    TupleExpr::local_get(local, capture.name, type_).with_shape(shape),
+                Self::planned_capture(
+                    ParamLocal::tuple(target, type_),
+                    Expr::tuple(
+                        TupleExpr::local_get(
+                            local,
+                            capture.name,
+                            shape.iter().map(ValueShape::value_type).collect(),
+                        )
+                        .with_shape(shape),
+                    ),
                 )
             }
             LocalBinding::List { local, item_shape } => {
-                CaptureArg::list(self.define_list_capture_value(capture.name, local, item_shape))
+                self.define_list_capture_value(capture.name, local, item_shape)
             }
             LocalBinding::Function {
                 binding: FunctionLocalBinding::Generic(local),
@@ -2390,12 +2450,12 @@ impl<'a> PlanContext<'a> {
                     local.type_().clone(),
                     shape.clone(),
                 );
-                CaptureArg::generic_function_expr(
-                    target,
-                    TypedFunctionExpr::new(
-                        shape,
+                Self::planned_capture(
+                    ParamLocal::generic_function(target),
+                    Expr::function(FunctionExpr::generic_with_shape(
                         crate::plan::GenericFunctionExpr::local_get(local, capture.name),
-                    ),
+                        shape,
+                    )),
                 )
             }
             LocalBinding::Function {
@@ -2407,12 +2467,12 @@ impl<'a> PlanContext<'a> {
                     type_.clone(),
                     shape.clone(),
                 );
-                CaptureArg::int_function_expr(
-                    target,
-                    TypedFunctionExpr::new(
-                        shape,
+                Self::planned_capture(
+                    ParamLocal::int_function(target, type_.clone()),
+                    Expr::function(FunctionExpr::int_with_shape(
                         IntFunctionExpr::local_get(local, capture.name, type_),
-                    ),
+                        shape,
+                    )),
                 )
             }
             LocalBinding::Function {
@@ -2424,12 +2484,12 @@ impl<'a> PlanContext<'a> {
                     type_.clone(),
                     shape.clone(),
                 );
-                CaptureArg::float_function_expr(
-                    target,
-                    TypedFunctionExpr::new(
-                        shape,
+                Self::planned_capture(
+                    ParamLocal::float_function(target, type_.clone()),
+                    Expr::function(FunctionExpr::float_with_shape(
                         FloatFunctionExpr::local_get(local, capture.name, type_),
-                    ),
+                        shape,
+                    )),
                 )
             }
             LocalBinding::Function {
@@ -2441,12 +2501,12 @@ impl<'a> PlanContext<'a> {
                     type_.clone(),
                     shape.clone(),
                 );
-                CaptureArg::string_function_expr(
-                    target,
-                    TypedFunctionExpr::new(
-                        shape,
+                Self::planned_capture(
+                    ParamLocal::string_function(target, type_.clone()),
+                    Expr::function(FunctionExpr::string_with_shape(
                         StringFunctionExpr::local_get(local, capture.name, type_),
-                    ),
+                        shape,
+                    )),
                 )
             }
             LocalBinding::Function {
@@ -2458,12 +2518,12 @@ impl<'a> PlanContext<'a> {
                     type_.clone(),
                     shape.clone(),
                 );
-                CaptureArg::bit_array_function_expr(
-                    target,
-                    TypedFunctionExpr::new(
-                        shape,
+                Self::planned_capture(
+                    ParamLocal::bit_array_function(target, type_.clone()),
+                    Expr::function(FunctionExpr::bit_array_with_shape(
                         BitArrayFunctionExpr::local_get(local, capture.name, type_),
-                    ),
+                        shape,
+                    )),
                 )
             }
             LocalBinding::Function {
@@ -2475,12 +2535,12 @@ impl<'a> PlanContext<'a> {
                     type_.clone(),
                     shape.clone(),
                 );
-                CaptureArg::utf_codepoint_function_expr(
-                    target,
-                    TypedFunctionExpr::new(
-                        shape,
+                Self::planned_capture(
+                    ParamLocal::utf_codepoint_function(target, type_.clone()),
+                    Expr::function(FunctionExpr::utf_codepoint_with_shape(
                         UtfCodepointFunctionExpr::local_get(local, capture.name, type_),
-                    ),
+                        shape,
+                    )),
                 )
             }
             LocalBinding::Function {
@@ -2492,12 +2552,12 @@ impl<'a> PlanContext<'a> {
                     local.type_().clone(),
                     shape.clone(),
                 );
-                CaptureArg::custom_function_expr(
-                    target.id(),
-                    TypedFunctionExpr::new(
-                        shape,
+                Self::planned_capture(
+                    ParamLocal::custom_function(target),
+                    Expr::function(FunctionExpr::custom_with_shape(
                         CustomFunctionExpr::local_get(local, capture.name),
-                    ),
+                        shape,
+                    )),
                 )
             }
             LocalBinding::Function {
@@ -2509,12 +2569,12 @@ impl<'a> PlanContext<'a> {
                     type_.clone(),
                     shape.clone(),
                 );
-                CaptureArg::bool_function_expr(
-                    target,
-                    TypedFunctionExpr::new(
-                        shape,
+                Self::planned_capture(
+                    ParamLocal::bool_function(target, type_.clone()),
+                    Expr::function(FunctionExpr::bool_with_shape(
                         BoolFunctionExpr::local_get(local, capture.name, type_),
-                    ),
+                        shape,
+                    )),
                 )
             }
             LocalBinding::Function {
@@ -2526,12 +2586,12 @@ impl<'a> PlanContext<'a> {
                     type_.clone(),
                     shape.clone(),
                 );
-                CaptureArg::nil_function_expr(
-                    target,
-                    TypedFunctionExpr::new(
-                        shape,
+                Self::planned_capture(
+                    ParamLocal::nil_function(target, type_.clone()),
+                    Expr::function(FunctionExpr::nil_with_shape(
                         NilFunctionExpr::local_get(local, capture.name, type_),
-                    ),
+                        shape,
+                    )),
                 )
             }
             LocalBinding::Function {
@@ -2543,12 +2603,12 @@ impl<'a> PlanContext<'a> {
                     type_.clone(),
                     shape.clone(),
                 );
-                CaptureArg::tuple_function_expr(
-                    target,
-                    TypedFunctionExpr::new(
-                        shape,
+                Self::planned_capture(
+                    ParamLocal::tuple_function(target, type_.clone()),
+                    Expr::function(FunctionExpr::tuple_with_shape(
                         TupleFunctionExpr::local_get(local, capture.name, type_),
-                    ),
+                        shape,
+                    )),
                 )
             }
             LocalBinding::Function {
@@ -2561,9 +2621,12 @@ impl<'a> PlanContext<'a> {
                     local.item_type(),
                     shape.clone(),
                 );
-                CaptureArg::list_function_expr(
-                    target,
-                    TypedFunctionExpr::new(shape, ListFunctionExpr::local_get(local, capture.name)),
+                Self::planned_capture(
+                    ParamLocal::list_function(target),
+                    Expr::function(FunctionExpr::list_with_shape(
+                        ListFunctionExpr::local_get(local, capture.name),
+                        shape,
+                    )),
                 )
             }
             LocalBinding::Function {
@@ -2575,14 +2638,21 @@ impl<'a> PlanContext<'a> {
                     local.type_().clone(),
                     shape.clone(),
                 );
-                CaptureArg::function_function_expr(
-                    target.id(),
-                    TypedFunctionExpr::new(
-                        shape,
+                Self::planned_capture(
+                    ParamLocal::function_function(target),
+                    Expr::function(FunctionExpr::function_with_shape(
                         FunctionFunctionExpr::local_get(local, capture.name),
-                    ),
+                        shape,
+                    )),
                 )
             }
+        }
+    }
+
+    fn planned_capture(local: ParamLocal, value: Expr) -> PlannedCapture {
+        PlannedCapture {
+            slot: ParamSlot::new(local, value.shape().clone()),
+            source: CaptureArg::new(value),
         }
     }
 }
@@ -2673,14 +2743,7 @@ impl FunctionInfo {
         &self,
         instantiation: crate::plan::FunctionInstantiation,
     ) -> FunctionReference {
-        FunctionReference::from_slots(instantiation, self.param_slots())
-    }
-
-    pub(super) fn param_slots(&self) -> Vec<crate::plan::ParamSlot> {
-        self.params
-            .iter()
-            .map(|param| param.slot().clone())
-            .collect()
+        FunctionReference::new(instantiation)
     }
 }
 
@@ -2689,30 +2752,26 @@ impl FunctionInfo {
 mod tests {
     use super::FunctionLocalBinding;
     use super::{
-        AnonymousFunctions, FunctionInfo, PlanContext, ResolvedCustomConstructor,
+        AnonymousFunctions, FunctionInfo, PlanContext, PlannedCapture, ResolvedCustomConstructor,
         collect_parameter_shapes, instantiate_custom_shape_template,
         instantiate_custom_type_template,
     };
     use crate::plan::{
-        BitArrayFunctionExpr, BitArrayFunctionLocalId, BitArrayListExpr, BitArrayListItem,
-        BitArrayListLocalId, BitArrayLocalId, BoolFunctionExpr, BoolFunctionLocalId, BoolListExpr,
-        BoolListItem, BoolListLocalId, BoolLocalId, CaptureArg, CustomConstruction,
-        CustomConstructor, CustomConstructorDefinition, CustomConstructorField,
+        BitArrayFunctionExpr, BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
+        BoolFunctionExpr, BoolFunctionLocalId, BoolListLocalId, BoolLocalId, CaptureArg,
+        CustomConstruction, CustomConstructor, CustomConstructorDefinition, CustomConstructorField,
         CustomConstructorRefinement, CustomFieldDefinition, CustomFunctionLocal,
-        CustomFunctionLocalId, CustomFunctionType, CustomLocal, CustomLocalId, CustomType,
-        CustomTypeDefinition, CustomTypeName, CustomTypeParameterId, CustomTypePublicity,
-        CustomTypeTemplate, CustomValueShape, Expr, FloatFunctionExpr, FloatFunctionLocalId,
-        FloatListExpr, FloatListItem, FloatListLocalId, FloatLocalId, FunctionExpr,
-        FunctionFunctionExpr, FunctionFunctionLocal, FunctionFunctionLocalId, FunctionFunctionType,
-        FunctionListExpr, FunctionListItem, FunctionListLocalId, FunctionReference, FunctionShape,
-        FunctionType, GenericFunctionLocal, GenericFunctionLocalId, GenericFunctionType,
-        GenericListLocalId, IntExpr, IntFunctionLocalId, IntListExpr, IntListItem, IntListLocalId,
-        IntLocalId, ListExpr, ListFunctionExpr, ListListExpr, ListListItem, ListListLocalId,
-        ListLocal, ListLocalExpr, LocalId, NilFunctionExpr, NilFunctionLocalId, NilListExpr,
-        NilListItem, NilListLocalId, NilLocalId, ParamLocal, StringExpr, StringFunctionExpr,
-        StringFunctionLocalId, StringListExpr, StringListItem, StringListLocalId, StringLocalId,
-        TupleFunctionExpr, TupleFunctionLocalId, TupleListExpr, TupleListItem, TupleListLocalId,
-        TupleLocalId, TypeParameterId, UtfCodepointListExpr, UtfCodepointListItem,
+        CustomFunctionLocalId, CustomFunctionType, CustomType, CustomTypeDefinition,
+        CustomTypeName, CustomTypeParameterId, CustomTypePublicity, CustomTypeTemplate,
+        CustomValueShape, Expr, FloatFunctionExpr, FloatFunctionLocalId, FloatListLocalId,
+        FloatLocalId, FunctionExpr, FunctionFunctionExpr, FunctionFunctionLocal,
+        FunctionFunctionLocalId, FunctionFunctionType, FunctionListLocalId, FunctionReference,
+        FunctionShape, FunctionType, GenericFunctionLocal, GenericFunctionLocalId,
+        GenericFunctionType, GenericListLocalId, IntExpr, IntFunctionLocalId, IntListLocalId,
+        IntLocalId, ListExpr, ListFunctionExpr, ListListLocalId, ListLocal, ListLocalExpr, LocalId,
+        NilFunctionExpr, NilFunctionLocalId, NilListLocalId, NilLocalId, ParamLocal, ParamSlot,
+        StringExpr, StringFunctionExpr, StringFunctionLocalId, StringListLocalId, StringLocalId,
+        TupleFunctionExpr, TupleFunctionLocalId, TupleListLocalId, TupleLocalId, TypeParameterId,
         UtfCodepointListLocalId, ValueShape, ValueType,
     };
     use crate::planner::{InvalidCustomTypeReason, InvalidTypedAstReason, PlanError};
@@ -3205,10 +3264,6 @@ mod tests {
             Expr::function(
                 FunctionExpr::reference(FunctionReference::new(
                     crate::plan::monomorphic_function_instantiation(local, shape.clone()),
-                    vec![ParamLocal::Custom(CustomLocal::from_shape(
-                        CustomLocalId(0),
-                        parameter_shape,
-                    ))],
                 ))
                 .with_resolved_shape(shape)
                 .expect("function shape has the same nominal type"),
@@ -4240,9 +4295,12 @@ mod tests {
                 ListLocal::int(IntListLocalId(9)),
                 ValueShape::Int,
             ),
-            ListLocalExpr::Int {
-                local: IntListLocalId(0),
-                value: IntListExpr::local_get(IntListItem, IntListLocalId(9), "ints".into()),
+            PlannedCapture {
+                slot: ParamSlot::from_local(ParamLocal::list(ListLocal::int(IntListLocalId(0)))),
+                source: CaptureArg::new(Expr::list(ListExpr::local_get(
+                    ListLocal::int(IntListLocalId(9)),
+                    "ints".into(),
+                ))),
             },
         );
         assert_eq!(
@@ -4251,13 +4309,14 @@ mod tests {
                 ListLocal::string(StringListLocalId(9)),
                 ValueShape::String,
             ),
-            ListLocalExpr::String {
-                local: StringListLocalId(0),
-                value: StringListExpr::local_get(
-                    StringListItem,
-                    StringListLocalId(9),
+            PlannedCapture {
+                slot: ParamSlot::from_local(ParamLocal::list(ListLocal::string(
+                    StringListLocalId(0),
+                ))),
+                source: CaptureArg::new(Expr::list(ListExpr::local_get(
+                    ListLocal::string(StringListLocalId(9)),
                     "strings".into(),
-                ),
+                ))),
             },
         );
         assert_eq!(
@@ -4266,13 +4325,14 @@ mod tests {
                 ListLocal::bit_array(BitArrayListLocalId(9)),
                 ValueShape::BitArray,
             ),
-            ListLocalExpr::BitArray {
-                local: BitArrayListLocalId(0),
-                value: BitArrayListExpr::local_get(
-                    BitArrayListItem,
-                    BitArrayListLocalId(9),
+            PlannedCapture {
+                slot: ParamSlot::from_local(ParamLocal::list(ListLocal::bit_array(
+                    BitArrayListLocalId(0),
+                ))),
+                source: CaptureArg::new(Expr::list(ListExpr::local_get(
+                    ListLocal::bit_array(BitArrayListLocalId(9)),
                     "bit_arrays".into(),
-                ),
+                ))),
             },
         );
         assert_eq!(
@@ -4281,13 +4341,14 @@ mod tests {
                 ListLocal::utf_codepoint(UtfCodepointListLocalId(9)),
                 ValueShape::UtfCodepoint,
             ),
-            ListLocalExpr::UtfCodepoint {
-                local: UtfCodepointListLocalId(0),
-                value: UtfCodepointListExpr::local_get(
-                    UtfCodepointListItem,
-                    UtfCodepointListLocalId(9),
+            PlannedCapture {
+                slot: ParamSlot::from_local(ParamLocal::list(ListLocal::utf_codepoint(
+                    UtfCodepointListLocalId(0),
+                ))),
+                source: CaptureArg::new(Expr::list(ListExpr::local_get(
+                    ListLocal::utf_codepoint(UtfCodepointListLocalId(9)),
                     "utf_codepoints".into(),
-                ),
+                ))),
             },
         );
         assert_eq!(
@@ -4296,13 +4357,14 @@ mod tests {
                 ListLocal::float(FloatListLocalId(9)),
                 ValueShape::Float,
             ),
-            ListLocalExpr::Float {
-                local: FloatListLocalId(0),
-                value: FloatListExpr::local_get(
-                    FloatListItem,
-                    FloatListLocalId(9),
+            PlannedCapture {
+                slot: ParamSlot::from_local(ParamLocal::list(ListLocal::float(FloatListLocalId(
+                    0
+                ),))),
+                source: CaptureArg::new(Expr::list(ListExpr::local_get(
+                    ListLocal::float(FloatListLocalId(9)),
                     "floats".into(),
-                ),
+                ))),
             },
         );
         assert_eq!(
@@ -4311,9 +4373,12 @@ mod tests {
                 ListLocal::bool(BoolListLocalId(9)),
                 ValueShape::Bool,
             ),
-            ListLocalExpr::Bool {
-                local: BoolListLocalId(0),
-                value: BoolListExpr::local_get(BoolListItem, BoolListLocalId(9), "bools".into()),
+            PlannedCapture {
+                slot: ParamSlot::from_local(ParamLocal::list(ListLocal::bool(BoolListLocalId(0)))),
+                source: CaptureArg::new(Expr::list(ListExpr::local_get(
+                    ListLocal::bool(BoolListLocalId(9)),
+                    "bools".into(),
+                ))),
             },
         );
         assert_eq!(
@@ -4322,9 +4387,12 @@ mod tests {
                 ListLocal::nil(NilListLocalId(9)),
                 ValueShape::Nil,
             ),
-            ListLocalExpr::Nil {
-                local: NilListLocalId(0),
-                value: NilListExpr::local_get(NilListItem, NilListLocalId(9), "nils".into()),
+            PlannedCapture {
+                slot: ParamSlot::from_local(ParamLocal::list(ListLocal::nil(NilListLocalId(0)))),
+                source: CaptureArg::new(Expr::list(ListExpr::local_get(
+                    ListLocal::nil(NilListLocalId(9)),
+                    "nils".into(),
+                ))),
             },
         );
         assert_eq!(
@@ -4333,14 +4401,15 @@ mod tests {
                 ListLocal::tuple(TupleListLocalId(9), tuple_type.clone()),
                 ValueShape::Tuple(vec![ValueShape::Int].into_boxed_slice()),
             ),
-            ListLocalExpr::Tuple {
-                local: TupleListLocalId(0),
-                item_type: tuple_type.clone(),
-                value: TupleListExpr::local_get(
-                    TupleListItem::new(tuple_type.clone()),
-                    TupleListLocalId(9),
+            PlannedCapture {
+                slot: ParamSlot::from_local(ParamLocal::list(ListLocal::tuple(
+                    TupleListLocalId(0),
+                    tuple_type.clone(),
+                ))),
+                source: CaptureArg::new(Expr::list(ListExpr::local_get(
+                    ListLocal::tuple(TupleListLocalId(9), tuple_type.clone()),
                     "tuples".into(),
-                ),
+                ))),
             },
         );
         assert_eq!(
@@ -4349,14 +4418,15 @@ mod tests {
                 ListLocal::list(ListListLocalId(9), nested_item_type.as_ref().clone()),
                 ValueShape::List(Box::new(ValueShape::String)),
             ),
-            ListLocalExpr::List {
-                local: ListListLocalId(0),
-                item_type: nested_item_type.clone(),
-                value: ListListExpr::local_get(
-                    ListListItem::new(crate::plan::ValueStorageShape::String),
-                    ListListLocalId(9),
+            PlannedCapture {
+                slot: ParamSlot::from_local(ParamLocal::list(ListLocal::list(
+                    ListListLocalId(0),
+                    nested_item_type.as_ref().clone(),
+                ))),
+                source: CaptureArg::new(Expr::list(ListExpr::local_get(
+                    ListLocal::list(ListListLocalId(9), nested_item_type.as_ref().clone()),
                     "lists".into(),
-                ),
+                ))),
             },
         );
         assert_eq!(
@@ -4367,14 +4437,15 @@ mod tests {
                     function_type.clone(),
                 ))),
             ),
-            ListLocalExpr::Function {
-                local: FunctionListLocalId(0),
-                item_type: function_type.clone(),
-                value: FunctionListExpr::local_get(
-                    FunctionListItem::new(function_type.clone()),
-                    FunctionListLocalId(9),
+            PlannedCapture {
+                slot: ParamSlot::from_local(ParamLocal::list(ListLocal::function(
+                    FunctionListLocalId(0),
+                    function_type.clone(),
+                ))),
+                source: CaptureArg::new(Expr::list(ListExpr::local_get(
+                    ListLocal::function(FunctionListLocalId(9), function_type.clone()),
                     "functions".into(),
-                ),
+                ))),
             },
         );
 
@@ -4807,14 +4878,20 @@ mod tests {
 
         context.define_float_function_local("f".into(), type_.clone());
         let captures = context.capture_bindings(&[EcoString::from("f")]).unwrap();
-        let captures = context.define_captures(captures);
+        let (slots, sources) = context.define_captures(captures).into_parts();
 
         assert_eq!(
-            captures[0],
-            CaptureArg::float_function(
+            slots,
+            vec![ParamSlot::from_local(ParamLocal::float_function(
                 FloatFunctionLocalId(1),
-                FloatFunctionExpr::local_get(FloatFunctionLocalId(0), "f".into(), type_),
-            ),
+                type_.clone(),
+            ))],
+        );
+        assert_eq!(
+            sources,
+            vec![CaptureArg::new(crate::plan::Expr::function(
+                FloatFunctionExpr::local_get(FloatFunctionLocalId(0), "f".into(), type_).into()
+            ))],
         );
     }
 
@@ -4828,14 +4905,20 @@ mod tests {
 
         context.define_tuple_function_local("f".into(), type_.clone());
         let captures = context.capture_bindings(&[EcoString::from("f")]).unwrap();
-        let captures = context.define_captures(captures);
+        let (slots, sources) = context.define_captures(captures).into_parts();
 
         assert_eq!(
-            captures[0],
-            CaptureArg::tuple_function(
+            slots,
+            vec![ParamSlot::from_local(ParamLocal::tuple_function(
                 TupleFunctionLocalId(1),
-                TupleFunctionExpr::local_get(TupleFunctionLocalId(0), "f".into(), type_),
-            ),
+                type_.clone(),
+            ))],
+        );
+        assert_eq!(
+            sources,
+            vec![CaptureArg::new(crate::plan::Expr::function(
+                TupleFunctionExpr::local_get(TupleFunctionLocalId(0), "f".into(), type_).into()
+            ))],
         );
     }
 
@@ -4856,21 +4939,29 @@ mod tests {
         let captures = context
             .capture_bindings(&[EcoString::from("values"), EcoString::from("f")])
             .unwrap();
-        let captures = context.define_captures(captures);
+        let (slots, sources) = context.define_captures(captures).into_parts();
 
         assert_eq!(
-            captures,
+            slots,
             vec![
-                CaptureArg::list(ListLocalExpr::Int {
-                    local: IntListLocalId(1),
-                    value: IntListExpr::local_get(IntListItem, IntListLocalId(0), "values".into(),),
-                }),
-                CaptureArg::list_function(
+                ParamSlot::from_local(ParamLocal::list(ListLocal::int(IntListLocalId(1)))),
+                ParamSlot::from_local(ParamLocal::list_function(
                     crate::plan::ListFunctionLocal::from_item_type(
                         1,
                         function_type.clone(),
                         ValueType::Int,
                     ),
+                )),
+            ],
+        );
+        assert_eq!(
+            sources,
+            vec![
+                CaptureArg::new(Expr::list(ListExpr::local_get(
+                    ListLocal::int(IntListLocalId(0)),
+                    "values".into(),
+                ))),
+                CaptureArg::new(crate::plan::Expr::function(
                     ListFunctionExpr::local_get(
                         crate::plan::ListFunctionLocal::from_item_type(
                             0,
@@ -4878,8 +4969,9 @@ mod tests {
                             ValueType::Int,
                         ),
                         "f".into(),
-                    ),
-                ),
+                    )
+                    .into()
+                )),
             ],
         );
     }
@@ -4911,46 +5003,71 @@ mod tests {
                 "function_fn".into(),
             ])
             .unwrap();
-        let captures = context.define_captures(captures);
+        let (slots, sources) = context.define_captures(captures).into_parts();
 
         assert_eq!(
-            captures,
+            slots,
             vec![
-                CaptureArg::string_function(
+                ParamSlot::from_local(ParamLocal::string_function(
                     StringFunctionLocalId(1),
+                    string_type.clone(),
+                )),
+                ParamSlot::from_local(ParamLocal::bit_array_function(
+                    BitArrayFunctionLocalId(1),
+                    bit_array_type.clone(),
+                )),
+                ParamSlot::from_local(ParamLocal::bool_function(
+                    BoolFunctionLocalId(1),
+                    bool_type.clone(),
+                )),
+                ParamSlot::from_local(ParamLocal::nil_function(
+                    NilFunctionLocalId(1),
+                    nil_type.clone(),
+                )),
+                ParamSlot::from_local(ParamLocal::function_function(FunctionFunctionLocal::new(
+                    FunctionFunctionLocalId(1),
+                    function_type.clone()
+                ),)),
+            ],
+        );
+        assert_eq!(
+            sources,
+            vec![
+                CaptureArg::new(crate::plan::Expr::function(
                     StringFunctionExpr::local_get(
                         StringFunctionLocalId(0),
                         "string_fn".into(),
                         string_type,
-                    ),
-                ),
-                CaptureArg::bit_array_function(
-                    BitArrayFunctionLocalId(1),
+                    )
+                    .into()
+                )),
+                CaptureArg::new(crate::plan::Expr::function(
                     BitArrayFunctionExpr::local_get(
                         BitArrayFunctionLocalId(0),
                         "bit_array_fn".into(),
                         bit_array_type,
-                    ),
-                ),
-                CaptureArg::bool_function(
-                    BoolFunctionLocalId(1),
+                    )
+                    .into()
+                )),
+                CaptureArg::new(crate::plan::Expr::function(
                     BoolFunctionExpr::local_get(
                         BoolFunctionLocalId(0),
                         "bool_fn".into(),
                         bool_type
-                    ),
-                ),
-                CaptureArg::nil_function(
-                    NilFunctionLocalId(1),
-                    NilFunctionExpr::local_get(NilFunctionLocalId(0), "nil_fn".into(), nil_type),
-                ),
-                CaptureArg::function_function(
-                    FunctionFunctionLocalId(1),
+                    )
+                    .into()
+                )),
+                CaptureArg::new(crate::plan::Expr::function(
+                    NilFunctionExpr::local_get(NilFunctionLocalId(0), "nil_fn".into(), nil_type)
+                        .into()
+                )),
+                CaptureArg::new(crate::plan::Expr::function(
                     FunctionFunctionExpr::local_get(
                         FunctionFunctionLocal::new(FunctionFunctionLocalId(0), function_type,),
                         "function_fn".into(),
-                    ),
-                ),
+                    )
+                    .into()
+                )),
             ],
         );
     }

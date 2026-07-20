@@ -15,14 +15,12 @@ pub(in crate::plan::execution::lowering) fn nil_function_expr(
             super::function_reference(value, context, |id, context| context.nil_function_id(id))
                 .map(E::Reference)
         }
-        M::Closure {
-            function,
-            params,
-            captures,
-        } => super::closure_template(function, params, captures, context, |id, context| {
-            context.nil_function_id(id)
-        })
-        .map(E::Closure),
+        M::Closure { function, captures } => {
+            super::closure_template(function, captures, context, |id, context| {
+                context.nil_function_id(id)
+            })
+            .map(E::Closure)
+        }
         M::LocalGet { local, name: _ } => Representability::Inhabited(E::LocalGet {
             local: execution::NilFunctionLocalId(
                 context.mapped_local(super::super::super::frame::LocalKind::NilFunction, local.0),

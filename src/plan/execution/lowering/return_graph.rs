@@ -1738,6 +1738,7 @@ pub fn main() -> List(List(Int)) {
             "always_some".into(),
             Vec::new(),
             Vec::new(),
+            Vec::new(),
             crate::plan::ReturnExpr::custom_body(crate::plan::CustomReturn::with_signature_shape(
                 signature_shape.clone(),
                 crate::plan::CustomExpr::panic_shape(

@@ -1878,6 +1878,7 @@ mod tests {
             "generic_list".into(),
             Vec::new(),
             Vec::new(),
+            Vec::new(),
             crate::plan::ReturnExpr::generic_list_body(
                 parameter,
                 GenericListReturn::expr(generic_list),
@@ -1904,6 +1905,7 @@ mod tests {
         let parameter_list_template = crate::plan::FunctionTemplate::from_signature(
             parameter_list_signature,
             "parameter_list".into(),
+            Vec::new(),
             Vec::new(),
             Vec::new(),
             crate::plan::ReturnExpr::parameter_list_list_body(

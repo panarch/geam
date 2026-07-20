@@ -119,38 +119,6 @@ pub(in crate::plan::execution::lowering) fn typed_function_expr<ModuleExpr, Exec
         .map(|expression| execution::TypedFunctionExpr::new(shape, expression))
 }
 
-pub(super) fn symbolic_typed_function_binding<ModuleExpr>(
-    index: usize,
-    expression: &module::TypedFunctionExpr<ModuleExpr>,
-    concrete: super::super::specialization::SpecializedFunctionShape,
-    context: &mut super::super::LoweringContext,
-    lower: impl FnOnce(
-        &ModuleExpr,
-        &super::super::specialization::SpecializedFunctionShape,
-        &mut super::super::LoweringContext,
-    ) -> Representability<execution::GenericFunctionExpr>,
-) -> Representability<SpecializedFunctionBinding> {
-    let shape = context.lower_concrete_function_shape(&concrete);
-    lower(expression.expression(), &concrete, context).map(|value| {
-        SpecializedFunctionBinding::Generic {
-            local: execution::GenericFunctionLocal::new(
-                execution::GenericFunctionLocalId(index),
-                value.generic_function_type().clone(),
-            ),
-            value: execution::TypedFunctionExpr::new(shape, value),
-        }
-    })
-}
-
-pub(super) fn specialized_function_binding(
-    index: usize,
-    expression: &module::FunctionExpr,
-    context: &mut super::super::LoweringContext,
-) -> Representability<SpecializedFunctionBinding> {
-    let concrete = context.concrete_function_shape(expression.shape());
-    specialized_function_binding_for_shape(index, expression, concrete, context)
-}
-
 pub(super) fn specialized_function_binding_for_shape(
     index: usize,
     expression: &module::FunctionExpr,
@@ -466,20 +434,6 @@ pub(super) fn specialized_typed_generic_function_binding(
     specialized_generic_function_binding(index, expression.expression(), context)
 }
 
-pub(super) fn specialized_typed_generic_function_binding_for_shape(
-    index: usize,
-    expression: &module::TypedFunctionExpr<module::GenericFunctionExpr>,
-    concrete: super::super::specialization::SpecializedFunctionShape,
-    context: &mut super::super::LoweringContext,
-) -> Representability<SpecializedFunctionBinding> {
-    specialized_generic_function_binding_for_shape(
-        index,
-        expression.expression(),
-        concrete,
-        context,
-    )
-}
-
 pub(in crate::plan::execution::lowering) fn specialized_typed_tuple_function_binding(
     index: usize,
     expression: &module::TypedFunctionExpr<module::TupleFunctionExpr>,
@@ -716,24 +670,13 @@ fn function_reference<ModuleFunction, ExecutionFunction>(
         &mut super::super::LoweringContext,
     ) -> Representability<ExecutionFunction>,
 ) -> Representability<execution::FunctionReference<ExecutionFunction>> {
-    let params = reference
-        .params()
-        .iter()
-        .map(|param| {
-            crate::plan::execution::lowering::param::target_param_slot(
-                reference.instantiation(),
-                param,
-                context,
-            )
-        })
-        .collect();
+    let params = target_params(reference.instantiation(), context);
     lower_function(reference.instantiation(), context)
         .map(|function| execution::FunctionReference::new(function, params))
 }
 
 fn closure_template<ExecutionFunction>(
     function: &module::FunctionInstantiation,
-    params: &[module::ParamSlot],
     captures: &[module::CaptureArg],
     context: &mut super::super::LoweringContext,
     lower_function: impl FnOnce(
@@ -741,16 +684,29 @@ fn closure_template<ExecutionFunction>(
         &mut super::super::LoweringContext,
     ) -> Representability<ExecutionFunction>,
 ) -> Representability<execution::ClosureTemplate<ExecutionFunction>> {
-    let params = params
-        .iter()
-        .map(|param| {
-            crate::plan::execution::lowering::param::target_param_slot(function, param, context)
-        })
-        .collect();
+    let params = target_params(function, context);
     super::capture_args(function, captures, context).and_then(|captures| {
         lower_function(function, context)
             .map(|function| execution::ClosureTemplate::new(function, params, captures))
     })
+}
+
+fn target_params(
+    function: &module::FunctionInstantiation,
+    context: &mut super::super::LoweringContext,
+) -> Vec<execution::ParamSlot> {
+    let mut params = Vec::new();
+    for index in 0..context.target_param_count(function) {
+        match crate::plan::execution::lowering::param::target_param_slot(
+            function,
+            module::ParamPosition::new(index),
+            context,
+        ) {
+            super::super::specialization::StorageErasure::Stored(param) => params.push(param),
+            super::super::specialization::StorageErasure::Erased => {}
+        }
+    }
+    params
 }
 
 pub(in crate::plan::execution::lowering) fn function_expr(
@@ -874,7 +830,8 @@ mod tests {
         StringLocalId,
     };
     use super::super::super::specialization::{
-        Representability, RepresentationContext, SpecializationKey, UninhabitedValueShape,
+        Representability, RepresentationContext, SpecializationKey, SpecializedTypeSubstitution,
+        UninhabitedValueShape,
     };
     use super::super::super::{FunctionTemplates, LoweringContext};
     use num_bigint::BigInt;
@@ -980,6 +937,72 @@ mod tests {
         let (closure_arg_local, closure_argument) = expect_int_call_arg(&closure_args[0]);
         assert_eq!(closure_arg_local, IntLocalId(0));
         assert_eq!(expect_int_value(closure_argument), &BigInt::from(40));
+    }
+
+    #[test]
+    fn lowering_erases_uninhabited_reference_parameters() {
+        let main_id = crate::plan::FunctionTemplateId::new(0);
+        let main_signature = crate::plan::FunctionTemplateSignature::new(
+            main_id,
+            crate::plan::TypeScheme::new(1),
+            crate::plan::FunctionShape::new(Vec::new(), crate::plan::ValueShape::Int),
+        );
+        let main_instantiation = main_signature.identity_instantiation();
+        let main = crate::plan::FunctionTemplate::from_signature(
+            main_signature,
+            "main".into(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            crate::plan::ReturnExpr::int(
+                crate::plan::IntFunctionId(0),
+                crate::plan::IntExpr::value(0.into()),
+            ),
+        );
+        let parameter = crate::plan::TypeParameterId(0);
+        let target_signature = crate::plan::FunctionTemplateSignature::new(
+            crate::plan::FunctionTemplateId::new(1),
+            crate::plan::TypeScheme::new(1),
+            crate::plan::FunctionShape::new(
+                vec![crate::plan::ValueShape::Parameter(parameter)],
+                crate::plan::ValueShape::Int,
+            ),
+        );
+        let instantiation = target_signature.identity_instantiation();
+        let target = crate::plan::FunctionTemplate::from_signature(
+            target_signature,
+            "target".into(),
+            vec![crate::plan::Param::discard_shape(
+                crate::plan::ParamLocal::generic(crate::plan::GenericLocal::new(
+                    crate::plan::GenericLocalId(0),
+                    parameter,
+                )),
+                crate::plan::ValueShape::Parameter(parameter),
+            )],
+            Vec::new(),
+            Vec::new(),
+            crate::plan::ReturnExpr::int(
+                crate::plan::IntFunctionId(0),
+                crate::plan::IntExpr::value(1.into()),
+            ),
+        );
+        let templates = FunctionTemplates::new(main, vec![target], Vec::new());
+        let (main_key, _) = SpecializationKey::from_instantiation(
+            &main_instantiation,
+            &SpecializedTypeSubstitution::empty(),
+        );
+        let mut context = LoweringContext::new(
+            &templates,
+            main_key,
+            RepresentationContext::new(Vec::new()),
+            crate::plan::ConstantTemplates::from_entries(Vec::new()),
+            HashSet::new(),
+        );
+
+        assert_eq!(
+            super::target_params(&instantiation, &mut context),
+            Vec::new()
+        );
     }
 
     #[test]
