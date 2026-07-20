@@ -78,17 +78,10 @@ instance identity as described above.
 
 ## Return Control Flow
 
-Module plans retain source-oriented recursive return bodies for inspection.
-Execution lowering flattens each executable return body into an immutable graph
-whose blocks are numbered deterministically in child-first source order. The
-runtime follows that graph with an iterative cursor, including nested branches
-and step blocks, and returns to the existing function loop when it reaches a
-tail call.
-
-Block targets are private execution-plan structure. The lowering-local graph
-builder creates them, and only a complete frozen graph publishes them to the
-runtime, where they are trusted rather than checked as a source-visible failure
-boundary.
+Geam lowers return control flow before runtime and traverses it iteratively.
+Nested tail-position branches and step blocks therefore do not grow the Rust
+return-evaluation call stack. Tail calls return control to the function loop for
+frame replacement rather than recursively evaluating another return body.
 
 ## Numeric Division By Zero
 
