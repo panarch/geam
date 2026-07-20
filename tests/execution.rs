@@ -961,36 +961,26 @@ fn execution_plan_explain_formats_public_return_topology() {
     let source = include_str!("fixtures/explain/return_topology.gleam");
     let plan = execution_plan_for_explain(source);
 
-    assert_eq!(
-        plan.explain().to_string(),
-        include_str!("fixtures/explain/return_topology.txt"),
-    );
+    assert_eq!(plan.explain().to_string(), expected_explanation(source));
     assert_eq!(run_main(&plan), Ok(Value::Int(40.into())));
 }
 
 #[test]
-fn execution_plan_explain_orders_every_table_and_tail_target() {
-    let source = include_str!("fixtures/explain/every_function_table.gleam");
-    let explanation = execution_plan_for_explain(source).explain().to_string();
-    let labels = explanation
-        .lines()
-        .filter_map(|line| line.strip_prefix("function "))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let tails = explanation
-        .lines()
-        .filter_map(|line| line.strip_prefix("  b0 tail "))
-        .collect::<Vec<_>>()
-        .join("\n");
+fn execution_plan_explain_formats_every_function_table_group() {
+    let fixtures = [
+        include_str!("fixtures/explain/value_return_tables.gleam"),
+        include_str!("fixtures/explain/list_return_tables.gleam"),
+        include_str!("fixtures/explain/function_return_tables.gleam"),
+        include_str!("fixtures/explain/list_returning_function_tables.gleam"),
+        include_str!("fixtures/explain/return_table_group_order.gleam"),
+    ];
 
-    assert_eq!(
-        labels,
-        include_str!("fixtures/explain/every_function_table.labels").trim_end(),
-    );
-    assert_eq!(
-        tails,
-        include_str!("fixtures/explain/every_function_table.tails").trim_end(),
-    );
+    for source in fixtures {
+        assert_eq!(
+            execution_plan_for_explain(source).explain().to_string(),
+            expected_explanation(source),
+        );
+    }
 }
 
 #[test]
@@ -1155,6 +1145,23 @@ fn execution_plan_for_explain(source: &str) -> geam::ExecutionPlan {
         .expect("explanation source should compile");
     let module_plan = plan_module(module).expect("explanation source should plan");
     geam::ExecutionPlan::from_module_plan(module_plan)
+}
+
+fn expected_explanation(source: &str) -> String {
+    let (_, comments) = source
+        .split_once("\n// geam:explain\n")
+        .expect("explain fixture should contain an expected output block");
+    let mut expected = String::new();
+
+    for line in comments.lines() {
+        let comment = line
+            .strip_prefix("//")
+            .expect("expected output lines should be comments");
+        expected.push_str(comment.strip_prefix(' ').unwrap_or(comment));
+        expected.push('\n');
+    }
+
+    expected
 }
 
 fn run_fixture(file_name: &str) {

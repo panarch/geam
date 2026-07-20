@@ -809,16 +809,12 @@ mod tests {
 
     #[test]
     fn explain_formats_public_return_graph_without_source_names_and_preserves_execution() {
-        let plan = execution_plan(include_str!(
-            "../../../tests/fixtures/explain/return_topology.gleam"
-        ));
+        let source = include_str!("../../../tests/fixtures/explain/return_topology.gleam");
+        let plan = execution_plan(source);
         assert_eq!(run_main(&plan), Ok(Value::Int(40.into())));
 
         let explanation: ExecutionPlanExplanation<'_> = plan.explain();
-        assert_eq!(
-            explanation.to_string(),
-            include_str!("../../../tests/fixtures/explain/return_topology.txt"),
-        );
+        assert_eq!(explanation.to_string(), expected_explanation(source));
         assert!(!explanation.to_string().contains("choose"));
         assert_eq!(run_main(&plan), Ok(Value::Int(40.into())));
     }
@@ -854,31 +850,38 @@ pub fn main() { consume(stop()) }
     }
 
     #[test]
-    fn explain_lists_every_function_table_in_storage_order() {
-        let plan = execution_plan(include_str!(
-            "../../../tests/fixtures/explain/every_function_table.gleam"
-        ));
-        let explanation = plan.explain().to_string();
-        assert_explanation_lines(
-            &explanation,
-            "function ",
-            include_str!("../../../tests/fixtures/explain/every_function_table.labels"),
-        );
-        assert_explanation_lines(
-            &explanation,
-            "  b0 tail ",
-            include_str!("../../../tests/fixtures/explain/every_function_table.tails"),
-        );
+    fn explain_formats_every_function_table_group_in_storage_order() {
+        let fixtures = [
+            include_str!("../../../tests/fixtures/explain/value_return_tables.gleam"),
+            include_str!("../../../tests/fixtures/explain/list_return_tables.gleam"),
+            include_str!("../../../tests/fixtures/explain/function_return_tables.gleam"),
+            include_str!("../../../tests/fixtures/explain/list_returning_function_tables.gleam"),
+            include_str!("../../../tests/fixtures/explain/return_table_group_order.gleam"),
+        ];
+
+        for source in fixtures {
+            assert_eq!(
+                execution_plan(source).explain().to_string(),
+                expected_explanation(source),
+            );
+        }
     }
 
-    fn assert_explanation_lines(explanation: &str, prefix: &str, expected: &str) {
-        let actual: Vec<_> = explanation
-            .lines()
-            .filter_map(|line| line.strip_prefix(prefix))
-            .collect();
-        let expected: Vec<_> = expected.lines().collect();
+    fn expected_explanation(source: &str) -> String {
+        let (_, comments) = source
+            .split_once("\n// geam:explain\n")
+            .expect("explain fixture should contain an expected output block");
+        let mut expected = String::new();
 
-        assert_eq!(actual, expected);
+        for line in comments.lines() {
+            let comment = line
+                .strip_prefix("//")
+                .expect("expected output lines should be comments");
+            expected.push_str(comment.strip_prefix(' ').unwrap_or(comment));
+            expected.push('\n');
+        }
+
+        expected
     }
 
     fn execution_plan(source: &str) -> ExecutionPlan {
