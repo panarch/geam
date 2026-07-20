@@ -117,12 +117,12 @@ representable without fabricating a parameter value. Constant evaluation
 strategy must preserve source evaluation order, control flow, and function
 identity.
 
-Execution return control flow is a sealed immutable graph. Consuming lowering
-must create every successor before its parent, freeze only complete graphs, and
-assign block targets deterministically in child-first source order. Runtime may
-trust targets obtained from that graph and iterate them without a second lookup
-validation boundary. Do not expose raw target construction, placeholders, or a
-parallel recursive execution-return owner.
+Linked execution-plan structures must cross phase boundaries only as complete,
+immutable owners. Their construction phase owns target creation; raw links,
+placeholders, partially initialized structures, and parallel representations
+must not escape. Any IDs or ordering exposed through plan inspection must be
+deterministic. Runtime may trust links reached exclusively through such sealed
+owners without introducing a second validation boundary.
 
 Do not use `Option` or `Result` in internal plan constructors to represent
 unsupported profile features, typed-AST margin cases, or runtime executability
