@@ -105,18 +105,14 @@ shape. Reaching `ExecutionPlan` means the accepted ModulePlan has been consumed
 into execution-owned nodes and function tables.
 
 Generic function and constant templates are validated once in `ModulePlan`.
-Execution lowering may compute a pre-ID viability fixed point and erase
-uninhabited provisional candidates. Function IDs and tables become final only
-when a complete pass requires no further erasure; a completed `ExecutionPlan`
-contains only specializations reachable from main and their constant
-dependencies, and must not contain index gaps or omit a reserved
-specialization. Lowering must remain total from the validated template: it must
-not re-plan a body, interpret a template at runtime, or recover a bare type
-parameter through a generic runtime payload or downcast. Every successful
-runtime value preserves its parameter metadata without containing an
-unrepresented bare-parameter payload. Runtime constant evaluation must occur at
-the family-typed source reference; eager startup evaluation or a value cache
-must not change source control flow or function identity.
+Execution lowering must remain total from the validated template and publish a
+closed executable plan in which every retained reference has a matching runtime
+entry. It must not re-plan a body, interpret a template at runtime, or recover a
+bare type parameter through a generic runtime payload or downcast. A successful
+runtime value may preserve parameter metadata only when its payload is
+representable without fabricating a parameter value. Constant evaluation
+strategy must preserve source evaluation order, control flow, and function
+identity.
 
 Do not use `Option` or `Result` in internal plan constructors to represent
 unsupported profile features, typed-AST margin cases, or runtime executability
