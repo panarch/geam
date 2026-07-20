@@ -5,11 +5,11 @@ use super::{
 use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{TupleExpr, TupleExprKind};
-use crate::runtime::ExecutionError;
 use crate::runtime::evaluated::EvaluatedValue;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
 use crate::runtime::state::RuntimeState;
+use crate::runtime::{ExecutionError, InvariantError};
 
 pub(in crate::runtime) fn eval_tuple_expr(
     plan: &ExecutionPlan,
@@ -53,10 +53,12 @@ pub(in crate::runtime) fn eval_tuple_expr(
             );
             match project_tuple_expr(plan, state, frame, tuple, *index, expected.clone())? {
                 EvaluatedValue::Tuple(values) => Ok(values),
-                other => Err(ExecutionError::TupleIndexFamilyMismatch {
-                    expected,
-                    actual: other.value_type(plan),
-                }),
+                other => Err(ExecutionError::Invariant(
+                    InvariantError::TupleIndexFamilyMismatch {
+                        expected,
+                        actual: other.value_type(plan),
+                    },
+                )),
             }
         }
         TupleExprKind::CustomField(access) => {
@@ -72,13 +74,15 @@ pub(in crate::runtime) fn eval_tuple_expr(
                 EvaluatedValue::Tuple(value) => Ok(value),
                 other => {
                     let descriptor = plan.custom_constructor(constructor);
-                    Err(ExecutionError::CustomFieldFamilyMismatch {
-                        custom_type: plan.custom_value_type(constructor.type_id()),
-                        constructor: descriptor.name().clone(),
-                        field_index: access.index(),
-                        expected,
-                        actual: other.value_type(plan),
-                    })
+                    Err(ExecutionError::Invariant(
+                        InvariantError::CustomFieldFamilyMismatch {
+                            custom_type: plan.custom_value_type(constructor.type_id()),
+                            constructor: descriptor.name().clone(),
+                            field_index: access.index(),
+                            expected,
+                            actual: other.value_type(plan),
+                        },
+                    ))
                 }
             }
         }
@@ -160,10 +164,14 @@ pub(in crate::runtime) fn project_tuple_expr(
 ) -> Result<EvaluatedValue, ExecutionError> {
     let values = eval_tuple_expr(plan, state, frame, tuple)?;
     let Some(value) = values.get(index).cloned() else {
-        return Err(ExecutionError::TupleIndexFamilyMismatch {
-            expected,
-            actual: ValueType::Tuple(values.iter().map(|value| value.value_type(plan)).collect()),
-        });
+        return Err(ExecutionError::Invariant(
+            InvariantError::TupleIndexFamilyMismatch {
+                expected,
+                actual: ValueType::Tuple(
+                    values.iter().map(|value| value.value_type(plan)).collect(),
+                ),
+            },
+        ));
     };
     Ok(value)
 }
@@ -174,7 +182,7 @@ mod tests {
         BoolExpr, Expr, FloatExpr, FunctionTemplate, FunctionTemplateId, IntExpr, ModulePlan,
         PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, TupleExpr, TupleFunctionId, ValueType,
     };
-    use crate::runtime::{ExecutionError, run_main};
+    use crate::runtime::{ExecutionError, InvariantError, run_main};
 
     #[test]
     fn source_tuple_expression_variants_evaluate_exact_values() {
@@ -296,10 +304,10 @@ pub fn main() -> #(Int) {{ {expression} }}
 
         assert_eq!(
             run_module_tuple_expression(expression),
-            ExecutionError::TupleIndexFamilyMismatch {
+            ExecutionError::Invariant(InvariantError::TupleIndexFamilyMismatch {
                 expected: ValueType::Tuple(vec![ValueType::Int]),
                 actual: ValueType::Tuple(vec![ValueType::List(Box::new(ValueType::Int))]),
-            },
+            }),
         );
     }
 

@@ -799,7 +799,7 @@ mod tests {
         UtfCodepointListLocalId, UtfCodepointLocalId, ValueShape, ValueType,
     };
     use crate::runtime::frame::Frame;
-    use crate::runtime::{EvaluatedValue, ExecutionError, run_main};
+    use crate::runtime::{EvaluatedValue, ExecutionError, InvariantError, run_main};
 
     #[test]
     fn source_arguments_and_captures_preserve_every_value_family() {
@@ -1081,10 +1081,12 @@ pub fn main() { caller }
 
             assert_eq!(
                 super::super::return_body::run_nil_loop(&plan, &mut state, function_id, frame,),
-                Err(ExecutionError::TupleIndexFamilyMismatch {
-                    expected: ValueType::Function(Box::new(expected_function_type)),
-                    actual: ValueType::Int,
-                }),
+                Err(ExecutionError::Invariant(
+                    InvariantError::TupleIndexFamilyMismatch {
+                        expected: ValueType::Function(Box::new(expected_function_type)),
+                        actual: ValueType::Int,
+                    }
+                )),
             );
         }
     }
@@ -1131,10 +1133,12 @@ pub fn main() { caller }
 
             assert_eq!(
                 super::super::return_body::run_nil_loop(&plan, &mut state, function_id, frame,),
-                Err(ExecutionError::TupleIndexFamilyMismatch {
-                    expected: ValueType::Function(Box::new(expected_function_type)),
-                    actual: ValueType::Int,
-                }),
+                Err(ExecutionError::Invariant(
+                    InvariantError::TupleIndexFamilyMismatch {
+                        expected: ValueType::Function(Box::new(expected_function_type)),
+                        actual: ValueType::Int,
+                    }
+                )),
             );
         }
     }

@@ -7,7 +7,7 @@ use crate::plan::execution::{ExecutionPlan, UtfCodepointExpr, UtfCodepointExprKi
 use crate::runtime::evaluated::EvaluatedValue;
 use crate::runtime::frame::Frame;
 use crate::runtime::state::RuntimeState;
-use crate::runtime::{ExecutionError, function};
+use crate::runtime::{ExecutionError, InvariantError, function};
 
 pub(in crate::runtime) fn eval_utf_codepoint_expr(
     plan: &ExecutionPlan,
@@ -36,10 +36,12 @@ pub(in crate::runtime) fn eval_utf_codepoint_expr(
         UtfCodepointExprKind::TupleIndex { tuple, index } => {
             match project_tuple_expr(plan, state, frame, tuple, *index, ValueType::UtfCodepoint)? {
                 EvaluatedValue::UtfCodepoint(value) => Ok(value),
-                other => Err(ExecutionError::TupleIndexFamilyMismatch {
-                    expected: ValueType::UtfCodepoint,
-                    actual: other.value_type(plan),
-                }),
+                other => Err(ExecutionError::Invariant(
+                    InvariantError::TupleIndexFamilyMismatch {
+                        expected: ValueType::UtfCodepoint,
+                        actual: other.value_type(plan),
+                    },
+                )),
             }
         }
         UtfCodepointExprKind::CustomField(access) => {
@@ -48,13 +50,15 @@ pub(in crate::runtime) fn eval_utf_codepoint_expr(
                 EvaluatedValue::UtfCodepoint(value) => Ok(value),
                 other => {
                     let descriptor = plan.custom_constructor(constructor);
-                    Err(ExecutionError::CustomFieldFamilyMismatch {
-                        custom_type: plan.custom_value_type(constructor.type_id()),
-                        constructor: descriptor.name().clone(),
-                        field_index: access.index(),
-                        expected: ValueType::UtfCodepoint,
-                        actual: other.value_type(plan),
-                    })
+                    Err(ExecutionError::Invariant(
+                        InvariantError::CustomFieldFamilyMismatch {
+                            custom_type: plan.custom_value_type(constructor.type_id()),
+                            constructor: descriptor.name().clone(),
+                            field_index: access.index(),
+                            expected: ValueType::UtfCodepoint,
+                            actual: other.value_type(plan),
+                        },
+                    ))
                 }
             }
         }

@@ -12,6 +12,7 @@ use crate::runtime::function;
 use crate::runtime::state::RuntimeState;
 use crate::runtime::{
     EvaluatedFunctionValueKind, EvaluatedUtfCodepointFunction, EvaluatedValue, ExecutionError,
+    InvariantError,
 };
 
 pub(in crate::runtime) fn eval_utf_codepoint_function_expr(
@@ -80,9 +81,13 @@ pub(in crate::runtime) fn eval_utf_codepoint_function_expr(
             match value {
                 EvaluatedValue::Function(function) => match function.kind() {
                     EvaluatedFunctionValueKind::UtfCodepoint(value) => Ok(value.clone()),
-                    _ => Err(ExecutionError::TupleIndexFamilyMismatch { expected, actual }),
+                    _ => Err(ExecutionError::Invariant(
+                        InvariantError::TupleIndexFamilyMismatch { expected, actual },
+                    )),
                 },
-                _ => Err(ExecutionError::TupleIndexFamilyMismatch { expected, actual }),
+                _ => Err(ExecutionError::Invariant(
+                    InvariantError::TupleIndexFamilyMismatch { expected, actual },
+                )),
             }
         }
         UtfCodepointFunctionExprKind::CustomField(access) => {
@@ -92,13 +97,17 @@ pub(in crate::runtime) fn eval_utf_codepoint_function_expr(
                 EvaluatedFunctionValueKind::UtfCodepoint(value) => Ok(value.clone()),
                 _ => {
                     let descriptor = plan.custom_constructor(constructor);
-                    Err(ExecutionError::CustomFieldFamilyMismatch {
-                        custom_type: plan.custom_value_type(constructor.type_id()),
-                        constructor: descriptor.name().clone(),
-                        field_index: access.index(),
-                        expected,
-                        actual: ValueType::Function(Box::new(plan.function_type(function.type_()))),
-                    })
+                    Err(ExecutionError::Invariant(
+                        InvariantError::CustomFieldFamilyMismatch {
+                            custom_type: plan.custom_value_type(constructor.type_id()),
+                            constructor: descriptor.name().clone(),
+                            field_index: access.index(),
+                            expected,
+                            actual: ValueType::Function(Box::new(
+                                plan.function_type(function.type_()),
+                            )),
+                        },
+                    ))
                 }
             }
         }
@@ -107,10 +116,12 @@ pub(in crate::runtime) fn eval_utf_codepoint_function_expr(
             let function = project_function_list_expr(plan, state, frame, list, *index, &type_)?;
             match function.kind() {
                 EvaluatedFunctionValueKind::UtfCodepoint(value) => Ok(value.clone()),
-                _ => Err(ExecutionError::FunctionReturnFamilyMismatch {
-                    expected: FunctionReturnFamily::UtfCodepoint,
-                    actual: function.kind().family(),
-                }),
+                _ => Err(ExecutionError::Invariant(
+                    InvariantError::FunctionReturnFamilyMismatch {
+                        expected: FunctionReturnFamily::UtfCodepoint,
+                        actual: function.kind().family(),
+                    },
+                )),
             }
         }
         UtfCodepointFunctionExprKind::Panic(panic) => {

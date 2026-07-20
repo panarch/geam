@@ -14,7 +14,7 @@ use crate::plan::execution::{
 use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedValue};
 use crate::runtime::frame::Frame;
 use crate::runtime::state::RuntimeState;
-use crate::runtime::{BitArraySegmentPanicReason, ExecutionError, function};
+use crate::runtime::{BitArraySegmentPanicReason, ExecutionError, InvariantError, function};
 
 pub(in crate::runtime) fn eval_bit_array_expr(
     plan: &ExecutionPlan,
@@ -53,10 +53,12 @@ pub(in crate::runtime) fn eval_bit_array_expr(
         BitArrayExprKind::TupleIndex { tuple, index } => {
             match project_tuple_expr(plan, state, frame, tuple, *index, ValueType::BitArray)? {
                 EvaluatedValue::BitArray(value) => Ok(value),
-                other => Err(ExecutionError::TupleIndexFamilyMismatch {
-                    expected: ValueType::BitArray,
-                    actual: other.value_type(plan),
-                }),
+                other => Err(ExecutionError::Invariant(
+                    InvariantError::TupleIndexFamilyMismatch {
+                        expected: ValueType::BitArray,
+                        actual: other.value_type(plan),
+                    },
+                )),
             }
         }
         BitArrayExprKind::CustomField(access) => {
@@ -65,13 +67,15 @@ pub(in crate::runtime) fn eval_bit_array_expr(
                 EvaluatedValue::BitArray(value) => Ok(value),
                 other => {
                     let descriptor = plan.custom_constructor(constructor);
-                    Err(ExecutionError::CustomFieldFamilyMismatch {
-                        custom_type: plan.custom_value_type(constructor.type_id()),
-                        constructor: descriptor.name().clone(),
-                        field_index: access.index(),
-                        expected: ValueType::BitArray,
-                        actual: other.value_type(plan),
-                    })
+                    Err(ExecutionError::Invariant(
+                        InvariantError::CustomFieldFamilyMismatch {
+                            custom_type: plan.custom_value_type(constructor.type_id()),
+                            constructor: descriptor.name().clone(),
+                            field_index: access.index(),
+                            expected: ValueType::BitArray,
+                            actual: other.value_type(plan),
+                        },
+                    ))
                 }
             }
         }
@@ -383,7 +387,9 @@ mod tests {
         StringEncoding, StringExpr, TupleExpr, UtfCodepointExpr, ValueType,
     };
     use crate::runtime::BitArraySegmentPanicReason;
-    use crate::runtime::{BitArrayValue, ExecutionError, ListValue, Value, run_main};
+    use crate::runtime::{
+        BitArrayValue, ExecutionError, InvariantError, ListValue, Value, run_main,
+    };
 
     #[test]
     fn evaluated_segment_failures_preserve_exact_panic_reasons() {
@@ -526,10 +532,10 @@ mod tests {
 
         assert_eq!(
             run_module_bit_array_expression(expression),
-            ExecutionError::TupleIndexFamilyMismatch {
+            ExecutionError::Invariant(InvariantError::TupleIndexFamilyMismatch {
                 expected: ValueType::BitArray,
                 actual: ValueType::Int,
-            },
+            }),
         );
     }
 

@@ -1,4 +1,4 @@
-use super::{BitArraySegmentPanicReason, ExecutionError, Panic, PanicDetails};
+use super::{BitArraySegmentPanicReason, ExecutionError, InvariantError, Panic, PanicDetails};
 use crate::plan::{FunctionType, ValueType};
 use crate::runtime::Value;
 use miette::{Diagnostic, LabeledSpan, SourceCode};
@@ -55,6 +55,35 @@ impl Diagnostic for ExecutionError {
     fn code<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
         match self {
             Self::Panic(panic) => panic.code(),
+            Self::Invariant(error) => error.code(),
+        }
+    }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
+        match self {
+            Self::Panic(panic) => panic.help(),
+            Self::Invariant(error) => error.help(),
+        }
+    }
+
+    fn source_code(&self) -> Option<&dyn SourceCode> {
+        match self {
+            Self::Panic(panic) => panic.source_code(),
+            Self::Invariant(error) => error.source_code(),
+        }
+    }
+
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        match self {
+            Self::Panic(panic) => panic.labels(),
+            Self::Invariant(error) => error.labels(),
+        }
+    }
+}
+
+impl Diagnostic for InvariantError {
+    fn code<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
+        match self {
             Self::FunctionReturnFamilyMismatch { .. } => {
                 Some(Box::new("geam::function_return_family_mismatch"))
             }
@@ -67,33 +96,15 @@ impl Diagnostic for ExecutionError {
     }
 
     fn help<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
-        match self {
-            Self::Panic(panic) => panic.help(),
-            Self::FunctionReturnFamilyMismatch { .. }
-            | Self::TupleIndexFamilyMismatch { .. }
-            | Self::CustomFieldFamilyMismatch { .. }
-            | Self::ListIndexOutOfBounds { .. } => None,
-        }
+        None
     }
 
     fn source_code(&self) -> Option<&dyn SourceCode> {
-        match self {
-            Self::Panic(panic) => panic.source_code(),
-            Self::FunctionReturnFamilyMismatch { .. }
-            | Self::TupleIndexFamilyMismatch { .. }
-            | Self::CustomFieldFamilyMismatch { .. }
-            | Self::ListIndexOutOfBounds { .. } => None,
-        }
+        None
     }
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        match self {
-            Self::Panic(panic) => panic.labels(),
-            Self::FunctionReturnFamilyMismatch { .. }
-            | Self::TupleIndexFamilyMismatch { .. }
-            | Self::CustomFieldFamilyMismatch { .. }
-            | Self::ListIndexOutOfBounds { .. } => None,
-        }
+        None
     }
 }
 
@@ -210,7 +221,9 @@ mod tests {
         CustomType, CustomTypeName, FunctionType, PanicSite, SourceContext, SourceSpan, ValueType,
     };
     use crate::runtime::{BitArrayValue, FunctionValue, ListValue, Value};
-    use crate::runtime::{ExecutionError, Panic, PanicDetails, PanicKind, PanicMessage};
+    use crate::runtime::{
+        ExecutionError, InvariantError, Panic, PanicDetails, PanicKind, PanicMessage,
+    };
     use miette::Diagnostic;
 
     #[test]
@@ -289,23 +302,23 @@ mod tests {
 
     #[test]
     fn invariant_diagnostics_have_codes_without_source_labels_or_help() {
-        for (error, expected_code) in [
+        for (invariant, expected_code) in [
             (
-                ExecutionError::FunctionReturnFamilyMismatch {
+                InvariantError::FunctionReturnFamilyMismatch {
                     expected: FunctionReturnFamily::Int,
                     actual: FunctionReturnFamily::String,
                 },
                 "geam::function_return_family_mismatch",
             ),
             (
-                ExecutionError::TupleIndexFamilyMismatch {
+                InvariantError::TupleIndexFamilyMismatch {
                     expected: ValueType::Int,
                     actual: ValueType::String,
                 },
                 "geam::tuple_index_mismatch",
             ),
             (
-                ExecutionError::CustomFieldFamilyMismatch {
+                InvariantError::CustomFieldFamilyMismatch {
                     custom_type: CustomType::new(
                         CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
                         Vec::new(),
@@ -318,7 +331,7 @@ mod tests {
                 "geam::custom_field_family_mismatch",
             ),
             (
-                ExecutionError::ListIndexOutOfBounds {
+                InvariantError::ListIndexOutOfBounds {
                     item_type: ValueType::Int,
                     index: 1,
                     length: 1,
@@ -326,6 +339,16 @@ mod tests {
                 "geam::list_index_out_of_bounds",
             ),
         ] {
+            assert_eq!(
+                invariant.code().map(|code| code.to_string()),
+                Some(expected_code.into()),
+            );
+            assert!(invariant.help().is_none());
+            assert!(invariant.source_code().is_none());
+            assert!(invariant.labels().is_none());
+
+            let error = ExecutionError::Invariant(invariant);
+
             assert_eq!(
                 error.code().map(|code| code.to_string()),
                 Some(expected_code.into()),

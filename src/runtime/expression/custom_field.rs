@@ -29,7 +29,8 @@ mod tests {
     };
     use crate::plan::{CustomFunctionExpr, CustomFunctionReference, FunctionTemplateId};
     use crate::runtime::{
-        BitArrayValue, CustomFieldValue, CustomValue, ExecutionError, ListValue, Value,
+        BitArrayValue, CustomFieldValue, CustomValue, ExecutionError, InvariantError, ListValue,
+        Value,
     };
 
     #[test]
@@ -114,10 +115,10 @@ mod tests {
                 Vec::new(),
             )
             .expect_err("direct-mutated tuple field should fail"),
-            ExecutionError::TupleIndexFamilyMismatch {
+            ExecutionError::Invariant(InvariantError::TupleIndexFamilyMismatch {
                 expected: ValueType::String,
                 actual: ValueType::Int,
-            },
+            }),
         );
     }
 
@@ -242,13 +243,15 @@ mod tests {
                     field_projection_definitions(&expected),
                     Vec::new(),
                 ),
-                Err(ExecutionError::CustomFieldFamilyMismatch {
-                    custom_type: boxed_type(),
-                    constructor: "Boxed".into(),
-                    field_index: 0,
-                    expected: expected.clone(),
-                    actual,
-                }),
+                Err(ExecutionError::Invariant(
+                    InvariantError::CustomFieldFamilyMismatch {
+                        custom_type: boxed_type(),
+                        constructor: "Boxed".into(),
+                        field_index: 0,
+                        expected: expected.clone(),
+                        actual,
+                    }
+                )),
             );
             let (outer_actual, outer_actual_type) = match &expected {
                 ValueType::List(_) | ValueType::Function(_) => {
@@ -292,13 +295,15 @@ mod tests {
                     field_projection_definitions(&expected),
                     Vec::new(),
                 ),
-                Err(ExecutionError::CustomFieldFamilyMismatch {
-                    custom_type: boxed_type(),
-                    constructor: "Boxed".into(),
-                    field_index: 0,
-                    expected: expected.clone(),
-                    actual: outer_actual_type,
-                }),
+                Err(ExecutionError::Invariant(
+                    InvariantError::CustomFieldFamilyMismatch {
+                        custom_type: boxed_type(),
+                        constructor: "Boxed".into(),
+                        field_index: 0,
+                        expected: expected.clone(),
+                        actual: outer_actual_type,
+                    }
+                )),
             );
             let access = CustomFieldAccess::new(
                 CustomExpr::tuple_index_shape(
@@ -321,10 +326,12 @@ mod tests {
                     field_projection_definitions(&expected),
                     Vec::new(),
                 ),
-                Err(ExecutionError::TupleIndexFamilyMismatch {
-                    expected: ValueType::Custom(boxed_type()),
-                    actual: ValueType::Int,
-                }),
+                Err(ExecutionError::Invariant(
+                    InvariantError::TupleIndexFamilyMismatch {
+                        expected: ValueType::Custom(boxed_type()),
+                        actual: ValueType::Int,
+                    }
+                )),
             );
         }
     }
@@ -385,13 +392,15 @@ mod tests {
                 ))),
                 vec![target],
             ),
-            Err(ExecutionError::CustomFieldFamilyMismatch {
-                custom_type: boxed_type(),
-                constructor: "Boxed".into(),
-                field_index: 0,
-                expected: ValueType::Function(Box::new(expected_function)),
-                actual: ValueType::Function(Box::new(actual_function)),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::CustomFieldFamilyMismatch {
+                    custom_type: boxed_type(),
+                    constructor: "Boxed".into(),
+                    field_index: 0,
+                    expected: ValueType::Function(Box::new(expected_function)),
+                    actual: ValueType::Function(Box::new(actual_function)),
+                }
+            )),
         );
     }
 
@@ -453,13 +462,15 @@ mod tests {
                 ))),
                 vec![target],
             ),
-            Err(ExecutionError::CustomFieldFamilyMismatch {
-                custom_type: boxed_type(),
-                constructor: "Boxed".into(),
-                field_index: 0,
-                expected: ValueType::Function(Box::new(expected_function)),
-                actual: ValueType::Function(Box::new(actual_function)),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::CustomFieldFamilyMismatch {
+                    custom_type: boxed_type(),
+                    constructor: "Boxed".into(),
+                    field_index: 0,
+                    expected: ValueType::Function(Box::new(expected_function)),
+                    actual: ValueType::Function(Box::new(actual_function)),
+                }
+            )),
         );
     }
 
