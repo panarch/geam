@@ -1,5 +1,6 @@
 mod constant;
 mod custom_type;
+mod explain;
 mod expression;
 mod frame;
 mod function;
@@ -14,6 +15,7 @@ mod table;
 mod value_shape;
 mod value_type;
 
+pub use explain::ExecutionPlanExplanation;
 pub(crate) use expression::{
     BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayExpr, BitArrayExprKind, BitArrayFunctionExpr,
     BitArrayFunctionExprKind, BitArrayListExpr, BitArrayListItem, BitArraySegment, BoolExpr,
@@ -82,10 +84,10 @@ pub(crate) use return_graph::{
     FloatListReturn, FloatReturn, FunctionFunctionReturn, FunctionListReturn,
     GenericFunctionReturn, IntFunctionReturn, IntListReturn, IntReturn, ListFunctionReturn,
     ListListReturn, NeverFunctionReturn, NeverReturn, NilFunctionReturn, NilListReturn, NilReturn,
-    ParameterListListReturn, ParameterListReturn, ReturnBlock, ReturnGraph, ReturnTarget,
-    StringFunctionReturn, StringListReturn, StringReturn, TupleFunctionReturn, TupleListReturn,
-    TupleReturn, TypedFunctionReturn, UtfCodepointFunctionReturn, UtfCodepointListReturn,
-    UtfCodepointReturn,
+    ParameterListListReturn, ParameterListReturn, ReturnBlock, ReturnExpressionId, ReturnGraph,
+    ReturnTailCall, ReturnTailCallId, ReturnTarget, StringFunctionReturn, StringListReturn,
+    StringReturn, TupleFunctionReturn, TupleListReturn, TupleReturn, TypedFunctionReturn,
+    UtfCodepointFunctionReturn, UtfCodepointListReturn, UtfCodepointReturn,
 };
 pub(crate) use step::{
     AssertBinding, AssertPattern, AssertSubject, ListAssertPattern, ListAssertTail, Step, StepKind,
@@ -134,6 +136,10 @@ impl ExecutionPlan {
 
     pub fn source_context(&self) -> Option<&SourceContext> {
         self.source_context.as_ref()
+    }
+
+    pub fn explain(&self) -> ExecutionPlanExplanation<'_> {
+        ExecutionPlanExplanation::new(self)
     }
 
     pub(crate) fn main_runtime(&self) -> RuntimeFunctionId {

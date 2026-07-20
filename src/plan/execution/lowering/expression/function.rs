@@ -1228,7 +1228,7 @@ pub fn main() {
         graph: &ReturnGraph<Expression, Function>,
     ) -> &Expression {
         match graph.block(graph.entry()) {
-            ReturnBlock::Return(expression) => expression,
+            ReturnBlock::Return { expression } => graph.expression(*expression),
             _ => panic!("expected an expression return body"),
         }
     }

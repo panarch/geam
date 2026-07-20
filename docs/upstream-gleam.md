@@ -99,10 +99,17 @@ pub fn plan_module_with_source(
 pub fn run_main(
     plan: &geam::ExecutionPlan,
 ) -> Result<geam::Value, geam::ExecutionError>
+
+impl geam::ExecutionPlan {
+    pub fn explain(&self) -> geam::ExecutionPlanExplanation<'_>
+}
 ```
 
 `ExecutionPlan::from_module_plan(module_plan)` consumes the inspectable
-`ModulePlan` and produces the runtime-only plan accepted by `run_main`.
+`ModulePlan` and produces the runtime-only plan accepted by `run_main`. Its raw
+execution nodes remain opaque, while `ExecutionPlan::explain()` provides a
+human-readable view of the current runtime control-flow topology. Its text is
+not a machine-stable serialization format.
 
 ## Intentionally Out Of Scope
 

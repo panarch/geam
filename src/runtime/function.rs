@@ -3016,7 +3016,7 @@ pub fn main() {
         graph: &ReturnGraph<Expression, Function>,
     ) -> &[CallArg] {
         match graph.block(graph.entry()) {
-            ReturnBlock::TailCall { args, .. } => args,
+            ReturnBlock::TailCall { call } => graph.tail_call(*call).args(),
             _ => panic!("expected a tail-call return body"),
         }
     }

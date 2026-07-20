@@ -89,15 +89,18 @@ pub(crate) struct TypedFunctionReturn<Body> {
 
 pub(crate) struct ReturnGraph<Expression, Function> {
     entry: ReturnTarget,
-    blocks: Box<[ReturnBlock<Expression, Function>]>,
+    blocks: Box<[ReturnBlock]>,
+    expressions: Box<[Expression]>,
+    tail_calls: Box<[ReturnTailCall<Function>]>,
 }
 
-pub(crate) enum ReturnBlock<Expression, Function> {
-    Return(Expression),
+pub(crate) enum ReturnBlock {
+    Return {
+        expression: ReturnExpressionId,
+    },
     Never(super::NeverExpr),
     TailCall {
-        function: Function,
-        args: Box<[CallArg]>,
+        call: ReturnTailCallId,
     },
     BoolBranch {
         subject: BoolExpr,
@@ -128,14 +131,29 @@ pub(crate) enum ReturnBlock<Expression, Function> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ReturnTarget(usize);
 
+#[derive(Clone, Copy)]
+pub(crate) struct ReturnExpressionId(usize);
+
+#[derive(Clone, Copy)]
+pub(crate) struct ReturnTailCallId(usize);
+
+pub(crate) struct ReturnTailCall<Function> {
+    function: Function,
+    args: Box<[CallArg]>,
+}
+
 impl<Expression, Function> ReturnGraph<Expression, Function> {
-    pub(super) fn from_blocks(
+    pub(super) fn from_parts(
         entry: ReturnTarget,
-        blocks: Vec<ReturnBlock<Expression, Function>>,
+        blocks: Vec<ReturnBlock>,
+        expressions: Vec<Expression>,
+        tail_calls: Vec<ReturnTailCall<Function>>,
     ) -> Self {
         Self {
             entry,
             blocks: blocks.into_boxed_slice(),
+            expressions: expressions.into_boxed_slice(),
+            tail_calls: tail_calls.into_boxed_slice(),
         }
     }
 
@@ -143,13 +161,20 @@ impl<Expression, Function> ReturnGraph<Expression, Function> {
         self.entry
     }
 
-    #[cfg(test)]
-    pub(crate) fn blocks(&self) -> &[ReturnBlock<Expression, Function>] {
+    pub(super) fn blocks(&self) -> &[ReturnBlock] {
         &self.blocks
     }
 
-    pub(crate) fn block(&self, target: ReturnTarget) -> &ReturnBlock<Expression, Function> {
+    pub(crate) fn block(&self, target: ReturnTarget) -> &ReturnBlock {
         &self.blocks[target.0]
+    }
+
+    pub(crate) fn expression(&self, id: ReturnExpressionId) -> &Expression {
+        &self.expressions[id.0]
+    }
+
+    pub(crate) fn tail_call(&self, id: ReturnTailCallId) -> &ReturnTailCall<Function> {
+        &self.tail_calls[id.0]
     }
 }
 
@@ -158,9 +183,37 @@ impl ReturnTarget {
         Self(index)
     }
 
-    #[cfg(test)]
-    pub(crate) fn index(self) -> usize {
+    pub(super) fn index(self) -> usize {
         self.0
+    }
+}
+
+impl ReturnExpressionId {
+    pub(super) fn from_expression_index(index: usize) -> Self {
+        Self(index)
+    }
+}
+
+impl ReturnTailCallId {
+    pub(super) fn from_call_index(index: usize) -> Self {
+        Self(index)
+    }
+}
+
+impl<Function> ReturnTailCall<Function> {
+    pub(super) fn new(function: Function, args: Vec<CallArg>) -> Self {
+        Self {
+            function,
+            args: args.into_boxed_slice(),
+        }
+    }
+
+    pub(crate) fn function(&self) -> &Function {
+        &self.function
+    }
+
+    pub(crate) fn args(&self) -> &[CallArg] {
+        &self.args
     }
 }
 

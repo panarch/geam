@@ -121,16 +121,18 @@ where
     let mut cursor = graph.entry();
     loop {
         match graph.block(cursor) {
-            ReturnBlock::Return(expression) => {
-                return eval_expression(plan, state, frame, expression).map(ReturnOutcome::Value);
+            ReturnBlock::Return { expression } => {
+                return eval_expression(plan, state, frame, graph.expression(*expression))
+                    .map(ReturnOutcome::Value);
             }
             ReturnBlock::Never(expression) => {
                 return eval_never_expr(plan, state, frame, expression).map(|never| match never {});
             }
-            ReturnBlock::TailCall { function, args } => {
+            ReturnBlock::TailCall { call } => {
+                let call = graph.tail_call(*call);
                 return Ok(ReturnOutcome::TailCall {
-                    function: function.clone(),
-                    args,
+                    function: call.function().clone(),
+                    args: call.args(),
                 });
             }
             ReturnBlock::BoolBranch {

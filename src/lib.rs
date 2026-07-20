@@ -4,7 +4,7 @@ pub mod planner;
 pub mod runtime;
 
 pub use frontend::{FrontendError, compile_typed_module};
-pub use plan::execution::ExecutionPlan;
+pub use plan::execution::{ExecutionPlan, ExecutionPlanExplanation};
 pub use plan::{
     BitArrayExpr, BitArrayLocalId, BoolExpr, BoolLocalId, CustomType, CustomTypeName, Expr,
     FunctionTemplate, FunctionTemplateId, FunctionType, IntExpr, IntLocalId, LocalId, ModulePlan,

@@ -1348,28 +1348,51 @@ fn return_graph<ModuleExpression, ExecutionExpression, ExecutionFunction>(
 }
 
 struct ReturnGraphBuilder<Expression, Function> {
-    blocks: Vec<execution::ReturnBlock<Expression, Function>>,
+    blocks: Vec<execution::ReturnBlock>,
+    expressions: Vec<Expression>,
+    tail_calls: Vec<execution::ReturnTailCall<Function>>,
 }
 
 impl<Expression, Function> ReturnGraphBuilder<Expression, Function> {
     fn new() -> Self {
-        Self { blocks: Vec::new() }
+        Self {
+            blocks: Vec::new(),
+            expressions: Vec::new(),
+            tail_calls: Vec::new(),
+        }
     }
 
-    fn push(
-        &mut self,
-        block: execution::ReturnBlock<Expression, Function>,
-    ) -> execution::ReturnTarget {
+    fn push(&mut self, block: execution::ReturnBlock) -> execution::ReturnTarget {
         let target = execution::ReturnTarget::from_block_index(self.blocks.len());
         self.blocks.push(block);
         target
+    }
+
+    fn push_return(&mut self, expression: Expression) -> execution::ReturnTarget {
+        let expression_id =
+            execution::ReturnExpressionId::from_expression_index(self.expressions.len());
+        self.expressions.push(expression);
+        self.push(execution::ReturnBlock::Return {
+            expression: expression_id,
+        })
+    }
+
+    fn push_tail_call(
+        &mut self,
+        function: Function,
+        args: Vec<execution::CallArg>,
+    ) -> execution::ReturnTarget {
+        let call = execution::ReturnTailCallId::from_call_index(self.tail_calls.len());
+        self.tail_calls
+            .push(execution::ReturnTailCall::new(function, args));
+        self.push(execution::ReturnBlock::TailCall { call })
     }
 
     fn freeze(
         self,
         entry: execution::ReturnTarget,
     ) -> execution::ReturnGraph<Expression, Function> {
-        execution::ReturnGraph::from_blocks(entry, self.blocks)
+        execution::ReturnGraph::from_parts(entry, self.blocks, self.expressions, self.tail_calls)
     }
 }
 
@@ -1391,15 +1414,13 @@ fn lower_return_target<ModuleExpression, ExecutionExpression, ExecutionFunction>
     use module::ReturnBodyKind as M;
 
     match body.kind() {
-        M::Expr(expression) => lower_expression(expression, context)
-            .map(|expression| builder.push(execution::ReturnBlock::Return(expression))),
+        M::Expr(expression) => {
+            lower_expression(expression, context).map(|expression| builder.push_return(expression))
+        }
         M::TailCall { function, args } => {
             direct_call(function, args, context, lower_function).map(|call| match call {
                 execution::DirectCall::Executable { function, args } => {
-                    builder.push(execution::ReturnBlock::TailCall {
-                        function,
-                        args: args.into_boxed_slice(),
-                    })
+                    builder.push_tail_call(function, args)
                 }
                 execution::DirectCall::Diverging(expression) => {
                     builder.push(execution::ReturnBlock::Never(expression))
@@ -1902,7 +1923,10 @@ pub fn main() { consume(stop()) }
         graph: &ReturnGraph<Expression, Function>,
     ) -> (&Function, usize) {
         match graph.block(graph.entry()) {
-            ReturnBlock::TailCall { function, args } => (function, args.len()),
+            ReturnBlock::TailCall { call } => {
+                let call = graph.tail_call(*call);
+                (call.function(), call.args().len())
+            }
             _ => panic!("expected a tail-call return body"),
         }
     }
@@ -1950,10 +1974,10 @@ pub fn main() { consume(stop()) }
             .blocks()
             .iter()
             .map(|block| match block {
-                ReturnBlock::Return(_) => ReturnBlockSummary::Return,
+                ReturnBlock::Return { .. } => ReturnBlockSummary::Return,
                 ReturnBlock::Never(_) => ReturnBlockSummary::Never,
-                ReturnBlock::TailCall { args, .. } => ReturnBlockSummary::TailCall {
-                    argument_count: args.len(),
+                ReturnBlock::TailCall { call } => ReturnBlockSummary::TailCall {
+                    argument_count: graph.tail_call(*call).args().len(),
                 },
                 ReturnBlock::BoolBranch { true_, false_, .. } => ReturnBlockSummary::BoolBranch {
                     true_: true_.index(),

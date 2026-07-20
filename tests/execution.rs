@@ -956,6 +956,207 @@ fn constant_nested_list_rejects_mismatched_typed_ast_elements() {
     );
 }
 
+#[test]
+fn execution_plan_explain_formats_public_return_topology() {
+    let source = include_str!("fixtures/explain/return_topology.gleam");
+    let plan = execution_plan_for_explain(source);
+
+    assert_eq!(
+        plan.explain().to_string(),
+        include_str!("fixtures/explain/return_topology.txt"),
+    );
+    assert_eq!(run_main(&plan), Ok(Value::Int(40.into())));
+}
+
+#[test]
+fn execution_plan_explain_orders_every_table_and_tail_target() {
+    let source = include_str!("fixtures/explain/every_function_table.gleam");
+    let explanation = execution_plan_for_explain(source).explain().to_string();
+    let labels = explanation
+        .lines()
+        .filter_map(|line| line.strip_prefix("function "))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let tails = explanation
+        .lines()
+        .filter_map(|line| line.strip_prefix("  b0 tail "))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert_eq!(
+        labels,
+        include_str!("fixtures/explain/every_function_table.labels").trim_end(),
+    );
+    assert_eq!(
+        tails,
+        include_str!("fixtures/explain/every_function_table.tails").trim_end(),
+    );
+}
+
+#[test]
+fn execution_plan_explain_labels_every_main_return_family() {
+    let cases = [
+        ("pub fn main() -> value { main() }", "never#0"),
+        ("pub fn main() { 1 }", "int#0"),
+        ("pub fn main() { 1.0 }", "float#0"),
+        ("pub fn main() { \"one\" }", "string#0"),
+        ("pub fn main() { <<1>> }", "bit_array#0"),
+        (
+            "pub fn main() -> UtfCodepoint { let assert <<value:utf8_codepoint>> = <<65>> value }",
+            "utf_codepoint#0",
+        ),
+        (
+            "pub type Boxed { Boxed(Int) } pub fn main() { Boxed(1) }",
+            "custom#0",
+        ),
+        ("pub fn main() { True }", "bool#0"),
+        ("pub fn main() { Nil }", "nil#0"),
+        ("pub fn main() { #(1) }", "tuple#0"),
+        ("pub fn main() -> List(value) { [] }", "list.parameter#0"),
+        (
+            "pub fn main() -> List(List(value)) { [[]] }",
+            "list.parameter_list#0",
+        ),
+        ("pub fn main() -> List(Int) { [] }", "list.int#0"),
+        ("pub fn main() -> List(String) { [] }", "list.string#0"),
+        ("pub fn main() -> List(BitArray) { [] }", "list.bit_array#0"),
+        (
+            "pub fn main() -> List(UtfCodepoint) { [] }",
+            "list.utf_codepoint#0",
+        ),
+        (
+            "pub type Boxed { Boxed(Int) } pub fn main() -> List(Boxed) { [] }",
+            "list.custom#0",
+        ),
+        ("pub fn main() -> List(Float) { [] }", "list.float#0"),
+        ("pub fn main() -> List(Bool) { [] }", "list.bool#0"),
+        ("pub fn main() -> List(Nil) { [] }", "list.nil#0"),
+        ("pub fn main() -> List(#(Int)) { [] }", "list.tuple#0"),
+        ("pub fn main() -> List(List(Int)) { [] }", "list.list#0"),
+        (
+            "pub fn main() -> List(fn() -> Int) { [] }",
+            "list.function#0",
+        ),
+        (
+            "pub fn main() -> fn(value) -> value { fn(value) { value } }",
+            "function.generic#0",
+        ),
+        (
+            "pub fn main() -> fn() -> value { fn() { panic } }",
+            "function.never#0",
+        ),
+        (
+            "pub fn main() -> fn() -> Int { fn() { 1 } }",
+            "function.int#0",
+        ),
+        (
+            "pub fn main() -> fn() -> Float { fn() { 1.0 } }",
+            "function.float#0",
+        ),
+        (
+            "pub fn main() -> fn() -> String { fn() { \"one\" } }",
+            "function.string#0",
+        ),
+        (
+            "pub fn main() -> fn() -> BitArray { fn() { <<1>> } }",
+            "function.bit_array#0",
+        ),
+        (
+            "pub fn main() -> fn() -> UtfCodepoint { fn() { panic } }",
+            "function.utf_codepoint#0",
+        ),
+        (
+            "pub type Boxed { Boxed(Int) } pub fn main() -> fn() -> Boxed { fn() { Boxed(1) } }",
+            "function.custom#0",
+        ),
+        (
+            "pub fn main() -> fn() -> Bool { fn() { True } }",
+            "function.bool#0",
+        ),
+        (
+            "pub fn main() -> fn() -> Nil { fn() { Nil } }",
+            "function.nil#0",
+        ),
+        (
+            "pub fn main() -> fn() -> #(Int) { fn() { #(1) } }",
+            "function.tuple#0",
+        ),
+        (
+            "pub fn main() -> fn() -> List(value) { fn() { [] } }",
+            "function.list.parameter#0",
+        ),
+        (
+            "pub fn main() -> fn() -> List(List(value)) { fn() { [[]] } }",
+            "function.list.parameter_list#0",
+        ),
+        (
+            "pub fn main() -> fn() -> List(Int) { fn() { [] } }",
+            "function.list.int#0",
+        ),
+        (
+            "pub fn main() -> fn() -> List(String) { fn() { [] } }",
+            "function.list.string#0",
+        ),
+        (
+            "pub fn main() -> fn() -> List(BitArray) { fn() { [] } }",
+            "function.list.bit_array#0",
+        ),
+        (
+            "pub fn main() -> fn() -> List(UtfCodepoint) { fn() { [] } }",
+            "function.list.utf_codepoint#0",
+        ),
+        (
+            "pub type Boxed { Boxed(Int) } pub fn main() -> fn() -> List(Boxed) { fn() { [] } }",
+            "function.list.custom#0",
+        ),
+        (
+            "pub fn main() -> fn() -> List(Float) { fn() { [] } }",
+            "function.list.float#0",
+        ),
+        (
+            "pub fn main() -> fn() -> List(Bool) { fn() { [] } }",
+            "function.list.bool#0",
+        ),
+        (
+            "pub fn main() -> fn() -> List(Nil) { fn() { [] } }",
+            "function.list.nil#0",
+        ),
+        (
+            "pub fn main() -> fn() -> List(#(Int)) { fn() { [] } }",
+            "function.list.tuple#0",
+        ),
+        (
+            "pub fn main() -> fn() -> List(List(Int)) { fn() { [] } }",
+            "function.list.list#0",
+        ),
+        (
+            "pub fn main() -> fn() -> List(fn() -> Int) { fn() { [] } }",
+            "function.list.function#0",
+        ),
+        (
+            "pub fn main() -> fn() -> fn() -> Int { fn() { fn() { 1 } } }",
+            "function.function#0",
+        ),
+    ];
+
+    for (source, expected) in cases {
+        let explanation = execution_plan_for_explain(source).explain().to_string();
+        let main = explanation
+            .lines()
+            .nth(1)
+            .expect("explanation should contain a main line");
+
+        assert_eq!(main, format!("main {expected}"));
+    }
+}
+
+fn execution_plan_for_explain(source: &str) -> geam::ExecutionPlan {
+    let module = compile_typed_module("main", "main.gleam", source)
+        .expect("explanation source should compile");
+    let module_plan = plan_module(module).expect("explanation source should plan");
+    geam::ExecutionPlan::from_module_plan(module_plan)
+}
+
 fn run_fixture(file_name: &str) {
     let path = format!("tests/fixtures/execution/{file_name}");
     let src = std::fs::read_to_string(&path).expect("fixture should be readable");
