@@ -1428,7 +1428,7 @@ pub fn main() {
         graph: &ReturnGraph<Expression, Function>,
     ) -> Option<&Expression> {
         match graph.block(graph.entry()) {
-            ReturnBlock::Return(expression) => Some(expression),
+            ReturnBlock::Return { expression } => Some(graph.expression(*expression)),
             _ => None,
         }
     }
@@ -1438,7 +1438,7 @@ pub fn main() {
     ) -> Option<&FunctionFunctionExprKind> {
         let graph = body.body();
         match graph.block(graph.entry()) {
-            ReturnBlock::Return(expression) => Some(expression),
+            ReturnBlock::Return { expression } => Some(graph.expression(*expression)),
             _ => None,
         }
     }

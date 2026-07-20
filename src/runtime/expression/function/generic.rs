@@ -761,7 +761,7 @@ pub fn main() {
         graph: &ReturnGraph<Expression, Function>,
     ) -> &Expression {
         match graph.block(graph.entry()) {
-            ReturnBlock::Return(expression) => expression,
+            ReturnBlock::Return { expression } => graph.expression(*expression),
             _ => panic!("expected an expression return body"),
         }
     }
@@ -788,7 +788,10 @@ pub fn main() {
         graph: &ReturnGraph<GenericFunctionExpr, GenericFunctionFunctionId>,
     ) -> (&GenericFunctionFunctionId, &[CallArg]) {
         match graph.block(graph.entry()) {
-            ReturnBlock::TailCall { function, args } => (function, args),
+            ReturnBlock::TailCall { call } => {
+                let call = graph.tail_call(*call);
+                (call.function(), call.args())
+            }
             _ => panic!("expected a tail-call return body"),
         }
     }

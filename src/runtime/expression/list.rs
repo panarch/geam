@@ -2656,7 +2656,7 @@ pub fn main() {
         graph: &ReturnGraph<Expression, Function>,
     ) -> &Expression {
         match graph.block(graph.entry()) {
-            ReturnBlock::Return(expression) => expression,
+            ReturnBlock::Return { expression } => graph.expression(*expression),
             _ => panic!("expected a list expression return body"),
         }
     }
@@ -2869,7 +2869,10 @@ pub fn main() {
         graph: &ReturnGraph<ParameterListExpr, ParameterListFunctionId>,
     ) -> (ParameterListFunctionId, &[CallArg]) {
         match graph.block(graph.entry()) {
-            ReturnBlock::TailCall { function, args } => (*function, args),
+            ReturnBlock::TailCall { call } => {
+                let call = graph.tail_call(*call);
+                (*call.function(), call.args())
+            }
             _ => panic!("expected a parameter-list tail call"),
         }
     }
@@ -2892,7 +2895,7 @@ pub fn main() {
         graph: &ReturnGraph<ParameterListExpr, ParameterListFunctionId>,
     ) -> &ParameterListExpr {
         match graph.block(graph.entry()) {
-            ReturnBlock::Return(expression) => expression,
+            ReturnBlock::Return { expression } => graph.expression(*expression),
             _ => panic!("expected a parameter-list expression return"),
         }
     }
