@@ -39,32 +39,35 @@ definitions must not import them outside the consuming lowering modules.
 Source spans/sites and immutable value/function type metadata are the narrow
 shared domains; runtime `Value` and evaluated captures are not plan data.
 
-`ExecutionError` has two allowed roles:
+`ExecutionError` separates two allowed domains:
 
 - Source-reachable execution stops accepted by the Geam profile use
   `ExecutionError::Panic(Panic)`, with `PanicKind` as the source-level tag.
   Cover them with execution-error fixtures that compile and plan successfully
   before failing at runtime. Do not add speculative `PanicKind` variants.
-- All other `ExecutionError` variants are execution invariant failures that
-  Rust cannot encode in the current plan shape. Adding a non-`Panic` execution
-  error variant or invariant kind requires explicit design review.
+- Runtime invariant failures that Rust cannot encode in the current plan shape
+  use `ExecutionError::Invariant(InvariantError)`. Adding an invariant
+  kind requires explicit design review.
 
 Runtime tag dispatch is allowed only for planner-validated recursive plan
 shapes, and only as execution routing. It must not become validation, fallback
 behavior, or a source-visible semantic difference.
 
-Typed projections have the following approved execution invariants:
+The following execution invariants are approved:
 
-- `ExecutionError::TupleIndexFamilyMismatch` is only for typed tuple-index
-  plan evaluation when the runtime tuple value lacks the planner-selected
-  element or that element has a different value family.
-- `ExecutionError::ListIndexOutOfBounds` is only for typed list-index plan
-  evaluation when the runtime list value lacks the planner-selected element.
-  Source-reachable list matching must guard list-index projections with the
-  planner-selected length condition.
-- `ExecutionError::CustomFieldFamilyMismatch` is only for a planner-selected
-  custom field projection or binding whose runtime field has a different
-  exact value type.
+- `InvariantError::FunctionReturnFamilyMismatch` is only for a typed
+  function call or return path whose evaluated target cannot serve the
+  planner-selected function family.
+- `InvariantError::TupleIndexFamilyMismatch` is only for typed
+  tuple-index plan evaluation when the runtime tuple value lacks the
+  planner-selected element or that element has a different value family.
+- `InvariantError::ListIndexOutOfBounds` is only for typed list-index
+  plan evaluation when the runtime list value lacks the planner-selected
+  element. Source-reachable list matching must guard list-index projections
+  with the planner-selected length condition.
+- `InvariantError::CustomFieldFamilyMismatch` is only for a
+  planner-selected custom field projection or binding whose runtime field has
+  a different exact value type.
 
 Planner-established type, shape, and discriminant relationships must be
 preserved structurally through lowering. Runtime must not revalidate them

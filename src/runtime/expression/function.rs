@@ -19,7 +19,7 @@ use crate::runtime::frame::Frame;
 use crate::runtime::state::RuntimeState;
 use crate::runtime::{
     EvaluatedCustomFunction, EvaluatedFunction, EvaluatedFunctionValue, EvaluatedValue,
-    ExecutionError,
+    ExecutionError, InvariantError,
 };
 
 pub(in crate::runtime) use self::{
@@ -131,13 +131,15 @@ fn eval_custom_field_function(
     let expected = plan.value_type(descriptor.fields()[access.index()].type_());
     match value {
         EvaluatedValue::Function(value) => Ok((constructor, expected, value)),
-        other => Err(ExecutionError::CustomFieldFamilyMismatch {
-            custom_type: plan.custom_value_type(constructor.type_id()),
-            constructor: descriptor.name().clone(),
-            field_index: access.index(),
-            expected,
-            actual: other.value_type(plan),
-        }),
+        other => Err(ExecutionError::Invariant(
+            InvariantError::CustomFieldFamilyMismatch {
+                custom_type: plan.custom_value_type(constructor.type_id()),
+                constructor: descriptor.name().clone(),
+                field_index: access.index(),
+                expected,
+                actual: other.value_type(plan),
+            },
+        )),
     }
 }
 

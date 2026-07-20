@@ -11,6 +11,7 @@ use crate::runtime::function;
 use crate::runtime::state::RuntimeState;
 use crate::runtime::{
     EvaluatedFunctionValueKind, EvaluatedTupleFunction, EvaluatedValue, ExecutionError,
+    InvariantError,
 };
 
 pub(in crate::runtime) fn eval_tuple_function_expr(
@@ -69,15 +70,19 @@ pub(in crate::runtime) fn eval_tuple_function_expr(
             )? {
                 EvaluatedValue::Function(function) => match function.kind() {
                     crate::runtime::EvaluatedFunctionValueKind::Tuple(value) => Ok(value.clone()),
-                    _ => Err(ExecutionError::TupleIndexFamilyMismatch {
-                        expected: ValueType::Function(Box::new(plan.function_type(type_))),
-                        actual: EvaluatedValue::Function(function).value_type(plan),
-                    }),
+                    _ => Err(ExecutionError::Invariant(
+                        InvariantError::TupleIndexFamilyMismatch {
+                            expected: ValueType::Function(Box::new(plan.function_type(type_))),
+                            actual: EvaluatedValue::Function(function).value_type(plan),
+                        },
+                    )),
                 },
-                other => Err(ExecutionError::TupleIndexFamilyMismatch {
-                    expected: ValueType::Function(Box::new(plan.function_type(type_))),
-                    actual: other.value_type(plan),
-                }),
+                other => Err(ExecutionError::Invariant(
+                    InvariantError::TupleIndexFamilyMismatch {
+                        expected: ValueType::Function(Box::new(plan.function_type(type_))),
+                        actual: other.value_type(plan),
+                    },
+                )),
             }
         }
         TupleFunctionExprKind::CustomField(access) => {
@@ -87,13 +92,17 @@ pub(in crate::runtime) fn eval_tuple_function_expr(
                 EvaluatedFunctionValueKind::Tuple(value) => Ok(value.clone()),
                 _ => {
                     let descriptor = plan.custom_constructor(constructor);
-                    Err(ExecutionError::CustomFieldFamilyMismatch {
-                        custom_type: plan.custom_value_type(constructor.type_id()),
-                        constructor: descriptor.name().clone(),
-                        field_index: access.index(),
-                        expected,
-                        actual: ValueType::Function(Box::new(plan.function_type(function.type_()))),
-                    })
+                    Err(ExecutionError::Invariant(
+                        InvariantError::CustomFieldFamilyMismatch {
+                            custom_type: plan.custom_value_type(constructor.type_id()),
+                            constructor: descriptor.name().clone(),
+                            field_index: access.index(),
+                            expected,
+                            actual: ValueType::Function(Box::new(
+                                plan.function_type(function.type_()),
+                            )),
+                        },
+                    ))
                 }
             }
         }
@@ -102,10 +111,12 @@ pub(in crate::runtime) fn eval_tuple_function_expr(
             let function = project_function_list_expr(plan, state, frame, list, *index, &type_)?;
             match function.kind() {
                 EvaluatedFunctionValueKind::Tuple(value) => Ok(value.clone()),
-                _ => Err(ExecutionError::FunctionReturnFamilyMismatch {
-                    expected: FunctionReturnFamily::Tuple,
-                    actual: function.kind().family(),
-                }),
+                _ => Err(ExecutionError::Invariant(
+                    InvariantError::FunctionReturnFamilyMismatch {
+                        expected: FunctionReturnFamily::Tuple,
+                        actual: function.kind().family(),
+                    },
+                )),
             }
         }
         TupleFunctionExprKind::Panic(panic) => {

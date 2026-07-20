@@ -13,6 +13,7 @@ use crate::runtime::function;
 use crate::runtime::state::RuntimeState;
 use crate::runtime::{
     EvaluatedFunctionValueKind, EvaluatedNeverFunction, EvaluatedValue, ExecutionError,
+    InvariantError,
 };
 
 pub(in crate::runtime) fn eval_never_function_expr(
@@ -72,9 +73,13 @@ pub(in crate::runtime) fn eval_never_function_expr_kind(
                     EvaluatedFunctionValueKind::Never(value) if actual == expected => {
                         Ok(value.clone())
                     }
-                    _ => Err(ExecutionError::TupleIndexFamilyMismatch { expected, actual }),
+                    _ => Err(ExecutionError::Invariant(
+                        InvariantError::TupleIndexFamilyMismatch { expected, actual },
+                    )),
                 },
-                _ => Err(ExecutionError::TupleIndexFamilyMismatch { expected, actual }),
+                _ => Err(ExecutionError::Invariant(
+                    InvariantError::TupleIndexFamilyMismatch { expected, actual },
+                )),
             }
         }
         NeverFunctionExprKind::CustomField(access) => {
@@ -85,13 +90,15 @@ pub(in crate::runtime) fn eval_never_function_expr_kind(
                 EvaluatedFunctionValueKind::Never(value) if actual == expected => Ok(value.clone()),
                 _ => {
                     let descriptor = plan.custom_constructor(constructor);
-                    Err(ExecutionError::CustomFieldFamilyMismatch {
-                        custom_type: plan.custom_value_type(constructor.type_id()),
-                        constructor: descriptor.name().clone(),
-                        field_index: access.index(),
-                        expected,
-                        actual,
-                    })
+                    Err(ExecutionError::Invariant(
+                        InvariantError::CustomFieldFamilyMismatch {
+                            custom_type: plan.custom_value_type(constructor.type_id()),
+                            constructor: descriptor.name().clone(),
+                            field_index: access.index(),
+                            expected,
+                            actual,
+                        },
+                    ))
                 }
             }
         }
@@ -100,10 +107,12 @@ pub(in crate::runtime) fn eval_never_function_expr_kind(
             let function = project_function_list_expr(plan, state, frame, list, *index, &type_)?;
             match function.kind() {
                 EvaluatedFunctionValueKind::Never(value) => Ok(value.clone()),
-                _ => Err(ExecutionError::FunctionReturnFamilyMismatch {
-                    expected: FunctionReturnFamily::Never,
-                    actual: function.kind().family(),
-                }),
+                _ => Err(ExecutionError::Invariant(
+                    InvariantError::FunctionReturnFamilyMismatch {
+                        expected: FunctionReturnFamily::Never,
+                        actual: function.kind().family(),
+                    },
+                )),
             }
         }
         NeverFunctionExprKind::Panic(panic) => {
@@ -190,7 +199,7 @@ mod tests {
     use crate::runtime::expression::eval_never_function_expr;
     use crate::runtime::frame::Frame;
     use crate::runtime::state::RuntimeState;
-    use crate::runtime::{EvaluatedCustomValue, ExecutionError, PanicKind};
+    use crate::runtime::{EvaluatedCustomValue, ExecutionError, InvariantError, PanicKind};
 
     #[test]
     fn module_expression_errors_propagate_through_never_function_wrappers() {
@@ -421,10 +430,12 @@ pub fn main() {
 
         assert_eq!(
             eval_never_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::Never,
-                actual: FunctionReturnFamily::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::Never,
+                    actual: FunctionReturnFamily::Int,
+                }
+            )),
         );
     }
 
@@ -473,16 +484,18 @@ pub fn main() { get(Box(diverge)) }
 
         assert_eq!(
             eval_never_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::CustomFieldFamilyMismatch {
-                custom_type: plan.custom_value_type(construction.constructor().type_id()),
-                constructor: descriptor.name().clone(),
-                field_index: access.index(),
-                expected: ValueType::Function(Box::new(crate::plan::FunctionType::new(
-                    vec![ValueType::Int],
-                    ValueType::Parameter(TypeParameterId(0)),
-                ))),
-                actual: ValueType::Function(Box::new(plan.function_type(&wrong_type))),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::CustomFieldFamilyMismatch {
+                    custom_type: plan.custom_value_type(construction.constructor().type_id()),
+                    constructor: descriptor.name().clone(),
+                    field_index: access.index(),
+                    expected: ValueType::Function(Box::new(crate::plan::FunctionType::new(
+                        vec![ValueType::Int],
+                        ValueType::Parameter(TypeParameterId(0)),
+                    ))),
+                    actual: ValueType::Function(Box::new(plan.function_type(&wrong_type))),
+                }
+            )),
         );
     }
 
@@ -517,10 +530,12 @@ pub fn main() { get(Box(diverge)) }
 
         assert_eq!(
             crate::run_main(&never_function_plan(expression, vec![target])),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: expected.clone(),
-                actual: ValueType::Function(Box::new(wrong_type)),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: expected.clone(),
+                    actual: ValueType::Function(Box::new(wrong_type)),
+                }
+            )),
         );
 
         let expression = ModuleGenericFunctionExpr::tuple_index(
@@ -533,10 +548,12 @@ pub fn main() { get(Box(diverge)) }
         );
         assert_eq!(
             crate::run_main(&never_function_plan(expression, Vec::new())),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected,
-                actual: ValueType::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected,
+                    actual: ValueType::Int,
+                }
+            )),
         );
     }
 

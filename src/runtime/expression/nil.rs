@@ -5,11 +5,11 @@ use super::{
 use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{NilExpr, NilExprKind};
-use crate::runtime::ExecutionError;
 use crate::runtime::evaluated::EvaluatedValue;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
 use crate::runtime::state::RuntimeState;
+use crate::runtime::{ExecutionError, InvariantError};
 
 pub(in crate::runtime) fn eval_nil_expr(
     plan: &ExecutionPlan,
@@ -39,10 +39,12 @@ pub(in crate::runtime) fn eval_nil_expr(
         NilExprKind::TupleIndex { tuple, index } => {
             match project_tuple_expr(plan, state, frame, tuple, *index, ValueType::Nil)? {
                 EvaluatedValue::Nil => Ok(()),
-                other => Err(ExecutionError::TupleIndexFamilyMismatch {
-                    expected: ValueType::Nil,
-                    actual: other.value_type(plan),
-                }),
+                other => Err(ExecutionError::Invariant(
+                    InvariantError::TupleIndexFamilyMismatch {
+                        expected: ValueType::Nil,
+                        actual: other.value_type(plan),
+                    },
+                )),
             }
         }
         NilExprKind::CustomField(access) => {
@@ -51,13 +53,15 @@ pub(in crate::runtime) fn eval_nil_expr(
                 EvaluatedValue::Nil => Ok(()),
                 other => {
                     let descriptor = plan.custom_constructor(constructor);
-                    Err(ExecutionError::CustomFieldFamilyMismatch {
-                        custom_type: plan.custom_value_type(constructor.type_id()),
-                        constructor: descriptor.name().clone(),
-                        field_index: access.index(),
-                        expected: ValueType::Nil,
-                        actual: other.value_type(plan),
-                    })
+                    Err(ExecutionError::Invariant(
+                        InvariantError::CustomFieldFamilyMismatch {
+                            custom_type: plan.custom_value_type(constructor.type_id()),
+                            constructor: descriptor.name().clone(),
+                            field_index: access.index(),
+                            expected: ValueType::Nil,
+                            actual: other.value_type(plan),
+                        },
+                    ))
                 }
             }
         }

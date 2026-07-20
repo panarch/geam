@@ -5,11 +5,11 @@ use super::{
 use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{FloatExpr, FloatExprKind};
-use crate::runtime::ExecutionError;
 use crate::runtime::evaluated::EvaluatedValue;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
 use crate::runtime::state::RuntimeState;
+use crate::runtime::{ExecutionError, InvariantError};
 
 pub(in crate::runtime) fn eval_float_expr(
     plan: &ExecutionPlan,
@@ -36,10 +36,12 @@ pub(in crate::runtime) fn eval_float_expr(
         FloatExprKind::TupleIndex { tuple, index } => {
             match project_tuple_expr(plan, state, frame, tuple, *index, ValueType::Float)? {
                 EvaluatedValue::Float(value) => Ok(value),
-                other => Err(ExecutionError::TupleIndexFamilyMismatch {
-                    expected: ValueType::Float,
-                    actual: other.value_type(plan),
-                }),
+                other => Err(ExecutionError::Invariant(
+                    InvariantError::TupleIndexFamilyMismatch {
+                        expected: ValueType::Float,
+                        actual: other.value_type(plan),
+                    },
+                )),
             }
         }
         FloatExprKind::CustomField(access) => {
@@ -48,13 +50,15 @@ pub(in crate::runtime) fn eval_float_expr(
                 EvaluatedValue::Float(value) => Ok(value),
                 other => {
                     let descriptor = plan.custom_constructor(constructor);
-                    Err(ExecutionError::CustomFieldFamilyMismatch {
-                        custom_type: plan.custom_value_type(constructor.type_id()),
-                        constructor: descriptor.name().clone(),
-                        field_index: access.index(),
-                        expected: ValueType::Float,
-                        actual: other.value_type(plan),
-                    })
+                    Err(ExecutionError::Invariant(
+                        InvariantError::CustomFieldFamilyMismatch {
+                            custom_type: plan.custom_value_type(constructor.type_id()),
+                            constructor: descriptor.name().clone(),
+                            field_index: access.index(),
+                            expected: ValueType::Float,
+                            actual: other.value_type(plan),
+                        },
+                    ))
                 }
             }
         }

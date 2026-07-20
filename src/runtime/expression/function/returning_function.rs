@@ -13,6 +13,7 @@ use crate::runtime::function;
 use crate::runtime::state::RuntimeState;
 use crate::runtime::{
     EvaluatedFunctionFunction, EvaluatedFunctionValueKind, EvaluatedValue, ExecutionError,
+    InvariantError,
 };
 
 pub(in crate::runtime) fn eval_function_function_expr(
@@ -86,9 +87,13 @@ pub(in crate::runtime) fn eval_function_function_expr_kind(
                     EvaluatedFunctionValueKind::Function(value) if actual == expected => {
                         Ok(value.clone())
                     }
-                    _ => Err(ExecutionError::TupleIndexFamilyMismatch { expected, actual }),
+                    _ => Err(ExecutionError::Invariant(
+                        InvariantError::TupleIndexFamilyMismatch { expected, actual },
+                    )),
                 },
-                _ => Err(ExecutionError::TupleIndexFamilyMismatch { expected, actual }),
+                _ => Err(ExecutionError::Invariant(
+                    InvariantError::TupleIndexFamilyMismatch { expected, actual },
+                )),
             }
         }
         FunctionFunctionExprKind::CustomField(access) => {
@@ -101,13 +106,15 @@ pub(in crate::runtime) fn eval_function_function_expr_kind(
                 }
                 _ => {
                     let descriptor = plan.custom_constructor(constructor);
-                    Err(ExecutionError::CustomFieldFamilyMismatch {
-                        custom_type: plan.custom_value_type(constructor.type_id()),
-                        constructor: descriptor.name().clone(),
-                        field_index: access.index(),
-                        expected,
-                        actual,
-                    })
+                    Err(ExecutionError::Invariant(
+                        InvariantError::CustomFieldFamilyMismatch {
+                            custom_type: plan.custom_value_type(constructor.type_id()),
+                            constructor: descriptor.name().clone(),
+                            field_index: access.index(),
+                            expected,
+                            actual,
+                        },
+                    ))
                 }
             }
         }
@@ -117,10 +124,12 @@ pub(in crate::runtime) fn eval_function_function_expr_kind(
                 project_function_list_expr(plan, state, frame, list, *index, &public_type)?;
             match function.kind() {
                 EvaluatedFunctionValueKind::Function(value) => Ok(value.clone()),
-                _ => Err(ExecutionError::FunctionReturnFamilyMismatch {
-                    expected: FunctionReturnFamily::Function,
-                    actual: function.kind().family(),
-                }),
+                _ => Err(ExecutionError::Invariant(
+                    InvariantError::FunctionReturnFamilyMismatch {
+                        expected: FunctionReturnFamily::Function,
+                        actual: function.kind().family(),
+                    },
+                )),
             }
         }
         FunctionFunctionExprKind::Panic(panic) => {
@@ -192,7 +201,7 @@ mod tests {
         IntLocalId, ListExpr, ModulePlan, PanicExpr, PanicSite, Param, ParamLocal, ReturnExpr,
         Step, StringExpr, TupleExpr, ValueType,
     };
-    use crate::runtime::{ExecutionError, run_main};
+    use crate::runtime::{ExecutionError, InvariantError, run_main};
 
     #[test]
     fn source_function_function_expression_variants_evaluate_exact_values() {
@@ -378,10 +387,10 @@ pub fn main() {
 
         assert_eq!(
             run_module_function_function_expression(expression),
-            ExecutionError::TupleIndexFamilyMismatch {
+            ExecutionError::Invariant(InvariantError::TupleIndexFamilyMismatch {
                 expected: ValueType::Function(Box::new(expected_type.to_function_type())),
                 actual: ValueType::Function(Box::new(actual_type.to_function_type())),
-            },
+            }),
         );
     }
 

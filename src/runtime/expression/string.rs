@@ -5,11 +5,11 @@ use super::{
 use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{StringExpr, StringExprKind};
-use crate::runtime::ExecutionError;
 use crate::runtime::evaluated::EvaluatedValue;
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
 use crate::runtime::state::RuntimeState;
+use crate::runtime::{ExecutionError, InvariantError};
 use ecow::EcoString;
 
 pub(in crate::runtime) fn eval_string_expr(
@@ -37,10 +37,12 @@ pub(in crate::runtime) fn eval_string_expr(
         StringExprKind::TupleIndex { tuple, index } => {
             match project_tuple_expr(plan, state, frame, tuple, *index, ValueType::String)? {
                 EvaluatedValue::String(value) => Ok(value),
-                other => Err(ExecutionError::TupleIndexFamilyMismatch {
-                    expected: ValueType::String,
-                    actual: other.value_type(plan),
-                }),
+                other => Err(ExecutionError::Invariant(
+                    InvariantError::TupleIndexFamilyMismatch {
+                        expected: ValueType::String,
+                        actual: other.value_type(plan),
+                    },
+                )),
             }
         }
         StringExprKind::CustomField(access) => {
@@ -49,13 +51,15 @@ pub(in crate::runtime) fn eval_string_expr(
                 EvaluatedValue::String(value) => Ok(value),
                 other => {
                     let descriptor = plan.custom_constructor(constructor);
-                    Err(ExecutionError::CustomFieldFamilyMismatch {
-                        custom_type: plan.custom_value_type(constructor.type_id()),
-                        constructor: descriptor.name().clone(),
-                        field_index: access.index(),
-                        expected: ValueType::String,
-                        actual: other.value_type(plan),
-                    })
+                    Err(ExecutionError::Invariant(
+                        InvariantError::CustomFieldFamilyMismatch {
+                            custom_type: plan.custom_value_type(constructor.type_id()),
+                            constructor: descriptor.name().clone(),
+                            field_index: access.index(),
+                            expected: ValueType::String,
+                            actual: other.value_type(plan),
+                        },
+                    ))
                 }
             }
         }

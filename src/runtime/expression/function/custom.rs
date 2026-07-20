@@ -13,7 +13,7 @@ use crate::runtime::expression::{
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::state::RuntimeState;
-use crate::runtime::{ExecutionError, function};
+use crate::runtime::{ExecutionError, InvariantError, function};
 
 pub(in crate::runtime) fn eval_custom_function_expr(
     plan: &ExecutionPlan,
@@ -93,9 +93,13 @@ pub(in crate::runtime) fn eval_custom_function_expr_kind(
                     EvaluatedFunctionValueKind::Custom(value) if actual == expected => {
                         Ok(value.clone())
                     }
-                    _ => Err(ExecutionError::TupleIndexFamilyMismatch { expected, actual }),
+                    _ => Err(ExecutionError::Invariant(
+                        InvariantError::TupleIndexFamilyMismatch { expected, actual },
+                    )),
                 },
-                _ => Err(ExecutionError::TupleIndexFamilyMismatch { expected, actual }),
+                _ => Err(ExecutionError::Invariant(
+                    InvariantError::TupleIndexFamilyMismatch { expected, actual },
+                )),
             }
         }
         CustomFunctionExprKind::CustomField(access) => {
@@ -108,13 +112,15 @@ pub(in crate::runtime) fn eval_custom_function_expr_kind(
                 }
                 _ => {
                     let descriptor = plan.custom_constructor(constructor);
-                    Err(ExecutionError::CustomFieldFamilyMismatch {
-                        custom_type: plan.custom_value_type(constructor.type_id()),
-                        constructor: descriptor.name().clone(),
-                        field_index: access.index(),
-                        expected,
-                        actual,
-                    })
+                    Err(ExecutionError::Invariant(
+                        InvariantError::CustomFieldFamilyMismatch {
+                            custom_type: plan.custom_value_type(constructor.type_id()),
+                            constructor: descriptor.name().clone(),
+                            field_index: access.index(),
+                            expected,
+                            actual,
+                        },
+                    ))
                 }
             }
         }
@@ -124,10 +130,12 @@ pub(in crate::runtime) fn eval_custom_function_expr_kind(
                 project_function_list_expr(plan, state, frame, list, *index, &public_type)?;
             match function.kind() {
                 EvaluatedFunctionValueKind::Custom(value) => Ok(value.clone()),
-                _ => Err(ExecutionError::FunctionReturnFamilyMismatch {
-                    expected: FunctionReturnFamily::Custom,
-                    actual: function.kind().family(),
-                }),
+                _ => Err(ExecutionError::Invariant(
+                    InvariantError::FunctionReturnFamilyMismatch {
+                        expected: FunctionReturnFamily::Custom,
+                        actual: function.kind().family(),
+                    },
+                )),
             }
         }
         CustomFunctionExprKind::Panic(panic) => {
@@ -202,7 +210,7 @@ mod tests {
         ParamLocal, ReturnExpr, Step, StringExpr, TupleExpr, ValueShape, ValueType,
         monomorphic_function_instantiation,
     };
-    use crate::runtime::{ExecutionError, run_main};
+    use crate::runtime::{ExecutionError, InvariantError, run_main};
 
     fn custom_function_instantiation(
         template: usize,
@@ -330,13 +338,13 @@ pub fn main() {
 
         assert_eq!(
             run_module_custom_function_expression(expression),
-            ExecutionError::TupleIndexFamilyMismatch {
+            ExecutionError::Invariant(InvariantError::TupleIndexFamilyMismatch {
                 expected: ValueType::Function(Box::new(type_.to_function_type())),
                 actual: ValueType::Function(Box::new(FunctionType::new(
                     Vec::new(),
                     ValueType::Int,
                 ))),
-            },
+            }),
         );
 
         let tuple = TupleExpr::value(
@@ -347,10 +355,10 @@ pub fn main() {
 
         assert_eq!(
             run_module_custom_function_expression(expression),
-            ExecutionError::TupleIndexFamilyMismatch {
+            ExecutionError::Invariant(InvariantError::TupleIndexFamilyMismatch {
                 expected: ValueType::Function(Box::new(type_.to_function_type())),
                 actual: ValueType::Int,
-            },
+            }),
         );
 
         let actual_type = CustomFunctionType::new(vec![ValueType::Int], boxed_type());
@@ -370,10 +378,10 @@ pub fn main() {
 
         assert_eq!(
             run_module_custom_function_expression(expression),
-            ExecutionError::TupleIndexFamilyMismatch {
+            ExecutionError::Invariant(InvariantError::TupleIndexFamilyMismatch {
                 expected: ValueType::Function(Box::new(type_.to_function_type())),
                 actual: ValueType::Function(Box::new(actual_type.to_function_type())),
-            },
+            }),
         );
     }
 

@@ -16,7 +16,6 @@ use crate::plan::execution::{
     UtfCodepointListItem,
 };
 use crate::plan::{FunctionType, ValueType};
-use crate::runtime::ExecutionError;
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomValue, EvaluatedFunctionValue, EvaluatedValue,
 };
@@ -28,6 +27,7 @@ use crate::runtime::state::{
     ListValueId, NilListValueId, ParameterListListValueId, ParameterListValueId, RuntimeState,
     StoredListValueId, StringListValueId, TupleListValueId, UtfCodepointListValueId,
 };
+use crate::runtime::{ExecutionError, InvariantError};
 
 pub(in crate::runtime) fn eval_list_expr(
     plan: &ExecutionPlan,
@@ -169,14 +169,18 @@ fn eval_parameter_list_expr_kind(
             let expected = plan.list_value_type(item.type_id().list_type());
             match project_tuple_expr(plan, state, frame, tuple, *index, expected.clone())? {
                 EvaluatedValue::List(ListValueId::Parameter(value)) => Ok(value),
-                EvaluatedValue::List(value) => Err(ExecutionError::TupleIndexFamilyMismatch {
-                    expected,
-                    actual: plan.list_value_type(value.list_type()),
-                }),
-                other => Err(ExecutionError::TupleIndexFamilyMismatch {
-                    expected,
-                    actual: other.value_type(plan),
-                }),
+                EvaluatedValue::List(value) => Err(ExecutionError::Invariant(
+                    InvariantError::TupleIndexFamilyMismatch {
+                        expected,
+                        actual: plan.list_value_type(value.list_type()),
+                    },
+                )),
+                other => Err(ExecutionError::Invariant(
+                    InvariantError::TupleIndexFamilyMismatch {
+                        expected,
+                        actual: other.value_type(plan),
+                    },
+                )),
             }
         }
         ParameterListExprKind::CustomField(access) => {
@@ -186,13 +190,15 @@ fn eval_parameter_list_expr_kind(
                 EvaluatedValue::List(ListValueId::Parameter(value)) => Ok(value),
                 value => {
                     let descriptor = plan.custom_constructor(constructor);
-                    Err(ExecutionError::CustomFieldFamilyMismatch {
-                        custom_type: plan.custom_value_type(constructor.type_id()),
-                        constructor: descriptor.name().clone(),
-                        field_index: access.index(),
-                        expected,
-                        actual: value.value_type(plan),
-                    })
+                    Err(ExecutionError::Invariant(
+                        InvariantError::CustomFieldFamilyMismatch {
+                            custom_type: plan.custom_value_type(constructor.type_id()),
+                            constructor: descriptor.name().clone(),
+                            field_index: access.index(),
+                            expected,
+                            actual: value.value_type(plan),
+                        },
+                    ))
                 }
             }
         }
@@ -202,11 +208,13 @@ fn eval_parameter_list_expr_kind(
             if source.index() < length {
                 Ok(ParameterListValueId::new(item.type_id()))
             } else {
-                Err(ExecutionError::ListIndexOutOfBounds {
-                    item_type: plan.list_value_type(item.type_id().list_type()),
-                    index: source.index(),
-                    length,
-                })
+                Err(ExecutionError::Invariant(
+                    InvariantError::ListIndexOutOfBounds {
+                        item_type: plan.list_value_type(item.type_id().list_type()),
+                        index: source.index(),
+                        length,
+                    },
+                ))
             }
         }
         ParameterListExprKind::Panic(panic) => {
@@ -424,13 +432,18 @@ fn eval_typed_list_expr_kind<Item: RuntimeListItem>(
                 EvaluatedValue::List(value) => {
                     let actual = plan.list_value_type(value.list_type());
                     Item::from_tuple_value(value).ok_or_else(|| {
-                        ExecutionError::TupleIndexFamilyMismatch { expected, actual }
+                        ExecutionError::Invariant(InvariantError::TupleIndexFamilyMismatch {
+                            expected,
+                            actual,
+                        })
                     })
                 }
-                other => Err(ExecutionError::TupleIndexFamilyMismatch {
-                    expected,
-                    actual: other.value_type(plan),
-                }),
+                other => Err(ExecutionError::Invariant(
+                    InvariantError::TupleIndexFamilyMismatch {
+                        expected,
+                        actual: other.value_type(plan),
+                    },
+                )),
             }
         }
         TypedListExprKind::CustomField(access) => {
@@ -441,24 +454,26 @@ fn eval_typed_list_expr_kind<Item: RuntimeListItem>(
                     let actual = plan.list_value_type(value.list_type());
                     Item::from_tuple_value(value).ok_or_else(|| {
                         let descriptor = plan.custom_constructor(constructor);
-                        ExecutionError::CustomFieldFamilyMismatch {
+                        ExecutionError::Invariant(InvariantError::CustomFieldFamilyMismatch {
                             custom_type: plan.custom_value_type(constructor.type_id()),
                             constructor: descriptor.name().clone(),
                             field_index: access.index(),
                             expected,
                             actual,
-                        }
+                        })
                     })
                 }
                 other => {
                     let descriptor = plan.custom_constructor(constructor);
-                    Err(ExecutionError::CustomFieldFamilyMismatch {
-                        custom_type: plan.custom_value_type(constructor.type_id()),
-                        constructor: descriptor.name().clone(),
-                        field_index: access.index(),
-                        expected,
-                        actual: other.value_type(plan),
-                    })
+                    Err(ExecutionError::Invariant(
+                        InvariantError::CustomFieldFamilyMismatch {
+                            custom_type: plan.custom_value_type(constructor.type_id()),
+                            constructor: descriptor.name().clone(),
+                            field_index: access.index(),
+                            expected,
+                            actual: other.value_type(plan),
+                        },
+                    ))
                 }
             }
         }
@@ -469,10 +484,12 @@ fn eval_typed_list_expr_kind<Item: RuntimeListItem>(
                 .get(source.index())
                 .cloned()
                 .map(|value| Item::from_core(item, value.into_core()))
-                .ok_or_else(|| ExecutionError::ListIndexOutOfBounds {
-                    item_type: plan.list_value_type(item.list_type()),
-                    index: source.index(),
-                    length: values.len(),
+                .ok_or_else(|| {
+                    ExecutionError::Invariant(InvariantError::ListIndexOutOfBounds {
+                        item_type: plan.list_value_type(item.list_type()),
+                        index: source.index(),
+                        length: values.len(),
+                    })
                 })
         }
         TypedListExprKind::DropFirst { list, count } => {
@@ -1257,14 +1274,13 @@ macro_rules! project_primitive_list {
         ) -> Result<$value, ExecutionError> {
             let list = $eval(plan, state, frame, list)?;
             let values = state.$values(&list);
-            values
-                .get(index)
-                .$get()
-                .ok_or_else(|| ExecutionError::ListIndexOutOfBounds {
+            values.get(index).$get().ok_or_else(|| {
+                ExecutionError::Invariant(InvariantError::ListIndexOutOfBounds {
                     item_type: $expected,
                     index,
                     length: values.len(),
                 })
+            })
         }
     };
 }
@@ -1334,14 +1350,13 @@ pub(in crate::runtime) fn project_custom_list_expr(
 ) -> Result<EvaluatedCustomValue, ExecutionError> {
     let list = eval_custom_list_expr(plan, state, frame, list)?;
     let values = state.custom_values(&list);
-    values
-        .get(index)
-        .cloned()
-        .ok_or_else(|| ExecutionError::ListIndexOutOfBounds {
+    values.get(index).cloned().ok_or_else(|| {
+        ExecutionError::Invariant(InvariantError::ListIndexOutOfBounds {
             item_type: ValueType::Custom(plan.custom_value_type(item_type)),
             index,
             length: values.len(),
         })
+    })
 }
 
 pub(in crate::runtime) fn project_nil_list_expr(
@@ -1356,11 +1371,13 @@ pub(in crate::runtime) fn project_nil_list_expr(
     if index < len {
         Ok(())
     } else {
-        Err(ExecutionError::ListIndexOutOfBounds {
-            item_type: ValueType::Nil,
-            index,
-            length: len,
-        })
+        Err(ExecutionError::Invariant(
+            InvariantError::ListIndexOutOfBounds {
+                item_type: ValueType::Nil,
+                index,
+                length: len,
+            },
+        ))
     }
 }
 
@@ -1374,14 +1391,13 @@ pub(in crate::runtime) fn project_tuple_list_expr(
 ) -> Result<Vec<EvaluatedValue>, ExecutionError> {
     let list = eval_tuple_list_expr(plan, state, frame, list)?;
     let values = state.tuple_values(&list);
-    values
-        .get(index)
-        .cloned()
-        .ok_or_else(|| ExecutionError::ListIndexOutOfBounds {
+    values.get(index).cloned().ok_or_else(|| {
+        ExecutionError::Invariant(InvariantError::ListIndexOutOfBounds {
             item_type: ValueType::Tuple(item_type.to_vec()),
             index,
             length: values.len(),
         })
+    })
 }
 
 pub(in crate::runtime) fn project_function_list_expr(
@@ -1394,14 +1410,13 @@ pub(in crate::runtime) fn project_function_list_expr(
 ) -> Result<EvaluatedFunctionValue, ExecutionError> {
     let list = eval_function_list_expr(plan, state, frame, list)?;
     let values = state.function_values(&list);
-    values
-        .get(index)
-        .cloned()
-        .ok_or_else(|| ExecutionError::ListIndexOutOfBounds {
+    values.get(index).cloned().ok_or_else(|| {
+        ExecutionError::Invariant(InvariantError::ListIndexOutOfBounds {
             item_type: ValueType::Function(Box::new(item_type.clone())),
             index,
             length: values.len(),
         })
+    })
 }
 
 #[cfg(test)]
@@ -1430,7 +1445,7 @@ mod tests {
     };
     use crate::runtime::frame::Frame;
     use crate::runtime::{EvaluatedCustomValue, EvaluatedValue};
-    use crate::runtime::{ExecutionError, ListValue, RuntimeState, Value};
+    use crate::runtime::{ExecutionError, InvariantError, ListValue, RuntimeState, Value};
 
     #[test]
     fn source_bool_cases_select_false_branches_for_every_list_storage_family() {
@@ -1530,10 +1545,12 @@ pub fn main() {
 
         assert_eq!(
             crate::run_main(&generic_list_plan(expression)),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: expected.clone(),
-                actual: ValueType::List(Box::new(ValueType::Int)),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: expected.clone(),
+                    actual: ValueType::List(Box::new(ValueType::Int)),
+                }
+            )),
         );
 
         let expression = ModuleListExpr::tuple_index(
@@ -1548,10 +1565,12 @@ pub fn main() {
         .expect("parameter list tuple projection should retain its generic item");
         assert_eq!(
             crate::run_main(&generic_list_plan(expression)),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected,
-                actual: ValueType::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected,
+                    actual: ValueType::Int,
+                }
+            )),
         );
     }
 
@@ -1570,11 +1589,13 @@ pub fn main() {
 
         assert_eq!(
             crate::run_main(&generic_list_plan(expression)),
-            Err(ExecutionError::ListIndexOutOfBounds {
-                item_type: ValueType::List(Box::new(ValueType::Parameter(parameter))),
-                index: 0,
-                length: 0,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::ListIndexOutOfBounds {
+                    item_type: ValueType::List(Box::new(ValueType::Parameter(parameter))),
+                    index: 0,
+                    length: 0,
+                }
+            )),
         );
     }
 
@@ -1620,13 +1641,15 @@ pub fn main() {
 
         assert_eq!(
             super::eval_parameter_list_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::CustomFieldFamilyMismatch {
-                custom_type: plan.custom_value_type(construction.constructor().type_id()),
-                constructor: descriptor.name().clone(),
-                field_index: access.index(),
-                expected: plan.list_value_type(expression.item().type_id().list_type()),
-                actual: ValueType::List(Box::new(ValueType::Int)),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::CustomFieldFamilyMismatch {
+                    custom_type: plan.custom_value_type(construction.constructor().type_id()),
+                    constructor: descriptor.name().clone(),
+                    field_index: access.index(),
+                    expected: plan.list_value_type(expression.item().type_id().list_type()),
+                    actual: ValueType::List(Box::new(ValueType::Int)),
+                }
+            )),
         );
     }
 
@@ -1782,11 +1805,13 @@ pub fn main() {
         let mut frame = Frame::new(function.frame_layout(), &mut state);
         assert_eq!(
             project_int_list_expr(&plan, &mut state, &mut frame, expression, 0),
-            Err(ExecutionError::ListIndexOutOfBounds {
-                item_type: ValueType::Int,
-                index: 0,
-                length: 0,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::ListIndexOutOfBounds {
+                    item_type: ValueType::Int,
+                    index: 0,
+                    length: 0,
+                }
+            )),
         );
 
         let function = plan.string_list_function(plan.string_list_function_id(0));
@@ -1794,11 +1819,13 @@ pub fn main() {
         let mut frame = Frame::new(function.frame_layout(), &mut state);
         assert_eq!(
             project_string_list_expr(&plan, &mut state, &mut frame, expression, 0),
-            Err(ExecutionError::ListIndexOutOfBounds {
-                item_type: ValueType::String,
-                index: 0,
-                length: 0,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::ListIndexOutOfBounds {
+                    item_type: ValueType::String,
+                    index: 0,
+                    length: 0,
+                }
+            )),
         );
 
         let function = plan.bit_array_list_function(plan.bit_array_list_function_id(0));
@@ -1806,11 +1833,13 @@ pub fn main() {
         let mut frame = Frame::new(function.frame_layout(), &mut state);
         assert_eq!(
             project_bit_array_list_expr(&plan, &mut state, &mut frame, expression, 0),
-            Err(ExecutionError::ListIndexOutOfBounds {
-                item_type: ValueType::BitArray,
-                index: 0,
-                length: 0,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::ListIndexOutOfBounds {
+                    item_type: ValueType::BitArray,
+                    index: 0,
+                    length: 0,
+                }
+            )),
         );
 
         let function = plan.utf_codepoint_list_function(plan.utf_codepoint_list_function_id(0));
@@ -1818,11 +1847,13 @@ pub fn main() {
         let mut frame = Frame::new(function.frame_layout(), &mut state);
         assert_eq!(
             project_utf_codepoint_list_expr(&plan, &mut state, &mut frame, expression, 0),
-            Err(ExecutionError::ListIndexOutOfBounds {
-                item_type: ValueType::UtfCodepoint,
-                index: 0,
-                length: 0,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::ListIndexOutOfBounds {
+                    item_type: ValueType::UtfCodepoint,
+                    index: 0,
+                    length: 0,
+                }
+            )),
         );
 
         let function = plan.custom_list_function(plan.custom_list_function_id(0));
@@ -1831,11 +1862,13 @@ pub fn main() {
         let mut frame = Frame::new(function.frame_layout(), &mut state);
         assert_eq!(
             project_custom_list_expr(&plan, &mut state, &mut frame, expression, 0, item_type,),
-            Err(ExecutionError::ListIndexOutOfBounds {
-                item_type: ValueType::Custom(plan.custom_value_type(item_type)),
-                index: 0,
-                length: 0,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::ListIndexOutOfBounds {
+                    item_type: ValueType::Custom(plan.custom_value_type(item_type)),
+                    index: 0,
+                    length: 0,
+                }
+            )),
         );
 
         let function = plan.float_list_function(plan.float_list_function_id(0));
@@ -1843,11 +1876,13 @@ pub fn main() {
         let mut frame = Frame::new(function.frame_layout(), &mut state);
         assert_eq!(
             project_float_list_expr(&plan, &mut state, &mut frame, expression, 0),
-            Err(ExecutionError::ListIndexOutOfBounds {
-                item_type: ValueType::Float,
-                index: 0,
-                length: 0,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::ListIndexOutOfBounds {
+                    item_type: ValueType::Float,
+                    index: 0,
+                    length: 0,
+                }
+            )),
         );
 
         let function = plan.bool_list_function(plan.bool_list_function_id(0));
@@ -1855,11 +1890,13 @@ pub fn main() {
         let mut frame = Frame::new(function.frame_layout(), &mut state);
         assert_eq!(
             project_bool_list_expr(&plan, &mut state, &mut frame, expression, 0),
-            Err(ExecutionError::ListIndexOutOfBounds {
-                item_type: ValueType::Bool,
-                index: 0,
-                length: 0,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::ListIndexOutOfBounds {
+                    item_type: ValueType::Bool,
+                    index: 0,
+                    length: 0,
+                }
+            )),
         );
 
         let function = plan.nil_list_function(plan.nil_list_function_id(0));
@@ -1867,11 +1904,13 @@ pub fn main() {
         let mut frame = Frame::new(function.frame_layout(), &mut state);
         assert_eq!(
             project_nil_list_expr(&plan, &mut state, &mut frame, expression, 0),
-            Err(ExecutionError::ListIndexOutOfBounds {
-                item_type: ValueType::Nil,
-                index: 0,
-                length: 0,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::ListIndexOutOfBounds {
+                    item_type: ValueType::Nil,
+                    index: 0,
+                    length: 0,
+                }
+            )),
         );
 
         let function = plan.tuple_list_function(plan.tuple_list_function_id(0));
@@ -1886,11 +1925,13 @@ pub fn main() {
                 0,
                 &[ValueType::Int],
             ),
-            Err(ExecutionError::ListIndexOutOfBounds {
-                item_type: ValueType::Tuple(vec![ValueType::Int]),
-                index: 0,
-                length: 0,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::ListIndexOutOfBounds {
+                    item_type: ValueType::Tuple(vec![ValueType::Int]),
+                    index: 0,
+                    length: 0,
+                }
+            )),
         );
 
         let function = plan.function_list_function(plan.function_list_function_id(0));
@@ -1906,11 +1947,13 @@ pub fn main() {
                 0,
                 &function_type,
             ),
-            Err(ExecutionError::ListIndexOutOfBounds {
-                item_type: ValueType::Function(Box::new(function_type)),
-                index: 0,
-                length: 0,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::ListIndexOutOfBounds {
+                    item_type: ValueType::Function(Box::new(function_type)),
+                    index: 0,
+                    length: 0,
+                }
+            )),
         );
     }
 
@@ -2095,10 +2138,12 @@ pub fn main() {
 
         assert_eq!(
             super::eval_int_list_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::List(Box::new(ValueType::Int)),
-                actual: ValueType::List(Box::new(ValueType::String)),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::List(Box::new(ValueType::Int)),
+                    actual: ValueType::List(Box::new(ValueType::String)),
+                }
+            )),
         );
     }
 
@@ -2643,115 +2688,145 @@ pub fn main() {
         match expression {
             crate::plan::execution::ListLocalExpr::Parameter { value, .. } => assert_eq!(
                 super::eval_parameter_list_expr(plan, state, frame, value),
-                Err(ExecutionError::ListIndexOutOfBounds {
-                    item_type: ValueType::List(Box::new(ValueType::Parameter(
-                        value.item().type_id().item(),
-                    ))),
-                    index: 0,
-                    length: 0,
-                }),
+                Err(ExecutionError::Invariant(
+                    InvariantError::ListIndexOutOfBounds {
+                        item_type: ValueType::List(Box::new(ValueType::Parameter(
+                            value.item().type_id().item(),
+                        ))),
+                        index: 0,
+                        length: 0,
+                    }
+                )),
             ),
             crate::plan::execution::ListLocalExpr::Int { value, .. } => assert_eq!(
                 super::eval_int_list_expr(plan, state, frame, value),
-                Err(ExecutionError::ListIndexOutOfBounds {
-                    item_type: ValueType::List(Box::new(ValueType::Int)),
-                    index: 0,
-                    length: 0,
-                }),
+                Err(ExecutionError::Invariant(
+                    InvariantError::ListIndexOutOfBounds {
+                        item_type: ValueType::List(Box::new(ValueType::Int)),
+                        index: 0,
+                        length: 0,
+                    }
+                )),
             ),
             crate::plan::execution::ListLocalExpr::String { value, .. } => assert_eq!(
                 super::eval_string_list_expr(plan, state, frame, value),
-                Err(ExecutionError::ListIndexOutOfBounds {
-                    item_type: ValueType::List(Box::new(ValueType::String)),
-                    index: 0,
-                    length: 0,
-                }),
+                Err(ExecutionError::Invariant(
+                    InvariantError::ListIndexOutOfBounds {
+                        item_type: ValueType::List(Box::new(ValueType::String)),
+                        index: 0,
+                        length: 0,
+                    }
+                )),
             ),
             crate::plan::execution::ListLocalExpr::BitArray { value, .. } => assert_eq!(
                 super::eval_bit_array_list_expr(plan, state, frame, value),
-                Err(ExecutionError::ListIndexOutOfBounds {
-                    item_type: ValueType::List(Box::new(ValueType::BitArray)),
-                    index: 0,
-                    length: 0,
-                }),
+                Err(ExecutionError::Invariant(
+                    InvariantError::ListIndexOutOfBounds {
+                        item_type: ValueType::List(Box::new(ValueType::BitArray)),
+                        index: 0,
+                        length: 0,
+                    }
+                )),
             ),
             crate::plan::execution::ListLocalExpr::UtfCodepoint { value, .. } => assert_eq!(
                 super::eval_utf_codepoint_list_expr(plan, state, frame, value),
-                Err(ExecutionError::ListIndexOutOfBounds {
-                    item_type: ValueType::List(Box::new(ValueType::UtfCodepoint)),
-                    index: 0,
-                    length: 0,
-                }),
+                Err(ExecutionError::Invariant(
+                    InvariantError::ListIndexOutOfBounds {
+                        item_type: ValueType::List(Box::new(ValueType::UtfCodepoint)),
+                        index: 0,
+                        length: 0,
+                    }
+                )),
             ),
             crate::plan::execution::ListLocalExpr::Custom { value, .. } => assert_eq!(
                 super::eval_custom_list_expr(plan, state, frame, value),
-                Err(ExecutionError::ListIndexOutOfBounds {
-                    item_type: ValueType::List(Box::new(ValueType::Custom(
-                        plan.custom_value_type(value.item().type_id().item_type()),
-                    ))),
-                    index: 0,
-                    length: 0,
-                }),
+                Err(ExecutionError::Invariant(
+                    InvariantError::ListIndexOutOfBounds {
+                        item_type: ValueType::List(Box::new(ValueType::Custom(
+                            plan.custom_value_type(value.item().type_id().item_type()),
+                        ))),
+                        index: 0,
+                        length: 0,
+                    }
+                )),
             ),
             crate::plan::execution::ListLocalExpr::Float { value, .. } => assert_eq!(
                 super::eval_float_list_expr(plan, state, frame, value),
-                Err(ExecutionError::ListIndexOutOfBounds {
-                    item_type: ValueType::List(Box::new(ValueType::Float)),
-                    index: 0,
-                    length: 0,
-                }),
+                Err(ExecutionError::Invariant(
+                    InvariantError::ListIndexOutOfBounds {
+                        item_type: ValueType::List(Box::new(ValueType::Float)),
+                        index: 0,
+                        length: 0,
+                    }
+                )),
             ),
             crate::plan::execution::ListLocalExpr::Bool { value, .. } => assert_eq!(
                 super::eval_bool_list_expr(plan, state, frame, value),
-                Err(ExecutionError::ListIndexOutOfBounds {
-                    item_type: ValueType::List(Box::new(ValueType::Bool)),
-                    index: 0,
-                    length: 0,
-                }),
+                Err(ExecutionError::Invariant(
+                    InvariantError::ListIndexOutOfBounds {
+                        item_type: ValueType::List(Box::new(ValueType::Bool)),
+                        index: 0,
+                        length: 0,
+                    }
+                )),
             ),
             crate::plan::execution::ListLocalExpr::Nil { value, .. } => assert_eq!(
                 super::eval_nil_list_expr(plan, state, frame, value),
-                Err(ExecutionError::ListIndexOutOfBounds {
-                    item_type: ValueType::List(Box::new(ValueType::Nil)),
-                    index: 0,
-                    length: 0,
-                }),
+                Err(ExecutionError::Invariant(
+                    InvariantError::ListIndexOutOfBounds {
+                        item_type: ValueType::List(Box::new(ValueType::Nil)),
+                        index: 0,
+                        length: 0,
+                    }
+                )),
             ),
             crate::plan::execution::ListLocalExpr::Tuple { value, .. } => assert_eq!(
                 super::eval_tuple_list_expr(plan, state, frame, value),
-                Err(ExecutionError::ListIndexOutOfBounds {
-                    item_type: ValueType::List(Box::new(ValueType::Tuple(vec![ValueType::Int]))),
-                    index: 0,
-                    length: 0,
-                }),
+                Err(ExecutionError::Invariant(
+                    InvariantError::ListIndexOutOfBounds {
+                        item_type: ValueType::List(Box::new(ValueType::Tuple(vec![
+                            ValueType::Int
+                        ]))),
+                        index: 0,
+                        length: 0,
+                    }
+                )),
             ),
             crate::plan::execution::ListLocalExpr::ParameterList { value, .. } => assert_eq!(
                 super::eval_parameter_list_list_expr(plan, state, frame, value),
-                Err(ExecutionError::ListIndexOutOfBounds {
-                    item_type: ValueType::List(Box::new(ValueType::List(Box::new(
-                        ValueType::Parameter(value.item().type_id().item_type().item()),
-                    )))),
-                    index: 0,
-                    length: 0,
-                }),
+                Err(ExecutionError::Invariant(
+                    InvariantError::ListIndexOutOfBounds {
+                        item_type: ValueType::List(Box::new(ValueType::List(Box::new(
+                            ValueType::Parameter(value.item().type_id().item_type().item()),
+                        )))),
+                        index: 0,
+                        length: 0,
+                    }
+                )),
             ),
             crate::plan::execution::ListLocalExpr::List { value, .. } => assert_eq!(
                 super::eval_list_list_expr(plan, state, frame, value),
-                Err(ExecutionError::ListIndexOutOfBounds {
-                    item_type: ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Int)))),
-                    index: 0,
-                    length: 0,
-                }),
+                Err(ExecutionError::Invariant(
+                    InvariantError::ListIndexOutOfBounds {
+                        item_type: ValueType::List(Box::new(ValueType::List(Box::new(
+                            ValueType::Int
+                        )))),
+                        index: 0,
+                        length: 0,
+                    }
+                )),
             ),
             crate::plan::execution::ListLocalExpr::Function { value, .. } => assert_eq!(
                 super::eval_function_list_expr(plan, state, frame, value),
-                Err(ExecutionError::ListIndexOutOfBounds {
-                    item_type: ValueType::List(Box::new(ValueType::Function(Box::new(
-                        FunctionType::new(Vec::new(), ValueType::Int),
-                    )))),
-                    index: 0,
-                    length: 0,
-                }),
+                Err(ExecutionError::Invariant(
+                    InvariantError::ListIndexOutOfBounds {
+                        item_type: ValueType::List(Box::new(ValueType::Function(Box::new(
+                            FunctionType::new(Vec::new(), ValueType::Int),
+                        )))),
+                        index: 0,
+                        length: 0,
+                    }
+                )),
             ),
         }
     }

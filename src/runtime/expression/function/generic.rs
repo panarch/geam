@@ -13,6 +13,7 @@ use crate::runtime::function;
 use crate::runtime::state::RuntimeState;
 use crate::runtime::{
     EvaluatedFunctionValueKind, EvaluatedGenericFunction, EvaluatedValue, ExecutionError,
+    InvariantError,
 };
 
 pub(in crate::runtime) fn eval_generic_function_expr(
@@ -86,9 +87,13 @@ pub(in crate::runtime) fn eval_generic_function_expr_kind(
                     EvaluatedFunctionValueKind::Generic(value) if actual == expected => {
                         Ok(value.clone())
                     }
-                    _ => Err(ExecutionError::TupleIndexFamilyMismatch { expected, actual }),
+                    _ => Err(ExecutionError::Invariant(
+                        InvariantError::TupleIndexFamilyMismatch { expected, actual },
+                    )),
                 },
-                _ => Err(ExecutionError::TupleIndexFamilyMismatch { expected, actual }),
+                _ => Err(ExecutionError::Invariant(
+                    InvariantError::TupleIndexFamilyMismatch { expected, actual },
+                )),
             }
         }
         GenericFunctionExprKind::CustomField(access) => {
@@ -101,13 +106,15 @@ pub(in crate::runtime) fn eval_generic_function_expr_kind(
                 }
                 _ => {
                     let descriptor = plan.custom_constructor(constructor);
-                    Err(ExecutionError::CustomFieldFamilyMismatch {
-                        custom_type: plan.custom_value_type(constructor.type_id()),
-                        constructor: descriptor.name().clone(),
-                        field_index: access.index(),
-                        expected,
-                        actual,
-                    })
+                    Err(ExecutionError::Invariant(
+                        InvariantError::CustomFieldFamilyMismatch {
+                            custom_type: plan.custom_value_type(constructor.type_id()),
+                            constructor: descriptor.name().clone(),
+                            field_index: access.index(),
+                            expected,
+                            actual,
+                        },
+                    ))
                 }
             }
         }
@@ -116,10 +123,12 @@ pub(in crate::runtime) fn eval_generic_function_expr_kind(
             let function = project_function_list_expr(plan, state, frame, list, *index, &type_)?;
             match function.kind() {
                 EvaluatedFunctionValueKind::Generic(value) => Ok(value.clone()),
-                _ => Err(ExecutionError::FunctionReturnFamilyMismatch {
-                    expected: FunctionReturnFamily::Generic,
-                    actual: function.kind().family(),
-                }),
+                _ => Err(ExecutionError::Invariant(
+                    InvariantError::FunctionReturnFamilyMismatch {
+                        expected: FunctionReturnFamily::Generic,
+                        actual: function.kind().family(),
+                    },
+                )),
             }
         }
         GenericFunctionExprKind::Panic(panic) => {
@@ -205,7 +214,7 @@ mod tests {
     use crate::runtime::state::RuntimeState;
     use crate::runtime::{
         EvaluatedCustomValue, EvaluatedFunctionValue, EvaluatedFunctionValueKind,
-        EvaluatedIntFunction, EvaluatedValue, ExecutionError, PanicKind,
+        EvaluatedIntFunction, EvaluatedValue, ExecutionError, InvariantError, PanicKind,
     };
 
     #[test]
@@ -455,10 +464,12 @@ pub fn main() {
 
         assert_eq!(
             crate::run_main(&generic_function_plan(expression, vec![target])),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: expected.clone(),
-                actual: ValueType::Function(Box::new(wrong_type)),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: expected.clone(),
+                    actual: ValueType::Function(Box::new(wrong_type)),
+                }
+            )),
         );
 
         let expression = ModuleGenericFunctionExpr::tuple_index(
@@ -471,10 +482,12 @@ pub fn main() {
         );
         assert_eq!(
             crate::run_main(&generic_function_plan(expression, Vec::new())),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected,
-                actual: ValueType::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected,
+                    actual: ValueType::Int,
+                }
+            )),
         );
     }
 
@@ -519,10 +532,12 @@ pub fn main() {
 
         assert_eq!(
             eval_generic_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::Generic,
-                actual: FunctionReturnFamily::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::Generic,
+                    actual: FunctionReturnFamily::Int,
+                }
+            )),
         );
     }
 
@@ -561,15 +576,17 @@ pub fn main() {
 
         assert_eq!(
             eval_generic_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::CustomFieldFamilyMismatch {
-                custom_type: plan.custom_value_type(construction.constructor().type_id()),
-                constructor: descriptor.name().clone(),
-                field_index: access.index(),
-                expected: ValueType::Function(Box::new(generic_public_function_type(
-                    TypeParameterId(0),
-                ))),
-                actual: ValueType::Function(Box::new(plan.function_type(&wrong_type))),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::CustomFieldFamilyMismatch {
+                    custom_type: plan.custom_value_type(construction.constructor().type_id()),
+                    constructor: descriptor.name().clone(),
+                    field_index: access.index(),
+                    expected: ValueType::Function(Box::new(generic_public_function_type(
+                        TypeParameterId(0),
+                    ))),
+                    actual: ValueType::Function(Box::new(plan.function_type(&wrong_type))),
+                }
+            )),
         );
 
         let value = EvaluatedCustomValue::from_fields(
@@ -581,15 +598,17 @@ pub fn main() {
 
         assert_eq!(
             eval_generic_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::CustomFieldFamilyMismatch {
-                custom_type: plan.custom_value_type(construction.constructor().type_id()),
-                constructor: descriptor.name().clone(),
-                field_index: access.index(),
-                expected: ValueType::Function(Box::new(generic_public_function_type(
-                    TypeParameterId(0),
-                ))),
-                actual: ValueType::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::CustomFieldFamilyMismatch {
+                    custom_type: plan.custom_value_type(construction.constructor().type_id()),
+                    constructor: descriptor.name().clone(),
+                    field_index: access.index(),
+                    expected: ValueType::Function(Box::new(generic_public_function_type(
+                        TypeParameterId(0),
+                    ))),
+                    actual: ValueType::Int,
+                }
+            )),
         );
     }
 

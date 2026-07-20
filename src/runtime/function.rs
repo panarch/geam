@@ -37,7 +37,7 @@ use crate::runtime::{
     EvaluatedCustomValue, EvaluatedFloatFunction, EvaluatedFunctionFunction,
     EvaluatedFunctionValue, EvaluatedGenericFunction, EvaluatedIntFunction, EvaluatedListFunction,
     EvaluatedNeverFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
-    EvaluatedUtfCodepointFunction, EvaluatedValue, ExecutionError, Value,
+    EvaluatedUtfCodepointFunction, EvaluatedValue, ExecutionError, InvariantError, Value,
 };
 use bind::{bind_arguments, bind_function_value_arguments};
 use ecow::EcoString;
@@ -746,10 +746,12 @@ pub(in crate::runtime) fn run_int_list_function_call(
 ) -> ExecutionResult<IntListValueId> {
     let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::Int(runtime_id) = function.runtime_id() else {
-        return Err(ExecutionError::FunctionReturnFamilyMismatch {
-            expected: FunctionReturnFamily::List,
-            actual: FunctionReturnFamily::List,
-        });
+        return Err(ExecutionError::Invariant(
+            InvariantError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::List,
+                actual: FunctionReturnFamily::List,
+            },
+        ));
     };
     let frame = bind_function_value_arguments(
         plan,
@@ -771,10 +773,12 @@ pub(in crate::runtime) fn run_parameter_list_function_call(
 ) -> ExecutionResult<ParameterListValueId> {
     let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::Parameter(runtime_id) = function.runtime_id() else {
-        return Err(ExecutionError::FunctionReturnFamilyMismatch {
-            expected: FunctionReturnFamily::List,
-            actual: FunctionReturnFamily::List,
-        });
+        return Err(ExecutionError::Invariant(
+            InvariantError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::List,
+                actual: FunctionReturnFamily::List,
+            },
+        ));
     };
     let frame = bind_function_value_arguments(
         plan,
@@ -796,10 +800,12 @@ pub(in crate::runtime) fn run_string_list_function_call(
 ) -> ExecutionResult<StringListValueId> {
     let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::String(runtime_id) = function.runtime_id() else {
-        return Err(ExecutionError::FunctionReturnFamilyMismatch {
-            expected: FunctionReturnFamily::List,
-            actual: FunctionReturnFamily::List,
-        });
+        return Err(ExecutionError::Invariant(
+            InvariantError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::List,
+                actual: FunctionReturnFamily::List,
+            },
+        ));
     };
     let frame = bind_function_value_arguments(
         plan,
@@ -821,10 +827,12 @@ pub(in crate::runtime) fn run_bit_array_list_function_call(
 ) -> ExecutionResult<BitArrayListValueId> {
     let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::BitArray(runtime_id) = function.runtime_id() else {
-        return Err(ExecutionError::FunctionReturnFamilyMismatch {
-            expected: FunctionReturnFamily::List,
-            actual: FunctionReturnFamily::List,
-        });
+        return Err(ExecutionError::Invariant(
+            InvariantError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::List,
+                actual: FunctionReturnFamily::List,
+            },
+        ));
     };
     let frame = bind_function_value_arguments(
         plan,
@@ -846,10 +854,12 @@ pub(in crate::runtime) fn run_utf_codepoint_list_function_call(
 ) -> ExecutionResult<UtfCodepointListValueId> {
     let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::UtfCodepoint(runtime_id) = function.runtime_id() else {
-        return Err(ExecutionError::FunctionReturnFamilyMismatch {
-            expected: FunctionReturnFamily::List,
-            actual: FunctionReturnFamily::List,
-        });
+        return Err(ExecutionError::Invariant(
+            InvariantError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::List,
+                actual: FunctionReturnFamily::List,
+            },
+        ));
     };
     let frame = bind_function_value_arguments(
         plan,
@@ -871,10 +881,12 @@ pub(in crate::runtime) fn run_custom_list_function_call(
 ) -> ExecutionResult<CustomListValueId> {
     let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::Custom(runtime_id) = function.runtime_id() else {
-        return Err(ExecutionError::FunctionReturnFamilyMismatch {
-            expected: FunctionReturnFamily::List,
-            actual: FunctionReturnFamily::List,
-        });
+        return Err(ExecutionError::Invariant(
+            InvariantError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::List,
+                actual: FunctionReturnFamily::List,
+            },
+        ));
     };
     let frame = bind_function_value_arguments(
         plan,
@@ -896,10 +908,12 @@ pub(in crate::runtime) fn run_float_list_function_call(
 ) -> ExecutionResult<FloatListValueId> {
     let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::Float(runtime_id) = function.runtime_id() else {
-        return Err(ExecutionError::FunctionReturnFamilyMismatch {
-            expected: FunctionReturnFamily::List,
-            actual: FunctionReturnFamily::List,
-        });
+        return Err(ExecutionError::Invariant(
+            InvariantError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::List,
+                actual: FunctionReturnFamily::List,
+            },
+        ));
     };
     let frame = bind_function_value_arguments(
         plan,
@@ -921,10 +935,12 @@ pub(in crate::runtime) fn run_bool_list_function_call(
 ) -> ExecutionResult<BoolListValueId> {
     let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::Bool(runtime_id) = function.runtime_id() else {
-        return Err(ExecutionError::FunctionReturnFamilyMismatch {
-            expected: FunctionReturnFamily::List,
-            actual: FunctionReturnFamily::List,
-        });
+        return Err(ExecutionError::Invariant(
+            InvariantError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::List,
+                actual: FunctionReturnFamily::List,
+            },
+        ));
     };
     let frame = bind_function_value_arguments(
         plan,
@@ -946,10 +962,12 @@ pub(in crate::runtime) fn run_nil_list_function_call(
 ) -> ExecutionResult<NilListValueId> {
     let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::Nil(runtime_id) = function.runtime_id() else {
-        return Err(ExecutionError::FunctionReturnFamilyMismatch {
-            expected: FunctionReturnFamily::List,
-            actual: FunctionReturnFamily::List,
-        });
+        return Err(ExecutionError::Invariant(
+            InvariantError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::List,
+                actual: FunctionReturnFamily::List,
+            },
+        ));
     };
     let frame = bind_function_value_arguments(
         plan,
@@ -971,10 +989,12 @@ pub(in crate::runtime) fn run_tuple_list_function_call(
 ) -> ExecutionResult<TupleListValueId> {
     let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::Tuple(runtime_id) = function.runtime_id() else {
-        return Err(ExecutionError::FunctionReturnFamilyMismatch {
-            expected: FunctionReturnFamily::List,
-            actual: FunctionReturnFamily::List,
-        });
+        return Err(ExecutionError::Invariant(
+            InvariantError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::List,
+                actual: FunctionReturnFamily::List,
+            },
+        ));
     };
     let frame = bind_function_value_arguments(
         plan,
@@ -996,10 +1016,12 @@ pub(in crate::runtime) fn run_list_list_function_call(
 ) -> ExecutionResult<ListListValueId> {
     let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::List(runtime_id) = function.runtime_id() else {
-        return Err(ExecutionError::FunctionReturnFamilyMismatch {
-            expected: FunctionReturnFamily::List,
-            actual: FunctionReturnFamily::List,
-        });
+        return Err(ExecutionError::Invariant(
+            InvariantError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::List,
+                actual: FunctionReturnFamily::List,
+            },
+        ));
     };
     let frame = bind_function_value_arguments(
         plan,
@@ -1021,10 +1043,12 @@ pub(in crate::runtime) fn run_parameter_list_list_function_call(
 ) -> ExecutionResult<ParameterListListValueId> {
     let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::ParameterList(runtime_id) = function.runtime_id() else {
-        return Err(ExecutionError::FunctionReturnFamilyMismatch {
-            expected: FunctionReturnFamily::List,
-            actual: FunctionReturnFamily::List,
-        });
+        return Err(ExecutionError::Invariant(
+            InvariantError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::List,
+                actual: FunctionReturnFamily::List,
+            },
+        ));
     };
     let frame = bind_function_value_arguments(
         plan,
@@ -1046,10 +1070,12 @@ pub(in crate::runtime) fn run_function_list_function_call(
 ) -> ExecutionResult<FunctionListValueId> {
     let function = eval_list_function_expr(plan, state, caller_frame, function)?;
     let ListFunctionId::Function(runtime_id) = function.runtime_id() else {
-        return Err(ExecutionError::FunctionReturnFamilyMismatch {
-            expected: FunctionReturnFamily::List,
-            actual: FunctionReturnFamily::List,
-        });
+        return Err(ExecutionError::Invariant(
+            InvariantError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::List,
+                actual: FunctionReturnFamily::List,
+            },
+        ));
     };
     let frame = bind_function_value_arguments(
         plan,
@@ -1314,12 +1340,12 @@ pub(in crate::runtime) fn run_int_function_function_call(
 ) -> ExecutionResult<EvaluatedIntFunction> {
     let function = eval_function_function_expr(plan, state, caller_frame, function)?;
     let runtime_id = function.runtime_id();
-    let function_id = runtime_id
-        .int()
-        .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
+    let function_id = runtime_id.int().ok_or(ExecutionError::Invariant(
+        InvariantError::FunctionReturnFamilyMismatch {
             expected: FunctionReturnFamily::Int,
             actual: runtime_id.family(),
-        })?;
+        },
+    ))?;
     let runtime_function = plan.int_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
     let frame = bind_function_value_arguments(
@@ -1342,12 +1368,12 @@ pub(in crate::runtime) fn run_generic_function_function_call(
 ) -> ExecutionResult<EvaluatedGenericFunction> {
     let function = eval_function_function_expr(plan, state, caller_frame, function)?;
     let runtime_id = function.runtime_id();
-    let function_id = runtime_id
-        .generic()
-        .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
+    let function_id = runtime_id.generic().ok_or(ExecutionError::Invariant(
+        InvariantError::FunctionReturnFamilyMismatch {
             expected: FunctionReturnFamily::Generic,
             actual: runtime_id.family(),
-        })?;
+        },
+    ))?;
     let frame_layout = plan.generic_function_function(&function_id).frame_layout();
     let frame = bind_function_value_arguments(
         plan,
@@ -1369,12 +1395,12 @@ pub(in crate::runtime) fn run_never_function_function_call(
 ) -> ExecutionResult<EvaluatedNeverFunction> {
     let function = eval_function_function_expr(plan, state, caller_frame, function)?;
     let runtime_id = function.runtime_id();
-    let function_id = runtime_id
-        .never()
-        .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
+    let function_id = runtime_id.never().ok_or(ExecutionError::Invariant(
+        InvariantError::FunctionReturnFamilyMismatch {
             expected: FunctionReturnFamily::Never,
             actual: runtime_id.family(),
-        })?;
+        },
+    ))?;
     let frame_layout = plan.never_function_function(&function_id).frame_layout();
     let frame = bind_function_value_arguments(
         plan,
@@ -1396,12 +1422,12 @@ pub(in crate::runtime) fn run_float_function_function_call(
 ) -> ExecutionResult<EvaluatedFloatFunction> {
     let function = eval_function_function_expr(plan, state, caller_frame, function)?;
     let runtime_id = function.runtime_id();
-    let function_id = runtime_id
-        .float()
-        .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
+    let function_id = runtime_id.float().ok_or(ExecutionError::Invariant(
+        InvariantError::FunctionReturnFamilyMismatch {
             expected: FunctionReturnFamily::Float,
             actual: runtime_id.family(),
-        })?;
+        },
+    ))?;
     let runtime_function = plan.float_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
     let frame = bind_function_value_arguments(
@@ -1424,12 +1450,12 @@ pub(in crate::runtime) fn run_string_function_function_call(
 ) -> ExecutionResult<EvaluatedStringFunction> {
     let function = eval_function_function_expr(plan, state, caller_frame, function)?;
     let runtime_id = function.runtime_id();
-    let function_id = runtime_id
-        .string()
-        .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
+    let function_id = runtime_id.string().ok_or(ExecutionError::Invariant(
+        InvariantError::FunctionReturnFamilyMismatch {
             expected: FunctionReturnFamily::String,
             actual: runtime_id.family(),
-        })?;
+        },
+    ))?;
     let runtime_function = plan.string_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
     let frame = bind_function_value_arguments(
@@ -1452,13 +1478,12 @@ pub(in crate::runtime) fn run_bit_array_function_function_call(
 ) -> ExecutionResult<EvaluatedBitArrayFunction> {
     let function = eval_function_function_expr(plan, state, caller_frame, function)?;
     let runtime_id = function.runtime_id();
-    let function_id =
-        runtime_id
-            .bit_array()
-            .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::BitArray,
-                actual: runtime_id.family(),
-            })?;
+    let function_id = runtime_id.bit_array().ok_or(ExecutionError::Invariant(
+        InvariantError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::BitArray,
+            actual: runtime_id.family(),
+        },
+    ))?;
     let runtime_function = plan.bit_array_function_function(function_id);
     let frame = bind_function_value_arguments(
         plan,
@@ -1480,13 +1505,12 @@ pub(in crate::runtime) fn run_utf_codepoint_function_function_call(
 ) -> ExecutionResult<EvaluatedUtfCodepointFunction> {
     let function = eval_function_function_expr(plan, state, caller_frame, function)?;
     let runtime_id = function.runtime_id();
-    let function_id =
-        runtime_id
-            .utf_codepoint()
-            .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::UtfCodepoint,
-                actual: runtime_id.family(),
-            })?;
+    let function_id = runtime_id.utf_codepoint().ok_or(ExecutionError::Invariant(
+        InvariantError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::UtfCodepoint,
+            actual: runtime_id.family(),
+        },
+    ))?;
     let runtime_function = plan.utf_codepoint_function_function(function_id);
     let frame = bind_function_value_arguments(
         plan,
@@ -1508,12 +1532,12 @@ pub(in crate::runtime) fn run_custom_function_function_call(
 ) -> ExecutionResult<EvaluatedCustomFunction> {
     let function = eval_function_function_expr(plan, state, caller_frame, function)?;
     let runtime_id = function.runtime_id();
-    let function_id = runtime_id
-        .custom()
-        .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
+    let function_id = runtime_id.custom().ok_or(ExecutionError::Invariant(
+        InvariantError::FunctionReturnFamilyMismatch {
             expected: FunctionReturnFamily::Custom,
             actual: runtime_id.family(),
-        })?;
+        },
+    ))?;
     let runtime_function = plan.custom_function_function(&function_id);
     let frame = bind_function_value_arguments(
         plan,
@@ -1535,12 +1559,12 @@ pub(in crate::runtime) fn run_bool_function_function_call(
 ) -> ExecutionResult<EvaluatedBoolFunction> {
     let function = eval_function_function_expr(plan, state, caller_frame, function)?;
     let runtime_id = function.runtime_id();
-    let function_id = runtime_id
-        .bool()
-        .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
+    let function_id = runtime_id.bool().ok_or(ExecutionError::Invariant(
+        InvariantError::FunctionReturnFamilyMismatch {
             expected: FunctionReturnFamily::Bool,
             actual: runtime_id.family(),
-        })?;
+        },
+    ))?;
     let runtime_function = plan.bool_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
     let frame = bind_function_value_arguments(
@@ -1563,12 +1587,12 @@ pub(in crate::runtime) fn run_nil_function_function_call(
 ) -> ExecutionResult<EvaluatedNilFunction> {
     let function = eval_function_function_expr(plan, state, caller_frame, function)?;
     let runtime_id = function.runtime_id();
-    let function_id = runtime_id
-        .nil()
-        .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
+    let function_id = runtime_id.nil().ok_or(ExecutionError::Invariant(
+        InvariantError::FunctionReturnFamilyMismatch {
             expected: FunctionReturnFamily::Nil,
             actual: runtime_id.family(),
-        })?;
+        },
+    ))?;
     let runtime_function = plan.nil_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
     let frame = bind_function_value_arguments(
@@ -1591,12 +1615,12 @@ pub(in crate::runtime) fn run_tuple_function_function_call(
 ) -> ExecutionResult<EvaluatedTupleFunction> {
     let function = eval_function_function_expr(plan, state, caller_frame, function)?;
     let runtime_id = function.runtime_id();
-    let function_id = runtime_id
-        .tuple()
-        .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
+    let function_id = runtime_id.tuple().ok_or(ExecutionError::Invariant(
+        InvariantError::FunctionReturnFamilyMismatch {
             expected: FunctionReturnFamily::Tuple,
             actual: runtime_id.family(),
-        })?;
+        },
+    ))?;
     let runtime_function = plan.tuple_function_function(function_id);
     let frame_layout = runtime_function.frame_layout();
     let frame = bind_function_value_arguments(
@@ -1619,12 +1643,12 @@ pub(in crate::runtime) fn run_list_function_function_call(
 ) -> ExecutionResult<EvaluatedListFunction> {
     let function = eval_function_function_expr(plan, state, caller_frame, function)?;
     let runtime_id = function.runtime_id();
-    let function_id = runtime_id
-        .list()
-        .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
+    let function_id = runtime_id.list().ok_or(ExecutionError::Invariant(
+        InvariantError::FunctionReturnFamilyMismatch {
             expected: FunctionReturnFamily::List,
             actual: runtime_id.family(),
-        })?;
+        },
+    ))?;
     let runtime_function = plan.list_function_function(&function_id);
     let frame_layout = runtime_function.frame_layout();
     let frame = bind_function_value_arguments(
@@ -1647,13 +1671,12 @@ pub(in crate::runtime) fn run_function_function_function_call(
 ) -> ExecutionResult<EvaluatedFunctionFunction> {
     let function = eval_function_function_expr(plan, state, caller_frame, function)?;
     let runtime_id = function.runtime_id();
-    let function_id =
-        runtime_id
-            .function()
-            .ok_or(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::Function,
-                actual: runtime_id.family(),
-            })?;
+    let function_id = runtime_id.function().ok_or(ExecutionError::Invariant(
+        InvariantError::FunctionReturnFamilyMismatch {
+            expected: FunctionReturnFamily::Function,
+            actual: runtime_id.family(),
+        },
+    ))?;
     let runtime_function = plan.function_function_function(&function_id);
     let frame_layout = runtime_function.frame_layout();
     let frame = bind_function_value_arguments(
@@ -1763,7 +1786,7 @@ mod tests {
     };
     use crate::runtime::FunctionValueKind;
     use crate::runtime::frame::Frame;
-    use crate::runtime::{ExecutionError, Value, run_main};
+    use crate::runtime::{ExecutionError, InvariantError, Value, run_main};
 
     #[test]
     fn source_utf_codepoint_list_function_calls_return_values_and_argument_errors() {
@@ -2127,10 +2150,10 @@ pub fn main() {
                 ),
             ),
         );
-        let expected = ExecutionError::FunctionReturnFamilyMismatch {
+        let expected = ExecutionError::Invariant(InvariantError::FunctionReturnFamilyMismatch {
             expected: FunctionReturnFamily::List,
             actual: FunctionReturnFamily::List,
-        };
+        });
 
         let function = plan.int_list_function(plan.int_list_function_id(0));
         let mut state = crate::runtime::RuntimeState::new();
@@ -2418,10 +2441,12 @@ pub fn main() {
         frame.set_function_function(&local, wrong_string);
         assert_eq!(
             run_int_function_loop(&plan, &mut state, IntFunctionFunctionId(0), frame),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::Int,
-                actual: FunctionReturnFamily::String,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::Int,
+                    actual: FunctionReturnFamily::String,
+                }
+            )),
         );
 
         let function = plan.string_function_function(StringFunctionFunctionId(0));
@@ -2431,10 +2456,12 @@ pub fn main() {
         frame.set_function_function(&local, wrong_int.clone());
         assert_eq!(
             run_string_function_loop(&plan, &mut state, StringFunctionFunctionId(0), frame),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::String,
-                actual: FunctionReturnFamily::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::String,
+                    actual: FunctionReturnFamily::Int,
+                }
+            )),
         );
 
         let function =
@@ -2450,10 +2477,12 @@ pub fn main() {
                 crate::plan::execution::BitArrayFunctionFunctionId(0),
                 frame,
             ),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::BitArray,
-                actual: FunctionReturnFamily::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::BitArray,
+                    actual: FunctionReturnFamily::Int,
+                }
+            )),
         );
 
         let function = plan.utf_codepoint_function_function(UtfCodepointFunctionFunctionId(0));
@@ -2468,10 +2497,12 @@ pub fn main() {
                 UtfCodepointFunctionFunctionId(0),
                 frame,
             ),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::UtfCodepoint,
-                actual: FunctionReturnFamily::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::UtfCodepoint,
+                    actual: FunctionReturnFamily::Int,
+                }
+            )),
         );
 
         let function = plan.custom_function_function(&custom_function_id);
@@ -2481,10 +2512,12 @@ pub fn main() {
         frame.set_function_function(&local, wrong_int.clone());
         assert_eq!(
             run_custom_function_loop(&plan, &mut state, custom_function_id.clone(), frame),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::Custom,
-                actual: FunctionReturnFamily::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::Custom,
+                    actual: FunctionReturnFamily::Int,
+                }
+            )),
         );
 
         let function = plan.float_function_function(FloatFunctionFunctionId(0));
@@ -2494,10 +2527,12 @@ pub fn main() {
         frame.set_function_function(&local, wrong_int.clone());
         assert_eq!(
             run_float_function_loop(&plan, &mut state, FloatFunctionFunctionId(0), frame),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::Float,
-                actual: FunctionReturnFamily::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::Float,
+                    actual: FunctionReturnFamily::Int,
+                }
+            )),
         );
 
         let function = plan.bool_function_function(BoolFunctionFunctionId(0));
@@ -2507,10 +2542,12 @@ pub fn main() {
         frame.set_function_function(&local, wrong_int.clone());
         assert_eq!(
             run_bool_function_loop(&plan, &mut state, BoolFunctionFunctionId(0), frame),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::Bool,
-                actual: FunctionReturnFamily::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::Bool,
+                    actual: FunctionReturnFamily::Int,
+                }
+            )),
         );
 
         let function = plan.nil_function_function(NilFunctionFunctionId(0));
@@ -2520,10 +2557,12 @@ pub fn main() {
         frame.set_function_function(&local, wrong_int.clone());
         assert_eq!(
             run_nil_function_loop(&plan, &mut state, NilFunctionFunctionId(0), frame),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::Nil,
-                actual: FunctionReturnFamily::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::Nil,
+                    actual: FunctionReturnFamily::Int,
+                }
+            )),
         );
 
         let function = plan.tuple_function_function(TupleFunctionFunctionId(0));
@@ -2533,10 +2572,12 @@ pub fn main() {
         frame.set_function_function(&local, wrong_int.clone());
         assert_eq!(
             run_tuple_function_loop(&plan, &mut state, TupleFunctionFunctionId(0), frame),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::Tuple,
-                actual: FunctionReturnFamily::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::Tuple,
+                    actual: FunctionReturnFamily::Int,
+                }
+            )),
         );
 
         let function = plan.list_function_function(&list_function_id);
@@ -2546,10 +2587,12 @@ pub fn main() {
         frame.set_function_function(&local, wrong_int.clone());
         assert_eq!(
             run_list_function_loop(&plan, &mut state, list_function_id, frame),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::List,
-                actual: FunctionReturnFamily::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::List,
+                    actual: FunctionReturnFamily::Int,
+                }
+            )),
         );
 
         let function = plan.function_function_function(&function_function_id);
@@ -2559,10 +2602,12 @@ pub fn main() {
         frame.set_function_function(&local, wrong_int);
         assert_eq!(
             run_function_function_loop(&plan, &mut state, function_function_id.clone(), frame),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::Function,
-                actual: FunctionReturnFamily::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::Function,
+                    actual: FunctionReturnFamily::Int,
+                }
+            )),
         );
     }
 
@@ -2610,10 +2655,12 @@ pub fn main() { #(generic_function, never_function) }
         frame.set_function_function(&local, wrong_int.clone());
         assert_eq!(
             run_generic_function_loop(&plan, &mut state, generic_function_id, frame),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::Generic,
-                actual: FunctionReturnFamily::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::Generic,
+                    actual: FunctionReturnFamily::Int,
+                }
+            )),
         );
 
         let function = plan.never_function_function(&never_function_id);
@@ -2623,10 +2670,12 @@ pub fn main() { #(generic_function, never_function) }
         frame.set_function_function(&local, wrong_int);
         assert_eq!(
             run_never_function_loop(&plan, &mut state, never_function_id, frame),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::Never,
-                actual: FunctionReturnFamily::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::Never,
+                    actual: FunctionReturnFamily::Int,
+                }
+            )),
         );
     }
 
@@ -2736,10 +2785,12 @@ pub fn main() {
         frame.set_function_list(FunctionListLocalId(0), value);
         assert_eq!(
             run_int_function_loop(&plan, &mut state, IntFunctionFunctionId(0), frame),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::Int,
-                actual: FunctionReturnFamily::String,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::Int,
+                    actual: FunctionReturnFamily::String,
+                }
+            )),
         );
 
         let function = plan.string_function_function(StringFunctionFunctionId(0));
@@ -2752,10 +2803,12 @@ pub fn main() {
         frame.set_function_list(FunctionListLocalId(0), value);
         assert_eq!(
             run_string_function_loop(&plan, &mut state, StringFunctionFunctionId(0), frame),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::String,
-                actual: FunctionReturnFamily::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::String,
+                    actual: FunctionReturnFamily::Int,
+                }
+            )),
         );
 
         let function =
@@ -2774,10 +2827,12 @@ pub fn main() {
                 crate::plan::execution::BitArrayFunctionFunctionId(0),
                 frame,
             ),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::BitArray,
-                actual: FunctionReturnFamily::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::BitArray,
+                    actual: FunctionReturnFamily::Int,
+                }
+            )),
         );
 
         let function = plan.utf_codepoint_function_function(UtfCodepointFunctionFunctionId(0));
@@ -2795,10 +2850,12 @@ pub fn main() {
                 UtfCodepointFunctionFunctionId(0),
                 frame,
             ),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::UtfCodepoint,
-                actual: FunctionReturnFamily::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::UtfCodepoint,
+                    actual: FunctionReturnFamily::Int,
+                }
+            )),
         );
 
         let function = plan.custom_function_function(&custom_function_id);
@@ -2811,10 +2868,12 @@ pub fn main() {
         frame.set_function_list(FunctionListLocalId(0), value);
         assert_eq!(
             run_custom_function_loop(&plan, &mut state, custom_function_id.clone(), frame),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::Custom,
-                actual: FunctionReturnFamily::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::Custom,
+                    actual: FunctionReturnFamily::Int,
+                }
+            )),
         );
 
         let function = plan.float_function_function(FloatFunctionFunctionId(0));
@@ -2827,10 +2886,12 @@ pub fn main() {
         frame.set_function_list(FunctionListLocalId(0), value);
         assert_eq!(
             run_float_function_loop(&plan, &mut state, FloatFunctionFunctionId(0), frame),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::Float,
-                actual: FunctionReturnFamily::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::Float,
+                    actual: FunctionReturnFamily::Int,
+                }
+            )),
         );
 
         let function = plan.bool_function_function(BoolFunctionFunctionId(0));
@@ -2843,10 +2904,12 @@ pub fn main() {
         frame.set_function_list(FunctionListLocalId(0), value);
         assert_eq!(
             run_bool_function_loop(&plan, &mut state, BoolFunctionFunctionId(0), frame),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::Bool,
-                actual: FunctionReturnFamily::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::Bool,
+                    actual: FunctionReturnFamily::Int,
+                }
+            )),
         );
 
         let function = plan.nil_function_function(NilFunctionFunctionId(0));
@@ -2859,10 +2922,12 @@ pub fn main() {
         frame.set_function_list(FunctionListLocalId(0), value);
         assert_eq!(
             run_nil_function_loop(&plan, &mut state, NilFunctionFunctionId(0), frame),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::Nil,
-                actual: FunctionReturnFamily::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::Nil,
+                    actual: FunctionReturnFamily::Int,
+                }
+            )),
         );
 
         let function = plan.tuple_function_function(TupleFunctionFunctionId(0));
@@ -2875,10 +2940,12 @@ pub fn main() {
         frame.set_function_list(FunctionListLocalId(0), value);
         assert_eq!(
             run_tuple_function_loop(&plan, &mut state, TupleFunctionFunctionId(0), frame),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::Tuple,
-                actual: FunctionReturnFamily::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::Tuple,
+                    actual: FunctionReturnFamily::Int,
+                }
+            )),
         );
 
         let function = plan.list_function_function(&list_function_id);
@@ -2891,10 +2958,12 @@ pub fn main() {
         frame.set_function_list(FunctionListLocalId(0), value);
         assert_eq!(
             run_list_function_loop(&plan, &mut state, list_function_id, frame),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::List,
-                actual: FunctionReturnFamily::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::List,
+                    actual: FunctionReturnFamily::Int,
+                }
+            )),
         );
 
         let function = plan.function_function_function(&function_function_id);
@@ -2907,10 +2976,12 @@ pub fn main() {
         frame.set_function_list(FunctionListLocalId(0), value);
         assert_eq!(
             run_function_function_loop(&plan, &mut state, function_function_id.clone(), frame),
-            Err(ExecutionError::FunctionReturnFamilyMismatch {
-                expected: FunctionReturnFamily::Function,
-                actual: FunctionReturnFamily::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::FunctionReturnFamilyMismatch {
+                    expected: FunctionReturnFamily::Function,
+                    actual: FunctionReturnFamily::Int,
+                }
+            )),
         );
     }
 

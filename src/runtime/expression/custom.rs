@@ -8,7 +8,7 @@ use crate::plan::execution::{CustomExpr, CustomExprKind, ExecutionPlan};
 use crate::runtime::evaluated::{EvaluatedCustomValue, EvaluatedValue};
 use crate::runtime::frame::Frame;
 use crate::runtime::state::RuntimeState;
-use crate::runtime::{ExecutionError, function};
+use crate::runtime::{ExecutionError, InvariantError, function};
 
 pub(in crate::runtime) fn eval_custom_expr(
     plan: &ExecutionPlan,
@@ -60,10 +60,12 @@ pub(in crate::runtime) fn eval_custom_expr_kind(
             let expected = ValueType::Custom(plan.custom_value_type(type_id));
             match project_tuple_expr(plan, state, frame, tuple, *index, expected.clone())? {
                 EvaluatedValue::Custom(value) => Ok(value),
-                other => Err(ExecutionError::TupleIndexFamilyMismatch {
-                    expected,
-                    actual: other.value_type(plan),
-                }),
+                other => Err(ExecutionError::Invariant(
+                    InvariantError::TupleIndexFamilyMismatch {
+                        expected,
+                        actual: other.value_type(plan),
+                    },
+                )),
             }
         }
         CustomExprKind::CustomField(access) => {
@@ -73,13 +75,15 @@ pub(in crate::runtime) fn eval_custom_expr_kind(
                 EvaluatedValue::Custom(value) => Ok(value),
                 other => {
                     let descriptor = plan.custom_constructor(constructor);
-                    Err(ExecutionError::CustomFieldFamilyMismatch {
-                        custom_type: plan.custom_value_type(constructor.type_id()),
-                        constructor: descriptor.name().clone(),
-                        field_index: access.index(),
-                        expected,
-                        actual: other.value_type(plan),
-                    })
+                    Err(ExecutionError::Invariant(
+                        InvariantError::CustomFieldFamilyMismatch {
+                            custom_type: plan.custom_value_type(constructor.type_id()),
+                            constructor: descriptor.name().clone(),
+                            field_index: access.index(),
+                            expected,
+                            actual: other.value_type(plan),
+                        },
+                    ))
                 }
             }
         }
@@ -155,7 +159,7 @@ mod tests {
         FunctionTemplateId, IntExpr, ModulePlan, PanicExpr, PanicSite, ReturnExpr, Step,
         StringExpr, TupleExpr, ValueType,
     };
-    use crate::runtime::{ExecutionError, run_main};
+    use crate::runtime::{ExecutionError, InvariantError, run_main};
 
     #[test]
     fn source_custom_expression_variants_evaluate_exact_values() {
@@ -218,10 +222,10 @@ pub fn main() {
 
         assert_eq!(
             run_module_custom_expression(expression),
-            ExecutionError::TupleIndexFamilyMismatch {
+            ExecutionError::Invariant(InvariantError::TupleIndexFamilyMismatch {
                 expected: ValueType::Custom(type_),
                 actual: ValueType::Int,
-            },
+            }),
         );
     }
 

@@ -210,7 +210,8 @@ mod tests {
     use crate::runtime::frame::Frame;
     use crate::runtime::{
         EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedStringFunction,
-        EvaluatedUtfCodepointFunction, EvaluatedValue, ExecutionError, FunctionValueKind, Value,
+        EvaluatedUtfCodepointFunction, EvaluatedValue, ExecutionError, FunctionValueKind,
+        InvariantError, Value,
     };
 
     #[test]
@@ -442,18 +443,22 @@ pub fn main() {
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_int_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Int,
-                actual: actual.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Int,
+                    actual: actual.clone(),
+                }
+            )),
         );
         frame.set_tuple(TupleLocalId(0), Vec::new());
         assert_eq!(
             eval_int_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Int,
-                actual: ValueType::Tuple(Vec::new()),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Int,
+                    actual: ValueType::Tuple(Vec::new()),
+                }
+            )),
         );
 
         let function = plan.string_function(StringFunctionId(0));
@@ -464,10 +469,12 @@ pub fn main() {
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_string_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::String,
-                actual: actual.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::String,
+                    actual: actual.clone(),
+                }
+            )),
         );
 
         let function = plan.float_function(FloatFunctionId(0));
@@ -478,10 +485,12 @@ pub fn main() {
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_float_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Float,
-                actual: actual.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Float,
+                    actual: actual.clone(),
+                }
+            )),
         );
 
         let function = plan.bool_function(BoolFunctionId(0));
@@ -492,10 +501,12 @@ pub fn main() {
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_bool_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Bool,
-                actual: actual.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Bool,
+                    actual: actual.clone(),
+                }
+            )),
         );
 
         let function = plan.nil_function(NilFunctionId(0));
@@ -506,10 +517,12 @@ pub fn main() {
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_nil_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Nil,
-                actual: actual.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Nil,
+                    actual: actual.clone(),
+                }
+            )),
         );
 
         let function = plan.tuple_function(TupleFunctionId(0));
@@ -523,10 +536,12 @@ pub fn main() {
         );
         assert_eq!(
             eval_tuple_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Tuple(vec![ValueType::Int]),
-                actual: ValueType::String,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Tuple(vec![ValueType::Int]),
+                    actual: ValueType::String,
+                }
+            )),
         );
 
         let function = plan.int_list_function(plan.int_list_function_id(0));
@@ -537,10 +552,12 @@ pub fn main() {
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_int_list_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::List(Box::new(ValueType::Int)),
-                actual: actual.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::List(Box::new(ValueType::Int)),
+                    actual: actual.clone(),
+                }
+            )),
         );
         let function = plan.string_list_function(plan.string_list_function_id(0));
         let expression = expression_return(function.return_())
@@ -550,10 +567,12 @@ pub fn main() {
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_string_list_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::List(Box::new(ValueType::String)),
-                actual: actual.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::List(Box::new(ValueType::String)),
+                    actual: actual.clone(),
+                }
+            )),
         );
 
         let function = plan.float_list_function(plan.float_list_function_id(0));
@@ -564,10 +583,12 @@ pub fn main() {
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_float_list_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::List(Box::new(ValueType::Float)),
-                actual: actual.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::List(Box::new(ValueType::Float)),
+                    actual: actual.clone(),
+                }
+            )),
         );
 
         let function = plan.bool_list_function(plan.bool_list_function_id(0));
@@ -578,10 +599,12 @@ pub fn main() {
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_bool_list_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::List(Box::new(ValueType::Bool)),
-                actual: actual.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::List(Box::new(ValueType::Bool)),
+                    actual: actual.clone(),
+                }
+            )),
         );
 
         let function = plan.nil_list_function(plan.nil_list_function_id(0));
@@ -592,10 +615,12 @@ pub fn main() {
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_nil_list_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::List(Box::new(ValueType::Nil)),
-                actual: actual.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::List(Box::new(ValueType::Nil)),
+                    actual: actual.clone(),
+                }
+            )),
         );
 
         let function = plan.tuple_list_function(plan.tuple_list_function_id(0));
@@ -606,10 +631,12 @@ pub fn main() {
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_tuple_list_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::List(Box::new(ValueType::Tuple(vec![ValueType::Int]))),
-                actual: actual.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::List(Box::new(ValueType::Tuple(vec![ValueType::Int]))),
+                    actual: actual.clone(),
+                }
+            )),
         );
 
         let function = plan.list_list_function(plan.list_list_function_id(0));
@@ -620,10 +647,12 @@ pub fn main() {
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_list_list_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Int)))),
-                actual: actual.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Int)))),
+                    actual: actual.clone(),
+                }
+            )),
         );
 
         let function = plan.function_list_function(plan.function_list_function_id(0));
@@ -635,12 +664,14 @@ pub fn main() {
         let int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
         assert_eq!(
             eval_function_list_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::List(Box::new(ValueType::Function(Box::new(
-                    int_function_type.clone(),
-                )))),
-                actual: actual.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::List(Box::new(ValueType::Function(Box::new(
+                        int_function_type.clone(),
+                    )))),
+                    actual: actual.clone(),
+                }
+            )),
         );
 
         let expected_function_types = [
@@ -662,10 +693,12 @@ pub fn main() {
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_int_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Function(Box::new(expected_function_types[0].clone())),
-                actual: actual.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Function(Box::new(expected_function_types[0].clone())),
+                    actual: actual.clone(),
+                }
+            )),
         );
 
         let function = plan.string_function_function(StringFunctionFunctionId(0));
@@ -676,10 +709,12 @@ pub fn main() {
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_string_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Function(Box::new(expected_function_types[1].clone())),
-                actual: actual.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Function(Box::new(expected_function_types[1].clone())),
+                    actual: actual.clone(),
+                }
+            )),
         );
 
         let function = plan.float_function_function(FloatFunctionFunctionId(0));
@@ -690,10 +725,12 @@ pub fn main() {
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_float_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Function(Box::new(expected_function_types[2].clone())),
-                actual: actual.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Function(Box::new(expected_function_types[2].clone())),
+                    actual: actual.clone(),
+                }
+            )),
         );
 
         let function = plan.bool_function_function(BoolFunctionFunctionId(0));
@@ -704,10 +741,12 @@ pub fn main() {
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_bool_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Function(Box::new(expected_function_types[3].clone())),
-                actual: actual.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Function(Box::new(expected_function_types[3].clone())),
+                    actual: actual.clone(),
+                }
+            )),
         );
 
         let function = plan.nil_function_function(NilFunctionFunctionId(0));
@@ -718,10 +757,12 @@ pub fn main() {
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_nil_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Function(Box::new(expected_function_types[4].clone())),
-                actual: actual.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Function(Box::new(expected_function_types[4].clone())),
+                    actual: actual.clone(),
+                }
+            )),
         );
 
         let function = plan.tuple_function_function(TupleFunctionFunctionId(0));
@@ -732,10 +773,12 @@ pub fn main() {
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_tuple_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Function(Box::new(expected_function_types[5].clone())),
-                actual: actual.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Function(Box::new(expected_function_types[5].clone())),
+                    actual: actual.clone(),
+                }
+            )),
         );
 
         let function =
@@ -747,10 +790,12 @@ pub fn main() {
         frame.set_tuple(TupleLocalId(0), wrong_tuple.clone());
         assert_eq!(
             eval_list_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Function(Box::new(expected_function_types[6].clone())),
-                actual: actual.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Function(Box::new(expected_function_types[6].clone())),
+                    actual: actual.clone(),
+                }
+            )),
         );
 
         let function = plan.function_function_function(&function_function_id);
@@ -768,10 +813,12 @@ pub fn main() {
                 return_.type_(),
                 expression,
             ),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Function(Box::new(expected_function_types[7].clone())),
-                actual: actual.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Function(Box::new(expected_function_types[7].clone())),
+                    actual: actual.clone(),
+                }
+            )),
         );
 
         let wrong_string_function = EvaluatedStringFunction::reference(
@@ -810,10 +857,12 @@ pub fn main() {
         );
         assert_eq!(
             eval_int_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Function(Box::new(expected_function_types[0].clone())),
-                actual: wrong_string_type,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Function(Box::new(expected_function_types[0].clone())),
+                    actual: wrong_string_type,
+                }
+            )),
         );
 
         let function = plan.string_function_function(StringFunctionFunctionId(0));
@@ -827,10 +876,12 @@ pub fn main() {
         );
         assert_eq!(
             eval_string_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Function(Box::new(expected_function_types[1].clone())),
-                actual: wrong_int_type.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Function(Box::new(expected_function_types[1].clone())),
+                    actual: wrong_int_type.clone(),
+                }
+            )),
         );
 
         let function = plan.float_function_function(FloatFunctionFunctionId(0));
@@ -844,10 +895,12 @@ pub fn main() {
         );
         assert_eq!(
             eval_float_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Function(Box::new(expected_function_types[2].clone())),
-                actual: wrong_int_type.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Function(Box::new(expected_function_types[2].clone())),
+                    actual: wrong_int_type.clone(),
+                }
+            )),
         );
 
         let function = plan.bool_function_function(BoolFunctionFunctionId(0));
@@ -861,10 +914,12 @@ pub fn main() {
         );
         assert_eq!(
             eval_bool_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Function(Box::new(expected_function_types[3].clone())),
-                actual: wrong_int_type.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Function(Box::new(expected_function_types[3].clone())),
+                    actual: wrong_int_type.clone(),
+                }
+            )),
         );
 
         let function = plan.nil_function_function(NilFunctionFunctionId(0));
@@ -878,10 +933,12 @@ pub fn main() {
         );
         assert_eq!(
             eval_nil_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Function(Box::new(expected_function_types[4].clone())),
-                actual: wrong_int_type.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Function(Box::new(expected_function_types[4].clone())),
+                    actual: wrong_int_type.clone(),
+                }
+            )),
         );
 
         let function = plan.tuple_function_function(TupleFunctionFunctionId(0));
@@ -895,10 +952,12 @@ pub fn main() {
         );
         assert_eq!(
             eval_tuple_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Function(Box::new(expected_function_types[5].clone())),
-                actual: wrong_int_type.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Function(Box::new(expected_function_types[5].clone())),
+                    actual: wrong_int_type.clone(),
+                }
+            )),
         );
 
         let function =
@@ -913,10 +972,12 @@ pub fn main() {
         );
         assert_eq!(
             eval_list_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Function(Box::new(expected_function_types[6].clone())),
-                actual: wrong_int_type.clone(),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Function(Box::new(expected_function_types[6].clone())),
+                    actual: wrong_int_type.clone(),
+                }
+            )),
         );
 
         let function = plan.function_function_function(&function_function_id);
@@ -937,10 +998,12 @@ pub fn main() {
                 return_.type_(),
                 expression,
             ),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Function(Box::new(expected_function_types[7].clone())),
-                actual: wrong_int_type,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Function(Box::new(expected_function_types[7].clone())),
+                    actual: wrong_int_type,
+                }
+            )),
         );
     }
 
@@ -976,10 +1039,12 @@ pub fn main() {
         frame.set_tuple(TupleLocalId(0), vec![EvaluatedValue::Int(1.into())]);
         assert_eq!(
             eval_utf_codepoint_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::UtfCodepoint,
-                actual: ValueType::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::UtfCodepoint,
+                    actual: ValueType::Int,
+                }
+            )),
         );
 
         let function_id = plan.utf_codepoint_list_function_id(0);
@@ -1036,28 +1101,32 @@ pub fn main() {
         );
         assert_eq!(
             eval_utf_codepoint_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Function(Box::new(FunctionType::new(
-                    Vec::new(),
-                    ValueType::UtfCodepoint,
-                ))),
-                actual: ValueType::Function(Box::new(FunctionType::new(
-                    Vec::new(),
-                    ValueType::Int,
-                ))),
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Function(Box::new(FunctionType::new(
+                        Vec::new(),
+                        ValueType::UtfCodepoint,
+                    ))),
+                    actual: ValueType::Function(Box::new(FunctionType::new(
+                        Vec::new(),
+                        ValueType::Int,
+                    ))),
+                }
+            )),
         );
 
         frame.set_tuple(TupleLocalId(0), vec![EvaluatedValue::Int(1.into())]);
         assert_eq!(
             eval_utf_codepoint_function_expr(&plan, &mut state, &mut frame, expression),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Function(Box::new(FunctionType::new(
-                    Vec::new(),
-                    ValueType::UtfCodepoint,
-                ))),
-                actual: ValueType::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Function(Box::new(FunctionType::new(
+                        Vec::new(),
+                        ValueType::UtfCodepoint,
+                    ))),
+                    actual: ValueType::Int,
+                }
+            )),
         );
     }
 

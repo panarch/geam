@@ -33,7 +33,7 @@ use crate::runtime::{
     EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
     EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
-use crate::runtime::{ExecutionError, PanicKind};
+use crate::runtime::{ExecutionError, InvariantError, PanicKind};
 use ecow::EcoString;
 use num_bigint::BigInt;
 use std::convert::Infallible;
@@ -542,13 +542,15 @@ fn append_total_bindings(
         crate::plan::execution::TotalBindingPatternKind::Bind(binding) => {
             let Some(binding) = pending_binding(plan, binding, field_value) else {
                 let descriptor = plan.custom_constructor(constructor);
-                return Err(ExecutionError::CustomFieldFamilyMismatch {
-                    custom_type: plan.custom_value_type(constructor.type_id()),
-                    constructor: descriptor.name().clone(),
-                    field_index,
-                    expected: plan.value_type(pattern.type_()),
-                    actual: field_value.value_type(plan),
-                });
+                return Err(ExecutionError::Invariant(
+                    InvariantError::CustomFieldFamilyMismatch {
+                        custom_type: plan.custom_value_type(constructor.type_id()),
+                        constructor: descriptor.name().clone(),
+                        field_index,
+                        expected: plan.value_type(pattern.type_()),
+                        actual: field_value.value_type(plan),
+                    },
+                ));
             };
             bindings.push(binding);
         }
@@ -556,13 +558,15 @@ fn append_total_bindings(
         crate::plan::execution::TotalBindingPatternKind::Tuple(patterns) => {
             let EvaluatedValue::Tuple(values) = field_value else {
                 let descriptor = plan.custom_constructor(constructor);
-                return Err(ExecutionError::CustomFieldFamilyMismatch {
-                    custom_type: plan.custom_value_type(constructor.type_id()),
-                    constructor: descriptor.name().clone(),
-                    field_index,
-                    expected: plan.value_type(pattern.type_()),
-                    actual: field_value.value_type(plan),
-                });
+                return Err(ExecutionError::Invariant(
+                    InvariantError::CustomFieldFamilyMismatch {
+                        custom_type: plan.custom_value_type(constructor.type_id()),
+                        constructor: descriptor.name().clone(),
+                        field_index,
+                        expected: plan.value_type(pattern.type_()),
+                        actual: field_value.value_type(plan),
+                    },
+                ));
             };
             for (pattern, value) in patterns.iter().zip(values) {
                 append_total_bindings(plan, constructor, field_index, value, pattern, bindings)?;
@@ -572,24 +576,28 @@ fn append_total_bindings(
             if let ListAssertTail::Bind(binding) = tail {
                 let EvaluatedValue::List(value) = field_value else {
                     let descriptor = plan.custom_constructor(constructor);
-                    return Err(ExecutionError::CustomFieldFamilyMismatch {
-                        custom_type: plan.custom_value_type(constructor.type_id()),
-                        constructor: descriptor.name().clone(),
-                        field_index,
-                        expected: plan.value_type(pattern.type_()),
-                        actual: field_value.value_type(plan),
-                    });
+                    return Err(ExecutionError::Invariant(
+                        InvariantError::CustomFieldFamilyMismatch {
+                            custom_type: plan.custom_value_type(constructor.type_id()),
+                            constructor: descriptor.name().clone(),
+                            field_index,
+                            expected: plan.value_type(pattern.type_()),
+                            actual: field_value.value_type(plan),
+                        },
+                    ));
                 };
                 let Some(binding) = pending_list_binding(binding.local().clone(), value.clone())
                 else {
                     let descriptor = plan.custom_constructor(constructor);
-                    return Err(ExecutionError::CustomFieldFamilyMismatch {
-                        custom_type: plan.custom_value_type(constructor.type_id()),
-                        constructor: descriptor.name().clone(),
-                        field_index,
-                        expected: plan.value_type(pattern.type_()),
-                        actual: field_value.value_type(plan),
-                    });
+                    return Err(ExecutionError::Invariant(
+                        InvariantError::CustomFieldFamilyMismatch {
+                            custom_type: plan.custom_value_type(constructor.type_id()),
+                            constructor: descriptor.name().clone(),
+                            field_index,
+                            expected: plan.value_type(pattern.type_()),
+                            actual: field_value.value_type(plan),
+                        },
+                    ));
                 };
                 bindings.push(PendingBinding::List(binding));
             }
@@ -597,13 +605,15 @@ fn append_total_bindings(
         crate::plan::execution::TotalBindingPatternKind::Custom(custom_pattern) => {
             let EvaluatedValue::Custom(value) = field_value else {
                 let descriptor = plan.custom_constructor(constructor);
-                return Err(ExecutionError::CustomFieldFamilyMismatch {
-                    custom_type: plan.custom_value_type(constructor.type_id()),
-                    constructor: descriptor.name().clone(),
-                    field_index,
-                    expected: plan.value_type(pattern.type_()),
-                    actual: field_value.value_type(plan),
-                });
+                return Err(ExecutionError::Invariant(
+                    InvariantError::CustomFieldFamilyMismatch {
+                        custom_type: plan.custom_value_type(constructor.type_id()),
+                        constructor: descriptor.name().clone(),
+                        field_index,
+                        expected: plan.value_type(pattern.type_()),
+                        actual: field_value.value_type(plan),
+                    },
+                ));
             };
             append_custom_field_bindings(plan, custom_pattern, value, bindings)?;
         }
@@ -614,13 +624,15 @@ fn append_total_bindings(
             append_total_bindings(plan, constructor, field_index, field_value, inner, bindings)?;
             let Some(binding) = pending_binding(plan, binding, field_value) else {
                 let descriptor = plan.custom_constructor(constructor);
-                return Err(ExecutionError::CustomFieldFamilyMismatch {
-                    custom_type: plan.custom_value_type(constructor.type_id()),
-                    constructor: descriptor.name().clone(),
-                    field_index,
-                    expected: plan.value_type(pattern.type_()),
-                    actual: field_value.value_type(plan),
-                });
+                return Err(ExecutionError::Invariant(
+                    InvariantError::CustomFieldFamilyMismatch {
+                        custom_type: plan.custom_value_type(constructor.type_id()),
+                        constructor: descriptor.name().clone(),
+                        field_index,
+                        expected: plan.value_type(pattern.type_()),
+                        actual: field_value.value_type(plan),
+                    },
+                ));
             };
             bindings.push(binding);
         }
@@ -639,13 +651,15 @@ fn ensure_custom_field_type(
         Ok(())
     } else {
         let descriptor = plan.custom_constructor(constructor);
-        Err(ExecutionError::CustomFieldFamilyMismatch {
-            custom_type: plan.custom_value_type(constructor.type_id()),
-            constructor: descriptor.name().clone(),
-            field_index,
-            expected: plan.value_type(expected),
-            actual: value.value_type(plan),
-        })
+        Err(ExecutionError::Invariant(
+            InvariantError::CustomFieldFamilyMismatch {
+                custom_type: plan.custom_value_type(constructor.type_id()),
+                constructor: descriptor.name().clone(),
+                field_index,
+                expected: plan.value_type(expected),
+                actual: value.value_type(plan),
+            },
+        ))
     }
 }
 
@@ -939,7 +953,7 @@ mod tests {
     use crate::runtime::state::{IntListValueId, ListValueId};
     use crate::runtime::{
         EvaluatedCustomValue, EvaluatedFunctionFunction, EvaluatedFunctionValue,
-        EvaluatedListCapture, EvaluatedValue, ExecutionError, ListValue,
+        EvaluatedListCapture, EvaluatedValue, ExecutionError, InvariantError, ListValue,
     };
 
     #[test]
@@ -1735,13 +1749,15 @@ pub fn main() {
                 &function.steps()[assert_index..=assert_index],
                 &mut frame,
             ),
-            Err(ExecutionError::CustomFieldFamilyMismatch {
-                custom_type: custom_plan.custom_value_type(constructor_id.type_id()),
-                constructor: "Boxed".into(),
-                field_index: 0,
-                expected: ValueType::Int,
-                actual: ValueType::String,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::CustomFieldFamilyMismatch {
+                    custom_type: custom_plan.custom_value_type(constructor_id.type_id()),
+                    constructor: "Boxed".into(),
+                    field_index: 0,
+                    expected: ValueType::Int,
+                    actual: ValueType::String,
+                }
+            )),
         );
 
         let tuple_list_plan = crate::runtime::plan_src(
@@ -1792,13 +1808,15 @@ pub fn main() {
                 &function.steps()[assert_index..=assert_index],
                 &mut frame,
             ),
-            Err(ExecutionError::CustomFieldFamilyMismatch {
-                custom_type: tuple_list_plan.custom_value_type(constructor_id.type_id()),
-                constructor: "Boxed".into(),
-                field_index: 0,
-                expected: ValueType::Int,
-                actual: ValueType::String,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::CustomFieldFamilyMismatch {
+                    custom_type: tuple_list_plan.custom_value_type(constructor_id.type_id()),
+                    constructor: "Boxed".into(),
+                    field_index: 0,
+                    expected: ValueType::Int,
+                    actual: ValueType::String,
+                }
+            )),
         );
     }
 
@@ -1865,13 +1883,15 @@ pub fn main() {
                 &mut bindings,
             )
             .map(|_| ()),
-            Err(ExecutionError::CustomFieldFamilyMismatch {
-                custom_type: plan.custom_value_type(constructor_id.type_id()),
-                constructor: constructor.name().clone(),
-                field_index: 0,
-                expected: crate::plan::ValueType::Int,
-                actual: crate::plan::ValueType::String,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::CustomFieldFamilyMismatch {
+                    custom_type: plan.custom_value_type(constructor_id.type_id()),
+                    constructor: constructor.name().clone(),
+                    field_index: 0,
+                    expected: crate::plan::ValueType::Int,
+                    actual: crate::plan::ValueType::String,
+                }
+            )),
         );
         assert_eq!(bindings, Vec::new());
     }
@@ -1916,13 +1936,13 @@ pub fn main() {
         .expect("nested custom setup should execute");
         let outer = frame.get_custom(custom_local);
         let inner = expect_custom_value(&outer.fields()[0]);
-        let expected = ExecutionError::CustomFieldFamilyMismatch {
+        let expected = ExecutionError::Invariant(InvariantError::CustomFieldFamilyMismatch {
             custom_type: plan.custom_value_type(inner.constructor().type_id()),
             constructor: plan.custom_constructor(inner.constructor()).name().clone(),
             field_index: 0,
             expected: ValueType::Int,
             actual: ValueType::String,
-        };
+        });
         let tuple_pattern = &list_pattern.elements()[0];
 
         let malformed_inner = EvaluatedCustomValue::from_fields(
@@ -2086,13 +2106,15 @@ pub fn main() {
                 EvaluatedCustomValue::from_fields(constructor_id, fields.into_boxed_slice());
             assert_eq!(
                 bind_custom_fields(&plan, pattern, &mutated),
-                Err(ExecutionError::CustomFieldFamilyMismatch {
-                    custom_type: plan.custom_value_type(constructor_id.type_id()),
-                    constructor: constructor.name().clone(),
-                    field_index,
-                    expected,
-                    actual,
-                }),
+                Err(ExecutionError::Invariant(
+                    InvariantError::CustomFieldFamilyMismatch {
+                        custom_type: plan.custom_value_type(constructor_id.type_id()),
+                        constructor: constructor.name().clone(),
+                        field_index,
+                        expected,
+                        actual,
+                    }
+                )),
             );
         }
 
@@ -2107,13 +2129,15 @@ pub fn main() {
                 &steps[bind_index..=bind_index],
                 &mut frame,
             ),
-            Err(ExecutionError::CustomFieldFamilyMismatch {
-                custom_type: plan.custom_value_type(constructor_id.type_id()),
-                constructor: constructor.name().clone(),
-                field_index: 0,
-                expected: ValueType::Int,
-                actual: ValueType::String,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::CustomFieldFamilyMismatch {
+                    custom_type: plan.custom_value_type(constructor_id.type_id()),
+                    constructor: constructor.name().clone(),
+                    field_index: 0,
+                    expected: ValueType::Int,
+                    actual: ValueType::String,
+                }
+            )),
         );
     }
 
@@ -2145,10 +2169,12 @@ pub fn main() {
         let ok = tuple_plan.custom_constructor_id(0, 0);
         assert_eq!(
             execute_steps(&tuple_plan, &mut state, tuple_function.steps(), &mut frame,),
-            Err(ExecutionError::TupleIndexFamilyMismatch {
-                expected: ValueType::Custom(tuple_plan.custom_value_type(ok.type_id())),
-                actual: ValueType::Int,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Custom(tuple_plan.custom_value_type(ok.type_id())),
+                    actual: ValueType::Int,
+                }
+            )),
         );
 
         let custom_plan = crate::runtime::plan_src(
@@ -2189,13 +2215,15 @@ pub fn main() {
                 custom_function.steps(),
                 &mut frame,
             ),
-            Err(ExecutionError::CustomFieldFamilyMismatch {
-                custom_type: custom_plan.custom_value_type(constructor.type_id()),
-                constructor: custom_plan.custom_constructor(constructor).name().clone(),
-                field_index: 0,
-                expected: ValueType::Int,
-                actual: ValueType::String,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::CustomFieldFamilyMismatch {
+                    custom_type: custom_plan.custom_value_type(constructor.type_id()),
+                    constructor: custom_plan.custom_constructor(constructor).name().clone(),
+                    field_index: 0,
+                    expected: ValueType::Int,
+                    actual: ValueType::String,
+                }
+            )),
         );
     }
 
@@ -2254,13 +2282,15 @@ pub fn main() {
         let mutated = EvaluatedCustomValue::from_fields(constructor_id, fields.into_boxed_slice());
         assert_eq!(
             bind_custom_fields(&plan, pattern, &mutated),
-            Err(ExecutionError::CustomFieldFamilyMismatch {
-                custom_type: plan.custom_value_type(inner.constructor().type_id()),
-                constructor: plan.custom_constructor(inner.constructor()).name().clone(),
-                field_index: 0,
-                expected: ValueType::Int,
-                actual: ValueType::String,
-            }),
+            Err(ExecutionError::Invariant(
+                InvariantError::CustomFieldFamilyMismatch {
+                    custom_type: plan.custom_value_type(inner.constructor().type_id()),
+                    constructor: plan.custom_constructor(inner.constructor()).name().clone(),
+                    field_index: 0,
+                    expected: ValueType::Int,
+                    actual: ValueType::String,
+                }
+            )),
         );
         let replacements = vec![
             (
@@ -2322,13 +2352,15 @@ pub fn main() {
                 EvaluatedCustomValue::from_fields(constructor_id, fields.into_boxed_slice());
             assert_eq!(
                 bind_custom_fields(&plan, pattern, &mutated),
-                Err(ExecutionError::CustomFieldFamilyMismatch {
-                    custom_type: plan.custom_value_type(error_constructor.type_id()),
-                    constructor: plan.custom_constructor(error_constructor).name().clone(),
-                    field_index,
-                    expected,
-                    actual,
-                }),
+                Err(ExecutionError::Invariant(
+                    InvariantError::CustomFieldFamilyMismatch {
+                        custom_type: plan.custom_value_type(error_constructor.type_id()),
+                        constructor: plan.custom_constructor(error_constructor).name().clone(),
+                        field_index,
+                        expected,
+                        actual,
+                    }
+                )),
             );
         }
     }
