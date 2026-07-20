@@ -1,6 +1,6 @@
 use super::{
-    BoolExpr, CallArg, CustomFieldAccess, FloatExpr, IntExpr, PanicExpr, StringExpr, TupleExpr,
-    UtfCodepointFunctionExpr, UtfCodepointListExpr,
+    BoolExpr, CustomFieldAccess, DirectCall, FloatExpr, FunctionCall, IntExpr, PanicExpr,
+    StringExpr, TupleExpr, UtfCodepointFunctionExpr, UtfCodepointListExpr,
 };
 use crate::plan::execution::{Step, UtfCodepointFunctionId, UtfCodepointLocalId};
 use ecow::EcoString;
@@ -14,14 +14,8 @@ pub(crate) enum UtfCodepointExprKind {
     LocalGet {
         local: UtfCodepointLocalId,
     },
-    Call {
-        function: UtfCodepointFunctionId,
-        args: Vec<CallArg>,
-    },
-    FunctionCall {
-        function: Box<UtfCodepointFunctionExpr>,
-        args: Vec<CallArg>,
-    },
+    Call(DirectCall<UtfCodepointFunctionId>),
+    FunctionCall(FunctionCall<UtfCodepointFunctionExpr>),
     TupleIndex {
         tuple: Box<TupleExpr>,
         index: usize,
@@ -61,6 +55,10 @@ pub(crate) enum UtfCodepointExprKind {
 impl UtfCodepointExpr {
     pub(in crate::plan::execution) fn from_kind(kind: UtfCodepointExprKind) -> Self {
         Self { kind }
+    }
+
+    pub(in crate::plan::execution) fn into_kind(self) -> UtfCodepointExprKind {
+        self.kind
     }
 
     pub(crate) fn kind(&self) -> &UtfCodepointExprKind {

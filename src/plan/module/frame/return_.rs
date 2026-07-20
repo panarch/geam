@@ -29,6 +29,7 @@ impl FrameLayout {
             ReturnExprKind::ListList { body, .. } => self.include_typed_list_return(body),
             ReturnExprKind::FunctionList { body, .. } => self.include_typed_list_return(body),
             ReturnExprKind::GenericList { body, .. } => self.include_typed_list_return(body),
+            ReturnExprKind::ParameterListList { body, .. } => self.include_typed_list_return(body),
             ReturnExprKind::IntFunction { body, .. } => {
                 self.include_int_function_return(body);
             }

@@ -10,42 +10,57 @@ pub(super) fn function_return_expr(
     expected: &ValueShape,
     actual: Expr,
 ) -> Result<ReturnExpr, PlanError> {
-    if !actual.shape().can_flow_to(expected) || actual.value_type() != expected.value_type() {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::FunctionShape {
-                name: name.clone(),
-                reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
-            },
-        });
-    }
-
-    match actual.into_kind() {
-        ExprKind::Generic(actual) => Ok(ReturnExpr::generic_body(
+    let compatible =
+        actual.shape().can_flow_to(expected) && actual.value_type() == expected.value_type();
+    let return_ = match (actual.into_kind(), expected) {
+        (ExprKind::Generic(actual), _) if compatible => Ok(ReturnExpr::generic_body(
             actual.parameter(),
             primitive::generic_return(actual),
         )),
-        ExprKind::Int(actual) => Ok(ReturnExpr::int_body(primitive::int_return(actual))),
-        ExprKind::String(actual) => Ok(ReturnExpr::string_body(primitive::string_return(actual))),
-        ExprKind::BitArray(actual) => Ok(ReturnExpr::bit_array_body(primitive::bit_array_return(
-            actual,
-        ))),
-        ExprKind::UtfCodepoint(actual) => Ok(ReturnExpr::utf_codepoint_body(
+        (ExprKind::Int(actual), _) if compatible => {
+            Ok(ReturnExpr::int_body(primitive::int_return(actual)))
+        }
+        (ExprKind::String(actual), _) if compatible => {
+            Ok(ReturnExpr::string_body(primitive::string_return(actual)))
+        }
+        (ExprKind::BitArray(actual), _) if compatible => Ok(ReturnExpr::bit_array_body(
+            primitive::bit_array_return(actual),
+        )),
+        (ExprKind::UtfCodepoint(actual), _) if compatible => Ok(ReturnExpr::utf_codepoint_body(
             primitive::utf_codepoint_return(actual),
         )),
-        ExprKind::Custom(actual) => Ok(ReturnExpr::custom_body(primitive::custom_return(actual))),
-        ExprKind::Float(actual) => Ok(ReturnExpr::float_body(primitive::float_return(actual))),
-        ExprKind::Bool(actual) => Ok(ReturnExpr::bool_body(primitive::bool_return(actual))),
-        ExprKind::Nil(actual) => Ok(ReturnExpr::nil_body(primitive::nil_return(actual))),
-        ExprKind::Tuple(actual) => {
+        (ExprKind::Custom(actual), ValueShape::Custom(signature_shape)) if compatible => Ok(
+            ReturnExpr::custom_body(primitive::custom_return(signature_shape.clone(), actual)),
+        ),
+        (ExprKind::Float(actual), _) if compatible => {
+            Ok(ReturnExpr::float_body(primitive::float_return(actual)))
+        }
+        (ExprKind::Bool(actual), _) if compatible => {
+            Ok(ReturnExpr::bool_body(primitive::bool_return(actual)))
+        }
+        (ExprKind::Nil(actual), _) if compatible => {
+            Ok(ReturnExpr::nil_body(primitive::nil_return(actual)))
+        }
+        (ExprKind::Tuple(actual), _) if compatible => {
             let type_ = actual.type_().to_vec();
             Ok(ReturnExpr::tuple_body(
                 type_,
                 primitive::tuple_return(actual),
             ))
         }
-        ExprKind::List(actual) => Ok(list_return_expr(actual)),
-        ExprKind::Function(actual) => Ok(function_value::function_returning_function_expr(actual)),
-    }
+        (ExprKind::List(actual), _) if compatible => Ok(list_return_expr(actual)),
+        (ExprKind::Function(actual), _) if compatible => {
+            Ok(function_value::function_returning_function_expr(actual))
+        }
+        _ => Err(()),
+    };
+
+    return_.map_err(|()| PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::FunctionShape {
+            name: name.clone(),
+            reason: InvalidFunctionShapeReason::ReturnTypeMismatch,
+        },
+    })
 }
 
 fn list_return_expr(actual: ListExpr) -> ReturnExpr {
@@ -53,6 +68,13 @@ fn list_return_expr(actual: ListExpr) -> ReturnExpr {
         ListExpr::Generic(actual) => {
             let parameter = actual.item().parameter();
             ReturnExpr::generic_list_body(parameter, primitive::typed_list_return_body(actual))
+        }
+        ListExpr::ParameterList(actual) => {
+            let parameter = actual.item().parameter();
+            ReturnExpr::parameter_list_list_body(
+                parameter,
+                primitive::typed_list_return_body(actual),
+            )
         }
         ListExpr::Int(actual) => {
             ReturnExpr::int_list_body(primitive::typed_list_return_body(actual))
@@ -84,8 +106,8 @@ fn list_return_expr(actual: ListExpr) -> ReturnExpr {
             ReturnExpr::tuple_list_body(item_type, primitive::typed_list_return_body(actual))
         }
         ListExpr::List(actual) => {
-            let item_type = actual.item().item_type();
-            ReturnExpr::list_list_body(item_type, primitive::typed_list_return_body(actual))
+            let item_shape = actual.item().item_shape().clone();
+            ReturnExpr::list_list_body(item_shape, primitive::typed_list_return_body(actual))
         }
         ListExpr::Function(actual) => {
             let item_type = actual.item().item_type();
@@ -374,7 +396,7 @@ mod tests {
                 Expr::list(list.clone()),
             ),
             Ok(ReturnExpr::list_list_body(
-                list_item,
+                crate::plan::ValueStorageShape::Int,
                 ReturnBody::expr(list.into_list().expect("expression should be List(List)")),
             )),
         );

@@ -10,7 +10,7 @@ const alias = list
 const tuple = #(int, float, string, bool, falsehood, nil, alias)
 
 pub fn main() {
-  tuple
+  #(int, float, string, bool, falsehood, nil, tuple)
 }
 
-// geam:expect Tuple([Int(1), Float(1.5), String("geam"), Bool(true), Bool(false), Nil, List(Int)([Int(1), Int(2), Int(3)])])
+// geam:expect Tuple([Int(1), Float(1.5), String("geam"), Bool(true), Bool(false), Nil, Tuple([Int(1), Float(1.5), String("geam"), Bool(true), Bool(false), Nil, List(Int)([Int(1), Int(2), Int(3)])])])

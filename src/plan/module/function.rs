@@ -14,7 +14,10 @@ use super::id::{
 };
 use super::step::Step;
 use super::{FrameLayout, FunctionInstantiation, FunctionTemplateSignature, TypeScheme};
-use crate::plan::{CustomFunctionType, CustomType, FunctionFunctionType, FunctionType, ValueType};
+use crate::plan::{
+    CustomFunctionType, CustomType, FunctionFunctionType, FunctionType, ValueStorageShape,
+    ValueType,
+};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -27,6 +30,8 @@ use super::id::{
     ListFunctionFunctionId, NilFunctionFunctionId, NilFunctionId, StringFunctionFunctionId,
     StringFunctionId, TupleFunctionFunctionId, TupleFunctionId, UtfCodepointFunctionFunctionId,
 };
+#[cfg(test)]
+use crate::plan::{ValueRepresentation, ValueShape};
 
 #[derive(Debug, PartialEq)]
 pub struct FunctionTemplate {
@@ -119,13 +124,16 @@ pub(crate) type BitArrayReturn = ReturnBody<BitArrayExpr, FunctionInstantiation>
 pub(crate) type UtfCodepointReturn = ReturnBody<UtfCodepointExpr, FunctionInstantiation>;
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct CustomReturn {
-    shape: crate::plan::CustomValueShape,
+    signature_shape: crate::plan::CustomValueShape,
+    body_shape: crate::plan::CustomValueShape,
     body: ReturnBody<super::CustomExprKind, FunctionInstantiation>,
 }
 pub(crate) type BoolReturn = ReturnBody<BoolExpr, FunctionInstantiation>;
 pub(crate) type NilReturn = ReturnBody<NilExpr, FunctionInstantiation>;
 pub(crate) type TupleReturn = ReturnBody<TupleExpr, FunctionInstantiation>;
 pub(crate) type GenericListReturn = ReturnBody<super::GenericListExpr, FunctionInstantiation>;
+pub(crate) type ParameterListListReturn =
+    ReturnBody<super::ParameterListListExpr, FunctionInstantiation>;
 pub(crate) type IntListReturn = ReturnBody<IntListExpr, FunctionInstantiation>;
 pub(crate) type FloatListReturn = ReturnBody<FloatListExpr, FunctionInstantiation>;
 pub(crate) type StringListReturn = ReturnBody<StringListExpr, FunctionInstantiation>;
@@ -183,8 +191,12 @@ pub(crate) enum ListReturn {
         item_type: Vec<ValueType>,
         body: TupleListReturn,
     },
+    ParameterList {
+        item_parameter: crate::plan::TypeParameterId,
+        body: ParameterListListReturn,
+    },
     List {
-        item_type: Box<ValueType>,
+        item_shape: ValueStorageShape,
         body: ListListReturn,
     },
     Function {
@@ -218,8 +230,12 @@ impl ListReturn {
                 item_type: expression.item().item_type(),
                 body: TupleListReturn::expr(expression),
             },
+            ListExpr::ParameterList(expression) => Self::ParameterList {
+                item_parameter: expression.item().parameter(),
+                body: ParameterListListReturn::expr(expression),
+            },
             ListExpr::List(expression) => Self::List {
-                item_type: expression.item().item_type(),
+                item_shape: expression.item().item_shape().clone(),
                 body: ListListReturn::expr(expression),
             },
             ListExpr::Function(expression) => Self::Function {
@@ -256,10 +272,18 @@ impl ListReturn {
                 item_type,
                 body: TupleListReturn::tail_call(function, args),
             },
-            ValueType::List(item_type) => Self::List {
-                item_type,
-                body: ListListReturn::tail_call(function, args),
-            },
+            ValueType::List(item_type) => {
+                match ValueShape::from_value_type(*item_type).representation() {
+                    ValueRepresentation::Uninhabited(item_parameter) => Self::ParameterList {
+                        item_parameter,
+                        body: ParameterListListReturn::tail_call(function, args),
+                    },
+                    ValueRepresentation::Stored(item_shape) => Self::List {
+                        item_shape,
+                        body: ListListReturn::tail_call(function, args),
+                    },
+                }
+            }
             ValueType::Function(item_type) => Self::Function {
                 item_type: *item_type,
                 body: FunctionListReturn::tail_call(function, args),
@@ -330,16 +354,29 @@ impl ListReturn {
                 body: TupleListReturn::bool_case(subject, true_, false_),
             },
             (
+                Self::ParameterList {
+                    item_parameter: true_parameter,
+                    body: true_,
+                },
+                Self::ParameterList {
+                    item_parameter: false_parameter,
+                    body: false_,
+                },
+            ) if true_parameter == false_parameter => Self::ParameterList {
+                item_parameter: true_parameter,
+                body: ParameterListListReturn::bool_case(subject, true_, false_),
+            },
+            (
                 Self::List {
-                    item_type: true_type,
+                    item_shape: true_shape,
                     body: true_,
                 },
                 Self::List {
-                    item_type: false_type,
+                    item_shape: false_shape,
                     body: false_,
                 },
-            ) if true_type == false_type => Self::List {
-                item_type: true_type,
+            ) if true_shape == false_shape => Self::List {
+                item_shape: true_shape,
                 body: ListListReturn::bool_case(subject, true_, false_),
             },
             (
@@ -471,19 +508,35 @@ impl ListReturn {
                     body: TupleListReturn::int_case(subject, clauses, fallback),
                 })
             }
+            Self::ParameterList {
+                item_parameter,
+                body: fallback,
+            } => {
+                let clauses = into_list_return_clauses(clauses, |branch| match branch {
+                    Self::ParameterList {
+                        item_parameter: branch_parameter,
+                        body,
+                    } if branch_parameter == item_parameter => Some(body),
+                    _ => None,
+                })?;
+                Some(Self::ParameterList {
+                    item_parameter,
+                    body: ParameterListListReturn::int_case(subject, clauses, fallback),
+                })
+            }
             Self::List {
-                item_type,
+                item_shape,
                 body: fallback,
             } => {
                 let clauses = into_list_return_clauses(clauses, |branch| match branch {
                     Self::List {
-                        item_type: branch_type,
+                        item_shape: branch_shape,
                         body,
-                    } if branch_type == item_type => Some(body),
+                    } if branch_shape == item_shape => Some(body),
                     _ => None,
                 })?;
                 Some(Self::List {
-                    item_type,
+                    item_shape,
                     body: ListListReturn::int_case(subject, clauses, fallback),
                 })
             }
@@ -618,19 +671,35 @@ impl ListReturn {
                     body: TupleListReturn::float_case(subject, clauses, fallback),
                 })
             }
+            Self::ParameterList {
+                item_parameter,
+                body: fallback,
+            } => {
+                let clauses = into_list_return_clauses(clauses, |branch| match branch {
+                    Self::ParameterList {
+                        item_parameter: branch_parameter,
+                        body,
+                    } if branch_parameter == item_parameter => Some(body),
+                    _ => None,
+                })?;
+                Some(Self::ParameterList {
+                    item_parameter,
+                    body: ParameterListListReturn::float_case(subject, clauses, fallback),
+                })
+            }
             Self::List {
-                item_type,
+                item_shape,
                 body: fallback,
             } => {
                 let clauses = into_list_return_clauses(clauses, |branch| match branch {
                     Self::List {
-                        item_type: branch_type,
+                        item_shape: branch_shape,
                         body,
-                    } if branch_type == item_type => Some(body),
+                    } if branch_shape == item_shape => Some(body),
                     _ => None,
                 })?;
                 Some(Self::List {
-                    item_type,
+                    item_shape,
                     body: ListListReturn::float_case(subject, clauses, fallback),
                 })
             }
@@ -765,19 +834,35 @@ impl ListReturn {
                     body: TupleListReturn::string_case(subject, clauses, fallback),
                 })
             }
+            Self::ParameterList {
+                item_parameter,
+                body: fallback,
+            } => {
+                let clauses = into_list_return_clauses(clauses, |branch| match branch {
+                    Self::ParameterList {
+                        item_parameter: branch_parameter,
+                        body,
+                    } if branch_parameter == item_parameter => Some(body),
+                    _ => None,
+                })?;
+                Some(Self::ParameterList {
+                    item_parameter,
+                    body: ParameterListListReturn::string_case(subject, clauses, fallback),
+                })
+            }
             Self::List {
-                item_type,
+                item_shape,
                 body: fallback,
             } => {
                 let clauses = into_list_return_clauses(clauses, |branch| match branch {
                     Self::List {
-                        item_type: branch_type,
+                        item_shape: branch_shape,
                         body,
-                    } if branch_type == item_type => Some(body),
+                    } if branch_shape == item_shape => Some(body),
                     _ => None,
                 })?;
                 Some(Self::List {
-                    item_type,
+                    item_shape,
                     body: ListListReturn::string_case(subject, clauses, fallback),
                 })
             }
@@ -826,8 +911,15 @@ impl ListReturn {
                 item_type,
                 body: TupleListReturn::block(steps, body),
             },
-            Self::List { item_type, body } => Self::List {
-                item_type,
+            Self::ParameterList {
+                item_parameter,
+                body,
+            } => Self::ParameterList {
+                item_parameter,
+                body: ParameterListListReturn::block(steps, body),
+            },
+            Self::List { item_shape, body } => Self::List {
+                item_shape,
                 body: ListListReturn::block(steps, body),
             },
             Self::Function { item_type, body } => Self::Function {
@@ -930,6 +1022,10 @@ pub(crate) enum ReturnExprKind {
         parameter: crate::plan::TypeParameterId,
         body: GenericListReturn,
     },
+    ParameterListList {
+        parameter: crate::plan::TypeParameterId,
+        body: ParameterListListReturn,
+    },
     IntList {
         body: IntListReturn,
     },
@@ -960,7 +1056,7 @@ pub(crate) enum ReturnExprKind {
         body: TupleListReturn,
     },
     ListList {
-        item_type: Box<ValueType>,
+        item_shape: ValueStorageShape,
         body: ListListReturn,
     },
     FunctionList {
@@ -1209,6 +1305,15 @@ impl ReturnExpr {
         }
     }
 
+    pub(crate) fn parameter_list_list_body(
+        parameter: crate::plan::TypeParameterId,
+        body: ParameterListListReturn,
+    ) -> Self {
+        Self {
+            kind: ReturnExprKind::ParameterListList { parameter, body },
+        }
+    }
+
     pub(crate) fn string_list_body(body: StringListReturn) -> Self {
         Self {
             kind: ReturnExprKind::StringList { body },
@@ -1257,9 +1362,9 @@ impl ReturnExpr {
         }
     }
 
-    pub(crate) fn list_list_body(item_type: Box<ValueType>, body: ListListReturn) -> Self {
+    pub(crate) fn list_list_body(item_shape: ValueStorageShape, body: ListListReturn) -> Self {
         Self {
-            kind: ReturnExprKind::ListList { item_type, body },
+            kind: ReturnExprKind::ListList { item_shape, body },
         }
     }
 
@@ -1582,6 +1687,9 @@ impl ReturnExpr {
             ReturnExprKind::GenericList { parameter, .. } => {
                 ValueType::List(Box::new(ValueType::Parameter(*parameter)))
             }
+            ReturnExprKind::ParameterListList { parameter, .. } => ValueType::List(Box::new(
+                ValueType::List(Box::new(ValueType::Parameter(*parameter))),
+            )),
             ReturnExprKind::IntList { .. } => ValueType::List(Box::new(ValueType::Int)),
             ReturnExprKind::StringList { .. } => ValueType::List(Box::new(ValueType::String)),
             ReturnExprKind::BitArrayList { .. } => ValueType::List(Box::new(ValueType::BitArray)),
@@ -1597,8 +1705,8 @@ impl ReturnExpr {
             ReturnExprKind::TupleList { item_type, .. } => {
                 ValueType::List(Box::new(ValueType::Tuple(item_type.clone())))
             }
-            ReturnExprKind::ListList { item_type, .. } => {
-                ValueType::List(Box::new(ValueType::List(item_type.clone())))
+            ReturnExprKind::ListList { item_shape, .. } => {
+                ValueType::List(Box::new(ValueType::List(Box::new(item_shape.value_type()))))
             }
             ReturnExprKind::FunctionList { item_type, .. } => {
                 ValueType::List(Box::new(ValueType::Function(Box::new(item_type.clone()))))
@@ -1622,10 +1730,20 @@ impl ReturnExpr {
 }
 
 impl CustomReturn {
+    #[cfg(test)]
     pub(crate) fn expr(expression: CustomExpr) -> Self {
-        let (shape, kind) = expression.into_parts();
+        let shape = expression.shape().clone();
+        Self::with_signature_shape(shape, expression)
+    }
+
+    pub(crate) fn with_signature_shape(
+        signature_shape: crate::plan::CustomValueShape,
+        expression: CustomExpr,
+    ) -> Self {
+        let (body_shape, kind) = expression.into_parts();
         Self {
-            shape,
+            signature_shape,
+            body_shape,
             body: custom_return_body(kind),
         }
     }
@@ -1633,13 +1751,18 @@ impl CustomReturn {
     #[cfg(test)]
     pub(crate) fn block(steps: Vec<Step>, return_: Self) -> Self {
         Self {
-            shape: return_.shape,
+            signature_shape: return_.signature_shape,
+            body_shape: return_.body_shape,
             body: ReturnBody::block(steps, return_.body),
         }
     }
 
     pub(crate) fn shape(&self) -> &crate::plan::CustomValueShape {
-        &self.shape
+        &self.body_shape
+    }
+
+    pub(crate) fn signature_shape(&self) -> &crate::plan::CustomValueShape {
+        &self.signature_shape
     }
 
     pub(crate) fn body(&self) -> &ReturnBody<super::CustomExprKind, FunctionInstantiation> {
@@ -2220,8 +2343,8 @@ mod tests {
         BitArrayListReturn, BoolListReturn, CustomFunctionReturn, CustomListReturn, CustomReturn,
         FloatListReturn, FunctionFunctionReturn, FunctionListReturn, FunctionTemplate,
         GenericFunctionReturn, GenericListReturn, GenericReturn, IntListReturn, ListListReturn,
-        ListReturn, NilListReturn, Param, ParamBinding, ParamLocal, ReturnBody, ReturnBodyKind,
-        ReturnExpr, StringListReturn, TupleListReturn,
+        ListReturn, NilListReturn, Param, ParamBinding, ParamLocal, ParameterListListReturn,
+        ReturnBody, ReturnBodyKind, ReturnExpr, StringListReturn, TupleListReturn,
     };
     use crate::plan::{
         BitArrayExpr, BoolExpr, BoolFunctionLocalId, BoolLocalId, CustomConstructorRefinement,
@@ -2233,7 +2356,7 @@ mod tests {
         GenericLocalId, IntExpr, IntFunctionLocalId, IntListLocalId, IntLocalId, ListExpr,
         ListLocal, NilExpr, NilFunctionLocalId, StringExpr, StringFunctionLocalId, TupleExpr,
         TupleFunctionLocalId, TypeParameterId, UtfCodepointExpr, UtfCodepointListReturn,
-        UtfCodepointLocalId, ValueShape, ValueType,
+        UtfCodepointLocalId, ValueShape, ValueStorageShape, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -2363,7 +2486,8 @@ mod tests {
         assert_eq!(
             body,
             CustomReturn {
-                shape: custom_shape,
+                signature_shape: custom_shape.clone(),
+                body_shape: custom_shape,
                 body: ReturnBody {
                     kind: ReturnBodyKind::Block {
                         steps: Vec::new(),
@@ -2419,7 +2543,8 @@ mod tests {
         let parameter = TypeParameterId(0);
         let custom = custom_type();
         let tuple = vec![ValueType::Int, ValueType::String];
-        let nested = Box::new(ValueType::List(Box::new(ValueType::Bool)));
+        let nested_type = Box::new(ValueType::List(Box::new(ValueType::Bool)));
+        let nested_shape = ValueStorageShape::List(Box::new(ValueShape::Bool));
         let function = FunctionType::new(vec![ValueType::Int], ValueType::String);
         let function_shape = crate::plan::FunctionShape::new(
             vec![ValueShape::Parameter(parameter)],
@@ -2438,6 +2563,10 @@ mod tests {
             ReturnExpr::generic_list_body(
                 parameter,
                 GenericListReturn::tail_call(tail_call.clone(), Vec::new()),
+            ),
+            ReturnExpr::parameter_list_list_body(
+                parameter,
+                ParameterListListReturn::tail_call(tail_call.clone(), Vec::new()),
             ),
             ReturnExpr::string_list_body(StringListReturn::tail_call(
                 tail_call.clone(),
@@ -2462,7 +2591,7 @@ mod tests {
                 TupleListReturn::tail_call(tail_call.clone(), Vec::new()),
             ),
             ReturnExpr::list_list_body(
-                nested.clone(),
+                nested_shape,
                 ListListReturn::tail_call(tail_call.clone(), Vec::new()),
             ),
             ReturnExpr::function_list_body(
@@ -2480,6 +2609,9 @@ mod tests {
             [
                 ValueType::Parameter(parameter),
                 ValueType::List(Box::new(ValueType::Parameter(parameter))),
+                ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Parameter(
+                    parameter,
+                ))))),
                 ValueType::List(Box::new(ValueType::String)),
                 ValueType::List(Box::new(ValueType::BitArray)),
                 ValueType::List(Box::new(ValueType::UtfCodepoint)),
@@ -2487,7 +2619,7 @@ mod tests {
                 ValueType::List(Box::new(ValueType::Float)),
                 ValueType::List(Box::new(ValueType::Bool)),
                 ValueType::List(Box::new(ValueType::Tuple(tuple))),
-                ValueType::List(Box::new(ValueType::List(nested))),
+                ValueType::List(Box::new(ValueType::List(nested_type))),
                 ValueType::List(Box::new(ValueType::Function(Box::new(function)))),
                 ValueType::Function(Box::new(function_shape.type_())),
             ],
@@ -2789,8 +2921,25 @@ mod tests {
         assert_eq!(
             ListReturn::expr(nested.clone()),
             ListReturn::List {
-                item_type: Box::new(ValueType::Int),
+                item_shape: ValueStorageShape::Int,
                 body: ListListReturn::expr(nested.into_list().expect("nested list")),
+            },
+        );
+
+        let parameter = TypeParameterId(0);
+        let parameter_nested = ListExpr::value(
+            Vec::new(),
+            ValueType::List(Box::new(ValueType::Parameter(parameter))),
+        );
+        assert_eq!(
+            ListReturn::expr(parameter_nested.clone()),
+            ListReturn::ParameterList {
+                item_parameter: parameter,
+                body: ParameterListListReturn::expr(
+                    parameter_nested
+                        .into_parameter_list()
+                        .expect("parameter-list list"),
+                ),
             },
         );
 
@@ -2922,8 +3071,23 @@ mod tests {
                 Vec::new(),
             ),
             ListReturn::List {
-                item_type: list_type,
+                item_shape: ValueStorageShape::Int,
                 body: ListListReturn::tail_call(function, Vec::new()),
+            },
+        );
+
+        let parameter = TypeParameterId(0);
+        let parameter_list_type = Box::new(ValueType::Parameter(parameter));
+        let function = tail_call_function(ValueType::List(parameter_list_type.clone()));
+        assert_eq!(
+            ListReturn::tail_call(
+                function.clone(),
+                ValueType::List(parameter_list_type),
+                Vec::new(),
+            ),
+            ListReturn::ParameterList {
+                item_parameter: parameter,
+                body: ParameterListListReturn::tail_call(function, Vec::new()),
             },
         );
 
@@ -3198,6 +3362,7 @@ mod tests {
             ValueType::Bool,
             ValueType::Nil,
             ValueType::Tuple(vec![ValueType::Int]),
+            ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(1)))),
             ValueType::List(Box::new(ValueType::String)),
             ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Bool))),
         ];
@@ -3269,6 +3434,7 @@ mod tests {
             ValueType::Bool,
             ValueType::Nil,
             ValueType::Tuple(vec![ValueType::Int]),
+            ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(1)))),
             ValueType::List(Box::new(ValueType::String)),
             ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Bool))),
         ];
@@ -3374,7 +3540,12 @@ mod tests {
             ListReturn::Bool(_) => ValueType::Bool,
             ListReturn::Nil(_) => ValueType::Nil,
             ListReturn::Tuple { item_type, .. } => ValueType::Tuple(item_type.clone()),
-            ListReturn::List { item_type, .. } => ValueType::List(item_type.clone()),
+            ListReturn::ParameterList { item_parameter, .. } => {
+                ValueType::List(Box::new(ValueType::Parameter(*item_parameter)))
+            }
+            ListReturn::List { item_shape, .. } => {
+                ValueType::List(Box::new(item_shape.value_type()))
+            }
             ListReturn::Function { item_type, .. } => {
                 ValueType::Function(Box::new(item_type.clone()))
             }

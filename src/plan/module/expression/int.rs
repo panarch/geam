@@ -2,7 +2,7 @@ use super::{
     BoolExpr, CallArg, CustomFieldAccess, FloatExpr, IntFunctionExpr, IntListExpr, PanicExpr,
     StringExpr, TupleExpr,
 };
-use crate::plan::{FunctionInstantiation, IntLocalId, Step};
+use crate::plan::{ConstantIntReference, FunctionInstantiation, IntLocalId, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -14,6 +14,7 @@ pub struct IntExpr {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum IntExprKind {
     Value(BigInt),
+    Constant(ConstantIntReference),
     LocalGet {
         local: IntLocalId,
         name: EcoString,
@@ -87,6 +88,12 @@ impl IntExpr {
     pub(crate) fn value(value: BigInt) -> Self {
         Self {
             kind: IntExprKind::Value(value),
+        }
+    }
+
+    pub(in crate::plan::module) fn constant(reference: ConstantIntReference) -> Self {
+        Self {
+            kind: IntExprKind::Constant(reference),
         }
     }
 

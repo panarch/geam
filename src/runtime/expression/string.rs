@@ -20,12 +20,19 @@ pub(in crate::runtime) fn eval_string_expr(
 ) -> Result<EcoString, ExecutionError> {
     match expression.kind() {
         StringExprKind::Value(value) => Ok(value.clone()),
+        StringExprKind::Constant(id) => eval_string_expr(plan, state, frame, plan.constant(*id)),
         StringExprKind::LocalGet { local, .. } => Ok(frame.get_string(*local)),
-        StringExprKind::Call { function, args } => {
-            function::run_string_call(plan, state, *function, args, frame)
-        }
-        StringExprKind::FunctionCall { function, args } => {
-            function::run_string_function_call(plan, state, function, args, frame)
+        StringExprKind::Call(call) => super::eval_direct_call(
+            plan,
+            state,
+            frame,
+            call,
+            |plan, state, function, args, frame| {
+                function::run_string_call(plan, state, *function, args, frame)
+            },
+        ),
+        StringExprKind::FunctionCall(call) => {
+            super::eval_function_call(plan, state, frame, call, function::run_string_function_call)
         }
         StringExprKind::TupleIndex { tuple, index } => {
             match project_tuple_expr(plan, state, frame, tuple, *index, ValueType::String)? {
@@ -143,6 +150,8 @@ fn suffix(value: String) -> String { value <> "!" }
 pub fn main() {
   let local = "local"
   let function = suffix
+  let true_selector = True
+  let false_selector = False
   #(
     local,
     suffix("call"),
@@ -151,8 +160,8 @@ pub fn main() {
     case ["list"] { [value] -> value _ -> "missing" },
     "left" <> "right",
     case "prefix-rest" { "prefix-" <> rest -> rest _ -> "missing" },
-    case True { True -> "true" False -> "false" },
-    case False { True -> "true" False -> "false" },
+    case true_selector { True -> "true" False -> "false" },
+    case false_selector { True -> "true" False -> "false" },
     case 1 { 1 -> "one" _ -> "other" },
     case 2 { 1 -> "one" _ -> "other" },
     case "one" { "one" -> "match" _ -> "other" },

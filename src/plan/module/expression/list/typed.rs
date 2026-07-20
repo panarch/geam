@@ -1,4 +1,4 @@
-use super::{ListItem, ListListExpr};
+use super::ListItem;
 use crate::plan::CustomFieldAccess;
 use crate::plan::{
     BoolExpr, CallArg, FloatExpr, IntExpr, ListFunctionExpr, PanicExpr, Step, StringExpr,
@@ -7,6 +7,7 @@ use crate::plan::{
 use ecow::EcoString;
 use num_bigint::BigInt;
 use std::marker::PhantomData;
+use vec1::Vec1;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct TypedListExpr<Item: ListItem> {
@@ -17,7 +18,7 @@ pub(crate) struct TypedListExpr<Item: ListItem> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ListIndexSource<Item: ListItem> {
-    list: Box<ListListExpr>,
+    list: Box<Item::IndexSource>,
     index: usize,
     result_item: PhantomData<fn() -> Item>,
 }
@@ -25,8 +26,9 @@ pub(crate) struct ListIndexSource<Item: ListItem> {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum TypedListExprKind<Item: ListItem> {
     Value(Vec<Item::ElementExpr>),
+    Constant(Item::Constant),
     Spread {
-        elements: Vec<Item::ElementExpr>,
+        elements: Vec1<Item::ElementExpr>,
         tail: Box<TypedListExprKind<Item>>,
     },
     LocalGet {
@@ -111,7 +113,7 @@ pub(crate) enum TypedListReturnKind<Item: ListItem> {
 }
 
 impl<Item: ListItem> ListIndexSource<Item> {
-    pub(super) fn new(list: ListListExpr, index: usize) -> Self {
+    pub(super) fn new(list: Item::IndexSource, index: usize) -> Self {
         Self {
             list: Box::new(list),
             index,
@@ -119,7 +121,7 @@ impl<Item: ListItem> ListIndexSource<Item> {
         }
     }
 
-    pub(crate) fn list(&self) -> &ListListExpr {
+    pub(crate) fn list(&self) -> &Item::IndexSource {
         &self.list
     }
 
@@ -148,6 +150,14 @@ impl<Item: ListItem> TypedListExpr<Item> {
             item,
             kind,
         }
+    }
+
+    pub(super) fn constant(
+        item_shape: crate::plan::ValueShape,
+        item: Item,
+        reference: Item::Constant,
+    ) -> Self {
+        Self::from_shape_item_and_kind(item_shape, item, TypedListExprKind::Constant(reference))
     }
 
     pub(crate) fn item(&self) -> &Item {
@@ -187,6 +197,13 @@ impl<Item: ListItem> TypedListExpr<Item> {
     pub(crate) fn into_return_kind(self) -> TypedListReturnKind<Item> {
         let (item_shape, item, kind) = self.into_shape_item_and_kind();
         match kind {
+            TypedListExprKind::Constant(reference) => {
+                TypedListReturnKind::Expr(Self::from_shape_item_and_kind(
+                    item_shape,
+                    item,
+                    TypedListExprKind::Constant(reference),
+                ))
+            }
             TypedListExprKind::Call { function, args } => {
                 TypedListReturnKind::Call { function, args }
             }
@@ -277,7 +294,7 @@ impl<Item: ListItem> TypedListExpr<Item> {
     }
 
     pub(in crate::plan::module) fn spread(
-        elements: Vec<Item::ElementExpr>,
+        elements: Vec1<Item::ElementExpr>,
         tail: TypedListExpr<Item>,
     ) -> Self {
         let (item_shape, item, tail) = tail.into_shape_item_and_kind();
@@ -534,13 +551,13 @@ mod tests {
             Vec::new(),
             TupleListExpr::bool_case(BoolExpr::value(true), true_, false_),
         );
-        let expression = TupleListExpr::spread(vec![first.clone()], tail);
+        let expression = TupleListExpr::spread(vec1::vec1![first.clone()], tail);
 
         assert_eq!(expression.item(), &item);
         assert_eq!(
             expression.kind(),
             &TypedListExprKind::Spread {
-                elements: vec![first],
+                elements: vec1::vec1![first],
                 tail: Box::new(TypedListExprKind::Block {
                     steps: Vec::new(),
                     return_: Box::new(TypedListExprKind::BoolCase {

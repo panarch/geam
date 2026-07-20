@@ -1,119 +1,145 @@
+use super::super::super::specialization::Representability;
 use super::function_function_expr;
 use crate::plan::{execution, module};
 
 pub(in crate::plan::execution::lowering) fn bool_function_expr(
     expression: &module::BoolFunctionExpr,
     context: &mut super::super::super::LoweringContext,
-) -> execution::BoolFunctionExpr {
+) -> Representability<execution::BoolFunctionExpr> {
     use execution::BoolFunctionExprKind as E;
     use module::BoolFunctionExprKind as M;
 
     let kind = match expression.kind() {
+        M::Constant(value) => context.bool_function_constant(value).map(E::Constant),
         M::Reference(value) => {
-            E::Reference(super::function_reference(value, context, |id, context| {
-                context.bool_function_id(id)
-            }))
+            super::function_reference(value, context, |id, context| context.bool_function_id(id))
+                .map(E::Reference)
         }
         M::Closure {
             function,
             params,
             captures,
-        } => E::Closure(super::closure_template(
-            function,
-            params,
-            captures,
-            context,
-            |id, context| context.bool_function_id(id),
-        )),
-        M::LocalGet { local, name: _ } => E::LocalGet {
+        } => super::closure_template(function, params, captures, context, |id, context| {
+            context.bool_function_id(id)
+        })
+        .map(E::Closure),
+        M::LocalGet { local, name: _ } => Representability::Inhabited(E::LocalGet {
             local: execution::BoolFunctionLocalId(
                 context.mapped_local(super::super::super::frame::LocalKind::BoolFunction, local.0),
             ),
-        },
+        }),
         M::Call {
             function,
             args,
             type_: _,
-        } => E::Call {
-            function: context.bool_function_function_id(function),
-            args: super::super::direct_call_args(function, args, context),
-        },
+        } => super::super::direct_call(function, args, context, |function, context| {
+            context.bool_function_function_id(function)
+        })
+        .map(E::Call),
         M::FunctionCall {
             function,
             args,
             type_: _,
-        } => E::FunctionCall {
-            function: Box::new(function_function_expr(function, context)),
-            args: super::super::call_args(args, context),
-        },
+        } => super::super::function_call(
+            args,
+            context,
+            |context| function_function_expr(function, context),
+            |context| super::evaluated_function_function_expr(function, context),
+        )
+        .map(E::FunctionCall),
         M::TupleIndex {
             tuple,
             index,
             type_,
-        } => E::TupleIndex {
-            tuple: Box::new(super::super::tuple_expr(tuple, context)),
+        } => super::super::tuple_expr(tuple, context).map(|tuple| E::TupleIndex {
+            tuple: Box::new(tuple),
             index: *index,
             type_: context.function_type(type_.clone()),
-        },
+        }),
         M::CustomField(access) => {
-            E::CustomField(super::super::custom_field_access(access, context))
+            super::super::custom_field_access(access, context).map(E::CustomField)
         }
-        M::ListIndex { list, index, type_ } => E::ListIndex {
-            list: Box::new(super::super::function_list_expr(list, context)),
-            index: *index,
-            type_: context.function_type(type_.clone()),
-        },
-        M::Panic(value) => E::Panic(super::super::panic_expr(value, context)),
+        M::ListIndex { list, index, type_ } => {
+            super::super::function_list_expr(list, context).map(|list| E::ListIndex {
+                list: Box::new(list),
+                index: *index,
+                type_: context.function_type(type_.clone()),
+            })
+        }
+        M::Panic(value) => super::super::panic_expr(value, context).map(E::Panic),
         M::BoolCase {
             subject,
             true_,
             false_,
-        } => E::BoolCase {
-            subject: Box::new(super::super::bool_expr(subject, context)),
-            true_: Box::new(bool_function_expr(true_, context)),
-            false_: Box::new(bool_function_expr(false_, context)),
-        },
+        } => super::super::bool_case_into(
+            subject,
+            context,
+            |context| bool_function_expr(true_, context),
+            |context| bool_function_expr(false_, context),
+            execution::BoolFunctionExpr::into_kind,
+            |subject, true_, false_| E::BoolCase {
+                subject: Box::new(subject),
+                true_: Box::new(true_),
+                false_: Box::new(false_),
+            },
+        ),
         M::IntCase {
             subject,
             clauses,
             fallback,
-        } => E::IntCase {
-            subject: Box::new(super::super::int_expr(subject, context)),
-            clauses: clauses
-                .iter()
-                .map(|(pattern, branch)| (pattern.clone(), bool_function_expr(branch, context)))
-                .collect(),
-            fallback: Box::new(bool_function_expr(fallback, context)),
-        },
+        } => super::super::int_expr(subject, context).and_then(|subject| {
+            Representability::collect(clauses.iter().map(|(pattern, branch)| {
+                bool_function_expr(branch, context).map(|branch| (pattern.clone(), branch))
+            }))
+            .and_then(|clauses| {
+                bool_function_expr(fallback, context).map(|fallback| E::IntCase {
+                    subject: Box::new(subject),
+                    clauses,
+                    fallback: Box::new(fallback),
+                })
+            })
+        }),
         M::StringCase {
             subject,
             clauses,
             fallback,
-        } => E::StringCase {
-            subject: Box::new(super::super::string_expr(subject, context)),
-            clauses: clauses
-                .iter()
-                .map(|(pattern, branch)| (pattern.clone(), bool_function_expr(branch, context)))
-                .collect(),
-            fallback: Box::new(bool_function_expr(fallback, context)),
-        },
+        } => super::super::string_expr(subject, context).and_then(|subject| {
+            Representability::collect(clauses.iter().map(|(pattern, branch)| {
+                bool_function_expr(branch, context).map(|branch| (pattern.clone(), branch))
+            }))
+            .and_then(|clauses| {
+                bool_function_expr(fallback, context).map(|fallback| E::StringCase {
+                    subject: Box::new(subject),
+                    clauses,
+                    fallback: Box::new(fallback),
+                })
+            })
+        }),
         M::FloatCase {
             subject,
             clauses,
             fallback,
-        } => E::FloatCase {
-            subject: Box::new(super::super::float_expr(subject, context)),
-            clauses: clauses
-                .iter()
-                .map(|(pattern, branch)| (*pattern, bool_function_expr(branch, context)))
-                .collect(),
-            fallback: Box::new(bool_function_expr(fallback, context)),
-        },
-        M::Block { steps, return_ } => E::Block {
-            steps: crate::plan::execution::lowering::step::steps(steps, context),
-            return_: Box::new(bool_function_expr(return_, context)),
-        },
+        } => super::super::float_expr(subject, context).and_then(|subject| {
+            Representability::collect(clauses.iter().map(|(pattern, branch)| {
+                bool_function_expr(branch, context).map(|branch| (*pattern, branch))
+            }))
+            .and_then(|clauses| {
+                bool_function_expr(fallback, context).map(|fallback| E::FloatCase {
+                    subject: Box::new(subject),
+                    clauses,
+                    fallback: Box::new(fallback),
+                })
+            })
+        }),
+        M::Block { steps, return_ } => {
+            crate::plan::execution::lowering::step::steps(steps, context).and_then(|steps| {
+                bool_function_expr(return_, context).map(|return_| E::Block {
+                    steps,
+                    return_: Box::new(return_),
+                })
+            })
+        }
     };
 
-    execution::BoolFunctionExpr::from_kind(kind)
+    kind.map(execution::BoolFunctionExpr::from_kind)
 }

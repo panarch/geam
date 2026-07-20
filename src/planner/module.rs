@@ -1,6 +1,6 @@
 use crate::plan::{
     FunctionFunctionLocalId, FunctionTemplateId, IntFunctionLocalId, ModulePlan, ParamBinding,
-    ParamLocal, SourceContext, ValueType,
+    ParamLocal, SourceContext,
 };
 use crate::planner::context::{AnonymousFunctions, FunctionInfo, FunctionParam};
 use crate::planner::error::{
@@ -10,10 +10,9 @@ use crate::planner::error::{
 use crate::planner::function::{function_name, plan_function};
 use crate::planner::type_parameter::TypeParameterScope;
 use ecow::EcoString;
-use gleam_core::ast::{ArgNames, Statement, TypedExpr, TypedFunction, TypedModule};
-use gleam_core::type_::{Type, TypeVar};
+use gleam_core::ast::{ArgNames, TypedFunction, TypedModule};
+use gleam_core::type_::Type;
 use std::collections::HashMap;
-use std::ops::Deref;
 
 pub(in crate::planner) use constant::ConstantRegistry;
 #[cfg(test)]
@@ -98,7 +97,6 @@ fn plan_module_inner(module: TypedModule) -> Result<ModulePlan, PlanError> {
     }
     let anonymous_functions = anonymous_functions.into_functions();
     let constants = constants.into_templates();
-    validate_executable_main(&main)?;
 
     Ok(ModulePlan::new(module_name, main, functions)
         .with_custom_types(custom_types)
@@ -127,8 +125,7 @@ fn function_table(
     for function in functions {
         let name = function_name(function)?;
         let mut type_parameters = TypeParameterScope::default();
-        let return_shape =
-            function_return_shape_in(&function.return_type, &function.body, &mut type_parameters);
+        let return_shape = function_return_shape_in(&function.return_type, &mut type_parameters);
         let params = function_params_allowing_labels_in(&function.arguments, &mut type_parameters);
         let scheme = type_parameters.scheme();
         seeds.push(FunctionSeed {
@@ -223,84 +220,11 @@ struct FunctionSeed {
     type_parameters: TypeParameterScope,
 }
 
-#[cfg(test)]
-fn function_return_type(
-    name: EcoString,
-    type_: &Type,
-    body: &[gleam_core::ast::TypedStatement],
-) -> Result<ValueType, PlanError> {
-    function_return_shape(name, type_, body).map(|shape| shape.value_type())
-}
-
-#[cfg(test)]
-fn function_return_shape(
-    name: EcoString,
-    type_: &Type,
-    body: &[gleam_core::ast::TypedStatement],
-) -> Result<crate::plan::ValueShape, PlanError> {
-    if let Some(return_shape) = crate::plan::ValueShape::from_gleam(type_) {
-        return Ok(return_shape);
-    }
-
-    if is_inferred_return_type(type_)
-        && let Some(return_type) = source_stop_return_type(body)
-    {
-        return Ok(crate::plan::ValueShape::from_value_type(return_type));
-    }
-
-    Err(PlanError::UnsupportedFunction {
-        name,
-        reason: UnsupportedFunctionReason::UnsupportedReturnType,
-    })
-}
-
 fn function_return_shape_in(
     type_: &Type,
-    body: &[gleam_core::ast::TypedStatement],
     parameters: &mut TypeParameterScope,
 ) -> crate::plan::ValueShape {
-    if !is_inferred_return_type(type_) {
-        return crate::plan::ValueShape::from_gleam_in(type_, parameters);
-    }
-
-    if let Some(return_type) = source_stop_return_type(body) {
-        return crate::plan::ValueShape::from_value_type(return_type);
-    }
-
     crate::plan::ValueShape::from_gleam_in(type_, parameters)
-}
-
-fn is_inferred_return_type(type_: &Type) -> bool {
-    let Type::Var { type_ } = type_ else {
-        return false;
-    };
-
-    match type_.borrow().deref() {
-        TypeVar::Link { type_ } => is_inferred_return_type(type_.as_ref()),
-        TypeVar::Unbound { .. } => true,
-        TypeVar::Generic { .. } => false,
-    }
-}
-
-fn source_stop_return_type(body: &[gleam_core::ast::TypedStatement]) -> Option<ValueType> {
-    matches!(
-        body.last(),
-        Some(Statement::Expression(expression)) if is_source_stop_expr(expression)
-    )
-    .then_some(ValueType::Nil)
-}
-
-fn is_source_stop_expr(expression: &TypedExpr) -> bool {
-    match expression {
-        TypedExpr::Panic { .. } | TypedExpr::Todo { .. } => true,
-        TypedExpr::Block { statements, .. } => {
-            let Statement::Expression(expression) = statements.last() else {
-                return false;
-            };
-            is_source_stop_expr(expression)
-        }
-        _ => false,
-    }
 }
 
 pub(super) fn function_params_in(
@@ -679,17 +603,6 @@ fn validate_main_function(main: FunctionToPlan) -> Result<FunctionToPlan, PlanEr
     Ok(main)
 }
 
-fn validate_executable_main(main: &crate::plan::FunctionTemplate) -> Result<(), PlanError> {
-    if main.scheme().is_monomorphic() {
-        Ok(())
-    } else {
-        Err(PlanError::UnsupportedFunction {
-            name: "main".into(),
-            reason: UnsupportedFunctionReason::UnsupportedReturnType,
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::plan_module;
@@ -701,9 +614,9 @@ mod tests {
         FunctionListLocalId, FunctionType, GenericExpr, GenericFunctionLocal,
         GenericFunctionLocalId, GenericFunctionType, GenericListLocalId, GenericLocal,
         GenericLocalId, IntFunctionFunctionId, IntFunctionId, IntListLocalId, IntLocalId,
-        ListListLocalId, ListLocal, LocalId, NilExpr, NilFunctionId, NilListLocalId, PanicExpr,
-        PanicSite, Param, ParamLocal, ReturnBody, ReturnExpr, RuntimeFunctionId, SourceSpan,
-        StringListLocalId, TupleListLocalId, TypeParameterId, TypeScheme, ValueShape, ValueType,
+        ListListLocalId, ListLocal, LocalId, NilListLocalId, PanicExpr, PanicSite, Param,
+        ParamLocal, ReturnBody, ReturnExpr, RuntimeFunctionId, SourceSpan, StringListLocalId,
+        TupleListLocalId, TypeParameterId, TypeScheme, ValueShape, ValueType,
     };
     use crate::planner::dsl::{
         call_int, call_int_returning_function, function, function_ref, int, int_arg,
@@ -801,12 +714,26 @@ pub fn main() {
         .expect("source should plan");
         let signature =
             ConstantTemplateSignature::int(ConstantTemplateId(0), 0, TypeScheme::new(0));
-        let expected = module("main", function("main", int(42)), []).with_constants(
-            ConstantTemplates::from_entries(vec![(
-                ConstantTemplate::new(signature, "answer".into()),
-                ConstantValue::int(42.into()),
-            )]),
-        );
+        let instantiation = signature
+            .try_instantiate(Vec::new())
+            .expect("a monomorphic constant should instantiate");
+        let constants = ConstantTemplates::from_entries(vec![(
+            ConstantTemplate::new(signature, "answer".into()),
+            ConstantValue::int(42.into()),
+        )]);
+        let expected = module(
+            "main",
+            function(
+                "main",
+                crate::plan::IntReturn::expr(
+                    ConstantTemplates::reference(instantiation)
+                        .into_int()
+                        .expect("an Int constant reference should retain its family"),
+                ),
+            ),
+            [],
+        )
+        .with_constants(constants);
 
         assert_eq!(actual, expected);
     }
@@ -868,7 +795,7 @@ pub fn main() {
     }
 
     #[test]
-    fn plan_empty_source_body_as_nil_generated_todo() {
+    fn plan_empty_source_body_as_parametric_generated_todo() {
         let actual = plan_module(compile(
             r#"
 pub fn main() {
@@ -878,13 +805,16 @@ pub fn main() {
         .expect("source should plan");
         assert_eq!(
             actual.main_function().return_(),
-            &crate::plan::ReturnExpr::nil(
-                NilFunctionId(0),
-                NilExpr::panic(PanicExpr::empty_function_at(PanicSite::new(
-                    "main".into(),
-                    "main".into(),
-                    SourceSpan::new(1, 14),
-                ))),
+            &crate::plan::ReturnExpr::generic_body(
+                TypeParameterId(0),
+                ReturnBody::expr(GenericExpr::panic(
+                    TypeParameterId(0),
+                    PanicExpr::empty_function_at(PanicSite::new(
+                        "main".into(),
+                        "main".into(),
+                        SourceSpan::new(1, 14),
+                    )),
+                )),
             ),
         );
     }
@@ -892,101 +822,35 @@ pub fn main() {
     #[test]
     fn function_return_type_preserves_custom_non_source_stop_shapes() {
         let result_type = result_type();
-        assert!(!super::is_inferred_return_type(type_::int().as_ref()));
-        assert_eq!(super::source_stop_return_type(&[]), None);
         assert_eq!(
-            super::function_return_type(
-                "values".into(),
-                type_::result(type_::int(), type_::nil()).as_ref(),
-                &[],
-            ),
-            Ok(result_type.clone()),
-        );
-
-        let final_expression = compile(
-            r#"
-pub fn main() {
-  1
-}
-"#,
-        );
-        assert_eq!(
-            super::source_stop_return_type(&final_expression.definitions.functions[0].body),
-            None,
-        );
-
-        let final_assignment = compile(
-            r#"
-pub fn main() {
-  let value = 1
-}
-"#,
-        );
-        assert_eq!(
-            super::source_stop_return_type(&final_assignment.definitions.functions[0].body),
-            None,
-        );
-
-        let block_with_final_assignment = compile(
-            r#"
-pub fn main() {
-  {
-    let value = 1
-  }
-}
-"#,
-        );
-        assert_eq!(
-            super::source_stop_return_type(
-                &block_with_final_assignment.definitions.functions[0].body
-            ),
-            None,
+            ValueShape::from_gleam(type_::result(type_::int(), type_::nil()).as_ref())
+                .map(|shape| shape.value_type()),
+            Some(result_type.clone()),
         );
 
         assert_eq!(
-            super::function_return_type(
-                "main".into(),
-                type_::result(type_::int(), type_::nil()).as_ref(),
-                &block_with_final_assignment.definitions.functions[0].body,
-            ),
-            Ok(result_type),
+            ValueShape::from_gleam(type_::result(type_::int(), type_::nil()).as_ref())
+                .map(|shape| shape.value_type()),
+            Some(result_type),
         );
     }
 
     #[test]
-    fn plan_source_stop_with_unbound_return_type_as_nil() {
-        let block_with_source_stop = compile(
-            r#"
-pub fn main() {
-  {
-    panic
-  }
-}
-"#,
-        );
-
+    fn preserve_unbound_return_type_as_parameter() {
+        let mut parameters = super::TypeParameterScope::default();
         assert_eq!(
-            super::function_return_type(
-                "main".into(),
-                type_::unbound_var(0).as_ref(),
-                &block_with_source_stop.definitions.functions[0].body,
-            ),
-            Ok(ValueType::Nil),
+            super::function_return_shape_in(type_::unbound_var(0).as_ref(), &mut parameters)
+                .value_type(),
+            ValueType::Parameter(TypeParameterId(0)),
         );
+        assert_eq!(parameters.scheme(), TypeScheme::new(1));
     }
 
     #[test]
-    fn parametric_function_return_shapes_preserve_inferred_and_source_stop_results() {
-        let source_stop = compile(
-            r#"
-pub fn main() {
-  panic
-}
-"#,
-        );
+    fn parametric_function_return_shapes_preserve_inferred_results() {
         let mut concrete_parameters = super::TypeParameterScope::default();
         assert_eq!(
-            super::function_return_shape_in(type_::int().as_ref(), &[], &mut concrete_parameters),
+            super::function_return_shape_in(type_::int().as_ref(), &mut concrete_parameters),
             ValueShape::Int,
         );
 
@@ -994,18 +858,17 @@ pub fn main() {
         assert_eq!(
             super::function_return_shape_in(
                 type_::unbound_var(41).as_ref(),
-                &source_stop.definitions.functions[0].body,
                 &mut source_stop_parameters,
             ),
-            ValueShape::Nil,
+            ValueShape::Parameter(TypeParameterId(0)),
         );
+        assert_eq!(source_stop_parameters.scheme(), TypeScheme::new(1));
 
         let mut inferred_parameters = super::TypeParameterScope::default();
         assert_eq!(
             super::function_return_shape_in(
                 type_::unbound_var(41).as_ref(),
-                &[],
-                &mut inferred_parameters,
+                &mut inferred_parameters
             ),
             ValueShape::Parameter(TypeParameterId(0)),
         );
@@ -1013,28 +876,14 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_margin_source_stop_generic_return_without_template_scope() {
-        let block_with_source_stop = compile(
-            r#"
-pub fn main() {
-  {
-    panic
-  }
-}
-"#,
-        );
-
+    fn preserve_generic_return_without_template_scope() {
+        let mut parameters = super::TypeParameterScope::default();
         assert_eq!(
-            super::function_return_type(
-                "main".into(),
-                type_::generic_var(0).as_ref(),
-                &block_with_source_stop.definitions.functions[0].body,
-            ),
-            Err(PlanError::UnsupportedFunction {
-                name: "main".into(),
-                reason: UnsupportedFunctionReason::UnsupportedReturnType,
-            }),
+            super::function_return_shape_in(type_::generic_var(0).as_ref(), &mut parameters)
+                .value_type(),
+            ValueType::Parameter(TypeParameterId(0)),
         );
+        assert_eq!(parameters.scheme(), TypeScheme::new(1));
     }
 
     #[test]
@@ -1070,19 +919,20 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_unresolved_generic_main_as_specialization_root() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
+    fn plan_representable_unresolved_generic_main_as_specialization_root() {
+        let actual = plan_module(compile(
+            r#"
 pub fn main() {
   []
 }
 "#,
-            ),
-            PlanError::UnsupportedFunction {
-                name: "main".into(),
-                reason: UnsupportedFunctionReason::UnsupportedReturnType,
-            },
+        ))
+        .expect("an empty generic list has a runtime representation");
+
+        assert_eq!(actual.main_function().scheme(), &TypeScheme::new(1));
+        assert_eq!(
+            actual.main_function().signature().shape().return_shape(),
+            &ValueShape::List(Box::new(ValueShape::Parameter(TypeParameterId(0)))),
         );
     }
 
@@ -1097,12 +947,9 @@ pub fn main() -> Result(Int, Nil) {
 "#,
         );
         assert_eq!(
-            super::function_return_type(
-                "main".into(),
-                main.definitions.functions[0].return_type.as_ref(),
-                &main.definitions.functions[0].body,
-            ),
-            Ok(result_type.clone()),
+            ValueShape::from_gleam(main.definitions.functions[0].return_type.as_ref())
+                .map(|shape| shape.value_type()),
+            Some(result_type.clone()),
         );
 
         let helper = compile(
@@ -1118,8 +965,8 @@ fn helper() -> Result(Int, Nil) {
         );
         let helper = &helper.definitions.functions[1];
         assert_eq!(
-            super::function_return_type("helper".into(), helper.return_type.as_ref(), &helper.body,),
-            Ok(result_type),
+            ValueShape::from_gleam(helper.return_type.as_ref()).map(|shape| shape.value_type()),
+            Some(result_type),
         );
     }
 

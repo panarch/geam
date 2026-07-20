@@ -2,22 +2,25 @@ use crate::plan::execution::{
     BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
     BoolListLocalId, BoolLocalId, CustomFunctionLocal, CustomFunctionLocalId, CustomListLocalId,
     CustomLocal, CustomLocalId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FrameLayout,
-    FunctionFunctionLocal, FunctionFunctionLocalId, FunctionListLocalId, IntFunctionLocalId,
-    IntListLocalId, IntLocalId, ListFunctionLocal, ListListLocalId, NilFunctionLocalId,
-    NilListLocalId, NilLocalId, StringFunctionLocalId, StringListLocalId, StringLocalId,
-    TupleFunctionLocalId, TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId,
-    UtfCodepointListLocalId, UtfCodepointLocalId,
+    FunctionFunctionLocal, FunctionFunctionLocalId, FunctionListLocalId, GenericFunctionLocal,
+    GenericFunctionLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionLocal,
+    ListListLocalId, NeverFunctionLocal, NeverFunctionLocalId, NilFunctionLocalId, NilListLocalId,
+    NilLocalId, ParameterListListLocalId, ParameterListLocalId, StringFunctionLocalId,
+    StringListLocalId, StringLocalId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
+    UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
 };
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCustomFunction,
-    EvaluatedCustomValue, EvaluatedFloatFunction, EvaluatedFunctionFunction, EvaluatedIntFunction,
-    EvaluatedListFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
+    EvaluatedCustomValue, EvaluatedFloatFunction, EvaluatedFunctionFunction,
+    EvaluatedGenericFunction, EvaluatedIntFunction, EvaluatedListFunction, EvaluatedNeverFunction,
+    EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
     EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
 use crate::runtime::state::{
     BitArrayListValueId, BoolListValueId, CustomListValueId, FloatListValueId, FunctionListValueId,
-    IntListValueId, ListListValueId, NilListValueId, RuntimeState, StringListValueId,
-    TupleListValueId, UtfCodepointListValueId,
+    IntListValueId, ListListValueId, NilListValueId, ParameterListListValueId,
+    ParameterListValueId, RuntimeState, StringListValueId, TupleListValueId,
+    UtfCodepointListValueId,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -32,6 +35,7 @@ pub(super) struct Frame {
     customs: HashMap<CustomLocalId, EvaluatedCustomValue>,
     bools: Vec<bool>,
     tuples: Vec<Vec<EvaluatedValue>>,
+    parameter_lists: Vec<ParameterListValueId>,
     int_lists: Vec<IntListValueId>,
     string_lists: Vec<StringListValueId>,
     bit_array_lists: Vec<BitArrayListValueId>,
@@ -41,6 +45,7 @@ pub(super) struct Frame {
     bool_lists: Vec<BoolListValueId>,
     nil_lists: Vec<NilListValueId>,
     tuple_lists: Vec<TupleListValueId>,
+    parameter_list_lists: Vec<ParameterListListValueId>,
     list_lists: Vec<ListListValueId>,
     function_lists: Vec<FunctionListValueId>,
     int_functions: HashMap<IntFunctionLocalId, EvaluatedIntFunction>,
@@ -54,6 +59,8 @@ pub(super) struct Frame {
     tuple_functions: HashMap<TupleFunctionLocalId, EvaluatedTupleFunction>,
     list_functions: HashMap<ListFunctionLocal, EvaluatedListFunction>,
     function_functions: HashMap<FunctionFunctionLocalId, EvaluatedFunctionFunction>,
+    generic_functions: HashMap<GenericFunctionLocalId, EvaluatedGenericFunction>,
+    never_functions: HashMap<NeverFunctionLocalId, EvaluatedNeverFunction>,
 }
 
 impl Frame {
@@ -67,6 +74,11 @@ impl Frame {
             customs: HashMap::with_capacity(layout.customs().len()),
             bools: vec![false; layout.bools()],
             tuples: vec![Vec::new(); layout.tuples()],
+            parameter_lists: layout
+                .parameter_lists()
+                .iter()
+                .map(|type_id| ParameterListValueId::new(*type_id))
+                .collect(),
             int_lists: layout
                 .int_lists()
                 .iter()
@@ -112,6 +124,11 @@ impl Frame {
                 .iter()
                 .map(|type_id| state.tuple(*type_id, Vec::new()))
                 .collect(),
+            parameter_list_lists: layout
+                .parameter_list_lists()
+                .iter()
+                .map(|type_id| state.parameter_list_list(*type_id, 0))
+                .collect(),
             list_lists: layout
                 .list_lists()
                 .iter()
@@ -133,6 +150,8 @@ impl Frame {
             tuple_functions: HashMap::with_capacity(layout.tuple_functions()),
             list_functions: HashMap::with_capacity(layout.list_functions().len()),
             function_functions: HashMap::with_capacity(layout.function_functions().len()),
+            generic_functions: HashMap::with_capacity(layout.generic_functions().len()),
+            never_functions: HashMap::with_capacity(layout.never_functions().len()),
         }
     }
 
@@ -202,6 +221,18 @@ impl Frame {
 
     pub(super) fn get_tuple(&self, local: TupleLocalId) -> Vec<EvaluatedValue> {
         self.tuples[local.0].clone()
+    }
+
+    pub(super) fn set_parameter_list(
+        &mut self,
+        local: ParameterListLocalId,
+        value: ParameterListValueId,
+    ) {
+        set_slot(&mut self.parameter_lists, local.0, value);
+    }
+
+    pub(super) fn get_parameter_list(&self, local: ParameterListLocalId) -> ParameterListValueId {
+        self.parameter_lists[local.0]
     }
 
     pub(super) fn set_int_list(&mut self, local: IntListLocalId, value: IntListValueId) {
@@ -285,6 +316,21 @@ impl Frame {
 
     pub(super) fn get_tuple_list(&self, local: TupleListLocalId) -> TupleListValueId {
         self.tuple_lists[local.0].clone()
+    }
+
+    pub(super) fn set_parameter_list_list(
+        &mut self,
+        local: ParameterListListLocalId,
+        value: ParameterListListValueId,
+    ) {
+        set_slot(&mut self.parameter_list_lists, local.0, value);
+    }
+
+    pub(super) fn get_parameter_list_list(
+        &self,
+        local: ParameterListListLocalId,
+    ) -> ParameterListListValueId {
+        self.parameter_list_lists[local.0].clone()
     }
 
     pub(super) fn set_list_list(&mut self, local: ListListLocalId, value: ListListValueId) {
@@ -452,6 +498,33 @@ impl Frame {
         local: &FunctionFunctionLocal,
     ) -> EvaluatedFunctionFunction {
         self.function_functions[&local.id()].clone()
+    }
+
+    pub(super) fn set_generic_function(
+        &mut self,
+        local: &GenericFunctionLocal,
+        value: EvaluatedGenericFunction,
+    ) {
+        self.generic_functions.insert(local.id(), value);
+    }
+
+    pub(super) fn get_generic_function(
+        &self,
+        local: &GenericFunctionLocal,
+    ) -> EvaluatedGenericFunction {
+        self.generic_functions[&local.id()].clone()
+    }
+
+    pub(super) fn set_never_function(
+        &mut self,
+        local: &NeverFunctionLocal,
+        value: EvaluatedNeverFunction,
+    ) {
+        self.never_functions.insert(local.id(), value);
+    }
+
+    pub(super) fn get_never_function(&self, local: &NeverFunctionLocal) -> EvaluatedNeverFunction {
+        self.never_functions[&local.id()].clone()
     }
 }
 

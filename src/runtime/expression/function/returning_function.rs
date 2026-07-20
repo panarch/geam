@@ -5,8 +5,8 @@ use crate::plan::execution::{
     FunctionFunctionExpr, FunctionFunctionExprKind, FunctionFunctionType, FunctionReturnFamily,
 };
 use crate::runtime::expression::{
-    eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
-    project_function_list_expr, project_tuple_expr,
+    eval_bool_expr, eval_direct_call, eval_float_expr, eval_function_call, eval_int_expr,
+    eval_panic_expr, eval_string_expr, project_function_list_expr, project_tuple_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -38,35 +38,44 @@ pub(in crate::runtime) fn eval_function_function_expr_kind(
     kind: &FunctionFunctionExprKind,
 ) -> Result<EvaluatedFunctionFunction, ExecutionError> {
     match kind {
+        FunctionFunctionExprKind::Constant(value) => {
+            eval_function_function_expr(plan, state, frame, plan.constant(*value))
+        }
         FunctionFunctionExprKind::Reference(reference) => Ok(EvaluatedFunctionFunction::reference(
             reference.function().clone(),
             reference.param_locals(),
             Vec::new(),
             type_.to_function_type(),
         )),
-        FunctionFunctionExprKind::Closure(template) => Ok(EvaluatedFunctionFunction::closure(
-            template.function().clone(),
-            template.param_locals(),
-            function::eval_capture_args(plan, state, frame, template.captures())?,
+        FunctionFunctionExprKind::Closure(closure) => Ok(EvaluatedFunctionFunction::closure(
+            closure.function().clone(),
+            closure.param_locals(),
+            function::eval_capture_args(plan, state, frame, closure.captures())?,
             type_.to_function_type(),
         )),
         FunctionFunctionExprKind::LocalGet { local, .. } => Ok(frame.get_function_function(local)),
-        FunctionFunctionExprKind::Call { function, args, .. } => {
-            function::run_function_function_returning_function_call(
-                plan,
-                state,
-                function.clone(),
-                args,
-                frame,
-            )
-        }
-        FunctionFunctionExprKind::FunctionCall {
-            function: callee,
-            args,
-            ..
-        } => {
-            function::run_function_function_function_call(plan, state, callee.as_ref(), args, frame)
-        }
+        FunctionFunctionExprKind::Call(call) => eval_direct_call(
+            plan,
+            state,
+            frame,
+            call,
+            |plan, state, function, args, frame| {
+                function::run_function_function_returning_function_call(
+                    plan,
+                    state,
+                    function.clone(),
+                    args,
+                    frame,
+                )
+            },
+        ),
+        FunctionFunctionExprKind::FunctionCall(call) => eval_function_call(
+            plan,
+            state,
+            frame,
+            call,
+            function::run_function_function_function_call,
+        ),
         FunctionFunctionExprKind::TupleIndex { tuple, index } => {
             let expected =
                 ValueType::Function(Box::new(plan.function_type(&type_.to_function_type())));
@@ -286,6 +295,22 @@ pub fn main() {
                     fallback(),
                 ),
                 "bool subject",
+            ),
+            (
+                FunctionFunctionExpr::bool_case(
+                    BoolExpr::not(BoolExpr::value(false)),
+                    FunctionFunctionExpr::panic(panic("true branch"), type_.clone()),
+                    fallback(),
+                ),
+                "true branch",
+            ),
+            (
+                FunctionFunctionExpr::bool_case(
+                    BoolExpr::not(BoolExpr::value(true)),
+                    fallback(),
+                    FunctionFunctionExpr::panic(panic("false branch"), type_.clone()),
+                ),
+                "false branch",
             ),
             (
                 FunctionFunctionExpr::int_case(

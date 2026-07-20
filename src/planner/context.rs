@@ -127,7 +127,6 @@ pub(super) struct PlanContext<'a> {
     next_list_function_local: usize,
     next_function_function_local: usize,
     next_generic_function_local: usize,
-    type_parameter_count: usize,
     type_parameters: super::type_parameter::TypeParameterScope,
 }
 
@@ -472,7 +471,6 @@ impl<'a> PlanContext<'a> {
             next_list_function_local: 0,
             next_function_function_local: 0,
             next_generic_function_local: 0,
-            type_parameter_count: 0,
             type_parameters: super::type_parameter::TypeParameterScope::default(),
         }
     }
@@ -498,16 +496,11 @@ impl<'a> PlanContext<'a> {
         &mut self,
         type_parameters: super::type_parameter::TypeParameterScope,
     ) {
-        self.type_parameter_count = type_parameters.scheme().parameters().len();
         self.type_parameters = type_parameters;
     }
 
     pub(super) fn type_parameters(&self) -> &super::type_parameter::TypeParameterScope {
         &self.type_parameters
-    }
-
-    pub(super) fn type_parameter_count(&self) -> usize {
-        self.type_parameter_count
     }
 
     pub(super) fn value_shape(&mut self, type_: &Type) -> ValueShape {
@@ -1657,6 +1650,19 @@ impl<'a> PlanContext<'a> {
                     },
                 )
             }
+            ListExpr::ParameterList(value) => {
+                let local = ListListLocalId(self.next_list_list_local);
+                self.next_list_list_local += 1;
+                let parameter = value.item().parameter();
+                (
+                    ListLocal::list(local, ValueType::Parameter(parameter)),
+                    ListLocalExpr::ParameterList {
+                        local,
+                        parameter,
+                        value,
+                    },
+                )
+            }
             ListExpr::Int(value) => {
                 let local = IntListLocalId(self.next_int_list_local);
                 self.next_int_list_local += 1;
@@ -1856,7 +1862,7 @@ impl<'a> PlanContext<'a> {
         let constants = self.constants?;
         constants
             .instantiate(name, shape)
-            .map(|instantiation| constants.materialize(&instantiation))
+            .map(|instantiation| constants.reference(instantiation))
     }
 
     pub(super) fn custom_constructor(
@@ -2238,7 +2244,6 @@ impl<'a> PlanContext<'a> {
         function_name: EcoString,
         type_parameters: super::type_parameter::TypeParameterScope,
     ) -> PlanContext<'_> {
-        let type_parameter_count = type_parameters.scheme().parameters().len();
         PlanContext {
             module_name: self.module_name,
             current_function: function_name,
@@ -2281,7 +2286,6 @@ impl<'a> PlanContext<'a> {
             next_list_function_local: 0,
             next_function_function_local: 0,
             next_generic_function_local: 0,
-            type_parameter_count,
             type_parameters,
         }
     }
@@ -4349,7 +4353,7 @@ mod tests {
                 local: ListListLocalId(0),
                 item_type: nested_item_type.clone(),
                 value: ListListExpr::local_get(
-                    ListListItem::new(nested_item_type.clone()),
+                    ListListItem::new(crate::plan::ValueStorageShape::String),
                     ListListLocalId(9),
                     "lists".into(),
                 ),

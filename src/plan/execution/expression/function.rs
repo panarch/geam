@@ -2,8 +2,10 @@ mod bit_array;
 mod bool;
 mod custom;
 mod float;
+mod generic;
 mod int;
 mod list;
+mod never;
 mod nil;
 mod returning_function;
 mod string;
@@ -13,16 +15,17 @@ mod utf_codepoint;
 
 pub use self::{
     bit_array::BitArrayFunctionExpr, bool::BoolFunctionExpr, custom::CustomFunctionExpr,
-    float::FloatFunctionExpr, int::IntFunctionExpr, list::ListFunctionExpr, nil::NilFunctionExpr,
+    float::FloatFunctionExpr, generic::GenericFunctionExpr, int::IntFunctionExpr,
+    list::ListFunctionExpr, never::NeverFunctionExpr, nil::NilFunctionExpr,
     returning_function::FunctionFunctionExpr, string::StringFunctionExpr, tuple::TupleFunctionExpr,
     utf_codepoint::UtfCodepointFunctionExpr,
 };
 pub(crate) use self::{
     bit_array::BitArrayFunctionExprKind, bool::BoolFunctionExprKind,
-    custom::CustomFunctionExprKind, float::FloatFunctionExprKind, int::IntFunctionExprKind,
-    list::ListFunctionExprKind, nil::NilFunctionExprKind,
-    returning_function::FunctionFunctionExprKind, string::StringFunctionExprKind,
-    tuple::TupleFunctionExprKind, typed::TypedFunctionExpr,
+    custom::CustomFunctionExprKind, float::FloatFunctionExprKind, generic::GenericFunctionExprKind,
+    int::IntFunctionExprKind, list::ListFunctionExprKind, never::NeverFunctionExprKind,
+    nil::NilFunctionExprKind, returning_function::FunctionFunctionExprKind,
+    string::StringFunctionExprKind, tuple::TupleFunctionExprKind, typed::TypedFunctionExpr,
     utf_codepoint::UtfCodepointFunctionExprKind,
 };
 
@@ -32,6 +35,8 @@ pub struct FunctionExpr {
 }
 
 pub(crate) enum FunctionExprKind {
+    Generic(GenericFunctionExpr),
+    Never(NeverFunctionExpr),
     Int(IntFunctionExpr),
     String(StringFunctionExpr),
     BitArray(BitArrayFunctionExpr),

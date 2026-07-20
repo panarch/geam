@@ -1,7 +1,9 @@
+use geam::planner::{InvalidExpressionType, InvalidTypedAstReason};
 use geam::{
-    ExecutionError, FunctionType, ListValue, SourceContext, Value, ValueType, compile_typed_module,
-    plan_module, plan_module_with_source, run_main,
+    ExecutionError, FunctionType, ListValue, PlanError, SourceContext, Value, ValueType,
+    compile_typed_module, plan_module, plan_module_with_source, run_main,
 };
+use gleam_core::ast::Constant;
 use miette::{GraphicalReportHandler, GraphicalTheme};
 
 macro_rules! fixture_cases {
@@ -102,7 +104,15 @@ mod module_items {
         constant_result_constructor,
         constant_list_families,
         generic_constant_list_families,
+        generic_nested_list_main,
         generic_constant_specialization,
+        generic_function_constant_families,
+        generic_function_constant_specialization_paths,
+        generic_list_constant_specialization_paths,
+        generic_symbolic_function_families,
+        generic_custom_function_constant,
+        generic_list_function_constant,
+        generic_function_function_constant,
         custom_type,
         record_type,
         type_alias,
@@ -328,10 +338,51 @@ mod functions {
         custom_function_paths,
         generic_family_specialization,
         generic_function,
+        generic_function_value_family_specialization,
         generic_function_return_cases,
         generic_custom_specialization,
         generic_container_specialization,
         generic_specialization,
+        generic_bool_case_families,
+        generic_expression_false_cases,
+        function_expression_false_cases,
+        generic_never_function_handoffs,
+        generic_never_function_list_identity,
+        generic_never_function_runtime_handoffs,
+        generic_recursive_never_function_handoffs,
+        generic_recursive_never_value_handoffs,
+        generic_never_function_materialization,
+        generic_symbolic_handoffs,
+        generic_symbolic_constructor_payload,
+        generic_symbolic_values,
+        generic_assert_bindings,
+        generic_parameter_list_call_main,
+        generic_parameter_list_empty_case,
+        generic_parameter_list_function_call_main,
+        generic_parameter_list_list_call_main,
+        generic_parameter_list_list_constant_main,
+        generic_parameter_list_list_function_call_main,
+        generic_parameter_list_list_tail_binding_main,
+        generic_parameter_list_list_tail_call_main,
+        generic_parameter_list_tail_call_main,
+        generic_parameter_list_total_tail_main,
+        generic_materialized_capture_families,
+        generic_returned_closure_captures,
+        generic_symbolic_tail_returns,
+        generic_uninhabited_custom_case,
+        generic_uninhabited_parameter_function_value,
+        generic_uninhabited_custom_function_list_handoff,
+        generic_unused_uninhabited_function,
+        generic_unresolved_list_handoffs,
+        generic_nested_list_handoffs,
+        generic_runtime_list_storage_paths,
+        generic_custom_list_main,
+        generic_function_main,
+        generic_nested_result_inhabitation,
+        generic_certain_custom_case_families,
+        generic_uninhabited_result_functions,
+        generic_phantom_main,
+        unresolved_generic_main,
     );
 
     mod basic {
@@ -352,7 +403,9 @@ mod functions {
     mod value {
         execution_cases!("functions/value";
             main_returning_int_function,
+            main_returning_float_function,
             main_returning_string_function,
+            main_returning_tuple_function,
             main_returning_bool_function,
             main_returning_nil_function,
             function_value_local,
@@ -512,6 +565,18 @@ mod execution_errors {
             panic_tuple_function,
             panic_list_function,
             panic_function_function,
+            panic_generic_function,
+            panic_generic_list,
+            panic_generic_list_element,
+            panic_generic_list_spread,
+            panic_nested_generic_list_element,
+            panic_nested_generic_list_item,
+            constant_bit_array_segment_failure,
+            panic_generic_local_return,
+            panic_generic_tuple_local_return,
+            panic_generic_custom_field,
+            panic_generic_tuple_projection,
+            panic_generic_custom_projection,
             todo,
             todo_utf_codepoint,
             todo_list_utf_codepoint,
@@ -540,6 +605,63 @@ mod execution_errors {
 
     mod functions {
         execution_error_cases!("functions";
+            generic_unresolved_argument,
+            custom_function_binding_failure,
+            generic_unresolved_discarded_value,
+            generic_unresolved_direct_argument,
+            generic_unresolved_equality_operand,
+            generic_unresolved_false_case_operand,
+            generic_unresolved_tuple_equality_operand,
+            generic_unresolved_never_function_prefix,
+            generic_diverging_function_call_family_lowering,
+            generic_symbolic_function_call_family_lowering,
+            generic_concrete_function_specialization_divergence,
+            generic_uninhabited_function_call_handoffs,
+            generic_uninhabited_custom_specialization,
+            generic_symbolic_function_binding_failure,
+            generic_function_binding_projection_failure,
+            generic_symbolic_function_argument_failure,
+            generic_unresolved_generic_function_argument,
+            generic_unresolved_function_argument,
+            generic_unresolved_int_function_argument,
+            generic_unresolved_float_function_argument,
+            generic_unresolved_string_function_argument,
+            generic_unresolved_bit_array_function_argument,
+            generic_unresolved_utf_codepoint_function_argument,
+            generic_unresolved_custom_function_argument,
+            generic_unresolved_bool_function_argument,
+            generic_unresolved_nil_function_argument,
+            generic_unresolved_tuple_function_argument,
+            generic_unresolved_list_function_argument,
+            generic_unresolved_function_function_argument,
+            generic_typed_diverging_function_arguments,
+            generic_typed_diverging_returned_function_arguments,
+            generic_never_direct_argument_failure,
+            generic_never_function_argument_failure,
+            generic_never_function_binding_failure,
+            generic_never_function_binding_projection_failure,
+            generic_never_function_list_element_failure,
+            generic_never_function_value_argument_failure,
+            generic_never_returned_function_argument_failure,
+            generic_never_returned_function_value_argument_failure,
+            generic_never_recursion,
+            generic_never_todo,
+            generic_never_function_call,
+            generic_never_function_callee_failure,
+            generic_never_closure_call,
+            generic_never_function_panic,
+            generic_symbolic_function_panic,
+            generic_recursive_never_block_handoffs,
+            generic_never_bool_case,
+            generic_never_int_case,
+            generic_never_string_case,
+            generic_never_float_case,
+            generic_never_block,
+            generic_never_let_assert,
+            generic_never_list_case,
+            generic_never_custom_case,
+            generic_certain_custom_never_case,
+            generic_never_return_cases,
             return_bool_case_subject,
             return_int_case_subject,
             return_float_case_subject,
@@ -565,6 +687,11 @@ mod execution_errors {
     mod patterns {
         execution_error_cases!("patterns";
             let_assert_empty_head,
+            let_assert_uninhabited_list_item,
+            let_assert_uninhabited_list_alias,
+            let_assert_uninhabited_list_whole_alias,
+            let_assert_uninhabited_list_tail,
+            let_assert_uninhabited_custom_alias,
             let_assert_nested_prefix,
             let_assert_bound_tail_prefix,
             let_assert_compound_failed_value,
@@ -613,7 +740,6 @@ mod rejection {
         rejection_cases!("functions";
             unsupported_body_before_main,
             unsupported_body_after_main,
-            unresolved_generic_main,
         );
     }
 
@@ -621,7 +747,6 @@ mod rejection {
         rejection_cases!("expressions";
             echo,
             bit_array_native_endian,
-            polymorphic_custom_constructor,
         );
     }
 
@@ -654,6 +779,181 @@ fn public_empty_parameter_list_preserves_inspected_module_metadata() {
     assert_eq!(list.len(), 0);
     assert!(list.is_empty());
     assert_eq!(list.to_values(), Vec::<Value>::new());
+}
+
+#[test]
+fn public_generic_constant_preserves_inspected_module_metadata() {
+    let typed = compile_typed_module(
+        "main",
+        "main.gleam",
+        "const empty = [] pub fn main() { empty }",
+    )
+    .expect("source should compile");
+    let plan = plan_module(typed).expect("source should plan");
+
+    assert_eq!(plan.constants().len(), 1);
+    assert_eq!(plan.constants()[0].name(), "empty");
+    assert_eq!(plan.constants()[0].scheme().parameters().len(), 1);
+}
+
+#[test]
+fn generic_constant_rejects_inhabited_typed_ast_payloads() {
+    let value_module = compile_typed_module(
+        "main",
+        "value.gleam",
+        "const populated = [1] pub fn main() { populated }",
+    )
+    .expect("inhabited list source should compile");
+    let value = value_module.definitions.constants[0].value.clone();
+    let mut generic_value_module = compile_typed_module(
+        "main",
+        "generic_value.gleam",
+        "const empty = [] pub fn main() { empty }",
+    )
+    .expect("generic empty list source should compile");
+    generic_value_module.definitions.constants[0].value = value;
+    let generic_value_type = generic_value_module.definitions.constants[0].type_.clone();
+    let Constant::List { type_, .. } = generic_value_module.definitions.constants[0].value.as_mut()
+    else {
+        panic!("compiled inhabited value should remain a list constant");
+    };
+    *type_ = generic_value_type;
+
+    let spread_module = compile_typed_module(
+        "main",
+        "spread.gleam",
+        "const populated = [1, ..[2]] pub fn main() { populated }",
+    )
+    .expect("inhabited list spread source should compile");
+    let spread = spread_module
+        .definitions
+        .constants
+        .into_iter()
+        .find(|constant| constant.name == "populated")
+        .expect("compiled spread constant should be present")
+        .value;
+    let mut generic_spread_module = compile_typed_module(
+        "main",
+        "generic_spread.gleam",
+        "const empty = [] pub fn main() { empty }",
+    )
+    .expect("generic empty list source should compile");
+    generic_spread_module.definitions.constants[0].value = spread;
+    let generic_spread_type = generic_spread_module.definitions.constants[0].type_.clone();
+    let Constant::List { type_, .. } = generic_spread_module.definitions.constants[0]
+        .value
+        .as_mut()
+    else {
+        panic!("compiled inhabited spread should remain a list constant");
+    };
+    *type_ = generic_spread_type;
+
+    let expected = Err(PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::ExpressionType {
+            expected: InvalidExpressionType::TypeParameter,
+            actual: InvalidExpressionType::Int,
+        },
+    });
+    assert_eq!(plan_module(generic_value_module), expected);
+    assert_eq!(plan_module(generic_spread_module), expected);
+}
+
+#[test]
+fn constant_list_rejects_mismatched_typed_ast_tail() {
+    let string_module = compile_typed_module(
+        "main",
+        "strings.gleam",
+        "const strings = [\"two\"] pub fn main() { strings }",
+    )
+    .expect("String list source should compile");
+    let string_tail = string_module.definitions.constants[0].value.clone();
+    let mut int_module = compile_typed_module(
+        "main",
+        "ints.gleam",
+        "const ints = [1, ..[2]] pub fn main() { ints }",
+    )
+    .expect("Int list spread source should compile");
+    let Constant::List {
+        tail: Some(tail), ..
+    } = int_module.definitions.constants[0].value.as_mut()
+    else {
+        panic!("compiled Int spread should retain its tail");
+    };
+    *tail = string_tail;
+
+    assert_eq!(
+        plan_module(int_module),
+        Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionType {
+                expected: InvalidExpressionType::List,
+                actual: InvalidExpressionType::List,
+            },
+        }),
+    );
+}
+
+#[test]
+fn constant_nested_list_rejects_mismatched_typed_ast_elements() {
+    let scalar_module = compile_typed_module(
+        "main",
+        "scalar.gleam",
+        "const scalar = 1 pub fn main() { scalar }",
+    )
+    .expect("Int constant source should compile");
+    let scalar = scalar_module.definitions.constants[0].value.clone();
+    let string_list_module = compile_typed_module(
+        "main",
+        "strings.gleam",
+        "const strings = [\"one\"] pub fn main() { strings }",
+    )
+    .expect("String list constant source should compile");
+    let string_list = string_list_module.definitions.constants[0].value.clone();
+
+    let mut scalar_element_module = compile_typed_module(
+        "main",
+        "scalar_element.gleam",
+        "const nested = [[1]] pub fn main() { nested }",
+    )
+    .expect("nested Int list source should compile");
+    let Constant::List { elements, .. } = scalar_element_module.definitions.constants[0]
+        .value
+        .as_mut()
+    else {
+        panic!("compiled nested value should remain a list constant");
+    };
+    elements[0] = *scalar;
+
+    let mut list_element_module = compile_typed_module(
+        "main",
+        "list_element.gleam",
+        "const nested = [[1]] pub fn main() { nested }",
+    )
+    .expect("nested Int list source should compile");
+    let Constant::List { elements, .. } =
+        list_element_module.definitions.constants[0].value.as_mut()
+    else {
+        panic!("compiled nested value should remain a list constant");
+    };
+    elements[0] = *string_list;
+
+    assert_eq!(
+        plan_module(scalar_element_module),
+        Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionType {
+                expected: InvalidExpressionType::List,
+                actual: InvalidExpressionType::Int,
+            },
+        }),
+    );
+    assert_eq!(
+        plan_module(list_element_module),
+        Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionType {
+                expected: InvalidExpressionType::List,
+                actual: InvalidExpressionType::List,
+            },
+        }),
+    );
 }
 
 fn run_fixture(file_name: &str) {

@@ -324,6 +324,42 @@ mod tests {
     }
 
     #[test]
+    fn plan_unresolved_function_value_call_return_outside_current_template() {
+        use crate::plan::{
+            GenericExpr, GenericFunctionExpr, GenericFunctionLocal, GenericFunctionLocalId,
+            GenericFunctionType, Step, TypeParameterId,
+        };
+
+        let plan = plan_module(compile(
+            r#"
+fn fail() -> value {
+  panic
+}
+
+pub fn main() {
+  let function = fail
+  let _ = function()
+  1
+}
+"#,
+        ))
+        .expect("unresolved diverging function call should plan");
+
+        assert_eq!(plan.main_function().steps().len(), 2);
+        let function_type = GenericFunctionType::new(Vec::new(), TypeParameterId(0));
+        assert_eq!(
+            plan.main_function().steps()[1],
+            Step::evaluate(Expr::generic(GenericExpr::function_call(
+                GenericFunctionExpr::local_get(
+                    GenericFunctionLocal::new(GenericFunctionLocalId(0), function_type),
+                    "function".into(),
+                ),
+                Vec::new(),
+            ))),
+        );
+    }
+
+    #[test]
     fn plan_immediate_anonymous_function_call() {
         let actual = plan_module(compile(r#"pub fn main() { fn(x) { x + 1 }(41) }"#))
             .expect("source should plan");

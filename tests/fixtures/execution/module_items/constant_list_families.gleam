@@ -60,9 +60,47 @@ const all_lists = #(
   lists_alias,
   functions_alias,
 )
+const nested_ints = [ints_alias]
+const nested_strings = [strings_alias]
+const nested_bit_arrays = [bit_arrays_alias]
+const nested_utf_codepoints = [utf_codepoints_alias]
+const nested_customs = [customs_alias]
+const nested_floats = [floats_alias]
+const nested_bools = [bools_alias]
+const nested_nils = [nils_alias]
+const nested_tuples = [tuples_alias]
+const nested_lists = [lists_alias]
+const nested_functions = [functions_alias]
 
 pub fn main() {
-  #(all_lists, aggregate)
+  #(
+    all_lists,
+    #(
+      ints_alias,
+      strings_alias,
+      bit_arrays_alias,
+      utf_codepoints_alias,
+      customs_alias,
+      floats_alias,
+      bools_alias,
+      nils_alias,
+      tuples_alias,
+      lists_alias,
+      functions_alias,
+    ),
+    aggregate,
+    nested_ints == [[0, 1]],
+    nested_strings == [["one", "two"]],
+    nested_bit_arrays == [[<<2>>, <<3>>]],
+    nested_utf_codepoints == [[]],
+    nested_customs == [[Token(3), Token(4)]],
+    nested_floats == [[4.5, 5.5]],
+    nested_bools == [[False, True]],
+    nested_nils == [[Nil, Nil]],
+    nested_tuples == [[#(5, "five"), #(6, "six")]],
+    nested_lists == [[[6], [7]]],
+    nested_functions == [[add_one, add_one]],
+  )
 }
 
-// geam:expect Tuple([Tuple([List(Int)([Int(0), Int(1)]), List(String)([String("one"), String("two")]), List(BitArray)([BitArray(bytes=[2], bit_len=8), BitArray(bytes=[3], bit_len=8)]), List(UtfCodepoint)([]), List(geam/main/Token)([Custom(type=geam/main/Token, constructor=Token#0, fields=[Int(3)]), Custom(type=geam/main/Token, constructor=Token#0, fields=[Int(4)])]), List(Float)([Float(4.5), Float(5.5)]), List(Bool)([Bool(false), Bool(true)]), List(Nil)([Nil, Nil]), List(#(Int, String))([Tuple([Int(5), String("five")]), Tuple([Int(6), String("six")])]), List(List(Int))([List(Int)([Int(6)]), List(Int)([Int(7)])]), List(fn(Int) -> Int)([Function(fn(Int) -> Int), Function(fn(Int) -> Int)])]), Tuple([BitArray(bytes=[8], bit_len=8), Custom(type=geam/main/Token, constructor=Token#0, fields=[Int(9)]), Tuple([Int(10), String("ten")]), Function(fn(Int) -> Int)])])
+// geam:expect Tuple([Tuple([List(Int)([Int(0), Int(1)]), List(String)([String("one"), String("two")]), List(BitArray)([BitArray(bytes=[2], bit_len=8), BitArray(bytes=[3], bit_len=8)]), List(UtfCodepoint)([]), List(geam/main/Token)([Custom(type=geam/main/Token, constructor=Token#0, fields=[Int(3)]), Custom(type=geam/main/Token, constructor=Token#0, fields=[Int(4)])]), List(Float)([Float(4.5), Float(5.5)]), List(Bool)([Bool(false), Bool(true)]), List(Nil)([Nil, Nil]), List(#(Int, String))([Tuple([Int(5), String("five")]), Tuple([Int(6), String("six")])]), List(List(Int))([List(Int)([Int(6)]), List(Int)([Int(7)])]), List(fn(Int) -> Int)([Function(fn(Int) -> Int), Function(fn(Int) -> Int)])]), Tuple([List(Int)([Int(0), Int(1)]), List(String)([String("one"), String("two")]), List(BitArray)([BitArray(bytes=[2], bit_len=8), BitArray(bytes=[3], bit_len=8)]), List(UtfCodepoint)([]), List(geam/main/Token)([Custom(type=geam/main/Token, constructor=Token#0, fields=[Int(3)]), Custom(type=geam/main/Token, constructor=Token#0, fields=[Int(4)])]), List(Float)([Float(4.5), Float(5.5)]), List(Bool)([Bool(false), Bool(true)]), List(Nil)([Nil, Nil]), List(#(Int, String))([Tuple([Int(5), String("five")]), Tuple([Int(6), String("six")])]), List(List(Int))([List(Int)([Int(6)]), List(Int)([Int(7)])]), List(fn(Int) -> Int)([Function(fn(Int) -> Int), Function(fn(Int) -> Int)])]), Tuple([BitArray(bytes=[8], bit_len=8), Custom(type=geam/main/Token, constructor=Token#0, fields=[Int(9)]), Tuple([Int(10), String("ten")]), Function(fn(Int) -> Int)]), Bool(true), Bool(true), Bool(true), Bool(true), Bool(true), Bool(true), Bool(true), Bool(true), Bool(true), Bool(true), Bool(true)])

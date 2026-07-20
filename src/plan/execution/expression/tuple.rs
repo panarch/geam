@@ -1,9 +1,9 @@
 use super::{
-    BoolExpr, CallArg, CustomFieldAccess, FloatExpr, IntExpr, PanicExpr, StringExpr,
-    TupleFunctionExpr, TupleListExpr,
+    BoolExpr, CustomFieldAccess, DirectCall, FloatExpr, FunctionCall, IntExpr, NeverExpr,
+    PanicExpr, StringExpr, TupleFunctionExpr, TupleListExpr,
 };
 use crate::plan::execution::ValueType;
-use crate::plan::execution::{Step, TupleFunctionId, TupleLocalId};
+use crate::plan::execution::{ConstantId, Step, TupleFunctionId, TupleLocalId};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -13,18 +13,14 @@ pub struct TupleExpr {
 }
 
 pub(crate) enum TupleExprKind {
+    Never(NeverExpr),
     Value(Vec<super::Expr>),
+    Constant(ConstantId<TupleExpr>),
     LocalGet {
         local: TupleLocalId,
     },
-    Call {
-        function: TupleFunctionId,
-        args: Vec<CallArg>,
-    },
-    FunctionCall {
-        function: Box<TupleFunctionExpr>,
-        args: Vec<CallArg>,
-    },
+    Call(DirectCall<TupleFunctionId>),
+    FunctionCall(FunctionCall<TupleFunctionExpr>),
     TupleIndex {
         tuple: Box<TupleExpr>,
         index: usize,
@@ -67,6 +63,10 @@ impl TupleExpr {
         kind: TupleExprKind,
     ) -> Self {
         Self { type_, kind }
+    }
+
+    pub(in crate::plan::execution) fn into_kind(self) -> TupleExprKind {
+        self.kind
     }
 
     pub(crate) fn type_(&self) -> &[ValueType] {

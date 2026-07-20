@@ -18,6 +18,10 @@ pub(in crate::runtime) fn eval_tuple_expr(
     expression: &TupleExpr,
 ) -> Result<Vec<EvaluatedValue>, ExecutionError> {
     match expression.kind() {
+        TupleExprKind::Never(expression) => {
+            super::never::eval_never_expr(plan, state, frame, expression)
+                .map(|never| match never {})
+        }
         TupleExprKind::Value(elements) => {
             let mut values = Vec::with_capacity(elements.len());
             for element in elements {
@@ -25,12 +29,19 @@ pub(in crate::runtime) fn eval_tuple_expr(
             }
             Ok(values)
         }
+        TupleExprKind::Constant(id) => eval_tuple_expr(plan, state, frame, plan.constant(*id)),
         TupleExprKind::LocalGet { local, .. } => Ok(frame.get_tuple(*local)),
-        TupleExprKind::Call { function, args } => {
-            function::run_tuple_call(plan, state, *function, args, frame)
-        }
-        TupleExprKind::FunctionCall { function, args } => {
-            function::run_tuple_function_call(plan, state, function, args, frame)
+        TupleExprKind::Call(call) => super::eval_direct_call(
+            plan,
+            state,
+            frame,
+            call,
+            |plan, state, function, args, frame| {
+                function::run_tuple_call(plan, state, *function, args, frame)
+            },
+        ),
+        TupleExprKind::FunctionCall(call) => {
+            super::eval_function_call(plan, state, frame, call, function::run_tuple_function_call)
         }
         TupleExprKind::TupleIndex { tuple, index } => {
             let expected = ValueType::Tuple(
@@ -173,6 +184,8 @@ fn pair(value: Int) { #(value) }
 pub fn main() {
   let local = #(1)
   let function = pair
+  let true_selector = True
+  let false_selector = False
   #(
     #(0),
     local,
@@ -180,8 +193,8 @@ pub fn main() {
     function(3),
     #(#(4)).0,
     case [#(5)] { [value] -> value _ -> #(0) },
-    case True { True -> #(6) False -> #(0) },
-    case False { True -> #(0) False -> #(7) },
+    case true_selector { True -> #(6) False -> #(0) },
+    case false_selector { True -> #(0) False -> #(7) },
     case 1 { 1 -> #(8) _ -> #(0) },
     case 2 { 1 -> #(0) _ -> #(9) },
     case "one" { "one" -> #(10) _ -> #(0) },

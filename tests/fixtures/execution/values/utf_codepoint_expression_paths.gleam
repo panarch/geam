@@ -46,11 +46,13 @@ pub fn main() {
   let function = direct
   let pair = #(codepoint(11))
   let assert [from_list] = [codepoint(12)]
-  let from_bool_case = case True {
+  let true_selector = True
+  let false_selector = False
+  let from_bool_case = case true_selector {
     True -> codepoint(14)
     False -> codepoint(15)
   }
-  let from_bool_case_fallback = case False {
+  let from_bool_case_fallback = case false_selector {
     True -> codepoint(14)
     False -> codepoint(15)
   }

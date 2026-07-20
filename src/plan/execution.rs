@@ -1,3 +1,4 @@
+mod constant;
 mod custom_type;
 mod expression;
 mod frame;
@@ -18,19 +19,22 @@ pub(crate) use expression::{
     BitArrayFunctionExprKind, BitArrayListExpr, BitArrayListItem, BitArraySegment, BoolExpr,
     BoolExprKind, BoolFunctionExpr, BoolFunctionExprKind, BoolListExpr, BoolListItem, CallArg,
     CallArgKind, CaptureArg, CaptureArgKind, CustomConstruction, CustomExpr, CustomExprKind,
-    CustomFieldAccess, CustomFunctionCall, CustomFunctionExpr, CustomFunctionExprKind,
-    CustomListExpr, CustomListItem, CustomLocalExpr, Endianness, Expr, ExprKind, FloatBitSize,
-    FloatExpr, FloatExprKind, FloatFunctionExpr, FloatFunctionExprKind, FloatListExpr,
-    FloatListItem, FunctionExpr, FunctionExprKind, FunctionFunctionExpr, FunctionFunctionExprKind,
-    FunctionListExpr, FunctionListItem, IntExpr, IntExprKind, IntFunctionExpr, IntFunctionExprKind,
-    IntListExpr, IntListItem, ListExpr, ListFunctionExpr, ListFunctionExprKind, ListIndexSource,
-    ListItem, ListListExpr, ListListItem, ListLocalExpr, NilExpr, NilExprKind, NilFunctionExpr,
-    NilFunctionExprKind, NilListExpr, NilListItem, PanicExpr, PanicExprKind, StringEncoding,
-    StringExpr, StringExprKind, StringFunctionExpr, StringFunctionExprKind, StringListExpr,
-    StringListItem, TupleExpr, TupleExprKind, TupleFunctionExpr, TupleFunctionExprKind,
-    TupleListExpr, TupleListItem, TypedFunctionExpr, TypedListExpr, TypedListExprKind,
-    UtfCodepointExpr, UtfCodepointExprKind, UtfCodepointFunctionExpr, UtfCodepointFunctionExprKind,
-    UtfCodepointListExpr, UtfCodepointListItem,
+    CustomFieldAccess, CustomFunctionExpr, CustomFunctionExprKind, CustomListExpr, CustomListItem,
+    CustomLocalExpr, DirectCall, Endianness, Expr, ExprKind, FloatBitSize, FloatExpr,
+    FloatExprKind, FloatFunctionExpr, FloatFunctionExprKind, FloatListExpr, FloatListItem,
+    FunctionCall, FunctionExpr, FunctionExprKind, FunctionFunctionExpr, FunctionFunctionExprKind,
+    FunctionListExpr, FunctionListItem, GenericFunctionExpr, GenericFunctionExprKind, IntExpr,
+    IntExprKind, IntFunctionExpr, IntFunctionExprKind, IntListExpr, IntListItem, ListExpr,
+    ListFunctionExpr, ListFunctionExprKind, ListIndexSource, ListItem, ListListExpr, ListListItem,
+    ListLocalExpr, NeverExpr, NeverExprKind, NeverFunctionExpr, NeverFunctionExprKind, NilExpr,
+    NilExprKind, NilFunctionExpr, NilFunctionExprKind, NilListExpr, NilListItem, PanicExpr,
+    PanicExprKind, ParameterListExpr, ParameterListExprKind, ParameterListIndexSource,
+    ParameterListItem, ParameterListListExpr, ParameterListListItem, StoredListExpr,
+    StringEncoding, StringExpr, StringExprKind, StringFunctionExpr, StringFunctionExprKind,
+    StringListExpr, StringListItem, TupleExpr, TupleExprKind, TupleFunctionExpr,
+    TupleFunctionExprKind, TupleListExpr, TupleListItem, TypedFunctionExpr, TypedListExpr,
+    TypedListExprKind, UtfCodepointExpr, UtfCodepointExprKind, UtfCodepointFunctionExpr,
+    UtfCodepointFunctionExprKind, UtfCodepointListExpr, UtfCodepointListItem,
 };
 pub(crate) use frame::FrameLayout;
 pub(crate) use id::{
@@ -45,13 +49,18 @@ pub(crate) use id::{
     FloatListFunctionId, FloatListFunctionLocalId, FloatListLocalId, FloatLocalId,
     FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocal, FunctionFunctionLocalId,
     FunctionListFunctionFunctionId, FunctionListFunctionId, FunctionListFunctionLocalId,
-    FunctionListLocalId, FunctionReturnFamily, IntFunctionFunctionId, IntFunctionId,
+    FunctionListLocalId, FunctionReturnFamily, GenericCallableId, GenericFunctionFunctionId,
+    GenericFunctionLocal, GenericFunctionLocalId, IntFunctionFunctionId, IntFunctionId,
     IntFunctionLocalId, IntListFunctionFunctionId, IntListFunctionId, IntListFunctionLocalId,
     IntListLocalId, IntLocalId, ListFunctionFunctionId, ListFunctionId, ListFunctionLocal,
     ListListFunctionFunctionId, ListListFunctionId, ListListFunctionLocalId, ListListLocalId,
-    ListLocal, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilListFunctionFunctionId,
-    NilListFunctionId, NilListFunctionLocalId, NilListLocalId, NilLocalId, RuntimeFunctionId,
-    StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId,
+    ListLocal, NeverFunctionFunctionId, NeverFunctionId, NeverFunctionLocal, NeverFunctionLocalId,
+    NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilListFunctionFunctionId,
+    NilListFunctionId, NilListFunctionLocalId, NilListLocalId, NilLocalId,
+    ParameterListFunctionFunctionId, ParameterListFunctionId, ParameterListFunctionLocalId,
+    ParameterListListFunctionFunctionId, ParameterListListFunctionId,
+    ParameterListListFunctionLocalId, ParameterListListLocalId, ParameterListLocalId,
+    RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId,
     StringListFunctionFunctionId, StringListFunctionId, StringListFunctionLocalId,
     StringListLocalId, StringLocalId, TupleFunctionFunctionId, TupleFunctionId,
     TupleFunctionLocalId, TupleListFunctionFunctionId, TupleListFunctionId,
@@ -70,11 +79,12 @@ pub(crate) use reference::{ClosureTemplate, FunctionReference};
 pub(crate) use return_::{
     BitArrayFunctionReturn, BitArrayListReturn, BitArrayReturn, BoolFunctionReturn, BoolListReturn,
     BoolReturn, CustomFunctionReturn, CustomListReturn, CustomReturn, FloatFunctionReturn,
-    FloatListReturn, FloatReturn, FunctionFunctionReturn, FunctionListReturn, IntFunctionReturn,
-    IntListReturn, IntReturn, ListFunctionReturn, ListListReturn, NilFunctionReturn, NilListReturn,
-    NilReturn, ReturnBody, ReturnBodyKind, StringFunctionReturn, StringListReturn, StringReturn,
-    TupleFunctionReturn, TupleListReturn, TupleReturn, TypedFunctionReturn,
-    UtfCodepointFunctionReturn, UtfCodepointListReturn, UtfCodepointReturn,
+    FloatListReturn, FloatReturn, FunctionFunctionReturn, FunctionListReturn,
+    GenericFunctionReturn, IntFunctionReturn, IntListReturn, IntReturn, ListFunctionReturn,
+    ListListReturn, NeverFunctionReturn, NeverReturn, NilFunctionReturn, NilListReturn, NilReturn,
+    ParameterListListReturn, ParameterListReturn, ReturnBody, ReturnBodyKind, StringFunctionReturn,
+    StringListReturn, StringReturn, TupleFunctionReturn, TupleListReturn, TupleReturn,
+    TypedFunctionReturn, UtfCodepointFunctionReturn, UtfCodepointListReturn, UtfCodepointReturn,
 };
 pub(crate) use step::{
     AssertBinding, AssertPattern, AssertSubject, ListAssertPattern, ListAssertTail, Step, StepKind,
@@ -88,8 +98,9 @@ pub(crate) use value_shape::{
 pub(crate) use value_type::{
     BitArrayListTypeId, BoolListTypeId, CustomConstructorId, CustomFunctionType, CustomListTypeId,
     CustomTypeId, FloatListTypeId, FunctionFunctionType, FunctionListTypeId, FunctionType,
-    IntListTypeId, ListListTypeId, ListStorageTypeId, ListTypeId, NilListTypeId, StringListTypeId,
-    TupleListTypeId, UtfCodepointListTypeId, ValueType,
+    GenericFunctionType, IntListTypeId, ListListTypeId, ListStorageTypeId, ListTypeId,
+    NilListTypeId, ParameterListListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
+    UtfCodepointListTypeId, ValueType,
 };
 
 use self::custom_type::CustomTypeTable;
@@ -104,6 +115,7 @@ pub struct ExecutionPlan {
     module: EcoString,
     source_context: Option<SourceContext>,
     main: RuntimeFunctionId,
+    constants: ConstantTable,
     functions: FunctionTables,
     list_types: ListTypeTable,
     custom_types: CustomTypeTable,
@@ -127,10 +139,23 @@ impl ExecutionPlan {
         self.main.clone()
     }
 
+    pub(crate) fn constant<Expression: ConstantExpression>(
+        &self,
+        id: ConstantId<Expression>,
+    ) -> &Expression {
+        self.constants.get(id)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn constant_count(&self) -> usize {
+        self.constants.len()
+    }
+
     pub(crate) fn list_value_type(&self, id: ListTypeId) -> crate::plan::ValueType {
         self.list_types.list_value_type(id, &self.custom_types)
     }
 
+    #[cfg(test)]
     pub(crate) fn list_storage_type(&self, id: ListTypeId) -> ListStorageTypeId {
         self.list_types.storage_type(id)
     }
@@ -196,6 +221,9 @@ impl ExecutionPlan {
     #[cfg(test)]
     fn value_shape_type(&self, id: ValueShapeId) -> crate::plan::ValueType {
         match self.value_shapes.get(id) {
+            ValueShapeDescriptor::Parameter(parameter) => {
+                crate::plan::ValueType::Parameter(*parameter)
+            }
             ValueShapeDescriptor::Int => crate::plan::ValueType::Int,
             ValueShapeDescriptor::Float => crate::plan::ValueType::Float,
             ValueShapeDescriptor::String => crate::plan::ValueType::String,
@@ -252,6 +280,10 @@ impl ExecutionPlan {
         self.functions.int_function(id)
     }
 
+    pub(crate) fn never_function(&self, id: NeverFunctionId) -> &ExecutableFunction<NeverReturn> {
+        self.functions.never_function(id)
+    }
+
     pub(crate) fn float_function(&self, id: FloatFunctionId) -> &ExecutableFunction<FloatReturn> {
         self.functions.float_function(id)
     }
@@ -306,6 +338,33 @@ impl ExecutionPlan {
         id: IntListFunctionId,
     ) -> &ExecutableFunction<IntListReturn> {
         self.functions.int_list_function(id)
+    }
+
+    pub(crate) fn parameter_list_function(
+        &self,
+        id: ParameterListFunctionId,
+    ) -> &ExecutableFunction<ParameterListReturn> {
+        self.functions.parameter_list_function(id)
+    }
+
+    pub(crate) fn parameter_list_list_function(
+        &self,
+        id: ParameterListListFunctionId,
+    ) -> &ExecutableFunction<ParameterListListReturn> {
+        self.functions.parameter_list_list_function(id)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn parameter_list_function_id(&self, index: usize) -> ParameterListFunctionId {
+        self.functions.parameter_list_function_id(index)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn parameter_list_list_function_id(
+        &self,
+        index: usize,
+    ) -> ParameterListListFunctionId {
+        self.functions.parameter_list_list_function_id(index)
     }
 
     #[cfg(test)]
@@ -478,6 +537,20 @@ impl ExecutionPlan {
         self.functions.custom_function_function(id)
     }
 
+    pub(crate) fn generic_function_function(
+        &self,
+        id: &GenericFunctionFunctionId,
+    ) -> &ExecutableFunction<GenericFunctionReturn> {
+        self.functions.generic_function_function(id)
+    }
+
+    pub(crate) fn never_function_function(
+        &self,
+        id: &NeverFunctionFunctionId,
+    ) -> &ExecutableFunction<NeverFunctionReturn> {
+        self.functions.never_function_function(id)
+    }
+
     #[cfg(test)]
     pub(crate) fn custom_function_function_id(&self, index: usize) -> CustomFunctionFunctionId {
         self.functions.custom_function_function_id(index)
@@ -531,3 +604,4 @@ impl ExecutionPlan {
         self.functions.function_function_function_id(index)
     }
 }
+pub(crate) use constant::{ConstantExpression, ConstantId, ConstantTable};

@@ -20,12 +20,19 @@ pub(in crate::runtime) fn eval_bool_expr(
 ) -> Result<bool, ExecutionError> {
     match expression.kind() {
         BoolExprKind::Value(value) => Ok(*value),
+        BoolExprKind::Constant(id) => eval_bool_expr(plan, state, frame, plan.constant(*id)),
         BoolExprKind::LocalGet { local, .. } => Ok(frame.get_bool(*local)),
-        BoolExprKind::Call { function, args } => {
-            function::run_bool_call(plan, state, *function, args, frame)
-        }
-        BoolExprKind::FunctionCall { function, args } => {
-            function::run_bool_function_call(plan, state, function, args, frame)
+        BoolExprKind::Call(call) => super::eval_direct_call(
+            plan,
+            state,
+            frame,
+            call,
+            |plan, state, function, args, frame| {
+                function::run_bool_call(plan, state, *function, args, frame)
+            },
+        ),
+        BoolExprKind::FunctionCall(call) => {
+            super::eval_function_call(plan, state, frame, call, function::run_bool_function_call)
         }
         BoolExprKind::TupleIndex { tuple, index } => {
             match project_tuple_expr(plan, state, frame, tuple, *index, ValueType::Bool)? {

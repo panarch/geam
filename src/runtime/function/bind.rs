@@ -5,12 +5,13 @@ use crate::runtime::expression::{
     eval_bit_array_expr, eval_bit_array_function_expr, eval_bit_array_list_expr, eval_bool_expr,
     eval_bool_function_expr, eval_bool_list_expr, eval_custom_expr, eval_custom_function_expr,
     eval_custom_list_expr, eval_float_expr, eval_float_function_expr, eval_float_list_expr,
-    eval_function_function_expr, eval_function_list_expr, eval_int_expr, eval_int_function_expr,
-    eval_int_list_expr, eval_list_function_expr, eval_list_list_expr, eval_nil_expr,
-    eval_nil_function_expr, eval_nil_list_expr, eval_string_expr, eval_string_function_expr,
-    eval_string_list_expr, eval_tuple_expr, eval_tuple_function_expr, eval_tuple_list_expr,
-    eval_typed_custom_function_expr, eval_typed_function_expr, eval_utf_codepoint_expr,
-    eval_utf_codepoint_function_expr, eval_utf_codepoint_list_expr,
+    eval_function_function_expr, eval_function_list_expr, eval_generic_function_expr,
+    eval_int_expr, eval_int_function_expr, eval_int_list_expr, eval_list_function_expr,
+    eval_list_list_expr, eval_never_function_expr, eval_nil_expr, eval_nil_function_expr,
+    eval_nil_list_expr, eval_parameter_list_expr, eval_parameter_list_list_expr, eval_string_expr,
+    eval_string_function_expr, eval_string_list_expr, eval_tuple_expr, eval_tuple_function_expr,
+    eval_tuple_list_expr, eval_typed_custom_function_expr, eval_typed_function_expr,
+    eval_utf_codepoint_expr, eval_utf_codepoint_function_expr, eval_utf_codepoint_list_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::state::RuntimeState;
@@ -142,6 +143,26 @@ fn bind_arguments_into(
                 )?;
                 frame.set_custom_function(local, value);
             }
+            CallArgKind::GenericFunction { local, value } => {
+                let value = eval_typed_function_expr(
+                    plan,
+                    state,
+                    caller_frame,
+                    value,
+                    eval_generic_function_expr,
+                )?;
+                frame.set_generic_function(local, value);
+            }
+            CallArgKind::NeverFunction { local, value } => {
+                let value = eval_typed_function_expr(
+                    plan,
+                    state,
+                    caller_frame,
+                    value,
+                    eval_never_function_expr,
+                )?;
+                frame.set_never_function(local, value);
+            }
             CallArgKind::FloatFunction { local, value } => {
                 let value = eval_typed_function_expr(
                     plan,
@@ -208,7 +229,7 @@ fn bind_arguments_into(
     Ok(())
 }
 
-pub(super) fn eval_call_argument_values(
+pub(in crate::runtime) fn eval_call_argument_values(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
     args: &[CallArg],
@@ -283,6 +304,14 @@ pub(super) fn eval_call_argument_values(
                 )?
                 .into(),
             ),
+            CallArgKind::GenericFunction { value, .. } => EvaluatedValue::Function(
+                eval_typed_function_expr(plan, state, frame, value, eval_generic_function_expr)?
+                    .into(),
+            ),
+            CallArgKind::NeverFunction { value, .. } => EvaluatedValue::Function(
+                eval_typed_function_expr(plan, state, frame, value, eval_never_function_expr)?
+                    .into(),
+            ),
             CallArgKind::BoolFunction { value, .. } => EvaluatedValue::Function(
                 eval_typed_function_expr(plan, state, frame, value, eval_bool_function_expr)?
                     .into(),
@@ -314,6 +343,12 @@ fn eval_list_local_expr(
     value: &crate::plan::execution::ListLocalExpr,
 ) -> ExecutionResult<crate::runtime::state::ListValueId> {
     match value {
+        crate::plan::execution::ListLocalExpr::Parameter { value, .. } => {
+            eval_parameter_list_expr(plan, state, frame, value).map(Into::into)
+        }
+        crate::plan::execution::ListLocalExpr::ParameterList { value, .. } => {
+            eval_parameter_list_list_expr(plan, state, frame, value).map(Into::into)
+        }
         crate::plan::execution::ListLocalExpr::Int { value, .. } => {
             eval_int_list_expr(plan, state, frame, value).map(Into::into)
         }
@@ -432,6 +467,14 @@ pub(in crate::runtime) fn eval_capture_args(
                     eval_custom_function_expr,
                 )?,
             ),
+            CaptureArgKind::GenericFunction { local, value } => EvaluatedCapture::generic_function(
+                local.clone(),
+                eval_typed_function_expr(plan, state, frame, value, eval_generic_function_expr)?,
+            ),
+            CaptureArgKind::NeverFunction { local, value } => EvaluatedCapture::never_function(
+                local.clone(),
+                eval_typed_function_expr(plan, state, frame, value, eval_never_function_expr)?,
+            ),
             CaptureArgKind::FloatFunction { local, value } => EvaluatedCapture::float_function(
                 *local,
                 eval_typed_function_expr(plan, state, frame, value, eval_float_function_expr)?,
@@ -506,6 +549,12 @@ fn bind_captures(frame: &mut Frame, captures: &[EvaluatedCapture]) {
             EvaluatedCaptureKind::CustomFunction { local, value } => {
                 frame.set_custom_function(local, value.clone());
             }
+            EvaluatedCaptureKind::GenericFunction { local, value } => {
+                frame.set_generic_function(local, value.clone());
+            }
+            EvaluatedCaptureKind::NeverFunction { local, value } => {
+                frame.set_never_function(local, value.clone());
+            }
             EvaluatedCaptureKind::FloatFunction { local, value } => {
                 frame.set_float_function(*local, value.clone());
             }
@@ -536,6 +585,14 @@ fn bind_list_argument(
     value: &crate::plan::execution::ListLocalExpr,
 ) -> ExecutionResult<()> {
     match value {
+        crate::plan::execution::ListLocalExpr::Parameter { local, value } => {
+            let value = eval_parameter_list_expr(plan, state, caller_frame, value)?;
+            frame.set_parameter_list(*local, value);
+        }
+        crate::plan::execution::ListLocalExpr::ParameterList { local, value } => {
+            let value = eval_parameter_list_list_expr(plan, state, caller_frame, value)?;
+            frame.set_parameter_list_list(*local, value);
+        }
         crate::plan::execution::ListLocalExpr::Int { local, value } => {
             let value = eval_int_list_expr(plan, state, caller_frame, value)?;
             frame.set_int_list(*local, value);
@@ -591,6 +648,18 @@ fn eval_list_capture(
     value: &crate::plan::execution::ListLocalExpr,
 ) -> ExecutionResult<EvaluatedCapture> {
     Ok(match value {
+        crate::plan::execution::ListLocalExpr::Parameter { local, value } => {
+            EvaluatedCapture::list(EvaluatedListCapture::Parameter {
+                local: *local,
+                value: eval_parameter_list_expr(plan, state, frame, value)?,
+            })
+        }
+        crate::plan::execution::ListLocalExpr::ParameterList { local, value } => {
+            EvaluatedCapture::list(EvaluatedListCapture::ParameterList {
+                local: *local,
+                value: eval_parameter_list_list_expr(plan, state, frame, value)?,
+            })
+        }
         crate::plan::execution::ListLocalExpr::Int { local, value } => {
             EvaluatedCapture::list(EvaluatedListCapture::Int {
                 local: *local,
@@ -662,6 +731,12 @@ fn eval_list_capture(
 
 fn bind_list_capture(frame: &mut Frame, value: &EvaluatedListCapture) {
     match value {
+        EvaluatedListCapture::Parameter { local, value } => {
+            frame.set_parameter_list(*local, *value);
+        }
+        EvaluatedListCapture::ParameterList { local, value } => {
+            frame.set_parameter_list_list(*local, value.clone());
+        }
         EvaluatedListCapture::Int { local, value } => {
             frame.set_int_list(*local, value.clone());
         }
@@ -711,18 +786,20 @@ mod tests {
         FloatExpr, FloatFunctionExpr, FloatFunctionLocalId, FloatListExpr, FloatListLocalId,
         FunctionExpr, FunctionFunctionExpr, FunctionFunctionLocal, FunctionFunctionLocalId,
         FunctionFunctionType, FunctionListLocalId, FunctionTemplate, FunctionTemplateId,
-        FunctionType, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
-        IntFunctionLocalId, IntListExpr, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr,
-        ListFunctionLocal, ListListExpr, ListListLocalId, ListLocal, ListLocalExpr, ModulePlan,
-        NilExpr, NilFunctionExpr, NilFunctionLocalId, NilListExpr, NilListLocalId, NilLocalId,
-        PanicExpr, PanicSite, ReturnExpr, Step, StringExpr, StringFunctionExpr,
-        StringFunctionLocalId, StringListExpr, StringListLocalId, StringLocalId, TupleExpr,
-        TupleFunctionExpr, TupleFunctionLocalId, TupleListExpr, TupleListLocalId, TupleLocalId,
-        UtfCodepointExpr, UtfCodepointFunctionExpr, UtfCodepointFunctionLocalId,
-        UtfCodepointListExpr, UtfCodepointListLocalId, UtfCodepointLocalId, ValueType,
+        FunctionType, GenericFunctionExpr, GenericFunctionLocal, GenericFunctionLocalId,
+        GenericFunctionType, GenericListLocalId, IntExpr, IntFunctionExpr, IntFunctionFunctionId,
+        IntFunctionId, IntFunctionLocalId, IntListExpr, IntListLocalId, IntLocalId, ListExpr,
+        ListFunctionExpr, ListFunctionLocal, ListListExpr, ListListLocalId, ListLocal,
+        ListLocalExpr, ModulePlan, NilExpr, NilFunctionExpr, NilFunctionLocalId, NilListExpr,
+        NilListLocalId, NilLocalId, PanicExpr, PanicSite, ReturnExpr, Step, StringExpr,
+        StringFunctionExpr, StringFunctionLocalId, StringListExpr, StringListLocalId,
+        StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleListExpr,
+        TupleListLocalId, TupleLocalId, TypeParameterId, TypedFunctionExpr, UtfCodepointExpr,
+        UtfCodepointFunctionExpr, UtfCodepointFunctionLocalId, UtfCodepointListExpr,
+        UtfCodepointListLocalId, UtfCodepointLocalId, ValueShape, ValueType,
     };
     use crate::runtime::frame::Frame;
-    use crate::runtime::{ExecutionError, run_main};
+    use crate::runtime::{EvaluatedValue, ExecutionError, run_main};
 
     #[test]
     fn source_arguments_and_captures_preserve_every_value_family() {
@@ -895,6 +972,8 @@ pub fn main() {
             "List(Nil)",
             "List(#(Int))",
             "List(List(Int))",
+            "List(value)",
+            "List(List(value))",
             "List(fn() -> Int)",
             "fn() -> Int",
             "fn() -> String",
@@ -908,6 +987,8 @@ pub fn main() {
             "fn() -> List(BitArray)",
             "fn() -> List(UtfCodepoint)",
             "fn() -> fn() -> Int",
+            "fn(value) -> value",
+            "fn(Int) -> value",
         ];
 
         for parameter_type in parameter_types {
@@ -929,6 +1010,205 @@ pub fn main() {
                 crate::runtime::run_src_error(&source).to_string(),
                 "panic: argument",
             );
+        }
+
+        for source in [
+            r#"
+fn fail_condition() -> Bool { panic as "argument" }
+fn callee(_function: fn(value) -> value) { Nil }
+pub fn main() {
+  callee(case fail_condition() {
+    True -> fn(value) { value }
+    False -> fn(value) { value }
+  })
+}
+"#,
+            r#"
+fn fail_condition() -> Bool { panic as "argument" }
+fn callee(_function: fn(Int) -> value) { Nil }
+pub fn main() {
+  callee(case fail_condition() {
+    True -> fn(_value) { panic }
+    False -> fn(_value) { panic }
+  })
+}
+"#,
+        ] {
+            assert_eq!(
+                crate::runtime::run_src_error(source).to_string(),
+                "panic: argument",
+            );
+        }
+    }
+
+    #[test]
+    fn generic_function_argument_projection_errors_propagate() {
+        let cases = [
+            (
+                r#"
+fn consume(_function: fn(value) -> value) { Nil }
+fn caller(functions: #(fn(value) -> value)) { consume(functions.0) }
+pub fn main() { caller }
+"#,
+                FunctionType::new(
+                    vec![ValueType::Parameter(TypeParameterId(0))],
+                    ValueType::Parameter(TypeParameterId(0)),
+                ),
+            ),
+            (
+                r#"
+fn consume(_function: fn(Int) -> value) { Nil }
+fn caller(functions: #(fn(Int) -> value)) { consume(functions.0) }
+pub fn main() { caller }
+"#,
+                FunctionType::new(
+                    vec![ValueType::Int],
+                    ValueType::Parameter(TypeParameterId(0)),
+                ),
+            ),
+        ];
+
+        for (source, expected_function_type) in cases {
+            let plan = crate::runtime::plan_src(source);
+            let function_id = crate::plan::execution::NilFunctionId(0);
+            let function = plan.nil_function(function_id);
+            let mut state = crate::runtime::RuntimeState::new();
+            let mut frame = Frame::new(function.frame_layout(), &mut state);
+            frame.set_tuple(
+                crate::plan::execution::TupleLocalId(0),
+                vec![EvaluatedValue::Int(1.into())],
+            );
+
+            assert_eq!(
+                super::super::return_body::run_nil_loop(&plan, &mut state, function_id, frame,),
+                Err(ExecutionError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Function(Box::new(expected_function_type)),
+                    actual: ValueType::Int,
+                }),
+            );
+        }
+    }
+
+    #[test]
+    fn diverging_argument_prefix_propagates_generic_function_projection_errors() {
+        let cases = [
+            (
+                r#"
+fn fail() -> other { panic }
+fn consume(_function: fn(value) -> value, _other: other) { Nil }
+fn caller(functions: #(fn(value) -> value)) { consume(functions.0, fail()) }
+pub fn main() { caller }
+"#,
+                FunctionType::new(
+                    vec![ValueType::Parameter(TypeParameterId(0))],
+                    ValueType::Parameter(TypeParameterId(0)),
+                ),
+            ),
+            (
+                r#"
+fn fail() -> other { panic }
+fn consume(_function: fn(Int) -> value, _other: other) { Nil }
+fn caller(functions: #(fn(Int) -> value)) { consume(functions.0, fail()) }
+pub fn main() { caller }
+"#,
+                FunctionType::new(
+                    vec![ValueType::Int],
+                    ValueType::Parameter(TypeParameterId(0)),
+                ),
+            ),
+        ];
+
+        for (source, expected_function_type) in cases {
+            let plan = crate::runtime::plan_src(source);
+            let function_id = crate::plan::execution::NilFunctionId(0);
+            let function = plan.nil_function(function_id);
+            let mut state = crate::runtime::RuntimeState::new();
+            let mut frame = Frame::new(function.frame_layout(), &mut state);
+            frame.set_tuple(
+                crate::plan::execution::TupleLocalId(0),
+                vec![EvaluatedValue::Int(1.into())],
+            );
+
+            assert_eq!(
+                super::super::return_body::run_nil_loop(&plan, &mut state, function_id, frame,),
+                Err(ExecutionError::TupleIndexFamilyMismatch {
+                    expected: ValueType::Function(Box::new(expected_function_type)),
+                    actual: ValueType::Int,
+                }),
+            );
+        }
+    }
+
+    #[test]
+    fn source_generic_and_never_function_arguments_bind_without_evaluation() {
+        assert_eq!(
+            crate::runtime::run_src(
+                r#"
+fn identity(value) { value }
+fn diverge(_value: Int) -> value { panic }
+fn take_generic(_function: fn(value) -> value) { Nil }
+fn take_never(_function: fn(Int) -> value) { Nil }
+
+pub fn main() {
+  #(take_generic(identity), take_never(diverge))
+}
+"#,
+            ),
+            crate::runtime::Value::Tuple(vec![
+                crate::runtime::Value::Nil,
+                crate::runtime::Value::Nil,
+            ]),
+        );
+    }
+
+    #[test]
+    fn unresolved_generic_and_never_function_arguments_preserve_evaluation_order() {
+        for (function_type, function, expected) in [
+            (
+                "fn(value) -> value",
+                "fn identity(value) { value }",
+                "identity",
+            ),
+            (
+                "fn(Int) -> value",
+                "fn diverge(_value: Int) -> value { panic }",
+                "diverge",
+            ),
+        ] {
+            let source = format!(
+                r#"
+{function}
+fn fail() -> other {{ panic as "argument failed" }}
+fn consume(_function: {function_type}, _other: other) {{ Nil }}
+pub fn main() {{ consume({expected}, fail()) }}
+"#,
+            );
+            assert_eq!(
+                crate::runtime::run_src_error(&source).to_string(),
+                "panic: argument failed",
+            );
+        }
+    }
+
+    #[test]
+    fn generic_and_never_function_argument_errors_propagate_from_the_value() {
+        let cases = [
+            (
+                include_str!(
+                    "../../../tests/fixtures/execution_errors/functions/generic_symbolic_function_argument_failure.gleam"
+                ),
+                "panic: symbolic function argument failed",
+            ),
+            (
+                include_str!(
+                    "../../../tests/fixtures/execution_errors/functions/generic_never_function_value_argument_failure.gleam"
+                ),
+                "panic: never function value argument failed",
+            ),
+        ];
+
+        for (source, expected) in cases {
+            assert_eq!(crate::runtime::run_src_error(source).to_string(), expected);
         }
     }
 
@@ -1151,6 +1431,23 @@ pub fn main() {
                     ValueType::Function(Box::new(int_function_type.clone())),
                 )),
             }),
+            CaptureArg::list(ListLocalExpr::Generic {
+                local: GenericListLocalId(0),
+                parameter: TypeParameterId(0),
+                value: ListExpr::panic(panic(), ValueType::Parameter(TypeParameterId(0)))
+                    .into_generic()
+                    .expect("generic list panic should retain its item parameter"),
+            }),
+            CaptureArg::list(ListLocalExpr::ParameterList {
+                local: ListListLocalId(1),
+                parameter: TypeParameterId(0),
+                value: ListExpr::panic(
+                    panic(),
+                    ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(0)))),
+                )
+                .into_parameter_list()
+                .expect("nested generic list panic should retain its item parameter"),
+            }),
             CaptureArg::int_function(
                 IntFunctionLocalId(0),
                 IntFunctionExpr::panic(panic(), int_function_type.clone()),
@@ -1197,6 +1494,44 @@ pub fn main() {
             CaptureArg::function_function(
                 FunctionFunctionLocalId(0),
                 FunctionFunctionExpr::panic(panic(), function_function_type),
+            ),
+            CaptureArg::generic_function_expr(
+                GenericFunctionLocal::new(
+                    GenericFunctionLocalId(0),
+                    GenericFunctionType::new(
+                        vec![ValueShape::Parameter(TypeParameterId(0))],
+                        TypeParameterId(0),
+                    ),
+                ),
+                TypedFunctionExpr::new(
+                    crate::plan::FunctionShape::new(
+                        vec![ValueShape::Parameter(TypeParameterId(0))],
+                        ValueShape::Parameter(TypeParameterId(0)),
+                    ),
+                    GenericFunctionExpr::panic(
+                        panic(),
+                        GenericFunctionType::new(
+                            vec![ValueShape::Parameter(TypeParameterId(0))],
+                            TypeParameterId(0),
+                        ),
+                    ),
+                ),
+            ),
+            CaptureArg::generic_function_expr(
+                GenericFunctionLocal::new(
+                    GenericFunctionLocalId(1),
+                    GenericFunctionType::new(vec![ValueShape::Int], TypeParameterId(0)),
+                ),
+                TypedFunctionExpr::new(
+                    crate::plan::FunctionShape::new(
+                        vec![ValueShape::Int],
+                        ValueShape::Parameter(TypeParameterId(0)),
+                    ),
+                    GenericFunctionExpr::panic(
+                        panic(),
+                        GenericFunctionType::new(vec![ValueShape::Int], TypeParameterId(0)),
+                    ),
+                ),
             ),
         ];
 
@@ -1251,6 +1586,12 @@ pub fn main() {
             FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int)));
         let custom_function_type = CustomFunctionType::new(Vec::new(), custom_type.clone());
         let function_function_type = FunctionFunctionType::new(Vec::new(), function_type.clone());
+        let generic_function_type = GenericFunctionType::new(
+            vec![ValueShape::Parameter(TypeParameterId(0))],
+            TypeParameterId(0),
+        );
+        let never_function_type =
+            GenericFunctionType::new(vec![ValueShape::Int], TypeParameterId(0));
         let target_values = vec![
             Expr::int(IntExpr::local_get(IntLocalId(0), "capture".into())),
             Expr::string(StringExpr::local_get(StringLocalId(0), "capture".into())),
@@ -1324,6 +1665,14 @@ pub fn main() {
                 ListLocal::function(FunctionListLocalId(0), function_type.clone()),
                 "capture".into(),
             )),
+            Expr::list(ListExpr::local_get(
+                ListLocal::generic(GenericListLocalId(0), TypeParameterId(0)),
+                "capture".into(),
+            )),
+            Expr::list(ListExpr::local_get(
+                ListLocal::list(ListListLocalId(1), ValueType::Parameter(TypeParameterId(0))),
+                "capture".into(),
+            )),
             Expr::function(FunctionExpr::int(IntFunctionExpr::local_get(
                 IntFunctionLocalId(0),
                 "capture".into(),
@@ -1376,6 +1725,14 @@ pub fn main() {
             ))),
             Expr::function(FunctionExpr::function(FunctionFunctionExpr::local_get(
                 FunctionFunctionLocal::new(FunctionFunctionLocalId(0), function_function_type),
+                "capture".into(),
+            ))),
+            Expr::function(FunctionExpr::generic(GenericFunctionExpr::local_get(
+                GenericFunctionLocal::new(GenericFunctionLocalId(0), generic_function_type),
+                "capture".into(),
+            ))),
+            Expr::function(FunctionExpr::generic(GenericFunctionExpr::local_get(
+                GenericFunctionLocal::new(GenericFunctionLocalId(1), never_function_type),
                 "capture".into(),
             ))),
         ];

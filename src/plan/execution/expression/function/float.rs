@@ -1,9 +1,9 @@
 use crate::plan::execution::CustomFieldAccess;
 use crate::plan::execution::FunctionType;
 use crate::plan::execution::{
-    BoolExpr, ClosureTemplate, FloatExpr, FloatFunctionFunctionId, FloatFunctionId,
-    FloatFunctionLocalId, FunctionFunctionExpr, FunctionListExpr, FunctionReference, IntExpr,
-    PanicExpr, Step, StringExpr, TupleExpr,
+    BoolExpr, FloatExpr, FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId,
+    FunctionFunctionExpr, FunctionListExpr, FunctionReference, IntExpr, PanicExpr, Step,
+    StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -13,19 +13,14 @@ pub struct FloatFunctionExpr {
 }
 
 pub(crate) enum FloatFunctionExprKind {
+    Constant(crate::plan::execution::ConstantId<FloatFunctionExpr>),
     Reference(FunctionReference<FloatFunctionId>),
-    Closure(ClosureTemplate<FloatFunctionId>),
+    Closure(crate::plan::execution::ClosureTemplate<FloatFunctionId>),
     LocalGet {
         local: FloatFunctionLocalId,
     },
-    Call {
-        function: FloatFunctionFunctionId,
-        args: Vec<crate::plan::execution::CallArg>,
-    },
-    FunctionCall {
-        function: Box<FunctionFunctionExpr>,
-        args: Vec<crate::plan::execution::CallArg>,
-    },
+    Call(crate::plan::execution::DirectCall<FloatFunctionFunctionId>),
+    FunctionCall(crate::plan::execution::FunctionCall<FunctionFunctionExpr>),
     TupleIndex {
         tuple: Box<TupleExpr>,
         index: usize,
@@ -67,6 +62,10 @@ pub(crate) enum FloatFunctionExprKind {
 impl FloatFunctionExpr {
     pub(in crate::plan::execution) fn from_kind(kind: FloatFunctionExprKind) -> Self {
         Self { kind }
+    }
+
+    pub(in crate::plan::execution) fn into_kind(self) -> FloatFunctionExprKind {
+        self.kind
     }
 
     pub(crate) fn kind(&self) -> &FloatFunctionExprKind {

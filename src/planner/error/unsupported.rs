@@ -42,8 +42,6 @@ pub enum UnsupportedPatternKind {
 pub enum UnsupportedExpressionKind {
     #[error("echo")]
     Echo,
-    #[error("generic function")]
-    GenericFunction,
     #[error("list element type is not supported")]
     UnsupportedListElementType,
 }

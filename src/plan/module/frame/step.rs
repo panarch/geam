@@ -88,7 +88,7 @@ impl FrameLayout {
             }
             StepKind::LetTupleFunction { local, value, .. } => {
                 self.include_tuple_function_expr(value.expression());
-                self.include_tuple_function(*local);
+                self.include_tuple_function(*local, value.shape().clone());
             }
             StepKind::LetListFunction { local, value, .. } => {
                 self.include_list_function_expr(value.expression());
@@ -139,7 +139,7 @@ impl FrameLayout {
     fn include_total_binding_pattern(&mut self, pattern: &TotalBindingPattern) {
         match pattern.kind() {
             crate::plan::module::TotalBindingPatternKind::Bind(binding) => {
-                self.include_local(binding.local())
+                self.include_param_slot(binding.local(), binding.slot().shape())
             }
             crate::plan::module::TotalBindingPatternKind::Discard => {}
             crate::plan::module::TotalBindingPatternKind::Tuple(elements) => {
@@ -157,7 +157,7 @@ impl FrameLayout {
             }
             crate::plan::module::TotalBindingPatternKind::Alias { pattern, binding } => {
                 self.include_total_binding_pattern(pattern);
-                self.include_local(binding.local());
+                self.include_param_slot(binding.local(), binding.slot().shape());
             }
         }
     }
@@ -190,7 +190,9 @@ impl FrameLayout {
         pattern: &AssertPattern,
     ) {
         match pattern {
-            AssertPattern::Bind(binding) => self.include_local(binding.local()),
+            AssertPattern::Bind(binding) => {
+                self.include_param_slot(binding.local(), binding.slot().shape())
+            }
             AssertPattern::Discard
             | AssertPattern::Int(_)
             | AssertPattern::Float(_)
@@ -219,7 +221,7 @@ impl FrameLayout {
             }
             AssertPattern::Alias { pattern, binding } => {
                 self.include_assert_pattern(pattern);
-                self.include_local(binding.local());
+                self.include_param_slot(binding.local(), binding.slot().shape());
             }
         }
     }

@@ -1,16 +1,16 @@
 use super::expression::{
-    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomFunctionExpr,
-    CustomLocalExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr,
-    IntFunctionExpr, ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr,
-    StringFunctionExpr, TupleExpr, TupleFunctionExpr, TypedFunctionExpr, UtfCodepointExpr,
-    UtfCodepointFunctionExpr,
+    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomExpr, CustomFunctionExpr,
+    CustomLocalExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, GenericFunctionExpr,
+    IntExpr, IntFunctionExpr, ListFunctionExpr, ListLocalExpr, NeverFunctionExpr, NilExpr,
+    NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
+    TypedFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
 use super::id::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
     CustomFunctionLocal, CustomLocal, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocal,
-    IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId,
-    StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
-    UtfCodepointFunctionLocalId, UtfCodepointLocalId,
+    GenericFunctionLocal, IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal,
+    NeverFunctionLocal, NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId,
+    TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
 use super::{ParamLocal, ParamSlot};
 use crate::plan::execution::{BitArrayPattern, CustomBindingPattern};
@@ -134,6 +134,14 @@ pub(crate) enum StepKind {
         local: UtfCodepointFunctionLocalId,
         value: TypedFunctionExpr<UtfCodepointFunctionExpr>,
     },
+    LetGenericFunction {
+        local: GenericFunctionLocal,
+        value: TypedFunctionExpr<GenericFunctionExpr>,
+    },
+    LetNeverFunction {
+        local: NeverFunctionLocal,
+        value: TypedFunctionExpr<NeverFunctionExpr>,
+    },
     LetCustomFunction {
         local: CustomFunctionLocal,
         value: TypedFunctionExpr<CustomFunctionExpr>,
@@ -167,6 +175,10 @@ pub(crate) enum StepKind {
     },
     BindCustomFields {
         local: CustomLocal,
+        pattern: CustomBindingPattern,
+    },
+    BindCustomValueFields {
+        value: CustomExpr,
         pattern: CustomBindingPattern,
     },
     AssertBool {

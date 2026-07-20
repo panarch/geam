@@ -2,9 +2,9 @@ use crate::plan::CustomFieldAccess;
 #[cfg(test)]
 use crate::plan::ParamLocal;
 use crate::plan::{
-    BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionInstantiation, FunctionListExpr,
-    FunctionType, IntExpr, NilFunctionLocalId, NilFunctionReference, PanicExpr, ParamSlot, Step,
-    StringExpr, TupleExpr,
+    BoolExpr, CaptureArg, ConstantNilFunctionInstantiation, FloatExpr, FunctionFunctionExpr,
+    FunctionInstantiation, FunctionListExpr, FunctionType, IntExpr, NilFunctionLocalId,
+    NilFunctionReference, PanicExpr, ParamSlot, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -17,6 +17,7 @@ pub struct NilFunctionExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum NilFunctionExprKind {
+    Constant(ConstantNilFunctionInstantiation),
     Reference(NilFunctionReference),
     Closure {
         function: FunctionInstantiation,
@@ -76,6 +77,13 @@ pub(crate) enum NilFunctionExprKind {
 }
 
 impl NilFunctionExpr {
+    pub(crate) fn constant(value: ConstantNilFunctionInstantiation, type_: FunctionType) -> Self {
+        Self {
+            type_,
+            kind: NilFunctionExprKind::Constant(value),
+        }
+    }
+
     pub(crate) fn reference(value: NilFunctionReference) -> Self {
         let type_ = value.instantiation().shape().type_();
         Self {

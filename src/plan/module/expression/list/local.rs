@@ -1,7 +1,7 @@
 use super::{
     BitArrayListExpr, BoolListExpr, CustomListExpr, FloatListExpr, FunctionListExpr,
-    GenericListExpr, IntListExpr, ListListExpr, NilListExpr, StringListExpr, TupleListExpr,
-    UtfCodepointListExpr,
+    GenericListExpr, IntListExpr, ListListExpr, NilListExpr, ParameterListListExpr, StringListExpr,
+    TupleListExpr, UtfCodepointListExpr,
 };
 use crate::plan::{
     BitArrayListLocalId, BoolListLocalId, CustomListLocalId, CustomType, FloatListLocalId,
@@ -16,6 +16,11 @@ pub(crate) enum ListLocalExpr {
         local: GenericListLocalId,
         parameter: TypeParameterId,
         value: GenericListExpr,
+    },
+    ParameterList {
+        local: ListListLocalId,
+        parameter: TypeParameterId,
+        value: ParameterListListExpr,
     },
     Int {
         local: IntListLocalId,
@@ -71,6 +76,7 @@ impl ListLocalExpr {
     pub(crate) fn item_shape(&self) -> &crate::plan::ValueShape {
         match self {
             Self::Generic { value, .. } => value.item_shape(),
+            Self::ParameterList { value, .. } => value.item_shape(),
             Self::Int { value, .. } => value.item_shape(),
             Self::String { value, .. } => value.item_shape(),
             Self::BitArray { value, .. } => value.item_shape(),
@@ -83,5 +89,33 @@ impl ListLocalExpr {
             Self::List { value, .. } => value.item_shape(),
             Self::Function { value, .. } => value.item_shape(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ListLocalExpr;
+    use crate::plan::{ListExpr, ListListLocalId, TypeParameterId, ValueShape, ValueType};
+
+    #[test]
+    fn parameter_list_local_preserves_recursive_item_shape() {
+        let parameter = TypeParameterId(3);
+        let value = ListExpr::try_value(
+            Vec::new(),
+            ValueType::List(Box::new(ValueType::Parameter(parameter))),
+        )
+        .expect("empty nested parameter list")
+        .into_parameter_list()
+        .expect("parameter-list item family");
+
+        assert_eq!(
+            ListLocalExpr::ParameterList {
+                local: ListListLocalId(2),
+                parameter,
+                value,
+            }
+            .item_shape(),
+            &ValueShape::List(Box::new(ValueShape::Parameter(parameter))),
+        );
     }
 }

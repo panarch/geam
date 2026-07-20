@@ -483,6 +483,11 @@ fn bool_list_case_branches(
         (ListExpr::Generic(true_), ListExpr::Generic(false_)) if true_.item() == false_.item() => {
             BoolListCaseBranches::Generic { true_, false_ }
         }
+        (ListExpr::ParameterList(true_), ListExpr::ParameterList(false_))
+            if true_.item() == false_.item() =>
+        {
+            BoolListCaseBranches::ParameterList { true_, false_ }
+        }
         (ListExpr::Int(true_), ListExpr::Int(false_)) => {
             BoolListCaseBranches::Int { true_, false_ }
         }
@@ -1021,6 +1026,28 @@ mod tests {
             ),
             Ok(BoolListCaseBranches::Generic { true_, false_ }),
         );
+
+        let true_ = ListExpr::try_value(
+            Vec::new(),
+            ValueType::List(Box::new(ValueType::Parameter(parameter))),
+        )
+        .expect("empty nested parameter list")
+        .into_parameter_list()
+        .expect("parameter-list item family");
+        let false_ = ListExpr::try_value(
+            Vec::new(),
+            ValueType::List(Box::new(ValueType::Parameter(parameter))),
+        )
+        .expect("empty nested parameter list")
+        .into_parameter_list()
+        .expect("parameter-list item family");
+        assert_eq!(
+            super::bool_list_case_branches(
+                ListExpr::ParameterList(true_.clone()),
+                ListExpr::ParameterList(false_.clone()),
+            ),
+            Ok(BoolListCaseBranches::ParameterList { true_, false_ }),
+        );
     }
 
     #[test]
@@ -1436,42 +1463,6 @@ pub fn main() {
                     reason: InvalidCaseShapeReason::PatternSubjectCountMismatch,
                 },
             }),
-        );
-    }
-
-    #[test]
-    fn reject_profile_multi_subject_with_unresolved_generic_custom_type() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
-pub fn main() {
-  case Ok(1), 2 {
-    _, _ -> 0
-  }
-}
-"#,
-            ),
-            PlanError::UnsupportedExpression {
-                kind: crate::planner::UnsupportedExpressionKind::GenericFunction,
-            },
-        );
-    }
-
-    #[test]
-    fn reject_profile_single_subject_with_unresolved_generic_custom_type() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
-pub fn main() {
-  case Ok(1) {
-    _ -> 0
-  }
-}
-"#,
-            ),
-            PlanError::UnsupportedExpression {
-                kind: crate::planner::UnsupportedExpressionKind::GenericFunction,
-            },
         );
     }
 

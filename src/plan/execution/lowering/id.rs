@@ -106,9 +106,17 @@ pub(super) fn list_local_at(
         module::ListLocal::List {
             local: _,
             item_type,
-        } => execution::ListLocal::List {
-            local: execution::ListListLocalId(index),
-            type_id: context.list_list_type(item_type.as_ref().clone()),
+        } => match context.list_list_type(item_type.as_ref().clone()) {
+            super::value_type::NestedListTypeId::Parameter(type_id) => {
+                execution::ListLocal::ParameterList {
+                    local: execution::ParameterListListLocalId(index),
+                    type_id,
+                }
+            }
+            super::value_type::NestedListTypeId::Stored(type_id) => execution::ListLocal::List {
+                local: execution::ListListLocalId(index),
+                type_id,
+            },
         },
         module::ListLocal::Function {
             local: _,
@@ -210,11 +218,25 @@ pub(super) fn list_function_local_at(
             local: _,
             type_,
             item_type,
-        } => execution::ListFunctionLocal::List {
-            local: execution::ListListFunctionLocalId(index),
-            type_: context.function_type(type_.clone()),
-            list_type: context.list_list_type(item_type.as_ref().clone()),
-        },
+        } => {
+            let type_ = context.function_type(type_.clone());
+            match context.list_list_type(item_type.as_ref().clone()) {
+                super::value_type::NestedListTypeId::Parameter(list_type) => {
+                    execution::ListFunctionLocal::ParameterList {
+                        local: execution::ParameterListListFunctionLocalId(index),
+                        type_,
+                        list_type,
+                    }
+                }
+                super::value_type::NestedListTypeId::Stored(list_type) => {
+                    execution::ListFunctionLocal::List {
+                        local: execution::ListListFunctionLocalId(index),
+                        type_,
+                        list_type,
+                    }
+                }
+            }
+        }
         module::ListFunctionLocal::Function {
             local: _,
             type_,
@@ -230,13 +252,13 @@ pub(super) fn list_function_local_at(
 pub(super) fn list_function_local_at_target(
     index: usize,
     local: &module::ListFunctionLocal,
-    target: &super::TargetLocal,
+    target: &super::StoredTargetLocal,
     context: &mut LoweringContext,
 ) -> super::super::ListFunctionLocal {
     let function = target.function_shape(&crate::plan::FunctionShape::from_function_type(
         local.type_().clone(),
     ));
-    let item = super::specialization::ConcreteValueShape::instantiate(
+    let item = super::specialization::SpecializedValueShape::instantiate(
         &crate::plan::ValueShape::from_value_type(local.item_type()),
         target.substitution(),
     );

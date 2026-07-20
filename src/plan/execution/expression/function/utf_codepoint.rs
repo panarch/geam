@@ -1,9 +1,9 @@
 use crate::plan::execution::CustomFieldAccess;
 use crate::plan::execution::FunctionType;
 use crate::plan::execution::{
-    BoolExpr, ClosureTemplate, FloatExpr, FunctionFunctionExpr, FunctionListExpr,
-    FunctionReference, IntExpr, PanicExpr, Step, StringExpr, TupleExpr,
-    UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, UtfCodepointFunctionLocalId,
+    BoolExpr, FloatExpr, FunctionFunctionExpr, FunctionListExpr, FunctionReference, IntExpr,
+    PanicExpr, Step, StringExpr, TupleExpr, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+    UtfCodepointFunctionLocalId,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -13,19 +13,14 @@ pub struct UtfCodepointFunctionExpr {
 }
 
 pub(crate) enum UtfCodepointFunctionExprKind {
+    Constant(crate::plan::execution::ConstantId<UtfCodepointFunctionExpr>),
     Reference(FunctionReference<UtfCodepointFunctionId>),
-    Closure(ClosureTemplate<UtfCodepointFunctionId>),
+    Closure(crate::plan::execution::ClosureTemplate<UtfCodepointFunctionId>),
     LocalGet {
         local: UtfCodepointFunctionLocalId,
     },
-    Call {
-        function: UtfCodepointFunctionFunctionId,
-        args: Vec<crate::plan::execution::CallArg>,
-    },
-    FunctionCall {
-        function: Box<FunctionFunctionExpr>,
-        args: Vec<crate::plan::execution::CallArg>,
-    },
+    Call(crate::plan::execution::DirectCall<UtfCodepointFunctionFunctionId>),
+    FunctionCall(crate::plan::execution::FunctionCall<FunctionFunctionExpr>),
     TupleIndex {
         tuple: Box<TupleExpr>,
         index: usize,
@@ -67,6 +62,10 @@ pub(crate) enum UtfCodepointFunctionExprKind {
 impl UtfCodepointFunctionExpr {
     pub(in crate::plan::execution) fn from_kind(kind: UtfCodepointFunctionExprKind) -> Self {
         Self { kind }
+    }
+
+    pub(in crate::plan::execution) fn into_kind(self) -> UtfCodepointFunctionExprKind {
+        self.kind
     }
 
     pub(crate) fn kind(&self) -> &UtfCodepointFunctionExprKind {

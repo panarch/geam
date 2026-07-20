@@ -35,6 +35,26 @@ pub(crate) enum ValueShape {
     Custom(CustomValueShape),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum ValueStorageShape {
+    Int,
+    Float,
+    String,
+    BitArray,
+    UtfCodepoint,
+    Bool,
+    Nil,
+    Tuple(Box<[ValueShape]>),
+    List(Box<ValueShape>),
+    Function(Box<FunctionShape>),
+    Custom(CustomValueShape),
+}
+
+pub(crate) enum ValueRepresentation {
+    Uninhabited(TypeParameterId),
+    Stored(ValueStorageShape),
+}
+
 impl CustomValueShape {
     pub(crate) fn new(
         name: CustomTypeName,
@@ -224,37 +244,32 @@ impl FunctionShape {
 }
 
 impl ValueShape {
-    pub(crate) fn parameters_are_scoped(&self, count: usize) -> bool {
+    pub(crate) fn representation(&self) -> ValueRepresentation {
         match self {
-            Self::Parameter(parameter) => parameter.index() < count,
-            Self::Int
-            | Self::Float
-            | Self::String
-            | Self::BitArray
-            | Self::UtfCodepoint
-            | Self::Bool
-            | Self::Nil => true,
-            Self::Tuple(elements) => elements
-                .iter()
-                .all(|element| element.parameters_are_scoped(count)),
-            Self::List(item) => item.parameters_are_scoped(count),
-            Self::Function(function) => {
-                function
-                    .argument_shapes()
-                    .iter()
-                    .all(|argument| argument.parameters_are_scoped(count))
-                    && function.return_shape().parameters_are_scoped(count)
+            Self::Parameter(parameter) => ValueRepresentation::Uninhabited(*parameter),
+            Self::Int => ValueRepresentation::Stored(ValueStorageShape::Int),
+            Self::Float => ValueRepresentation::Stored(ValueStorageShape::Float),
+            Self::String => ValueRepresentation::Stored(ValueStorageShape::String),
+            Self::BitArray => ValueRepresentation::Stored(ValueStorageShape::BitArray),
+            Self::UtfCodepoint => ValueRepresentation::Stored(ValueStorageShape::UtfCodepoint),
+            Self::Bool => ValueRepresentation::Stored(ValueStorageShape::Bool),
+            Self::Nil => ValueRepresentation::Stored(ValueStorageShape::Nil),
+            Self::Tuple(elements) => {
+                ValueRepresentation::Stored(ValueStorageShape::Tuple(elements.clone()))
             }
-            Self::Custom(custom) => custom
-                .arguments()
-                .iter()
-                .all(|argument| argument.parameters_are_scoped(count)),
+            Self::List(item) => ValueRepresentation::Stored(ValueStorageShape::List(item.clone())),
+            Self::Function(function) => {
+                ValueRepresentation::Stored(ValueStorageShape::Function(function.clone()))
+            }
+            Self::Custom(custom) => {
+                ValueRepresentation::Stored(ValueStorageShape::Custom(custom.clone()))
+            }
         }
     }
 
     pub(crate) fn substitute(&self, substitution: &crate::plan::TypeSubstitution) -> Self {
         match self {
-            Self::Parameter(parameter) => substitution.get(*parameter).clone(),
+            Self::Parameter(parameter) => substitution.resolve(*parameter),
             Self::Int => Self::Int,
             Self::Float => Self::Float,
             Self::String => Self::String,
@@ -416,6 +431,50 @@ impl ValueShape {
             }
             _ => false,
         }
+    }
+}
+
+impl ValueStorageShape {
+    pub(crate) fn substitute(&self, substitution: &crate::plan::TypeSubstitution) -> Self {
+        match self {
+            Self::Int => Self::Int,
+            Self::Float => Self::Float,
+            Self::String => Self::String,
+            Self::BitArray => Self::BitArray,
+            Self::UtfCodepoint => Self::UtfCodepoint,
+            Self::Bool => Self::Bool,
+            Self::Nil => Self::Nil,
+            Self::Tuple(elements) => Self::Tuple(
+                elements
+                    .iter()
+                    .map(|shape| shape.substitute(substitution))
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            ),
+            Self::List(item) => Self::List(Box::new(item.substitute(substitution))),
+            Self::Function(function) => Self::Function(Box::new(function.substitute(substitution))),
+            Self::Custom(custom) => Self::Custom(custom.substitute(substitution)),
+        }
+    }
+
+    pub(crate) fn to_value_shape(&self) -> ValueShape {
+        match self {
+            Self::Int => ValueShape::Int,
+            Self::Float => ValueShape::Float,
+            Self::String => ValueShape::String,
+            Self::BitArray => ValueShape::BitArray,
+            Self::UtfCodepoint => ValueShape::UtfCodepoint,
+            Self::Bool => ValueShape::Bool,
+            Self::Nil => ValueShape::Nil,
+            Self::Tuple(elements) => ValueShape::Tuple(elements.clone()),
+            Self::List(item) => ValueShape::List(item.clone()),
+            Self::Function(function) => ValueShape::Function(function.clone()),
+            Self::Custom(custom) => ValueShape::Custom(custom.clone()),
+        }
+    }
+
+    pub(crate) fn value_type(&self) -> ValueType {
+        self.to_value_shape().value_type()
     }
 }
 

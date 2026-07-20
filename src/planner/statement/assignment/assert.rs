@@ -689,6 +689,34 @@ pub fn main() {
                 },
             }),
         );
+
+        let mut final_nominal_mismatch = compile(
+            r#"
+pub type First { First(Int) }
+pub type Second { Second(Int) }
+pub fn main() {
+  let assert First(value) = First(1)
+}
+"#,
+        );
+        let assignment =
+            expect_assignment_mut(&mut final_nominal_mismatch.definitions.functions[0].body[0]);
+        *expect_constructor_pattern_type_mut(&mut assignment.pattern) = type_::named(
+            "geam",
+            "main",
+            "Second",
+            gleam_core::ast::Publicity::Public,
+            Vec::new(),
+        );
+        assert_eq!(
+            plan_module(final_nominal_mismatch),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Second".into(),
+                    reason: crate::planner::InvalidCustomTypeReason::ConstructorName,
+                },
+            }),
+        );
     }
 
     #[test]
@@ -1291,7 +1319,7 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_margin_let_assert_exhaustive_pattern_propagates_binding_error() {
+    fn reject_margin_let_assert_exhaustive_generic_list_propagates_value_type_error() {
         let module_name = "main".into();
         let functions = HashMap::new();
         let mut anonymous = AnonymousFunctions::default();
@@ -1322,8 +1350,11 @@ pub fn main() {
                 &mut context,
             )
             .map(|_| ()),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::UnsupportedListElementType,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Tuple,
+                    actual: InvalidExpressionType::Int,
+                },
             }),
         );
     }

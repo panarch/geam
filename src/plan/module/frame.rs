@@ -19,7 +19,7 @@ use super::id::{
 };
 use super::id::{CustomFunctionLocal, FunctionFunctionLocal};
 use super::step::Step;
-use crate::plan::{CustomType, FunctionType, ValueType};
+use crate::plan::{CustomType, FunctionShape, FunctionType, ValueShape, ValueType};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct FrameLayout {
@@ -53,7 +53,7 @@ pub(crate) struct FrameLayout {
     custom_functions: Vec<CustomFunctionLocal>,
     bool_functions: usize,
     nil_functions: usize,
-    tuple_functions: usize,
+    tuple_functions: Vec<(TupleFunctionLocalId, FunctionShape)>,
     list_functions: Vec<ListFunctionLocal>,
     function_functions: Vec<FunctionFunctionLocal>,
     generic_functions: Vec<GenericFunctionLocal>,
@@ -90,7 +90,7 @@ pub(crate) struct FrameLayoutParts<'a> {
     pub(crate) custom_functions: &'a [CustomFunctionLocal],
     pub(crate) bool_functions: usize,
     pub(crate) nil_functions: usize,
-    pub(crate) tuple_functions: usize,
+    pub(crate) tuple_functions: &'a [(TupleFunctionLocalId, FunctionShape)],
     pub(crate) list_functions: &'a [ListFunctionLocal],
     pub(crate) function_functions: &'a [FunctionFunctionLocal],
     pub(crate) generic_functions: &'a [GenericFunctionLocal],
@@ -129,7 +129,7 @@ impl FrameLayout {
             custom_functions: &self.custom_functions,
             bool_functions: self.bool_functions,
             nil_functions: self.nil_functions,
-            tuple_functions: self.tuple_functions,
+            tuple_functions: &self.tuple_functions,
             list_functions: &self.list_functions,
             function_functions: &self.function_functions,
             generic_functions: &self.generic_functions,
@@ -144,7 +144,7 @@ impl FrameLayout {
         let mut layout = Self::default();
 
         for param in params {
-            layout.include_local(param.local());
+            layout.include_param_slot(param.local(), param.shape());
         }
         layout.include_steps(steps);
         layout.include_return_expr(return_);
@@ -175,7 +175,8 @@ impl FrameLayout {
             ParamLocal::CustomFunction(local) => self.include_custom_function(local.clone()),
             ParamLocal::BoolFunction { local, .. } => self.include_bool_function(*local),
             ParamLocal::NilFunction { local, .. } => self.include_nil_function(*local),
-            ParamLocal::TupleFunction { local, .. } => self.include_tuple_function(*local),
+            ParamLocal::TupleFunction { local, type_ } => self
+                .include_tuple_function(*local, FunctionShape::from_function_type(type_.clone())),
             ParamLocal::ListFunction(local) => self.include_list_function(local.clone()),
             ParamLocal::FunctionFunction(local) => self.include_function_function(local.clone()),
             ParamLocal::GenericFunction(local) => self.include_generic_function(local.clone()),
@@ -362,8 +363,27 @@ impl FrameLayout {
         self.nil_functions = self.nil_functions.max(local.0 + 1);
     }
 
-    pub(crate) fn include_tuple_function(&mut self, local: TupleFunctionLocalId) {
-        self.tuple_functions = self.tuple_functions.max(local.0 + 1);
+    fn include_param_slot(&mut self, local: &ParamLocal, shape: &ValueShape) {
+        self.include_local(local);
+        if let (ParamLocal::TupleFunction { local, .. }, ValueShape::Function(shape)) =
+            (local, shape)
+        {
+            self.include_tuple_function(*local, shape.as_ref().clone());
+        }
+    }
+
+    pub(crate) fn include_tuple_function(
+        &mut self,
+        local: TupleFunctionLocalId,
+        shape: FunctionShape,
+    ) {
+        match self
+            .tuple_functions
+            .binary_search_by_key(&local.0, |(local, _)| local.0)
+        {
+            Ok(index) => self.tuple_functions[index].1 = shape,
+            Err(index) => self.tuple_functions.insert(index, (local, shape)),
+        }
     }
 
     pub(crate) fn include_list_function(&mut self, local: ListFunctionLocal) {
@@ -476,6 +496,8 @@ impl FrameLayout {
     #[cfg(test)]
     pub(crate) fn tuple_functions(&self) -> usize {
         self.tuple_functions
+            .last()
+            .map_or(0, |(local, _)| local.0 + 1)
     }
 
     #[cfg(test)]
@@ -571,7 +593,7 @@ mod tests {
         assert_eq!(layout, cloned);
         assert_eq!(
             format!("{layout:?}"),
-            "FrameLayout { generics: [], generic_lists: [], ints: 0, floats: 0, strings: 0, bit_arrays: 0, utf_codepoints: 0, customs: [], bools: 0, nils: 0, tuples: 0, int_lists: 0, string_lists: 0, bit_array_lists: 0, utf_codepoint_lists: 0, custom_lists: [], float_lists: 0, bool_lists: 0, nil_lists: 0, tuple_lists: [], list_lists: [], function_lists: [], int_functions: 0, float_functions: 0, string_functions: 0, bit_array_functions: 0, utf_codepoint_functions: 0, custom_functions: [], bool_functions: 0, nil_functions: 0, tuple_functions: 0, list_functions: [], function_functions: [], generic_functions: [] }",
+            "FrameLayout { generics: [], generic_lists: [], ints: 0, floats: 0, strings: 0, bit_arrays: 0, utf_codepoints: 0, customs: [], bools: 0, nils: 0, tuples: 0, int_lists: 0, string_lists: 0, bit_array_lists: 0, utf_codepoint_lists: 0, custom_lists: [], float_lists: 0, bool_lists: 0, nil_lists: 0, tuple_lists: [], list_lists: [], function_lists: [], int_functions: 0, float_functions: 0, string_functions: 0, bit_array_functions: 0, utf_codepoint_functions: 0, custom_functions: [], bool_functions: 0, nil_functions: 0, tuple_functions: [], list_functions: [], function_functions: [], generic_functions: [] }",
         );
     }
 
@@ -607,6 +629,18 @@ mod tests {
         assert_eq!(layout.float_functions(), 7);
         assert_eq!(layout.nil_functions(), 8);
         assert_eq!(layout.tuple_functions(), 9);
+        assert_eq!(
+            layout.tuple_functions,
+            vec![(
+                TupleFunctionLocalId(8),
+                crate::plan::FunctionShape::new(
+                    Vec::new(),
+                    crate::plan::ValueShape::Tuple(
+                        vec![crate::plan::ValueShape::Int].into_boxed_slice(),
+                    ),
+                ),
+            )],
+        );
     }
 
     #[test]

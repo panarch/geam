@@ -4,8 +4,8 @@ use crate::plan::execution::{
     BitArrayFunctionExpr, BitArrayFunctionExprKind, ExecutionPlan, FunctionReturnFamily,
 };
 use crate::runtime::expression::{
-    eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
-    project_function_list_expr, project_tuple_expr,
+    eval_bool_expr, eval_direct_call, eval_float_expr, eval_function_call, eval_int_expr,
+    eval_panic_expr, eval_string_expr, project_function_list_expr, project_tuple_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -21,6 +21,9 @@ pub(in crate::runtime) fn eval_bit_array_function_expr(
     expression: &BitArrayFunctionExpr,
 ) -> Result<EvaluatedBitArrayFunction, ExecutionError> {
     match expression.kind() {
+        BitArrayFunctionExprKind::Constant(value) => {
+            eval_bit_array_function_expr(plan, state, frame, plan.constant(*value))
+        }
         BitArrayFunctionExprKind::Reference(reference) => Ok(EvaluatedBitArrayFunction::reference(
             *reference.function(),
             reference.param_locals(),
@@ -31,34 +34,36 @@ pub(in crate::runtime) fn eval_bit_array_function_expr(
                 crate::plan::execution::ValueType::BitArray,
             ),
         )),
-        BitArrayFunctionExprKind::Closure(template) => Ok(EvaluatedBitArrayFunction::closure(
-            *template.function(),
-            template.param_locals(),
-            function::eval_capture_args(plan, state, frame, template.captures())?,
+        BitArrayFunctionExprKind::Closure(closure) => Ok(EvaluatedBitArrayFunction::closure(
+            *closure.function(),
+            closure.param_locals(),
+            function::eval_capture_args(plan, state, frame, closure.captures())?,
             crate::runtime::evaluated::function_type_from_slots(
                 plan,
-                template.params(),
+                closure.params(),
                 crate::plan::execution::ValueType::BitArray,
             ),
         )),
         BitArrayFunctionExprKind::LocalGet { local, .. } => {
             Ok(frame.get_bit_array_function(*local))
         }
-        BitArrayFunctionExprKind::Call { function, args, .. } => {
-            function::run_bit_array_function_returning_function_call(
-                plan, state, *function, args, frame,
-            )
-        }
-        BitArrayFunctionExprKind::FunctionCall {
-            function: callee,
-            args,
-            ..
-        } => function::run_bit_array_function_function_call(
+        BitArrayFunctionExprKind::Call(call) => eval_direct_call(
             plan,
             state,
-            callee.as_ref(),
-            args,
             frame,
+            call,
+            |plan, state, function, args, frame| {
+                function::run_bit_array_function_returning_function_call(
+                    plan, state, *function, args, frame,
+                )
+            },
+        ),
+        BitArrayFunctionExprKind::FunctionCall(call) => eval_function_call(
+            plan,
+            state,
+            frame,
+            call,
+            function::run_bit_array_function_function_call,
         ),
         BitArrayFunctionExprKind::TupleIndex {
             tuple,
@@ -229,6 +234,22 @@ mod tests {
                     fallback(),
                 ),
                 "bool subject",
+            ),
+            (
+                BitArrayFunctionExpr::bool_case(
+                    BoolExpr::not(BoolExpr::value(false)),
+                    BitArrayFunctionExpr::panic(panic("true branch"), type_.clone()),
+                    fallback(),
+                ),
+                "true branch",
+            ),
+            (
+                BitArrayFunctionExpr::bool_case(
+                    BoolExpr::not(BoolExpr::value(true)),
+                    fallback(),
+                    BitArrayFunctionExpr::panic(panic("false branch"), type_.clone()),
+                ),
+                "false branch",
             ),
             (
                 BitArrayFunctionExpr::int_case(

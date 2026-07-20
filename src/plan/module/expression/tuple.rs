@@ -2,7 +2,7 @@ use super::{
     BoolExpr, CallArg, CustomFieldAccess, FloatExpr, IntExpr, PanicExpr, StringExpr,
     TupleFunctionExpr, TupleListExpr,
 };
-use crate::plan::{FunctionInstantiation, Step, TupleLocalId, ValueType};
+use crate::plan::{ConstantTupleReference, FunctionInstantiation, Step, TupleLocalId, ValueType};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -16,6 +16,7 @@ pub struct TupleExpr {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum TupleExprKind {
     Value(Vec<super::Expr>),
+    Constant(ConstantTupleReference),
     LocalGet {
         local: TupleLocalId,
         name: EcoString,
@@ -85,6 +86,20 @@ impl TupleExpr {
             type_,
             shape,
             kind: TupleExprKind::Value(elements),
+        }
+    }
+
+    pub(in crate::plan::module) fn constant(reference: ConstantTupleReference) -> Self {
+        let type_ = reference
+            .shape()
+            .iter()
+            .map(crate::plan::ValueShape::value_type)
+            .collect();
+        let shape = reference.shape().to_vec().into_boxed_slice();
+        Self {
+            type_,
+            shape,
+            kind: TupleExprKind::Constant(reference),
         }
     }
 

@@ -1,89 +1,120 @@
+use super::super::specialization::Representability;
 use super::{
-    bool_expr, call_args, custom_field_access, float_expr, int_expr, nil_function_expr,
-    nil_list_expr, panic_expr, string_expr, tuple_expr,
+    custom_field_access, float_expr, int_expr, nil_function_expr, nil_list_expr, panic_expr,
+    string_expr, tuple_expr,
 };
 use crate::plan::{execution, module};
 
 pub(in crate::plan::execution::lowering) fn nil_expr(
     expression: &module::NilExpr,
     context: &mut super::super::LoweringContext,
-) -> execution::NilExpr {
+) -> Representability<execution::NilExpr> {
     use execution::NilExprKind as E;
     use module::NilExprKind as M;
 
-    execution::NilExpr::from_kind(match expression.kind() {
-        M::Value => E::Value,
-        M::LocalGet { local, name: _ } => E::LocalGet {
+    let kind = match expression.kind() {
+        M::Value => Representability::Inhabited(E::Value),
+        M::Constant(reference) => context.nil_constant(reference).map(E::Constant),
+        M::LocalGet { local, name: _ } => Representability::Inhabited(E::LocalGet {
             local: execution::NilLocalId(
                 context.mapped_local(super::super::frame::LocalKind::Nil, local.0),
             ),
-        },
-        M::Call { function, args } => E::Call {
-            function: context.nil_function_id(function),
-            args: super::direct_call_args(function, args, context),
-        },
-        M::FunctionCall { function, args } => E::FunctionCall {
-            function: Box::new(nil_function_expr(function, context)),
-            args: call_args(args, context),
-        },
-        M::TupleIndex { tuple, index } => E::TupleIndex {
-            tuple: Box::new(tuple_expr(tuple, context)),
+        }),
+        M::Call { function, args } => {
+            super::direct_call(function, args, context, |function, context| {
+                context.nil_function_id(function)
+            })
+            .map(E::Call)
+        }
+        M::FunctionCall { function, args } => super::function_call(
+            args,
+            context,
+            |context| nil_function_expr(function, context),
+            |context| super::function::evaluated_nil_function_expr(function, context),
+        )
+        .map(E::FunctionCall),
+        M::TupleIndex { tuple, index } => tuple_expr(tuple, context).map(|tuple| E::TupleIndex {
+            tuple: Box::new(tuple),
             index: *index,
-        },
-        M::CustomField(access) => E::CustomField(custom_field_access(access, context)),
-        M::ListIndex { list, index } => E::ListIndex {
-            list: Box::new(nil_list_expr(list, context)),
+        }),
+        M::CustomField(access) => custom_field_access(access, context).map(E::CustomField),
+        M::ListIndex { list, index } => nil_list_expr(list, context).map(|list| E::ListIndex {
+            list: Box::new(list),
             index: *index,
-        },
-        M::Panic(value) => E::Panic(panic_expr(value, context)),
+        }),
+        M::Panic(value) => panic_expr(value, context).map(E::Panic),
         M::BoolCase {
             subject,
             true_,
             false_,
-        } => E::BoolCase {
-            subject: Box::new(bool_expr(subject, context)),
-            true_: Box::new(nil_expr(true_, context)),
-            false_: Box::new(nil_expr(false_, context)),
-        },
+        } => super::bool_case_into(
+            subject,
+            context,
+            |context| nil_expr(true_, context),
+            |context| nil_expr(false_, context),
+            execution::NilExpr::into_kind,
+            |subject, true_, false_| E::BoolCase {
+                subject: Box::new(subject),
+                true_: Box::new(true_),
+                false_: Box::new(false_),
+            },
+        ),
         M::IntCase {
             subject,
             clauses,
             fallback,
-        } => E::IntCase {
-            subject: Box::new(int_expr(subject, context)),
-            clauses: clauses
-                .iter()
-                .map(|(pattern, branch)| (pattern.clone(), nil_expr(branch, context)))
-                .collect(),
-            fallback: Box::new(nil_expr(fallback, context)),
-        },
+        } => int_expr(subject, context).and_then(|subject| {
+            Representability::collect(clauses.iter().map(|(pattern, branch)| {
+                nil_expr(branch, context).map(|branch| (pattern.clone(), branch))
+            }))
+            .and_then(|clauses| {
+                nil_expr(fallback, context).map(|fallback| E::IntCase {
+                    subject: Box::new(subject),
+                    clauses,
+                    fallback: Box::new(fallback),
+                })
+            })
+        }),
         M::StringCase {
             subject,
             clauses,
             fallback,
-        } => E::StringCase {
-            subject: Box::new(string_expr(subject, context)),
-            clauses: clauses
-                .iter()
-                .map(|(pattern, branch)| (pattern.clone(), nil_expr(branch, context)))
-                .collect(),
-            fallback: Box::new(nil_expr(fallback, context)),
-        },
+        } => string_expr(subject, context).and_then(|subject| {
+            Representability::collect(clauses.iter().map(|(pattern, branch)| {
+                nil_expr(branch, context).map(|branch| (pattern.clone(), branch))
+            }))
+            .and_then(|clauses| {
+                nil_expr(fallback, context).map(|fallback| E::StringCase {
+                    subject: Box::new(subject),
+                    clauses,
+                    fallback: Box::new(fallback),
+                })
+            })
+        }),
         M::FloatCase {
             subject,
             clauses,
             fallback,
-        } => E::FloatCase {
-            subject: Box::new(float_expr(subject, context)),
-            clauses: clauses
-                .iter()
-                .map(|(pattern, branch)| (*pattern, nil_expr(branch, context)))
-                .collect(),
-            fallback: Box::new(nil_expr(fallback, context)),
-        },
-        M::Block { steps, return_ } => E::Block {
-            steps: super::super::step::steps(steps, context),
-            return_: Box::new(nil_expr(return_, context)),
-        },
-    })
+        } => float_expr(subject, context).and_then(|subject| {
+            Representability::collect(clauses.iter().map(|(pattern, branch)| {
+                nil_expr(branch, context).map(|branch| (*pattern, branch))
+            }))
+            .and_then(|clauses| {
+                nil_expr(fallback, context).map(|fallback| E::FloatCase {
+                    subject: Box::new(subject),
+                    clauses,
+                    fallback: Box::new(fallback),
+                })
+            })
+        }),
+        M::Block { steps, return_ } => {
+            super::super::step::steps(steps, context).and_then(|steps| {
+                nil_expr(return_, context).map(|return_| E::Block {
+                    steps,
+                    return_: Box::new(return_),
+                })
+            })
+        }
+    };
+    kind.map(execution::NilExpr::from_kind)
 }

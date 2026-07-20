@@ -6,8 +6,11 @@ use crate::plan::{
     TypedListExpr, TypedListReturnKind, UtfCodepointExpr, UtfCodepointExprKind, UtfCodepointReturn,
 };
 
-pub(super) fn custom_return(expression: CustomExpr) -> CustomReturn {
-    CustomReturn::expr(expression)
+pub(super) fn custom_return(
+    signature_shape: crate::plan::CustomValueShape,
+    expression: CustomExpr,
+) -> CustomReturn {
+    CustomReturn::with_signature_shape(signature_shape, expression)
 }
 
 pub(super) fn generic_return(expression: GenericExpr) -> GenericReturn {
@@ -550,8 +553,12 @@ pub(super) fn list_return(expression: ListExpr) -> ListReturn {
             item_type: expression.item().item_type(),
             body: typed_list_return_body(expression),
         },
+        ListExpr::ParameterList(expression) => ListReturn::ParameterList {
+            item_parameter: expression.item().parameter(),
+            body: typed_list_return_body(expression),
+        },
         ListExpr::List(expression) => ListReturn::List {
-            item_type: expression.item().item_type(),
+            item_shape: expression.item().item_shape().clone(),
             body: typed_list_return_body(expression),
         },
         ListExpr::Function(expression) => ListReturn::Function {
@@ -752,6 +759,16 @@ mod tests {
             ListReturn::expr(ListExpr::value(
                 Vec::new(),
                 ValueType::Tuple(vec![ValueType::Int])
+            )),
+        );
+        assert_eq!(
+            list_return(ListExpr::value(
+                Vec::new(),
+                ValueType::List(Box::new(ValueType::Parameter(parameter))),
+            )),
+            ListReturn::expr(ListExpr::value(
+                Vec::new(),
+                ValueType::List(Box::new(ValueType::Parameter(parameter))),
             )),
         );
         assert_eq!(

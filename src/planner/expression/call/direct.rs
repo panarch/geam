@@ -83,7 +83,7 @@ fn validate_argument_labels(
 #[cfg(test)]
 mod tests {
     use super::function_instantiation_mismatch;
-    use crate::plan::{FunctionType, IntLocalId, LocalId, ValueType};
+    use crate::plan::{Expr, FunctionType, IntLocalId, LocalId, Step, ValueType};
     use crate::planner::dsl::{
         call_float, call_int_function, call_list, float, float_arg, function, int, int_arg,
         int_function_arg, int_function_call_arg, int_function_ref, int_return_tail_call,
@@ -125,6 +125,32 @@ mod tests {
                 },
             );
         }
+    }
+
+    #[test]
+    fn plan_unresolved_direct_call_return_outside_current_template() {
+        let plan = plan_module(compile(
+            r#"
+fn fail() -> value {
+  panic
+}
+
+pub fn main() {
+  let _ = fail()
+  1
+}
+"#,
+        ))
+        .expect("unresolved diverging call should plan");
+
+        assert_eq!(plan.main_function().steps().len(), 1);
+        assert_eq!(
+            plan.main_function().steps()[0],
+            Step::evaluate(Expr::call(
+                plan.functions()[0].signature().identity_instantiation(),
+                Vec::new(),
+            )),
+        );
     }
 
     #[test]

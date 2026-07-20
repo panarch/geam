@@ -6,21 +6,24 @@ use super::{
     CustomFunctionReturn, CustomListFunctionId, CustomListReturn, CustomReturn,
     FloatFunctionFunctionId, FloatFunctionId, FloatFunctionReturn, FloatListFunctionId,
     FloatListReturn, FloatReturn, FunctionFunctionFunctionId, FunctionFunctionReturn,
-    FunctionListFunctionId, FunctionListReturn, IntFunctionFunctionId, IntFunctionId,
-    IntFunctionReturn, IntListFunctionId, IntListReturn, IntReturn, ListFunctionFunctionId,
-    ListFunctionReturn, ListListFunctionId, ListListReturn, NilFunctionFunctionId, NilFunctionId,
-    NilFunctionReturn, NilListFunctionId, NilListReturn, NilReturn, StringFunctionFunctionId,
-    StringFunctionId, StringFunctionReturn, StringListFunctionId, StringListReturn, StringReturn,
-    TupleFunctionFunctionId, TupleFunctionId, TupleFunctionReturn, TupleListFunctionId,
-    TupleListReturn, TupleReturn, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
-    UtfCodepointFunctionReturn, UtfCodepointListFunctionId, UtfCodepointListReturn,
-    UtfCodepointReturn,
+    FunctionListFunctionId, FunctionListReturn, GenericFunctionFunctionId, GenericFunctionReturn,
+    IntFunctionFunctionId, IntFunctionId, IntFunctionReturn, IntListFunctionId, IntListReturn,
+    IntReturn, ListFunctionFunctionId, ListFunctionReturn, ListListFunctionId, ListListReturn,
+    NeverFunctionFunctionId, NeverFunctionId, NeverFunctionReturn, NeverReturn,
+    NilFunctionFunctionId, NilFunctionId, NilFunctionReturn, NilListFunctionId, NilListReturn,
+    NilReturn, ParameterListFunctionId, ParameterListListFunctionId, ParameterListListReturn,
+    ParameterListReturn, StringFunctionFunctionId, StringFunctionId, StringFunctionReturn,
+    StringListFunctionId, StringListReturn, StringReturn, TupleFunctionFunctionId, TupleFunctionId,
+    TupleFunctionReturn, TupleListFunctionId, TupleListReturn, TupleReturn,
+    UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, UtfCodepointFunctionReturn,
+    UtfCodepointListFunctionId, UtfCodepointListReturn, UtfCodepointReturn,
 };
 
 #[cfg(test)]
 use super::IntListFunctionFunctionId;
 
 pub(super) struct FunctionTables {
+    pub(super) never_functions: Vec<ExecutableFunction<NeverReturn>>,
     pub(super) int_functions: Vec<ExecutableFunction<IntReturn>>,
     pub(super) float_functions: Vec<ExecutableFunction<FloatReturn>>,
     pub(super) string_functions: Vec<ExecutableFunction<StringReturn>>,
@@ -30,6 +33,10 @@ pub(super) struct FunctionTables {
     pub(super) bool_functions: Vec<ExecutableFunction<BoolReturn>>,
     pub(super) nil_functions: Vec<ExecutableFunction<NilReturn>>,
     pub(super) tuple_functions: Vec<ExecutableFunction<TupleReturn>>,
+    pub(super) parameter_list_functions: Vec<(
+        ParameterListFunctionId,
+        ExecutableFunction<ParameterListReturn>,
+    )>,
     pub(super) int_list_functions: Vec<(IntListFunctionId, ExecutableFunction<IntListReturn>)>,
     pub(super) string_list_functions:
         Vec<(StringListFunctionId, ExecutableFunction<StringListReturn>)>,
@@ -49,6 +56,10 @@ pub(super) struct FunctionTables {
     pub(super) nil_list_functions: Vec<(NilListFunctionId, ExecutableFunction<NilListReturn>)>,
     pub(super) tuple_list_functions:
         Vec<(TupleListFunctionId, ExecutableFunction<TupleListReturn>)>,
+    pub(super) parameter_list_list_functions: Vec<(
+        ParameterListListFunctionId,
+        ExecutableFunction<ParameterListListReturn>,
+    )>,
     pub(super) list_list_functions: Vec<(ListListFunctionId, ExecutableFunction<ListListReturn>)>,
     pub(super) function_list_functions: Vec<(
         FunctionListFunctionId,
@@ -64,6 +75,10 @@ pub(super) struct FunctionTables {
     pub(super) bool_function_functions: Vec<ExecutableFunction<BoolFunctionReturn>>,
     pub(super) nil_function_functions: Vec<ExecutableFunction<NilFunctionReturn>>,
     pub(super) tuple_function_functions: Vec<ExecutableFunction<TupleFunctionReturn>>,
+    pub(super) generic_function_functions: Vec<ExecutableFunction<GenericFunctionReturn>>,
+    pub(super) never_function_functions: Vec<ExecutableFunction<NeverFunctionReturn>>,
+    pub(super) parameter_list_function_functions: Vec<ExecutableFunction<ListFunctionReturn>>,
+    pub(super) parameter_list_list_function_functions: Vec<ExecutableFunction<ListFunctionReturn>>,
     pub(super) int_list_function_functions: Vec<ExecutableFunction<ListFunctionReturn>>,
     pub(super) string_list_function_functions: Vec<ExecutableFunction<ListFunctionReturn>>,
     pub(super) bit_array_list_function_functions: Vec<ExecutableFunction<ListFunctionReturn>>,
@@ -79,6 +94,37 @@ pub(super) struct FunctionTables {
 }
 
 impl FunctionTables {
+    pub(super) fn never_function(&self, id: NeverFunctionId) -> &ExecutableFunction<NeverReturn> {
+        &self.never_functions[id.0]
+    }
+
+    pub(super) fn parameter_list_function(
+        &self,
+        id: ParameterListFunctionId,
+    ) -> &ExecutableFunction<ParameterListReturn> {
+        &self.parameter_list_functions[id.index()].1
+    }
+
+    pub(super) fn parameter_list_list_function(
+        &self,
+        id: ParameterListListFunctionId,
+    ) -> &ExecutableFunction<ParameterListListReturn> {
+        &self.parameter_list_list_functions[id.index()].1
+    }
+
+    #[cfg(test)]
+    pub(super) fn parameter_list_function_id(&self, index: usize) -> ParameterListFunctionId {
+        self.parameter_list_functions[index].0
+    }
+
+    #[cfg(test)]
+    pub(super) fn parameter_list_list_function_id(
+        &self,
+        index: usize,
+    ) -> ParameterListListFunctionId {
+        self.parameter_list_list_functions[index].0
+    }
+
     #[cfg(test)]
     pub(super) fn int_list_function_id(&self, index: usize) -> IntListFunctionId {
         self.int_list_functions[index].0
@@ -183,7 +229,10 @@ impl FunctionTables {
 
     #[cfg(test)]
     pub(super) fn custom_function_id(&self, index: usize) -> CustomFunctionId {
-        CustomFunctionId::new(index, *self.custom_functions[index].return_().shape())
+        CustomFunctionId::new(
+            index,
+            *self.custom_functions[index].return_().signature_shape(),
+        )
     }
 
     pub(super) fn bool_function(&self, id: BoolFunctionId) -> &ExecutableFunction<BoolReturn> {
@@ -360,11 +409,31 @@ impl FunctionTables {
         &self.tuple_function_functions[id.0]
     }
 
+    pub(super) fn generic_function_function(
+        &self,
+        id: &GenericFunctionFunctionId,
+    ) -> &ExecutableFunction<GenericFunctionReturn> {
+        &self.generic_function_functions[id.index()]
+    }
+
+    pub(super) fn never_function_function(
+        &self,
+        id: &NeverFunctionFunctionId,
+    ) -> &ExecutableFunction<NeverFunctionReturn> {
+        &self.never_function_functions[id.index()]
+    }
+
     pub(super) fn list_function_function(
         &self,
         id: &ListFunctionFunctionId,
     ) -> &ExecutableFunction<ListFunctionReturn> {
         match id {
+            ListFunctionFunctionId::Parameter { id, .. } => {
+                &self.parameter_list_function_functions[id.0]
+            }
+            ListFunctionFunctionId::ParameterList { id, .. } => {
+                &self.parameter_list_list_function_functions[id.0]
+            }
             ListFunctionFunctionId::Int { id, .. } => &self.int_list_function_functions[id.0],
             ListFunctionFunctionId::String { id, .. } => &self.string_list_function_functions[id.0],
             ListFunctionFunctionId::BitArray { id, .. } => {

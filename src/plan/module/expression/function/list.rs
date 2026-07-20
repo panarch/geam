@@ -1,9 +1,10 @@
 #[cfg(test)]
 use crate::plan::ParamLocal;
 use crate::plan::{
-    BoolExpr, CaptureArg, CustomFieldAccess, FloatExpr, FunctionFunctionExpr,
-    FunctionInstantiation, FunctionListExpr, FunctionType, IntExpr, ListFunctionLocal,
-    ListFunctionReference, PanicExpr, ParamSlot, Step, StringExpr, TupleExpr, ValueType,
+    BoolExpr, CaptureArg, ConstantListFunctionInstantiation, CustomFieldAccess, FloatExpr,
+    FunctionFunctionExpr, FunctionInstantiation, FunctionListExpr, FunctionType, IntExpr,
+    ListFunctionLocal, ListFunctionReference, PanicExpr, ParamSlot, Step, StringExpr, TupleExpr,
+    ValueType,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -21,6 +22,7 @@ pub struct ListFunctionExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ListFunctionExprKind {
+    Constant(ConstantListFunctionInstantiation),
     Reference(ListFunctionReference),
     Closure {
         function: FunctionInstantiation,
@@ -80,6 +82,18 @@ pub(crate) enum ListFunctionExprKind {
 }
 
 impl ListFunctionExpr {
+    pub(crate) fn constant(
+        value: ConstantListFunctionInstantiation,
+        type_: FunctionType,
+        item_type: ValueType,
+    ) -> Self {
+        Self {
+            type_,
+            item_type,
+            kind: ListFunctionExprKind::Constant(value),
+        }
+    }
+
     pub(crate) fn reference(value: ListFunctionReference, item_type: ValueType) -> Self {
         let type_ = value.instantiation().shape().type_();
         Self {

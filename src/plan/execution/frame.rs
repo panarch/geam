@@ -1,7 +1,9 @@
 use super::{
     BitArrayListTypeId, BoolListTypeId, CustomFunctionLocal, CustomListTypeId, CustomLocal,
-    FloatListTypeId, FunctionFunctionLocal, FunctionListTypeId, IntListTypeId, ListFunctionLocal,
-    ListListTypeId, NilListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
+    FloatListTypeId, FunctionFunctionLocal, FunctionListTypeId, GenericFunctionLocal,
+    IntListTypeId, ListFunctionLocal, ListListTypeId, NeverFunctionLocal, NilListTypeId,
+    ParameterListListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
+    UtfCodepointListTypeId,
 };
 
 #[derive(Default)]
@@ -19,6 +21,7 @@ pub(super) struct FrameSlots {
     pub(super) customs: Vec<CustomLocal>,
     pub(super) bools: usize,
     pub(super) tuples: usize,
+    pub(super) parameter_lists: Vec<ParameterListTypeId>,
     pub(super) int_lists: Vec<IntListTypeId>,
     pub(super) string_lists: Vec<StringListTypeId>,
     pub(super) bit_array_lists: Vec<BitArrayListTypeId>,
@@ -28,6 +31,7 @@ pub(super) struct FrameSlots {
     pub(super) bool_lists: Vec<BoolListTypeId>,
     pub(super) nil_lists: Vec<NilListTypeId>,
     pub(super) tuple_lists: Vec<TupleListTypeId>,
+    pub(super) parameter_list_lists: Vec<ParameterListListTypeId>,
     pub(super) list_lists: Vec<ListListTypeId>,
     pub(super) function_lists: Vec<FunctionListTypeId>,
     pub(super) int_functions: usize,
@@ -35,6 +39,8 @@ pub(super) struct FrameSlots {
     pub(super) string_functions: usize,
     pub(super) bit_array_functions: usize,
     pub(super) utf_codepoint_functions: usize,
+    pub(super) generic_functions: Vec<GenericFunctionLocal>,
+    pub(super) never_functions: Vec<NeverFunctionLocal>,
     pub(super) custom_functions: Vec<CustomFunctionLocal>,
     pub(super) bool_functions: usize,
     pub(super) nil_functions: usize,
@@ -80,6 +86,10 @@ impl FrameLayout {
         self.slots.tuples
     }
 
+    pub(crate) fn parameter_lists(&self) -> &[ParameterListTypeId] {
+        &self.slots.parameter_lists
+    }
+
     pub(crate) fn int_lists(&self) -> &[IntListTypeId] {
         &self.slots.int_lists
     }
@@ -116,6 +126,10 @@ impl FrameLayout {
         &self.slots.tuple_lists
     }
 
+    pub(crate) fn parameter_list_lists(&self) -> &[ParameterListListTypeId] {
+        &self.slots.parameter_list_lists
+    }
+
     pub(crate) fn list_lists(&self) -> &[ListListTypeId] {
         &self.slots.list_lists
     }
@@ -142,6 +156,14 @@ impl FrameLayout {
 
     pub(crate) fn utf_codepoint_functions(&self) -> usize {
         self.slots.utf_codepoint_functions
+    }
+
+    pub(crate) fn generic_functions(&self) -> &[GenericFunctionLocal] {
+        &self.slots.generic_functions
+    }
+
+    pub(crate) fn never_functions(&self) -> &[NeverFunctionLocal] {
+        &self.slots.never_functions
     }
 
     pub(crate) fn custom_functions(&self) -> &[CustomFunctionLocal] {

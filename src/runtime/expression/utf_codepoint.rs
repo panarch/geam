@@ -17,12 +17,22 @@ pub(in crate::runtime) fn eval_utf_codepoint_expr(
 ) -> Result<char, ExecutionError> {
     match expression.kind() {
         UtfCodepointExprKind::LocalGet { local } => Ok(frame.get_utf_codepoint(*local)),
-        UtfCodepointExprKind::Call { function, args } => {
-            function::run_utf_codepoint_call(plan, state, *function, args, frame)
-        }
-        UtfCodepointExprKind::FunctionCall { function, args } => {
-            function::run_utf_codepoint_function_call(plan, state, function, args, frame)
-        }
+        UtfCodepointExprKind::Call(call) => super::eval_direct_call(
+            plan,
+            state,
+            frame,
+            call,
+            |plan, state, function, args, frame| {
+                function::run_utf_codepoint_call(plan, state, *function, args, frame)
+            },
+        ),
+        UtfCodepointExprKind::FunctionCall(call) => super::eval_function_call(
+            plan,
+            state,
+            frame,
+            call,
+            function::run_utf_codepoint_function_call,
+        ),
         UtfCodepointExprKind::TupleIndex { tuple, index } => {
             match project_tuple_expr(plan, state, frame, tuple, *index, ValueType::UtfCodepoint)? {
                 EvaluatedValue::UtfCodepoint(value) => Ok(value),

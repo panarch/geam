@@ -3,7 +3,7 @@ use super::{
     IntExpr, ListExpr, PanicExpr, StringExpr, TupleExpr,
 };
 use crate::plan::{AssertPattern, BitArrayExpr, BitArrayPattern};
-use crate::plan::{BoolLocalId, FunctionInstantiation, Step};
+use crate::plan::{BoolLocalId, ConstantBoolReference, FunctionInstantiation, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -15,6 +15,7 @@ pub struct BoolExpr {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum BoolExprKind {
     Value(bool),
+    Constant(ConstantBoolReference),
     LocalGet {
         local: BoolLocalId,
         name: EcoString,
@@ -136,6 +137,12 @@ impl BoolExpr {
     pub(crate) fn value(value: bool) -> Self {
         Self {
             kind: BoolExprKind::Value(value),
+        }
+    }
+
+    pub(in crate::plan::module) fn constant(reference: ConstantBoolReference) -> Self {
+        Self {
+            kind: BoolExprKind::Constant(reference),
         }
     }
 

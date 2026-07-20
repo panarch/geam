@@ -5,10 +5,12 @@ use super::{
     CustomFunctionFunctionId, CustomFunctionId, CustomFunctionType, CustomListExpr,
     CustomListFunctionId, FloatExpr, FloatFunctionExpr, FloatFunctionFunctionId, FloatFunctionId,
     FloatListExpr, FloatListFunctionId, FunctionFunctionExprKind, FunctionFunctionFunctionId,
-    FunctionFunctionType, FunctionListExpr, FunctionListFunctionId, IntExpr, IntFunctionExpr,
-    IntFunctionFunctionId, IntFunctionId, IntListExpr, IntListFunctionId, ListFunctionExpr,
-    ListFunctionFunctionId, ListListExpr, ListListFunctionId, NilExpr, NilFunctionExpr,
-    NilFunctionFunctionId, NilFunctionId, NilListExpr, NilListFunctionId, Step, StringExpr,
+    FunctionFunctionType, FunctionListExpr, FunctionListFunctionId, GenericFunctionExpr,
+    GenericFunctionFunctionId, IntExpr, IntFunctionExpr, IntFunctionFunctionId, IntFunctionId,
+    IntListExpr, IntListFunctionId, ListFunctionExpr, ListFunctionFunctionId, ListListExpr,
+    ListListFunctionId, NeverExpr, NeverFunctionId, NilExpr, NilFunctionExpr,
+    NilFunctionFunctionId, NilFunctionId, NilListExpr, NilListFunctionId, ParameterListExpr,
+    ParameterListFunctionId, ParameterListListExpr, ParameterListListFunctionId, Step, StringExpr,
     StringFunctionExpr, StringFunctionFunctionId, StringFunctionId, StringListExpr,
     StringListFunctionId, TupleExpr, TupleFunctionExpr, TupleFunctionFunctionId, TupleFunctionId,
     TupleListExpr, TupleListFunctionId, UtfCodepointExpr, UtfCodepointFunctionExpr,
@@ -19,17 +21,20 @@ use ecow::EcoString;
 use num_bigint::BigInt;
 
 pub(crate) type IntReturn = ReturnBody<IntExpr, IntFunctionId>;
+pub(crate) type NeverReturn = ReturnBody<NeverExpr, NeverFunctionId>;
 pub(crate) type FloatReturn = ReturnBody<FloatExpr, FloatFunctionId>;
 pub(crate) type StringReturn = ReturnBody<StringExpr, StringFunctionId>;
 pub(crate) type BitArrayReturn = ReturnBody<BitArrayExpr, BitArrayFunctionId>;
 pub(crate) type UtfCodepointReturn = ReturnBody<UtfCodepointExpr, UtfCodepointFunctionId>;
 pub(crate) struct CustomReturn {
-    shape: super::CustomValueShape,
+    signature_shape: super::CustomValueShape,
+    body_shape: super::CustomValueShape,
     body: ReturnBody<super::CustomExprKind, usize>,
 }
 pub(crate) type BoolReturn = ReturnBody<BoolExpr, BoolFunctionId>;
 pub(crate) type NilReturn = ReturnBody<NilExpr, NilFunctionId>;
 pub(crate) type TupleReturn = ReturnBody<TupleExpr, TupleFunctionId>;
+pub(crate) type ParameterListReturn = ReturnBody<ParameterListExpr, ParameterListFunctionId>;
 pub(crate) type IntListReturn = ReturnBody<IntListExpr, IntListFunctionId>;
 pub(crate) type FloatListReturn = ReturnBody<FloatListExpr, FloatListFunctionId>;
 pub(crate) type StringListReturn = ReturnBody<StringListExpr, StringListFunctionId>;
@@ -40,6 +45,8 @@ pub(crate) type CustomListReturn = ReturnBody<CustomListExpr, CustomListFunction
 pub(crate) type BoolListReturn = ReturnBody<BoolListExpr, BoolListFunctionId>;
 pub(crate) type NilListReturn = ReturnBody<NilListExpr, NilListFunctionId>;
 pub(crate) type TupleListReturn = ReturnBody<TupleListExpr, TupleListFunctionId>;
+pub(crate) type ParameterListListReturn =
+    ReturnBody<ParameterListListExpr, ParameterListListFunctionId>;
 pub(crate) type ListListReturn = ReturnBody<ListListExpr, ListListFunctionId>;
 pub(crate) type FunctionListReturn = ReturnBody<FunctionListExpr, FunctionListFunctionId>;
 pub(crate) type IntFunctionReturn =
@@ -52,6 +59,10 @@ pub(crate) type BitArrayFunctionReturn =
     TypedFunctionReturn<ReturnBody<BitArrayFunctionExpr, BitArrayFunctionFunctionId>>;
 pub(crate) type UtfCodepointFunctionReturn =
     TypedFunctionReturn<ReturnBody<UtfCodepointFunctionExpr, UtfCodepointFunctionFunctionId>>;
+pub(crate) type GenericFunctionReturn =
+    TypedFunctionReturn<ReturnBody<GenericFunctionExpr, GenericFunctionFunctionId>>;
+pub(crate) type NeverFunctionReturn =
+    TypedFunctionReturn<ReturnBody<super::NeverFunctionExpr, super::NeverFunctionFunctionId>>;
 pub(crate) struct CustomFunctionReturn {
     shape: super::FunctionShape,
     type_: CustomFunctionType,
@@ -82,6 +93,7 @@ pub(crate) struct ReturnBody<Expression, Function> {
 
 pub(crate) enum ReturnBodyKind<Expression, Function> {
     Expr(Expression),
+    Never(super::NeverExpr),
     TailCall {
         function: Function,
         args: Vec<CallArg>,
@@ -120,23 +132,37 @@ impl<Expression, Function> ReturnBody<Expression, Function> {
     pub(crate) fn kind(&self) -> &ReturnBodyKind<Expression, Function> {
         &self.kind
     }
+
+    pub(in crate::plan::execution) fn into_kind(self) -> ReturnBodyKind<Expression, Function> {
+        self.kind
+    }
 }
 
 impl CustomReturn {
     pub(in crate::plan::execution) fn from_parts(
-        shape: super::CustomValueShape,
+        signature_shape: super::CustomValueShape,
+        body_shape: super::CustomValueShape,
         body: ReturnBody<super::CustomExprKind, usize>,
     ) -> Self {
-        Self { shape, body }
+        Self {
+            signature_shape,
+            body_shape,
+            body,
+        }
     }
 
     pub(crate) fn type_id(&self) -> super::CustomTypeId {
-        self.shape.type_id()
+        self.body_shape.type_id()
     }
 
     #[cfg(test)]
-    pub(crate) fn shape(&self) -> &super::CustomValueShape {
-        &self.shape
+    pub(crate) fn body_shape(&self) -> &super::CustomValueShape {
+        &self.body_shape
+    }
+
+    #[cfg(test)]
+    pub(crate) fn signature_shape(&self) -> &super::CustomValueShape {
+        &self.signature_shape
     }
 
     pub(crate) fn body(&self) -> &ReturnBody<super::CustomExprKind, usize> {
@@ -144,7 +170,7 @@ impl CustomReturn {
     }
 
     pub(crate) fn function_id(&self, index: usize) -> CustomFunctionId {
-        CustomFunctionId::new(index, self.shape)
+        CustomFunctionId::new(index, self.signature_shape)
     }
 }
 

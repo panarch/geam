@@ -3,8 +3,8 @@ use crate::plan::FunctionType;
 
 use crate::plan::execution::{
     BitArrayFunctionId, BoolFunctionId, CustomConstructorId, CustomFunctionId, FloatFunctionId,
-    FunctionFunctionId, IntFunctionId, ListFunctionId, NilFunctionId, ParamLocal, StringFunctionId,
-    TupleFunctionId, UtfCodepointFunctionId,
+    FunctionFunctionId, GenericCallableId, IntFunctionId, ListFunctionId, NeverFunctionId,
+    NilFunctionId, ParamLocal, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
 };
 #[cfg(test)]
 use crate::plan::execution::{FunctionReturnFamily, RuntimeFunctionId};
@@ -16,6 +16,8 @@ pub struct FunctionValue {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum FunctionValueKind {
+    Generic(GenericFunctionValue),
+    Never(NeverFunctionValue),
     Int(IntFunctionValue),
     Float(FloatFunctionValue),
     String(StringFunctionValue),
@@ -27,6 +29,22 @@ pub(crate) enum FunctionValueKind {
     Tuple(TupleFunctionValue),
     List(ListFunctionValue),
     Function(FunctionFunctionValue),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct GenericFunctionValue {
+    target: GenericCallableId,
+    params: Vec<ParamLocal>,
+    captures: Vec<CaptureValue>,
+    type_: FunctionType,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct NeverFunctionValue {
+    runtime_id: NeverFunctionId,
+    params: Vec<ParamLocal>,
+    captures: Vec<CaptureValue>,
+    type_: FunctionType,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -135,6 +153,9 @@ impl FunctionValue {
         type_: FunctionType,
     ) -> Self {
         let kind = match runtime_id {
+            RuntimeFunctionId::Never(runtime_id) => FunctionValueKind::Never(
+                NeverFunctionValue::from_evaluated(runtime_id, params, Vec::new(), type_),
+            ),
             RuntimeFunctionId::Int(runtime_id) => FunctionValueKind::Int(
                 IntFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
             ),
@@ -192,6 +213,8 @@ impl FunctionValue {
 
     pub fn type_(&self) -> FunctionType {
         match &self.kind {
+            FunctionValueKind::Generic(value) => value.type_(),
+            FunctionValueKind::Never(value) => value.type_(),
             FunctionValueKind::Int(value) => value.type_(),
             FunctionValueKind::Float(value) => value.type_(),
             FunctionValueKind::String(value) => value.type_(),
@@ -216,6 +239,8 @@ impl FunctionValueKind {
     #[cfg(test)]
     pub(crate) fn family(&self) -> FunctionReturnFamily {
         match self {
+            Self::Generic(_) => FunctionReturnFamily::Generic,
+            Self::Never(_) => FunctionReturnFamily::Never,
             Self::Int(_) => FunctionReturnFamily::Int,
             Self::Float(_) => FunctionReturnFamily::Float,
             Self::String(_) => FunctionReturnFamily::String,
@@ -228,6 +253,46 @@ impl FunctionValueKind {
             Self::List(_) => FunctionReturnFamily::List,
             Self::Function(_) => FunctionReturnFamily::Function,
         }
+    }
+}
+
+impl GenericFunctionValue {
+    pub(crate) fn from_evaluated(
+        target: GenericCallableId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureValue>,
+        type_: FunctionType,
+    ) -> Self {
+        Self {
+            target,
+            params,
+            captures,
+            type_,
+        }
+    }
+
+    pub(crate) fn type_(&self) -> FunctionType {
+        self.type_.clone()
+    }
+}
+
+impl NeverFunctionValue {
+    pub(crate) fn from_evaluated(
+        runtime_id: NeverFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureValue>,
+        type_: FunctionType,
+    ) -> Self {
+        Self {
+            runtime_id,
+            params,
+            captures,
+            type_,
+        }
+    }
+
+    pub(crate) fn type_(&self) -> FunctionType {
+        self.type_.clone()
     }
 }
 
@@ -473,6 +538,22 @@ impl From<IntFunctionValue> for FunctionValue {
     }
 }
 
+impl From<GenericFunctionValue> for FunctionValue {
+    fn from(value: GenericFunctionValue) -> Self {
+        Self {
+            kind: FunctionValueKind::Generic(value),
+        }
+    }
+}
+
+impl From<NeverFunctionValue> for FunctionValue {
+    fn from(value: NeverFunctionValue) -> Self {
+        Self {
+            kind: FunctionValueKind::Never(value),
+        }
+    }
+}
+
 impl From<FloatFunctionValue> for FunctionValue {
     fn from(value: FloatFunctionValue) -> Self {
         Self {
@@ -555,13 +636,18 @@ impl From<FunctionFunctionValue> for FunctionValue {
 
 #[cfg(test)]
 mod tests {
-    use super::{FunctionValue, FunctionValueKind};
-    use crate::plan::execution::FunctionReturnFamily;
-    use crate::plan::{CustomType, CustomTypeName, FunctionType, ValueType};
+    use super::{FunctionValue, FunctionValueKind, GenericFunctionValue};
+    use crate::plan::execution::{FunctionReturnFamily, GenericCallableId};
+    use crate::plan::{CustomType, CustomTypeName, FunctionType, TypeParameterId, ValueType};
 
     #[test]
     fn function_value_preserves_every_lowered_return_family() {
         let cases = [
+            (
+                "pub fn main() -> value { panic }",
+                ValueType::Parameter(TypeParameterId(0)),
+                FunctionReturnFamily::Never,
+            ),
             (
                 "pub fn main() -> Int { 1 }",
                 ValueType::Int,
@@ -635,6 +721,10 @@ mod tests {
     #[test]
     fn function_value_from_preserves_every_evaluated_return_family() {
         let cases = [
+            (
+                "pub fn main() -> value { panic }",
+                ValueType::Parameter(TypeParameterId(0)),
+            ),
             ("pub fn main() -> Int { 1 }", ValueType::Int),
             ("pub fn main() -> Float { 1.0 }", ValueType::Float),
             ("pub fn main() -> String { \"one\" }", ValueType::String),
@@ -670,21 +760,42 @@ mod tests {
                 Vec::new(),
                 FunctionType::new(Vec::new(), return_type.clone()),
             );
-            let converted = match value.kind() {
-                FunctionValueKind::Int(value) => FunctionValue::from(value.clone()),
-                FunctionValueKind::Float(value) => FunctionValue::from(value.clone()),
-                FunctionValueKind::String(value) => FunctionValue::from(value.clone()),
-                FunctionValueKind::BitArray(value) => FunctionValue::from(value.clone()),
-                FunctionValueKind::UtfCodepoint(value) => FunctionValue::from(value.clone()),
-                FunctionValueKind::Custom(value) => FunctionValue::from(value.clone()),
-                FunctionValueKind::Bool(value) => FunctionValue::from(value.clone()),
-                FunctionValueKind::Nil(value) => FunctionValue::from(value.clone()),
-                FunctionValueKind::Tuple(value) => FunctionValue::from(value.clone()),
-                FunctionValueKind::List(value) => FunctionValue::from(value.clone()),
-                FunctionValueKind::Function(value) => FunctionValue::from(value.clone()),
-            };
+            assert_eq!(clone_through_family(&value), value);
+        }
 
-            assert_eq!(converted, value);
+        let generic = GenericFunctionValue::from_evaluated(
+            GenericCallableId::Function {
+                template: 0,
+                substitution: Box::new([]),
+            },
+            Vec::new(),
+            Vec::new(),
+            FunctionType::new(
+                vec![ValueType::Parameter(crate::plan::TypeParameterId(0))],
+                ValueType::Parameter(crate::plan::TypeParameterId(0)),
+            ),
+        );
+        let value = FunctionValue::from(generic.clone());
+        assert_eq!(value.kind().family(), FunctionReturnFamily::Generic);
+        assert_eq!(clone_through_family(&value), value);
+        assert_eq!(FunctionValue::from(generic), value);
+    }
+
+    fn clone_through_family(value: &FunctionValue) -> FunctionValue {
+        match value.kind() {
+            FunctionValueKind::Generic(value) => FunctionValue::from(value.clone()),
+            FunctionValueKind::Never(value) => FunctionValue::from(value.clone()),
+            FunctionValueKind::Int(value) => FunctionValue::from(value.clone()),
+            FunctionValueKind::Float(value) => FunctionValue::from(value.clone()),
+            FunctionValueKind::String(value) => FunctionValue::from(value.clone()),
+            FunctionValueKind::BitArray(value) => FunctionValue::from(value.clone()),
+            FunctionValueKind::UtfCodepoint(value) => FunctionValue::from(value.clone()),
+            FunctionValueKind::Custom(value) => FunctionValue::from(value.clone()),
+            FunctionValueKind::Bool(value) => FunctionValue::from(value.clone()),
+            FunctionValueKind::Nil(value) => FunctionValue::from(value.clone()),
+            FunctionValueKind::Tuple(value) => FunctionValue::from(value.clone()),
+            FunctionValueKind::List(value) => FunctionValue::from(value.clone()),
+            FunctionValueKind::Function(value) => FunctionValue::from(value.clone()),
         }
     }
 

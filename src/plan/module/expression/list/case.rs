@@ -1,7 +1,7 @@
 use super::{
     BitArrayListExpr, BoolListExpr, CustomListExpr, FloatListExpr, FunctionListExpr,
-    GenericListExpr, IntListExpr, ListExpr, ListListExpr, NilListExpr, StringListExpr,
-    TupleListExpr, UtfCodepointListExpr,
+    GenericListExpr, IntListExpr, ListExpr, ListListExpr, NilListExpr, ParameterListListExpr,
+    StringListExpr, TupleListExpr, UtfCodepointListExpr,
 };
 use crate::plan::ValueType;
 
@@ -10,6 +10,10 @@ pub(crate) enum BoolListCaseBranches {
     Generic {
         true_: GenericListExpr,
         false_: GenericListExpr,
+    },
+    ParameterList {
+        true_: ParameterListListExpr,
+        false_: ParameterListListExpr,
     },
     Int {
         true_: IntListExpr,
@@ -62,6 +66,10 @@ pub(crate) enum ListCaseBranches<Pattern> {
     Generic {
         clauses: Vec<(Pattern, GenericListExpr)>,
         fallback: GenericListExpr,
+    },
+    ParameterList {
+        clauses: Vec<(Pattern, ParameterListListExpr)>,
+        fallback: ParameterListListExpr,
     },
     Int {
         clauses: Vec<(Pattern, IntListExpr)>,
@@ -125,6 +133,10 @@ impl<Pattern> ListCaseBranches<Pattern> {
                 clauses: typed_generic_clauses(clauses, fallback.element_type())?,
                 fallback,
             }),
+            ListExpr::ParameterList(fallback) => Ok(Self::ParameterList {
+                clauses: typed_parameter_list_clauses(clauses, fallback.element_type())?,
+                fallback,
+            }),
             ListExpr::Int(fallback) => Ok(Self::Int {
                 clauses: typed_int_clauses(clauses)?,
                 fallback,
@@ -171,6 +183,27 @@ impl<Pattern> ListCaseBranches<Pattern> {
             }),
         }
     }
+}
+
+fn typed_parameter_list_clauses<Pattern>(
+    clauses: Vec<(Pattern, ListExpr)>,
+    expected: ValueType,
+) -> Result<Vec<(Pattern, ParameterListListExpr)>, ListCaseBranchTypeMismatch> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (pattern, branch) in clauses {
+        let actual = branch.element_type();
+        let Some(branch) = branch.into_parameter_list() else {
+            return Err(list_case_branch_type_mismatch(expected, actual));
+        };
+        if branch.element_type() != expected {
+            return Err(list_case_branch_type_mismatch(
+                expected,
+                branch.element_type(),
+            ));
+        }
+        typed_clauses.push((pattern, branch));
+    }
+    Ok(typed_clauses)
 }
 
 fn typed_generic_clauses<Pattern>(
@@ -391,7 +424,8 @@ mod tests {
     use super::{BoolListCaseBranches, ListCaseBranchTypeMismatch, ListCaseBranches};
     use crate::plan::{
         BoolExpr, Expr, FunctionExpr, FunctionReference, FunctionShape, FunctionType, IntExpr,
-        ListExpr, NilExpr, StringExpr, TupleExpr, ValueType, monomorphic_function_instantiation,
+        ListExpr, NilExpr, StringExpr, TupleExpr, TypeParameterId, ValueType,
+        monomorphic_function_instantiation,
     };
     use num_bigint::BigInt;
 
@@ -402,9 +436,42 @@ mod tests {
         )
     }
 
+    fn parameter_list(parameter: TypeParameterId) -> ListExpr {
+        ListExpr::try_value(
+            Vec::new(),
+            ValueType::List(Box::new(ValueType::Parameter(parameter))),
+        )
+        .expect("empty nested parameter list")
+    }
+
     #[test]
     fn bool_case_branches_dispatch_every_non_int_item_family() {
         let function_type = FunctionType::new(Vec::new(), ValueType::Int);
+        let parameter = TypeParameterId(0);
+
+        assert_eq!(
+            ListExpr::bool_case(
+                BoolExpr::value(true),
+                BoolListCaseBranches::ParameterList {
+                    true_: ListExpr::try_value(
+                        Vec::new(),
+                        ValueType::List(Box::new(ValueType::Parameter(parameter))),
+                    )
+                    .expect("empty nested parameter list")
+                    .into_parameter_list()
+                    .expect("parameter-list item family"),
+                    false_: ListExpr::try_value(
+                        Vec::new(),
+                        ValueType::List(Box::new(ValueType::Parameter(parameter))),
+                    )
+                    .expect("empty nested parameter list")
+                    .into_parameter_list()
+                    .expect("parameter-list item family"),
+                },
+            )
+            .element_type(),
+            ValueType::List(Box::new(ValueType::Parameter(parameter))),
+        );
 
         assert_eq!(
             ListExpr::bool_case(
@@ -552,6 +619,34 @@ mod tests {
             )
             .element_type(),
             ValueType::Function(Box::new(function_type)),
+        );
+    }
+
+    #[test]
+    fn parameter_list_case_branches_reject_wrong_family_and_parameter() {
+        let expected_parameter = TypeParameterId(0);
+        let actual_parameter = TypeParameterId(1);
+        let expected = ValueType::List(Box::new(ValueType::Parameter(expected_parameter)));
+
+        assert_eq!(
+            ListCaseBranches::<BigInt>::from_exprs(
+                vec![(BigInt::from(1), ListExpr::value(Vec::new(), ValueType::Int))],
+                parameter_list(expected_parameter),
+            ),
+            Err(ListCaseBranchTypeMismatch {
+                expected: expected.clone(),
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ListCaseBranches::<BigInt>::from_exprs(
+                vec![(BigInt::from(1), parameter_list(actual_parameter))],
+                parameter_list(expected_parameter),
+            ),
+            Err(ListCaseBranchTypeMismatch {
+                expected,
+                actual: ValueType::List(Box::new(ValueType::Parameter(actual_parameter))),
+            }),
         );
     }
 

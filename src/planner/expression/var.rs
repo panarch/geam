@@ -6,9 +6,7 @@ use crate::plan::{
     UtfCodepointFunctionExpr,
 };
 use crate::planner::context::{FunctionLocalBinding, PlanContext};
-use crate::planner::error::{
-    InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
-};
+use crate::planner::error::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
 use gleam_core::type_::{PRELUDE_MODULE_NAME, ValueConstructor, ValueConstructorVariant};
 
@@ -16,14 +14,8 @@ pub(super) fn plan_var(
     name: EcoString,
     constructor: ValueConstructor,
     constructor_shape: crate::plan::ValueShape,
-    parameter_count: usize,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    if !constructor_shape.parameters_are_scoped(parameter_count) {
-        return Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::GenericFunction,
-        });
-    }
     match constructor.variant {
         ValueConstructorVariant::LocalVariable { .. } => {
             let expression = if let Some((local, _)) = context.lookup_local(&name) {
@@ -243,7 +235,6 @@ mod tests {
     use crate::planner::support::{compile, dummy_span};
     use crate::planner::{
         InvalidCustomTypeReason, InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError,
-        UnsupportedExpressionKind,
     };
     use ecow::EcoString;
     use gleam_core::ast::{Publicity, Statement, TypedExpr, TypedStatement};
@@ -663,27 +654,6 @@ pub fn main() { Boxed }
     }
 
     #[test]
-    fn reject_profile_polymorphic_custom_constructor_value() {
-        assert_eq!(
-            plan_module(compile(
-                r#"
-pub type Boxed(value) {
-  Boxed(value)
-}
-
-pub fn main() {
-  let make = Boxed
-  1
-}
-"#,
-            )),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::GenericFunction,
-            }),
-        );
-    }
-
-    #[test]
     fn reject_margin_function_local_shape_mismatch_propagates_from_var_owner() {
         let module_name = EcoString::from("main");
         let functions = HashMap::<EcoString, FunctionInfo>::new();
@@ -706,7 +676,6 @@ pub fn main() {
                 "f".into(),
                 constructor,
                 ValueShape::Function(Box::new(FunctionShape::new(Vec::new(), ValueShape::Int,))),
-                0,
                 &mut context,
             ),
             Err(PlanError::InvalidTypedAst {

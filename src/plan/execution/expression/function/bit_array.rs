@@ -1,9 +1,9 @@
 use crate::plan::execution::CustomFieldAccess;
 use crate::plan::execution::FunctionType;
 use crate::plan::execution::{
-    BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionLocalId, BoolExpr,
-    ClosureTemplate, FloatExpr, FunctionFunctionExpr, FunctionListExpr, FunctionReference, IntExpr,
-    PanicExpr, Step, StringExpr, TupleExpr,
+    BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionLocalId, BoolExpr, FloatExpr,
+    FunctionFunctionExpr, FunctionListExpr, FunctionReference, IntExpr, PanicExpr, Step,
+    StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -13,19 +13,14 @@ pub struct BitArrayFunctionExpr {
 }
 
 pub(crate) enum BitArrayFunctionExprKind {
+    Constant(crate::plan::execution::ConstantId<BitArrayFunctionExpr>),
     Reference(FunctionReference<BitArrayFunctionId>),
-    Closure(ClosureTemplate<BitArrayFunctionId>),
+    Closure(crate::plan::execution::ClosureTemplate<BitArrayFunctionId>),
     LocalGet {
         local: BitArrayFunctionLocalId,
     },
-    Call {
-        function: BitArrayFunctionFunctionId,
-        args: Vec<crate::plan::execution::CallArg>,
-    },
-    FunctionCall {
-        function: Box<FunctionFunctionExpr>,
-        args: Vec<crate::plan::execution::CallArg>,
-    },
+    Call(crate::plan::execution::DirectCall<BitArrayFunctionFunctionId>),
+    FunctionCall(crate::plan::execution::FunctionCall<FunctionFunctionExpr>),
     TupleIndex {
         tuple: Box<TupleExpr>,
         index: usize,
@@ -67,6 +62,10 @@ pub(crate) enum BitArrayFunctionExprKind {
 impl BitArrayFunctionExpr {
     pub(in crate::plan::execution) fn from_kind(kind: BitArrayFunctionExprKind) -> Self {
         Self { kind }
+    }
+
+    pub(in crate::plan::execution) fn into_kind(self) -> BitArrayFunctionExprKind {
+        self.kind
     }
 
     pub(crate) fn kind(&self) -> &BitArrayFunctionExprKind {

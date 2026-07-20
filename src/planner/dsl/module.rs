@@ -30,7 +30,6 @@ pub(crate) fn module_with_anonymous(
             function.build(FunctionTemplateId::new(next_function_index + index))
         })
         .collect();
-
     ModulePlan::new(name.into(), main, functions).with_anonymous_functions(anonymous_functions)
 }
 

@@ -1,7 +1,7 @@
 use crate::plan::execution::{
-    BoolExpr, ClosureTemplate, CustomConstructorId, CustomFieldAccess, CustomFunctionFunctionId,
-    CustomFunctionId, CustomFunctionLocal, CustomFunctionType, FloatExpr, FunctionFunctionExpr,
-    FunctionListExpr, FunctionReference, IntExpr, PanicExpr, Step, StringExpr, TupleExpr,
+    BoolExpr, CustomConstructorId, CustomFieldAccess, CustomFunctionFunctionId, CustomFunctionId,
+    CustomFunctionLocal, CustomFunctionType, FloatExpr, FunctionFunctionExpr, FunctionListExpr,
+    FunctionReference, IntExpr, PanicExpr, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -12,20 +12,15 @@ pub struct CustomFunctionExpr {
 }
 
 pub(crate) enum CustomFunctionExprKind {
+    Constant(crate::plan::execution::ConstantId<CustomFunctionExpr>),
     Constructor(CustomConstructorId),
     Reference(FunctionReference<CustomFunctionId>),
-    Closure(ClosureTemplate<CustomFunctionId>),
+    Closure(crate::plan::execution::ClosureTemplate<CustomFunctionId>),
     LocalGet {
         local: CustomFunctionLocal,
     },
-    Call {
-        function: CustomFunctionFunctionId,
-        args: Vec<crate::plan::execution::CallArg>,
-    },
-    FunctionCall {
-        function: Box<FunctionFunctionExpr>,
-        args: Vec<crate::plan::execution::CallArg>,
-    },
+    Call(crate::plan::execution::DirectCall<CustomFunctionFunctionId>),
+    FunctionCall(crate::plan::execution::FunctionCall<FunctionFunctionExpr>),
     TupleIndex {
         tuple: Box<TupleExpr>,
         index: usize,

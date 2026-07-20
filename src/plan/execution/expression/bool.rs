@@ -1,9 +1,9 @@
 use super::{
-    BoolFunctionExpr, BoolListExpr, CallArg, CustomExpr, CustomFieldAccess, Expr, FloatExpr,
-    IntExpr, ListExpr, PanicExpr, StringExpr, TupleExpr,
+    BoolFunctionExpr, BoolListExpr, CustomExpr, CustomFieldAccess, DirectCall, Expr, FloatExpr,
+    FunctionCall, IntExpr, ListExpr, PanicExpr, StringExpr, TupleExpr,
 };
 use crate::plan::execution::{
-    AssertPattern, BitArrayExpr, BitArrayPattern, BoolFunctionId, BoolLocalId, Step,
+    AssertPattern, BitArrayExpr, BitArrayPattern, BoolFunctionId, BoolLocalId, ConstantId, Step,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -14,17 +14,12 @@ pub struct BoolExpr {
 
 pub(crate) enum BoolExprKind {
     Value(bool),
+    Constant(ConstantId<BoolExpr>),
     LocalGet {
         local: BoolLocalId,
     },
-    Call {
-        function: BoolFunctionId,
-        args: Vec<CallArg>,
-    },
-    FunctionCall {
-        function: Box<BoolFunctionExpr>,
-        args: Vec<CallArg>,
-    },
+    Call(DirectCall<BoolFunctionId>),
+    FunctionCall(FunctionCall<BoolFunctionExpr>),
     TupleIndex {
         tuple: Box<TupleExpr>,
         index: usize,
@@ -133,6 +128,10 @@ pub(crate) enum BoolExprKind {
 impl BoolExpr {
     pub(in crate::plan::execution) fn from_kind(kind: BoolExprKind) -> Self {
         Self { kind }
+    }
+
+    pub(in crate::plan::execution) fn into_kind(self) -> BoolExprKind {
+        self.kind
     }
 
     pub(crate) fn kind(&self) -> &BoolExprKind {

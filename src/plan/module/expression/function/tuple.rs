@@ -2,9 +2,9 @@ use crate::plan::CustomFieldAccess;
 #[cfg(test)]
 use crate::plan::ParamLocal;
 use crate::plan::{
-    BoolExpr, CaptureArg, FloatExpr, FunctionFunctionExpr, FunctionInstantiation, FunctionListExpr,
-    FunctionType, IntExpr, PanicExpr, ParamSlot, Step, StringExpr, TupleExpr, TupleFunctionLocalId,
-    TupleFunctionReference, ValueType,
+    BoolExpr, CaptureArg, ConstantTupleFunctionInstantiation, FloatExpr, FunctionFunctionExpr,
+    FunctionInstantiation, FunctionListExpr, FunctionType, IntExpr, PanicExpr, ParamSlot, Step,
+    StringExpr, TupleExpr, TupleFunctionLocalId, TupleFunctionReference, ValueType,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -17,6 +17,7 @@ pub struct TupleFunctionExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum TupleFunctionExprKind {
+    Constant(ConstantTupleFunctionInstantiation),
     Reference(TupleFunctionReference),
     Closure {
         function: FunctionInstantiation,
@@ -77,6 +78,13 @@ pub(crate) enum TupleFunctionExprKind {
 }
 
 impl TupleFunctionExpr {
+    pub(crate) fn constant(value: ConstantTupleFunctionInstantiation, type_: FunctionType) -> Self {
+        Self {
+            type_,
+            kind: TupleFunctionExprKind::Constant(value),
+        }
+    }
+
     pub(crate) fn reference(value: TupleFunctionReference) -> Self {
         let type_ = value.instantiation().shape().type_();
         Self {

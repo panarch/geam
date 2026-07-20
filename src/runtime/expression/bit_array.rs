@@ -30,13 +30,26 @@ pub(in crate::runtime) fn eval_bit_array_expr(
             }
             Ok(EvaluatedBitArray::new(bits))
         }
+        BitArrayExprKind::Constant(id) => {
+            eval_bit_array_expr(plan, state, frame, plan.constant(*id))
+        }
         BitArrayExprKind::LocalGet { local } => Ok(frame.get_bit_array(*local)),
-        BitArrayExprKind::Call { function, args } => {
-            function::run_bit_array_call(plan, state, *function, args, frame)
-        }
-        BitArrayExprKind::FunctionCall { function, args } => {
-            function::run_bit_array_function_call(plan, state, function, args, frame)
-        }
+        BitArrayExprKind::Call(call) => super::eval_direct_call(
+            plan,
+            state,
+            frame,
+            call,
+            |plan, state, function, args, frame| {
+                function::run_bit_array_call(plan, state, *function, args, frame)
+            },
+        ),
+        BitArrayExprKind::FunctionCall(call) => super::eval_function_call(
+            plan,
+            state,
+            frame,
+            call,
+            function::run_bit_array_function_call,
+        ),
         BitArrayExprKind::TupleIndex { tuple, index } => {
             match project_tuple_expr(plan, state, frame, tuple, *index, ValueType::BitArray)? {
                 EvaluatedValue::BitArray(value) => Ok(value),
@@ -552,6 +565,32 @@ mod tests {
                 "../../../tests/fixtures/execution/values/bit_array_segments.gleam"
             )),
             expected_segment_values(),
+        );
+    }
+
+    #[test]
+    fn source_bool_cases_select_each_bit_array_branch() {
+        let source = r#"
+fn keep(value: BitArray) {
+  value
+}
+
+pub fn main() {
+  let true_selector = True
+  let false_selector = False
+  #(
+    keep(case true_selector { True -> <<1>> False -> <<0>> }),
+    keep(case false_selector { True -> <<0>> False -> <<2>> }),
+  )
+}
+"#;
+
+        assert_eq!(
+            crate::runtime::run_src(source),
+            Value::Tuple(vec![
+                Value::BitArray(BitArrayValue::from_bytes(vec![1])),
+                Value::BitArray(BitArrayValue::from_bytes(vec![2])),
+            ]),
         );
     }
 

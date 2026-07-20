@@ -3,8 +3,8 @@ use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{FunctionReturnFamily, ListFunctionExpr, ListFunctionExprKind};
 use crate::runtime::expression::{
-    eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
-    project_function_list_expr, project_tuple_expr,
+    eval_bool_expr, eval_direct_call, eval_float_expr, eval_function_call, eval_int_expr,
+    eval_panic_expr, eval_string_expr, project_function_list_expr, project_tuple_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -20,6 +20,9 @@ pub(in crate::runtime) fn eval_list_function_expr(
     expression: &ListFunctionExpr,
 ) -> Result<EvaluatedListFunction, ExecutionError> {
     match expression.kind() {
+        ListFunctionExprKind::Constant(value) => {
+            eval_list_function_expr(plan, state, frame, plan.constant(*value))
+        }
         ListFunctionExprKind::Reference(reference) => Ok(EvaluatedListFunction::reference(
             reference.function().clone(),
             reference.param_locals(),
@@ -30,31 +33,39 @@ pub(in crate::runtime) fn eval_list_function_expr(
                 crate::plan::execution::ValueType::List(reference.function().list_type()),
             ),
         )),
-        ListFunctionExprKind::Closure(template) => Ok(EvaluatedListFunction::closure(
-            template.function().clone(),
-            template.param_locals(),
-            function::eval_capture_args(plan, state, frame, template.captures())?,
+        ListFunctionExprKind::Closure(closure) => Ok(EvaluatedListFunction::closure(
+            closure.function().clone(),
+            closure.param_locals(),
+            function::eval_capture_args(plan, state, frame, closure.captures())?,
             crate::runtime::evaluated::function_type_from_slots(
                 plan,
-                template.params(),
-                crate::plan::execution::ValueType::List(template.function().list_type()),
+                closure.params(),
+                crate::plan::execution::ValueType::List(closure.function().list_type()),
             ),
         )),
         ListFunctionExprKind::LocalGet { local, .. } => Ok(frame.get_list_function(local)),
-        ListFunctionExprKind::Call { function, args, .. } => {
-            function::run_list_function_returning_function_call(
-                plan,
-                state,
-                function.clone(),
-                args,
-                frame,
-            )
-        }
-        ListFunctionExprKind::FunctionCall {
-            function: callee,
-            args,
-            ..
-        } => function::run_list_function_function_call(plan, state, callee.as_ref(), args, frame),
+        ListFunctionExprKind::Call(call) => eval_direct_call(
+            plan,
+            state,
+            frame,
+            call,
+            |plan, state, function, args, frame| {
+                function::run_list_function_returning_function_call(
+                    plan,
+                    state,
+                    function.clone(),
+                    args,
+                    frame,
+                )
+            },
+        ),
+        ListFunctionExprKind::FunctionCall(call) => eval_function_call(
+            plan,
+            state,
+            frame,
+            call,
+            function::run_list_function_function_call,
+        ),
         ListFunctionExprKind::TupleIndex {
             tuple,
             index,
@@ -286,6 +297,26 @@ pub fn main() {
                     fallback(),
                 ),
                 "bool subject",
+            ),
+            (
+                ListFunctionExpr::bool_case(
+                    BoolExpr::not(BoolExpr::value(false)),
+                    ListFunctionExpr::panic(panic("true branch"), type_.clone(), item_type.clone()),
+                    fallback(),
+                ),
+                "true branch",
+            ),
+            (
+                ListFunctionExpr::bool_case(
+                    BoolExpr::not(BoolExpr::value(true)),
+                    fallback(),
+                    ListFunctionExpr::panic(
+                        panic("false branch"),
+                        type_.clone(),
+                        item_type.clone(),
+                    ),
+                ),
+                "false branch",
             ),
             (
                 ListFunctionExpr::int_case(

@@ -1,19 +1,36 @@
 use super::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomFunctionExpr,
-    CustomLocalExpr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr,
-    ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
-    TupleExpr, TupleFunctionExpr, TypedFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    CustomLocalExpr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, GenericFunctionExpr,
+    IntExpr, IntFunctionExpr, ListFunctionExpr, ListLocalExpr, NeverExpr, NeverFunctionExpr,
+    NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
+    TypedFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
 use crate::plan::execution::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
     CustomFunctionLocal, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocal,
-    IntFunctionLocalId, IntLocalId, ListFunctionLocal, NilFunctionLocalId, NilLocalId,
-    StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
-    UtfCodepointFunctionLocalId, UtfCodepointLocalId,
+    GenericFunctionLocal, IntFunctionLocalId, IntLocalId, ListFunctionLocal, NeverFunctionLocal,
+    NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId,
+    TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
 
 pub struct CallArg {
     kind: CallArgKind,
+}
+
+pub(crate) enum DirectCall<Function> {
+    Executable {
+        function: Function,
+        args: Vec<CallArg>,
+    },
+    Diverging(NeverExpr),
+}
+
+pub(crate) enum FunctionCall<Function> {
+    Executable {
+        function: Box<Function>,
+        args: Vec<CallArg>,
+    },
+    Diverging(NeverExpr),
 }
 
 pub(crate) enum CallArgKind {
@@ -66,6 +83,14 @@ pub(crate) enum CallArgKind {
     UtfCodepointFunction {
         local: UtfCodepointFunctionLocalId,
         value: TypedFunctionExpr<UtfCodepointFunctionExpr>,
+    },
+    GenericFunction {
+        local: GenericFunctionLocal,
+        value: TypedFunctionExpr<GenericFunctionExpr>,
+    },
+    NeverFunction {
+        local: NeverFunctionLocal,
+        value: TypedFunctionExpr<NeverFunctionExpr>,
     },
     CustomFunction {
         local: CustomFunctionLocal,
@@ -151,6 +176,14 @@ pub(crate) enum CaptureArgKind {
     UtfCodepointFunction {
         local: UtfCodepointFunctionLocalId,
         value: TypedFunctionExpr<UtfCodepointFunctionExpr>,
+    },
+    GenericFunction {
+        local: GenericFunctionLocal,
+        value: TypedFunctionExpr<GenericFunctionExpr>,
+    },
+    NeverFunction {
+        local: NeverFunctionLocal,
+        value: TypedFunctionExpr<NeverFunctionExpr>,
     },
     CustomFunction {
         local: CustomFunctionLocal,

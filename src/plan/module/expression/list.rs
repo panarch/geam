@@ -6,11 +6,13 @@ mod typed;
 
 pub(crate) use self::{
     case::{BoolListCaseBranches, ListCaseBranches},
-    elements::{ListElementTypeMismatch, ListElements, ListSpreadElements},
+    elements::{
+        ListElementTypeMismatch, ListElements, ListSpreadConstructionError, ListSpreadElements,
+    },
     item::{
         BitArrayListItem, BoolListItem, CustomListItem, FloatListItem, FunctionListItem,
-        GenericListItem, IntListItem, ListItem, ListListItem, NilListItem, StringListItem,
-        TupleListItem, UtfCodepointListItem,
+        GenericListItem, IntListItem, ListItem, ListListItem, NilListItem, ParameterListListItem,
+        StringListItem, TupleListItem, UtfCodepointListItem,
     },
     local::ListLocalExpr,
     typed::{ListIndexSource, TypedListExpr, TypedListExprKind, TypedListReturnKind},
@@ -19,13 +21,30 @@ use super::{
     BoolExpr, CallArg, CustomFieldAccess, Expr, FloatExpr, IntExpr, ListFunctionExpr, PanicExpr,
     StringExpr, TupleExpr,
 };
-use crate::plan::{ListLocal, Step, ValueType};
+use crate::plan::{ConstantListInstantiation, ListLocal, Step, ValueType};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ListExpr {
     Generic(GenericListExpr),
+    ParameterList(ParameterListListExpr),
+    Int(IntListExpr),
+    String(StringListExpr),
+    BitArray(BitArrayListExpr),
+    UtfCodepoint(UtfCodepointListExpr),
+    Custom(CustomListExpr),
+    Float(FloatListExpr),
+    Bool(BoolListExpr),
+    Nil(NilListExpr),
+    Tuple(TupleListExpr),
+    List(ListListExpr),
+    Function(FunctionListExpr),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum StoredListExpr {
+    ParameterList(ParameterListListExpr),
     Int(IntListExpr),
     String(StringListExpr),
     BitArray(BitArrayListExpr),
@@ -40,6 +59,7 @@ pub(crate) enum ListExpr {
 }
 
 pub(crate) type GenericListExpr = TypedListExpr<GenericListItem>;
+pub(crate) type ParameterListListExpr = TypedListExpr<ParameterListListItem>;
 
 pub(crate) type IntListExpr = TypedListExpr<IntListItem>;
 pub(crate) type StringListExpr = TypedListExpr<StringListItem>;
@@ -54,6 +74,105 @@ pub(crate) type ListListExpr = TypedListExpr<ListListItem>;
 pub(crate) type FunctionListExpr = TypedListExpr<FunctionListItem>;
 
 impl ListExpr {
+    pub(in crate::plan::module) fn constant(reference: ConstantListInstantiation) -> Self {
+        match reference {
+            ConstantListInstantiation::Generic(reference) => {
+                let parameter = *reference.item_shape();
+                Self::Generic(GenericListExpr::constant(
+                    crate::plan::ValueShape::Parameter(parameter),
+                    GenericListItem::new(parameter),
+                    reference,
+                ))
+            }
+            ConstantListInstantiation::Int(reference) => Self::Int(IntListExpr::constant(
+                crate::plan::ValueShape::Int,
+                IntListItem,
+                reference,
+            )),
+            ConstantListInstantiation::String(reference) => Self::String(StringListExpr::constant(
+                crate::plan::ValueShape::String,
+                StringListItem,
+                reference,
+            )),
+            ConstantListInstantiation::BitArray(reference) => {
+                Self::BitArray(BitArrayListExpr::constant(
+                    crate::plan::ValueShape::BitArray,
+                    BitArrayListItem,
+                    reference,
+                ))
+            }
+            ConstantListInstantiation::UtfCodepoint(reference) => {
+                Self::UtfCodepoint(UtfCodepointListExpr::constant(
+                    crate::plan::ValueShape::UtfCodepoint,
+                    UtfCodepointListItem,
+                    reference,
+                ))
+            }
+            ConstantListInstantiation::Custom(reference) => {
+                let shape = reference.item_shape().clone();
+                Self::Custom(CustomListExpr::constant(
+                    crate::plan::ValueShape::Custom(shape.clone()),
+                    CustomListItem::new(shape.type_().clone()),
+                    reference,
+                ))
+            }
+            ConstantListInstantiation::Float(reference) => Self::Float(FloatListExpr::constant(
+                crate::plan::ValueShape::Float,
+                FloatListItem,
+                reference,
+            )),
+            ConstantListInstantiation::Bool(reference) => Self::Bool(BoolListExpr::constant(
+                crate::plan::ValueShape::Bool,
+                BoolListItem,
+                reference,
+            )),
+            ConstantListInstantiation::Nil(reference) => Self::Nil(NilListExpr::constant(
+                crate::plan::ValueShape::Nil,
+                NilListItem,
+                reference,
+            )),
+            ConstantListInstantiation::Tuple(reference) => {
+                let shape = reference.item_shape().clone();
+                Self::Tuple(TupleListExpr::constant(
+                    crate::plan::ValueShape::Tuple(shape.clone()),
+                    TupleListItem::new(
+                        shape
+                            .iter()
+                            .map(crate::plan::ValueShape::value_type)
+                            .collect(),
+                    ),
+                    reference,
+                ))
+            }
+            ConstantListInstantiation::ParameterList(reference) => {
+                let parameter = *reference.item_shape();
+                Self::ParameterList(ParameterListListExpr::constant(
+                    crate::plan::ValueShape::List(Box::new(crate::plan::ValueShape::Parameter(
+                        parameter,
+                    ))),
+                    ParameterListListItem::new(parameter),
+                    reference,
+                ))
+            }
+            ConstantListInstantiation::List(reference) => {
+                let shape = reference.item_shape().clone();
+                Self::List(ListListExpr::constant(
+                    crate::plan::ValueShape::List(Box::new(shape.to_value_shape())),
+                    ListListItem::new(shape),
+                    reference,
+                ))
+            }
+            ConstantListInstantiation::Function(reference) => {
+                let shape = reference.item_shape().clone();
+                Self::Function(FunctionListExpr::constant(
+                    crate::plan::ValueShape::Function(Box::new(shape.clone())),
+                    FunctionListItem::new(shape.type_()),
+                    reference,
+                ))
+            }
+        }
+    }
+
     pub(crate) fn try_value(
         elements: Vec<Expr>,
         element_type: ValueType,
@@ -70,6 +189,9 @@ impl ListExpr {
                 GenericListItem::new(parameter),
                 values,
             )),
+            ListElements::ParameterList { parameter, values } => Self::ParameterList(
+                ParameterListListExpr::value(ParameterListListItem::new(parameter), values),
+            ),
             ListElements::Int(values) => Self::Int(IntListExpr::value(IntListItem, values)),
             ListElements::String(values) => {
                 Self::String(StringListExpr::value(StringListItem, values))
@@ -90,8 +212,8 @@ impl ListExpr {
                 let item = TupleListItem { item_type };
                 Self::Tuple(TupleListExpr::value(item, values))
             }
-            ListElements::List { item_type, values } => {
-                let item = ListListItem { item_type };
+            ListElements::List { item_shape, values } => {
+                let item = ListListItem::new(item_shape);
                 Self::List(ListListExpr::value(item, values))
             }
             ListElements::Function { item_type, values } => {
@@ -105,6 +227,9 @@ impl ListExpr {
         match elements {
             ListSpreadElements::Generic { values, tail } => {
                 Self::Generic(GenericListExpr::spread(values, tail))
+            }
+            ListSpreadElements::ParameterList { values, tail } => {
+                Self::ParameterList(ParameterListListExpr::spread(values, tail))
             }
             ListSpreadElements::Int { values, tail } => {
                 Self::Int(IntListExpr::spread(values, tail))
@@ -178,8 +303,19 @@ impl ListExpr {
                 Self::Tuple(TupleListExpr::local_get(item, local, name))
             }
             ListLocal::List { local, item_type } => {
-                let item = ListListItem { item_type };
-                Self::List(ListListExpr::local_get(item, local, name))
+                match crate::plan::ValueShape::from_value_type(*item_type).representation() {
+                    crate::plan::ValueRepresentation::Uninhabited(parameter) => {
+                        Self::ParameterList(ParameterListListExpr::local_get(
+                            ParameterListListItem::new(parameter),
+                            local,
+                            name,
+                        ))
+                    }
+                    crate::plan::ValueRepresentation::Stored(item_shape) => {
+                        let item = ListListItem::new(item_shape);
+                        Self::List(ListListExpr::local_get(item, local, name))
+                    }
+                }
             }
             ListLocal::Function { local, item_type } => {
                 let item = FunctionListItem { item_type };
@@ -236,13 +372,18 @@ impl ListExpr {
                     function,
                     args,
                 )),
-                crate::plan::ValueShape::List(shape) => Self::List(ListListExpr::call(
-                    ListListItem {
-                        item_type: Box::new(shape.value_type()),
-                    },
-                    function,
-                    args,
-                )),
+                crate::plan::ValueShape::List(shape) => match shape.representation() {
+                    crate::plan::ValueRepresentation::Uninhabited(parameter) => {
+                        Self::ParameterList(ParameterListListExpr::call(
+                            ParameterListListItem::new(parameter),
+                            function,
+                            args,
+                        ))
+                    }
+                    crate::plan::ValueRepresentation::Stored(item_shape) => Self::List(
+                        ListListExpr::call(ListListItem::new(item_shape), function, args),
+                    ),
+                },
                 crate::plan::ValueShape::Function(shape) => Self::Function(FunctionListExpr::call(
                     FunctionListItem {
                         item_type: shape.type_(),
@@ -294,8 +435,19 @@ impl ListExpr {
                 Self::Tuple(TupleListExpr::function_call(item, function, args))
             }
             ValueType::List(item_type) => {
-                let item = ListListItem { item_type };
-                Self::List(ListListExpr::function_call(item, function, args))
+                match crate::plan::ValueShape::from_value_type(*item_type).representation() {
+                    crate::plan::ValueRepresentation::Uninhabited(parameter) => {
+                        Self::ParameterList(ParameterListListExpr::function_call(
+                            ParameterListListItem::new(parameter),
+                            function,
+                            args,
+                        ))
+                    }
+                    crate::plan::ValueRepresentation::Stored(item_shape) => {
+                        let item = ListListItem::new(item_shape);
+                        Self::List(ListListExpr::function_call(item, function, args))
+                    }
+                }
             }
             ValueType::Function(item_type) => {
                 let item = FunctionListItem {
@@ -342,8 +494,19 @@ impl ListExpr {
                 Self::Tuple(TupleListExpr::tuple_index(item, tuple, index))
             }
             ValueType::List(item_type) => {
-                let item = ListListItem { item_type };
-                Self::List(ListListExpr::tuple_index(item, tuple, index))
+                match crate::plan::ValueShape::from_value_type(*item_type).representation() {
+                    crate::plan::ValueRepresentation::Uninhabited(parameter) => {
+                        Self::ParameterList(ParameterListListExpr::tuple_index(
+                            ParameterListListItem::new(parameter),
+                            tuple,
+                            index,
+                        ))
+                    }
+                    crate::plan::ValueRepresentation::Stored(item_shape) => {
+                        let item = ListListItem::new(item_shape);
+                        Self::List(ListListExpr::tuple_index(item, tuple, index))
+                    }
+                }
             }
             ValueType::Function(item_type) => {
                 let item = FunctionListItem {
@@ -380,10 +543,19 @@ impl ListExpr {
                 TupleListItem { item_type },
                 access,
             )),
-            ValueType::List(item_type) => Self::List(ListListExpr::custom_field(
-                ListListItem { item_type },
-                access,
-            )),
+            ValueType::List(item_type) => {
+                match crate::plan::ValueShape::from_value_type(*item_type).representation() {
+                    crate::plan::ValueRepresentation::Uninhabited(parameter) => {
+                        Self::ParameterList(ParameterListListExpr::custom_field(
+                            ParameterListListItem::new(parameter),
+                            access,
+                        ))
+                    }
+                    crate::plan::ValueRepresentation::Stored(item_shape) => Self::List(
+                        ListListExpr::custom_field(ListListItem::new(item_shape), access),
+                    ),
+                }
+            }
             ValueType::Function(item_type) => Self::Function(FunctionListExpr::custom_field(
                 FunctionListItem {
                     item_type: *item_type,
@@ -393,68 +565,84 @@ impl ListExpr {
         }
     }
 
+    pub(crate) fn parameter_list_index(list: ParameterListListExpr, index: usize) -> Self {
+        let parameter = list.item().parameter();
+        Self::Generic(GenericListExpr::from_list_index(
+            GenericListItem::new(parameter),
+            ListIndexSource::new(list, index),
+        ))
+    }
+
     pub(crate) fn list_index(list: ListListExpr, index: usize) -> Self {
-        let element_type = list.item().item_type().as_ref().clone();
-        match element_type {
-            ValueType::Parameter(parameter) => {
-                let item = GenericListItem::new(parameter);
-                Self::Generic(GenericListExpr::from_list_index(
-                    item,
-                    ListIndexSource::new(list, index),
-                ))
-            }
-            ValueType::Int => Self::Int(IntListExpr::from_list_index(
+        match list.item().item_shape().clone() {
+            crate::plan::ValueStorageShape::Int => Self::Int(IntListExpr::from_list_index(
                 IntListItem,
                 ListIndexSource::new(list, index),
             )),
-            ValueType::String => Self::String(StringListExpr::from_list_index(
-                StringListItem,
-                ListIndexSource::new(list, index),
-            )),
-            ValueType::BitArray => Self::BitArray(BitArrayListExpr::from_list_index(
-                BitArrayListItem,
-                ListIndexSource::new(list, index),
-            )),
-            ValueType::UtfCodepoint => Self::UtfCodepoint(UtfCodepointListExpr::from_list_index(
-                UtfCodepointListItem,
-                ListIndexSource::new(list, index),
-            )),
-            ValueType::Custom(item_type) => {
-                let item = CustomListItem { item_type };
+            crate::plan::ValueStorageShape::String => Self::String(
+                StringListExpr::from_list_index(StringListItem, ListIndexSource::new(list, index)),
+            ),
+            crate::plan::ValueStorageShape::BitArray => {
+                Self::BitArray(BitArrayListExpr::from_list_index(
+                    BitArrayListItem,
+                    ListIndexSource::new(list, index),
+                ))
+            }
+            crate::plan::ValueStorageShape::UtfCodepoint => {
+                Self::UtfCodepoint(UtfCodepointListExpr::from_list_index(
+                    UtfCodepointListItem,
+                    ListIndexSource::new(list, index),
+                ))
+            }
+            crate::plan::ValueStorageShape::Custom(shape) => {
+                let item = CustomListItem {
+                    item_type: shape.type_().clone(),
+                };
                 Self::Custom(CustomListExpr::from_list_index(
                     item,
                     ListIndexSource::new(list, index),
                 ))
             }
-            ValueType::Float => Self::Float(FloatListExpr::from_list_index(
+            crate::plan::ValueStorageShape::Float => Self::Float(FloatListExpr::from_list_index(
                 FloatListItem,
                 ListIndexSource::new(list, index),
             )),
-            ValueType::Bool => Self::Bool(BoolListExpr::from_list_index(
+            crate::plan::ValueStorageShape::Bool => Self::Bool(BoolListExpr::from_list_index(
                 BoolListItem,
                 ListIndexSource::new(list, index),
             )),
-            ValueType::Nil => Self::Nil(NilListExpr::from_list_index(
+            crate::plan::ValueStorageShape::Nil => Self::Nil(NilListExpr::from_list_index(
                 NilListItem,
                 ListIndexSource::new(list, index),
             )),
-            ValueType::Tuple(item_type) => {
+            crate::plan::ValueStorageShape::Tuple(item_shape) => {
+                let item_type = item_shape
+                    .iter()
+                    .map(crate::plan::ValueShape::value_type)
+                    .collect();
                 let item = TupleListItem { item_type };
                 Self::Tuple(TupleListExpr::from_list_index(
                     item,
                     ListIndexSource::new(list, index),
                 ))
             }
-            ValueType::List(item_type) => {
-                let item = ListListItem { item_type };
-                Self::List(ListListExpr::from_list_index(
-                    item,
-                    ListIndexSource::new(list, index),
-                ))
-            }
-            ValueType::Function(item_type) => {
+            crate::plan::ValueStorageShape::List(item_shape) => match item_shape.representation() {
+                crate::plan::ValueRepresentation::Uninhabited(parameter) => {
+                    Self::ParameterList(ParameterListListExpr::from_list_index(
+                        ParameterListListItem::new(parameter),
+                        ListIndexSource::new(list, index),
+                    ))
+                }
+                crate::plan::ValueRepresentation::Stored(item_shape) => {
+                    Self::List(ListListExpr::from_list_index(
+                        ListListItem::new(item_shape),
+                        ListIndexSource::new(list, index),
+                    ))
+                }
+            },
+            crate::plan::ValueStorageShape::Function(shape) => {
                 let item = FunctionListItem {
-                    item_type: *item_type,
+                    item_type: shape.type_(),
                 };
                 Self::Function(FunctionListExpr::from_list_index(
                     item,
@@ -467,6 +655,9 @@ impl ListExpr {
     pub(crate) fn drop_first(list: ListExpr, count: usize) -> Self {
         match list {
             Self::Generic(list) => Self::Generic(GenericListExpr::drop_first(list, count)),
+            Self::ParameterList(list) => {
+                Self::ParameterList(ParameterListListExpr::drop_first(list, count))
+            }
             Self::Int(list) => Self::Int(IntListExpr::drop_first(list, count)),
             Self::String(list) => Self::String(StringListExpr::drop_first(list, count)),
             Self::BitArray(list) => Self::BitArray(BitArrayListExpr::drop_first(list, count)),
@@ -505,7 +696,17 @@ impl ListExpr {
                 Self::Tuple(TupleListExpr::panic(TupleListItem { item_type }, panic))
             }
             ValueType::List(item_type) => {
-                Self::List(ListListExpr::panic(ListListItem { item_type }, panic))
+                match crate::plan::ValueShape::from_value_type(*item_type).representation() {
+                    crate::plan::ValueRepresentation::Uninhabited(parameter) => {
+                        Self::ParameterList(ParameterListListExpr::panic(
+                            ParameterListListItem::new(parameter),
+                            panic,
+                        ))
+                    }
+                    crate::plan::ValueRepresentation::Stored(item_shape) => {
+                        Self::List(ListListExpr::panic(ListListItem::new(item_shape), panic))
+                    }
+                }
             }
             ValueType::Function(item_type) => Self::Function(FunctionListExpr::panic(
                 FunctionListItem {
@@ -520,6 +721,9 @@ impl ListExpr {
         match branches {
             BoolListCaseBranches::Generic { true_, false_ } => {
                 Self::Generic(GenericListExpr::bool_case(subject, true_, false_))
+            }
+            BoolListCaseBranches::ParameterList { true_, false_ } => {
+                Self::ParameterList(ParameterListListExpr::bool_case(subject, true_, false_))
             }
             BoolListCaseBranches::Int { true_, false_ } => {
                 Self::Int(IntListExpr::bool_case(subject, true_, false_))
@@ -562,6 +766,9 @@ impl ListExpr {
             ListCaseBranches::Generic { clauses, fallback } => {
                 Self::Generic(GenericListExpr::int_case(subject, clauses, fallback))
             }
+            ListCaseBranches::ParameterList { clauses, fallback } => {
+                Self::ParameterList(ParameterListListExpr::int_case(subject, clauses, fallback))
+            }
             ListCaseBranches::Int { clauses, fallback } => {
                 Self::Int(IntListExpr::int_case(subject, clauses, fallback))
             }
@@ -603,6 +810,9 @@ impl ListExpr {
             ListCaseBranches::Generic { clauses, fallback } => {
                 Self::Generic(GenericListExpr::string_case(subject, clauses, fallback))
             }
+            ListCaseBranches::ParameterList { clauses, fallback } => Self::ParameterList(
+                ParameterListListExpr::string_case(subject, clauses, fallback),
+            ),
             ListCaseBranches::Int { clauses, fallback } => {
                 Self::Int(IntListExpr::string_case(subject, clauses, fallback))
             }
@@ -644,6 +854,9 @@ impl ListExpr {
             ListCaseBranches::Generic { clauses, fallback } => {
                 Self::Generic(GenericListExpr::float_case(subject, clauses, fallback))
             }
+            ListCaseBranches::ParameterList { clauses, fallback } => Self::ParameterList(
+                ParameterListListExpr::float_case(subject, clauses, fallback),
+            ),
             ListCaseBranches::Int { clauses, fallback } => {
                 Self::Int(IntListExpr::float_case(subject, clauses, fallback))
             }
@@ -683,6 +896,9 @@ impl ListExpr {
     pub(crate) fn block(steps: Vec<Step>, return_: ListExpr) -> Self {
         match return_ {
             Self::Generic(return_) => Self::Generic(GenericListExpr::block(steps, return_)),
+            Self::ParameterList(return_) => {
+                Self::ParameterList(ParameterListListExpr::block(steps, return_))
+            }
             Self::Int(return_) => Self::Int(IntListExpr::block(steps, return_)),
             Self::String(return_) => Self::String(StringListExpr::block(steps, return_)),
             Self::BitArray(return_) => Self::BitArray(BitArrayListExpr::block(steps, return_)),
@@ -702,6 +918,7 @@ impl ListExpr {
     pub fn element_type(&self) -> ValueType {
         match self {
             Self::Generic(expression) => expression.element_type(),
+            Self::ParameterList(expression) => expression.element_type(),
             Self::Int(expression) => expression.element_type(),
             Self::String(expression) => expression.element_type(),
             Self::BitArray(expression) => expression.element_type(),
@@ -719,6 +936,7 @@ impl ListExpr {
     pub(crate) fn item_shape(&self) -> &crate::plan::ValueShape {
         match self {
             Self::Generic(expression) => expression.item_shape(),
+            Self::ParameterList(expression) => expression.item_shape(),
             Self::Int(expression) => expression.item_shape(),
             Self::String(expression) => expression.item_shape(),
             Self::BitArray(expression) => expression.item_shape(),
@@ -736,6 +954,9 @@ impl ListExpr {
     pub(crate) fn with_item_shape(self, item_shape: crate::plan::ValueShape) -> Self {
         match self {
             Self::Generic(expression) => Self::Generic(expression.with_item_shape(item_shape)),
+            Self::ParameterList(expression) => {
+                Self::ParameterList(expression.with_item_shape(item_shape))
+            }
             Self::Int(expression) => Self::Int(expression.with_item_shape(item_shape)),
             Self::String(expression) => Self::String(expression.with_item_shape(item_shape)),
             Self::BitArray(expression) => Self::BitArray(expression.with_item_shape(item_shape)),
@@ -762,6 +983,13 @@ impl ListExpr {
     pub(crate) fn into_generic(self) -> Option<GenericListExpr> {
         match self {
             Self::Generic(expression) => Some(expression),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn into_parameter_list(self) -> Option<ParameterListListExpr> {
+        match self {
+            Self::ParameterList(expression) => Some(expression),
             _ => None,
         }
     }
@@ -837,6 +1065,26 @@ impl ListExpr {
     }
 }
 
+impl StoredListExpr {
+    pub(super) fn try_from_facade(expression: ListExpr) -> Option<Self> {
+        match expression {
+            ListExpr::Generic(_) => None,
+            ListExpr::ParameterList(expression) => Some(Self::ParameterList(expression)),
+            ListExpr::Int(expression) => Some(Self::Int(expression)),
+            ListExpr::String(expression) => Some(Self::String(expression)),
+            ListExpr::BitArray(expression) => Some(Self::BitArray(expression)),
+            ListExpr::UtfCodepoint(expression) => Some(Self::UtfCodepoint(expression)),
+            ListExpr::Custom(expression) => Some(Self::Custom(expression)),
+            ListExpr::Float(expression) => Some(Self::Float(expression)),
+            ListExpr::Bool(expression) => Some(Self::Bool(expression)),
+            ListExpr::Nil(expression) => Some(Self::Nil(expression)),
+            ListExpr::Tuple(expression) => Some(Self::Tuple(expression)),
+            ListExpr::List(expression) => Some(Self::List(expression)),
+            ListExpr::Function(expression) => Some(Self::Function(expression)),
+        }
+    }
+}
+
 fn list_item_shape(
     elements: &[Expr],
     element_type: &ValueType,
@@ -888,7 +1136,7 @@ impl ListExpr {
     pub(crate) fn try_spread(
         elements: ListElements,
         tail: ListExpr,
-    ) -> Result<Self, ListElementTypeMismatch> {
+    ) -> Result<Self, ListSpreadConstructionError> {
         ListSpreadElements::from_parts(elements, tail).map(Self::from_spread_elements)
     }
 }
@@ -900,8 +1148,9 @@ mod tests {
         CustomListExpr, CustomListItem, FloatListExpr, FloatListItem, FunctionListExpr,
         FunctionListItem, GenericListExpr, GenericListItem, IntListExpr, IntListItem,
         ListCaseBranches, ListElementTypeMismatch, ListElements, ListExpr, ListIndexSource,
-        ListListExpr, ListListItem, NilListExpr, NilListItem, StringListExpr, StringListItem,
-        TupleListExpr, TupleListItem, UtfCodepointListExpr, UtfCodepointListItem,
+        ListListExpr, ListListItem, ListSpreadConstructionError, NilListExpr, NilListItem,
+        ParameterListListExpr, ParameterListListItem, StoredListExpr, StringListExpr,
+        StringListItem, TupleListExpr, TupleListItem, UtfCodepointListExpr, UtfCodepointListItem,
     };
     use crate::plan::{
         BitArrayExpr, BoolExpr, CustomConstructorRefinement, CustomExpr, CustomFieldAccess,
@@ -909,7 +1158,7 @@ mod tests {
         FunctionExpr, FunctionReference, FunctionShape, FunctionType, GenericExpr, GenericLocal,
         GenericLocalId, IntExpr, IntListLocalId, ListFunctionExpr, ListFunctionReference,
         ListLocal, NilExpr, PanicExpr, PanicSite, Step, StringExpr, TupleExpr, TypeParameterId,
-        UtfCodepointExpr, UtfCodepointLocalId, ValueShape, ValueType,
+        UtfCodepointExpr, UtfCodepointLocalId, ValueShape, ValueStorageShape, ValueType,
         monomorphic_function_instantiation,
     };
     use num_bigint::BigInt;
@@ -990,17 +1239,15 @@ mod tests {
             )),
         );
 
-        let nested = ListExpr::value(vec![Expr::int(IntExpr::value(3.into()))], ValueType::Int);
+        let nested = IntListExpr::value(IntListItem, vec![IntExpr::value(3.into())]);
         assert_eq!(
             ListExpr::value(
-                vec![Expr::list(nested.clone())],
+                vec![Expr::list(ListExpr::Int(nested.clone()))],
                 ValueType::List(Box::new(ValueType::Int)),
             ),
             ListExpr::List(ListListExpr::value(
-                ListListItem {
-                    item_type: Box::new(ValueType::Int),
-                },
-                vec![nested],
+                ListListItem::new(ValueStorageShape::Int),
+                vec![StoredListExpr::Int(nested)],
             )),
         );
 
@@ -1101,7 +1348,7 @@ mod tests {
                 generic_tail.clone(),
             ),
             Ok(ListExpr::Generic(GenericListExpr::spread(
-                vec![generic_value],
+                vec1::vec1![generic_value],
                 generic_tail.into_generic().expect("generic list"),
             ))),
         );
@@ -1113,7 +1360,7 @@ mod tests {
                 int_tail.clone(),
             ),
             Ok(ListExpr::Int(IntListExpr::spread(
-                vec![IntExpr::value(1.into())],
+                vec1::vec1![IntExpr::value(1.into())],
                 int_tail.into_int().expect("int list"),
             ))),
         );
@@ -1137,7 +1384,7 @@ mod tests {
                 tuple_tail.clone(),
             ),
             Ok(ListExpr::Tuple(TupleListExpr::spread(
-                vec![TupleExpr::value(
+                vec1::vec1![TupleExpr::value(
                     vec![Expr::int(IntExpr::value(1.into()))],
                     vec![ValueType::Int],
                 )],
@@ -1153,10 +1400,12 @@ mod tests {
                     ValueType::String,
                 ),
             ),
-            Err(ListElementTypeMismatch {
-                expected: ValueType::Int,
-                actual: ValueType::String,
-            }),
+            Err(ListSpreadConstructionError::ElementTypeMismatch(
+                ListElementTypeMismatch {
+                    expected: ValueType::Int,
+                    actual: ValueType::String,
+                },
+            )),
         );
     }
 
@@ -1227,9 +1476,7 @@ mod tests {
         assert_eq!(
             ListExpr::tuple_index(tuple.clone(), 0, ValueType::List(Box::new(ValueType::Int))),
             ListExpr::List(ListListExpr::tuple_index(
-                ListListItem {
-                    item_type: Box::new(ValueType::Int),
-                },
+                ListListItem::new(ValueStorageShape::Int),
                 tuple,
                 0,
             )),
@@ -1332,9 +1579,18 @@ mod tests {
         assert_eq!(
             ListExpr::custom_field(access.clone(), ValueType::List(Box::new(ValueType::String)),),
             ListExpr::List(ListListExpr::custom_field(
-                ListListItem {
-                    item_type: Box::new(ValueType::String),
-                },
+                ListListItem::new(ValueStorageShape::String),
+                access.clone(),
+            )),
+        );
+        let parameter = TypeParameterId(1);
+        assert_eq!(
+            ListExpr::custom_field(
+                access.clone(),
+                ValueType::List(Box::new(ValueType::Parameter(parameter))),
+            ),
+            ListExpr::ParameterList(ParameterListListExpr::custom_field(
+                ParameterListListItem::new(parameter),
                 access.clone(),
             )),
         );
@@ -1455,6 +1711,7 @@ mod tests {
             ValueType::Bool,
             ValueType::Nil,
             ValueType::Tuple(vec![ValueType::Int]),
+            ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(1)))),
             ValueType::List(Box::new(ValueType::String)),
             ValueType::Function(Box::new(function_type.clone())),
         ];
@@ -1561,87 +1818,105 @@ mod tests {
 
     #[test]
     fn nested_list_index_dispatch_preserves_every_item_type() {
+        let parameter = crate::plan::TypeParameterId(0);
+        let parameter_source = ListExpr::value(
+            vec![Expr::list(ListExpr::value(
+                Vec::new(),
+                ValueType::Parameter(parameter),
+            ))],
+            ValueType::List(Box::new(ValueType::Parameter(parameter))),
+        )
+        .into_parameter_list()
+        .expect("parameter-list item list");
+        assert_eq!(
+            ListExpr::parameter_list_index(parameter_source.clone(), 3),
+            ListExpr::Generic(super::GenericListExpr::from_list_index(
+                super::GenericListItem::new(parameter),
+                ListIndexSource::new(parameter_source, 3),
+            )),
+        );
+
         let function_type = FunctionType::new(Vec::new(), ValueType::Int);
         let custom_type = crate::plan::CustomType::new(
             crate::plan::CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
             Vec::new(),
         );
-        let item_types = vec![
-            ValueType::Parameter(crate::plan::TypeParameterId(0)),
-            ValueType::Int,
-            ValueType::String,
-            ValueType::BitArray,
-            ValueType::UtfCodepoint,
-            ValueType::Custom(custom_type),
-            ValueType::Float,
-            ValueType::Bool,
-            ValueType::Nil,
-            ValueType::Tuple(vec![ValueType::Int]),
-            ValueType::List(Box::new(ValueType::String)),
-            ValueType::Function(Box::new(function_type.clone())),
+        let item_shapes = vec![
+            ValueStorageShape::Int,
+            ValueStorageShape::String,
+            ValueStorageShape::BitArray,
+            ValueStorageShape::UtfCodepoint,
+            ValueStorageShape::Custom(CustomValueShape::any(custom_type)),
+            ValueStorageShape::Float,
+            ValueStorageShape::Bool,
+            ValueStorageShape::Nil,
+            ValueStorageShape::Tuple(vec![ValueShape::Int].into_boxed_slice()),
+            ValueStorageShape::List(Box::new(ValueShape::String)),
+            ValueStorageShape::Function(Box::new(FunctionShape::from_function_type(
+                function_type.clone(),
+            ))),
         ];
 
-        for item_type in item_types {
+        for item_shape in item_shapes {
+            let item_type = item_shape.value_type();
             let list = ListExpr::value(
                 vec![Expr::list(ListExpr::value(Vec::new(), item_type.clone()))],
                 ValueType::List(Box::new(item_type.clone())),
             )
             .into_list()
             .expect("list item list");
-            let expected = match item_type.clone() {
-                ValueType::Parameter(parameter) => {
-                    ListExpr::Generic(super::GenericListExpr::from_list_index(
-                        super::GenericListItem::new(parameter),
-                        ListIndexSource::new(list.clone(), 3),
-                    ))
-                }
-                ValueType::Int => ListExpr::Int(IntListExpr::from_list_index(
+            let expected = match item_shape {
+                ValueStorageShape::Int => ListExpr::Int(IntListExpr::from_list_index(
                     IntListItem,
                     ListIndexSource::new(list.clone(), 3),
                 )),
-                ValueType::String => ListExpr::String(StringListExpr::from_list_index(
+                ValueStorageShape::String => ListExpr::String(StringListExpr::from_list_index(
                     StringListItem,
                     ListIndexSource::new(list.clone(), 3),
                 )),
-                ValueType::BitArray => ListExpr::BitArray(BitArrayListExpr::from_list_index(
-                    BitArrayListItem,
-                    ListIndexSource::new(list.clone(), 3),
-                )),
-                ValueType::UtfCodepoint => {
+                ValueStorageShape::BitArray => {
+                    ListExpr::BitArray(BitArrayListExpr::from_list_index(
+                        BitArrayListItem,
+                        ListIndexSource::new(list.clone(), 3),
+                    ))
+                }
+                ValueStorageShape::UtfCodepoint => {
                     ListExpr::UtfCodepoint(UtfCodepointListExpr::from_list_index(
                         UtfCodepointListItem,
                         ListIndexSource::new(list.clone(), 3),
                     ))
                 }
-                ValueType::Custom(item_type) => ListExpr::Custom(CustomListExpr::from_list_index(
-                    CustomListItem { item_type },
-                    ListIndexSource::new(list.clone(), 3),
-                )),
-                ValueType::Float => ListExpr::Float(FloatListExpr::from_list_index(
+                ValueStorageShape::Custom(shape) => {
+                    ListExpr::Custom(CustomListExpr::from_list_index(
+                        CustomListItem::new(shape.type_().clone()),
+                        ListIndexSource::new(list.clone(), 3),
+                    ))
+                }
+                ValueStorageShape::Float => ListExpr::Float(FloatListExpr::from_list_index(
                     FloatListItem,
                     ListIndexSource::new(list.clone(), 3),
                 )),
-                ValueType::Bool => ListExpr::Bool(BoolListExpr::from_list_index(
+                ValueStorageShape::Bool => ListExpr::Bool(BoolListExpr::from_list_index(
                     BoolListItem,
                     ListIndexSource::new(list.clone(), 3),
                 )),
-                ValueType::Nil => ListExpr::Nil(NilListExpr::from_list_index(
+                ValueStorageShape::Nil => ListExpr::Nil(NilListExpr::from_list_index(
                     NilListItem,
                     ListIndexSource::new(list.clone(), 3),
                 )),
-                ValueType::Tuple(item_type) => ListExpr::Tuple(TupleListExpr::from_list_index(
-                    TupleListItem { item_type },
+                ValueStorageShape::Tuple(elements) => {
+                    ListExpr::Tuple(TupleListExpr::from_list_index(
+                        TupleListItem::new(elements.iter().map(ValueShape::value_type).collect()),
+                        ListIndexSource::new(list.clone(), 3),
+                    ))
+                }
+                ValueStorageShape::List(_item) => ListExpr::List(ListListExpr::from_list_index(
+                    ListListItem::new(ValueStorageShape::String),
                     ListIndexSource::new(list.clone(), 3),
                 )),
-                ValueType::List(item_type) => ListExpr::List(ListListExpr::from_list_index(
-                    ListListItem { item_type },
-                    ListIndexSource::new(list.clone(), 3),
-                )),
-                ValueType::Function(item_type) => {
+                ValueStorageShape::Function(shape) => {
                     ListExpr::Function(FunctionListExpr::from_list_index(
-                        FunctionListItem {
-                            item_type: *item_type,
-                        },
+                        FunctionListItem::new(shape.type_()),
                         ListIndexSource::new(list.clone(), 3),
                     ))
                 }
@@ -1656,6 +1931,17 @@ mod tests {
     fn generic_list_conversion_rejects_other_item_family() {
         assert_eq!(
             ListExpr::value(Vec::new(), ValueType::Int).into_generic(),
+            None,
+        );
+        assert_eq!(
+            ListExpr::value(Vec::new(), ValueType::Int).into_parameter_list(),
+            None,
+        );
+        assert_eq!(
+            StoredListExpr::try_from_facade(ListExpr::value(
+                Vec::new(),
+                ValueType::Parameter(TypeParameterId(0)),
+            )),
             None,
         );
     }

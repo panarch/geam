@@ -2,9 +2,9 @@ use crate::plan::CustomFieldAccess;
 #[cfg(test)]
 use crate::plan::ParamLocal;
 use crate::plan::{
-    BoolExpr, CaptureArg, FloatExpr, FunctionFunctionLocal, FunctionFunctionReference,
-    FunctionFunctionType, FunctionInstantiation, FunctionListExpr, FunctionType, IntExpr,
-    PanicExpr, ParamSlot, Step, StringExpr, TupleExpr, ValueShape,
+    BoolExpr, CaptureArg, ConstantFunctionFunctionInstantiation, FloatExpr, FunctionFunctionLocal,
+    FunctionFunctionReference, FunctionFunctionType, FunctionInstantiation, FunctionListExpr,
+    FunctionType, IntExpr, PanicExpr, ParamSlot, Step, StringExpr, TupleExpr, ValueShape,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -23,6 +23,7 @@ pub(crate) enum FunctionFunctionCallMismatch {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum FunctionFunctionExprKind {
+    Constant(ConstantFunctionFunctionInstantiation),
     Reference(FunctionFunctionReference),
     Closure {
         function: FunctionInstantiation,
@@ -78,6 +79,16 @@ pub(crate) enum FunctionFunctionExprKind {
 }
 
 impl FunctionFunctionExpr {
+    pub(crate) fn constant(
+        value: ConstantFunctionFunctionInstantiation,
+        type_: FunctionFunctionType,
+    ) -> Self {
+        Self {
+            type_,
+            kind: FunctionFunctionExprKind::Constant(value),
+        }
+    }
+
     pub(crate) fn with_type(mut self, type_: FunctionFunctionType) -> Self {
         self.type_ = type_;
         self

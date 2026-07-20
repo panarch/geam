@@ -1,9 +1,10 @@
 use super::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
     CustomFunctionLocal, CustomLocal, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocal,
-    FunctionType, IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId,
-    NilLocalId, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
-    UtfCodepointFunctionLocalId, UtfCodepointLocalId, ValueShapeId, ValueType,
+    FunctionType, GenericFunctionLocal, IntFunctionLocalId, IntLocalId, ListFunctionLocal,
+    ListLocal, NeverFunctionLocal, NilFunctionLocalId, NilLocalId, StringFunctionLocalId,
+    StringLocalId, TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId,
+    UtfCodepointLocalId, ValueShapeId, ValueType,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,6 +48,8 @@ pub(crate) enum ParamLocal {
         local: UtfCodepointFunctionLocalId,
         type_: FunctionType,
     },
+    GenericFunction(GenericFunctionLocal),
+    NeverFunction(NeverFunctionLocal),
     CustomFunction(CustomFunctionLocal),
     BoolFunction {
         local: BoolFunctionLocalId,

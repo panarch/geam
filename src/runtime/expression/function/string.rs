@@ -3,8 +3,8 @@ use crate::plan::ValueType;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::{FunctionReturnFamily, StringFunctionExpr, StringFunctionExprKind};
 use crate::runtime::expression::{
-    eval_bool_expr, eval_float_expr, eval_int_expr, eval_panic_expr, eval_string_expr,
-    project_function_list_expr, project_tuple_expr,
+    eval_bool_expr, eval_direct_call, eval_float_expr, eval_function_call, eval_int_expr,
+    eval_panic_expr, eval_string_expr, project_function_list_expr, project_tuple_expr,
 };
 use crate::runtime::frame::Frame;
 use crate::runtime::function;
@@ -20,6 +20,9 @@ pub(in crate::runtime) fn eval_string_function_expr(
     expression: &StringFunctionExpr,
 ) -> Result<EvaluatedStringFunction, ExecutionError> {
     match expression.kind() {
+        StringFunctionExprKind::Constant(value) => {
+            eval_string_function_expr(plan, state, frame, plan.constant(*value))
+        }
         StringFunctionExprKind::Reference(reference) => Ok(EvaluatedStringFunction::reference(
             *reference.function(),
             reference.param_locals(),
@@ -30,27 +33,35 @@ pub(in crate::runtime) fn eval_string_function_expr(
                 crate::plan::execution::ValueType::String,
             ),
         )),
-        StringFunctionExprKind::Closure(template) => Ok(EvaluatedStringFunction::closure(
-            *template.function(),
-            template.param_locals(),
-            function::eval_capture_args(plan, state, frame, template.captures())?,
+        StringFunctionExprKind::Closure(closure) => Ok(EvaluatedStringFunction::closure(
+            *closure.function(),
+            closure.param_locals(),
+            function::eval_capture_args(plan, state, frame, closure.captures())?,
             crate::runtime::evaluated::function_type_from_slots(
                 plan,
-                template.params(),
+                closure.params(),
                 crate::plan::execution::ValueType::String,
             ),
         )),
         StringFunctionExprKind::LocalGet { local, .. } => Ok(frame.get_string_function(*local)),
-        StringFunctionExprKind::Call { function, args, .. } => {
-            function::run_string_function_returning_function_call(
-                plan, state, *function, args, frame,
-            )
-        }
-        StringFunctionExprKind::FunctionCall {
-            function: callee,
-            args,
-            ..
-        } => function::run_string_function_function_call(plan, state, callee.as_ref(), args, frame),
+        StringFunctionExprKind::Call(call) => eval_direct_call(
+            plan,
+            state,
+            frame,
+            call,
+            |plan, state, function, args, frame| {
+                function::run_string_function_returning_function_call(
+                    plan, state, *function, args, frame,
+                )
+            },
+        ),
+        StringFunctionExprKind::FunctionCall(call) => eval_function_call(
+            plan,
+            state,
+            frame,
+            call,
+            function::run_string_function_function_call,
+        ),
         StringFunctionExprKind::TupleIndex {
             tuple,
             index,
@@ -267,6 +278,22 @@ pub fn main() {
                     fallback(),
                 ),
                 "bool subject",
+            ),
+            (
+                StringFunctionExpr::bool_case(
+                    BoolExpr::not(BoolExpr::value(false)),
+                    StringFunctionExpr::panic(panic("true branch"), type_.clone()),
+                    fallback(),
+                ),
+                "true branch",
+            ),
+            (
+                StringFunctionExpr::bool_case(
+                    BoolExpr::not(BoolExpr::value(true)),
+                    fallback(),
+                    StringFunctionExpr::panic(panic("false branch"), type_.clone()),
+                ),
+                "false branch",
             ),
             (
                 StringFunctionExpr::int_case(
