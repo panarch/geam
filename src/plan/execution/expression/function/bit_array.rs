@@ -1,9 +1,9 @@
 use crate::plan::execution::CustomFieldAccess;
 use crate::plan::execution::FunctionType;
 use crate::plan::execution::{
-    BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionLocalId, BoolExpr, FloatExpr,
-    FunctionFunctionExpr, FunctionListExpr, FunctionReference, IntExpr, PanicExpr, Step,
-    StringExpr, TupleExpr,
+    BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionLocalId, BoolExpr,
+    ClosureTemplate, ConstantId, DirectCall, FloatExpr, FunctionCall, FunctionFunctionExpr,
+    FunctionListExpr, FunctionReference, IntExpr, PanicExpr, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -13,14 +13,14 @@ pub struct BitArrayFunctionExpr {
 }
 
 pub(crate) enum BitArrayFunctionExprKind {
-    Constant(crate::plan::execution::ConstantId<BitArrayFunctionExpr>),
+    Constant(ConstantId<BitArrayFunctionExpr>),
     Reference(FunctionReference<BitArrayFunctionId>),
-    Closure(crate::plan::execution::ClosureTemplate<BitArrayFunctionId>),
+    Closure(ClosureTemplate<BitArrayFunctionId>),
     LocalGet {
         local: BitArrayFunctionLocalId,
     },
-    Call(crate::plan::execution::DirectCall<BitArrayFunctionFunctionId>),
-    FunctionCall(crate::plan::execution::FunctionCall<FunctionFunctionExpr>),
+    Call(DirectCall<BitArrayFunctionFunctionId>),
+    FunctionCall(FunctionCall<FunctionFunctionExpr>),
     TupleIndex {
         tuple: Box<TupleExpr>,
         index: usize,

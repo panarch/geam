@@ -1,7 +1,7 @@
 use crate::plan::execution::{
-    BoolExpr, CaptureArg, CustomFieldAccess, FloatExpr, FunctionFunctionExpr, FunctionListExpr,
-    GenericCallableId, GenericFunctionFunctionId, GenericFunctionLocal, GenericFunctionType,
-    IntExpr, PanicExpr, Step, StringExpr, TupleExpr,
+    BoolExpr, CaptureArg, ConstantId, CustomFieldAccess, DirectCall, FloatExpr, FunctionCall,
+    FunctionFunctionExpr, FunctionListExpr, GenericCallableId, GenericFunctionFunctionId,
+    GenericFunctionLocal, GenericFunctionType, IntExpr, PanicExpr, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -12,7 +12,7 @@ pub struct GenericFunctionExpr {
 }
 
 pub(crate) enum GenericFunctionExprKind {
-    Constant(crate::plan::execution::ConstantId<GenericFunctionExpr>),
+    Constant(ConstantId<GenericFunctionExpr>),
     Reference {
         target: GenericCallableId,
     },
@@ -26,8 +26,8 @@ pub(crate) enum GenericFunctionExprKind {
     LocalGet {
         local: GenericFunctionLocal,
     },
-    Call(crate::plan::execution::DirectCall<GenericFunctionFunctionId>),
-    FunctionCall(crate::plan::execution::FunctionCall<FunctionFunctionExpr>),
+    Call(DirectCall<GenericFunctionFunctionId>),
+    FunctionCall(FunctionCall<FunctionFunctionExpr>),
     TupleIndex {
         tuple: Box<TupleExpr>,
         index: usize,

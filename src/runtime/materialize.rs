@@ -3,7 +3,7 @@ use super::evaluated::{
     EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedFloatFunction,
     EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedFunctionValueKind,
     EvaluatedGenericFunction, EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction,
-    EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
+    EvaluatedNeverFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
     EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
 use super::state::{ListValueId, RuntimeState};
@@ -210,7 +210,7 @@ fn generic_function(
 fn never_function(
     plan: &ExecutionPlan,
     state: &RuntimeState,
-    value: &crate::runtime::EvaluatedNeverFunction,
+    value: &EvaluatedNeverFunction,
 ) -> NeverFunctionValue {
     NeverFunctionValue::from_evaluated(
         value.runtime_id(),

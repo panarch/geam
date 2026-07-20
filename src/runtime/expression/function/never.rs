@@ -170,8 +170,9 @@ pub(in crate::runtime) fn eval_never_function_expr_kind(
 mod tests {
     use crate::plan::execution::{
         CallArg, CallArgKind, CustomConstruction, CustomExpr, CustomExprKind, CustomFieldAccess,
-        CustomLocalExpr, FunctionReturnFamily, NeverFunctionExpr, NeverFunctionExprKind,
-        NeverFunctionFunctionId, ReturnBody, ReturnBodyKind, RuntimeFunctionId, TypedListExprKind,
+        CustomLocalExpr, FunctionFunctionId, FunctionListExpr, FunctionReturnFamily,
+        NeverFunctionExpr, NeverFunctionExprKind, NeverFunctionFunctionId, ReturnBody,
+        ReturnBodyKind, RuntimeFunctionId, TypedListExprKind,
     };
     use crate::plan::{
         BoolExpr, CaptureArg, Expr, FloatExpr, FunctionExpr,
@@ -660,12 +661,10 @@ pub fn main() { get(Box(diverge)) }
         crate::ExecutionPlan::from_module_plan(module)
     }
 
-    fn main_never_function_id(
-        plan: &crate::ExecutionPlan,
-    ) -> crate::plan::execution::NeverFunctionFunctionId {
+    fn main_never_function_id(plan: &crate::ExecutionPlan) -> NeverFunctionFunctionId {
         match plan.main_runtime() {
             RuntimeFunctionId::Function {
-                id: crate::plan::execution::FunctionFunctionId::Never(id),
+                id: FunctionFunctionId::Never(id),
                 ..
             } => id,
             _ => panic!("expected a never-function main"),
@@ -673,7 +672,7 @@ pub fn main() { get(Box(diverge)) }
     }
 
     fn expression_return<Expression, Function>(
-        body: &crate::plan::execution::ReturnBody<Expression, Function>,
+        body: &ReturnBody<Expression, Function>,
     ) -> &Expression {
         match body.kind() {
             ReturnBodyKind::Expr(expression) => expression,
@@ -681,9 +680,7 @@ pub fn main() { get(Box(diverge)) }
         }
     }
 
-    fn function_list_projection(
-        expression: &NeverFunctionExpr,
-    ) -> &crate::plan::execution::FunctionListExpr {
+    fn function_list_projection(expression: &NeverFunctionExpr) -> &FunctionListExpr {
         match expression.kind() {
             NeverFunctionExprKind::ListIndex { list, .. } => list,
             _ => panic!("expected a function-list projection"),

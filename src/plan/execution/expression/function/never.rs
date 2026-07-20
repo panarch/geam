@@ -1,7 +1,8 @@
 use crate::plan::execution::{
-    BoolExpr, CustomFieldAccess, FloatExpr, FunctionFunctionExpr, FunctionListExpr,
-    FunctionReference, GenericFunctionType, IntExpr, NeverFunctionFunctionId, NeverFunctionId,
-    NeverFunctionLocal, PanicExpr, Step, StringExpr, TupleExpr,
+    BoolExpr, ClosureTemplate, ConstantId, CustomFieldAccess, DirectCall, FloatExpr, FunctionCall,
+    FunctionFunctionExpr, FunctionListExpr, FunctionReference, GenericFunctionType, IntExpr,
+    NeverFunctionFunctionId, NeverFunctionId, NeverFunctionLocal, PanicExpr, Step, StringExpr,
+    TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -12,14 +13,14 @@ pub struct NeverFunctionExpr {
 }
 
 pub(crate) enum NeverFunctionExprKind {
-    Constant(crate::plan::execution::ConstantId<NeverFunctionExpr>),
+    Constant(ConstantId<NeverFunctionExpr>),
     Reference(FunctionReference<NeverFunctionId>),
-    Closure(crate::plan::execution::ClosureTemplate<NeverFunctionId>),
+    Closure(ClosureTemplate<NeverFunctionId>),
     LocalGet {
         local: NeverFunctionLocal,
     },
-    Call(crate::plan::execution::DirectCall<NeverFunctionFunctionId>),
-    FunctionCall(crate::plan::execution::FunctionCall<FunctionFunctionExpr>),
+    Call(DirectCall<NeverFunctionFunctionId>),
+    FunctionCall(FunctionCall<FunctionFunctionExpr>),
     TupleIndex {
         tuple: Box<TupleExpr>,
         index: usize,

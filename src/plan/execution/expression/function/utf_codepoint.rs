@@ -1,8 +1,9 @@
 use crate::plan::execution::CustomFieldAccess;
 use crate::plan::execution::FunctionType;
 use crate::plan::execution::{
-    BoolExpr, FloatExpr, FunctionFunctionExpr, FunctionListExpr, FunctionReference, IntExpr,
-    PanicExpr, Step, StringExpr, TupleExpr, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+    BoolExpr, ClosureTemplate, ConstantId, DirectCall, FloatExpr, FunctionCall,
+    FunctionFunctionExpr, FunctionListExpr, FunctionReference, IntExpr, PanicExpr, Step,
+    StringExpr, TupleExpr, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
     UtfCodepointFunctionLocalId,
 };
 use ecow::EcoString;
@@ -13,14 +14,14 @@ pub struct UtfCodepointFunctionExpr {
 }
 
 pub(crate) enum UtfCodepointFunctionExprKind {
-    Constant(crate::plan::execution::ConstantId<UtfCodepointFunctionExpr>),
+    Constant(ConstantId<UtfCodepointFunctionExpr>),
     Reference(FunctionReference<UtfCodepointFunctionId>),
-    Closure(crate::plan::execution::ClosureTemplate<UtfCodepointFunctionId>),
+    Closure(ClosureTemplate<UtfCodepointFunctionId>),
     LocalGet {
         local: UtfCodepointFunctionLocalId,
     },
-    Call(crate::plan::execution::DirectCall<UtfCodepointFunctionFunctionId>),
-    FunctionCall(crate::plan::execution::FunctionCall<FunctionFunctionExpr>),
+    Call(DirectCall<UtfCodepointFunctionFunctionId>),
+    FunctionCall(FunctionCall<FunctionFunctionExpr>),
     TupleIndex {
         tuple: Box<TupleExpr>,
         index: usize,

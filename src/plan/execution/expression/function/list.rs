@@ -1,8 +1,8 @@
 use crate::plan::execution::FunctionType;
 use crate::plan::execution::{
-    BoolExpr, CustomFieldAccess, FloatExpr, FunctionFunctionExpr, FunctionListExpr,
-    FunctionReference, IntExpr, ListFunctionFunctionId, ListFunctionId, ListFunctionLocal,
-    PanicExpr, Step, StringExpr, TupleExpr,
+    BoolExpr, ClosureTemplate, ConstantId, CustomFieldAccess, DirectCall, FloatExpr, FunctionCall,
+    FunctionFunctionExpr, FunctionListExpr, FunctionReference, IntExpr, ListFunctionFunctionId,
+    ListFunctionId, ListFunctionLocal, PanicExpr, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -12,14 +12,14 @@ pub struct ListFunctionExpr {
 }
 
 pub(crate) enum ListFunctionExprKind {
-    Constant(crate::plan::execution::ConstantId<ListFunctionExpr>),
+    Constant(ConstantId<ListFunctionExpr>),
     Reference(FunctionReference<ListFunctionId>),
-    Closure(crate::plan::execution::ClosureTemplate<ListFunctionId>),
+    Closure(ClosureTemplate<ListFunctionId>),
     LocalGet {
         local: ListFunctionLocal,
     },
-    Call(crate::plan::execution::DirectCall<ListFunctionFunctionId>),
-    FunctionCall(crate::plan::execution::FunctionCall<FunctionFunctionExpr>),
+    Call(DirectCall<ListFunctionFunctionId>),
+    FunctionCall(FunctionCall<FunctionFunctionExpr>),
     TupleIndex {
         tuple: Box<TupleExpr>,
         index: usize,

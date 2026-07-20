@@ -1,9 +1,9 @@
 use crate::plan::execution::CustomFieldAccess;
 use crate::plan::execution::FunctionType;
 use crate::plan::execution::{
-    BoolExpr, FloatExpr, FunctionFunctionExpr, FunctionListExpr, FunctionReference, IntExpr,
-    IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId, PanicExpr, Step, StringExpr,
-    TupleExpr,
+    BoolExpr, ClosureTemplate, ConstantId, DirectCall, FloatExpr, FunctionCall,
+    FunctionFunctionExpr, FunctionListExpr, FunctionReference, IntExpr, IntFunctionFunctionId,
+    IntFunctionId, IntFunctionLocalId, PanicExpr, Step, StringExpr, TupleExpr,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -13,14 +13,14 @@ pub struct IntFunctionExpr {
 }
 
 pub(crate) enum IntFunctionExprKind {
-    Constant(crate::plan::execution::ConstantId<IntFunctionExpr>),
+    Constant(ConstantId<IntFunctionExpr>),
     Reference(FunctionReference<IntFunctionId>),
-    Closure(crate::plan::execution::ClosureTemplate<IntFunctionId>),
+    Closure(ClosureTemplate<IntFunctionId>),
     LocalGet {
         local: IntFunctionLocalId,
     },
-    Call(crate::plan::execution::DirectCall<IntFunctionFunctionId>),
-    FunctionCall(crate::plan::execution::FunctionCall<FunctionFunctionExpr>),
+    Call(DirectCall<IntFunctionFunctionId>),
+    FunctionCall(FunctionCall<FunctionFunctionExpr>),
     TupleIndex {
         tuple: Box<TupleExpr>,
         index: usize,

@@ -6,7 +6,9 @@ use crate::plan::{
     TupleListLocalId, TupleLocalId, UtfCodepointListLocalId, ValueShape, ValueType,
 };
 use crate::planner::context::{FunctionParam, PlanContext};
-use crate::planner::error::{InvalidCallShapeReason, InvalidTypedAstReason, PlanError};
+use crate::planner::error::{
+    InvalidCallShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
+};
 use gleam_core::ast::{CallArg as GleamCallArg, TypedExpr};
 
 pub(super) fn plan_instantiated_call_args(
@@ -415,8 +417,8 @@ fn call_arg_type_mismatch(expected: ValueType, actual: ValueType) -> PlanError {
     } else {
         PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionType {
-                expected: crate::planner::error::InvalidExpressionType::from_value_type(expected),
-                actual: crate::planner::error::InvalidExpressionType::from_value_type(actual),
+                expected: InvalidExpressionType::from_value_type(expected),
+                actual: InvalidExpressionType::from_value_type(actual),
             },
         }
     }

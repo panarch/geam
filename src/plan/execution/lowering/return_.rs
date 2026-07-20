@@ -34,7 +34,7 @@ use super::expression::{
     unresolved_parameter_list_list_expr, utf_codepoint_expr, utf_codepoint_function_expr,
     utf_codepoint_list_expr,
 };
-use super::specialization::Representability;
+use super::specialization::{Representability, SpecializedValueShape};
 use crate::plan::{execution, module};
 
 pub(super) fn never_return(
@@ -1325,7 +1325,7 @@ pub(super) fn tuple_never_function_return(
 pub(super) fn list_function_return(
     shape: &crate::plan::FunctionShape,
     body: &module::ListFunctionReturn,
-    item: &crate::plan::execution::lowering::specialization::SpecializedValueShape,
+    item: &SpecializedValueShape,
     context: &mut LoweringContext,
 ) -> Representability<execution::ListFunctionReturn> {
     let concrete = context.concrete_function_shape(shape);

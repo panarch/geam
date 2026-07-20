@@ -5,7 +5,7 @@ use crate::plan::execution::{
     BitArrayListTypeId, BoolListTypeId, CustomConstructorId, CustomFunctionType, CustomListTypeId,
     CustomTypeId, FloatListTypeId, FunctionFunctionType, FunctionListTypeId, FunctionType,
     GenericFunctionType, IntListTypeId, ListListTypeId, ListStorageTypeId, ListTypeId,
-    NilListTypeId, ParameterListListTypeId, StringListTypeId, TupleListTypeId,
+    NilListTypeId, ParameterListListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
     UtfCodepointListTypeId, ValueType,
 };
 use crate::plan::execution::{
@@ -292,14 +292,12 @@ impl TypeInterner {
     pub(super) fn parameter_list_type(
         &mut self,
         parameter: plan::TypeParameterId,
-    ) -> crate::plan::execution::ParameterListTypeId {
+    ) -> ParameterListTypeId {
         let list_type =
             self.intern_primitive(SpecializedValueShape::Parameter(parameter), |list_type| {
-                ListStorageTypeId::Parameter(crate::plan::execution::ParameterListTypeId::new(
-                    list_type, parameter,
-                ))
+                ListStorageTypeId::Parameter(ParameterListTypeId::new(list_type, parameter))
             });
-        crate::plan::execution::ParameterListTypeId::new(list_type, parameter)
+        ParameterListTypeId::new(list_type, parameter)
     }
 
     pub(super) fn int_list_type(&mut self) -> IntListTypeId {

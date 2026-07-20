@@ -13,7 +13,10 @@ mod tuple;
 mod utf_codepoint;
 
 use crate::plan::execution::ExecutionPlan;
-use crate::plan::execution::{Expr, ExprKind, PanicExpr, PanicExprKind};
+use crate::plan::execution::{
+    CallArg, DirectCall, Expr, ExprKind, FunctionCall, PanicExpr, PanicExprKind,
+};
+use crate::runtime::error::ExecutionResult;
 use crate::runtime::evaluated::EvaluatedValue;
 use crate::runtime::frame::Frame;
 use crate::runtime::state::RuntimeState;
@@ -57,20 +60,18 @@ fn eval_direct_call<Function, Value>(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
     frame: &mut Frame,
-    call: &crate::plan::execution::DirectCall<Function>,
+    call: &DirectCall<Function>,
     executable: impl FnOnce(
         &ExecutionPlan,
         &mut RuntimeState,
         &Function,
-        &[crate::plan::execution::CallArg],
+        &[CallArg],
         &mut Frame,
-    ) -> crate::runtime::error::ExecutionResult<Value>,
-) -> crate::runtime::error::ExecutionResult<Value> {
+    ) -> ExecutionResult<Value>,
+) -> ExecutionResult<Value> {
     match call {
-        crate::plan::execution::DirectCall::Executable { function, args } => {
-            executable(plan, state, function, args, frame)
-        }
-        crate::plan::execution::DirectCall::Diverging(expression) => {
+        DirectCall::Executable { function, args } => executable(plan, state, function, args, frame),
+        DirectCall::Diverging(expression) => {
             eval_never_expr(plan, state, frame, expression).map(|never| match never {})
         }
     }
@@ -80,20 +81,20 @@ fn eval_function_call<Function, Value>(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
     frame: &mut Frame,
-    call: &crate::plan::execution::FunctionCall<Function>,
+    call: &FunctionCall<Function>,
     executable: impl FnOnce(
         &ExecutionPlan,
         &mut RuntimeState,
         &Function,
-        &[crate::plan::execution::CallArg],
+        &[CallArg],
         &mut Frame,
-    ) -> crate::runtime::error::ExecutionResult<Value>,
-) -> crate::runtime::error::ExecutionResult<Value> {
+    ) -> ExecutionResult<Value>,
+) -> ExecutionResult<Value> {
     match call {
-        crate::plan::execution::FunctionCall::Executable { function, args } => {
+        FunctionCall::Executable { function, args } => {
             executable(plan, state, function, args, frame)
         }
-        crate::plan::execution::FunctionCall::Diverging(expression) => {
+        FunctionCall::Diverging(expression) => {
             eval_never_expr(plan, state, frame, expression).map(|never| match never {})
         }
     }
