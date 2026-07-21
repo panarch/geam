@@ -7,8 +7,9 @@ mod pattern;
 pub(in crate::runtime) use function::{run_int, run_int_list};
 
 use crate::plan::execution::{
-    BlockId, Edge, ExecutionPlan, FunctionGraph, GraphNeverReturn, MatchEdge, MatchEdgeArgument,
-    RuntimeFunctionId, SourceStopKind, Terminator,
+    BlockId, ConstantProgram, Edge, ExecutionPlan, FunctionGraph, FunctionGraphExit, Graph,
+    GraphExitId, GraphNeverReturn, MatchEdge, MatchEdgeArgument, RuntimeFunctionId, SourceStopKind,
+    Terminator,
 };
 use crate::runtime::environment::{BlockEnvironment, RetainedValues};
 use crate::runtime::error::{ExecutionResult, PanicKind};
@@ -31,6 +32,11 @@ pub(super) trait GraphValue {
     type Evaluated;
 
     fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated;
+}
+
+struct ExecutedGraph {
+    exit: GraphExitId,
+    environment: BlockEnvironment,
 }
 
 pub(super) fn run_main(plan: &ExecutionPlan) -> ExecutionResult<Value> {
@@ -91,6 +97,48 @@ where
     Return: GraphValue,
     TailCall: Clone,
 {
+    execute_graph(plan, state, graph.graph(), inputs).map(|executed| {
+        let ExecutedGraph { exit, environment } = executed;
+        match graph.exit(exit) {
+            FunctionGraphExit::Return(value) => {
+                let value = value.read(&environment);
+                drop(environment);
+                state.drain_releases();
+                GraphExit::Return(value)
+            }
+            FunctionGraphExit::TailCall { function, args } => {
+                let args = environment.retain(args);
+                let function = function.clone();
+                drop(environment);
+                state.drain_releases();
+                GraphExit::TailCall { function, args }
+            }
+        }
+    })
+}
+
+pub(super) fn evaluate_constant<Value>(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    program: &ConstantProgram<Value>,
+) -> ExecutionResult<Value::Evaluated>
+where
+    Value: GraphValue,
+{
+    execute_graph(plan, state, program.graph(), RetainedValues::empty()).map(|executed| {
+        let value = program.return_(executed.exit).read(&executed.environment);
+        drop(executed.environment);
+        state.drain_releases();
+        value
+    })
+}
+
+fn execute_graph(
+    plan: &ExecutionPlan,
+    state: &mut RuntimeState,
+    graph: &Graph,
+    inputs: RetainedValues,
+) -> ExecutionResult<ExecutedGraph> {
     let mut block_id = graph.entry();
     let mut environment = BlockEnvironment::from_retained(inputs);
 
@@ -180,18 +228,11 @@ where
                     }
                 }
             }
-            Terminator::Return(value) => {
-                let value = value.read(&environment);
-                drop(environment);
-                state.drain_releases();
-                return Ok(GraphExit::Return(value));
-            }
-            Terminator::TailCall { function, args } => {
-                let args = environment.retain(args);
-                let function = function.clone();
-                drop(environment);
-                state.drain_releases();
-                return Ok(GraphExit::TailCall { function, args });
+            Terminator::Exit(exit) => {
+                return Ok(ExecutedGraph {
+                    exit: *exit,
+                    environment,
+                });
             }
             Terminator::SourceStop {
                 kind,
@@ -598,6 +639,20 @@ mod tests {
     }
 
     #[test]
+    fn run_main_materializes_utf_codepoint_and_nil_returns() {
+        assert_eq!(
+            crate::run_main(&execution_plan(
+                "pub fn main() { let assert <<value:utf8_codepoint>> = <<65>> value }",
+            )),
+            Ok(Value::UtfCodepoint('A')),
+        );
+        assert_eq!(
+            crate::run_main(&execution_plan("pub fn main() { Nil }")),
+            Ok(Value::Nil),
+        );
+    }
+
+    #[test]
     fn match_terminator_propagates_custom_field_family_corruption() {
         let plan = execution_plan(
             r#"
@@ -616,6 +671,8 @@ pub fn main() {
 }
 "#,
         );
+        assert_eq!(crate::run_main(&plan), Ok(Value::Int(1.into())));
+
         let constructor = plan.custom_constructor_id(0, 0);
         let descriptor = plan.custom_constructor(constructor);
         let malformed = EvaluatedCustomValue::from_fields(

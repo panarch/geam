@@ -445,9 +445,10 @@ mod tests {
     use crate::plan::{
         AssertPattern, BitArrayExpr, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
         BitArrayPatternSizeExpr, BitArrayPatternValue, BitArraySegment, BoolExpr,
-        CustomConstructor, CustomConstructorField, CustomExpr, CustomLocalId, CustomPattern,
-        CustomType, CustomTypeName, Endianness, Expr, IntExpr, IntLocalId, ListExpr, Signedness,
-        Step, StringExpr, StringLocalId, TupleExpr, TupleLocalId, ValueShape, ValueType,
+        CustomBindingPattern, CustomConstructor, CustomConstructorField, CustomExpr, CustomLocalId,
+        CustomPattern, CustomType, CustomTypeName, Endianness, Expr, IntExpr, IntLocalId, ListExpr,
+        Signedness, Step, StringExpr, StringLocalId, TotalBindingPattern, TupleExpr, TupleLocalId,
+        ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
@@ -1873,6 +1874,94 @@ pub fn main() {
                 branch_bindings: Vec::new(),
                 total_branch_steps: Vec::new(),
                 is_total: false,
+            }),
+        );
+    }
+
+    #[test]
+    fn exact_custom_tuple_element_preserves_total_binding_steps() {
+        let module_name = ecow::EcoString::from("main");
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
+        let ast_type =
+            gleam_core::type_::result(gleam_core::type_::int(), gleam_core::type_::string());
+        let type_ = CustomType::new(
+            CustomTypeName::new(
+                "".into(),
+                gleam_core::type_::PRELUDE_MODULE_NAME.into(),
+                "Result".into(),
+            ),
+            vec![ValueType::Int, ValueType::String],
+        );
+        let constructor = CustomConstructor::new(
+            type_.clone(),
+            "Ok".into(),
+            0,
+            vec![CustomConstructorField::new(None, ValueType::Int)],
+        );
+        let value = CustomExpr::try_constructor(
+            constructor.clone(),
+            vec![Expr::int(IntExpr::value(1.into()))],
+        )
+        .expect("test custom construction should be valid");
+        let pattern = Pattern::Constructor {
+            location: dummy_span(),
+            name_location: dummy_span(),
+            name: "Ok".into(),
+            arguments: vec![gleam_core::ast::CallArg {
+                label: None,
+                location: dummy_span(),
+                value: Pattern::Discard {
+                    location: dummy_span(),
+                    name: "_".into(),
+                    type_: gleam_core::type_::int(),
+                },
+                implicit: None,
+            }],
+            module: None,
+            constructor: gleam_core::analyse::Inferred::Known(
+                gleam_core::type_::PatternConstructor {
+                    name: "Ok".into(),
+                    field_map: None,
+                    documentation: None,
+                    module: gleam_core::type_::PRELUDE_MODULE_NAME.into(),
+                    location: dummy_span(),
+                    constructor_index: 0,
+                },
+            ),
+            spread: None,
+            type_: ast_type,
+        };
+        let binding = CustomBindingPattern::exact(
+            value.shape().clone(),
+            constructor.clone(),
+            vec![TotalBindingPattern::discard(ValueType::Int)],
+        );
+
+        assert_eq!(
+            super::plan_tuple_case_pattern_with_context(
+                pattern,
+                Expr::custom(value.clone()),
+                ValueType::Custom(type_),
+                super::super::CaseSubjectVariants::Other,
+                &mut context,
+            ),
+            Ok(super::TupleCasePattern {
+                match_condition: Some(BoolExpr::custom_matches(
+                    value.clone(),
+                    AssertPattern::custom(CustomPattern::new(
+                        constructor,
+                        vec![AssertPattern::Discard],
+                        Some(vec![TotalBindingPattern::discard(ValueType::Int)]),
+                    )),
+                )),
+                branch_bindings: Vec::new(),
+                total_branch_steps: vec![
+                    Step::let_custom(CustomLocalId(0), "<case:tuple:custom:0>".into(), value,),
+                    Step::bind_custom_fields(CustomLocalId(0), binding),
+                ],
+                is_total: true,
             }),
         );
     }

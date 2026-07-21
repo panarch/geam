@@ -858,6 +858,26 @@ pub fn main() { 0 }
                         value: "1".into(),
                         int_value: 1.into(),
                     }),
+                    options: Vec::new(),
+                    type_: type_::int(),
+                }],
+                &context,
+            ),
+            Ok(BitArrayExpr::value(vec![BitArraySegment::Int {
+                value: IntExpr::value(1.into()),
+                bit_size: 8,
+                endianness: Endianness::Big,
+            }])),
+        );
+        assert_eq!(
+            plan_constant(
+                vec![GleamBitArraySegment {
+                    location,
+                    value: Box::new(Constant::Int {
+                        location,
+                        value: "1".into(),
+                        int_value: 1.into(),
+                    }),
                     options: vec![BitArrayOption::Size {
                         location,
                         value: Box::new(module_constant("size")),

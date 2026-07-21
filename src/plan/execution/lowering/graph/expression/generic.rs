@@ -1568,7 +1568,7 @@ mod tests {
             0,
         );
         let custom_shape = plan::CustomValueShape::new(
-            custom_name,
+            custom_name.clone(),
             vec![plan::ValueShape::Parameter(parameter)],
             plan::CustomConstructorRefinement::Exact(0),
         );
@@ -1675,7 +1675,7 @@ mod tests {
             vec![ValueType::Int],
         );
         let custom_shape = plan::CustomValueShape::new(
-            custom_name,
+            custom_name.clone(),
             vec![plan::ValueShape::Parameter(parameter)],
             plan::CustomConstructorRefinement::Exact(0),
         );
@@ -1685,6 +1685,16 @@ mod tests {
         );
         let diverging_custom =
             plan::CustomExpr::block(vec![diverging_step], uninhabited_custom.clone());
+        let inhabited_custom = plan::CustomExpr::try_constructor(
+            plan::CustomConstructor::new(
+                plan::CustomType::new(custom_name, vec![ValueType::Int]),
+                "Boxed".into(),
+                0,
+                vec![plan::CustomConstructorField::new(None, ValueType::Int)],
+            ),
+            vec![plan::Expr::int(plan::IntExpr::value(1.into()))],
+        )
+        .expect("one field should construct Boxed(Int)");
 
         let (mut graph, cursor) =
             DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
@@ -1741,6 +1751,17 @@ mod tests {
             )),
             FlowOutcome::Diverged,
         );
+
+        let cursor = graph.empty_block(Default::default());
+        assert_eq!(
+            flow_outcome(super::super::custom::custom_expr(
+                &inhabited_custom,
+                cursor,
+                &mut graph,
+                &mut context,
+            )),
+            FlowOutcome::Value,
+        );
     }
 
     #[test]
@@ -1777,6 +1798,15 @@ mod tests {
         let cursor = graph.empty_block(Default::default());
         assert_eq!(
             never_expr(&bool_false, cursor, &mut graph, &mut context),
+            Representability::Inhabited(()),
+        );
+
+        let bool_true =
+            plan::GenericExpr::bool_case(plan::BoolExpr::value(true), source_stop(), local.clone())
+                .expect("matching generic branches should form a Bool case");
+        let cursor = graph.empty_block(Default::default());
+        assert_eq!(
+            never_expr(&bool_true, cursor, &mut graph, &mut context),
             Representability::Inhabited(()),
         );
 
@@ -1819,6 +1849,18 @@ mod tests {
             Representability::Uninhabited,
         );
 
+        let int_fallback_erased = plan::GenericExpr::int_case(
+            plan::IntExpr::value(1.into()),
+            vec![(1.into(), source_stop())],
+            local.clone(),
+        )
+        .expect("matching generic branches should form an Int case");
+        let cursor = graph.empty_block(Default::default());
+        assert_eq!(
+            never_expr(&int_fallback_erased, cursor, &mut graph, &mut context),
+            Representability::Uninhabited,
+        );
+
         let string_subject_stop = plan::GenericExpr::string_case(
             plan::StringExpr::panic(panic()),
             vec![("selected".into(), source_stop())],
@@ -1843,6 +1885,18 @@ mod tests {
             Representability::Uninhabited,
         );
 
+        let string_fallback_erased = plan::GenericExpr::string_case(
+            plan::StringExpr::value("selected".into()),
+            vec![("selected".into(), source_stop())],
+            local.clone(),
+        )
+        .expect("matching generic branches should form a String case");
+        let cursor = graph.empty_block(Default::default());
+        assert_eq!(
+            never_expr(&string_fallback_erased, cursor, &mut graph, &mut context),
+            Representability::Uninhabited,
+        );
+
         let float_subject_stop = plan::GenericExpr::float_case(
             plan::FloatExpr::panic(panic()),
             vec![(1.5, source_stop())],
@@ -1857,13 +1911,25 @@ mod tests {
 
         let float_branch_erased = plan::GenericExpr::float_case(
             plan::FloatExpr::value(1.5),
-            vec![(1.5, local)],
+            vec![(1.5, local.clone())],
             source_stop(),
         )
         .expect("matching generic branches should form a Float case");
         let cursor = graph.empty_block(Default::default());
         assert_eq!(
             never_expr(&float_branch_erased, cursor, &mut graph, &mut context),
+            Representability::Uninhabited,
+        );
+
+        let float_fallback_erased = plan::GenericExpr::float_case(
+            plan::FloatExpr::value(1.5),
+            vec![(1.5, source_stop())],
+            local,
+        )
+        .expect("matching generic branches should form a Float case");
+        let cursor = graph.empty_block(Default::default());
+        assert_eq!(
+            never_expr(&float_fallback_erased, cursor, &mut graph, &mut context),
             Representability::Uninhabited,
         );
     }
@@ -1889,6 +1955,16 @@ mod tests {
                     plan::FunctionShape::new(
                         vec![ValueShape::Parameter(parameter)],
                         ValueShape::Parameter(parameter),
+                    ),
+                ),
+                vec![plan::CallArg::new(plan::Expr::generic(generic_panic()))],
+            ),
+            plan::GenericExpr::function_call(
+                plan::GenericFunctionExpr::panic(
+                    source_stop(),
+                    plan::GenericFunctionType::new(
+                        vec![ValueShape::Parameter(parameter)],
+                        parameter,
                     ),
                 ),
                 vec![plan::CallArg::new(plan::Expr::generic(generic_panic()))],
@@ -1935,6 +2011,50 @@ mod tests {
                 FlowOutcome::Diverged,
             );
         }
+
+        let local_get = plan::GenericExpr::local_get(
+            plan::GenericLocal::new(plan::GenericLocalId(0), parameter),
+            "value".into(),
+        );
+        let key = crate::plan::execution::lowering::local::LocalKey::new(
+            crate::plan::execution::lowering::local::LocalKind::Generic,
+            0,
+        );
+        let (mut local_graph, cursor) = DraftGraphBuilder::<DraftValueRef, ()>::new(
+            vec![(key, StoredValueShape::Int)],
+            Vec::new(),
+        );
+        assert_eq!(
+            flow_outcome(stored_expr(
+                &local_get,
+                &StoredValueShape::Int,
+                cursor,
+                &mut local_graph,
+                &mut context,
+            )),
+            FlowOutcome::Value,
+        );
+
+        let uninhabited_source = plan::GenericExpr::tuple_index(
+            parameter,
+            plan::TupleExpr::local_get(
+                plan::TupleLocalId(0),
+                "tuple".into(),
+                vec![ValueType::Parameter(TypeParameterId(1))],
+            ),
+            0,
+        );
+        let cursor = graph.empty_block(Default::default());
+        assert_eq!(
+            flow_outcome(stored_expr(
+                &uninhabited_source,
+                &StoredValueShape::Int,
+                cursor,
+                &mut graph,
+                &mut context,
+            )),
+            FlowOutcome::Uninhabited,
+        );
     }
 
     #[test]
@@ -1964,6 +2084,11 @@ mod tests {
             ),
             0,
         );
+        let diverging_tuple_projection = plan::GenericExpr::tuple_index(
+            parameter,
+            plan::TupleExpr::panic(source_stop(), vec![ValueType::Parameter(parameter)]),
+            0,
+        );
         let custom_projection = plan::GenericExpr::custom_field(
             parameter,
             plan::CustomFieldAccess::new(boxed_value, 0, None),
@@ -1977,6 +2102,17 @@ mod tests {
                 Representability::Uninhabited,
             );
         }
+
+        let cursor = graph.empty_block(Default::default());
+        assert_eq!(
+            never_expr(
+                &diverging_tuple_projection,
+                cursor,
+                &mut graph,
+                &mut context,
+            ),
+            Representability::Inhabited(()),
+        );
 
         let inhabited = plan::Expr::int(plan::IntExpr::value(1.into()));
         let uninhabited = plan::Expr::generic(plan::GenericExpr::local_get(

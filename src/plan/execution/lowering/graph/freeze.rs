@@ -44,40 +44,44 @@ where
         .filter(|(draft_id, _)| block_ids.contains_key(draft_id))
         .collect::<Vec<_>>();
     draft_blocks.sort_by_key(|(draft_id, _)| block_ids[draft_id].index());
-    let blocks = draft_blocks
-        .into_iter()
-        .map(|(draft_id, block)| {
-            let DraftBlock {
-                explicit_params,
-                instructions,
-                terminator,
-            } = block;
-            let layout = block_layout(
-                draft_id,
-                &explicit_params,
-                &instructions,
-                &liveness,
-                context,
-            );
-            let instructions = instructions
-                .iter()
-                .map(|draft| instruction::freeze(draft, &layout.values, context))
-                .collect();
-            let terminator = freeze_terminator(
-                terminator,
-                &returns,
-                &tail_calls,
-                &layout,
-                &liveness,
-                &block_ids,
-            );
-            execution::graph::Block::new(layout.params, instructions, terminator)
-        })
-        .collect();
+    let mut exits = Vec::new();
+    let mut blocks = Vec::with_capacity(draft_blocks.len());
+    for (draft_id, block) in draft_blocks {
+        let DraftBlock {
+            explicit_params,
+            instructions,
+            terminator,
+        } = block;
+        let layout = block_layout(
+            draft_id,
+            &explicit_params,
+            &instructions,
+            &liveness,
+            context,
+        );
+        let instructions = instructions
+            .iter()
+            .map(|draft| instruction::freeze(draft, &layout.values, context))
+            .collect();
+        let terminator = freeze_terminator(
+            terminator,
+            &returns,
+            &tail_calls,
+            &layout,
+            &liveness,
+            &block_ids,
+            &mut exits,
+        );
+        blocks.push(execution::graph::Block::new(
+            layout.params,
+            instructions,
+            terminator,
+        ));
+    }
 
     super::LoweredFunctionGraph {
         parameter_count,
-        body: execution::graph::FunctionGraph::from_parts(block_ids[&entry], blocks),
+        body: execution::graph::FunctionGraph::from_parts(block_ids[&entry], blocks, exits),
     }
 }
 
@@ -126,7 +130,8 @@ fn freeze_terminator<Return, TailCall>(
     layout: &BlockLayout,
     liveness: &GraphLiveness,
     block_ids: &HashMap<DraftBlockId, execution::graph::BlockId>,
-) -> execution::graph::Terminator<Return::Frozen, TailCall>
+    exits: &mut Vec<execution::graph::FunctionGraphExit<Return::Frozen, TailCall>>,
+) -> execution::graph::Terminator
 where
     Return: DraftGraphValue + FreezeGraphValue,
     TailCall: Clone,
@@ -195,12 +200,20 @@ where
             failure: freeze_edge(&failure, layout, liveness, block_ids),
         },
         DraftTerminator::Return { value: _, index } => {
-            E::Return(returns[index].freeze(&layout.values))
+            let id = execution::graph::GraphExitId::new(exits.len());
+            exits.push(execution::graph::FunctionGraphExit::Return(
+                returns[index].freeze(&layout.values),
+            ));
+            E::Exit(id)
         }
-        DraftTerminator::TailCall { function, args } => E::TailCall {
-            function: tail_calls[function].clone(),
-            args: layout.values.any_slice(&args),
-        },
+        DraftTerminator::TailCall { function, args } => {
+            let id = execution::graph::GraphExitId::new(exits.len());
+            exits.push(execution::graph::FunctionGraphExit::TailCall {
+                function: tail_calls[function].clone(),
+                args: layout.values.any_slice(&args),
+            });
+            E::Exit(id)
+        }
         DraftTerminator::SourceStop {
             kind,
             message,

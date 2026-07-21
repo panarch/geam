@@ -6,11 +6,11 @@ fn fail() -> value {
   panic as "uninhabited function argument failed"
 }
 
-fn make_tuple(_trigger) -> fn() -> #(value) {
+fn make_tuple(_trigger: #(value)) -> fn() -> #(value) {
   fn() { panic as "tuple function must not run" }
 }
 
-fn make_custom(_trigger) -> fn() -> Boxed(value) {
+fn make_custom(_trigger: Boxed(value)) -> fn() -> Boxed(value) {
   fn() { panic as "custom function must not run" }
 }
 
@@ -20,11 +20,13 @@ fn make_generic(_trigger) -> fn(Int) -> value {
 
 fn call_tuple() {
   let make = make_tuple
-  make(fail())
+  make(#(fail()))
 }
 
 fn call_custom() {
-  fn(_trigger) { fn() { panic as "custom function must not run" } }(fail())
+  fn(_prefix: Int, _trigger: Boxed(value)) {
+    fn() { panic as "custom function must not run" }
+  }(1, Boxed(fail()))
 }
 
 fn call_generic() {
@@ -45,13 +47,17 @@ fn custom_from_list(flag: Bool) -> fn() -> Boxed(value) {
 fn custom_from_function_call(flag: Bool) -> fn() -> Boxed(value) {
   let make = make_custom
   case flag {
-    True -> make(fail())
+    True -> make(Boxed(fail()))
     False -> fn() { panic as "fallback function must not run" }
   }
 }
 
+fn selected_path() {
+  0
+}
+
 pub fn main() {
-  case 0 {
+  case selected_path() {
     0 -> call_custom() == call_custom()
     1 -> call_tuple() == call_tuple()
     2 -> call_generic() == call_generic()

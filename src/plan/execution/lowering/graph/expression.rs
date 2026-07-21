@@ -265,41 +265,24 @@ where
 pub(super) fn capture_args(
     function: &module::FunctionInstantiation,
     args: &[module::CaptureArg],
-    mut cursor: DraftCursor,
-    graph: &mut DraftGraph,
+    cursor: &DraftCursor,
     context: &mut super::super::LoweringContext,
-) -> Lowered<Vec<super::instruction::DraftFunctionCapture>> {
+) -> Vec<super::instruction::DraftFunctionCapture> {
     let mut values = Vec::with_capacity(args.len());
     for (index, arg) in args.iter().enumerate() {
-        match expr(arg.value(), cursor, graph, context) {
-            Representability::Uninhabited => return Representability::Uninhabited,
-            Representability::Inhabited(DraftFlow::Diverged) => {
-                return Representability::Inhabited(DraftFlow::Diverged);
-            }
-            Representability::Inhabited(DraftFlow::Value {
-                cursor: next,
-                value,
-            }) => {
-                cursor = next;
-                let target = match context
-                    .target_capture_local(function, module::CapturePosition::new(index))
-                {
-                    Representability::Uninhabited => return Representability::Uninhabited,
-                    Representability::Inhabited(target) => target,
-                };
-                let target = super::super::local::stored_value_local_at(
-                    target.shape(),
-                    target.index(),
-                    context,
-                );
-                values.push(super::instruction::DraftFunctionCapture {
-                    target,
-                    source: value,
-                });
-            }
-        }
+        let source = cursor
+            .scope()
+            .get(super::super::local::param_local_key(arg.local()));
+        let target = context.target_capture_local(
+            function,
+            module::CapturePosition::new(index),
+            source.shape().clone(),
+        );
+        let target =
+            super::super::local::stored_value_local_at(target.shape(), target.index(), context);
+        values.push(super::instruction::DraftFunctionCapture { target, source });
     }
-    Representability::Inhabited(DraftFlow::value(cursor, values))
+    values
 }
 
 pub(super) fn panic_expr(
@@ -612,8 +595,10 @@ where
 #[cfg(test)]
 mod tests {
     use crate::Value;
+    use crate::plan::execution::graph::{SourceStopKind, Terminator};
     use crate::plan::execution::lowering::graph::{
-        DraftCursor, DraftFlow, DraftGraph, DraftGraphBuilder, DraftValueRef,
+        DraftCursor, DraftFlow, DraftGraph, DraftGraphBuilder, DraftNeverReturn, DraftScope,
+        DraftValueRef,
     };
     use crate::plan::execution::lowering::specialization::{Representability, StoredValueShape};
     use crate::plan::{
@@ -633,7 +618,7 @@ mod tests {
         Value,
     }
 
-    fn flow_outcome<T>(flow: Representability<DraftFlow<T>>) -> FlowOutcome {
+    fn flow_outcome<T>(flow: &Representability<DraftFlow<T>>) -> FlowOutcome {
         match flow {
             Representability::Uninhabited => FlowOutcome::Uninhabited,
             Representability::Inhabited(DraftFlow::Diverged) => FlowOutcome::Diverged,
@@ -691,7 +676,7 @@ mod tests {
         );
 
         assert_eq!(
-            flow_outcome(super::panic_expr(
+            flow_outcome(&super::panic_expr(
                 &message_stop,
                 cursor,
                 &mut graph,
@@ -701,7 +686,7 @@ mod tests {
         );
         let cursor = graph.empty_block(Default::default());
         assert_eq!(
-            flow_outcome(super::expr(
+            flow_outcome(&super::expr(
                 &Expr::int(IntExpr::value(1.into())),
                 cursor,
                 &mut graph,
@@ -718,7 +703,7 @@ mod tests {
             DraftValueRef::clone,
         );
         assert_eq!(
-            flow_outcome(Representability::Inhabited(all_diverged)),
+            flow_outcome(&Representability::Inhabited(all_diverged)),
             FlowOutcome::Diverged
         );
 
@@ -730,7 +715,7 @@ mod tests {
             };
             let cursor = graph.empty_block(Default::default());
             assert_eq!(
-                flow_outcome(super::int_case(
+                flow_outcome(&super::int_case(
                     &IntExpr::value(1.into()),
                     &clauses,
                     &(),
@@ -746,7 +731,7 @@ mod tests {
             let clauses = if clause { vec![(1.0, ())] } else { Vec::new() };
             let cursor = graph.empty_block(Default::default());
             assert_eq!(
-                flow_outcome(super::float_case(
+                flow_outcome(&super::float_case(
                     &FloatExpr::value(1.0),
                     &clauses,
                     &(),
@@ -766,7 +751,7 @@ mod tests {
             };
             let cursor = graph.empty_block(Default::default());
             assert_eq!(
-                flow_outcome(super::string_case(
+                flow_outcome(&super::string_case(
                     &StringExpr::value("one".into()),
                     &clauses,
                     &(),
@@ -777,6 +762,114 @@ mod tests {
                 )),
                 FlowOutcome::Uninhabited,
             );
+        }
+    }
+
+    #[test]
+    fn panic_expression_lowers_every_source_stop_kind() {
+        let expressions = [
+            (
+                PanicExpr::panic_at(None, PanicSite::unknown()),
+                SourceStopKind::Panic,
+            ),
+            (
+                PanicExpr::todo_at(None, PanicSite::unknown()),
+                SourceStopKind::Todo,
+            ),
+            (
+                PanicExpr::empty_function_at(PanicSite::unknown()),
+                SourceStopKind::EmptyFunction,
+            ),
+            (
+                PanicExpr::empty_block_at(PanicSite::unknown()),
+                SourceStopKind::EmptyBlock,
+            ),
+            (
+                PanicExpr::incomplete_use_at(PanicSite::unknown()),
+                SourceStopKind::IncompleteUse,
+            ),
+        ];
+
+        for (expression, expected) in expressions {
+            let mut context =
+                crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
+            let (mut graph, cursor) =
+                DraftGraphBuilder::<DraftNeverReturn, ()>::new(Vec::new(), Vec::new());
+            assert_eq!(
+                flow_outcome(&super::panic_expr(
+                    &expression,
+                    cursor,
+                    &mut graph,
+                    &mut context,
+                )),
+                FlowOutcome::Diverged,
+            );
+
+            let lowered = super::super::freeze::freeze(graph, &mut context);
+            assert_eq!(lowered.body.blocks().len(), 1);
+            assert_eq!(source_stop_kind(&lowered.body), (expected, None));
+        }
+
+        let mut context =
+            crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
+        let (mut graph, cursor) =
+            DraftGraphBuilder::<DraftNeverReturn, ()>::new(Vec::new(), Vec::new());
+        let expression = PanicExpr::todo_at(
+            Some(StringExpr::value("unfinished".into())),
+            PanicSite::unknown(),
+        );
+        assert_eq!(
+            flow_outcome(&super::panic_expr(
+                &expression,
+                cursor,
+                &mut graph,
+                &mut context,
+            )),
+            FlowOutcome::Diverged,
+        );
+
+        let lowered = super::super::freeze::freeze(graph, &mut context);
+        assert_eq!(
+            lowered
+                .body
+                .block(lowered.body.entry())
+                .instructions()
+                .len(),
+            1,
+        );
+        assert_eq!(
+            source_stop_kind(&lowered.body),
+            (
+                SourceStopKind::Todo,
+                Some(crate::plan::execution::StringLocalId(0)),
+            ),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture should contain a source stop")]
+    fn source_stop_kind_rejects_the_wrong_fixture_shape() {
+        let mut context =
+            crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
+        let (mut graph, cursor) =
+            DraftGraphBuilder::<DraftNeverReturn, ()>::new(Vec::new(), Vec::new());
+        graph.finish_tail_call(cursor, (), Vec::new());
+        let lowered = super::super::freeze::freeze(graph, &mut context);
+        source_stop_kind(&lowered.body);
+    }
+
+    fn source_stop_kind(
+        graph: &crate::plan::execution::graph::FunctionGraph<
+            crate::plan::execution::graph::NeverReturn,
+            (),
+        >,
+    ) -> (
+        SourceStopKind,
+        Option<crate::plan::execution::StringLocalId>,
+    ) {
+        match graph.block(graph.entry()).terminator() {
+            Terminator::SourceStop { kind, message, .. } => (*kind, *message),
+            _ => panic!("fixture should contain a source stop"),
         }
     }
 
@@ -966,8 +1059,54 @@ mod tests {
         let (mut graph, cursor) =
             DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
 
+        let diverging_value = generic_panic();
+        let prefix = [CallArg::new(Expr::int(IntExpr::value(1.into())))];
         assert_eq!(
-            flow_outcome(super::lower_function_call(
+            super::diverging_call_arguments(
+                super::DivergingCallArguments {
+                    prefix: &prefix,
+                    value: super::DivergingCallArgument::Generic(&diverging_value),
+                },
+                cursor,
+                &mut graph,
+                &mut context,
+            ),
+            Representability::Inhabited(()),
+        );
+
+        let cursor = graph.empty_block(Default::default());
+        let prefix = [CallArg::new(Expr::int(IntExpr::panic(panic())))];
+        assert_eq!(
+            super::diverging_call_arguments(
+                super::DivergingCallArguments {
+                    prefix: &prefix,
+                    value: super::DivergingCallArgument::Generic(&local),
+                },
+                cursor,
+                &mut graph,
+                &mut context,
+            ),
+            Representability::Inhabited(()),
+        );
+
+        let cursor = graph.empty_block(Default::default());
+        let prefix = [CallArg::new(Expr::generic(local.clone()))];
+        assert_eq!(
+            super::diverging_call_arguments(
+                super::DivergingCallArguments {
+                    prefix: &prefix,
+                    value: super::DivergingCallArgument::Generic(&diverging_value),
+                },
+                cursor,
+                &mut graph,
+                &mut context,
+            ),
+            Representability::Uninhabited,
+        );
+
+        let cursor = graph.empty_block(Default::default());
+        assert_eq!(
+            flow_outcome(&super::lower_function_call(
                 &[],
                 cursor,
                 &mut graph,
@@ -982,7 +1121,7 @@ mod tests {
         let cursor = graph.empty_block(Default::default());
         let args = vec![CallArg::new(Expr::generic(local.clone()))];
         assert_eq!(
-            flow_outcome(super::lower_function_call(
+            flow_outcome(&super::lower_function_call(
                 &args,
                 cursor,
                 &mut graph,
@@ -1000,7 +1139,7 @@ mod tests {
             CallArg::new(Expr::generic(generic_panic())),
         ];
         assert_eq!(
-            flow_outcome(super::lower_function_call(
+            flow_outcome(&super::lower_function_call(
                 &args,
                 cursor,
                 &mut graph,
@@ -1018,7 +1157,7 @@ mod tests {
             CallArg::new(Expr::generic(local.clone())),
         ];
         assert_eq!(
-            flow_outcome(super::lower_function_call(
+            flow_outcome(&super::lower_function_call(
                 &args,
                 cursor,
                 &mut graph,
@@ -1043,7 +1182,7 @@ mod tests {
             CallArg::new(Expr::generic(local.clone())),
         ];
         assert_eq!(
-            flow_outcome(super::lower_function_call(
+            flow_outcome(&super::lower_function_call(
                 &args,
                 cursor,
                 &mut graph,
@@ -1073,7 +1212,7 @@ mod tests {
             let cursor = graph.empty_block(Default::default());
             let args = vec![CallArg::new(Expr::tuple(tuple))];
             assert_eq!(
-                flow_outcome(super::lower_function_call(
+                flow_outcome(&super::lower_function_call(
                     &args,
                     cursor,
                     &mut graph,
@@ -1108,7 +1247,7 @@ mod tests {
             let cursor = graph.empty_block(Default::default());
             let args = vec![CallArg::new(Expr::custom(custom))];
             assert_eq!(
-                flow_outcome(super::lower_function_call(
+                flow_outcome(&super::lower_function_call(
                     &args,
                     cursor,
                     &mut graph,
@@ -1123,7 +1262,7 @@ mod tests {
     }
 
     #[test]
-    fn capture_arguments_preserve_entry_destinations_and_source_outcomes() {
+    fn capture_arguments_preserve_typed_source_and_entry_destination() {
         let parameter = TypeParameterId(0);
         let signature = FunctionTemplateSignature::new(
             FunctionTemplateId::new(1),
@@ -1133,97 +1272,30 @@ mod tests {
         let concrete = signature
             .try_instantiate(vec![ValueShape::Int])
             .expect("one concrete argument should instantiate the capture target");
-        let unresolved = signature
-            .try_instantiate(vec![ValueShape::Parameter(parameter)])
-            .expect("one parameter argument should instantiate the capture target");
         let mut context =
             crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
-        let (mut graph, cursor) =
-            DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
+        let (mut graph, _) = DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
+        let source_local = crate::plan::ParamLocal::int(crate::plan::IntLocalId(0));
+        let source = graph.value_ref(StoredValueShape::Int);
+        let mut scope = DraftScope::default();
+        scope.insert(
+            crate::plan::execution::lowering::local::param_local_key(&source_local),
+            source.clone(),
+        );
+        let cursor = graph.empty_block(scope);
 
-        let captures = vec![CaptureArg::new(Expr::int(IntExpr::value(1.into())))];
-        let flow = super::capture_args(&concrete, &captures, cursor, &mut graph, &mut context);
-        let captures = captured_values(flow);
+        let captures = super::capture_args(
+            &concrete,
+            &[CaptureArg::new(source_local)],
+            &cursor,
+            &mut context,
+        );
         assert_eq!(captures.len(), 1);
         assert_eq!(
             captures[0].target,
             crate::plan::execution::ParamLocal::Int(crate::plan::execution::IntLocalId(1)),
         );
-        assert_eq!(
-            captures[0].source.shape(),
-            &crate::plan::execution::lowering::specialization::StoredValueShape::Int,
-        );
-
-        let cursor = graph.empty_block(Default::default());
-        let captures = vec![CaptureArg::new(Expr::int(IntExpr::panic(
-            PanicExpr::panic_at(None, PanicSite::unknown()),
-        )))];
-        assert_eq!(
-            flow_outcome(super::capture_args(
-                &concrete,
-                &captures,
-                cursor,
-                &mut graph,
-                &mut context,
-            )),
-            FlowOutcome::Diverged,
-        );
-
-        let cursor = graph.empty_block(Default::default());
-        let generic = GenericExpr::local_get(
-            GenericLocal::new(GenericLocalId(0), parameter),
-            "value".into(),
-        );
-        let captures = vec![CaptureArg::new(Expr::generic(generic))];
-        assert_eq!(
-            flow_outcome(super::capture_args(
-                &unresolved,
-                &captures,
-                cursor,
-                &mut graph,
-                &mut context,
-            )),
-            FlowOutcome::Uninhabited,
-        );
-
-        let cursor = graph.empty_block(Default::default());
-        let captures = vec![CaptureArg::new(Expr::int(IntExpr::value(1.into())))];
-        assert_eq!(
-            flow_outcome(super::capture_args(
-                &unresolved,
-                &captures,
-                cursor,
-                &mut graph,
-                &mut context,
-            )),
-            FlowOutcome::Uninhabited,
-        );
-    }
-
-    fn captured_values(
-        flow: super::Lowered<Vec<super::super::instruction::DraftFunctionCapture>>,
-    ) -> Vec<super::super::instruction::DraftFunctionCapture> {
-        match flow {
-            Representability::Inhabited(DraftFlow::Value { value, .. }) => value,
-            Representability::Inhabited(DraftFlow::Diverged) => {
-                panic!("expected capture values, found a diverged flow")
-            }
-            Representability::Uninhabited => {
-                panic!("expected capture values, found an uninhabited flow")
-            }
-        }
-    }
-
-    #[test]
-    #[should_panic(expected = "expected capture values, found a diverged flow")]
-    fn capture_value_guard_rejects_diverged_flow() {
-        captured_values(Representability::Inhabited(DraftFlow::Diverged));
-    }
-
-    #[test]
-    #[should_panic(expected = "expected capture values, found an uninhabited flow")]
-    fn capture_value_guard_rejects_uninhabited_flow() {
-        captured_values(Representability::Uninhabited);
+        assert_eq!(captures[0].source, source);
     }
 
     struct ValueFamily {
@@ -1532,7 +1604,7 @@ pub fn main() {{
             DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
 
         assert_eq!(
-            flow_outcome(super::expr(
+            flow_outcome(&super::expr(
                 &Expr::int(IntExpr::value(1.into())),
                 cursor,
                 &mut graph,
@@ -1543,7 +1615,7 @@ pub fn main() {{
 
         let cursor = graph.empty_block(Default::default());
         assert_eq!(
-            flow_outcome(super::expr(
+            flow_outcome(&super::expr(
                 &Expr::generic(GenericExpr::local_get(
                     GenericLocal::new(GenericLocalId(0), TypeParameterId(0)),
                     "value".into(),
@@ -1558,7 +1630,7 @@ pub fn main() {{
         for expression in expressions {
             let cursor = graph.empty_block(Default::default());
             assert_eq!(
-                flow_outcome(super::expr(&expression, cursor, &mut graph, &mut context,)),
+                flow_outcome(&super::expr(&expression, cursor, &mut graph, &mut context,)),
                 FlowOutcome::Diverged,
             );
         }

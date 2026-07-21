@@ -520,23 +520,225 @@ fn invalid_pattern() -> PlanError {
 mod tests {
     use super::{CustomConstructorRefinement, CustomValueShape};
     use super::{
-        PlannedRuntimePattern, invalid_pattern, pattern_value_type, plan_bool_pattern,
-        plan_custom_pattern, plan_list_tail, plan_nil_pattern, plan_runtime_pattern,
-        total_bit_array_binding,
+        PlannedRuntimePattern, invalid_pattern, pattern_value_shape, pattern_value_type,
+        pattern_value_type_in_context, plan_bool_pattern, plan_custom_pattern, plan_list_tail,
+        plan_nil_pattern, plan_runtime_pattern, total_bit_array_binding,
     };
     use crate::plan::{
-        AssertBinding, AssertPattern, BitArrayPattern, CustomBindingPattern, CustomPattern,
-        CustomTypeName, GenericLocal, GenericLocalId, ParamLocal, TotalBindingPattern,
-        TypeParameterId, ValueShape, ValueType,
+        AssertBinding, AssertPattern, BitArrayBindingPattern, BitArrayLocalId, BitArrayPattern,
+        BitArrayPatternSegment, CustomBindingPattern, CustomPattern, CustomTypeName, GenericLocal,
+        GenericLocalId, IntListLocalId, ListAssertPattern, ListAssertTail, ListLocal, ParamLocal,
+        PatternBinding, TotalBindingPattern, TypeParameterId, ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
     use crate::planner::{InvalidCustomTypeReason, InvalidTypedAstReason, PlanError};
     use ecow::EcoString;
     use gleam_core::analyse::Inferred;
-    use gleam_core::ast::{AssignName, BitArraySize, CallArg, Pattern, TailPattern};
+    use gleam_core::ast::{
+        AssignName, BitArrayOption, BitArraySegment as AstBitArraySegment, BitArraySize, CallArg,
+        Pattern, TailPattern,
+    };
     use gleam_core::type_::{self, PatternConstructor, error::VariableOrigin};
     use num_bigint::BigInt;
     use std::collections::HashMap;
+
+    #[test]
+    fn total_list_and_false_patterns_preserve_exact_runtime_bindings() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let span = crate::planner::support::dummy_span();
+        let tail = ListAssertTail::bind(ListLocal::int(IntListLocalId(0)), EcoString::from("tail"));
+
+        let planned = plan_runtime_pattern(
+            Pattern::List {
+                location: span,
+                elements: Vec::new(),
+                tail: Some(Box::new(TailPattern {
+                    location: span,
+                    pattern: Pattern::Variable {
+                        location: span,
+                        name: "tail".into(),
+                        type_: type_::list(type_::int()),
+                        origin: VariableOrigin::generated(),
+                    },
+                })),
+                type_: type_::list(type_::int()),
+            },
+            &mut context,
+        )
+        .expect("a tail-only list pattern should plan");
+        assert_eq!(
+            planned.pattern,
+            AssertPattern::list(ListAssertPattern::new(
+                ValueType::Int,
+                Vec::new(),
+                Some(tail.clone()),
+            )),
+        );
+        assert!(planned.is_total);
+        assert_eq!(
+            planned.total_binding,
+            Some(TotalBindingPattern::list(ValueType::Int, tail)),
+        );
+        assert!(planned.custom_binding.is_none());
+
+        let planned = plan_bool_pattern(Inferred::Known(pattern_constructor("False")), Vec::new())
+            .expect("the False pattern should plan");
+        assert_eq!(planned.pattern, AssertPattern::Bool(false));
+        assert!(!planned.is_total);
+        assert!(planned.total_binding.is_none());
+        assert!(planned.custom_binding.is_none());
+    }
+
+    #[test]
+    fn total_bit_array_binding_preserves_bind_discard_and_alias_shapes() {
+        let bits = PatternBinding::new(BitArrayLocalId(0), "bits".into());
+        let alias = PatternBinding::new(BitArrayLocalId(1), "whole".into());
+
+        assert_eq!(
+            total_bit_array_binding(&BitArrayPattern::new(vec![BitArrayPatternSegment::Bits {
+                pattern: BitArrayBindingPattern::Bind(bits.clone()),
+                size: None,
+                unit: 1,
+            }])),
+            Some(TotalBindingPattern::bind(AssertBinding::new(
+                ParamLocal::bit_array(BitArrayLocalId(0)),
+                "bits".into(),
+                ValueShape::BitArray,
+            ))),
+        );
+        assert_eq!(
+            total_bit_array_binding(&BitArrayPattern::new(vec![BitArrayPatternSegment::Bits {
+                pattern: BitArrayBindingPattern::Discard,
+                size: None,
+                unit: 1,
+            }])),
+            Some(TotalBindingPattern::discard(ValueType::BitArray)),
+        );
+        assert_eq!(
+            total_bit_array_binding(&BitArrayPattern::new(vec![BitArrayPatternSegment::Bits {
+                pattern: BitArrayBindingPattern::Alias {
+                    pattern: Box::new(BitArrayBindingPattern::Bind(bits)),
+                    binding: alias,
+                },
+                size: None,
+                unit: 1,
+            }])),
+            Some(TotalBindingPattern::alias(
+                TotalBindingPattern::bind(AssertBinding::new(
+                    ParamLocal::bit_array(BitArrayLocalId(0)),
+                    "bits".into(),
+                    ValueShape::BitArray,
+                )),
+                AssertBinding::new(
+                    ParamLocal::bit_array(BitArrayLocalId(1)),
+                    "whole".into(),
+                    ValueShape::BitArray,
+                ),
+            )),
+        );
+    }
+
+    #[test]
+    fn total_bit_array_runtime_pattern_preserves_its_binding_proof() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let span = crate::planner::support::dummy_span();
+        let binding = PatternBinding::new(BitArrayLocalId(0), "rest".into());
+        let expected_pattern = BitArrayPattern::new(vec![BitArrayPatternSegment::Bits {
+            pattern: BitArrayBindingPattern::Bind(binding),
+            size: None,
+            unit: 1,
+        }]);
+
+        let planned = plan_runtime_pattern(
+            Pattern::BitArray {
+                location: span,
+                segments: vec![AstBitArraySegment {
+                    location: span,
+                    value: Box::new(Pattern::Variable {
+                        location: span,
+                        name: "rest".into(),
+                        type_: type_::bit_array(),
+                        origin: VariableOrigin::generated(),
+                    }),
+                    options: vec![BitArrayOption::Bits { location: span }],
+                    type_: type_::bit_array(),
+                }],
+            },
+            &mut context,
+        )
+        .expect("an unsized bits remainder should be a total runtime pattern");
+
+        assert_eq!(planned.pattern, AssertPattern::bit_array(expected_pattern),);
+        assert!(planned.is_total);
+        assert_eq!(
+            planned.total_binding,
+            Some(TotalBindingPattern::bind(AssertBinding::new(
+                ParamLocal::bit_array(BitArrayLocalId(0)),
+                "rest".into(),
+                ValueShape::BitArray,
+            ))),
+        );
+        assert!(planned.custom_binding.is_none());
+    }
+
+    #[test]
+    fn recursive_pattern_shape_preserves_nested_value_types() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let span = crate::planner::support::dummy_span();
+        let pattern = Pattern::Assign {
+            location: span,
+            name: "whole".into(),
+            pattern: Box::new(Pattern::Tuple {
+                location: span,
+                elements: vec![
+                    Pattern::List {
+                        location: span,
+                        elements: Vec::new(),
+                        tail: None,
+                        type_: type_::list(type_::int()),
+                    },
+                    Pattern::BitArray {
+                        location: span,
+                        segments: Vec::new(),
+                    },
+                    Pattern::StringPrefix {
+                        location: span,
+                        left_location: span,
+                        left_side_assignment: None,
+                        right_location: span,
+                        left_side_string: "prefix".into(),
+                        right_side_assignment: AssignName::Discard("_".into()),
+                    },
+                ],
+            }),
+        };
+        let expected = ValueShape::Tuple(
+            vec![
+                ValueShape::List(Box::new(ValueShape::Int)),
+                ValueShape::BitArray,
+                ValueShape::String,
+            ]
+            .into_boxed_slice(),
+        );
+
+        assert_eq!(
+            pattern_value_shape(&pattern, &mut context),
+            Ok(expected.clone())
+        );
+        assert_eq!(
+            pattern_value_type_in_context(&pattern, &context),
+            Ok(expected.value_type()),
+        );
+    }
 
     #[test]
     fn runtime_pattern_rejects_invalid_typed_ast_shapes_exactly() {
@@ -894,6 +1096,13 @@ mod tests {
                 .intrinsic_binding(),
             None,
         );
+        assert_eq!(
+            any.custom_binding
+                .clone()
+                .expect("total fields should preserve the custom binding")
+                .into_intrinsic_binding(),
+            None,
+        );
         let any_constructor = any
             .custom_binding
             .as_ref()
@@ -903,10 +1112,22 @@ mod tests {
         assert_eq!(
             any.pattern,
             AssertPattern::custom(CustomPattern::new(
-                any_constructor,
+                any_constructor.clone(),
                 vec![AssertPattern::Discard],
                 Some(vec![TotalBindingPattern::discard(ValueType::Int)]),
             )),
+        );
+        assert_eq!(
+            any.custom_binding
+                .clone()
+                .expect("total fields should preserve the custom binding")
+                .into_remainder_binding(vec![0]),
+            CustomBindingPattern::exhaustive_remainder(
+                result_shape.clone(),
+                vec![0],
+                any_constructor,
+                vec![TotalBindingPattern::discard(ValueType::Int)],
+            ),
         );
         let exact_result_shape = CustomValueShape::new(
             result_shape.type_name().clone(),
@@ -945,6 +1166,27 @@ mod tests {
                 constructor,
                 vec![TotalBindingPattern::discard(ValueType::Int)],
             ))),
+        );
+        assert_eq!(
+            planned
+                .custom_binding
+                .clone()
+                .expect("inferred Result pattern should preserve its custom binding")
+                .into_intrinsic_binding(),
+            Some(CustomBindingPattern::exact(
+                CustomValueShape::new(
+                    result_shape.type_name().clone(),
+                    result_shape.arguments().to_vec(),
+                    CustomConstructorRefinement::Exact(0),
+                ),
+                planned
+                    .custom_binding
+                    .as_ref()
+                    .expect("inferred Result pattern should preserve its custom binding")
+                    .constructor()
+                    .clone(),
+                vec![TotalBindingPattern::discard(ValueType::Int)],
+            )),
         );
         assert_eq!(
             planned

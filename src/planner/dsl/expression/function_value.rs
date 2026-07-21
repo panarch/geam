@@ -665,7 +665,7 @@ mod tests {
         TypeParameterId, UtfCodepointFunctionExpr, UtfCodepointFunctionLocalId,
         UtfCodepointFunctionReference, ValueShape, ValueType,
     };
-    use crate::planner::dsl::expression::{Function, float, int};
+    use crate::planner::dsl::expression::Function;
 
     #[test]
     fn function_ref_helpers_build_function_values() {
@@ -1112,7 +1112,7 @@ mod tests {
             float_function_closure(
                 0,
                 [ParamLocal::float(crate::plan::FloatLocalId(0))],
-                [crate::planner::dsl::expression::capture_float(float(1.0))],
+                [crate::planner::dsl::expression::capture_float(1)],
             )
             .0,
             FloatFunctionExpr::closure(
@@ -1121,7 +1121,7 @@ mod tests {
                     &[ParamLocal::float(crate::plan::FloatLocalId(0))],
                     ValueShape::Float,
                 ),
-                vec![crate::planner::dsl::expression::capture_float(float(1.0))],
+                vec![crate::planner::dsl::expression::capture_float(1)],
                 FunctionType::new(vec![ValueType::Float], ValueType::Float),
             ),
         );
@@ -1129,7 +1129,7 @@ mod tests {
             function_function_closure(
                 FunctionFunctionId::Int(IntFunctionFunctionId(0)),
                 Vec::<ParamLocal>::new(),
-                [crate::planner::dsl::expression::capture_int(int(1))],
+                [crate::planner::dsl::expression::capture_int(1)],
                 FunctionType::new(vec![ValueType::Int], ValueType::Int),
             )
             .0,
@@ -1141,7 +1141,7 @@ mod tests {
                         FunctionType::new(vec![ValueType::Int], ValueType::Int),
                     ))),
                 ),
-                vec![crate::planner::dsl::expression::capture_int(int(1))],
+                vec![crate::planner::dsl::expression::capture_int(1)],
                 crate::plan::FunctionFunctionType::new(
                     Vec::new(),
                     FunctionType::new(vec![ValueType::Int], ValueType::Int),
@@ -1152,7 +1152,7 @@ mod tests {
             tuple_function_closure(
                 0,
                 [ParamLocal::int(crate::plan::IntLocalId(0))],
-                [crate::planner::dsl::expression::capture_int(int(1))],
+                [crate::planner::dsl::expression::capture_int(1)],
                 [ValueType::Int, ValueType::String],
             )
             .0,
@@ -1162,7 +1162,7 @@ mod tests {
                     &[ParamLocal::int(crate::plan::IntLocalId(0))],
                     ValueShape::Tuple(vec![ValueShape::Int, ValueShape::String].into_boxed_slice(),),
                 ),
-                vec![crate::planner::dsl::expression::capture_int(int(1))],
+                vec![crate::planner::dsl::expression::capture_int(1)],
                 FunctionType::new(
                     vec![ValueType::Int],
                     ValueType::Tuple(vec![ValueType::Int, ValueType::String]),
@@ -1174,7 +1174,7 @@ mod tests {
             list_function_closure(
                 0,
                 [ParamLocal::int(crate::plan::IntLocalId(0))],
-                [crate::planner::dsl::expression::capture_int(int(1))],
+                [crate::planner::dsl::expression::capture_int(1)],
                 ValueType::String,
             )
             .0,
@@ -1184,7 +1184,7 @@ mod tests {
                     &[ParamLocal::int(crate::plan::IntLocalId(0))],
                     ValueShape::List(Box::new(ValueShape::String)),
                 ),
-                vec![crate::planner::dsl::expression::capture_int(int(1))],
+                vec![crate::planner::dsl::expression::capture_int(1)],
                 ValueType::String,
             ),
         );

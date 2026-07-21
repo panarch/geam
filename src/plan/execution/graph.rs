@@ -16,52 +16,99 @@ pub(crate) use pattern::{
     MatchPattern, MatchPatternBinding, MatchPatternList, MatchPatternListTail, Signedness,
 };
 pub(crate) use terminator::{
-    BlockId, Edge, MatchEdge, MatchEdgeArgument, NeverCallTarget, SourceStopKind, Terminator,
+    BlockId, Edge, GraphExitId, MatchEdge, MatchEdgeArgument, NeverCallTarget, SourceStopKind,
+    Terminator,
 };
 pub(crate) use value::{FunctionLocal, NeverReturn, StoredListLocal};
 
 use super::ParamSlot;
 
 pub(crate) struct FunctionGraph<Return, TailCall> {
-    entry: BlockId,
-    blocks: Box<[Block<Return, TailCall>]>,
+    graph: Graph,
+    exits: Box<[FunctionGraphExit<Return, TailCall>]>,
 }
 
-pub(crate) struct Block<Return, TailCall> {
+pub(crate) struct Graph {
+    entry: BlockId,
+    blocks: Box<[Block]>,
+}
+
+pub(crate) struct Block {
     params: Box<[ParamSlot]>,
     instructions: Box<[Instruction]>,
-    terminator: Terminator<Return, TailCall>,
+    terminator: Terminator,
+}
+
+pub(crate) enum FunctionGraphExit<Return, TailCall> {
+    Return(Return),
+    TailCall {
+        function: TailCall,
+        args: Box<[super::ParamLocal]>,
+    },
 }
 
 impl<Return, TailCall> FunctionGraph<Return, TailCall> {
     pub(in crate::plan::execution) fn from_parts(
         entry: BlockId,
-        blocks: Vec<Block<Return, TailCall>>,
+        blocks: Vec<Block>,
+        exits: Vec<FunctionGraphExit<Return, TailCall>>,
     ) -> Self {
         Self {
-            entry,
-            blocks: blocks.into_boxed_slice(),
+            graph: Graph {
+                entry,
+                blocks: blocks.into_boxed_slice(),
+            },
+            exits: exits.into_boxed_slice(),
         }
     }
 
     pub(crate) fn entry(&self) -> BlockId {
+        self.graph.entry()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn blocks(&self) -> &[Block] {
+        self.graph.blocks()
+    }
+
+    pub(crate) fn block(&self, id: BlockId) -> &Block {
+        self.graph.block(id)
+    }
+
+    pub(crate) fn graph(&self) -> &Graph {
+        &self.graph
+    }
+
+    pub(crate) fn exit(&self, id: GraphExitId) -> &FunctionGraphExit<Return, TailCall> {
+        &self.exits[id.index()]
+    }
+
+    pub(in crate::plan::execution) fn into_parts(
+        self,
+    ) -> (Graph, Box<[FunctionGraphExit<Return, TailCall>]>) {
+        (self.graph, self.exits)
+    }
+}
+
+impl Graph {
+    pub(crate) fn entry(&self) -> BlockId {
         self.entry
     }
 
-    pub(crate) fn blocks(&self) -> &[Block<Return, TailCall>] {
+    pub(crate) fn blocks(&self) -> &[Block] {
         &self.blocks
     }
 
-    pub(crate) fn block(&self, id: BlockId) -> &Block<Return, TailCall> {
+    pub(crate) fn block(&self, id: BlockId) -> &Block {
         &self.blocks[id.index()]
     }
 }
 
-impl<Return, TailCall> Block<Return, TailCall> {
+impl Block {
     pub(in crate::plan::execution) fn new(
         params: Vec<ParamSlot>,
         instructions: Vec<Instruction>,
-        terminator: Terminator<Return, TailCall>,
+        terminator: Terminator,
     ) -> Self {
         Self {
             params: params.into_boxed_slice(),
@@ -78,7 +125,7 @@ impl<Return, TailCall> Block<Return, TailCall> {
         &self.instructions
     }
 
-    pub(crate) fn terminator(&self) -> &Terminator<Return, TailCall> {
+    pub(crate) fn terminator(&self) -> &Terminator {
         &self.terminator
     }
 }
@@ -86,8 +133,8 @@ impl<Return, TailCall> Block<Return, TailCall> {
 #[cfg(test)]
 mod tests {
     use super::{
-        BlockId, Edge, FunctionGraph, Instruction, InstructionKind, IntInstruction, MatchEdge,
-        MatchEdgeArgument, MatchPattern, MatchPatternList, Terminator,
+        BlockId, Edge, FunctionGraph, FunctionGraphExit, GraphExitId, Instruction, InstructionKind,
+        IntInstruction, MatchEdge, MatchEdgeArgument, MatchPattern, MatchPatternList, Terminator,
     };
     use crate::plan::execution::{
         BoolLocalId, ExecutionPlan, IntFunctionId, IntLocalId, ListLocal, ParamLocal,
@@ -162,7 +209,7 @@ pub fn main() { choose(True, 10) }
             int_binary_operands(multiply, IntBinaryOperation::Multiply),
             (IntLocalId(0), IntLocalId(1)),
         );
-        assert_eq!(returned_int(merge.terminator()), IntLocalId(2));
+        assert_eq!(returned_int(graph, merge.terminator()), IntLocalId(2));
 
         assert_branch_add_and_jump(&plan, graph, BlockId::new(3), 2, BlockId::new(2));
     }
@@ -250,19 +297,22 @@ pub fn main() {
             success_block.params()[0].local(),
             &ParamLocal::Int(IntLocalId(0)),
         );
-        assert_eq!(returned_int(success_block.terminator()), IntLocalId(0));
+        assert_eq!(
+            returned_int(graph, success_block.terminator()),
+            IntLocalId(0)
+        );
     }
 
     #[test]
     #[should_panic(expected = "fixture should contain a Bool branch")]
     fn bool_branch_rejects_the_wrong_fixture_shape() {
-        bool_branch(&Terminator::Return(IntLocalId(0)));
+        bool_branch(&Terminator::Exit(GraphExitId::new(0)));
     }
 
     #[test]
     #[should_panic(expected = "fixture should contain a match terminator")]
     fn match_terminator_rejects_the_wrong_fixture_shape() {
-        match_terminator(&Terminator::Return(IntLocalId(0)));
+        match_terminator(&Terminator::Exit(GraphExitId::new(0)));
     }
 
     #[test]
@@ -311,23 +361,41 @@ pub fn main() {
     #[test]
     #[should_panic(expected = "fixture should return an Int local")]
     fn returned_int_rejects_the_wrong_fixture_shape() {
-        returned_int(&Terminator::SourceStop {
-            kind: super::SourceStopKind::Panic,
-            message: None,
-            site: crate::plan::PanicSite::unknown(),
-        });
+        let plan = execution_plan("pub fn main() { 1 }");
+        let graph = plan.int_function(IntFunctionId(0)).graph();
+        returned_int(
+            graph,
+            &Terminator::SourceStop {
+                kind: super::SourceStopKind::Panic,
+                message: None,
+                site: crate::plan::PanicSite::unknown(),
+            },
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture should return an Int local")]
+    fn returned_int_rejects_a_tail_call() {
+        let plan = execution_plan(
+            r#"
+fn loop(value: Int) -> Int { loop(value) }
+pub fn main() { loop(1) }
+"#,
+        );
+        let graph = plan.int_function(IntFunctionId(0)).graph();
+        returned_int(graph, graph.block(graph.entry()).terminator());
     }
 
     #[test]
     #[should_panic(expected = "fixture should contain a jump terminator")]
     fn jump_rejects_the_wrong_fixture_shape() {
-        jump(&Terminator::Return(IntLocalId(0)));
+        jump(&Terminator::Exit(GraphExitId::new(0)));
     }
 
     #[test]
     #[should_panic(expected = "fixture should contain a let-assert panic")]
     fn let_assert_panic_rejects_the_wrong_fixture_shape() {
-        let_assert_panic(&Terminator::Return(IntLocalId(0)));
+        let_assert_panic(&Terminator::Exit(GraphExitId::new(0)));
     }
 
     fn assert_branch_add_and_jump(
@@ -374,9 +442,7 @@ pub fn main() {
         assert_eq!(int_value(instruction), &value.into());
     }
 
-    fn bool_branch(
-        terminator: &Terminator<IntLocalId, IntFunctionId>,
-    ) -> (BoolLocalId, &Edge, &Edge) {
+    fn bool_branch(terminator: &Terminator) -> (BoolLocalId, &Edge, &Edge) {
         match terminator {
             Terminator::BoolBranch {
                 subject,
@@ -387,9 +453,7 @@ pub fn main() {
         }
     }
 
-    fn match_terminator(
-        terminator: &Terminator<IntLocalId, IntFunctionId>,
-    ) -> (&MatchPattern, &MatchEdge, &Edge) {
+    fn match_terminator(terminator: &Terminator) -> (&MatchPattern, &MatchEdge, &Edge) {
         match terminator {
             Terminator::Match {
                 pattern,
@@ -455,14 +519,22 @@ pub fn main() {
         }
     }
 
-    fn returned_int(terminator: &Terminator<IntLocalId, IntFunctionId>) -> IntLocalId {
+    fn returned_int(
+        graph: &FunctionGraph<IntLocalId, IntFunctionId>,
+        terminator: &Terminator,
+    ) -> IntLocalId {
         match terminator {
-            Terminator::Return(value) => *value,
+            Terminator::Exit(exit) => match graph.exit(*exit) {
+                FunctionGraphExit::Return(value) => *value,
+                FunctionGraphExit::TailCall { .. } => {
+                    panic!("fixture should return an Int local")
+                }
+            },
             _ => panic!("fixture should return an Int local"),
         }
     }
 
-    fn jump(terminator: &Terminator<IntLocalId, IntFunctionId>) -> &Edge {
+    fn jump(terminator: &Terminator) -> &Edge {
         match terminator {
             Terminator::Jump(edge) => edge,
             _ => panic!("fixture should contain a jump terminator"),
@@ -470,7 +542,7 @@ pub fn main() {
     }
 
     fn let_assert_panic(
-        terminator: &Terminator<IntLocalId, IntFunctionId>,
+        terminator: &Terminator,
     ) -> (&ParamLocal, &Option<crate::plan::execution::StringLocalId>) {
         match terminator {
             Terminator::LetAssertPanic {

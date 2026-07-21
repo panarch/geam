@@ -1,4 +1,5 @@
 use super::{Expr, ExprKind, GenericExpr, TupleExpr};
+use crate::plan::ParamLocal;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CallArg {
@@ -7,7 +8,7 @@ pub struct CallArg {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct CaptureArg {
-    value: Expr,
+    local: ParamLocal,
 }
 
 #[cfg_attr(test, derive(Debug, PartialEq))]
@@ -62,12 +63,12 @@ impl CallArg {
 }
 
 impl CaptureArg {
-    pub(crate) fn new(value: Expr) -> Self {
-        Self { value }
+    pub(crate) fn new(local: ParamLocal) -> Self {
+        Self { local }
     }
 
-    pub(crate) fn value(&self) -> &Expr {
-        &self.value
+    pub(crate) fn local(&self) -> &ParamLocal {
+        &self.local
     }
 }
 
@@ -82,11 +83,12 @@ mod tests {
     use num_bigint::BigInt;
 
     #[test]
-    fn call_and_capture_arguments_only_own_source_expressions() {
+    fn call_arguments_own_expressions_and_capture_arguments_own_typed_locals() {
         let value = Expr::int(IntExpr::value(BigInt::from(1)));
+        let local = crate::plan::ParamLocal::int(crate::plan::IntLocalId(2));
 
         assert_eq!(CallArg::new(value.clone()).value(), &value);
-        assert_eq!(CaptureArg::new(value.clone()).value(), &value);
+        assert_eq!(CaptureArg::new(local.clone()).local(), &local);
         assert_eq!(CallArg::new(value).parameter_shape(), ValueShape::Int);
     }
 

@@ -1,23 +1,19 @@
 use crate::plan::{
-    BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionLocalId, BitArrayListLocalId,
-    BitArrayLocalId, BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, BoolListLocalId, BoolLocalId,
-    CaptureArg, CustomConstructor, CustomConstructorField, CustomExpr, CustomFieldAccess,
-    CustomFunctionExpr, CustomFunctionLocal, CustomFunctionLocalId, CustomFunctionType,
-    CustomListLocalId, CustomLocalId, CustomTypeDefinition, CustomTypeTemplate, FloatExpr,
-    FloatFunctionExpr, FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionFunctionExpr,
-    FunctionFunctionLocal, FunctionFunctionLocalId, FunctionFunctionType, FunctionListLocalId,
-    FunctionReference, FunctionTemplate, FunctionTemplateSignature, FunctionType, IntExpr,
-    IntFunctionExpr, IntFunctionLocalId, IntListLocalId, IntLocalId, ListExpr, ListFunctionExpr,
-    ListFunctionLocal, ListListLocalId, ListLocal, ListLocalExpr, LocalId, NilExpr,
-    NilFunctionExpr, NilFunctionLocalId, NilListLocalId, NilLocalId, PanicSite, ParamBinding,
-    ParamLocal, ParamSlot, StringExpr, StringFunctionExpr, StringFunctionLocalId,
-    StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId,
-    TupleListLocalId, TupleLocalId, UtfCodepointExpr, UtfCodepointFunctionExpr,
-    UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId, ValueType,
+    BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
+    BoolListLocalId, BoolLocalId, CaptureArg, CustomConstructor, CustomConstructorField,
+    CustomExpr, CustomFieldAccess, CustomFunctionLocal, CustomFunctionLocalId, CustomFunctionType,
+    CustomListLocalId, CustomLocalId, CustomTypeDefinition, CustomTypeTemplate,
+    FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionFunctionLocal,
+    FunctionFunctionLocalId, FunctionFunctionType, FunctionListLocalId, FunctionReference,
+    FunctionTemplate, FunctionTemplateSignature, FunctionType, IntFunctionLocalId, IntListLocalId,
+    IntLocalId, ListExpr, ListFunctionLocal, ListListLocalId, ListLocal, ListLocalExpr, LocalId,
+    NilFunctionLocalId, NilListLocalId, NilLocalId, PanicSite, ParamBinding, ParamLocal, ParamSlot,
+    StringFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionLocalId,
+    TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
+    UtfCodepointLocalId, ValueType,
 };
 use crate::plan::{
-    CustomConstructorRefinement, CustomType, CustomValueShape, Expr, FunctionExpr, FunctionShape,
-    ValueShape,
+    CustomConstructorRefinement, CustomType, CustomValueShape, FunctionShape, ValueShape,
 };
 use crate::planner::error::{
     InvalidCustomTypeReason, InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError,
@@ -1546,7 +1542,7 @@ impl<'a> PlanContext<'a> {
             name,
             LocalBinding::List {
                 local: local.clone(),
-                item_shape,
+                item_shape: item_shape.clone(),
             },
         );
         local
@@ -1563,7 +1559,7 @@ impl<'a> PlanContext<'a> {
             name,
             LocalBinding::List {
                 local: local.clone(),
-                item_shape,
+                item_shape: item_shape.clone(),
             },
         );
         (local, value)
@@ -1582,16 +1578,19 @@ impl<'a> PlanContext<'a> {
         source: ListLocal,
         item_shape: ValueShape,
     ) -> PlannedCapture {
-        let value = ListExpr::local_get(source, name.clone()).with_item_shape(item_shape.clone());
         let local = self.next_list_local(item_shape.value_type());
         self.bindings.insert(
             name,
             LocalBinding::List {
                 local: local.clone(),
-                item_shape,
+                item_shape: item_shape.clone(),
             },
         );
-        Self::planned_capture(ParamLocal::list(local), Expr::list(value))
+        Self::planned_capture(
+            ParamLocal::list(local),
+            ParamLocal::list(source),
+            ValueShape::List(Box::new(item_shape)),
+        )
     }
 
     fn next_list_local(&mut self, element_type: ValueType) -> ListLocal {
@@ -2355,175 +2354,154 @@ impl<'a> PlanContext<'a> {
     }
 
     fn define_capture(&mut self, capture: CaptureBinding) -> PlannedCapture {
+        let name = capture.name;
         match capture.binding {
             LocalBinding::Primitive(LocalId::Generic(local)) => {
-                let target = self.define_generic_local(capture.name.clone(), local.parameter());
+                let target = self.define_generic_local(name, local.parameter());
                 Self::planned_capture(
                     ParamLocal::generic(target),
-                    Expr::generic(crate::plan::GenericExpr::local_get(local, capture.name)),
+                    ParamLocal::generic(local),
+                    ValueShape::Parameter(local.parameter()),
                 )
             }
             LocalBinding::Primitive(LocalId::Int(local)) => {
-                let target = self.define_int_local(capture.name.clone());
+                let target = self.define_int_local(name);
                 Self::planned_capture(
                     ParamLocal::int(target),
-                    Expr::int(IntExpr::local_get(local, capture.name)),
+                    ParamLocal::int(local),
+                    ValueShape::Int,
                 )
             }
             LocalBinding::Primitive(LocalId::Float(local)) => {
-                let target = self.define_float_local(capture.name.clone());
+                let target = self.define_float_local(name);
                 Self::planned_capture(
                     ParamLocal::float(target),
-                    Expr::float(FloatExpr::local_get(local, capture.name)),
+                    ParamLocal::float(local),
+                    ValueShape::Float,
                 )
             }
             LocalBinding::Primitive(LocalId::String(local)) => {
-                let target = self.define_string_local(capture.name.clone());
+                let target = self.define_string_local(name);
                 Self::planned_capture(
                     ParamLocal::string(target),
-                    Expr::string(StringExpr::local_get(local, capture.name)),
+                    ParamLocal::string(local),
+                    ValueShape::String,
                 )
             }
             LocalBinding::Primitive(LocalId::BitArray(local)) => {
-                let target = self.define_bit_array_local(capture.name.clone());
+                let target = self.define_bit_array_local(name);
                 Self::planned_capture(
                     ParamLocal::bit_array(target),
-                    Expr::bit_array(BitArrayExpr::local_get(local, capture.name)),
+                    ParamLocal::bit_array(local),
+                    ValueShape::BitArray,
                 )
             }
             LocalBinding::Primitive(LocalId::UtfCodepoint(local)) => {
-                let target = self.define_utf_codepoint_local(capture.name.clone());
+                let target = self.define_utf_codepoint_local(name);
                 Self::planned_capture(
                     ParamLocal::utf_codepoint(target),
-                    Expr::utf_codepoint(UtfCodepointExpr::local_get(local, capture.name)),
+                    ParamLocal::utf_codepoint(local),
+                    ValueShape::UtfCodepoint,
                 )
             }
             LocalBinding::Custom(local) => {
-                let target =
-                    self.define_custom_local_shape(capture.name.clone(), local.shape().clone());
+                let shape = local.shape().clone();
+                let target = self.define_custom_local_shape(name, shape.clone());
                 Self::planned_capture(
-                    ParamLocal::Custom(crate::plan::CustomLocal::from_shape(
-                        target,
-                        local.shape().clone(),
-                    )),
-                    Expr::custom(CustomExpr::local_get(local, capture.name)),
+                    ParamLocal::custom_shape(target, shape.clone()),
+                    ParamLocal::Custom(local),
+                    ValueShape::Custom(shape),
                 )
             }
             LocalBinding::Primitive(LocalId::Bool(local)) => {
-                let target = self.define_bool_local(capture.name.clone());
+                let target = self.define_bool_local(name);
                 Self::planned_capture(
                     ParamLocal::bool(target),
-                    Expr::bool(BoolExpr::local_get(local, capture.name)),
+                    ParamLocal::bool(local),
+                    ValueShape::Bool,
                 )
             }
             LocalBinding::Primitive(LocalId::Nil(local)) => {
-                let target = self.define_nil_local(capture.name.clone());
+                let target = self.define_nil_local(name);
                 Self::planned_capture(
                     ParamLocal::nil(target),
-                    Expr::nil(NilExpr::local_get(local, capture.name)),
+                    ParamLocal::nil(local),
+                    ValueShape::Nil,
                 )
             }
             LocalBinding::Tuple { local, shape } => {
-                let type_ = shape.iter().map(ValueShape::value_type).collect();
-                let target = self.define_tuple_local_shape(capture.name.clone(), shape.clone());
+                let type_: Vec<ValueType> = shape.iter().map(ValueShape::value_type).collect();
+                let target = self.define_tuple_local_shape(name, shape.clone());
                 Self::planned_capture(
-                    ParamLocal::tuple(target, type_),
-                    Expr::tuple(
-                        TupleExpr::local_get(
-                            local,
-                            capture.name,
-                            shape.iter().map(ValueShape::value_type).collect(),
-                        )
-                        .with_shape(shape),
-                    ),
+                    ParamLocal::tuple(target, type_.clone()),
+                    ParamLocal::tuple(local, type_),
+                    ValueShape::Tuple(shape),
                 )
             }
             LocalBinding::List { local, item_shape } => {
-                self.define_list_capture_value(capture.name, local, item_shape)
+                self.define_list_capture_value(name, local, item_shape)
             }
             LocalBinding::Function {
                 binding: FunctionLocalBinding::Generic(local),
                 shape,
             } => {
                 let target = self.define_generic_function_local_shape(
-                    capture.name.clone(),
+                    name,
                     local.type_().clone(),
                     shape.clone(),
                 );
                 Self::planned_capture(
                     ParamLocal::generic_function(target),
-                    Expr::function(FunctionExpr::generic_with_shape(
-                        crate::plan::GenericFunctionExpr::local_get(local, capture.name),
-                        shape,
-                    )),
+                    ParamLocal::generic_function(local),
+                    ValueShape::Function(Box::new(shape)),
                 )
             }
             LocalBinding::Function {
                 binding: FunctionLocalBinding::Int { local, type_ },
                 shape,
             } => {
-                let target = self.define_int_function_local_shape(
-                    capture.name.clone(),
-                    type_.clone(),
-                    shape.clone(),
-                );
+                let target =
+                    self.define_int_function_local_shape(name, type_.clone(), shape.clone());
                 Self::planned_capture(
                     ParamLocal::int_function(target, type_.clone()),
-                    Expr::function(FunctionExpr::int_with_shape(
-                        IntFunctionExpr::local_get(local, capture.name, type_),
-                        shape,
-                    )),
+                    ParamLocal::int_function(local, type_),
+                    ValueShape::Function(Box::new(shape)),
                 )
             }
             LocalBinding::Function {
                 binding: FunctionLocalBinding::Float { local, type_ },
                 shape,
             } => {
-                let target = self.define_float_function_local_shape(
-                    capture.name.clone(),
-                    type_.clone(),
-                    shape.clone(),
-                );
+                let target =
+                    self.define_float_function_local_shape(name, type_.clone(), shape.clone());
                 Self::planned_capture(
                     ParamLocal::float_function(target, type_.clone()),
-                    Expr::function(FunctionExpr::float_with_shape(
-                        FloatFunctionExpr::local_get(local, capture.name, type_),
-                        shape,
-                    )),
+                    ParamLocal::float_function(local, type_),
+                    ValueShape::Function(Box::new(shape)),
                 )
             }
             LocalBinding::Function {
                 binding: FunctionLocalBinding::String { local, type_ },
                 shape,
             } => {
-                let target = self.define_string_function_local_shape(
-                    capture.name.clone(),
-                    type_.clone(),
-                    shape.clone(),
-                );
+                let target =
+                    self.define_string_function_local_shape(name, type_.clone(), shape.clone());
                 Self::planned_capture(
                     ParamLocal::string_function(target, type_.clone()),
-                    Expr::function(FunctionExpr::string_with_shape(
-                        StringFunctionExpr::local_get(local, capture.name, type_),
-                        shape,
-                    )),
+                    ParamLocal::string_function(local, type_),
+                    ValueShape::Function(Box::new(shape)),
                 )
             }
             LocalBinding::Function {
                 binding: FunctionLocalBinding::BitArray { local, type_ },
                 shape,
             } => {
-                let target = self.define_bit_array_function_local_shape(
-                    capture.name.clone(),
-                    type_.clone(),
-                    shape.clone(),
-                );
+                let target =
+                    self.define_bit_array_function_local_shape(name, type_.clone(), shape.clone());
                 Self::planned_capture(
                     ParamLocal::bit_array_function(target, type_.clone()),
-                    Expr::function(FunctionExpr::bit_array_with_shape(
-                        BitArrayFunctionExpr::local_get(local, capture.name, type_),
-                        shape,
-                    )),
+                    ParamLocal::bit_array_function(local, type_),
+                    ValueShape::Function(Box::new(shape)),
                 )
             }
             LocalBinding::Function {
@@ -2531,16 +2509,14 @@ impl<'a> PlanContext<'a> {
                 shape,
             } => {
                 let target = self.define_utf_codepoint_function_local_shape(
-                    capture.name.clone(),
+                    name,
                     type_.clone(),
                     shape.clone(),
                 );
                 Self::planned_capture(
                     ParamLocal::utf_codepoint_function(target, type_.clone()),
-                    Expr::function(FunctionExpr::utf_codepoint_with_shape(
-                        UtfCodepointFunctionExpr::local_get(local, capture.name, type_),
-                        shape,
-                    )),
+                    ParamLocal::utf_codepoint_function(local, type_),
+                    ValueShape::Function(Box::new(shape)),
                 )
             }
             LocalBinding::Function {
@@ -2548,67 +2524,50 @@ impl<'a> PlanContext<'a> {
                 shape,
             } => {
                 let target = self.define_custom_function_local_shape(
-                    capture.name.clone(),
+                    name,
                     local.type_().clone(),
                     shape.clone(),
                 );
                 Self::planned_capture(
                     ParamLocal::custom_function(target),
-                    Expr::function(FunctionExpr::custom_with_shape(
-                        CustomFunctionExpr::local_get(local, capture.name),
-                        shape,
-                    )),
+                    ParamLocal::custom_function(local),
+                    ValueShape::Function(Box::new(shape)),
                 )
             }
             LocalBinding::Function {
                 binding: FunctionLocalBinding::Bool { local, type_ },
                 shape,
             } => {
-                let target = self.define_bool_function_local_shape(
-                    capture.name.clone(),
-                    type_.clone(),
-                    shape.clone(),
-                );
+                let target =
+                    self.define_bool_function_local_shape(name, type_.clone(), shape.clone());
                 Self::planned_capture(
                     ParamLocal::bool_function(target, type_.clone()),
-                    Expr::function(FunctionExpr::bool_with_shape(
-                        BoolFunctionExpr::local_get(local, capture.name, type_),
-                        shape,
-                    )),
+                    ParamLocal::bool_function(local, type_),
+                    ValueShape::Function(Box::new(shape)),
                 )
             }
             LocalBinding::Function {
                 binding: FunctionLocalBinding::Nil { local, type_ },
                 shape,
             } => {
-                let target = self.define_nil_function_local_shape(
-                    capture.name.clone(),
-                    type_.clone(),
-                    shape.clone(),
-                );
+                let target =
+                    self.define_nil_function_local_shape(name, type_.clone(), shape.clone());
                 Self::planned_capture(
                     ParamLocal::nil_function(target, type_.clone()),
-                    Expr::function(FunctionExpr::nil_with_shape(
-                        NilFunctionExpr::local_get(local, capture.name, type_),
-                        shape,
-                    )),
+                    ParamLocal::nil_function(local, type_),
+                    ValueShape::Function(Box::new(shape)),
                 )
             }
             LocalBinding::Function {
                 binding: FunctionLocalBinding::Tuple { local, type_ },
                 shape,
             } => {
-                let target = self.define_tuple_function_local_shape(
-                    capture.name.clone(),
-                    type_.clone(),
-                    shape.clone(),
-                );
+                let target =
+                    self.define_tuple_function_local_shape(name, type_.clone(), shape.clone());
                 Self::planned_capture(
                     ParamLocal::tuple_function(target, type_.clone()),
-                    Expr::function(FunctionExpr::tuple_with_shape(
-                        TupleFunctionExpr::local_get(local, capture.name, type_),
-                        shape,
-                    )),
+                    ParamLocal::tuple_function(local, type_),
+                    ValueShape::Function(Box::new(shape)),
                 )
             }
             LocalBinding::Function {
@@ -2616,17 +2575,15 @@ impl<'a> PlanContext<'a> {
                 shape,
             } => {
                 let target = self.define_list_function_local_shape(
-                    capture.name.clone(),
+                    name,
                     local.type_().clone(),
                     local.item_type(),
                     shape.clone(),
                 );
                 Self::planned_capture(
                     ParamLocal::list_function(target),
-                    Expr::function(FunctionExpr::list_with_shape(
-                        ListFunctionExpr::local_get(local, capture.name),
-                        shape,
-                    )),
+                    ParamLocal::list_function(local),
+                    ValueShape::Function(Box::new(shape)),
                 )
             }
             LocalBinding::Function {
@@ -2634,25 +2591,23 @@ impl<'a> PlanContext<'a> {
                 shape,
             } => {
                 let target = self.define_function_function_local_shape(
-                    capture.name.clone(),
+                    name,
                     local.type_().clone(),
                     shape.clone(),
                 );
                 Self::planned_capture(
                     ParamLocal::function_function(target),
-                    Expr::function(FunctionExpr::function_with_shape(
-                        FunctionFunctionExpr::local_get(local, capture.name),
-                        shape,
-                    )),
+                    ParamLocal::function_function(local),
+                    ValueShape::Function(Box::new(shape)),
                 )
             }
         }
     }
 
-    fn planned_capture(local: ParamLocal, value: Expr) -> PlannedCapture {
+    fn planned_capture(local: ParamLocal, source: ParamLocal, shape: ValueShape) -> PlannedCapture {
         PlannedCapture {
-            slot: ParamSlot::new(local, value.shape().clone()),
-            source: CaptureArg::new(value),
+            slot: ParamSlot::new(local, shape),
+            source: CaptureArg::new(source),
         }
     }
 }
@@ -2757,22 +2712,21 @@ mod tests {
         instantiate_custom_type_template,
     };
     use crate::plan::{
-        BitArrayFunctionExpr, BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
-        BoolFunctionExpr, BoolFunctionLocalId, BoolListLocalId, BoolLocalId, CaptureArg,
-        CustomConstruction, CustomConstructor, CustomConstructorDefinition, CustomConstructorField,
-        CustomConstructorRefinement, CustomFieldDefinition, CustomFunctionLocal,
-        CustomFunctionLocalId, CustomFunctionType, CustomType, CustomTypeDefinition,
-        CustomTypeName, CustomTypeParameterId, CustomTypePublicity, CustomTypeTemplate,
-        CustomValueShape, Expr, FloatFunctionExpr, FloatFunctionLocalId, FloatListLocalId,
-        FloatLocalId, FunctionExpr, FunctionFunctionExpr, FunctionFunctionLocal,
+        BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
+        BoolListLocalId, BoolLocalId, CaptureArg, CustomConstruction, CustomConstructor,
+        CustomConstructorDefinition, CustomConstructorField, CustomConstructorRefinement,
+        CustomFieldDefinition, CustomFunctionLocal, CustomFunctionLocalId, CustomFunctionType,
+        CustomType, CustomTypeDefinition, CustomTypeName, CustomTypeParameterId,
+        CustomTypePublicity, CustomTypeTemplate, CustomValueShape, Expr, FloatFunctionLocalId,
+        FloatListLocalId, FloatLocalId, FunctionExpr, FunctionFunctionLocal,
         FunctionFunctionLocalId, FunctionFunctionType, FunctionListLocalId, FunctionReference,
         FunctionShape, FunctionType, GenericFunctionLocal, GenericFunctionLocalId,
         GenericFunctionType, GenericListLocalId, IntExpr, IntFunctionLocalId, IntListLocalId,
-        IntLocalId, ListExpr, ListFunctionExpr, ListListLocalId, ListLocal, ListLocalExpr, LocalId,
-        NilFunctionExpr, NilFunctionLocalId, NilListLocalId, NilLocalId, ParamLocal, ParamSlot,
-        StringExpr, StringFunctionExpr, StringFunctionLocalId, StringListLocalId, StringLocalId,
-        TupleFunctionExpr, TupleFunctionLocalId, TupleListLocalId, TupleLocalId, TypeParameterId,
-        UtfCodepointListLocalId, ValueShape, ValueType,
+        IntLocalId, ListExpr, ListListLocalId, ListLocal, ListLocalExpr, LocalId,
+        NilFunctionLocalId, NilListLocalId, NilLocalId, ParamLocal, ParamSlot, StringExpr,
+        StringFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionLocalId,
+        TupleListLocalId, TupleLocalId, TypeParameterId, UtfCodepointListLocalId, ValueShape,
+        ValueType,
     };
     use crate::planner::{InvalidCustomTypeReason, InvalidTypedAstReason, PlanError};
     use ecow::EcoString;
@@ -3057,6 +3011,30 @@ mod tests {
             Ok(()),
         );
         assert_eq!(arguments, vec![Some(ValueShape::Int)]);
+    }
+
+    #[test]
+    fn custom_shape_templates_preserve_every_primitive_shape() {
+        let owner_shape = CustomValueShape::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Owner".into()),
+            Vec::new(),
+            CustomConstructorRefinement::Any,
+        );
+
+        for (template, expected) in [
+            (CustomTypeTemplate::Int, ValueShape::Int),
+            (CustomTypeTemplate::Float, ValueShape::Float),
+            (CustomTypeTemplate::String, ValueShape::String),
+            (CustomTypeTemplate::BitArray, ValueShape::BitArray),
+            (CustomTypeTemplate::UtfCodepoint, ValueShape::UtfCodepoint),
+            (CustomTypeTemplate::Bool, ValueShape::Bool),
+            (CustomTypeTemplate::Nil, ValueShape::Nil),
+        ] {
+            assert_eq!(
+                instantiate_custom_shape_template(&template, &owner_shape),
+                Ok(expected),
+            );
+        }
     }
 
     #[test]
@@ -3987,6 +3965,72 @@ mod tests {
     }
 
     #[test]
+    fn param_local_shapes_preserve_remaining_primitive_and_function_families() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+
+        assert_eq!(
+            context.define_param_local_shape("float".into(), ValueShape::Float),
+            ParamLocal::float(FloatLocalId(0)),
+        );
+        assert_eq!(
+            context.define_param_local_shape("string".into(), ValueShape::String),
+            ParamLocal::string(StringLocalId(0)),
+        );
+        assert_eq!(
+            context.define_param_local_shape("bool".into(), ValueShape::Bool),
+            ParamLocal::bool(BoolLocalId(0)),
+        );
+        assert_eq!(
+            context.define_param_local_shape("nil".into(), ValueShape::Nil),
+            ParamLocal::nil(NilLocalId(0)),
+        );
+
+        let float_type = FunctionType::new(Vec::new(), ValueType::Float);
+        let string_type = FunctionType::new(Vec::new(), ValueType::String);
+        let bool_type = FunctionType::new(Vec::new(), ValueType::Bool);
+        let nil_type = FunctionType::new(Vec::new(), ValueType::Nil);
+        assert_eq!(
+            context.define_param_local_shape(
+                "float_fn".into(),
+                ValueShape::Function(Box::new(FunctionShape::from_function_type(
+                    float_type.clone(),
+                ))),
+            ),
+            ParamLocal::float_function(FloatFunctionLocalId(0), float_type),
+        );
+        assert_eq!(
+            context.define_param_local_shape(
+                "string_fn".into(),
+                ValueShape::Function(Box::new(FunctionShape::from_function_type(
+                    string_type.clone(),
+                ))),
+            ),
+            ParamLocal::string_function(StringFunctionLocalId(0), string_type),
+        );
+        assert_eq!(
+            context.define_param_local_shape(
+                "bool_fn".into(),
+                ValueShape::Function(Box::new(FunctionShape::from_function_type(
+                    bool_type.clone(),
+                ))),
+            ),
+            ParamLocal::bool_function(BoolFunctionLocalId(0), bool_type),
+        );
+        assert_eq!(
+            context.define_param_local_shape(
+                "nil_fn".into(),
+                ValueShape::Function(Box::new(FunctionShape::from_function_type(
+                    nil_type.clone(),
+                ))),
+            ),
+            ParamLocal::nil_function(NilFunctionLocalId(0), nil_type),
+        );
+    }
+
+    #[test]
     fn define_existing_param_records_tuple_function_binding() {
         let module = EcoString::from("main");
         let functions = HashMap::<EcoString, FunctionInfo>::new();
@@ -4297,10 +4341,7 @@ mod tests {
             ),
             PlannedCapture {
                 slot: ParamSlot::from_local(ParamLocal::list(ListLocal::int(IntListLocalId(0)))),
-                source: CaptureArg::new(Expr::list(ListExpr::local_get(
-                    ListLocal::int(IntListLocalId(9)),
-                    "ints".into(),
-                ))),
+                source: CaptureArg::new(ParamLocal::list(ListLocal::int(IntListLocalId(9)))),
             },
         );
         assert_eq!(
@@ -4313,10 +4354,7 @@ mod tests {
                 slot: ParamSlot::from_local(ParamLocal::list(ListLocal::string(
                     StringListLocalId(0),
                 ))),
-                source: CaptureArg::new(Expr::list(ListExpr::local_get(
-                    ListLocal::string(StringListLocalId(9)),
-                    "strings".into(),
-                ))),
+                source: CaptureArg::new(ParamLocal::list(ListLocal::string(StringListLocalId(9),))),
             },
         );
         assert_eq!(
@@ -4329,9 +4367,8 @@ mod tests {
                 slot: ParamSlot::from_local(ParamLocal::list(ListLocal::bit_array(
                     BitArrayListLocalId(0),
                 ))),
-                source: CaptureArg::new(Expr::list(ListExpr::local_get(
-                    ListLocal::bit_array(BitArrayListLocalId(9)),
-                    "bit_arrays".into(),
+                source: CaptureArg::new(ParamLocal::list(ListLocal::bit_array(
+                    BitArrayListLocalId(9),
                 ))),
             },
         );
@@ -4345,9 +4382,8 @@ mod tests {
                 slot: ParamSlot::from_local(ParamLocal::list(ListLocal::utf_codepoint(
                     UtfCodepointListLocalId(0),
                 ))),
-                source: CaptureArg::new(Expr::list(ListExpr::local_get(
-                    ListLocal::utf_codepoint(UtfCodepointListLocalId(9)),
-                    "utf_codepoints".into(),
+                source: CaptureArg::new(ParamLocal::list(ListLocal::utf_codepoint(
+                    UtfCodepointListLocalId(9),
                 ))),
             },
         );
@@ -4361,10 +4397,7 @@ mod tests {
                 slot: ParamSlot::from_local(ParamLocal::list(ListLocal::float(FloatListLocalId(
                     0
                 ),))),
-                source: CaptureArg::new(Expr::list(ListExpr::local_get(
-                    ListLocal::float(FloatListLocalId(9)),
-                    "floats".into(),
-                ))),
+                source: CaptureArg::new(ParamLocal::list(ListLocal::float(FloatListLocalId(9,)))),
             },
         );
         assert_eq!(
@@ -4375,10 +4408,7 @@ mod tests {
             ),
             PlannedCapture {
                 slot: ParamSlot::from_local(ParamLocal::list(ListLocal::bool(BoolListLocalId(0)))),
-                source: CaptureArg::new(Expr::list(ListExpr::local_get(
-                    ListLocal::bool(BoolListLocalId(9)),
-                    "bools".into(),
-                ))),
+                source: CaptureArg::new(ParamLocal::list(ListLocal::bool(BoolListLocalId(9)))),
             },
         );
         assert_eq!(
@@ -4389,10 +4419,7 @@ mod tests {
             ),
             PlannedCapture {
                 slot: ParamSlot::from_local(ParamLocal::list(ListLocal::nil(NilListLocalId(0)))),
-                source: CaptureArg::new(Expr::list(ListExpr::local_get(
-                    ListLocal::nil(NilListLocalId(9)),
-                    "nils".into(),
-                ))),
+                source: CaptureArg::new(ParamLocal::list(ListLocal::nil(NilListLocalId(9)))),
             },
         );
         assert_eq!(
@@ -4406,9 +4433,9 @@ mod tests {
                     TupleListLocalId(0),
                     tuple_type.clone(),
                 ))),
-                source: CaptureArg::new(Expr::list(ListExpr::local_get(
-                    ListLocal::tuple(TupleListLocalId(9), tuple_type.clone()),
-                    "tuples".into(),
+                source: CaptureArg::new(ParamLocal::list(ListLocal::tuple(
+                    TupleListLocalId(9),
+                    tuple_type.clone(),
                 ))),
             },
         );
@@ -4423,9 +4450,9 @@ mod tests {
                     ListListLocalId(0),
                     nested_item_type.as_ref().clone(),
                 ))),
-                source: CaptureArg::new(Expr::list(ListExpr::local_get(
-                    ListLocal::list(ListListLocalId(9), nested_item_type.as_ref().clone()),
-                    "lists".into(),
+                source: CaptureArg::new(ParamLocal::list(ListLocal::list(
+                    ListListLocalId(9),
+                    nested_item_type.as_ref().clone(),
                 ))),
             },
         );
@@ -4442,9 +4469,9 @@ mod tests {
                     FunctionListLocalId(0),
                     function_type.clone(),
                 ))),
-                source: CaptureArg::new(Expr::list(ListExpr::local_get(
-                    ListLocal::function(FunctionListLocalId(9), function_type.clone()),
-                    "functions".into(),
+                source: CaptureArg::new(ParamLocal::list(ListLocal::function(
+                    FunctionListLocalId(9),
+                    function_type.clone(),
                 ))),
             },
         );
@@ -4889,9 +4916,40 @@ mod tests {
         );
         assert_eq!(
             sources,
-            vec![CaptureArg::new(crate::plan::Expr::function(
-                FloatFunctionExpr::local_get(FloatFunctionLocalId(0), "f".into(), type_).into()
+            vec![CaptureArg::new(ParamLocal::float_function(
+                FloatFunctionLocalId(0),
+                type_,
             ))],
+        );
+    }
+
+    #[test]
+    fn define_captures_preserves_bit_array_and_nil_bindings() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+
+        context.define_bit_array_local("bits".into());
+        context.define_nil_local("nil".into());
+        let captures = context
+            .capture_bindings(&["bits".into(), "nil".into()])
+            .expect("defined locals should be capturable");
+        let (slots, sources) = context.define_captures(captures).into_parts();
+
+        assert_eq!(
+            slots,
+            vec![
+                ParamSlot::from_local(ParamLocal::bit_array(BitArrayLocalId(1))),
+                ParamSlot::from_local(ParamLocal::nil(NilLocalId(1))),
+            ],
+        );
+        assert_eq!(
+            sources,
+            vec![
+                CaptureArg::new(ParamLocal::bit_array(BitArrayLocalId(0))),
+                CaptureArg::new(ParamLocal::nil(NilLocalId(0))),
+            ],
         );
     }
 
@@ -4916,8 +4974,9 @@ mod tests {
         );
         assert_eq!(
             sources,
-            vec![CaptureArg::new(crate::plan::Expr::function(
-                TupleFunctionExpr::local_get(TupleFunctionLocalId(0), "f".into(), type_).into()
+            vec![CaptureArg::new(ParamLocal::tuple_function(
+                TupleFunctionLocalId(0),
+                type_,
             ))],
         );
     }
@@ -4957,20 +5016,13 @@ mod tests {
         assert_eq!(
             sources,
             vec![
-                CaptureArg::new(Expr::list(ListExpr::local_get(
-                    ListLocal::int(IntListLocalId(0)),
-                    "values".into(),
-                ))),
-                CaptureArg::new(crate::plan::Expr::function(
-                    ListFunctionExpr::local_get(
-                        crate::plan::ListFunctionLocal::from_item_type(
-                            0,
-                            function_type,
-                            ValueType::Int,
-                        ),
-                        "f".into(),
-                    )
-                    .into()
+                CaptureArg::new(ParamLocal::list(ListLocal::int(IntListLocalId(0)))),
+                CaptureArg::new(ParamLocal::list_function(
+                    crate::plan::ListFunctionLocal::from_item_type(
+                        0,
+                        function_type,
+                        ValueType::Int,
+                    ),
                 )),
             ],
         );
@@ -5033,41 +5085,20 @@ mod tests {
         assert_eq!(
             sources,
             vec![
-                CaptureArg::new(crate::plan::Expr::function(
-                    StringFunctionExpr::local_get(
-                        StringFunctionLocalId(0),
-                        "string_fn".into(),
-                        string_type,
-                    )
-                    .into()
+                CaptureArg::new(ParamLocal::string_function(
+                    StringFunctionLocalId(0),
+                    string_type,
                 )),
-                CaptureArg::new(crate::plan::Expr::function(
-                    BitArrayFunctionExpr::local_get(
-                        BitArrayFunctionLocalId(0),
-                        "bit_array_fn".into(),
-                        bit_array_type,
-                    )
-                    .into()
+                CaptureArg::new(ParamLocal::bit_array_function(
+                    BitArrayFunctionLocalId(0),
+                    bit_array_type,
                 )),
-                CaptureArg::new(crate::plan::Expr::function(
-                    BoolFunctionExpr::local_get(
-                        BoolFunctionLocalId(0),
-                        "bool_fn".into(),
-                        bool_type
-                    )
-                    .into()
-                )),
-                CaptureArg::new(crate::plan::Expr::function(
-                    NilFunctionExpr::local_get(NilFunctionLocalId(0), "nil_fn".into(), nil_type)
-                        .into()
-                )),
-                CaptureArg::new(crate::plan::Expr::function(
-                    FunctionFunctionExpr::local_get(
-                        FunctionFunctionLocal::new(FunctionFunctionLocalId(0), function_type,),
-                        "function_fn".into(),
-                    )
-                    .into()
-                )),
+                CaptureArg::new(ParamLocal::bool_function(BoolFunctionLocalId(0), bool_type,)),
+                CaptureArg::new(ParamLocal::nil_function(NilFunctionLocalId(0), nil_type)),
+                CaptureArg::new(ParamLocal::function_function(FunctionFunctionLocal::new(
+                    FunctionFunctionLocalId(0),
+                    function_type,
+                ))),
             ],
         );
     }

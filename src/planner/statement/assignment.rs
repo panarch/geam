@@ -1062,13 +1062,16 @@ mod tests {
     use super::{
         BindingPattern, ListTailBinding, invalid_binding_pattern, plan_alias_assignment,
         plan_assignment_steps, plan_binding_pattern, plan_binding_pattern_in_context,
-        plan_custom_assignment, plan_total_binding_pattern,
+        plan_custom_assignment, plan_tail_only_list_binding_pattern_in_context,
+        plan_total_binding_pattern, plan_total_bit_array_binding_pattern,
     };
     use crate::plan::{
-        BoolLocalId, CustomConstructor, CustomConstructorDefinition, CustomConstructorField,
-        CustomExpr, CustomLocal, CustomLocalId, CustomType, CustomTypeDefinition, CustomTypeName,
-        CustomTypePublicity, CustomValueShape, Expr, FunctionType, IntLocalId, ListExpr, LocalId,
-        NilLocalId, StringLocalId, TypeParameterId, ValueShape, ValueType,
+        AssertBinding, BoolLocalId, CustomBindingPattern, CustomConstructor,
+        CustomConstructorDefinition, CustomConstructorField, CustomExpr, CustomLocal,
+        CustomLocalId, CustomType, CustomTypeDefinition, CustomTypeName, CustomTypePublicity,
+        CustomValueShape, Expr, FunctionType, IntListLocalId, IntLocalId, ListAssertTail, ListExpr,
+        ListLocal, LocalId, NilLocalId, ParamLocal, StringLocalId, TotalBindingPattern,
+        TypeParameterId, ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
     use crate::planner::dsl::{
@@ -1093,6 +1096,154 @@ mod tests {
     use gleam_core::type_::{self, error::VariableOrigin};
     use num_bigint::BigInt;
     use std::collections::HashMap;
+
+    #[test]
+    fn total_binding_owner_preserves_recursive_custom_and_alias_shapes() {
+        let module = "main".into();
+        let functions = HashMap::<ecow::EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let constructor = custom_constructor("Boxed", vec![ValueType::Int]);
+        let exact_shape = CustomValueShape::new(
+            constructor.type_().type_name().clone(),
+            Vec::new(),
+            crate::plan::CustomConstructorRefinement::Exact(constructor.index()),
+        );
+
+        assert_eq!(
+            plan_total_binding_pattern(
+                BindingPattern::Custom {
+                    source_shape: exact_shape.clone(),
+                    constructor_count: 1,
+                    constructor: constructor.clone(),
+                    fields: vec![BindingPattern::Discard],
+                },
+                ValueShape::Custom(exact_shape.clone()),
+                &mut context,
+            ),
+            Ok(TotalBindingPattern::custom(CustomBindingPattern::exact(
+                exact_shape,
+                constructor.clone(),
+                vec![TotalBindingPattern::discard(ValueType::Int)],
+            ))),
+        );
+
+        let any_shape = CustomValueShape::any(constructor.type_().clone());
+        assert_eq!(
+            plan_total_binding_pattern(
+                BindingPattern::Custom {
+                    source_shape: any_shape.clone(),
+                    constructor_count: 1,
+                    constructor: constructor.clone(),
+                    fields: vec![BindingPattern::Discard],
+                },
+                ValueShape::Custom(any_shape.clone()),
+                &mut context,
+            ),
+            Ok(TotalBindingPattern::custom(
+                CustomBindingPattern::only_constructor(
+                    any_shape,
+                    constructor,
+                    vec![TotalBindingPattern::discard(ValueType::Int)],
+                ),
+            )),
+        );
+        assert_eq!(
+            plan_total_binding_pattern(
+                BindingPattern::Alias {
+                    pattern: Box::new(BindingPattern::Discard),
+                    name: "alias".into(),
+                },
+                ValueShape::Int,
+                &mut context,
+            ),
+            Ok(TotalBindingPattern::alias(
+                TotalBindingPattern::discard(ValueType::Int),
+                AssertBinding::new(
+                    ParamLocal::int(IntLocalId(0)),
+                    "alias".into(),
+                    ValueShape::Int,
+                ),
+            )),
+        );
+    }
+
+    #[test]
+    fn total_binding_owner_preserves_tuple_and_list_tail_shapes() {
+        let module = "main".into();
+        let functions = HashMap::<ecow::EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+
+        assert_eq!(
+            plan_total_binding_pattern(
+                BindingPattern::Tuple(vec![
+                    BindingPattern::Named("first".into()),
+                    BindingPattern::Discard,
+                ]),
+                ValueShape::Tuple(vec![ValueShape::Int, ValueShape::String].into_boxed_slice()),
+                &mut context,
+            ),
+            Ok(TotalBindingPattern::tuple(vec![
+                TotalBindingPattern::bind(AssertBinding::new(
+                    ParamLocal::int(IntLocalId(0)),
+                    "first".into(),
+                    ValueShape::Int,
+                )),
+                TotalBindingPattern::discard(ValueType::String),
+            ])),
+        );
+        assert_eq!(
+            plan_total_binding_pattern(
+                BindingPattern::ListTail {
+                    tail: ListTailBinding::Named("rest".into()),
+                    element_type: ValueType::Int,
+                },
+                ValueShape::List(Box::new(ValueShape::Int)),
+                &mut context,
+            ),
+            Ok(TotalBindingPattern::list(
+                ValueType::Int,
+                ListAssertTail::bind(ListLocal::int(IntListLocalId(0)), "rest".into(),),
+            )),
+        );
+        assert_eq!(
+            plan_total_binding_pattern(
+                BindingPattern::ListTail {
+                    tail: ListTailBinding::Discard,
+                    element_type: ValueType::String,
+                },
+                ValueShape::List(Box::new(ValueShape::String)),
+                &mut context,
+            ),
+            Ok(TotalBindingPattern::list(
+                ValueType::String,
+                ListAssertTail::Ignore,
+            )),
+        );
+    }
+
+    #[test]
+    fn total_binding_owner_rejects_missing_contextual_list_and_bit_array_parts() {
+        let module = "main".into();
+        let functions = HashMap::<ecow::EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let context = PlanContext::new(&module, &functions, &mut anonymous);
+
+        assert_eq!(
+            plan_tail_only_list_binding_pattern_in_context(
+                Vec::new(),
+                None,
+                type_::list(type_::int()),
+                &context,
+            ),
+            Err(invalid_binding_pattern()),
+        );
+        assert_eq!(
+            plan_total_bit_array_binding_pattern(Vec::new()),
+            Err(invalid_binding_pattern()),
+        );
+    }
 
     #[test]
     fn plan_let_and_integer_binop() {

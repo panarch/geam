@@ -551,7 +551,7 @@ pub fn main() {
                 .evaluate(int_function_closure(
                     1,
                     Vec::<LocalId>::new(),
-                    [capture_int(local_int(0, "value"))],
+                    [capture_int(0)],
                 )),
             [],
             [function("<anonymous:0>", local_int(0, "value")).capture(
@@ -582,18 +582,14 @@ pub fn main() {
                 .evaluate(function_function_closure(
                     FunctionFunctionId::Int(IntFunctionFunctionId(1)),
                     Vec::<ParamLocal>::new(),
-                    [capture_int(local_int(0, "value"))],
+                    [capture_int(0)],
                     returned_function_type.clone(),
                 )),
             [],
             [
                 function(
                     "<anonymous:0>",
-                    int_function_closure(
-                        2,
-                        Vec::<LocalId>::new(),
-                        [capture_int(local_int(0, "value"))],
-                    ),
+                    int_function_closure(2, Vec::<LocalId>::new(), [capture_int(0)]),
                 )
                 .capture(crate::plan::ParamSlot::from_local(ParamLocal::int(
                     IntLocalId(0),
@@ -645,7 +641,7 @@ pub fn main() {
                 tuple_function_closure(
                     1,
                     Vec::<LocalId>::new(),
-                    [capture_tuple(local_tuple(0, "pair", pair_type.clone()))],
+                    [capture_tuple(0, pair_type.clone())],
                     pair_type.clone(),
                 ),
             )
@@ -780,11 +776,7 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
-        let add_base = int_function_closure(
-            2,
-            [LocalId::Int(IntLocalId(0))],
-            [capture_int(local_int(0, "base"))],
-        );
+        let add_base = int_function_closure(2, [LocalId::Int(IntLocalId(0))], [capture_int(0)]);
         let expected = module_with_anonymous(
             "main",
             function(

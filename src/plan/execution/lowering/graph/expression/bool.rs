@@ -560,7 +560,9 @@ fn merge_cursors(left: DraftCursor, right: DraftCursor, graph: &mut DraftGraph) 
 #[cfg(test)]
 mod tests {
     use super::bool_expr;
-    use crate::plan::execution::lowering::graph::{DraftFlow, DraftGraphBuilder, DraftValueRef};
+    use crate::plan::execution::lowering::graph::{
+        DraftCursor, DraftFlow, DraftGraphBuilder, DraftNeverReturn, DraftValueRef,
+    };
     use crate::plan::execution::lowering::specialization::Representability;
     use crate::plan::{
         BoolExpr, Expr, FloatExpr, GenericExpr, GenericLocal, GenericLocalId, IntExpr, ListExpr,
@@ -579,6 +581,14 @@ mod tests {
             Representability::Uninhabited => FlowOutcome::Uninhabited,
             Representability::Inhabited(DraftFlow::Diverged) => FlowOutcome::Diverged,
             Representability::Inhabited(DraftFlow::Value { .. }) => FlowOutcome::Value,
+        }
+    }
+
+    fn static_path(paths: Representability<super::BoolPaths>) -> (bool, DraftCursor) {
+        match paths {
+            Representability::Inhabited(super::BoolPaths::True(cursor)) => (true, cursor),
+            Representability::Inhabited(super::BoolPaths::False(cursor)) => (false, cursor),
+            _ => panic!("fixture should produce a static Bool path"),
         }
     }
 
@@ -698,6 +708,45 @@ mod tests {
             )),
             FlowOutcome::Uninhabited,
         );
+    }
+
+    #[test]
+    fn empty_parameter_list_length_is_decided_without_a_length_instruction() {
+        let parameter = TypeParameterId(0);
+        let expression = ListExpr::value(Vec::new(), ValueType::Parameter(parameter));
+
+        for (length, expected) in [(0, true), (1, false)] {
+            let mut context =
+                crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
+            let (mut graph, cursor) =
+                DraftGraphBuilder::<DraftNeverReturn, ()>::new(Vec::new(), Vec::new());
+            let paths = super::list_length_paths(
+                &expression,
+                length,
+                true,
+                cursor,
+                &mut graph,
+                &mut context,
+            );
+
+            let (actual, cursor) = static_path(paths);
+            assert_eq!(actual, expected);
+            graph.finish_source_stop(
+                cursor,
+                crate::plan::execution::graph::SourceStopKind::Panic,
+                None,
+                PanicSite::unknown(),
+            );
+            let lowered = super::super::super::freeze::freeze(graph, &mut context);
+            assert_eq!(lowered.body.blocks().len(), 1);
+            assert_eq!(lowered.body.blocks()[0].instructions().len(), 1);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture should produce a static Bool path")]
+    fn static_path_value_rejects_a_non_static_fixture() {
+        static_path(Representability::Uninhabited);
     }
 
     #[test]

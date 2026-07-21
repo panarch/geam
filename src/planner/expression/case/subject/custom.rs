@@ -193,8 +193,14 @@ fn internal_subject_name(local: CustomLocalId) -> EcoString {
 
 #[cfg(test)]
 mod tests {
-    use crate::plan::{BoolExpr, CustomExpr, CustomLocalId, CustomType, CustomTypeName, Expr};
+    use crate::plan::{
+        AssertBinding, AssertPattern, BoolExpr, CustomBindingPattern, CustomConstructor,
+        CustomConstructorField, CustomExpr, CustomLocal, CustomLocalId, CustomPattern, CustomType,
+        CustomTypeName, CustomValueShape, Expr, IntLocalId, ParamLocal, ReturnExpr, Step,
+        TotalBindingPattern, ValueShape, ValueType,
+    };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
+    use crate::planner::dsl::{int_return_block, int_return_expr, local_int};
     use crate::planner::plan_module;
     use crate::planner::support::dummy_span;
     use crate::planner::{
@@ -442,6 +448,85 @@ pub fn main() { 0 }
             super::CustomCaseCoverage::default().add_candidate(0, 1, true, false),
             Some(super::CustomCaseBindingProof::Intrinsic),
         );
+    }
+
+    #[test]
+    fn exhaustive_custom_case_preserves_the_final_remainder_binding() {
+        let plan = plan_module(crate::planner::support::compile(
+            r#"
+pub type Choice { First(Int) Second(Int) }
+fn pick(value: Choice) -> Int {
+  case value { First(inner) -> inner Second(inner) -> inner }
+}
+pub fn main() { 0 }
+"#,
+        ))
+        .expect("an exhaustive custom case should plan");
+        let type_ = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Choice".into()),
+            Vec::new(),
+        );
+        let shape = CustomValueShape::any(type_.clone());
+        let first = CustomConstructor::new(
+            type_.clone(),
+            "First".into(),
+            0,
+            vec![CustomConstructorField::new(None, ValueType::Int)],
+        );
+        let second = CustomConstructor::new(
+            type_,
+            "Second".into(),
+            1,
+            vec![CustomConstructorField::new(None, ValueType::Int)],
+        );
+        let first_binding = AssertBinding::new(
+            ParamLocal::int(IntLocalId(0)),
+            "inner".into(),
+            ValueShape::Int,
+        );
+        let second_binding = AssertBinding::new(
+            ParamLocal::int(IntLocalId(1)),
+            "inner".into(),
+            ValueShape::Int,
+        );
+        let subject_local = CustomLocal::from_shape(CustomLocalId(1), shape.clone());
+        let subject_name = "<case:custom:1>";
+        let subject = CustomExpr::local_get(subject_local, subject_name.into());
+        let expected = ReturnExpr::int_body(int_return_block(
+            [Step::let_custom(
+                CustomLocalId(1),
+                subject_name.into(),
+                CustomExpr::local_get(
+                    CustomLocal::from_shape(CustomLocalId(0), shape.clone()),
+                    "value".into(),
+                ),
+            )],
+            crate::plan::IntReturn::bool_case(
+                BoolExpr::custom_matches(
+                    subject,
+                    AssertPattern::custom(CustomPattern::new(
+                        first,
+                        vec![AssertPattern::Bind(first_binding.clone())],
+                        Some(vec![TotalBindingPattern::bind(first_binding)]),
+                    )),
+                ),
+                int_return_expr(local_int(0, "inner")),
+                int_return_block(
+                    [Step::bind_custom_fields(
+                        CustomLocalId(1),
+                        CustomBindingPattern::exhaustive_remainder(
+                            shape,
+                            vec![0],
+                            second,
+                            vec![TotalBindingPattern::bind(second_binding)],
+                        ),
+                    )],
+                    int_return_expr(local_int(1, "inner")),
+                ),
+            ),
+        ));
+
+        assert_eq!(plan.functions()[0].return_(), &expected);
     }
 
     fn custom_type() -> std::sync::Arc<gleam_core::type_::Type> {

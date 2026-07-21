@@ -8,6 +8,7 @@ fn join(flag: Bool) -> Int {
 
 fn assert_one(values: List(Int)) -> Int {
   let assert [value] = values as "expected one value"
+  let assert [_] = values
   value
 }
 
@@ -131,10 +132,14 @@ pub fn main() {
 // function int#5
 //   entry b0 params=[%list.int#0:shape#4(list_type#0)] captures=[]
 //   block b0 params=[%list.int#0:shape#4(list_type#0)]
-//     match %list.int#0 pattern=[binding#0] success=b1(binding#0) failure=b2(%list.int#0)
-//   block b1 params=[%int#0:shape#0(Int)]
+//     match %list.int#0 pattern=[binding#0] success=b1(binding#0, %list.int#0) failure=b4(%list.int#0)
+//   block b1 params=[%int#0:shape#0(Int), %list.int#0:shape#4(list_type#0)]
+//     match %list.int#0 pattern=[_] success=b2(%int#0) failure=b3(%list.int#0)
+//   block b2 params=[%int#0:shape#0(Int)]
 //     return %int#0
-//   block b2 params=[%list.int#0:shape#4(list_type#0)]
+//   block b3 params=[%list.int#0:shape#4(list_type#0)]
+//     let_assert_panic subject=%list.int#0 message=none
+//   block b4 params=[%list.int#0:shape#4(list_type#0)]
 //     %string#0:shape#6(String) = string.value "expected one value"
 //     let_assert_panic subject=%list.int#0 message=%string#0
 //
