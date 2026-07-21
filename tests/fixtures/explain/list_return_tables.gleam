@@ -39,71 +39,57 @@ pub fn main() -> List(Int) {
 // main list.int#0
 //
 // function list.parameter#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail list.parameter#0 args=0
+//   b0 instructions=0 tail list.parameter#0 args=0
 //
 // function list.int#0
-//   entry steps=1
 //   graph entry=b0
-//   b0 tail list.int#1 args=0
+//   b0 instructions=13 tail list.int#1 args=0
 //
 // function list.int#1
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail list.int#1 args=0
+//   b0 instructions=0 tail list.int#1 args=0
 //
 // function list.string#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail list.string#0 args=0
+//   b0 instructions=0 tail list.string#0 args=0
 //
 // function list.bit_array#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail list.bit_array#0 args=0
+//   b0 instructions=0 tail list.bit_array#0 args=0
 //
 // function list.utf_codepoint#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail list.utf_codepoint#0 args=0
+//   b0 instructions=0 tail list.utf_codepoint#0 args=0
 //
 // function list.custom#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail list.custom#0 args=0
+//   b0 instructions=0 tail list.custom#0 args=0
 //
 // function list.float#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail list.float#0 args=0
+//   b0 instructions=0 tail list.float#0 args=0
 //
 // function list.bool#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail list.bool#0 args=0
+//   b0 instructions=0 tail list.bool#0 args=0
 //
 // function list.nil#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail list.nil#0 args=0
+//   b0 instructions=0 tail list.nil#0 args=0
 //
 // function list.tuple#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail list.tuple#0 args=0
+//   b0 instructions=0 tail list.tuple#0 args=0
 //
 // function list.parameter_list#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail list.parameter_list#0 args=0
+//   b0 instructions=0 tail list.parameter_list#0 args=0
 //
 // function list.list#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail list.list#0 args=0
+//   b0 instructions=0 tail list.list#0 args=0
 //
 // function list.function#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail list.function#0 args=0
+//   b0 instructions=0 tail list.function#0 args=0

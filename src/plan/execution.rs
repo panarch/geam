@@ -1,44 +1,39 @@
 mod constant;
 mod custom_type;
 mod explain;
-mod expression;
-mod frame;
 mod function;
+mod graph;
 mod id;
 mod lowering;
 mod param;
-mod pattern;
-mod reference;
-mod return_graph;
-mod step;
+mod return_;
 mod table;
 mod value_shape;
 mod value_type;
 
+pub(crate) use constant::{ConstantId, ConstantProgram, ConstantTable, ConstantValue};
 pub use explain::ExecutionPlanExplanation;
-pub(crate) use expression::{
-    BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayExpr, BitArrayExprKind, BitArrayFunctionExpr,
-    BitArrayFunctionExprKind, BitArrayListExpr, BitArrayListItem, BitArraySegment, BoolExpr,
-    BoolExprKind, BoolFunctionExpr, BoolFunctionExprKind, BoolListExpr, BoolListItem, CallArg,
-    CallArgKind, CaptureArg, CaptureArgKind, CustomConstruction, CustomExpr, CustomExprKind,
-    CustomFieldAccess, CustomFunctionExpr, CustomFunctionExprKind, CustomListExpr, CustomListItem,
-    CustomLocalExpr, DirectCall, Endianness, Expr, ExprKind, FloatBitSize, FloatExpr,
-    FloatExprKind, FloatFunctionExpr, FloatFunctionExprKind, FloatListExpr, FloatListItem,
-    FunctionCall, FunctionExpr, FunctionExprKind, FunctionFunctionExpr, FunctionFunctionExprKind,
-    FunctionListExpr, FunctionListItem, GenericFunctionExpr, GenericFunctionExprKind, IntExpr,
-    IntExprKind, IntFunctionExpr, IntFunctionExprKind, IntListExpr, IntListItem, ListExpr,
-    ListFunctionExpr, ListFunctionExprKind, ListIndexSource, ListItem, ListListExpr, ListListItem,
-    ListLocalExpr, NeverExpr, NeverExprKind, NeverFunctionExpr, NeverFunctionExprKind, NilExpr,
-    NilExprKind, NilFunctionExpr, NilFunctionExprKind, NilListExpr, NilListItem, PanicExpr,
-    PanicExprKind, ParameterListExpr, ParameterListExprKind, ParameterListIndexSource,
-    ParameterListItem, ParameterListListExpr, ParameterListListItem, StoredListExpr,
-    StringEncoding, StringExpr, StringExprKind, StringFunctionExpr, StringFunctionExprKind,
-    StringListExpr, StringListItem, TupleExpr, TupleExprKind, TupleFunctionExpr,
-    TupleFunctionExprKind, TupleListExpr, TupleListItem, TypedFunctionExpr, TypedListExpr,
-    TypedListExprKind, UtfCodepointExpr, UtfCodepointExprKind, UtfCodepointFunctionExpr,
-    UtfCodepointFunctionExprKind, UtfCodepointListExpr, UtfCodepointListItem,
+pub(crate) use graph::{
+    BitArrayBindingPattern as GraphBitArrayBindingPattern,
+    BitArrayBitsSize as GraphBitArrayBitsSize, BitArrayEvaluatedSize as GraphBitArrayEvaluatedSize,
+    BitArrayInstruction as GraphBitArrayInstruction, BitArrayPattern as GraphBitArrayPattern,
+    BitArrayPatternSegment as GraphBitArrayPatternSegment,
+    BitArrayPatternSize as GraphBitArrayPatternSize,
+    BitArrayPatternSizeExpr as GraphBitArrayPatternSizeExpr,
+    BitArrayPatternValue as GraphBitArrayPatternValue, BitArraySegment as GraphBitArraySegment,
+    BitArrayStringPattern as GraphBitArrayStringPattern, BlockId,
+    BoolInstruction as GraphBoolInstruction, CustomInstruction as GraphCustomInstruction, Edge,
+    Endianness, FloatBitSize, FloatInstruction as GraphFloatInstruction, FunctionCapture,
+    FunctionGraph, FunctionInstruction, FunctionInstructionKind, FunctionLocal, FunctionTarget,
+    Instruction, InstructionKind, IntInstruction as GraphIntInstruction,
+    ListInstruction as GraphListInstruction, MatchEdge, MatchEdgeArgument, MatchIntBindingId,
+    MatchPattern, MatchPatternBinding, MatchPatternListTail, NeverCallTarget,
+    NeverReturn as GraphNeverReturn, NilInstruction as GraphNilInstruction,
+    ParameterListInstruction as GraphParameterListInstruction, Signedness, SourceStopKind,
+    StoredListLocal, StringEncoding, StringInstruction as GraphStringInstruction, Terminator,
+    TupleInstruction as GraphTupleInstruction, TypedListInstruction as GraphTypedListInstruction,
+    UtfCodepointInstruction as GraphUtfCodepointInstruction,
 };
-pub(crate) use frame::FrameLayout;
 pub(crate) use id::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionLocalId,
     BitArrayListFunctionFunctionId, BitArrayListFunctionId, BitArrayListFunctionLocalId,
@@ -72,26 +67,15 @@ pub(crate) use id::{
     UtfCodepointLocalId,
 };
 pub(crate) use param::{ParamLocal, ParamSlot};
-pub(crate) use pattern::{
-    BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
-    BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, CustomBindingPattern,
-    CustomPattern, PatternBinding, Signedness, TotalBindingPattern, TotalBindingPatternKind,
-};
-pub(crate) use reference::{ClosureTemplate, FunctionReference};
-pub(crate) use return_graph::{
+pub(crate) use return_::{
     BitArrayFunctionReturn, BitArrayListReturn, BitArrayReturn, BoolFunctionReturn, BoolListReturn,
     BoolReturn, CustomFunctionReturn, CustomListReturn, CustomReturn, FloatFunctionReturn,
     FloatListReturn, FloatReturn, FunctionFunctionReturn, FunctionListReturn,
     GenericFunctionReturn, IntFunctionReturn, IntListReturn, IntReturn, ListFunctionReturn,
     ListListReturn, NeverFunctionReturn, NeverReturn, NilFunctionReturn, NilListReturn, NilReturn,
-    ParameterListListReturn, ParameterListReturn, ReturnBlock, ReturnExpressionId, ReturnGraph,
-    ReturnTailCall, ReturnTailCallId, ReturnTarget, StringFunctionReturn, StringListReturn,
+    ParameterListListReturn, ParameterListReturn, StringFunctionReturn, StringListReturn,
     StringReturn, TupleFunctionReturn, TupleListReturn, TupleReturn, TypedFunctionReturn,
     UtfCodepointFunctionReturn, UtfCodepointListReturn, UtfCodepointReturn,
-};
-pub(crate) use step::{
-    AssertBinding, AssertPattern, AssertSubject, ListAssertPattern, ListAssertTail, Step, StepKind,
-    StringAssertBinding,
 };
 #[cfg(test)]
 pub(crate) use value_shape::ValueShapeDescriptor;
@@ -107,7 +91,7 @@ pub(crate) use value_type::{
 };
 
 use self::custom_type::CustomTypeTable;
-use self::function::ExecutableFunction;
+pub(crate) use self::function::{ExecutableFunction, FunctionEntry};
 use self::table::FunctionTables;
 use self::value_shape::ValueShapeTable;
 use self::value_type::ListTypeTable;
@@ -146,16 +130,11 @@ impl ExecutionPlan {
         self.main.clone()
     }
 
-    pub(crate) fn constant<Expression: ConstantExpression>(
+    pub(crate) fn constant<Value: ConstantValue>(
         &self,
-        id: ConstantId<Expression>,
-    ) -> &Expression {
+        id: ConstantId<Value>,
+    ) -> &ConstantProgram<Value> {
         self.constants.get(id)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn constant_count(&self) -> usize {
-        self.constants.len()
     }
 
     pub(crate) fn list_value_type(&self, id: ListTypeId) -> crate::plan::ValueType {
@@ -558,11 +537,6 @@ impl ExecutionPlan {
         self.functions.never_function_function(id)
     }
 
-    #[cfg(test)]
-    pub(crate) fn custom_function_function_id(&self, index: usize) -> CustomFunctionFunctionId {
-        self.functions.custom_function_function_id(index)
-    }
-
     pub(crate) fn bool_function_function(
         &self,
         id: BoolFunctionFunctionId,
@@ -591,14 +565,6 @@ impl ExecutionPlan {
         self.functions.list_function_function(id)
     }
 
-    #[cfg(test)]
-    pub(crate) fn int_list_function_function(
-        &self,
-        id: IntListFunctionFunctionId,
-    ) -> &ExecutableFunction<ListFunctionReturn> {
-        self.functions.int_list_function_function(id)
-    }
-
     pub(crate) fn function_function_function(
         &self,
         id: &FunctionFunctionFunctionId,
@@ -611,4 +577,20 @@ impl ExecutionPlan {
         self.functions.function_function_function_id(index)
     }
 }
-pub(crate) use constant::{ConstantExpression, ConstantId, ConstantTable};
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn lowering_preserves_public_module_and_source_context() {
+        let source = "pub fn main() { 1 }";
+        let typed = crate::compile_typed_module("sample", "sample.gleam", source)
+            .expect("source should compile");
+        let context = crate::SourceContext::new("sample.gleam", source);
+        let module =
+            crate::plan_module_with_source(typed, context.clone()).expect("source should plan");
+        let execution = super::ExecutionPlan::from_module_plan(module);
+
+        assert_eq!(execution.module(), "sample");
+        assert_eq!(execution.source_context(), Some(&context));
+    }
+}

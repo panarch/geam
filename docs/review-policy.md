@@ -32,8 +32,9 @@ valid `ExecutionPlan`. Structural execution failures belong in ModulePlan
 planning as `PlanError`, not in execution lowering or a runtime error enum.
 
 The two plan layers own independent executable node families. `ModulePlan`
-owns canonical expressions, steps, returns, arguments, captures, ids, and frame
-layouts for planner review. `ExecutionPlan` owns runtime-only equivalents.
+owns canonical expressions, steps, returns, arguments, captures, and ids for
+planner review. `ExecutionPlan` owns immutable typed block graphs with explicit
+parameters, instructions, terminators, and edge arguments.
 Production runtime code must not import module-plan nodes, and execution node
 definitions must not import them outside the consuming lowering modules.
 Source spans/sites and immutable value/function type metadata are the narrow
@@ -76,7 +77,7 @@ invariant. Source-level refutable matches remain normal control flow, not
 execution invariant failures.
 
 List item-family identity must be preserved by the execution list type graph,
-family-specific frame/function boundaries, and RC-backed typed runtime handles.
+family-specific block/function boundaries, and RC-backed typed runtime handles.
 It must not be recovered through runtime family checks or represented as an
 execution error. Runtime list storage uses reference counting rather than a
 tracing collector; features that can create cyclic evaluated value graphs stay
@@ -124,14 +125,21 @@ must not escape. Any IDs or ordering exposed through plan inspection must be
 deterministic. Runtime may trust links reached exclusively through such sealed
 owners without introducing a second validation boundary.
 
+Execution graph lowering may use mutable draft blocks, globally unique draft
+values, liveness state, and provisional links only inside the lowering phase.
+Freezing must publish one reachable immutable graph with typed block parameters
+and complete edge argument packs. Runtime block storage is constructed only
+from entry or edge arguments; it must not recreate function-wide default slots
+or perform missing-local validation.
+
 Do not use `Option` or `Result` in internal plan constructors to represent
 unsupported profile features, typed-AST margin cases, or runtime executability
 checks. Reject those cases before constructing plan data.
 
 `ModulePlan` and `ExecutionPlan` shapes must not contain state for features that
 are outside the current Geam profile. If a feature is profile-out, its storage,
-ids, frame slots, and executable variants must also stay out unless they are
-required by an accepted source path.
+ids, block parameters, and executable variants must also stay out unless they
+are required by an accepted source path.
 
 Treat over-wide execution plan state as a blocking design issue, even when no
 current source fixture executes incorrectly. The plan model is the validation

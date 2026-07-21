@@ -547,30 +547,59 @@ mod tests {
     use super::value;
     use crate::plan::execution::{
         BitArrayFunctionId, BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
-        BoolFunctionId, BoolFunctionLocalId, BoolListLocalId, BoolLocalId, CustomFunctionLocalId,
-        CustomListLocalId, FloatFunctionId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
-        FunctionFunctionId, FunctionFunctionLocalId, FunctionListLocalId, IntFunctionFunctionId,
+        BoolFunctionId, BoolFunctionLocalId, BoolListLocalId, BoolLocalId, CustomFunctionLocal,
+        CustomFunctionLocalId, CustomListLocalId, CustomLocal, FloatFunctionId,
+        FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionFunctionId,
+        FunctionFunctionLocal, FunctionFunctionLocalId, FunctionListLocalId, IntFunctionFunctionId,
         IntFunctionId, IntFunctionLocalId, IntListFunctionLocalId, IntListLocalId, IntLocalId,
         ListFunctionId, ListFunctionLocal, ListListLocalId, NilFunctionId, NilFunctionLocalId,
-        NilListLocalId, NilLocalId, StringFunctionId, StringFunctionLocalId, StringListLocalId,
-        StringLocalId, TupleFunctionId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
-        UtfCodepointFunctionId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
+        NilListLocalId, NilLocalId, ParamLocal, ParamSlot, StringFunctionId, StringFunctionLocalId,
+        StringListLocalId, StringLocalId, TupleFunctionId, TupleFunctionLocalId, TupleListLocalId,
+        TupleLocalId, UtfCodepointFunctionId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
         UtfCodepointLocalId,
     };
     use crate::plan::{FunctionType, TypeParameterId, ValueType};
     use crate::runtime::evaluated::{
         EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
-        EvaluatedCustomFunction, EvaluatedFloatFunction, EvaluatedFunctionFunction,
-        EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction,
-        EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
-        EvaluatedUtfCodepointFunction, EvaluatedValue,
+        EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedFloatFunction,
+        EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedIntFunction,
+        EvaluatedListCapture, EvaluatedListFunction, EvaluatedNilFunction, EvaluatedStringFunction,
+        EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
     };
-    use crate::runtime::state::{ListValueId, RuntimeState};
+    use crate::runtime::state::{CustomListAllocation, ListValueId, RuntimeState};
     use crate::runtime::{
         BitArrayValue, CaptureListValue, CaptureValue, CustomFieldValue, CustomFunctionValue,
         CustomFunctionValueTarget, CustomValue, FunctionValue, ListValue, Value,
     };
     use bitvec::vec::BitVec;
+
+    fn only_param(params: &[ParamSlot]) -> &ParamSlot {
+        match params {
+            [param] => param,
+            _ => panic!("expected exactly one parameter"),
+        }
+    }
+
+    fn custom_function_local(local: &ParamLocal) -> CustomFunctionLocal {
+        match local {
+            ParamLocal::CustomFunction(local) => local.clone(),
+            _ => panic!("expected a custom-function local"),
+        }
+    }
+
+    fn function_function_local(local: &ParamLocal) -> FunctionFunctionLocal {
+        match local {
+            ParamLocal::FunctionFunction(local) => local.clone(),
+            _ => panic!("expected a function-function local"),
+        }
+    }
+
+    fn custom_local(local: &ParamLocal) -> CustomLocal {
+        match local {
+            ParamLocal::Custom(local) => *local,
+            _ => panic!("expected a custom local"),
+        }
+    }
 
     const EVERY_LIST_FAMILY_SOURCE: &str = r#"
 fn ints() -> List(Int) { [] }
@@ -617,18 +646,10 @@ pub fn main() {
     fn materializes_every_runtime_value_and_list_storage_family() {
         let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
         let mut state = RuntimeState::new();
-        let mut caller_frame = crate::runtime::frame::Frame::new(
-            plan.int_function(IntFunctionId(0)).frame_layout(),
-            &mut state,
+        let custom_value = EvaluatedCustomValue::from_fields(
+            plan.custom_constructor_id(0, 0),
+            vec![EvaluatedValue::Int(1.into())].into_boxed_slice(),
         );
-        let custom_value = crate::runtime::function::run_custom_call(
-            &plan,
-            &mut state,
-            plan.custom_function_id(0),
-            &[],
-            &mut caller_frame,
-        )
-        .expect("custom constructor function should evaluate");
         let custom_type = plan.custom_value_type(custom_value.type_id());
         let expected_custom_value = CustomValue::from_evaluated(
             custom_type.clone(),
@@ -659,14 +680,10 @@ pub fn main() {
             plan.utf_codepoint_list_function_id(0).type_id(),
             vec!['\u{10ffff}'],
         );
-        let custom_list = crate::runtime::function::run_custom_list_call(
-            &plan,
-            &mut state,
-            plan.custom_list_function_id(0),
-            &[],
-            &mut caller_frame,
-        )
-        .expect("custom list function should evaluate");
+        let custom_list = state.custom(CustomListAllocation::new(
+            plan.custom_list_function_id(0).type_id(),
+            vec![custom_value.clone()],
+        ));
         let float_list = state.float(plan.float_list_function_id(0).type_id(), vec![1.5]);
         let bool_list = state.bool(plan.bool_list_function_id(0).type_id(), vec![true]);
         let nil_list = state.nil(plan.nil_list_function_id(0).type_id(), 1);
@@ -760,18 +777,10 @@ pub fn main() {
     fn materializes_every_function_and_capture_family() {
         let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
         let mut state = RuntimeState::new();
-        let mut caller_frame = crate::runtime::frame::Frame::new(
-            plan.int_function(IntFunctionId(0)).frame_layout(),
-            &mut state,
+        let custom_value = EvaluatedCustomValue::from_fields(
+            plan.custom_constructor_id(0, 0),
+            vec![EvaluatedValue::Int(1.into())].into_boxed_slice(),
         );
-        let custom_value = crate::runtime::function::run_custom_call(
-            &plan,
-            &mut state,
-            plan.custom_function_id(0),
-            &[],
-            &mut caller_frame,
-        )
-        .expect("custom constructor function should evaluate");
         let custom_type_id = custom_value.type_id();
         let custom_type = plan.custom_value_type(custom_type_id);
         let expected_custom_value = CustomValue::from_evaluated(
@@ -906,16 +915,20 @@ pub fn main() {
                 crate::plan::execution::ValueType::Function(Box::new(execution_int_type.clone())),
             ),
         );
-        let custom_function_local = plan
-            .int_function(IntFunctionId(1))
-            .frame_layout()
-            .custom_functions()[0]
-            .clone();
-        let function_function_local = plan
-            .int_function(IntFunctionId(2))
-            .frame_layout()
-            .function_functions()[0]
-            .clone();
+        let custom_function_owner = plan.int_function(IntFunctionId(1));
+        let custom_function_param = only_param(
+            custom_function_owner
+                .entry()
+                .params(custom_function_owner.graph()),
+        );
+        let custom_function_local = custom_function_local(custom_function_param.local());
+        let function_function_owner = plan.int_function(IntFunctionId(2));
+        let function_function_param = only_param(
+            function_function_owner
+                .entry()
+                .params(function_function_owner.graph()),
+        );
+        let function_function_local = function_function_local(function_function_param.local());
         let int_list = state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
         let string_list = state.string(
             plan.string_list_function_id(0).type_id(),
@@ -930,14 +943,10 @@ pub fn main() {
             plan.utf_codepoint_list_function_id(0).type_id(),
             vec!['\u{10ffff}'],
         );
-        let custom_list = crate::runtime::function::run_custom_list_call(
-            &plan,
-            &mut state,
-            plan.custom_list_function_id(0),
-            &[],
-            &mut caller_frame,
-        )
-        .expect("custom list function should evaluate");
+        let custom_list = state.custom(CustomListAllocation::new(
+            plan.custom_list_function_id(0).type_id(),
+            vec![custom_value.clone()],
+        ));
         let float_list = state.float(plan.float_list_function_id(0).type_id(), vec![1.5]);
         let bool_list = state.bool(plan.bool_list_function_id(0).type_id(), vec![true]);
         let nil_list = state.nil(plan.nil_list_function_id(0).type_id(), 1);
@@ -959,10 +968,9 @@ pub fn main() {
             type_: execution_int_type.clone(),
             list_type: plan.int_list_function_id(0).type_id(),
         };
-        let custom_local = plan
-            .custom_function(plan.custom_function_id(1))
-            .frame_layout()
-            .customs()[0];
+        let custom_owner = plan.custom_function(plan.custom_function_id(1));
+        let custom_param = only_param(custom_owner.entry().params(custom_owner.graph().body()));
+        let custom_local = custom_local(custom_param.local());
 
         let captures = [
             EvaluatedCapture::int(IntLocalId(0), 1.into()),
@@ -1322,5 +1330,29 @@ pub fn main() {
                 ))),
             ]),
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "expected exactly one parameter")]
+    fn single_parameter_guard_rejects_empty_entries() {
+        only_param(&[]);
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a custom-function local")]
+    fn custom_function_local_guard_rejects_other_families() {
+        custom_function_local(&ParamLocal::Int(IntLocalId(0)));
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a function-function local")]
+    fn function_function_local_guard_rejects_other_families() {
+        function_function_local(&ParamLocal::Int(IntLocalId(0)));
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a custom local")]
+    fn custom_local_guard_rejects_other_families() {
+        custom_local(&ParamLocal::Int(IntLocalId(0)));
     }
 }

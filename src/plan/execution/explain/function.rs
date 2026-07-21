@@ -1,7 +1,7 @@
 use super::super::function::ExecutableFunction;
 use super::super::table::FunctionTables;
+use super::graph::ExplainedGraph;
 use super::label::FunctionLabel;
-use super::return_graph::{ExplainedReturn, write_graph};
 
 pub(super) fn write_function_tables(output: &mut String, functions: &FunctionTables) {
     write_table(output, "never", &functions.never_functions);
@@ -241,16 +241,14 @@ fn write_table<'a, Return, Functions>(
     family: &'static str,
     functions: Functions,
 ) where
-    Return: ExplainedReturn + 'a,
+    Return: ExplainedGraph + 'a,
     Functions: IntoIterator<Item = &'a ExecutableFunction<Return>>,
 {
     for (index, function) in functions.into_iter().enumerate() {
         output.push_str("\nfunction ");
         FunctionLabel::new(family, index).push_to(output);
-        output.push_str("\n  entry steps=");
-        output.push_str(&function.steps().len().to_string());
         output.push('\n');
-        write_graph(output, function.return_(), family);
+        function.graph().write_topology(output, family);
     }
 }
 

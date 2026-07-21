@@ -19,31 +19,25 @@ pub fn main() {
 // main int#0
 //
 // function int#0
-//   entry steps=1
 //   graph entry=b0
-//   b0 tail int#1 args=0
+//   b0 instructions=5 tail int#1 args=0
 //
 // function int#1
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail int#1 args=0
+//   b0 instructions=0 tail int#1 args=0
 //
 // function list.int#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail list.int#0 args=0
+//   b0 instructions=0 tail list.int#0 args=0
 //
 // function function.int#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail function.int#0 args=0
+//   b0 instructions=0 tail function.int#0 args=0
 //
 // function function.list.int#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail function.list.int#0 args=0
+//   b0 instructions=0 tail function.list.int#0 args=0
 //
 // function function.function#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail function.function#0 args=0
+//   b0 instructions=0 tail function.function#0 args=0

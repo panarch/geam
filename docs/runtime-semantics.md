@@ -70,18 +70,31 @@ runtime payload does not require a value of that parameter, for example an empty
 
 ## Constant Evaluation
 
-A constant initializer is evaluated when its source reference is evaluated, so
-an unselected branch does not evaluate the constants it contains. Top-level
-function references retain their stable reference identity, while each
-evaluation of a closure or constructor-function constant creates a fresh
-instance identity as described above.
+A constant initializer is lowered into a reusable zero-argument typed graph
+program. Each source reference executes that program, so an unselected branch
+does not evaluate the constants it contains. Top-level function references
+retain their stable reference identity, while each evaluation of a closure or
+constructor-function constant creates a fresh instance identity as described
+above.
 
-## Return Control Flow
+## Execution Graph
 
-Geam lowers return control flow before runtime and traverses it iteratively.
-Nested tail-position branches and step blocks therefore do not grow the Rust
-return-evaluation call stack. Tail calls return control to the function loop for
-frame replacement rather than recursively evaluating another return body.
+Geam lowers each function into immutable typed blocks before runtime. A block
+contains ordered typed parameters, instructions, and one terminator. Branches,
+switches, matches, source stops, returns, and tail calls are explicit graph
+edges or terminators rather than recursive runtime expression or return nodes.
+
+The runtime evaluates a block iteratively. On an edge it retains the ordered
+edge arguments, drops the old block environment, drains queued list releases,
+and constructs the target environment from those arguments. No function-wide
+default frame is allocated, and a block can only read entry values, block
+parameters, or instruction outputs that dominate the read.
+
+Tail calls return control to the typed function-family loop, which replaces the
+current activation without growing the Rust stack. Non-tail call instructions
+currently invoke the callee graph through the Rust stack because the caller has
+a continuation after the instruction; explicit activation-stack execution is a
+separate runtime concern.
 
 ## Numeric Division By Zero
 

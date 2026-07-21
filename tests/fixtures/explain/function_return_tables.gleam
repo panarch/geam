@@ -37,66 +37,53 @@ pub fn main() -> fn() -> Int {
 // main function.int#0
 //
 // function function.int#0
-//   entry steps=1
 //   graph entry=b0
-//   b0 tail function.int#1 args=0
+//   b0 instructions=12 tail function.int#1 args=0
 //
 // function function.int#1
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail function.int#1 args=0
+//   b0 instructions=0 tail function.int#1 args=0
 //
 // function function.float#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail function.float#0 args=0
+//   b0 instructions=0 tail function.float#0 args=0
 //
 // function function.string#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail function.string#0 args=0
+//   b0 instructions=0 tail function.string#0 args=0
 //
 // function function.bit_array#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail function.bit_array#0 args=0
+//   b0 instructions=0 tail function.bit_array#0 args=0
 //
 // function function.utf_codepoint#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail function.utf_codepoint#0 args=0
+//   b0 instructions=0 tail function.utf_codepoint#0 args=0
 //
 // function function.custom#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail function.custom#0 args=0
+//   b0 instructions=0 tail function.custom#0 args=0
 //
 // function function.bool#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail function.bool#0 args=0
+//   b0 instructions=0 tail function.bool#0 args=0
 //
 // function function.nil#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail function.nil#0 args=0
+//   b0 instructions=0 tail function.nil#0 args=0
 //
 // function function.tuple#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail function.tuple#0 args=0
+//   b0 instructions=0 tail function.tuple#0 args=0
 //
 // function function.generic#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail function.generic#0 args=0
+//   b0 instructions=0 tail function.generic#0 args=0
 //
 // function function.never#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail function.never#0 args=0
+//   b0 instructions=0 tail function.never#0 args=0
 //
 // function function.function#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail function.function#0 args=0
+//   b0 instructions=0 tail function.function#0 args=0

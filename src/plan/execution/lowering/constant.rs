@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::plan::execution::{ConstantExpression, ConstantId, ConstantTable};
+use crate::plan::execution::{ConstantId, ConstantProgram, ConstantTable, ConstantValue};
 use crate::plan::module::ConstantInstantiation;
 
 #[derive(Default)]
@@ -14,12 +14,12 @@ impl ConstantLowering {
         self.indices.get(key).copied().map(ConstantId::new)
     }
 
-    pub(super) fn insert<Value: ConstantExpression>(
+    pub(super) fn insert<Value: ConstantValue>(
         &mut self,
         key: ConstantInstantiation,
-        value: Value,
+        program: ConstantProgram<Value>,
     ) -> ConstantId<Value> {
-        let id = self.table.push(value);
+        let id = self.table.push(program);
         self.indices.insert(key, id.index());
         id
     }

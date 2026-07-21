@@ -1,0 +1,496 @@
+mod instruction;
+mod pattern;
+mod terminator;
+mod value;
+
+pub(crate) use instruction::{
+    BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayInstruction, BitArraySegment, BoolInstruction,
+    CustomInstruction, Endianness, FloatBitSize, FloatInstruction, FunctionCapture,
+    FunctionInstruction, FunctionInstructionKind, FunctionTarget, Instruction, InstructionKind,
+    IntInstruction, ListInstruction, NilInstruction, ParameterListInstruction, StringEncoding,
+    StringInstruction, TupleInstruction, TypedListInstruction, UtfCodepointInstruction,
+};
+pub(crate) use pattern::{
+    BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
+    BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, MatchIntBindingId,
+    MatchPattern, MatchPatternBinding, MatchPatternList, MatchPatternListTail, Signedness,
+};
+pub(crate) use terminator::{
+    BlockId, Edge, MatchEdge, MatchEdgeArgument, NeverCallTarget, SourceStopKind, Terminator,
+};
+pub(crate) use value::{FunctionLocal, NeverReturn, StoredListLocal};
+
+use super::ParamSlot;
+
+pub(crate) struct FunctionGraph<Return, TailCall> {
+    entry: BlockId,
+    blocks: Box<[Block<Return, TailCall>]>,
+}
+
+pub(crate) struct Block<Return, TailCall> {
+    params: Box<[ParamSlot]>,
+    instructions: Box<[Instruction]>,
+    terminator: Terminator<Return, TailCall>,
+}
+
+impl<Return, TailCall> FunctionGraph<Return, TailCall> {
+    pub(in crate::plan::execution) fn from_parts(
+        entry: BlockId,
+        blocks: Vec<Block<Return, TailCall>>,
+    ) -> Self {
+        Self {
+            entry,
+            blocks: blocks.into_boxed_slice(),
+        }
+    }
+
+    pub(crate) fn entry(&self) -> BlockId {
+        self.entry
+    }
+
+    pub(crate) fn blocks(&self) -> &[Block<Return, TailCall>] {
+        &self.blocks
+    }
+
+    pub(crate) fn block(&self, id: BlockId) -> &Block<Return, TailCall> {
+        &self.blocks[id.index()]
+    }
+}
+
+impl<Return, TailCall> Block<Return, TailCall> {
+    pub(in crate::plan::execution) fn new(
+        params: Vec<ParamSlot>,
+        instructions: Vec<Instruction>,
+        terminator: Terminator<Return, TailCall>,
+    ) -> Self {
+        Self {
+            params: params.into_boxed_slice(),
+            instructions: instructions.into_boxed_slice(),
+            terminator,
+        }
+    }
+
+    pub(crate) fn params(&self) -> &[ParamSlot] {
+        &self.params
+    }
+
+    pub(crate) fn instructions(&self) -> &[Instruction] {
+        &self.instructions
+    }
+
+    pub(crate) fn terminator(&self) -> &Terminator<Return, TailCall> {
+        &self.terminator
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        BlockId, Edge, FunctionGraph, Instruction, InstructionKind, IntInstruction, MatchEdge,
+        MatchEdgeArgument, MatchPattern, MatchPatternList, Terminator,
+    };
+    use crate::plan::execution::{
+        BoolLocalId, ExecutionPlan, IntFunctionId, IntLocalId, ListLocal, ParamLocal,
+    };
+
+    #[derive(Clone, Copy)]
+    enum IntBinaryOperation {
+        Add,
+        Multiply,
+    }
+
+    #[test]
+    fn lowered_graph_owns_dense_typed_values_merges_and_edge_arguments() {
+        let plan = execution_plan(
+            r#"
+fn choose(flag: Bool, value: Int) -> Int {
+  let selected = case flag {
+    True -> value + 1
+    False -> value + 2
+  }
+  selected * 3
+}
+
+pub fn main() { choose(True, 10) }
+"#,
+        );
+        let function = plan.int_function(IntFunctionId(1));
+        let graph = function.graph();
+
+        assert_eq!(graph.entry(), BlockId::new(0));
+        assert_eq!(graph.blocks().len(), 4);
+        assert_eq!(
+            function
+                .entry()
+                .params(graph)
+                .iter()
+                .map(|slot| slot.local())
+                .collect::<Vec<_>>(),
+            vec![
+                &ParamLocal::Bool(BoolLocalId(0)),
+                &ParamLocal::Int(IntLocalId(0)),
+            ],
+        );
+
+        let entry = graph.block(BlockId::new(0));
+        assert!(entry.instructions().is_empty());
+        let (subject, true_, false_) = bool_branch(entry.terminator());
+        assert_eq!(subject, BoolLocalId(0));
+        assert_eq!(true_.target(), BlockId::new(1));
+        assert_eq!(false_.target(), BlockId::new(3));
+        assert_eq!(true_.args(), &[ParamLocal::Int(IntLocalId(0))]);
+        assert_eq!(false_.args(), &[ParamLocal::Int(IntLocalId(0))]);
+
+        assert_branch_add_and_jump(&plan, graph, BlockId::new(1), 1, BlockId::new(2));
+
+        let merge = graph.block(BlockId::new(2));
+        assert_eq!(
+            merge
+                .params()
+                .iter()
+                .map(|slot| slot.local())
+                .collect::<Vec<_>>(),
+            vec![&ParamLocal::Int(IntLocalId(0))],
+        );
+        assert_int_shape(&plan, merge.params()[0].shape());
+        assert_eq!(merge.instructions().len(), 2);
+        assert_int_value(&plan, &merge.instructions()[0], IntLocalId(1), 3);
+        let multiply = &merge.instructions()[1];
+        assert_eq!(multiply.output().local(), &ParamLocal::Int(IntLocalId(2)));
+        assert_int_shape(&plan, multiply.output().shape());
+        assert_eq!(
+            int_binary_operands(multiply, IntBinaryOperation::Multiply),
+            (IntLocalId(0), IntLocalId(1)),
+        );
+        assert_eq!(returned_int(merge.terminator()), IntLocalId(2));
+
+        assert_branch_add_and_jump(&plan, graph, BlockId::new(3), 2, BlockId::new(2));
+    }
+
+    #[test]
+    fn lowered_match_exports_bindings_only_through_the_success_edge() {
+        let plan = execution_plan(
+            r#"
+pub fn main() {
+  let assert [first, second] = [1, 2]
+  first + second
+}
+"#,
+        );
+        let graph = plan.int_function(IntFunctionId(0)).graph();
+
+        assert_eq!(graph.blocks().len(), 3);
+        let entry = graph.block(BlockId::new(0));
+        let (pattern, success, failure) = match_terminator(entry.terminator());
+        let list = list_pattern(pattern);
+        assert_eq!(list.elements().len(), 2);
+        assert_binding_pattern(&list.elements()[0]);
+        assert_binding_pattern(&list.elements()[1]);
+        assert!(list.tail().is_none());
+        assert_eq!(success.target(), BlockId::new(1));
+        assert_eq!(success.args().len(), 2);
+        assert_eq!(binding_edge_argument(&success.args()[0]), 0);
+        assert_eq!(binding_edge_argument(&success.args()[1]), 1);
+        assert_eq!(failure.target(), BlockId::new(2));
+        assert_eq!(failure.args().len(), 1);
+        let failure_subject = list_local(&failure.args()[0]);
+
+        let success_block = graph.block(success.target());
+        assert_eq!(
+            success_block
+                .params()
+                .iter()
+                .map(|slot| slot.local())
+                .collect::<Vec<_>>(),
+            vec![
+                &ParamLocal::Int(IntLocalId(0)),
+                &ParamLocal::Int(IntLocalId(1)),
+            ],
+        );
+        assert_eq!(success_block.instructions().len(), 1);
+        assert_eq!(
+            int_binary_operands(&success_block.instructions()[0], IntBinaryOperation::Add),
+            (IntLocalId(0), IntLocalId(1)),
+        );
+
+        let failure_block = graph.block(failure.target());
+        assert_eq!(failure_block.params().len(), 1);
+        assert_eq!(
+            failure_block.params()[0].local(),
+            &ParamLocal::List(failure_subject.clone()),
+        );
+        let (panic_subject, message) = let_assert_panic(failure_block.terminator());
+        assert_eq!(panic_subject, failure_block.params()[0].local());
+        assert_eq!(message, &None);
+    }
+
+    #[test]
+    fn lowered_match_does_not_thread_an_unused_binding() {
+        let plan = execution_plan(
+            r#"
+pub fn main() {
+  let assert [first, second] = [1, 2]
+  first
+}
+"#,
+        );
+        let graph = plan.int_function(IntFunctionId(0)).graph();
+        let entry = graph.block(BlockId::new(0));
+        let (pattern, success, _) = match_terminator(entry.terminator());
+        let list = list_pattern(pattern);
+        assert_eq!(list.elements().len(), 2);
+        assert_binding_pattern(&list.elements()[0]);
+        assert_binding_pattern(&list.elements()[1]);
+        assert_eq!(success.args().len(), 1);
+        assert_eq!(binding_edge_argument(&success.args()[0]), 0);
+
+        let success_block = graph.block(success.target());
+        assert_eq!(success_block.params().len(), 1);
+        assert_eq!(
+            success_block.params()[0].local(),
+            &ParamLocal::Int(IntLocalId(0)),
+        );
+        assert_eq!(returned_int(success_block.terminator()), IntLocalId(0));
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture should contain a Bool branch")]
+    fn bool_branch_rejects_the_wrong_fixture_shape() {
+        bool_branch(&Terminator::Return(IntLocalId(0)));
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture should contain a match terminator")]
+    fn match_terminator_rejects_the_wrong_fixture_shape() {
+        match_terminator(&Terminator::Return(IntLocalId(0)));
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture should contain a List pattern")]
+    fn list_pattern_rejects_the_wrong_fixture_shape() {
+        list_pattern(&MatchPattern::Discard);
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture should contain a binding pattern")]
+    fn assert_binding_pattern_rejects_the_wrong_fixture_shape() {
+        assert_binding_pattern(&MatchPattern::Discard);
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture should export a match binding")]
+    fn binding_edge_argument_rejects_the_wrong_fixture_shape() {
+        binding_edge_argument(&MatchEdgeArgument::Value(ParamLocal::Int(IntLocalId(0))));
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture should carry a List local")]
+    fn list_local_rejects_the_wrong_fixture_shape() {
+        list_local(&ParamLocal::Int(IntLocalId(0)));
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture should contain the requested Int binary instruction")]
+    fn int_binary_operands_rejects_the_wrong_fixture_shape() {
+        let plan = execution_plan("pub fn main() { 1 }");
+        let graph = plan.int_function(IntFunctionId(0)).graph();
+        int_binary_operands(
+            &graph.block(graph.entry()).instructions()[0],
+            IntBinaryOperation::Add,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture should contain an Int value instruction")]
+    fn int_value_rejects_the_wrong_fixture_shape() {
+        let plan = execution_plan("pub fn main() { 1 + 2 }");
+        let graph = plan.int_function(IntFunctionId(0)).graph();
+        int_value(&graph.block(graph.entry()).instructions()[2]);
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture should return an Int local")]
+    fn returned_int_rejects_the_wrong_fixture_shape() {
+        returned_int(&Terminator::SourceStop {
+            kind: super::SourceStopKind::Panic,
+            message: None,
+            site: crate::plan::PanicSite::unknown(),
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture should contain a jump terminator")]
+    fn jump_rejects_the_wrong_fixture_shape() {
+        jump(&Terminator::Return(IntLocalId(0)));
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture should contain a let-assert panic")]
+    fn let_assert_panic_rejects_the_wrong_fixture_shape() {
+        let_assert_panic(&Terminator::Return(IntLocalId(0)));
+    }
+
+    fn assert_branch_add_and_jump(
+        plan: &ExecutionPlan,
+        graph: &FunctionGraph<IntLocalId, IntFunctionId>,
+        block_id: BlockId,
+        addend: i64,
+        target: BlockId,
+    ) {
+        let block = graph.block(block_id);
+        assert_eq!(
+            block
+                .params()
+                .iter()
+                .map(|slot| slot.local())
+                .collect::<Vec<_>>(),
+            vec![&ParamLocal::Int(IntLocalId(0))],
+        );
+        assert_int_shape(plan, block.params()[0].shape());
+        assert_eq!(block.instructions().len(), 2);
+        assert_int_value(plan, &block.instructions()[0], IntLocalId(1), addend);
+
+        let add = &block.instructions()[1];
+        assert_eq!(add.output().local(), &ParamLocal::Int(IntLocalId(2)));
+        assert_int_shape(plan, add.output().shape());
+        assert_eq!(
+            int_binary_operands(add, IntBinaryOperation::Add),
+            (IntLocalId(0), IntLocalId(1)),
+        );
+
+        let edge = jump(block.terminator());
+        assert_eq!(edge.target(), target);
+        assert_eq!(edge.args(), &[ParamLocal::Int(IntLocalId(2))]);
+    }
+
+    fn assert_int_value(
+        plan: &ExecutionPlan,
+        instruction: &super::Instruction,
+        output: IntLocalId,
+        value: i64,
+    ) {
+        assert_eq!(instruction.output().local(), &ParamLocal::Int(output));
+        assert_int_shape(plan, instruction.output().shape());
+        assert_eq!(int_value(instruction), &value.into());
+    }
+
+    fn bool_branch(
+        terminator: &Terminator<IntLocalId, IntFunctionId>,
+    ) -> (BoolLocalId, &Edge, &Edge) {
+        match terminator {
+            Terminator::BoolBranch {
+                subject,
+                true_,
+                false_,
+            } => (*subject, true_, false_),
+            _ => panic!("fixture should contain a Bool branch"),
+        }
+    }
+
+    fn match_terminator(
+        terminator: &Terminator<IntLocalId, IntFunctionId>,
+    ) -> (&MatchPattern, &MatchEdge, &Edge) {
+        match terminator {
+            Terminator::Match {
+                pattern,
+                success,
+                failure,
+                ..
+            } => (pattern, success, failure),
+            _ => panic!("fixture should contain a match terminator"),
+        }
+    }
+
+    fn list_pattern(pattern: &MatchPattern) -> &MatchPatternList {
+        match pattern {
+            MatchPattern::List(pattern) => pattern,
+            _ => panic!("fixture should contain a List pattern"),
+        }
+    }
+
+    fn assert_binding_pattern(pattern: &MatchPattern) {
+        match pattern {
+            MatchPattern::Bind(_) => {}
+            _ => panic!("fixture should contain a binding pattern"),
+        }
+    }
+
+    fn binding_edge_argument(argument: &MatchEdgeArgument) -> usize {
+        match argument {
+            MatchEdgeArgument::Binding(index) => *index,
+            MatchEdgeArgument::Value(_) => {
+                panic!("fixture should export a match binding")
+            }
+        }
+    }
+
+    fn list_local(local: &ParamLocal) -> &ListLocal {
+        match local {
+            ParamLocal::List(local) => local,
+            _ => panic!("fixture should carry a List local"),
+        }
+    }
+
+    fn int_binary_operands(
+        instruction: &Instruction,
+        operation: IntBinaryOperation,
+    ) -> (IntLocalId, IntLocalId) {
+        match (operation, instruction.kind()) {
+            (
+                IntBinaryOperation::Add,
+                InstructionKind::Int(IntInstruction::Add { left, right }),
+            )
+            | (
+                IntBinaryOperation::Multiply,
+                InstructionKind::Int(IntInstruction::Mult { left, right }),
+            ) => (*left, *right),
+            _ => panic!("fixture should contain the requested Int binary instruction"),
+        }
+    }
+
+    fn int_value(instruction: &Instruction) -> &num_bigint::BigInt {
+        match instruction.kind() {
+            InstructionKind::Int(IntInstruction::Value(value)) => value,
+            _ => panic!("fixture should contain an Int value instruction"),
+        }
+    }
+
+    fn returned_int(terminator: &Terminator<IntLocalId, IntFunctionId>) -> IntLocalId {
+        match terminator {
+            Terminator::Return(value) => *value,
+            _ => panic!("fixture should return an Int local"),
+        }
+    }
+
+    fn jump(terminator: &Terminator<IntLocalId, IntFunctionId>) -> &Edge {
+        match terminator {
+            Terminator::Jump(edge) => edge,
+            _ => panic!("fixture should contain a jump terminator"),
+        }
+    }
+
+    fn let_assert_panic(
+        terminator: &Terminator<IntLocalId, IntFunctionId>,
+    ) -> (&ParamLocal, &Option<crate::plan::execution::StringLocalId>) {
+        match terminator {
+            Terminator::LetAssertPanic {
+                subject, message, ..
+            } => (subject, message),
+            _ => panic!("fixture should contain a let-assert panic"),
+        }
+    }
+
+    fn assert_int_shape(plan: &ExecutionPlan, shape: crate::plan::execution::ValueShapeId) {
+        assert_eq!(
+            plan.shape_value_type(shape),
+            crate::plan::execution::ValueType::Int
+        );
+    }
+
+    fn execution_plan(source: &str) -> ExecutionPlan {
+        let typed = crate::compile_typed_module("main", "main.gleam", source)
+            .expect("source should compile");
+        let module_plan = crate::plan_module(typed).expect("source should plan");
+        ExecutionPlan::from_module_plan(module_plan)
+    }
+}

@@ -19,9 +19,6 @@ use super::{
     UtfCodepointListFunctionId, UtfCodepointListReturn, UtfCodepointReturn,
 };
 
-#[cfg(test)]
-use super::IntListFunctionFunctionId;
-
 pub(super) struct FunctionTables {
     pub(super) never_functions: Vec<ExecutableFunction<NeverReturn>>,
     pub(super) int_functions: Vec<ExecutableFunction<IntReturn>>,
@@ -183,14 +180,6 @@ impl FunctionTables {
         self.function_list_functions[index].0
     }
 
-    #[cfg(test)]
-    pub(super) fn int_list_function_function(
-        &self,
-        id: IntListFunctionFunctionId,
-    ) -> &ExecutableFunction<ListFunctionReturn> {
-        &self.int_list_function_functions[id.0]
-    }
-
     pub(super) fn int_function(&self, id: IntFunctionId) -> &ExecutableFunction<IntReturn> {
         &self.int_functions[id.0]
     }
@@ -231,7 +220,7 @@ impl FunctionTables {
     pub(super) fn custom_function_id(&self, index: usize) -> CustomFunctionId {
         CustomFunctionId::new(
             index,
-            *self.custom_functions[index].return_().signature_shape(),
+            *self.custom_functions[index].graph().signature_shape(),
         )
     }
 
@@ -367,22 +356,11 @@ impl FunctionTables {
     }
 
     #[cfg(test)]
-    pub(super) fn custom_function_function_id(&self, index: usize) -> CustomFunctionFunctionId {
-        CustomFunctionFunctionId::new(
-            index,
-            self.custom_function_functions[index]
-                .return_()
-                .type_()
-                .clone(),
-        )
-    }
-
-    #[cfg(test)]
     pub(super) fn function_function_function_id(&self, index: usize) -> FunctionFunctionFunctionId {
         FunctionFunctionFunctionId::new(
             index,
             self.function_function_functions[index]
-                .return_()
+                .graph()
                 .type_()
                 .clone(),
         )
@@ -464,12 +442,41 @@ impl FunctionTables {
 
 #[cfg(test)]
 mod tests {
-    use crate::plan::{FunctionType, ValueType};
+    use crate::plan::{FunctionType, TypeParameterId, ValueType};
     use crate::runtime::{FunctionValue, Value, run_main};
+
+    #[test]
+    fn custom_list_function_function_uses_its_exact_runtime_table() {
+        assert_eq!(
+            run_main(&execution_plan(
+                r#"
+pub type Boxed { Boxed(Int) }
+
+fn factory() -> fn() -> List(Boxed) {
+  fn() { [Boxed(1)] }
+}
+
+pub fn main() {
+  let assert [Boxed(value)] = factory()()
+  value
+}
+"#,
+            )),
+            Ok(Value::Int(1.into())),
+        );
+    }
 
     #[test]
     fn list_function_function_tables_dispatch_every_item_family() {
         let cases = [
+            (
+                "fn factory() -> fn() -> List(value) { fn() { [] } } pub fn main() { factory() }",
+                ValueType::Parameter(TypeParameterId(0)),
+            ),
+            (
+                "fn factory() -> fn() -> List(List(value)) { fn() { [] } } pub fn main() { factory() }",
+                ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(0)))),
+            ),
             (
                 "pub fn main() -> fn() -> List(Int) { fn() { [] } }",
                 ValueType::Int,

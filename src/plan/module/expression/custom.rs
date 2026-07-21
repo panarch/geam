@@ -204,11 +204,6 @@ impl CustomExpr {
         )
     }
 
-    #[cfg(test)]
-    pub(crate) fn panic(panic: PanicExpr, type_: CustomType) -> Self {
-        Self::new(CustomValueShape::any(type_), CustomExprKind::Panic(panic))
-    }
-
     pub(crate) fn panic_shape(panic: PanicExpr, shape: CustomValueShape) -> Self {
         Self::new(shape, CustomExprKind::Panic(panic))
     }

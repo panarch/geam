@@ -1,6 +1,6 @@
 mod function;
+mod graph;
 mod label;
-mod return_graph;
 
 use self::function::write_function_tables;
 use self::label::runtime_function_label;
@@ -39,7 +39,7 @@ mod tests {
     use crate::{ExecutionPlan, ExecutionPlanExplanation, Value, run_main};
 
     #[test]
-    fn formats_public_return_graph_without_source_names_and_preserves_execution() {
+    fn formats_public_typed_block_graph_without_source_names_and_preserves_execution() {
         let source = include_str!("../../../tests/fixtures/explain/return_topology.gleam");
         let plan = execution_plan(source);
         assert_eq!(run_main(&plan), Ok(Value::Int(40.into())));

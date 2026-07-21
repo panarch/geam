@@ -164,12 +164,6 @@ pub(super) enum Representability<T> {
     Uninhabited,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum StorageErasure<T> {
-    Stored(T),
-    Erased,
-}
-
 impl<T> Representability<T> {
     pub(super) fn map<U>(self, map: impl FnOnce(T) -> U) -> Representability<U> {
         match self {
@@ -207,24 +201,6 @@ impl<T> Representability<T> {
             }
         }
         Representability::Inhabited(inhabited)
-    }
-
-    pub(super) fn transpose_option(
-        value: Option<Representability<T>>,
-    ) -> Representability<Option<T>> {
-        match value {
-            Some(value) => value.map(Some),
-            None => Representability::Inhabited(None),
-        }
-    }
-}
-
-impl<T> StorageErasure<T> {
-    pub(super) fn map<U>(self, map: impl FnOnce(T) -> U) -> StorageErasure<U> {
-        match self {
-            Self::Stored(value) => StorageErasure::Stored(map(value)),
-            Self::Erased => StorageErasure::Erased,
-        }
     }
 }
 
@@ -1059,7 +1035,7 @@ mod tests {
         CustomConstructorDivergence, CustomConstructorMatch, FunctionRepresentation,
         Representability, RepresentationContext, SpecializationKey, SpecializedCustomValueShape,
         SpecializedFunctionShape, SpecializedTypeSubstitution, SpecializedValueShape,
-        StorageErasure, StoredValueShape, UninhabitedCustomValueShape, UninhabitedTupleValueShape,
+        StoredValueShape, UninhabitedCustomValueShape, UninhabitedTupleValueShape,
         UninhabitedValueShape, ValueRepresentation,
     };
     use crate::plan::{
@@ -1285,14 +1261,6 @@ mod tests {
             &mut std::collections::HashSet::new(),
             &mut known_inhabited,
         ));
-    }
-
-    #[test]
-    fn storage_erasure_mapping_preserves_erased_values() {
-        assert_eq!(
-            StorageErasure::<usize>::Erased.map(std::convert::identity),
-            StorageErasure::Erased,
-        );
     }
 
     #[test]

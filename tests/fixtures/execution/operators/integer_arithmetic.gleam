@@ -1,5 +1,9 @@
-pub fn main() {
-  1 + 2 * 3
+fn one() {
+  1
 }
 
-// geam:expect Int(7)
+pub fn main() {
+  #(1 + 2 * 3, -one())
+}
+
+// geam:expect Tuple([Int(7), Int(-1)])

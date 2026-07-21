@@ -240,14 +240,6 @@ impl CustomFunctionType {
             return_,
         }
     }
-
-    pub(crate) fn return_(&self) -> &super::CustomValueShape {
-        &self.return_
-    }
-
-    pub(crate) fn to_function_type(&self) -> FunctionType {
-        self.type_.clone()
-    }
 }
 
 impl GenericFunctionType {
@@ -256,10 +248,6 @@ impl GenericFunctionType {
         shape: super::FunctionShape,
     ) -> Self {
         Self { type_, shape }
-    }
-
-    pub(crate) fn to_function_type(&self) -> FunctionType {
-        self.type_.clone()
     }
 }
 
@@ -284,10 +272,6 @@ impl FunctionFunctionType {
     #[cfg(test)]
     pub(crate) fn return_shape(&self) -> &super::FunctionShape {
         &self.return_
-    }
-
-    pub(crate) fn to_function_type(&self) -> FunctionType {
-        self.type_.clone()
     }
 }
 

@@ -13,7 +13,7 @@ use super::id::{
     UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
 use super::step::Step;
-use super::{FrameLayout, FunctionInstantiation, FunctionTemplateSignature, TypeScheme};
+use super::{FunctionInstantiation, FunctionTemplateSignature, TypeScheme};
 use crate::plan::{
     CustomFunctionType, CustomType, FunctionFunctionType, FunctionType, ValueStorageShape,
     ValueType,
@@ -24,12 +24,7 @@ use num_bigint::BigInt;
 #[cfg(test)]
 use super::expression::ListExpr;
 #[cfg(test)]
-use super::id::{
-    BitArrayFunctionFunctionId, BitArrayFunctionId, BoolFunctionFunctionId, BoolFunctionId,
-    FloatFunctionFunctionId, FloatFunctionId, IntFunctionFunctionId, IntFunctionId,
-    ListFunctionFunctionId, NilFunctionFunctionId, NilFunctionId, StringFunctionFunctionId,
-    StringFunctionId, TupleFunctionFunctionId, TupleFunctionId, UtfCodepointFunctionFunctionId,
-};
+use super::id::{BoolFunctionId, IntFunctionId};
 #[cfg(test)]
 use crate::plan::{ValueRepresentation, ValueShape};
 
@@ -40,7 +35,6 @@ pub struct FunctionTemplate {
     entry: FunctionEntry,
     steps: Vec<Step>,
     return_: ReturnExpr,
-    frame_layout: FrameLayout,
 }
 
 #[derive(Debug, PartialEq)]
@@ -60,9 +54,6 @@ pub(crate) struct ParamSlot {
     local: ParamLocal,
     shape: crate::plan::ValueShape,
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ParamPosition(usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CapturePosition(usize);
@@ -1165,15 +1156,12 @@ impl FunctionTemplate {
         steps: Vec<Step>,
         return_: ReturnExpr,
     ) -> Self {
-        let frame_layout = FrameLayout::from_function_parts(&params, &steps, &return_);
-
         Self {
             signature,
             name,
             entry: FunctionEntry::new(params, captures),
             steps,
             return_,
-            frame_layout,
         }
     }
 
@@ -1208,15 +1196,6 @@ impl FunctionTemplate {
     pub fn return_(&self) -> &ReturnExpr {
         &self.return_
     }
-
-    #[cfg(test)]
-    pub(crate) fn frame_layout(&self) -> FrameLayout {
-        self.frame_layout.clone()
-    }
-
-    pub(crate) fn execution_frame_layout(&self) -> &FrameLayout {
-        &self.frame_layout
-    }
 }
 
 impl ReturnExpr {
@@ -1240,31 +1219,16 @@ impl ReturnExpr {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn float(_runtime_id: FloatFunctionId, expression: FloatExpr) -> Self {
-        Self::float_body(ReturnBody::expr(expression))
-    }
-
     pub(crate) fn float_body(body: FloatReturn) -> Self {
         Self {
             kind: ReturnExprKind::Float { body },
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn string(_runtime_id: StringFunctionId, expression: StringExpr) -> Self {
-        Self::string_body(ReturnBody::expr(expression))
-    }
-
     pub(crate) fn string_body(body: StringReturn) -> Self {
         Self {
             kind: ReturnExprKind::String { body },
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn bit_array(_runtime_id: BitArrayFunctionId, expression: BitArrayExpr) -> Self {
-        Self::bit_array_body(ReturnBody::expr(expression))
     }
 
     pub(crate) fn bit_array_body(body: BitArrayReturn) -> Self {
@@ -1296,20 +1260,10 @@ impl ReturnExpr {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn nil(_runtime_id: NilFunctionId, expression: NilExpr) -> Self {
-        Self::nil_body(ReturnBody::expr(expression))
-    }
-
     pub(crate) fn nil_body(body: NilReturn) -> Self {
         Self {
             kind: ReturnExprKind::Nil { body },
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn tuple(_runtime_id: TupleFunctionId, expression: TupleExpr) -> Self {
-        Self::tuple_body(expression.type_().to_vec(), ReturnBody::expr(expression))
     }
 
     pub(crate) fn tuple_body(type_: Vec<ValueType>, body: TupleReturn) -> Self {
@@ -1402,15 +1356,6 @@ impl ReturnExpr {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn int_function(
-        _runtime_id: IntFunctionFunctionId,
-        expression: super::IntFunctionExpr,
-    ) -> Self {
-        let shape = crate::plan::FunctionShape::from_function_type(expression.type_().clone());
-        Self::int_function_shape_body(shape, ReturnBody::expr(expression))
-    }
-
     pub(crate) fn int_function_shape_body(
         shape: crate::plan::FunctionShape,
         body: IntFunctionReturn,
@@ -1429,24 +1374,6 @@ impl ReturnExpr {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn int_function_body(
-        _runtime_id: IntFunctionFunctionId,
-        type_: FunctionType,
-        body: IntFunctionReturn,
-    ) -> Self {
-        Self::int_function_shape_body(crate::plan::FunctionShape::from_function_type(type_), body)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn float_function(
-        _runtime_id: FloatFunctionFunctionId,
-        expression: super::FloatFunctionExpr,
-    ) -> Self {
-        let shape = crate::plan::FunctionShape::from_function_type(expression.type_().clone());
-        Self::float_function_shape_body(shape, ReturnBody::expr(expression))
-    }
-
     pub(crate) fn float_function_shape_body(
         shape: crate::plan::FunctionShape,
         body: FloatFunctionReturn,
@@ -1454,24 +1381,6 @@ impl ReturnExpr {
         Self {
             kind: ReturnExprKind::FloatFunction { shape, body },
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn float_function_body(
-        _runtime_id: FloatFunctionFunctionId,
-        type_: FunctionType,
-        body: FloatFunctionReturn,
-    ) -> Self {
-        Self::float_function_shape_body(crate::plan::FunctionShape::from_function_type(type_), body)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn string_function(
-        _runtime_id: StringFunctionFunctionId,
-        expression: super::StringFunctionExpr,
-    ) -> Self {
-        let shape = crate::plan::FunctionShape::from_function_type(expression.type_().clone());
-        Self::string_function_shape_body(shape, ReturnBody::expr(expression))
     }
 
     pub(crate) fn string_function_shape_body(
@@ -1483,27 +1392,6 @@ impl ReturnExpr {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn string_function_body(
-        _runtime_id: StringFunctionFunctionId,
-        type_: FunctionType,
-        body: StringFunctionReturn,
-    ) -> Self {
-        Self::string_function_shape_body(
-            crate::plan::FunctionShape::from_function_type(type_),
-            body,
-        )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn bit_array_function(
-        _runtime_id: BitArrayFunctionFunctionId,
-        expression: super::BitArrayFunctionExpr,
-    ) -> Self {
-        let shape = crate::plan::FunctionShape::from_function_type(expression.type_().clone());
-        Self::bit_array_function_shape_body(shape, ReturnBody::expr(expression))
-    }
-
     pub(crate) fn bit_array_function_shape_body(
         shape: crate::plan::FunctionShape,
         body: BitArrayFunctionReturn,
@@ -1511,18 +1399,6 @@ impl ReturnExpr {
         Self {
             kind: ReturnExprKind::BitArrayFunction { shape, body },
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn bit_array_function_body(
-        _runtime_id: BitArrayFunctionFunctionId,
-        type_: FunctionType,
-        body: BitArrayFunctionReturn,
-    ) -> Self {
-        Self::bit_array_function_shape_body(
-            crate::plan::FunctionShape::from_function_type(type_),
-            body,
-        )
     }
 
     pub(crate) fn utf_codepoint_function_shape_body(
@@ -1534,18 +1410,6 @@ impl ReturnExpr {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn utf_codepoint_function_body(
-        _runtime_id: UtfCodepointFunctionFunctionId,
-        type_: FunctionType,
-        body: UtfCodepointFunctionReturn,
-    ) -> Self {
-        Self::utf_codepoint_function_shape_body(
-            crate::plan::FunctionShape::from_function_type(type_),
-            body,
-        )
-    }
-
     pub(crate) fn custom_function_shape_body(
         shape: crate::plan::FunctionShape,
         body: CustomFunctionReturn,
@@ -1553,24 +1417,6 @@ impl ReturnExpr {
         Self {
             kind: ReturnExprKind::CustomFunction { shape, body },
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn custom_function_body(_runtime_index: usize, body: CustomFunctionReturn) -> Self {
-        let shape = crate::plan::FunctionShape::new(
-            body.type_().argument_shapes().to_vec(),
-            crate::plan::ValueShape::Custom(body.type_().return_().clone()),
-        );
-        Self::custom_function_shape_body(shape, body)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn bool_function(
-        _runtime_id: BoolFunctionFunctionId,
-        expression: super::BoolFunctionExpr,
-    ) -> Self {
-        let shape = crate::plan::FunctionShape::from_function_type(expression.type_().clone());
-        Self::bool_function_shape_body(shape, ReturnBody::expr(expression))
     }
 
     pub(crate) fn bool_function_shape_body(
@@ -1582,24 +1428,6 @@ impl ReturnExpr {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn bool_function_body(
-        _runtime_id: BoolFunctionFunctionId,
-        type_: FunctionType,
-        body: BoolFunctionReturn,
-    ) -> Self {
-        Self::bool_function_shape_body(crate::plan::FunctionShape::from_function_type(type_), body)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn nil_function(
-        _runtime_id: NilFunctionFunctionId,
-        expression: super::NilFunctionExpr,
-    ) -> Self {
-        let shape = crate::plan::FunctionShape::from_function_type(expression.type_().clone());
-        Self::nil_function_shape_body(shape, ReturnBody::expr(expression))
-    }
-
     pub(crate) fn nil_function_shape_body(
         shape: crate::plan::FunctionShape,
         body: NilFunctionReturn,
@@ -1609,24 +1437,6 @@ impl ReturnExpr {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn nil_function_body(
-        _runtime_id: NilFunctionFunctionId,
-        type_: FunctionType,
-        body: NilFunctionReturn,
-    ) -> Self {
-        Self::nil_function_shape_body(crate::plan::FunctionShape::from_function_type(type_), body)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn tuple_function(
-        _runtime_id: TupleFunctionFunctionId,
-        expression: super::TupleFunctionExpr,
-    ) -> Self {
-        let shape = crate::plan::FunctionShape::from_function_type(expression.type_().clone());
-        Self::tuple_function_shape_body(shape, ReturnBody::expr(expression))
-    }
-
     pub(crate) fn tuple_function_shape_body(
         shape: crate::plan::FunctionShape,
         body: TupleFunctionReturn,
@@ -1634,16 +1444,6 @@ impl ReturnExpr {
         Self {
             kind: ReturnExprKind::TupleFunction { shape, body },
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn list_function(
-        _runtime_id: ListFunctionFunctionId,
-        expression: super::ListFunctionExpr,
-    ) -> Self {
-        let item_type = expression.return_item_type();
-        let shape = crate::plan::FunctionShape::from_function_type(expression.type_().clone());
-        Self::list_function_shape_body(shape, item_type, ReturnBody::expr(expression))
     }
 
     pub(crate) fn list_function_shape_body(
@@ -1660,24 +1460,6 @@ impl ReturnExpr {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn list_function_body(
-        runtime_id: ListFunctionFunctionId,
-        body: ListFunctionReturn,
-    ) -> Self {
-        let shape = crate::plan::FunctionShape::from_function_type(runtime_id.type_().clone());
-        Self::list_function_shape_body(shape, runtime_id.item_type(), body)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn function_function(
-        _runtime_index: usize,
-        expression: super::FunctionFunctionExpr,
-    ) -> Self {
-        let shape = crate::plan::FunctionShape::from_function_type(expression.type_().clone());
-        Self::function_function_shape_body(shape, FunctionFunctionReturn::expr(expression))
-    }
-
     pub(crate) fn function_function_shape_body(
         shape: crate::plan::FunctionShape,
         body: FunctionFunctionReturn,
@@ -1685,15 +1467,6 @@ impl ReturnExpr {
         Self {
             kind: ReturnExprKind::FunctionFunction { shape, body },
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn function_function_body(
-        _runtime_index: usize,
-        body: FunctionFunctionReturn,
-    ) -> Self {
-        let shape = crate::plan::FunctionShape::from_function_type(body.type_().to_function_type());
-        Self::function_function_shape_body(shape, body)
     }
 
     pub(crate) fn kind(&self) -> &ReturnExprKind {
@@ -1868,12 +1641,6 @@ impl CustomFunctionReturn {
         &self.type_
     }
 
-    pub(crate) fn kind(
-        &self,
-    ) -> &ReturnBodyKind<super::CustomFunctionExprKind, FunctionInstantiation> {
-        self.body.kind()
-    }
-
     pub(crate) fn body(&self) -> &ReturnBody<super::CustomFunctionExprKind, FunctionInstantiation> {
         &self.body
     }
@@ -1985,12 +1752,6 @@ impl FunctionFunctionReturn {
 
     pub(crate) fn type_(&self) -> &FunctionFunctionType {
         &self.type_
-    }
-
-    pub(crate) fn kind(
-        &self,
-    ) -> &ReturnBodyKind<super::FunctionFunctionExprKind, FunctionInstantiation> {
-        self.body.kind()
     }
 
     pub(crate) fn body(
@@ -2202,16 +1963,6 @@ impl FunctionEntry {
     }
 }
 
-impl ParamPosition {
-    pub(crate) fn new(index: usize) -> Self {
-        Self(index)
-    }
-
-    pub(crate) fn index(self) -> usize {
-        self.0
-    }
-}
-
 impl CapturePosition {
     pub(crate) fn new(index: usize) -> Self {
         Self(index)
@@ -2399,12 +2150,12 @@ impl ParamLocal {
 #[cfg(test)]
 mod tests {
     use super::{
-        BitArrayListReturn, BoolListReturn, CapturePosition, CustomFunctionReturn,
-        CustomListReturn, CustomReturn, FloatListReturn, FunctionFunctionReturn,
-        FunctionListReturn, FunctionTemplate, GenericFunctionReturn, GenericListReturn,
-        GenericReturn, IntListReturn, ListListReturn, ListReturn, NilListReturn, Param,
-        ParamBinding, ParamLocal, ParamPosition, ParamSlot, ParameterListListReturn, ReturnBody,
-        ReturnBodyKind, ReturnExpr, StringListReturn, TupleListReturn,
+        BitArrayFunctionReturn, BitArrayListReturn, BoolListReturn, CapturePosition,
+        CustomFunctionReturn, CustomListReturn, CustomReturn, FloatListReturn,
+        FunctionFunctionReturn, FunctionListReturn, FunctionTemplate, GenericFunctionReturn,
+        GenericListReturn, GenericReturn, IntListReturn, ListListReturn, ListReturn, NilListReturn,
+        Param, ParamBinding, ParamLocal, ParamSlot, ParameterListListReturn, ReturnBody,
+        ReturnBodyKind, ReturnExpr, StringListReturn, TupleListReturn, UtfCodepointFunctionReturn,
     };
     use crate::plan::{
         BitArrayExpr, BoolExpr, BoolFunctionLocalId, BoolLocalId, CustomConstructorRefinement,
@@ -2524,6 +2275,39 @@ mod tests {
     }
 
     #[test]
+    fn function_function_returns_convert_float_case_tail_calls() {
+        let returned = FunctionType::new(Vec::new(), ValueType::Int);
+        let type_ = FunctionFunctionType::new(Vec::new(), returned);
+        let function = crate::plan::monomorphic_function_instantiation(
+            9,
+            crate::plan::FunctionShape::new(
+                Vec::new(),
+                ValueShape::Function(Box::new(crate::plan::FunctionShape::from_function_type(
+                    type_.to_function_type(),
+                ))),
+            ),
+        );
+        let branch = FunctionFunctionExpr::call(function.clone(), Vec::new(), type_.clone());
+        let fallback = FunctionFunctionExpr::call(function.clone(), Vec::new(), type_.clone());
+
+        assert_eq!(
+            FunctionFunctionReturn::expr(FunctionFunctionExpr::float_case(
+                FloatExpr::value(1.5),
+                vec![(1.5, branch)],
+                fallback,
+            )),
+            FunctionFunctionReturn {
+                type_,
+                body: ReturnBody::float_case(
+                    FloatExpr::value(1.5),
+                    vec![(1.5, ReturnBody::tail_call(function.clone(), Vec::new()))],
+                    ReturnBody::tail_call(function, Vec::new()),
+                ),
+            },
+        );
+    }
+
+    #[test]
     fn custom_returns_own_one_type_around_itemless_tail_calls() {
         let type_ = custom_type();
         let custom_shape = CustomValueShape::any(type_.clone());
@@ -2595,7 +2379,6 @@ mod tests {
             function.return_(),
             &ReturnExpr::int_body(ReturnBody::expr(IntExpr::value(BigInt::from(1))))
         );
-        assert_eq!(function.frame_layout().ints(), 1);
     }
 
     #[test]
@@ -2630,7 +2413,6 @@ mod tests {
                 ParamSlot::from_local(ParamLocal::utf_codepoint(UtfCodepointLocalId(0))),
             ],
         );
-        assert_eq!(ParamPosition::new(1).index(), 1);
         assert_eq!(CapturePosition::new(1).index(), 1);
     }
 
@@ -2682,6 +2464,7 @@ mod tests {
             ),
             ReturnExpr::float_list_body(FloatListReturn::tail_call(tail_call.clone(), Vec::new())),
             ReturnExpr::bool_list_body(BoolListReturn::tail_call(tail_call.clone(), Vec::new())),
+            ReturnExpr::nil_list_body(NilListReturn::tail_call(tail_call.clone(), Vec::new())),
             ReturnExpr::tuple_list_body(
                 tuple.clone(),
                 TupleListReturn::tail_call(tail_call.clone(), Vec::new()),
@@ -2696,7 +2479,15 @@ mod tests {
             ),
             ReturnExpr::generic_function_shape_body(
                 function_shape.clone(),
-                GenericFunctionReturn::tail_call(tail_call, Vec::new()),
+                GenericFunctionReturn::tail_call(tail_call.clone(), Vec::new()),
+            ),
+            ReturnExpr::bit_array_function_shape_body(
+                function_shape.clone(),
+                BitArrayFunctionReturn::tail_call(tail_call.clone(), Vec::new()),
+            ),
+            ReturnExpr::utf_codepoint_function_shape_body(
+                function_shape.clone(),
+                UtfCodepointFunctionReturn::tail_call(tail_call, Vec::new()),
             ),
         ];
 
@@ -2714,9 +2505,12 @@ mod tests {
                 ValueType::List(Box::new(ValueType::Custom(custom))),
                 ValueType::List(Box::new(ValueType::Float)),
                 ValueType::List(Box::new(ValueType::Bool)),
+                ValueType::List(Box::new(ValueType::Nil)),
                 ValueType::List(Box::new(ValueType::Tuple(tuple))),
                 ValueType::List(Box::new(ValueType::List(nested_type))),
                 ValueType::List(Box::new(ValueType::Function(Box::new(function)))),
+                ValueType::Function(Box::new(function_shape.type_())),
+                ValueType::Function(Box::new(function_shape.type_())),
                 ValueType::Function(Box::new(function_shape.type_())),
             ],
         );
