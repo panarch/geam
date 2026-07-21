@@ -1,7 +1,13 @@
+mod bit_array;
+mod constant;
 mod function;
 mod graph;
+mod instruction;
 mod label;
+mod pattern;
+mod value;
 
+use self::constant::write_constant_tables;
 use self::function::write_function_tables;
 use self::label::runtime_function_label;
 use super::ExecutionPlan;
@@ -30,7 +36,8 @@ fn render(plan: &ExecutionPlan) -> String {
     output.push_str("\nmain ");
     runtime_function_label(&plan.main).push_to(&mut output);
     output.push('\n');
-    write_function_tables(&mut output, &plan.functions);
+    write_function_tables(&mut output, plan, &plan.functions);
+    write_constant_tables(&mut output, plan, &plan.constants);
     output
 }
 

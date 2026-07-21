@@ -108,8 +108,9 @@ impl geam::ExecutionPlan {
 `ExecutionPlan::from_module_plan(module_plan)` consumes the inspectable
 `ModulePlan` and produces the runtime-only plan accepted by `run_main`. Its raw
 execution nodes remain opaque, while `ExecutionPlan::explain()` provides a
-human-readable view of the current runtime control-flow topology. Its text is
-not a machine-stable serialization format.
+human-readable view of lowered functions, constant programs, typed values,
+instructions, block parameters, and control-flow edges. Its text is not a
+machine-stable serialization format.
 
 ## Intentionally Out Of Scope
 

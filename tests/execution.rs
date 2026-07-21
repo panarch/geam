@@ -44,7 +44,15 @@ macro_rules! explain_cases {
 mod explain {
     explain_cases!(
         control_terminators,
+        closure_captures,
+        constant_programs,
+        function_instructions,
+        generic_instructions,
+        list_instructions,
+        pattern_details,
         return_topology,
+        source_stops,
+        value_instructions,
         value_return_tables,
         list_return_tables,
         function_return_tables,
@@ -998,8 +1006,12 @@ fn run_explain_fixture(file_name: &str) {
     let module = compile_typed_module("main", path, &source).expect("fixture should compile");
     let module_plan = plan_module(module).expect("fixture should plan");
     let plan = geam::ExecutionPlan::from_module_plan(module_plan);
+    let before = source.contains("\n// geam:run\n").then(|| run_main(&plan));
 
     assert_eq!(plan.explain().to_string(), expected);
+    if let Some(before) = before {
+        assert_eq!(run_main(&plan), before);
+    }
 }
 
 fn run_fixture(file_name: &str) {

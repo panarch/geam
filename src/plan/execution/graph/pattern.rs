@@ -130,11 +130,19 @@ impl MatchPatternBinding {
     pub(crate) fn int_id(&self) -> MatchIntBindingId {
         MatchIntBindingId(self.index)
     }
+
+    pub(in crate::plan::execution) fn index(&self) -> usize {
+        self.index
+    }
 }
 
 impl MatchIntBindingId {
     pub(in crate::plan::execution) fn new(index: usize) -> Self {
         Self(index)
+    }
+
+    pub(in crate::plan::execution) fn index(self) -> usize {
+        self.0
     }
 }
 

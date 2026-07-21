@@ -1,22 +1,33 @@
+use super::super::ExecutionPlan;
 use super::super::function::ExecutableFunction;
 use super::super::table::FunctionTables;
 use super::graph::ExplainedGraph;
 use super::label::FunctionLabel;
 
-pub(super) fn write_function_tables(output: &mut String, functions: &FunctionTables) {
-    write_table(output, "never", &functions.never_functions);
-    write_table(output, "int", &functions.int_functions);
-    write_table(output, "float", &functions.float_functions);
-    write_table(output, "string", &functions.string_functions);
-    write_table(output, "bit_array", &functions.bit_array_functions);
-    write_table(output, "utf_codepoint", &functions.utf_codepoint_functions);
-    write_table(output, "custom", &functions.custom_functions);
-    write_table(output, "bool", &functions.bool_functions);
-    write_table(output, "nil", &functions.nil_functions);
-    write_table(output, "tuple", &functions.tuple_functions);
+pub(super) fn write_function_tables(
+    output: &mut String,
+    plan: &ExecutionPlan,
+    functions: &FunctionTables,
+) {
+    write_table(output, plan, "never", &functions.never_functions);
+    write_table(output, plan, "int", &functions.int_functions);
+    write_table(output, plan, "float", &functions.float_functions);
+    write_table(output, plan, "string", &functions.string_functions);
+    write_table(output, plan, "bit_array", &functions.bit_array_functions);
+    write_table(
+        output,
+        plan,
+        "utf_codepoint",
+        &functions.utf_codepoint_functions,
+    );
+    write_table(output, plan, "custom", &functions.custom_functions);
+    write_table(output, plan, "bool", &functions.bool_functions);
+    write_table(output, plan, "nil", &functions.nil_functions);
+    write_table(output, plan, "tuple", &functions.tuple_functions);
 
     write_table(
         output,
+        plan,
         "list.parameter",
         functions
             .parameter_list_functions
@@ -25,6 +36,7 @@ pub(super) fn write_function_tables(output: &mut String, functions: &FunctionTab
     );
     write_table(
         output,
+        plan,
         "list.int",
         functions
             .int_list_functions
@@ -33,6 +45,7 @@ pub(super) fn write_function_tables(output: &mut String, functions: &FunctionTab
     );
     write_table(
         output,
+        plan,
         "list.string",
         functions
             .string_list_functions
@@ -41,6 +54,7 @@ pub(super) fn write_function_tables(output: &mut String, functions: &FunctionTab
     );
     write_table(
         output,
+        plan,
         "list.bit_array",
         functions
             .bit_array_list_functions
@@ -49,6 +63,7 @@ pub(super) fn write_function_tables(output: &mut String, functions: &FunctionTab
     );
     write_table(
         output,
+        plan,
         "list.utf_codepoint",
         functions
             .utf_codepoint_list_functions
@@ -57,6 +72,7 @@ pub(super) fn write_function_tables(output: &mut String, functions: &FunctionTab
     );
     write_table(
         output,
+        plan,
         "list.custom",
         functions
             .custom_list_functions
@@ -65,6 +81,7 @@ pub(super) fn write_function_tables(output: &mut String, functions: &FunctionTab
     );
     write_table(
         output,
+        plan,
         "list.float",
         functions
             .float_list_functions
@@ -73,6 +90,7 @@ pub(super) fn write_function_tables(output: &mut String, functions: &FunctionTab
     );
     write_table(
         output,
+        plan,
         "list.bool",
         functions
             .bool_list_functions
@@ -81,6 +99,7 @@ pub(super) fn write_function_tables(output: &mut String, functions: &FunctionTab
     );
     write_table(
         output,
+        plan,
         "list.nil",
         functions
             .nil_list_functions
@@ -89,6 +108,7 @@ pub(super) fn write_function_tables(output: &mut String, functions: &FunctionTab
     );
     write_table(
         output,
+        plan,
         "list.tuple",
         functions
             .tuple_list_functions
@@ -97,6 +117,7 @@ pub(super) fn write_function_tables(output: &mut String, functions: &FunctionTab
     );
     write_table(
         output,
+        plan,
         "list.parameter_list",
         functions
             .parameter_list_list_functions
@@ -105,6 +126,7 @@ pub(super) fn write_function_tables(output: &mut String, functions: &FunctionTab
     );
     write_table(
         output,
+        plan,
         "list.list",
         functions
             .list_list_functions
@@ -113,6 +135,7 @@ pub(super) fn write_function_tables(output: &mut String, functions: &FunctionTab
     );
     write_table(
         output,
+        plan,
         "list.function",
         functions
             .function_list_functions
@@ -120,117 +143,154 @@ pub(super) fn write_function_tables(output: &mut String, functions: &FunctionTab
             .map(|(_, function)| function),
     );
 
-    write_table(output, "function.int", &functions.int_function_functions);
     write_table(
         output,
+        plan,
+        "function.int",
+        &functions.int_function_functions,
+    );
+    write_table(
+        output,
+        plan,
         "function.float",
         &functions.float_function_functions,
     );
     write_table(
         output,
+        plan,
         "function.string",
         &functions.string_function_functions,
     );
     write_table(
         output,
+        plan,
         "function.bit_array",
         &functions.bit_array_function_functions,
     );
     write_table(
         output,
+        plan,
         "function.utf_codepoint",
         &functions.utf_codepoint_function_functions,
     );
     write_table(
         output,
+        plan,
         "function.custom",
         &functions.custom_function_functions,
     );
-    write_table(output, "function.bool", &functions.bool_function_functions);
-    write_table(output, "function.nil", &functions.nil_function_functions);
     write_table(
         output,
+        plan,
+        "function.bool",
+        &functions.bool_function_functions,
+    );
+    write_table(
+        output,
+        plan,
+        "function.nil",
+        &functions.nil_function_functions,
+    );
+    write_table(
+        output,
+        plan,
         "function.tuple",
         &functions.tuple_function_functions,
     );
     write_table(
         output,
+        plan,
         "function.generic",
         &functions.generic_function_functions,
     );
     write_table(
         output,
+        plan,
         "function.never",
         &functions.never_function_functions,
     );
 
     write_table(
         output,
+        plan,
         "function.list.parameter",
         &functions.parameter_list_function_functions,
     );
     write_table(
         output,
+        plan,
         "function.list.parameter_list",
         &functions.parameter_list_list_function_functions,
     );
     write_table(
         output,
+        plan,
         "function.list.int",
         &functions.int_list_function_functions,
     );
     write_table(
         output,
+        plan,
         "function.list.string",
         &functions.string_list_function_functions,
     );
     write_table(
         output,
+        plan,
         "function.list.bit_array",
         &functions.bit_array_list_function_functions,
     );
     write_table(
         output,
+        plan,
         "function.list.utf_codepoint",
         &functions.utf_codepoint_list_function_functions,
     );
     write_table(
         output,
+        plan,
         "function.list.custom",
         &functions.custom_list_function_functions,
     );
     write_table(
         output,
+        plan,
         "function.list.float",
         &functions.float_list_function_functions,
     );
     write_table(
         output,
+        plan,
         "function.list.bool",
         &functions.bool_list_function_functions,
     );
     write_table(
         output,
+        plan,
         "function.list.nil",
         &functions.nil_list_function_functions,
     );
     write_table(
         output,
+        plan,
         "function.list.tuple",
         &functions.tuple_list_function_functions,
     );
     write_table(
         output,
+        plan,
         "function.list.list",
         &functions.list_list_function_functions,
     );
     write_table(
         output,
+        plan,
         "function.list.function",
         &functions.function_list_function_functions,
     );
     write_table(
         output,
+        plan,
         "function.function",
         &functions.function_function_functions,
     );
@@ -238,6 +298,7 @@ pub(super) fn write_function_tables(output: &mut String, functions: &FunctionTab
 
 fn write_table<'a, Return, Functions>(
     output: &mut String,
+    plan: &ExecutionPlan,
     family: &'static str,
     functions: Functions,
 ) where
@@ -248,7 +309,14 @@ fn write_table<'a, Return, Functions>(
         output.push_str("\nfunction ");
         FunctionLabel::new(family, index).push_to(output);
         output.push('\n');
-        function.graph().write_topology(output, family);
+        let graph = function.graph();
+        graph.write_complete(
+            output,
+            plan,
+            family,
+            graph.entry_params(function.entry()),
+            graph.entry_captures(function.entry()),
+        );
     }
 }
 

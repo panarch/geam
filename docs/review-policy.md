@@ -132,6 +132,11 @@ and complete edge argument packs. Runtime block storage is constructed only
 from entry or edge arguments; it must not recreate function-wide default slots
 or perform missing-local validation.
 
+Execution-plan inspection must read the frozen graph directly. A formatter may
+expose deterministic typed sequencing and value flow, but must not retain a
+parallel tree, reconstruct execution semantics, import runtime state, or turn
+human-readable output into a second correctness owner.
+
 Do not use `Option` or `Result` in internal plan constructors to represent
 unsupported profile features, typed-AST margin cases, or runtime executability
 checks. Reject those cases before constructing plan data.
