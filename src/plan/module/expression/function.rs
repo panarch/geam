@@ -532,13 +532,6 @@ impl FunctionExpr {
         Self::new(FunctionExprKind::Custom(expression))
     }
 
-    pub(crate) fn custom_with_shape(
-        expression: CustomFunctionExpr,
-        shape: crate::plan::FunctionShape,
-    ) -> Self {
-        Self::with_typed_shape(FunctionExprKind::Custom(expression), shape)
-    }
-
     pub(crate) fn float(expression: FloatFunctionExpr) -> Self {
         Self::new(FunctionExprKind::Float(expression))
     }

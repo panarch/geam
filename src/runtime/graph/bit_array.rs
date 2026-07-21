@@ -331,7 +331,7 @@ pub(super) fn decode_codepoint(
 }
 
 fn decode_utf8(bits: &BitSlice<u8, Msb0>) -> Option<(char, usize)> {
-    let first = read_byte(bits, 0)?;
+    let first = read_byte(bits)?;
     let byte_count = match first {
         0x00..=0x7f => 1,
         0xc2..=0xdf => 2,
@@ -341,7 +341,7 @@ fn decode_utf8(bits: &BitSlice<u8, Msb0>) -> Option<(char, usize)> {
     };
     let mut encoded = Vec::with_capacity(byte_count);
     for index in 0..byte_count {
-        encoded.push(read_byte(bits, index * 8)?);
+        encoded.push(read_byte(&bits[index * 8..])?);
     }
     let Ok(value) = std::str::from_utf8(&encoded) else {
         return None;
@@ -353,9 +353,9 @@ fn decode_utf8(bits: &BitSlice<u8, Msb0>) -> Option<(char, usize)> {
 }
 
 fn decode_utf16(bits: &BitSlice<u8, Msb0>, endianness: Endianness) -> Option<(char, usize)> {
-    let first = read_u16(bits, 0, endianness)?;
+    let first = read_u16(bits, endianness)?;
     let (codepoint, bit_size) = if (0xd800..=0xdbff).contains(&first) {
-        let second = read_u16(bits, 16, endianness)?;
+        let second = read_u16(&bits[16..], endianness)?;
         if !(0xdc00..=0xdfff).contains(&second) {
             return None;
         }
@@ -369,11 +369,12 @@ fn decode_utf16(bits: &BitSlice<u8, Msb0>, endianness: Endianness) -> Option<(ch
 }
 
 fn decode_utf32(bits: &BitSlice<u8, Msb0>, endianness: Endianness) -> Option<(char, usize)> {
+    let bits = bits.get(..32)?;
     let bytes = [
-        read_byte(bits, 0)?,
-        read_byte(bits, 8)?,
-        read_byte(bits, 16)?,
-        read_byte(bits, 24)?,
+        byte(&bits[..8]),
+        byte(&bits[8..16]),
+        byte(&bits[16..24]),
+        byte(&bits[24..]),
     ];
     let value = match endianness {
         Endianness::Big => u32::from_be_bytes(bytes),
@@ -382,21 +383,25 @@ fn decode_utf32(bits: &BitSlice<u8, Msb0>, endianness: Endianness) -> Option<(ch
     Some((char::from_u32(value)?, 32))
 }
 
-fn read_u16(bits: &BitSlice<u8, Msb0>, offset: usize, endianness: Endianness) -> Option<u16> {
-    let bytes = [read_byte(bits, offset)?, read_byte(bits, offset + 8)?];
+fn read_u16(bits: &BitSlice<u8, Msb0>, endianness: Endianness) -> Option<u16> {
+    let bits = bits.get(..16)?;
+    let bytes = [byte(&bits[..8]), byte(&bits[8..])];
     Some(match endianness {
         Endianness::Big => u16::from_be_bytes(bytes),
         Endianness::Little => u16::from_le_bytes(bytes),
     })
 }
 
-fn read_byte(bits: &BitSlice<u8, Msb0>, offset: usize) -> Option<u8> {
-    let bits = bits.get(offset..offset.checked_add(8)?)?;
+fn read_byte(bits: &BitSlice<u8, Msb0>) -> Option<u8> {
+    bits.get(..8).map(byte)
+}
+
+fn byte(bits: &BitSlice<u8, Msb0>) -> u8 {
     let mut byte = 0;
     for bit in bits {
         byte = (byte << 1) | u8::from(*bit);
     }
-    Some(byte)
+    byte
 }
 
 #[cfg(test)]
@@ -610,6 +615,7 @@ mod tests {
         assert_eq!(decode_utf8([0xc2, 0x20].view_bits::<Msb0>()), None);
         assert_eq!(decode_utf8([0xff].view_bits::<Msb0>()), None);
         assert_eq!(decode_utf16([].view_bits::<Msb0>(), Endianness::Big), None);
+        assert_eq!(decode_utf16([0].view_bits::<Msb0>(), Endianness::Big), None,);
         assert_eq!(
             decode_utf16([0, 0x41].view_bits::<Msb0>(), Endianness::Big),
             Some(('A', 16)),

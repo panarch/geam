@@ -178,17 +178,10 @@ fn closure(
 ) -> Representability<DraftFlow<DraftFunction>> {
     use super::super::instruction::DraftFunctionInstruction as I;
 
-    capture_args(function, captures, cursor, graph, context).map(|flow| match flow {
-        DraftFlow::Diverged => DraftFlow::Diverged,
-        DraftFlow::Value {
-            mut cursor,
-            value: captures,
-        } => {
-            let value =
-                graph.function_instruction(&mut cursor, shape, I::Closure { target, captures });
-            DraftFlow::value(cursor, value)
-        }
-    })
+    let captures = capture_args(function, captures, &cursor, context);
+    let mut cursor = cursor;
+    let value = graph.function_instruction(&mut cursor, shape, I::Closure { target, captures });
+    Representability::Inhabited(DraftFlow::value(cursor, value))
 }
 
 fn reference(
@@ -218,13 +211,12 @@ mod tests {
     use crate::plan::execution::lowering::graph::{DraftFlow, DraftGraphBuilder, DraftValueRef};
     use crate::plan::execution::lowering::specialization::{Representability, SpecializationKey};
     use crate::plan::{
-        BitArrayFunctionExpr, BoolFunctionExpr, CaptureArg, CustomConstructorDefinition,
-        CustomFunctionExpr, CustomFunctionType, CustomType, CustomTypeDefinition, CustomTypeName,
-        CustomTypePublicity, Expr, FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr,
-        FunctionFunctionType, FunctionShape, FunctionTemplateId, FunctionTemplateSignature,
-        FunctionType, IntExpr, IntFunctionExpr, IntFunctionReference, ListExpr, ListFunctionExpr,
-        NilFunctionExpr, PanicExpr, PanicSite, StringFunctionExpr, TupleFunctionExpr,
-        TypeParameterId, TypeScheme, UtfCodepointFunctionExpr, ValueShape, ValueType,
+        BitArrayFunctionExpr, BoolFunctionExpr, CustomConstructorDefinition, CustomFunctionExpr,
+        CustomFunctionType, CustomType, CustomTypeDefinition, CustomTypeName, CustomTypePublicity,
+        FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionType, FunctionShape,
+        FunctionTemplateId, FunctionType, IntFunctionExpr, IntFunctionReference, ListExpr,
+        ListFunctionExpr, NilFunctionExpr, PanicExpr, PanicSite, StringFunctionExpr,
+        TupleFunctionExpr, UtfCodepointFunctionExpr, ValueShape, ValueType,
     };
 
     #[derive(Debug, PartialEq, Eq)]
@@ -305,40 +297,6 @@ mod tests {
             assertion: "selected()() == 1",
         },
     ];
-
-    #[test]
-    fn closure_construction_propagates_a_capture_source_stop() {
-        let parameter = TypeParameterId(0);
-        let signature = FunctionTemplateSignature::new(
-            FunctionTemplateId::new(1),
-            TypeScheme::new(1),
-            FunctionShape::new(vec![ValueShape::Parameter(parameter)], ValueShape::Int),
-        );
-        let function = signature
-            .try_instantiate(vec![ValueShape::Int])
-            .expect("one concrete argument should instantiate the capture target");
-        let expression = IntFunctionExpr::closure(
-            function,
-            vec![CaptureArg::new(Expr::int(IntExpr::panic(
-                PanicExpr::panic_at(None, PanicSite::unknown()),
-            )))],
-            FunctionType::new(vec![ValueType::Int], ValueType::Int),
-        );
-        let mut context =
-            crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
-        let (mut graph, cursor) =
-            DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
-
-        assert_eq!(
-            flow_outcome(super::int::int_function_expr(
-                &expression,
-                cursor,
-                &mut graph,
-                &mut context,
-            )),
-            FlowOutcome::Diverged,
-        );
-    }
 
     #[test]
     fn every_callable_family_lowers_each_function_expression_owner() {

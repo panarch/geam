@@ -1,7 +1,8 @@
-use super::super::constant::ConstantTailCall;
+use super::super::constant::ConstantProgram;
 use super::super::function::FunctionEntry;
 use super::super::graph::{
-    Edge, FunctionGraph, MatchEdge, MatchEdgeArgument, NeverCallTarget, SourceStopKind, Terminator,
+    Edge, FunctionGraph, FunctionGraphExit, Graph, GraphExitId, MatchEdge, MatchEdgeArgument,
+    NeverCallTarget, SourceStopKind, Terminator,
 };
 use super::super::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionFunctionId,
@@ -27,12 +28,6 @@ trait TailFunctionIndex {
 impl TailFunctionIndex for usize {
     fn tail_function_index(&self) -> usize {
         *self
-    }
-}
-
-impl TailFunctionIndex for ConstantTailCall {
-    fn tail_function_index(&self) -> usize {
-        match *self {}
     }
 }
 
@@ -154,20 +149,58 @@ where
         entry_params: &[ParamSlot],
         entry_captures: &[ParamSlot],
     ) {
-        output.push_str("  entry b");
-        output.push_str(&self.entry().index().to_string());
-        output.push_str(" params=");
-        write_slots(output, plan, entry_params);
-        output.push_str(" captures=");
-        write_slots(output, plan, entry_captures);
-        output.push('\n');
+        write_graph(
+            output,
+            plan,
+            self.graph(),
+            entry_params,
+            entry_captures,
+            &mut |output, exit| write_function_exit(output, self.exit(exit), family),
+        );
+    }
+}
 
-        for (index, block) in self.blocks().iter().enumerate() {
-            write_block(output, plan, index, block.params(), block.instructions());
-            output.push_str("    ");
-            write_terminator(output, block.terminator(), family);
-            output.push('\n');
-        }
+pub(super) fn write_constant_program<Value>(
+    output: &mut String,
+    plan: &ExecutionPlan,
+    program: &ConstantProgram<Value>,
+) where
+    Value: ExplainLocal,
+{
+    write_graph(
+        output,
+        plan,
+        program.graph(),
+        &[],
+        &[],
+        &mut |output, exit| {
+            output.push_str("return ");
+            program.return_(exit).write_local(output);
+        },
+    );
+}
+
+fn write_graph(
+    output: &mut String,
+    plan: &ExecutionPlan,
+    graph: &Graph,
+    entry_params: &[ParamSlot],
+    entry_captures: &[ParamSlot],
+    write_exit: &mut dyn FnMut(&mut String, GraphExitId),
+) {
+    output.push_str("  entry b");
+    output.push_str(&graph.entry().index().to_string());
+    output.push_str(" params=");
+    write_slots(output, plan, entry_params);
+    output.push_str(" captures=");
+    write_slots(output, plan, entry_captures);
+    output.push('\n');
+
+    for (index, block) in graph.blocks().iter().enumerate() {
+        write_block(output, plan, index, block.params(), block.instructions());
+        output.push_str("    ");
+        write_terminator(output, block.terminator(), write_exit);
+        output.push('\n');
     }
 }
 
@@ -279,14 +312,11 @@ impl ExplainedGraph for FunctionFunctionReturn {
     }
 }
 
-fn write_terminator<Return, TailCall>(
+fn write_terminator(
     output: &mut String,
-    terminator: &Terminator<Return, TailCall>,
-    family: &'static str,
-) where
-    Return: ExplainLocal,
-    TailCall: TailFunctionIndex,
-{
+    terminator: &Terminator,
+    write_exit: &mut dyn FnMut(&mut String, GraphExitId),
+) {
     match terminator {
         Terminator::Jump(edge) => {
             output.push_str("jump ");
@@ -376,16 +406,7 @@ fn write_terminator<Return, TailCall>(
             output.push_str(" failure=");
             write_edge(output, failure);
         }
-        Terminator::Return(value) => {
-            output.push_str("return ");
-            value.write_local(output);
-        }
-        Terminator::TailCall { function, args } => {
-            output.push_str("tail ");
-            FunctionLabel::new(family, function.tail_function_index()).push_to(output);
-            output.push_str(" args=");
-            write_locals(output, args);
-        }
+        Terminator::Exit(exit) => write_exit(output, *exit),
         Terminator::SourceStop { kind, message, .. } => {
             output.push_str("source_stop kind=");
             output.push_str(source_stop_kind(*kind));
@@ -414,6 +435,28 @@ fn write_terminator<Return, TailCall>(
                 }
                 NeverCallTarget::Value(function) => function.write_local(output),
             }
+            output.push_str(" args=");
+            write_locals(output, args);
+        }
+    }
+}
+
+fn write_function_exit<Return, TailCall>(
+    output: &mut String,
+    exit: &FunctionGraphExit<Return, TailCall>,
+    family: &'static str,
+) where
+    Return: ExplainLocal,
+    TailCall: TailFunctionIndex,
+{
+    match exit {
+        FunctionGraphExit::Return(value) => {
+            output.push_str("return ");
+            value.write_local(output);
+        }
+        FunctionGraphExit::TailCall { function, args } => {
+            output.push_str("tail ");
+            FunctionLabel::new(family, function.tail_function_index()).push_to(output);
             output.push_str(" args=");
             write_locals(output, args);
         }

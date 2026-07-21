@@ -43,7 +43,7 @@ fn render(plan: &ExecutionPlan) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::{ExecutionPlan, ExecutionPlanExplanation, Value, run_main};
+    use crate::{ExecutionPlan, ExecutionPlanExplanation, ListValue, Value, ValueType, run_main};
 
     #[test]
     fn formats_public_typed_block_graph_without_source_names_and_preserves_execution() {
@@ -55,6 +55,18 @@ mod tests {
         assert_eq!(explanation.to_string(), expected_explanation(source));
         assert!(!explanation.to_string().contains("choose"));
         assert_eq!(run_main(&plan), Ok(Value::Int(40.into())));
+    }
+
+    #[test]
+    fn formats_and_executes_a_utf_codepoint_list_constant_program() {
+        let source =
+            include_str!("../../../tests/fixtures/explain/constant_utf_codepoint_list.gleam");
+        let plan = execution_plan(source);
+        let expected_value = Value::List(ListValue::empty(ValueType::UtfCodepoint));
+
+        assert_eq!(run_main(&plan), Ok(expected_value.clone()));
+        assert_eq!(plan.explain().to_string(), expected_explanation(source));
+        assert_eq!(run_main(&plan), Ok(expected_value));
     }
 
     fn expected_explanation(source: &str) -> String {

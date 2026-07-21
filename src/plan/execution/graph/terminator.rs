@@ -9,6 +9,9 @@ use num_bigint::BigInt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct BlockId(usize);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct GraphExitId(usize);
+
 pub(crate) struct Edge {
     target: BlockId,
     args: Box<[ParamLocal]>,
@@ -39,7 +42,7 @@ pub(crate) enum NeverCallTarget {
     Value(NeverFunctionLocal),
 }
 
-pub(crate) enum Terminator<Return, TailCall> {
+pub(crate) enum Terminator {
     Jump(Edge),
     BoolBranch {
         subject: BoolLocalId,
@@ -67,11 +70,7 @@ pub(crate) enum Terminator<Return, TailCall> {
         success: MatchEdge,
         failure: Edge,
     },
-    Return(Return),
-    TailCall {
-        function: TailCall,
-        args: Box<[ParamLocal]>,
-    },
+    Exit(GraphExitId),
     SourceStop {
         kind: SourceStopKind,
         message: Option<StringLocalId>,
@@ -90,6 +89,16 @@ pub(crate) enum Terminator<Return, TailCall> {
 }
 
 impl BlockId {
+    pub(in crate::plan::execution) fn new(index: usize) -> Self {
+        Self(index)
+    }
+
+    pub(crate) fn index(self) -> usize {
+        self.0
+    }
+}
+
+impl GraphExitId {
     pub(in crate::plan::execution) fn new(index: usize) -> Self {
         Self(index)
     }

@@ -834,7 +834,7 @@ mod tests {
         UtfCodepointFamily, execute, list_function_mismatch, parameter, typed,
     };
     use crate::plan::execution::{
-        CustomLocal, GraphListInstruction, GraphParameterListInstruction,
+        CustomFunctionId, CustomLocal, GraphListInstruction, GraphParameterListInstruction,
         GraphTypedListInstruction, IntListFunctionLocalId, IntListTypeId, ListFunctionId,
         ListFunctionLocal, ListListLocalId, ListListTypeId, ParameterListListLocalId,
         StringListTypeId, Terminator, TupleLocalId,
@@ -983,6 +983,39 @@ pub fn main() {
         let expected = ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Parameter(
             TypeParameterId(0),
         )))));
+
+        assert_eq!(
+            execute(
+                &plan,
+                &mut RuntimeState::new(),
+                &mut environment,
+                &instruction,
+                &expected,
+            ),
+            Err(ExecutionError::Invariant(
+                InvariantError::TupleIndexFamilyMismatch {
+                    expected,
+                    actual: ValueType::Int,
+                },
+            )),
+        );
+    }
+
+    #[test]
+    fn parameter_list_dispatch_propagates_projection_invariants() {
+        let plan = crate::runtime::plan_src(LIST_FUNCTION_FAMILY_SOURCE);
+        let type_id = plan.parameter_list_function_id(0).type_id();
+        let mut retained = RetainedValues::empty();
+        retained.push_evaluated(EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]));
+        let mut environment = BlockEnvironment::from_retained(retained);
+        let instruction = GraphListInstruction::Parameter(
+            type_id,
+            GraphParameterListInstruction::TupleIndex {
+                tuple: TupleLocalId(0),
+                index: 0,
+            },
+        );
+        let expected = ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(0))));
 
         assert_eq!(
             execute(
@@ -1178,7 +1211,7 @@ pub fn main() {
         let context = ProjectionContext {
             int_type: plan.int_list_function_id(0).type_id(),
             string_type: plan.string_list_function_id(0).type_id(),
-            custom_local: main_custom_local(&plan),
+            custom_local: direct_custom_return_local(&plan, plan.custom_function_id(0)),
             constructor: plan.custom_constructor_id(0, 0),
             custom_type: boxed.clone(),
             plan: &plan,
@@ -1188,51 +1221,61 @@ pub fn main() {
             &context,
             plan.int_list_function_id(0).type_id(),
             ValueType::List(Box::new(ValueType::Int)),
+            wrong_string_list,
         );
         assert_projection_mismatches::<StringFamily>(
             &context,
             plan.string_list_function_id(0).type_id(),
             ValueType::List(Box::new(ValueType::String)),
+            wrong_int_list,
         );
         assert_projection_mismatches::<BitArrayFamily>(
             &context,
             plan.bit_array_list_function_id(0).type_id(),
             ValueType::List(Box::new(ValueType::BitArray)),
+            wrong_int_list,
         );
         assert_projection_mismatches::<UtfCodepointFamily>(
             &context,
             plan.utf_codepoint_list_function_id(0).type_id(),
             ValueType::List(Box::new(ValueType::UtfCodepoint)),
+            wrong_int_list,
         );
         assert_projection_mismatches::<CustomFamily>(
             &context,
             plan.custom_list_function_id(0).type_id(),
             ValueType::List(Box::new(ValueType::Custom(boxed))),
+            wrong_int_list,
         );
         assert_projection_mismatches::<FloatFamily>(
             &context,
             plan.float_list_function_id(0).type_id(),
             ValueType::List(Box::new(ValueType::Float)),
+            wrong_int_list,
         );
         assert_projection_mismatches::<BoolFamily>(
             &context,
             plan.bool_list_function_id(0).type_id(),
             ValueType::List(Box::new(ValueType::Bool)),
+            wrong_int_list,
         );
         assert_projection_mismatches::<NilFamily>(
             &context,
             plan.nil_list_function_id(0).type_id(),
             ValueType::List(Box::new(ValueType::Nil)),
+            wrong_int_list,
         );
         assert_projection_mismatches::<TupleFamily>(
             &context,
             plan.tuple_list_function_id(0).type_id(),
             ValueType::List(Box::new(ValueType::Tuple(vec![ValueType::Int]))),
+            wrong_int_list,
         );
         assert_projection_mismatches::<ListFamily>(
             &context,
             plan.list_list_function_id(0).type_id(),
             ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Int)))),
+            wrong_int_list,
         );
         assert_projection_mismatches::<FunctionFamily>(
             &context,
@@ -1241,6 +1284,7 @@ pub fn main() {
                 vec![ValueType::Int],
                 ValueType::Int,
             ))))),
+            wrong_int_list,
         );
         assert_projection_mismatches::<ParameterListFamily>(
             &context,
@@ -1248,6 +1292,7 @@ pub fn main() {
             ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Parameter(
                 TypeParameterId(0),
             ))))),
+            wrong_int_list,
         );
         assert_parameter_list_projection_mismatches(&context);
     }
@@ -1265,15 +1310,12 @@ pub fn main() {
         context: &ProjectionContext<'_>,
         type_id: Family::TypeId,
         expected: ValueType,
+        wrong_list: fn(&mut RuntimeState, &ProjectionContext<'_>) -> ListValueId,
     ) where
         Family::Handle: std::fmt::Debug,
     {
         let mut state = RuntimeState::new();
-        let wrong_list: ListValueId = if expected == ValueType::List(Box::new(ValueType::Int)) {
-            state.string(context.string_type, Vec::new()).into()
-        } else {
-            state.int(context.int_type, Vec::new()).into()
-        };
+        let wrong_list = wrong_list(&mut state, context);
         let actual = context.plan.list_value_type(wrong_list.list_type());
 
         assert_tuple_projection_error::<Family>(
@@ -1308,6 +1350,14 @@ pub fn main() {
             EvaluatedValue::Int(1.into()),
             ValueType::Int,
         );
+    }
+
+    fn wrong_int_list(state: &mut RuntimeState, context: &ProjectionContext<'_>) -> ListValueId {
+        state.int(context.int_type, Vec::new()).into()
+    }
+
+    fn wrong_string_list(state: &mut RuntimeState, context: &ProjectionContext<'_>) -> ListValueId {
+        state.string(context.string_type, Vec::new()).into()
     }
 
     fn assert_parameter_list_projection_mismatches(context: &ProjectionContext<'_>) {
@@ -1497,10 +1547,16 @@ pub fn main() {
         );
     }
 
-    fn main_custom_local(plan: &crate::ExecutionPlan) -> CustomLocal {
-        let return_ = plan.custom_function(plan.custom_function_id(0)).graph();
+    fn direct_custom_return_local(
+        plan: &crate::ExecutionPlan,
+        function: CustomFunctionId,
+    ) -> CustomLocal {
+        let return_ = plan.custom_function(function).graph();
         let graph = return_.body();
-        let Terminator::Return(local) = graph.block(graph.entry()).terminator() else {
+        let Terminator::Exit(exit) = graph.block(graph.entry()).terminator() else {
+            panic!("custom main should return its constructed value directly");
+        };
+        let crate::plan::execution::FunctionGraphExit::Return(local) = graph.exit(*exit) else {
             panic!("custom main should return its constructed value directly");
         };
         *local
@@ -1548,8 +1604,8 @@ pub fn main() {
 
     #[test]
     #[should_panic(expected = "custom main should return its constructed value directly")]
-    fn custom_main_local_guard_rejects_control_flow_entries() {
-        main_custom_local(&crate::runtime::plan_src(
+    fn direct_custom_return_local_guard_rejects_control_flow_entries() {
+        let plan = crate::runtime::plan_src(
             r#"
 pub type Boxed { Boxed(Int) }
 
@@ -1562,6 +1618,22 @@ fn choose(flag: Bool) {
 
 pub fn main() { choose(True) }
 "#,
-        ));
+        );
+        direct_custom_return_local(&plan, plan.custom_function_id(1));
+    }
+
+    #[test]
+    #[should_panic(expected = "custom main should return its constructed value directly")]
+    fn direct_custom_return_local_guard_rejects_tail_calls() {
+        let plan = crate::runtime::plan_src(
+            r#"
+pub type Boxed { Boxed(Int) }
+
+fn loop(value: Boxed) -> Boxed { loop(value) }
+
+pub fn main() { loop(Boxed(1)) }
+"#,
+        );
+        direct_custom_return_local(&plan, plan.custom_function_id(0));
     }
 }

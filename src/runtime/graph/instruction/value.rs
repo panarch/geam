@@ -1,4 +1,4 @@
-use super::super::{GraphExit, GraphValue, evaluate};
+use super::super::{GraphValue, evaluate_constant};
 use crate::plan::ValueType;
 use crate::plan::execution::{
     ConstantId, ConstantValue, ExecutionPlan, GraphBitArrayInstruction as BitArrayInstruction,
@@ -593,15 +593,7 @@ pub(super) fn constant<Value>(
 where
     Value: ConstantValue + GraphValue,
 {
-    match evaluate(
-        plan,
-        state,
-        plan.constant(id).graph(),
-        crate::runtime::environment::RetainedValues::empty(),
-    )? {
-        GraphExit::Return(value) => Ok(value),
-        GraphExit::TailCall { function, .. } => match function {},
-    }
+    evaluate_constant(plan, state, plan.constant(id))
 }
 
 pub(super) fn tuple_projection<Value>(

@@ -68,11 +68,14 @@ fn write_patterns(output: &mut String, patterns: &[MatchPattern]) {
 
 fn write_list(output: &mut String, list: &MatchPatternList) {
     output.push('[');
-    write_patterns(output, list.elements());
+    let mut separator = "";
+    for pattern in list.elements() {
+        output.push_str(separator);
+        write_pattern(output, pattern);
+        separator = ", ";
+    }
     if let Some(tail) = list.tail() {
-        if !list.elements().is_empty() {
-            output.push_str(", ");
-        }
+        output.push_str(separator);
         output.push_str("..");
         match tail {
             MatchPatternListTail::Ignore => output.push('_'),
@@ -255,4 +258,32 @@ fn write_optional_binding(output: &mut String, binding: Option<&MatchPatternBind
 fn write_binding(output: &mut String, binding: &MatchPatternBinding) {
     output.push_str("binding#");
     output.push_str(&binding.index().to_string());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MatchPattern, MatchPatternBinding, MatchPatternList, MatchPatternListTail};
+
+    #[test]
+    fn list_pattern_explanation_separates_elements_from_the_tail() {
+        let pattern = MatchPattern::List(MatchPatternList::new(
+            vec![MatchPattern::Bind(MatchPatternBinding::new(0))],
+            Some(MatchPatternListTail::Bind(MatchPatternBinding::new(1))),
+        ));
+        let mut output = String::new();
+
+        super::write_pattern(&mut output, &pattern);
+
+        assert_eq!(output, "[binding#0, ..binding#1]");
+
+        let pattern = MatchPattern::List(MatchPatternList::new(
+            Vec::new(),
+            Some(MatchPatternListTail::Ignore),
+        ));
+        output.clear();
+
+        super::write_pattern(&mut output, &pattern);
+
+        assert_eq!(output, "[.._]");
+    }
 }

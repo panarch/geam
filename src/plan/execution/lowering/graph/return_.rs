@@ -98,7 +98,7 @@ where
         flow.fold((), |cursor, value| {
             graph.finish_return(cursor, value);
         });
-        execution::ConstantProgram::new(super::freeze::freeze(graph, context).body)
+        execution::ConstantProgram::from_graph(super::freeze::freeze(graph, context).body)
     })
 }
 
@@ -556,14 +556,14 @@ mod tests {
     use super::super::{
         DraftCursor, DraftFlow, DraftGraph, DraftGraphBuilder, DraftInt, DraftNeverReturn,
     };
-    use crate::plan::execution::graph::{SourceStopKind, Terminator};
+    use crate::plan::execution::graph::{BlockId, SourceStopKind, Terminator};
     use crate::plan::execution::lowering::specialization::Representability;
     use crate::plan::execution::{IntFunctionId as ExecutionIntFunctionId, ParamLocal};
     use crate::plan::{
-        BoolExpr, FunctionInstantiation, FunctionTemplate, FunctionTemplateId, GenericLocal,
-        GenericLocalId, IntExpr, IntFunctionId, IntLocalId, PanicExpr, PanicSite, Param,
-        ParamLocal as ModuleParamLocal, ParamSlot, ReturnBody, ReturnExpr, TypeParameterId,
-        ValueShape,
+        BoolExpr, Expr, FloatExpr, FunctionInstantiation, FunctionTemplate, FunctionTemplateId,
+        GenericExpr, GenericLocal, GenericLocalId, IntExpr, IntFunctionId, IntLocalId, PanicExpr,
+        PanicSite, Param, ParamLocal as ModuleParamLocal, ParamSlot, ReturnBody, ReturnExpr, Step,
+        StringExpr, TupleExpr, TypeParameterId, ValueShape, ValueType,
     };
 
     fn reject_int_expression(
@@ -592,6 +592,16 @@ mod tests {
         Representability::Inhabited(())
     }
 
+    fn finish_never_tuple_expression(
+        _expression: &TupleExpr,
+        cursor: DraftCursor,
+        graph: &mut DraftGraph,
+        _context: &mut crate::plan::execution::lowering::LoweringContext,
+    ) -> Representability<()> {
+        graph.finish_source_stop(cursor, SourceStopKind::Panic, None, PanicSite::unknown());
+        Representability::Inhabited(())
+    }
+
     fn reject_never_expression(
         _expression: &IntExpr,
         _cursor: DraftCursor,
@@ -599,6 +609,53 @@ mod tests {
         _context: &mut crate::plan::execution::lowering::LoweringContext,
     ) -> Representability<()> {
         Representability::Uninhabited
+    }
+
+    #[derive(Clone, Copy)]
+    enum ExpectedSwitch {
+        Int,
+        Float,
+        String,
+    }
+
+    fn bool_branch_targets(terminator: &Terminator) -> (BlockId, BlockId) {
+        match terminator {
+            Terminator::BoolBranch { true_, false_, .. } => (true_.target(), false_.target()),
+            _ => panic!("fixture should contain a Bool branch"),
+        }
+    }
+
+    fn switch_targets(expected: ExpectedSwitch, terminator: &Terminator) -> (BlockId, BlockId) {
+        match (expected, terminator) {
+            (
+                ExpectedSwitch::Int,
+                Terminator::IntSwitch {
+                    clauses, fallback, ..
+                },
+            ) => {
+                assert_eq!(clauses[0].0, 1.into());
+                (clauses[0].1.target(), fallback.target())
+            }
+            (
+                ExpectedSwitch::Float,
+                Terminator::FloatSwitch {
+                    clauses, fallback, ..
+                },
+            ) => {
+                assert_eq!(clauses[0].0, 1.0);
+                (clauses[0].1.target(), fallback.target())
+            }
+            (
+                ExpectedSwitch::String,
+                Terminator::StringSwitch {
+                    clauses, fallback, ..
+                },
+            ) => {
+                assert_eq!(clauses[0].0, "one");
+                (clauses[0].1.target(), fallback.target())
+            }
+            _ => panic!("unexpected switch terminator"),
+        }
     }
 
     #[test]
@@ -742,6 +799,69 @@ mod tests {
         let terminator = lowered.body.block(lowered.body.entry()).terminator();
         assert_eq!(source_stop_kind(terminator), SourceStopKind::Panic);
 
+        let false_body = ReturnBody::<IntExpr, FunctionInstantiation>::bool_case(
+            BoolExpr::value(false),
+            ReturnBody::expr(IntExpr::value(1.into())),
+            ReturnBody::expr(IntExpr::value(2.into())),
+        );
+        let (mut graph, cursor) = DraftGraphBuilder::<
+            DraftNeverReturn,
+            crate::plan::execution::NeverFunctionId,
+        >::new(Vec::new(), Vec::new());
+        assert_eq!(
+            super::lower_never_return_body(
+                &false_body,
+                cursor,
+                &mut graph,
+                &mut context,
+                finish_never_expression,
+            ),
+            Representability::Inhabited(()),
+        );
+        let lowered = super::super::freeze::freeze(graph, &mut context);
+        assert_eq!(lowered.body.blocks().len(), 1);
+        assert_eq!(
+            source_stop_kind(lowered.body.block(lowered.body.entry()).terminator()),
+            SourceStopKind::Panic,
+        );
+
+        let dynamic_body = ReturnBody::<IntExpr, FunctionInstantiation>::bool_case(
+            BoolExpr::equal(
+                Expr::int(IntExpr::value(1.into())),
+                Expr::int(IntExpr::value(1.into())),
+            ),
+            ReturnBody::expr(IntExpr::value(1.into())),
+            ReturnBody::expr(IntExpr::value(2.into())),
+        );
+        let (mut graph, cursor) = DraftGraphBuilder::<
+            DraftNeverReturn,
+            crate::plan::execution::NeverFunctionId,
+        >::new(Vec::new(), Vec::new());
+        assert_eq!(
+            super::lower_never_return_body(
+                &dynamic_body,
+                cursor,
+                &mut graph,
+                &mut context,
+                finish_never_expression,
+            ),
+            Representability::Inhabited(()),
+        );
+        let lowered = super::super::freeze::freeze(graph, &mut context);
+        assert_eq!(lowered.body.blocks().len(), 3);
+        let (true_, false_) =
+            bool_branch_targets(lowered.body.block(lowered.body.entry()).terminator());
+        assert_eq!(true_, BlockId::new(1));
+        assert_eq!(false_, BlockId::new(2));
+        assert_eq!(
+            source_stop_kind(lowered.body.block(true_).terminator()),
+            SourceStopKind::Panic,
+        );
+        assert_eq!(
+            source_stop_kind(lowered.body.block(false_).terminator()),
+            SourceStopKind::Panic,
+        );
+
         let panic_subject = ReturnBody::<IntExpr, FunctionInstantiation>::bool_case(
             BoolExpr::panic(PanicExpr::panic_at(None, PanicSite::unknown())),
             ReturnBody::expr(IntExpr::value(1.into())),
@@ -790,14 +910,186 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "fixture should contain a source stop")]
-    fn source_stop_kind_rejects_the_wrong_fixture_shape() {
-        source_stop_kind(&Terminator::<(), ()>::Return(()));
+    fn never_return_switches_lower_every_branch_and_fallback() {
+        let bodies = [
+            (
+                ReturnBody::<IntExpr, FunctionInstantiation>::int_case(
+                    IntExpr::value(1.into()),
+                    vec![(1.into(), ReturnBody::expr(IntExpr::value(1.into())))],
+                    ReturnBody::expr(IntExpr::value(2.into())),
+                ),
+                ExpectedSwitch::Int,
+            ),
+            (
+                ReturnBody::<IntExpr, FunctionInstantiation>::float_case(
+                    FloatExpr::value(1.0),
+                    vec![(1.0, ReturnBody::expr(IntExpr::value(1.into())))],
+                    ReturnBody::expr(IntExpr::value(2.into())),
+                ),
+                ExpectedSwitch::Float,
+            ),
+            (
+                ReturnBody::<IntExpr, FunctionInstantiation>::string_case(
+                    StringExpr::value("one".into()),
+                    vec![("one".into(), ReturnBody::expr(IntExpr::value(1.into())))],
+                    ReturnBody::expr(IntExpr::value(2.into())),
+                ),
+                ExpectedSwitch::String,
+            ),
+        ];
+
+        for (body, expected) in bodies {
+            let mut context =
+                crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
+            let (mut graph, cursor) = DraftGraphBuilder::<
+                DraftNeverReturn,
+                crate::plan::execution::NeverFunctionId,
+            >::new(Vec::new(), Vec::new());
+            assert_eq!(
+                super::lower_never_return_body(
+                    &body,
+                    cursor,
+                    &mut graph,
+                    &mut context,
+                    finish_never_expression,
+                ),
+                Representability::Inhabited(()),
+            );
+            let lowered = super::super::freeze::freeze(graph, &mut context);
+            assert_eq!(lowered.body.blocks().len(), 3);
+
+            let (branch, fallback) = switch_targets(
+                expected,
+                lowered.body.block(lowered.body.entry()).terminator(),
+            );
+            assert_eq!(branch, BlockId::new(1));
+            assert_eq!(fallback, BlockId::new(2));
+            assert_eq!(
+                source_stop_kind(lowered.body.block(branch).terminator()),
+                SourceStopKind::Panic,
+            );
+            assert_eq!(
+                source_stop_kind(lowered.body.block(fallback).terminator()),
+                SourceStopKind::Panic,
+            );
+        }
     }
 
-    fn source_stop_kind<Return, TailCall>(
-        terminator: &Terminator<Return, TailCall>,
-    ) -> SourceStopKind {
+    #[test]
+    fn never_return_blocks_and_function_prefixes_preserve_source_stops() {
+        let block = ReturnBody::<IntExpr, FunctionInstantiation>::block(
+            vec![Step::evaluate(Expr::int(IntExpr::value(1.into())))],
+            ReturnBody::expr(IntExpr::value(2.into())),
+        );
+        let mut context =
+            crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
+        let (mut graph, cursor) = DraftGraphBuilder::<
+            DraftNeverReturn,
+            crate::plan::execution::NeverFunctionId,
+        >::new(Vec::new(), Vec::new());
+        assert_eq!(
+            super::lower_never_return_body(
+                &block,
+                cursor,
+                &mut graph,
+                &mut context,
+                finish_never_expression,
+            ),
+            Representability::Inhabited(()),
+        );
+        let lowered = super::super::freeze::freeze(graph, &mut context);
+        let entry = lowered.body.block(lowered.body.entry());
+        assert_eq!(entry.instructions().len(), 1);
+        assert_eq!(source_stop_kind(entry.terminator()), SourceStopKind::Panic);
+
+        let parameter = TypeParameterId(0);
+        let body = ReturnBody::expr(GenericExpr::panic(
+            parameter,
+            PanicExpr::panic_at(None, PanicSite::unknown()),
+        ));
+        let template = FunctionTemplate::new(
+            FunctionTemplateId::new(3),
+            "prefix".into(),
+            Vec::new(),
+            vec![Step::evaluate(Expr::int(IntExpr::panic(
+                PanicExpr::panic_at(None, PanicSite::unknown()),
+            )))],
+            ReturnExpr::generic_body(parameter, body.clone()),
+        );
+        let mut context =
+            crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
+        let lowered = super::lower_never_function_graph(
+            &template,
+            &body,
+            &mut context,
+            super::super::expression::generic::never_expr,
+        );
+        assert_eq!(
+            lowered.map(|lowered| {
+                let entry = lowered.body.block(lowered.body.entry());
+                (
+                    entry.instructions().len(),
+                    source_stop_kind(entry.terminator()),
+                )
+            }),
+            Representability::Inhabited((0, SourceStopKind::Panic)),
+        );
+
+        let tuple_body = ReturnBody::<TupleExpr, FunctionInstantiation>::block(
+            vec![Step::evaluate(Expr::int(IntExpr::value(1.into())))],
+            ReturnBody::expr(TupleExpr::value(
+                vec![Expr::int(IntExpr::value(2.into()))],
+                vec![ValueType::Int],
+            )),
+        );
+        let mut context =
+            crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
+        let (mut graph, cursor) = DraftGraphBuilder::<
+            DraftNeverReturn,
+            crate::plan::execution::NeverFunctionId,
+        >::new(Vec::new(), Vec::new());
+        assert_eq!(
+            super::lower_never_return_body(
+                &tuple_body,
+                cursor,
+                &mut graph,
+                &mut context,
+                finish_never_tuple_expression,
+            ),
+            Representability::Inhabited(()),
+        );
+        let lowered = super::super::freeze::freeze(graph, &mut context);
+        let entry = lowered.body.block(lowered.body.entry());
+        assert_eq!(entry.instructions().len(), 1);
+        assert_eq!(source_stop_kind(entry.terminator()), SourceStopKind::Panic);
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture should contain a Bool branch")]
+    fn bool_branch_targets_rejects_the_wrong_fixture_shape() {
+        bool_branch_targets(&Terminator::Exit(crate::plan::execution::GraphExitId::new(
+            0,
+        )));
+    }
+
+    #[test]
+    #[should_panic(expected = "unexpected switch terminator")]
+    fn switch_targets_rejects_the_wrong_fixture_shape() {
+        switch_targets(
+            ExpectedSwitch::Int,
+            &Terminator::Exit(crate::plan::execution::GraphExitId::new(0)),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture should contain a source stop")]
+    fn source_stop_kind_rejects_the_wrong_fixture_shape() {
+        source_stop_kind(&Terminator::Exit(crate::plan::execution::GraphExitId::new(
+            0,
+        )));
+    }
+
+    fn source_stop_kind(terminator: &Terminator) -> SourceStopKind {
         match terminator {
             Terminator::SourceStop { kind, .. } => *kind,
             _ => panic!("fixture should contain a source stop"),

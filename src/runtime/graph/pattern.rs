@@ -479,6 +479,21 @@ mod tests {
     }
 
     #[test]
+    fn recursive_matcher_discards_a_string_prefix_suffix() {
+        assert_eq!(
+            crate::runtime::run_src(
+                r#"
+pub fn main() {
+  let assert "pre" <> _ = "prefix"
+  True
+}
+"#,
+            ),
+            Value::Bool(true),
+        );
+    }
+
+    #[test]
     fn recursive_matcher_exports_list_tails() {
         assert_eq!(
             crate::runtime::run_src(include_str!(
@@ -607,6 +622,10 @@ pub fn main() {
             EvaluatedValue::Int(1.into()),
         );
         assert_pattern_miss(
+            "pub fn main() { let assert True = True 1 }",
+            EvaluatedValue::Bool(false),
+        );
+        assert_pattern_miss(
             "pub fn main() { let assert #(1) = #(1) 1 }",
             EvaluatedValue::Int(1.into()),
         );
@@ -621,6 +640,18 @@ pub fn main() {
         assert_pattern_miss(
             "pub fn main() { let assert [1] = [1] 1 }",
             EvaluatedValue::Int(1.into()),
+        );
+        assert_int_list_pattern_miss(
+            "fn ints() -> List(Int) { [] } pub fn main() { let _ = ints() let assert [1, ..tail] = [1] let _ = tail 1 }",
+            Vec::new(),
+        );
+        assert_int_list_pattern_miss(
+            "fn ints() -> List(Int) { [] } pub fn main() { let _ = ints() let assert [1] = [1] 1 }",
+            vec![1.into(), 2.into()],
+        );
+        assert_int_list_pattern_miss(
+            "fn ints() -> List(Int) { [] } pub fn main() { let _ = ints() let assert [1] = [1] 1 }",
+            vec![2.into()],
         );
         assert_pattern_miss(
             "pub fn main() { let assert <<1>> = <<1>> 1 }",
@@ -646,6 +677,75 @@ pub fn main() {
             "fn flag() { True } pub fn main() { let value = case flag() { True -> 1 False -> 2 } let assert 1 = value 1 }",
             EvaluatedValue::Int(2.into()),
         );
+    }
+
+    #[test]
+    fn recursive_matcher_keeps_custom_and_string_prefix_misses_refutable() {
+        let custom_source = "pub type Boxed { Boxed(Int) Empty } fn boxed(flag: Bool) -> Boxed { case flag { True -> Boxed(1) False -> Empty } } pub fn main() { let assert Boxed(1) = boxed(True) 1 }";
+        let custom_plan = execution_plan(custom_source);
+        let boxed = custom_plan.custom_constructor_id(0, 0);
+        let empty = custom_plan.custom_constructor_id(0, 1);
+
+        assert_plan_pattern_miss(
+            &custom_plan,
+            EvaluatedValue::Custom(EvaluatedCustomValue::from_fields(empty, Box::new([]))),
+        );
+        assert_plan_pattern_miss(
+            &custom_plan,
+            EvaluatedValue::Custom(EvaluatedCustomValue::from_fields(
+                boxed,
+                vec![EvaluatedValue::Int(2.into())].into_boxed_slice(),
+            )),
+        );
+
+        assert_pattern_miss(
+            "pub fn main() { let assert \"pre\" <> _ = \"prefix\" 1 }",
+            EvaluatedValue::String("other".into()),
+        );
+    }
+
+    #[test]
+    fn recursive_matcher_exports_a_string_prefix_left_binding() {
+        let plan = execution_plan(
+            "pub fn main() { let assert \"pre\" as left <> _ = \"prefix\" let _ = left 1 }",
+        );
+        let pattern = main_pattern(&plan);
+        let mut state = RuntimeState::new();
+        let environment = BlockEnvironment::from_retained(RetainedValues::empty());
+
+        let bindings = match_pattern(
+            &plan,
+            &mut state,
+            &environment,
+            pattern,
+            &EvaluatedValue::String("prefix".into()),
+        )
+        .expect("string-prefix matching should not be an execution error")
+        .expect("the prefix should match");
+
+        assert_eq!(bindings.value(0), EvaluatedValue::String("pre".into()));
+    }
+
+    #[test]
+    fn recursive_matcher_exports_a_bool_alias_binding() {
+        let plan = execution_plan(
+            "pub fn main() { let assert True as selected = True let _ = selected 1 }",
+        );
+        let pattern = main_pattern(&plan);
+        let mut state = RuntimeState::new();
+        let environment = BlockEnvironment::from_retained(RetainedValues::empty());
+
+        let bindings = match_pattern(
+            &plan,
+            &mut state,
+            &environment,
+            pattern,
+            &EvaluatedValue::Bool(true),
+        )
+        .expect("Bool matching should not be an execution error")
+        .expect("the Bool pattern should match");
+
+        assert_eq!(bindings.value(0), EvaluatedValue::Bool(true));
     }
 
     #[test]
@@ -744,12 +844,34 @@ pub fn main() {
 
     fn assert_pattern_miss(source: &str, subject: EvaluatedValue) {
         let plan = execution_plan(source);
-        let pattern = main_pattern(&plan);
+        assert_plan_pattern_miss(&plan, subject);
+    }
+
+    fn assert_plan_pattern_miss(plan: &ExecutionPlan, subject: EvaluatedValue) {
+        let pattern = main_pattern(plan);
         let mut state = RuntimeState::new();
         let environment = BlockEnvironment::from_retained(RetainedValues::empty());
 
-        let matched = match_pattern(&plan, &mut state, &environment, pattern, &subject)
+        let matched = match_pattern(plan, &mut state, &environment, pattern, &subject)
             .expect("refutable mismatch should not be an execution error");
+        assert!(matched.is_none());
+    }
+
+    fn assert_int_list_pattern_miss(source: &str, values: Vec<num_bigint::BigInt>) {
+        let plan = execution_plan(source);
+        let mut state = RuntimeState::new();
+        let list = state.int(plan.int_list_function_id(0).type_id(), values);
+        let environment = BlockEnvironment::from_retained(RetainedValues::empty());
+
+        let matched = match_pattern(
+            &plan,
+            &mut state,
+            &environment,
+            main_pattern(&plan),
+            &EvaluatedValue::List(list.into()),
+        )
+        .expect("list mismatch should not be an execution error");
+
         assert!(matched.is_none());
     }
 

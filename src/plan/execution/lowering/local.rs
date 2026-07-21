@@ -1,6 +1,6 @@
 use super::specialization::{
-    FunctionRepresentation, Representability, SpecializedFunctionShape,
-    SpecializedTypeSubstitution, SpecializedValueShape, StoredValueShape, ValueRepresentation,
+    FunctionRepresentation, SpecializedFunctionShape, SpecializedTypeSubstitution,
+    SpecializedValueShape, StoredValueShape, ValueRepresentation,
 };
 use super::{LoweringContext, SpecializedFunctionLocal};
 use crate::plan::{execution, module};
@@ -149,12 +149,13 @@ impl FunctionEntryTemplate {
         }
     }
 
-    pub(super) fn capture(
+    pub(super) fn capture_target(
         &self,
         position: module::CapturePosition,
+        source_shape: StoredValueShape,
         substitution: &SpecializedTypeSubstitution,
         representations: &super::specialization::RepresentationContext,
-    ) -> Representability<(usize, StoredValueShape)> {
+    ) -> (usize, StoredValueShape) {
         let mut prefix = ParameterPrefix::default();
         for shape in self.params.iter().chain(&self.captures[..position.index()]) {
             let shape = SpecializedValueShape::instantiate(shape, substitution);
@@ -162,15 +163,7 @@ impl FunctionEntryTemplate {
                 prefix.allocate_stored(stored, representations);
             }
         }
-
-        let shape =
-            SpecializedValueShape::instantiate(&self.captures[position.index()], substitution);
-        match representations.representation(&shape) {
-            ValueRepresentation::Uninhabited(_) => Representability::Uninhabited,
-            ValueRepresentation::Stored(stored) => {
-                Representability::Inhabited(prefix.allocate_stored(stored, representations))
-            }
-        }
+        prefix.allocate_stored(source_shape, representations)
     }
 }
 

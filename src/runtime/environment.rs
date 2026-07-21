@@ -813,4 +813,60 @@ pub fn main() {
             Ok(Value::List(ListValue::utf_codepoint(vec!['A']))),
         );
     }
+
+    #[test]
+    fn closure_environment_preserves_remaining_list_and_never_capture_families() {
+        let source = r#"
+pub type Marker {
+  Marker(Int)
+}
+
+fn identity(value: Int) -> Int {
+  value
+}
+
+fn diverge(_value: Int) -> value {
+  panic
+}
+
+pub fn main() {
+  let parameter = []
+  let parameter_lists = [[]]
+  let ints = [1]
+  let strings = ["one"]
+  let bit_arrays = [<<1>>]
+  let customs = [Marker(1)]
+  let floats = [1.0]
+  let bools = [True]
+  let nils = [Nil]
+  let tuples = [#(1)]
+  let lists = [[1]]
+  let functions = [identity]
+  let never = diverge
+  let captured = fn() {
+    #(
+      parameter == [],
+      parameter_lists == [[]],
+      ints == [1],
+      strings == ["one"],
+      bit_arrays == [<<1>>],
+      customs == [Marker(1)],
+      floats == [1.0],
+      bools == [True],
+      nils == [Nil],
+      tuples == [#(1)],
+      lists == [[1]],
+      functions == [identity],
+      never == diverge,
+    )
+  }
+  captured()
+}
+"#;
+
+        assert_eq!(
+            crate::runtime::run_src(source),
+            Value::Tuple(vec![Value::Bool(true); 13]),
+        );
+    }
 }

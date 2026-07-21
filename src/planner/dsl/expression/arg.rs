@@ -2,14 +2,16 @@ use super::{
     Bool, BoolFunction, Float, FloatFunction, Int, IntFunction, Nil, NilFunction, String,
     StringFunction, Tuple, TupleFunction,
 };
-use crate::plan::{CallArg, CaptureArg, Expr};
+use crate::plan::{
+    CallArg, CaptureArg, Expr, FloatLocalId, IntLocalId, ParamLocal, TupleLocalId, ValueType,
+};
 
 pub(crate) fn int_arg(value: Int) -> CallArg {
     CallArg::new(Expr::int(value.into()))
 }
 
-pub(crate) fn capture_int(value: Int) -> CaptureArg {
-    CaptureArg::new(Expr::int(value.into()))
+pub(crate) fn capture_int(index: usize) -> CaptureArg {
+    CaptureArg::new(ParamLocal::int(IntLocalId(index)))
 }
 
 pub(crate) fn int_function_call_arg(value: Int) -> CallArg {
@@ -32,8 +34,8 @@ pub(crate) fn float_arg(value: Float) -> CallArg {
     CallArg::new(Expr::float(value.into()))
 }
 
-pub(crate) fn capture_float(value: Float) -> CaptureArg {
-    CaptureArg::new(Expr::float(value.into()))
+pub(crate) fn capture_float(index: usize) -> CaptureArg {
+    CaptureArg::new(ParamLocal::float(FloatLocalId(index)))
 }
 
 pub(crate) fn float_function_arg(value: FloatFunction) -> CallArg {
@@ -60,8 +62,14 @@ pub(crate) fn tuple_arg(value: Tuple) -> CallArg {
     CallArg::new(Expr::tuple(value.into()))
 }
 
-pub(crate) fn capture_tuple(value: Tuple) -> CaptureArg {
-    CaptureArg::new(Expr::tuple(value.into()))
+pub(crate) fn capture_tuple(
+    index: usize,
+    type_: impl IntoIterator<Item = ValueType>,
+) -> CaptureArg {
+    CaptureArg::new(ParamLocal::tuple(
+        TupleLocalId(index),
+        type_.into_iter().collect(),
+    ))
 }
 
 pub(crate) fn tuple_function_arg(value: TupleFunction) -> CallArg {
@@ -82,9 +90,12 @@ mod tests {
     };
 
     #[test]
-    fn argument_helpers_keep_only_source_expressions() {
+    fn argument_helpers_preserve_call_expressions_and_capture_locals() {
         assert_eq!(int_arg(int(1)), CallArg::new(Expr::from(int(1))));
-        assert_eq!(capture_int(int(2)), CaptureArg::new(Expr::from(int(2))));
+        assert_eq!(
+            capture_int(2),
+            CaptureArg::new(ParamLocal::int(crate::plan::IntLocalId(2)))
+        );
         assert_eq!(
             int_function_call_arg(int(3)),
             CallArg::new(Expr::from(int(3)))
@@ -105,8 +116,8 @@ mod tests {
         );
         assert_eq!(float_arg(float(1.0)), CallArg::new(Expr::from(float(1.0))));
         assert_eq!(
-            capture_float(float(2.0)),
-            CaptureArg::new(Expr::from(float(2.0)))
+            capture_float(2),
+            CaptureArg::new(ParamLocal::float(crate::plan::FloatLocalId(2)))
         );
         assert_eq!(
             float_function_arg(float_function_ref(0, Vec::<ParamLocal>::new())),
@@ -131,11 +142,14 @@ mod tests {
             ])))
         );
         assert_eq!(
-            capture_tuple(tuple([Expr::from(int(1)), Expr::from(string("one"))])),
-            CaptureArg::new(Expr::from(tuple([
-                Expr::from(int(1)),
-                Expr::from(string("one")),
-            ])))
+            capture_tuple(
+                2,
+                [crate::plan::ValueType::Int, crate::plan::ValueType::String]
+            ),
+            CaptureArg::new(ParamLocal::tuple(
+                crate::plan::TupleLocalId(2),
+                vec![crate::plan::ValueType::Int, crate::plan::ValueType::String],
+            ))
         );
         assert_eq!(
             tuple_function_arg(tuple_function_ref(

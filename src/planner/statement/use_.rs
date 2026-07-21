@@ -199,11 +199,7 @@ pub fn main() {
 "#,
         ))
         .expect("source should plan");
-        let callback = int_function_closure(
-            2,
-            [LocalId::Int(IntLocalId(0))],
-            [capture_int(local_int(0, "base"))],
-        );
+        let callback = int_function_closure(2, [LocalId::Int(IntLocalId(0))], [capture_int(0)]);
         let expected = module_with_anonymous(
             "main",
             function(

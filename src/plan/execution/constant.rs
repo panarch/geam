@@ -1,7 +1,7 @@
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 
-use super::graph::{FunctionGraph, FunctionLocal};
+use super::graph::{FunctionGraph, FunctionGraphExit, FunctionLocal, Graph, GraphExitId};
 use super::{
     BitArrayListLocalId, BitArrayLocalId, BoolListLocalId, BoolLocalId, CustomListLocalId,
     CustomLocal, FloatListLocalId, FloatLocalId, FunctionListLocalId, IntListLocalId, IntLocalId,
@@ -62,16 +62,33 @@ impl<Value> Hash for ConstantId<Value> {
 pub(crate) enum ConstantTailCall {}
 
 pub(crate) struct ConstantProgram<Value> {
-    graph: FunctionGraph<Value, ConstantTailCall>,
+    graph: Graph,
+    returns: Box<[Value]>,
 }
 
 impl<Value> ConstantProgram<Value> {
-    pub(in crate::plan::execution) fn new(graph: FunctionGraph<Value, ConstantTailCall>) -> Self {
-        Self { graph }
+    pub(in crate::plan::execution) fn from_graph(
+        graph: FunctionGraph<Value, ConstantTailCall>,
+    ) -> Self {
+        let (graph, exits) = graph.into_parts();
+        let returns = exits
+            .into_vec()
+            .into_iter()
+            .map(|exit| match exit {
+                FunctionGraphExit::Return(value) => value,
+                FunctionGraphExit::TailCall { function, .. } => match function {},
+            })
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        Self { graph, returns }
     }
 
-    pub(crate) fn graph(&self) -> &FunctionGraph<Value, ConstantTailCall> {
+    pub(crate) fn graph(&self) -> &Graph {
         &self.graph
+    }
+
+    pub(crate) fn return_(&self, id: GraphExitId) -> &Value {
+        &self.returns[id.index()]
     }
 }
 
@@ -219,7 +236,7 @@ mod tests {
             &ParamLocal::Int(IntLocalId(0))
         );
         assert_eq!(int_literal(instruction), &1.into());
-        assert_eq!(returned_int(block.terminator()), IntLocalId(0));
+        assert_eq!(returned_int(program, block.terminator()), IntLocalId(0));
 
         let main = plan.int_function(crate::plan::execution::IntFunctionId(0));
         let block = main.graph().block(BlockId::new(0));
@@ -244,11 +261,16 @@ mod tests {
     #[test]
     #[should_panic(expected = "constant fixture should return an Int local")]
     fn returned_int_guard_rejects_other_terminators() {
-        returned_int(&Terminator::SourceStop {
-            kind: SourceStopKind::Panic,
-            message: None,
-            site: crate::plan::PanicSite::unknown(),
-        });
+        let plan = execution_plan("const one = 1 pub fn main() { one }");
+        let program = plan.constant(ConstantId::<IntLocalId>::new(0));
+        returned_int(
+            program,
+            &Terminator::SourceStop {
+                kind: SourceStopKind::Panic,
+                message: None,
+                site: crate::plan::PanicSite::unknown(),
+            },
+        );
     }
 
     #[test]
@@ -266,9 +288,12 @@ mod tests {
         }
     }
 
-    fn returned_int(terminator: &Terminator<IntLocalId, super::ConstantTailCall>) -> IntLocalId {
+    fn returned_int(
+        program: &super::ConstantProgram<IntLocalId>,
+        terminator: &Terminator,
+    ) -> IntLocalId {
         match terminator {
-            Terminator::Return(value) => *value,
+            Terminator::Exit(exit) => *program.return_(*exit),
             _ => panic!("constant fixture should return an Int local"),
         }
     }

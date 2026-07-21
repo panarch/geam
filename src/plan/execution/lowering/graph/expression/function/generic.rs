@@ -1794,13 +1794,16 @@ mod tests {
         let (mut graph, _) = DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
         for expression in expressions {
             let cursor = graph.empty_block(Default::default());
-            assert_diverged(generic_int_function_expr(
-                &expression,
-                &shapes[0],
-                cursor,
-                &mut graph,
-                &mut context,
-            ));
+            assert_diverged(
+                generic_int_function_expr(
+                    &expression,
+                    &shapes[0],
+                    cursor,
+                    &mut graph,
+                    &mut context,
+                )
+                .map(|flow| flow.map(|_| ())),
+            );
         }
 
         let custom_expressions = [
@@ -1809,13 +1812,16 @@ mod tests {
         ];
         for expression in custom_expressions {
             let cursor = graph.empty_block(Default::default());
-            assert_diverged(symbolic_custom_kind(
-                expression.kind(),
-                &shapes[1],
-                cursor,
-                &mut graph,
-                &mut context,
-            ));
+            assert_diverged(
+                symbolic_custom_kind(
+                    expression.kind(),
+                    &shapes[1],
+                    cursor,
+                    &mut graph,
+                    &mut context,
+                )
+                .map(|flow| flow.map(|_| ())),
+            );
         }
 
         let list_expressions = [
@@ -1824,13 +1830,16 @@ mod tests {
         ];
         for expression in list_expressions {
             let cursor = graph.empty_block(Default::default());
-            assert_diverged(symbolic_list_kind(
-                expression.kind(),
-                &shapes[2],
-                cursor,
-                &mut graph,
-                &mut context,
-            ));
+            assert_diverged(
+                symbolic_list_kind(
+                    expression.kind(),
+                    &shapes[2],
+                    cursor,
+                    &mut graph,
+                    &mut context,
+                )
+                .map(|flow| flow.map(|_| ())),
+            );
         }
 
         let returning_expressions = [
@@ -1839,13 +1848,16 @@ mod tests {
         ];
         for expression in returning_expressions {
             let cursor = graph.empty_block(Default::default());
-            assert_diverged(symbolic_returning_function_kind(
-                expression.kind(),
-                &shapes[3],
-                cursor,
-                &mut graph,
-                &mut context,
-            ));
+            assert_diverged(
+                symbolic_returning_function_kind(
+                    expression.kind(),
+                    &shapes[3],
+                    cursor,
+                    &mut graph,
+                    &mut context,
+                )
+                .map(|flow| flow.map(|_| ())),
+            );
         }
 
         let fixed_types = [
@@ -2009,11 +2021,13 @@ mod tests {
     ) {
         for expression in expressions {
             let cursor = graph.empty_block(Default::default());
-            assert_diverged(lower(expression, shape, cursor, graph, context));
+            assert_diverged(
+                lower(expression, shape, cursor, graph, context).map(|flow| flow.map(|_| ())),
+            );
         }
     }
 
-    fn assert_diverged<T>(flow: Representability<DraftFlow<T>>) {
+    fn assert_diverged(flow: Representability<DraftFlow<()>>) {
         if let Representability::Inhabited(DraftFlow::Diverged) = flow {
             return;
         }
@@ -2023,6 +2037,6 @@ mod tests {
     #[test]
     #[should_panic(expected = "expected the source projection to diverge")]
     fn projection_divergence_assertion_rejects_an_uninhabited_result() {
-        assert_diverged::<DraftGenericFunction>(Representability::Uninhabited);
+        assert_diverged(Representability::Uninhabited);
     }
 }

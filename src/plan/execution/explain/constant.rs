@@ -7,7 +7,7 @@ use super::super::{
     ParameterListListLocalId, ParameterListLocalId, StringListLocalId, StringLocalId,
     TupleListLocalId, TupleLocalId, UtfCodepointListLocalId,
 };
-use super::graph::ExplainedGraph;
+use super::graph::write_constant_program;
 
 pub(super) fn write_constant_tables(
     output: &mut String,
@@ -52,8 +52,6 @@ fn write_table<Value>(
         output.push('#');
         output.push_str(&index.to_string());
         output.push('\n');
-        program
-            .graph()
-            .write_complete(output, plan, family, &[], &[]);
+        write_constant_program(output, plan, program);
     }
 }

@@ -1253,16 +1253,17 @@ impl LoweringContext {
         &mut self,
         instantiation: &crate::plan::FunctionInstantiation,
         position: crate::plan::CapturePosition,
-    ) -> specialization::Representability<StoredTargetLocal> {
+        source_shape: specialization::StoredValueShape,
+    ) -> StoredTargetLocal {
         let (specialization, _) =
             SpecializationKey::from_instantiation(instantiation, &self.substitution);
-        self.entry_templates[&specialization.template()]
-            .capture(
-                position,
-                specialization.substitution(),
-                &self.representations,
-            )
-            .map(|(index, shape)| StoredTargetLocal { index, shape })
+        let (index, shape) = self.entry_templates[&specialization.template()].capture_target(
+            position,
+            source_shape,
+            specialization.substitution(),
+            &self.representations,
+        );
+        StoredTargetLocal { index, shape }
     }
 
     fn concrete_parameter(&self, parameter: crate::plan::TypeParameterId) -> SpecializedValueShape {
