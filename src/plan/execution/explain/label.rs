@@ -35,7 +35,7 @@ pub(super) fn runtime_function_label(function: &RuntimeFunctionId) -> FunctionLa
     }
 }
 
-fn list_function_label(function: &ListFunctionId) -> FunctionLabel {
+pub(super) fn list_function_label(function: &ListFunctionId) -> FunctionLabel {
     match function {
         ListFunctionId::Parameter(id) => FunctionLabel::new("list.parameter", id.index()),
         ListFunctionId::ParameterList(id) => FunctionLabel::new("list.parameter_list", id.index()),
@@ -53,7 +53,7 @@ fn list_function_label(function: &ListFunctionId) -> FunctionLabel {
     }
 }
 
-fn function_function_label(function: &FunctionFunctionId) -> FunctionLabel {
+pub(super) fn function_function_label(function: &FunctionFunctionId) -> FunctionLabel {
     match function {
         FunctionFunctionId::Generic(id) => FunctionLabel::new("function.generic", id.index()),
         FunctionFunctionId::Never(id) => FunctionLabel::new("function.never", id.index()),
@@ -71,7 +71,7 @@ fn function_function_label(function: &FunctionFunctionId) -> FunctionLabel {
     }
 }
 
-fn list_function_function_label(function: &ListFunctionFunctionId) -> FunctionLabel {
+pub(super) fn list_function_function_label(function: &ListFunctionFunctionId) -> FunctionLabel {
     match function {
         ListFunctionFunctionId::Parameter { id, .. } => {
             FunctionLabel::new("function.list.parameter", id.0)

@@ -96,6 +96,12 @@ currently invoke the callee graph through the Rust stack because the caller has
 a continuation after the instruction; explicit activation-stack execution is a
 separate runtime concern.
 
+`ExecutionPlan::explain()` reads this frozen representation directly. It shows
+typed entry values, block parameters, instructions, operands, edge arguments,
+terminators, and reusable constant programs in deterministic order. The output
+is intended for human inspection and does not define a stable serialization or
+an additional execution model.
+
 ## Numeric Division By Zero
 
 Integer division and remainder by zero are normalized because Gleam defines

@@ -34,4 +34,11 @@ impl FunctionEntry {
     ) -> &'a [ParamSlot] {
         &graph.block(graph.entry()).params()[..self.parameter_count]
     }
+
+    pub(in crate::plan::execution) fn captures<'a, Return, TailCall>(
+        &self,
+        graph: &'a FunctionGraph<Return, TailCall>,
+    ) -> &'a [ParamSlot] {
+        &graph.block(graph.entry()).params()[self.parameter_count..]
+    }
 }

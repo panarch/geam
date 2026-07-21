@@ -14,30 +14,42 @@ pub fn main() {
   int_value()
 }
 
+
 // geam:explain
 // module main
 // main int#0
 //
 // function int#0
-//   graph entry=b0
-//   b0 instructions=5 tail int#1 args=0
+//   entry b0 params=[] captures=[]
+//   block b0 params=[]
+//     %function.list.int#0:shape#3(fn() -> list_type#0) = function[List] reference list.int#0
+//     %function.function#0:shape#4(fn() -> fn() -> Int) = function[Function] reference function.int#0
+//     %function.function#1:shape#5(fn() -> fn() -> list_type#0) = function[Function] reference function.list.int#0
+//     %function.function#2:shape#6(fn() -> fn() -> fn() -> Int) = function[Function] reference function.function#0
+//     %tuple#0:shape#7(#(fn() -> list_type#0, fn() -> fn() -> Int, fn() -> fn() -> list_type#0, fn() -> fn() -> fn() -> Int)) = tuple.value elements=[%function.list.int#0, %function.function#0, %function.function#1, %function.function#2]
+//     tail int#1 args=[]
 //
 // function int#1
-//   graph entry=b0
-//   b0 instructions=0 tail int#1 args=0
+//   entry b0 params=[] captures=[]
+//   block b0 params=[]
+//     tail int#1 args=[]
 //
 // function list.int#0
-//   graph entry=b0
-//   b0 instructions=0 tail list.int#0 args=0
+//   entry b0 params=[] captures=[]
+//   block b0 params=[]
+//     tail list.int#0 args=[]
 //
 // function function.int#0
-//   graph entry=b0
-//   b0 instructions=0 tail function.int#0 args=0
+//   entry b0 params=[] captures=[]
+//   block b0 params=[]
+//     tail function.int#0 args=[]
 //
 // function function.list.int#0
-//   graph entry=b0
-//   b0 instructions=0 tail function.list.int#0 args=0
+//   entry b0 params=[] captures=[]
+//   block b0 params=[]
+//     tail function.list.int#0 args=[]
 //
 // function function.function#0
-//   graph entry=b0
-//   b0 instructions=0 tail function.function#0 args=0
+//   entry b0 params=[] captures=[]
+//   block b0 params=[]
+//     tail function.function#0 args=[]

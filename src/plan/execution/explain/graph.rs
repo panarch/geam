@@ -1,17 +1,24 @@
-use super::super::graph::{FunctionGraph, Terminator};
+use super::super::constant::ConstantTailCall;
+use super::super::function::FunctionEntry;
+use super::super::graph::{
+    Edge, FunctionGraph, MatchEdge, MatchEdgeArgument, NeverCallTarget, SourceStopKind, Terminator,
+};
 use super::super::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionFunctionId,
     BoolFunctionId, BoolListFunctionId, CustomFunctionReturn, CustomListFunctionId, CustomReturn,
-    FloatFunctionFunctionId, FloatFunctionId, FloatListFunctionId, FunctionFunctionReturn,
-    FunctionListFunctionId, GenericFunctionFunctionId, IntFunctionFunctionId, IntFunctionId,
-    IntListFunctionId, ListFunctionFunctionId, ListListFunctionId, NeverFunctionFunctionId,
-    NeverFunctionId, NilFunctionFunctionId, NilFunctionId, NilListFunctionId,
-    ParameterListFunctionId, ParameterListListFunctionId, StringFunctionFunctionId,
-    StringFunctionId, StringListFunctionId, TupleFunctionFunctionId, TupleFunctionId,
-    TupleListFunctionId, TypedFunctionReturn, UtfCodepointFunctionFunctionId,
-    UtfCodepointFunctionId, UtfCodepointListFunctionId,
+    ExecutionPlan, FloatFunctionFunctionId, FloatFunctionId, FloatListFunctionId,
+    FunctionFunctionReturn, FunctionListFunctionId, GenericFunctionFunctionId, Instruction,
+    IntFunctionFunctionId, IntFunctionId, IntListFunctionId, ListFunctionFunctionId,
+    ListListFunctionId, NeverFunctionFunctionId, NeverFunctionId, NilFunctionFunctionId,
+    NilFunctionId, NilListFunctionId, ParamSlot, ParameterListFunctionId,
+    ParameterListListFunctionId, StringFunctionFunctionId, StringFunctionId, StringListFunctionId,
+    TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionId, TypedFunctionReturn,
+    UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, UtfCodepointListFunctionId,
 };
+use super::instruction::write_instruction;
 use super::label::FunctionLabel;
+use super::pattern::write_pattern;
+use super::value::{ExplainLocal, write_locals, write_slots};
 
 trait TailFunctionIndex {
     fn tail_function_index(&self) -> usize;
@@ -20,6 +27,12 @@ trait TailFunctionIndex {
 impl TailFunctionIndex for usize {
     fn tail_function_index(&self) -> usize {
         *self
+    }
+}
+
+impl TailFunctionIndex for ConstantTailCall {
+    fn tail_function_index(&self) -> usize {
+        match *self {}
     }
 }
 
@@ -106,26 +119,72 @@ impl TailFunctionIndex for ListFunctionFunctionId {
 }
 
 pub(super) trait ExplainedGraph {
-    fn write_topology(&self, output: &mut String, family: &'static str);
+    fn entry_params<'a>(&'a self, entry: &FunctionEntry) -> &'a [ParamSlot];
+
+    fn entry_captures<'a>(&'a self, entry: &FunctionEntry) -> &'a [ParamSlot];
+
+    fn write_complete(
+        &self,
+        output: &mut String,
+        plan: &ExecutionPlan,
+        family: &'static str,
+        entry_params: &[ParamSlot],
+        entry_captures: &[ParamSlot],
+    );
 }
 
 impl<Return, TailCall> ExplainedGraph for FunctionGraph<Return, TailCall>
 where
+    Return: ExplainLocal,
     TailCall: TailFunctionIndex,
 {
-    fn write_topology(&self, output: &mut String, family: &'static str) {
-        output.push_str("  graph entry=b");
+    fn entry_params<'a>(&'a self, entry: &FunctionEntry) -> &'a [ParamSlot] {
+        entry.params(self)
+    }
+
+    fn entry_captures<'a>(&'a self, entry: &FunctionEntry) -> &'a [ParamSlot] {
+        entry.captures(self)
+    }
+
+    fn write_complete(
+        &self,
+        output: &mut String,
+        plan: &ExecutionPlan,
+        family: &'static str,
+        entry_params: &[ParamSlot],
+        entry_captures: &[ParamSlot],
+    ) {
+        output.push_str("  entry b");
         output.push_str(&self.entry().index().to_string());
+        output.push_str(" params=");
+        write_slots(output, plan, entry_params);
+        output.push_str(" captures=");
+        write_slots(output, plan, entry_captures);
         output.push('\n');
 
         for (index, block) in self.blocks().iter().enumerate() {
-            output.push_str("  b");
-            output.push_str(&index.to_string());
-            output.push_str(" instructions=");
-            output.push_str(&block.instructions().len().to_string());
-            output.push(' ');
+            write_block(output, plan, index, block.params(), block.instructions());
+            output.push_str("    ");
             write_terminator(output, block.terminator(), family);
+            output.push('\n');
         }
+    }
+}
+
+fn write_block(
+    output: &mut String,
+    plan: &ExecutionPlan,
+    index: usize,
+    params: &[ParamSlot],
+    instructions: &[Instruction],
+) {
+    output.push_str("  block b");
+    output.push_str(&index.to_string());
+    output.push_str(" params=");
+    write_slots(output, plan, params);
+    output.push('\n');
+    for instruction in instructions {
+        write_instruction(output, plan, instruction);
     }
 }
 
@@ -133,26 +192,90 @@ impl<Body> ExplainedGraph for TypedFunctionReturn<Body>
 where
     Body: ExplainedGraph,
 {
-    fn write_topology(&self, output: &mut String, family: &'static str) {
-        self.body().write_topology(output, family);
+    fn entry_params<'a>(&'a self, entry: &FunctionEntry) -> &'a [ParamSlot] {
+        self.body().entry_params(entry)
+    }
+
+    fn entry_captures<'a>(&'a self, entry: &FunctionEntry) -> &'a [ParamSlot] {
+        self.body().entry_captures(entry)
+    }
+
+    fn write_complete(
+        &self,
+        output: &mut String,
+        plan: &ExecutionPlan,
+        family: &'static str,
+        entry_params: &[ParamSlot],
+        entry_captures: &[ParamSlot],
+    ) {
+        self.body()
+            .write_complete(output, plan, family, entry_params, entry_captures);
     }
 }
 
 impl ExplainedGraph for CustomReturn {
-    fn write_topology(&self, output: &mut String, family: &'static str) {
-        self.body().write_topology(output, family);
+    fn entry_params<'a>(&'a self, entry: &FunctionEntry) -> &'a [ParamSlot] {
+        self.body().entry_params(entry)
+    }
+
+    fn entry_captures<'a>(&'a self, entry: &FunctionEntry) -> &'a [ParamSlot] {
+        self.body().entry_captures(entry)
+    }
+
+    fn write_complete(
+        &self,
+        output: &mut String,
+        plan: &ExecutionPlan,
+        family: &'static str,
+        entry_params: &[ParamSlot],
+        entry_captures: &[ParamSlot],
+    ) {
+        self.body()
+            .write_complete(output, plan, family, entry_params, entry_captures);
     }
 }
 
 impl ExplainedGraph for CustomFunctionReturn {
-    fn write_topology(&self, output: &mut String, family: &'static str) {
-        self.body().write_topology(output, family);
+    fn entry_params<'a>(&'a self, entry: &FunctionEntry) -> &'a [ParamSlot] {
+        self.body().entry_params(entry)
+    }
+
+    fn entry_captures<'a>(&'a self, entry: &FunctionEntry) -> &'a [ParamSlot] {
+        self.body().entry_captures(entry)
+    }
+
+    fn write_complete(
+        &self,
+        output: &mut String,
+        plan: &ExecutionPlan,
+        family: &'static str,
+        entry_params: &[ParamSlot],
+        entry_captures: &[ParamSlot],
+    ) {
+        self.body()
+            .write_complete(output, plan, family, entry_params, entry_captures);
     }
 }
 
 impl ExplainedGraph for FunctionFunctionReturn {
-    fn write_topology(&self, output: &mut String, family: &'static str) {
-        self.body().write_topology(output, family);
+    fn entry_params<'a>(&'a self, entry: &FunctionEntry) -> &'a [ParamSlot] {
+        self.body().entry_params(entry)
+    }
+
+    fn entry_captures<'a>(&'a self, entry: &FunctionEntry) -> &'a [ParamSlot] {
+        self.body().entry_captures(entry)
+    }
+
+    fn write_complete(
+        &self,
+        output: &mut String,
+        plan: &ExecutionPlan,
+        family: &'static str,
+        entry_params: &[ParamSlot],
+        entry_captures: &[ParamSlot],
+    ) {
+        self.body()
+            .write_complete(output, plan, family, entry_params, entry_captures);
     }
 }
 
@@ -161,82 +284,181 @@ fn write_terminator<Return, TailCall>(
     terminator: &Terminator<Return, TailCall>,
     family: &'static str,
 ) where
+    Return: ExplainLocal,
     TailCall: TailFunctionIndex,
 {
     match terminator {
         Terminator::Jump(edge) => {
-            output.push_str("jump b");
-            output.push_str(&edge.target().index().to_string());
-            output.push('\n');
+            output.push_str("jump ");
+            write_edge(output, edge);
         }
-        Terminator::BoolBranch { true_, false_, .. } => {
-            output.push_str("branch bool true=b");
-            output.push_str(&true_.target().index().to_string());
-            output.push_str(" false=b");
-            output.push_str(&false_.target().index().to_string());
-            output.push('\n');
+        Terminator::BoolBranch {
+            subject,
+            true_,
+            false_,
+        } => {
+            output.push_str("branch ");
+            subject.write_local(output);
+            output.push_str(" true=");
+            write_edge(output, true_);
+            output.push_str(" false=");
+            write_edge(output, false_);
         }
         Terminator::IntSwitch {
-            clauses, fallback, ..
+            subject,
+            clauses,
+            fallback,
         } => {
-            output.push_str("switch int");
-            for (pattern, edge) in clauses {
-                output.push(' ');
+            output.push_str("switch.int ");
+            subject.write_local(output);
+            output.push_str(" clauses=[");
+            for (index, (pattern, edge)) in clauses.iter().enumerate() {
+                if index > 0 {
+                    output.push_str(", ");
+                }
                 output.push_str(&pattern.to_string());
-                output.push_str("->b");
-                output.push_str(&edge.target().index().to_string());
+                output.push_str("->");
+                write_edge(output, edge);
             }
-            write_fallback(output, fallback.target().index());
+            output.push_str("] fallback=");
+            write_edge(output, fallback);
         }
         Terminator::FloatSwitch {
-            clauses, fallback, ..
+            subject,
+            clauses,
+            fallback,
         } => {
-            output.push_str("switch float");
-            for (pattern, edge) in clauses {
-                output.push(' ');
+            output.push_str("switch.float ");
+            subject.write_local(output);
+            output.push_str(" clauses=[");
+            for (index, (pattern, edge)) in clauses.iter().enumerate() {
+                if index > 0 {
+                    output.push_str(", ");
+                }
                 output.push_str(&format!("{pattern:?}"));
-                output.push_str("->b");
-                output.push_str(&edge.target().index().to_string());
+                output.push_str("->");
+                write_edge(output, edge);
             }
-            write_fallback(output, fallback.target().index());
+            output.push_str("] fallback=");
+            write_edge(output, fallback);
         }
         Terminator::StringSwitch {
-            clauses, fallback, ..
+            subject,
+            clauses,
+            fallback,
         } => {
-            output.push_str("switch string");
-            for (pattern, edge) in clauses {
-                output.push(' ');
+            output.push_str("switch.string ");
+            subject.write_local(output);
+            output.push_str(" clauses=[");
+            for (index, (pattern, edge)) in clauses.iter().enumerate() {
+                if index > 0 {
+                    output.push_str(", ");
+                }
                 output.push_str(&format!("{pattern:?}"));
-                output.push_str("->b");
-                output.push_str(&edge.target().index().to_string());
+                output.push_str("->");
+                write_edge(output, edge);
             }
-            write_fallback(output, fallback.target().index());
+            output.push_str("] fallback=");
+            write_edge(output, fallback);
         }
         Terminator::Match {
-            success, failure, ..
+            subject,
+            pattern,
+            success,
+            failure,
         } => {
-            output.push_str("match success=b");
-            output.push_str(&success.target().index().to_string());
-            output.push_str(" failure=b");
-            output.push_str(&failure.target().index().to_string());
-            output.push('\n');
+            output.push_str("match ");
+            subject.write_local(output);
+            output.push_str(" pattern=");
+            write_pattern(output, pattern);
+            output.push_str(" success=");
+            write_match_edge(output, success);
+            output.push_str(" failure=");
+            write_edge(output, failure);
         }
-        Terminator::Return(_) => output.push_str("return\n"),
+        Terminator::Return(value) => {
+            output.push_str("return ");
+            value.write_local(output);
+        }
         Terminator::TailCall { function, args } => {
             output.push_str("tail ");
             FunctionLabel::new(family, function.tail_function_index()).push_to(output);
             output.push_str(" args=");
-            output.push_str(&args.len().to_string());
-            output.push('\n');
+            write_locals(output, args);
         }
-        Terminator::SourceStop { .. } => output.push_str("source_stop\n"),
-        Terminator::LetAssertPanic { .. } => output.push_str("let_assert_panic\n"),
-        Terminator::NeverCall { .. } => output.push_str("never_call\n"),
+        Terminator::SourceStop { kind, message, .. } => {
+            output.push_str("source_stop kind=");
+            output.push_str(source_stop_kind(*kind));
+            output.push_str(" message=");
+            match message {
+                Some(message) => message.write_local(output),
+                None => output.push_str("none"),
+            }
+        }
+        Terminator::LetAssertPanic {
+            subject, message, ..
+        } => {
+            output.push_str("let_assert_panic subject=");
+            subject.write_local(output);
+            output.push_str(" message=");
+            match message {
+                Some(message) => message.write_local(output),
+                None => output.push_str("none"),
+            }
+        }
+        Terminator::NeverCall { function, args } => {
+            output.push_str("never_call ");
+            match function {
+                NeverCallTarget::Direct(function) => {
+                    FunctionLabel::new("never", function.0).push_to(output);
+                }
+                NeverCallTarget::Value(function) => function.write_local(output),
+            }
+            output.push_str(" args=");
+            write_locals(output, args);
+        }
     }
 }
 
-fn write_fallback(output: &mut String, fallback: usize) {
-    output.push_str(" fallback=b");
-    output.push_str(&fallback.to_string());
-    output.push('\n');
+fn write_edge(output: &mut String, edge: &Edge) {
+    output.push('b');
+    output.push_str(&edge.target().index().to_string());
+    output.push('(');
+    for (index, argument) in edge.args().iter().enumerate() {
+        if index > 0 {
+            output.push_str(", ");
+        }
+        argument.write_local(output);
+    }
+    output.push(')');
+}
+
+fn write_match_edge(output: &mut String, edge: &MatchEdge) {
+    output.push('b');
+    output.push_str(&edge.target().index().to_string());
+    output.push('(');
+    for (index, argument) in edge.args().iter().enumerate() {
+        if index > 0 {
+            output.push_str(", ");
+        }
+        match argument {
+            MatchEdgeArgument::Binding(binding) => {
+                output.push_str("binding#");
+                output.push_str(&binding.to_string());
+            }
+            MatchEdgeArgument::Value(value) => value.write_local(output),
+        }
+    }
+    output.push(')');
+}
+
+fn source_stop_kind(kind: SourceStopKind) -> &'static str {
+    match kind {
+        SourceStopKind::Panic => "panic",
+        SourceStopKind::Todo => "todo",
+        SourceStopKind::Assert => "assert",
+        SourceStopKind::EmptyFunction => "empty_function",
+        SourceStopKind::EmptyBlock => "empty_block",
+        SourceStopKind::IncompleteUse => "incomplete_use",
+    }
 }
