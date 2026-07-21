@@ -33,56 +33,45 @@ pub fn main() {
 // main int#0
 //
 // function never#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail never#0 args=0
+//   b0 instructions=0 tail never#0 args=0
 //
 // function int#0
-//   entry steps=1
 //   graph entry=b0
-//   b0 tail int#1 args=0
+//   b0 instructions=10 tail int#1 args=0
 //
 // function int#1
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail int#1 args=0
+//   b0 instructions=0 tail int#1 args=0
 //
 // function float#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail float#0 args=0
+//   b0 instructions=0 tail float#0 args=0
 //
 // function string#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail string#0 args=0
+//   b0 instructions=0 tail string#0 args=0
 //
 // function bit_array#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail bit_array#0 args=0
+//   b0 instructions=0 tail bit_array#0 args=0
 //
 // function utf_codepoint#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail utf_codepoint#0 args=0
+//   b0 instructions=0 tail utf_codepoint#0 args=0
 //
 // function custom#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail custom#0 args=0
+//   b0 instructions=0 tail custom#0 args=0
 //
 // function bool#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail bool#0 args=0
+//   b0 instructions=0 tail bool#0 args=0
 //
 // function nil#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail nil#0 args=0
+//   b0 instructions=0 tail nil#0 args=0
 //
 // function tuple#0
-//   entry steps=0
 //   graph entry=b0
-//   b0 tail tuple#0 args=0
+//   b0 instructions=0 tail tuple#0 args=0

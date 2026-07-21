@@ -523,11 +523,6 @@ impl FunctionFunctionValue {
     pub(crate) fn type_(&self) -> FunctionType {
         self.type_.clone()
     }
-
-    #[cfg(test)]
-    pub(crate) fn runtime_id(&self) -> FunctionFunctionId {
-        self.runtime_id.clone()
-    }
 }
 
 impl From<IntFunctionValue> for FunctionValue {

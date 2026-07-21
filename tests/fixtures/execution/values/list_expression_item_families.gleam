@@ -1,10 +1,23 @@
 fn int_values() { [1] }
 fn string_values() { ["one"] }
 fn float_values() { [1.0] }
+fn bit_array_values() { [<<1>>] }
 fn bool_values() { [True] }
 fn nil_values() { [Nil] }
 fn tuple_values() { [#(1)] }
 fn list_values() { [[1]] }
+
+pub type Marker {
+  Marker(Int)
+}
+
+fn codepoint() -> UtfCodepoint {
+  let assert <<value:utf8_codepoint>> = <<65>>
+  value
+}
+
+fn utf_codepoint_values() { [codepoint()] }
+fn custom_values() { [Marker(1)] }
 
 fn one(value: Int) { value + 1 }
 fn two(value: Int) { value + 2 }
@@ -122,6 +135,99 @@ fn float_lists() {
   assert case 1.0 { 1.0 -> local _ -> [2.0] } == [1.0]
   assert case 0.0 { 1.0 -> local _ -> [2.0] } == [2.0]
   assert { let _ = 0 local } == [1.0]
+}
+
+fn bit_array_lists() {
+  let local = [<<1>>]
+  let provider = bit_array_values
+  let nested = [[<<1>>]]
+  let projected = case nested {
+    [value] -> value
+    _ -> []
+  }
+  let dropped = case [<<0>>, <<1>>] {
+    [_, ..rest] -> rest
+    _ -> []
+  }
+
+  assert local == [<<1>>]
+  assert [<<0>>, ..local] == [<<0>>, <<1>>]
+  assert bit_array_values() == [<<1>>]
+  assert provider() == [<<1>>]
+  assert #(local).0 == [<<1>>]
+  assert projected == [<<1>>]
+  assert dropped == [<<1>>]
+  assert case True { True -> local False -> [<<2>>] } == [<<1>>]
+  assert case False { True -> local False -> [<<2>>] } == [<<2>>]
+  assert case 1 { 1 -> local _ -> [<<2>>] } == [<<1>>]
+  assert case 0 { 1 -> local _ -> [<<2>>] } == [<<2>>]
+  assert case "hit" { "hit" -> local _ -> [<<2>>] } == [<<1>>]
+  assert case "miss" { "hit" -> local _ -> [<<2>>] } == [<<2>>]
+  assert case 1.0 { 1.0 -> local _ -> [<<2>>] } == [<<1>>]
+  assert case 0.0 { 1.0 -> local _ -> [<<2>>] } == [<<2>>]
+  assert { let _ = 0 local } == [<<1>>]
+}
+
+fn utf_codepoint_lists() {
+  let local = [codepoint()]
+  let provider = utf_codepoint_values
+  let nested = [[codepoint()]]
+  let projected = case nested {
+    [value] -> value
+    _ -> []
+  }
+  let dropped = case [codepoint(), codepoint()] {
+    [_, ..rest] -> rest
+    _ -> []
+  }
+
+  assert local == [codepoint()]
+  assert [codepoint(), ..local] == [codepoint(), codepoint()]
+  assert utf_codepoint_values() == [codepoint()]
+  assert provider() == [codepoint()]
+  assert #(local).0 == [codepoint()]
+  assert projected == [codepoint()]
+  assert dropped == [codepoint()]
+  assert case True { True -> local False -> [codepoint()] } == [codepoint()]
+  assert case False { True -> local False -> [codepoint()] } == [codepoint()]
+  assert case 1 { 1 -> local _ -> [codepoint()] } == [codepoint()]
+  assert case 0 { 1 -> local _ -> [codepoint()] } == [codepoint()]
+  assert case "hit" { "hit" -> local _ -> [codepoint()] } == [codepoint()]
+  assert case "miss" { "hit" -> local _ -> [codepoint()] } == [codepoint()]
+  assert case 1.0 { 1.0 -> local _ -> [codepoint()] } == [codepoint()]
+  assert case 0.0 { 1.0 -> local _ -> [codepoint()] } == [codepoint()]
+  assert { let _ = 0 local } == [codepoint()]
+}
+
+fn custom_lists() {
+  let local = [Marker(1)]
+  let provider = custom_values
+  let nested = [[Marker(1)]]
+  let projected = case nested {
+    [value] -> value
+    _ -> []
+  }
+  let dropped = case [Marker(0), Marker(1)] {
+    [_, ..rest] -> rest
+    _ -> []
+  }
+
+  assert local == [Marker(1)]
+  assert [Marker(0), ..local] == [Marker(0), Marker(1)]
+  assert custom_values() == [Marker(1)]
+  assert provider() == [Marker(1)]
+  assert #(local).0 == [Marker(1)]
+  assert projected == [Marker(1)]
+  assert dropped == [Marker(1)]
+  assert case True { True -> local False -> [Marker(2)] } == [Marker(1)]
+  assert case False { True -> local False -> [Marker(2)] } == [Marker(2)]
+  assert case 1 { 1 -> local _ -> [Marker(2)] } == [Marker(1)]
+  assert case 0 { 1 -> local _ -> [Marker(2)] } == [Marker(2)]
+  assert case "hit" { "hit" -> local _ -> [Marker(2)] } == [Marker(1)]
+  assert case "miss" { "hit" -> local _ -> [Marker(2)] } == [Marker(2)]
+  assert case 1.0 { 1.0 -> local _ -> [Marker(2)] } == [Marker(1)]
+  assert case 0.0 { 1.0 -> local _ -> [Marker(2)] } == [Marker(2)]
+  assert { let _ = 0 local } == [Marker(1)]
 }
 
 fn bool_lists() {
@@ -283,6 +389,9 @@ pub fn main() {
   int_lists()
   string_lists()
   float_lists()
+  bit_array_lists()
+  utf_codepoint_lists()
+  custom_lists()
   bool_lists()
   nil_lists()
   tuple_lists()

@@ -43,6 +43,7 @@ macro_rules! explain_cases {
 
 mod explain {
     explain_cases!(
+        control_terminators,
         return_topology,
         value_return_tables,
         list_return_tables,

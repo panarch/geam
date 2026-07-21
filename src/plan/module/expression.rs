@@ -343,6 +343,39 @@ impl Expr {
         }
     }
 
+    pub(crate) fn tuple_index_shape(tuple: TupleExpr, index: usize, shape: ValueShape) -> Self {
+        match shape {
+            ValueShape::Parameter(parameter) => {
+                Self::generic(GenericExpr::tuple_index(parameter, tuple, index))
+            }
+            ValueShape::Int => Self::int(IntExpr::tuple_index(tuple, index)),
+            ValueShape::String => Self::string(StringExpr::tuple_index(tuple, index)),
+            ValueShape::BitArray => Self::bit_array(BitArrayExpr::tuple_index(tuple, index)),
+            ValueShape::UtfCodepoint => {
+                Self::utf_codepoint(UtfCodepointExpr::tuple_index(tuple, index))
+            }
+            ValueShape::Custom(shape) => {
+                Self::custom(CustomExpr::tuple_index_shape(tuple, index, shape))
+            }
+            ValueShape::Float => Self::float(FloatExpr::tuple_index(tuple, index)),
+            ValueShape::Bool => Self::bool(BoolExpr::tuple_index(tuple, index)),
+            ValueShape::Nil => Self::nil(NilExpr::tuple_index(tuple, index)),
+            ValueShape::Tuple(shape) => {
+                let type_ = shape.iter().map(ValueShape::value_type).collect();
+                Self::tuple(TupleExpr::tuple_index(tuple, index, type_).with_shape(shape))
+            }
+            ValueShape::List(item_shape) => {
+                let item_type = item_shape.value_type();
+                Self::list(
+                    ListExpr::tuple_index(tuple, index, item_type).with_item_shape(*item_shape),
+                )
+            }
+            ValueShape::Function(shape) => {
+                Self::function(FunctionExpr::tuple_index_shape(tuple, index, *shape))
+            }
+        }
+    }
+
     pub(crate) fn bool_case(subject: BoolExpr, branches: BoolCaseBranches) -> Self {
         match branches {
             BoolCaseBranches::Int { true_, false_ } => {

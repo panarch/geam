@@ -1,29 +1,37 @@
-use super::{FrameLayout, Step};
+use super::ParamSlot;
+use super::graph::FunctionGraph;
 
-pub(crate) struct ExecutableFunction<Return> {
-    frame_layout: FrameLayout,
-    steps: Vec<Step>,
-    return_: Return,
+pub(crate) struct ExecutableFunction<Graph> {
+    entry: FunctionEntry,
+    graph: Graph,
 }
 
-impl<Return> ExecutableFunction<Return> {
-    pub(super) fn new(frame_layout: FrameLayout, steps: Vec<Step>, return_: Return) -> Self {
+pub(crate) struct FunctionEntry {
+    parameter_count: usize,
+}
+
+impl<Graph> ExecutableFunction<Graph> {
+    pub(super) fn new(parameter_count: usize, graph: Graph) -> Self {
         Self {
-            frame_layout,
-            steps,
-            return_,
+            entry: FunctionEntry { parameter_count },
+            graph,
         }
     }
 
-    pub(crate) fn frame_layout(&self) -> &FrameLayout {
-        &self.frame_layout
+    pub(crate) fn graph(&self) -> &Graph {
+        &self.graph
     }
 
-    pub(crate) fn steps(&self) -> &[Step] {
-        &self.steps
+    pub(crate) fn entry(&self) -> &FunctionEntry {
+        &self.entry
     }
+}
 
-    pub(crate) fn return_(&self) -> &Return {
-        &self.return_
+impl FunctionEntry {
+    pub(crate) fn params<'a, Return, TailCall>(
+        &self,
+        graph: &'a FunctionGraph<Return, TailCall>,
+    ) -> &'a [ParamSlot] {
+        &graph.block(graph.entry()).params()[..self.parameter_count]
     }
 }

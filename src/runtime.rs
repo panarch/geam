@@ -1,10 +1,8 @@
+mod environment;
 mod error;
 mod evaluated;
-mod expression;
-mod frame;
-mod function;
+mod graph;
 mod materialize;
-mod pattern;
 mod state;
 mod value;
 
@@ -14,14 +12,13 @@ pub use error::{
 };
 pub(in crate::runtime) use evaluated::{
     EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
-    EvaluatedCaptureKind, EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedFloatFunction,
-    EvaluatedFunction, EvaluatedFunctionFunction, EvaluatedFunctionValue,
-    EvaluatedFunctionValueKind, EvaluatedGenericFunction, EvaluatedIntFunction,
-    EvaluatedListCapture, EvaluatedListFunction, EvaluatedNeverFunction, EvaluatedNilFunction,
+    EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedFloatFunction,
+    EvaluatedFunctionFunction, EvaluatedFunctionValueKind, EvaluatedGenericFunction,
+    EvaluatedIntFunction, EvaluatedListFunction, EvaluatedNeverFunction, EvaluatedNilFunction,
     EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
 #[cfg(test)]
-pub(in crate::runtime) use state::RuntimeState;
+pub(in crate::runtime) use evaluated::{EvaluatedFunctionValue, EvaluatedListCapture};
 pub(crate) use value::{
     BitArrayFunctionValue, BoolFunctionValue, CaptureListValue, CaptureValue, CustomFunctionValue,
     CustomFunctionValueTarget, FloatFunctionValue, FunctionFunctionValue, FunctionValueKind,
@@ -36,7 +33,7 @@ pub use value::{
 use crate::plan::execution::ExecutionPlan;
 
 pub fn run_main(plan: &ExecutionPlan) -> Result<Value, ExecutionError> {
-    function::run_main(plan)
+    graph::run_main(plan)
 }
 
 #[cfg(test)]

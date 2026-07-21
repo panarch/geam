@@ -660,7 +660,7 @@ fn inspect(value: Box(Int), strings: List(Box(String)), left: Left) {
 }
 
 pub fn main() {
-  inspect(Full(1, Empty), [Full("one", Empty)], Left(Stop))
+  inspect(Full(1, Empty), [Full("one", Empty)], Left(Right(Left(Stop))))
 }
 "#;
         let typed = crate::compile_typed_module("main", "main.gleam", source)
@@ -706,18 +706,33 @@ pub fn main() {
             )),
         );
 
-        let left = plan.custom_constructor(CustomConstructorId::new(CustomTypeId::new(2), 0));
-        let right = plan.custom_constructor(CustomConstructorId::new(CustomTypeId::new(3), 0));
         assert_eq!(
-            left.fields()[0].type_(),
-            &ExecutionValueType::Custom(CustomTypeId::new(3)),
+            plan.custom_value_type(CustomTypeId::new(2)),
+            CustomType::new(
+                CustomTypeName::new("geam".into(), "main".into(), "Right".into()),
+                Vec::new(),
+            ),
         );
         assert_eq!(
-            right.fields()[0].type_(),
+            plan.custom_value_type(CustomTypeId::new(3)),
+            CustomType::new(
+                CustomTypeName::new("geam".into(), "main".into(), "Left".into()),
+                Vec::new(),
+            ),
+        );
+
+        let right = plan.custom_constructor(CustomConstructorId::new(CustomTypeId::new(2), 0));
+        let left = plan.custom_constructor(CustomConstructorId::new(CustomTypeId::new(3), 0));
+        assert_eq!(
+            left.fields()[0].type_(),
             &ExecutionValueType::Custom(CustomTypeId::new(2)),
         );
         assert_eq!(
-            plan.custom_constructor(CustomConstructorId::new(CustomTypeId::new(3), 1))
+            right.fields()[0].type_(),
+            &ExecutionValueType::Custom(CustomTypeId::new(3)),
+        );
+        assert_eq!(
+            plan.custom_constructor(CustomConstructorId::new(CustomTypeId::new(2), 1))
                 .fields()
                 .len(),
             0,

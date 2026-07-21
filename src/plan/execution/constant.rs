@@ -1,13 +1,12 @@
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 
+use super::graph::{FunctionGraph, FunctionLocal};
 use super::{
-    BitArrayExpr, BitArrayFunctionExpr, BitArrayListExpr, BoolExpr, BoolFunctionExpr, BoolListExpr,
-    CustomExpr, CustomFunctionExpr, CustomListExpr, FloatExpr, FloatFunctionExpr, FloatListExpr,
-    FunctionFunctionExpr, FunctionListExpr, GenericFunctionExpr, IntExpr, IntFunctionExpr,
-    IntListExpr, ListListExpr, NeverFunctionExpr, NilExpr, NilFunctionExpr, NilListExpr,
-    ParameterListExpr, ParameterListListExpr, StringExpr, StringFunctionExpr, StringListExpr,
-    TupleExpr, TupleFunctionExpr, TupleListExpr, UtfCodepointFunctionExpr, UtfCodepointListExpr,
+    BitArrayListLocalId, BitArrayLocalId, BoolListLocalId, BoolLocalId, CustomListLocalId,
+    CustomLocal, FloatListLocalId, FloatLocalId, FunctionListLocalId, IntListLocalId, IntLocalId,
+    ListListLocalId, NilListLocalId, NilLocalId, ParameterListListLocalId, ParameterListLocalId,
+    StringListLocalId, StringLocalId, TupleListLocalId, TupleLocalId, UtfCodepointListLocalId,
 };
 
 pub(crate) struct ConstantId<Value> {
@@ -59,158 +58,119 @@ impl<Value> Hash for ConstantId<Value> {
     }
 }
 
+#[derive(Clone)]
+pub(crate) enum ConstantTailCall {}
+
+pub(crate) struct ConstantProgram<Value> {
+    graph: FunctionGraph<Value, ConstantTailCall>,
+}
+
+impl<Value> ConstantProgram<Value> {
+    pub(in crate::plan::execution) fn new(graph: FunctionGraph<Value, ConstantTailCall>) -> Self {
+        Self { graph }
+    }
+
+    pub(crate) fn graph(&self) -> &FunctionGraph<Value, ConstantTailCall> {
+        &self.graph
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct ConstantTable {
-    ints: Vec<IntExpr>,
-    strings: Vec<StringExpr>,
-    bit_arrays: Vec<BitArrayExpr>,
-    customs: Vec<CustomExpr>,
-    floats: Vec<FloatExpr>,
-    bools: Vec<BoolExpr>,
-    nils: Vec<NilExpr>,
-    tuples: Vec<TupleExpr>,
-    parameter_lists: Vec<ParameterListExpr>,
-    parameter_list_lists: Vec<ParameterListListExpr>,
-    int_lists: Vec<IntListExpr>,
-    string_lists: Vec<StringListExpr>,
-    bit_array_lists: Vec<BitArrayListExpr>,
-    utf_codepoint_lists: Vec<UtfCodepointListExpr>,
-    custom_lists: Vec<CustomListExpr>,
-    float_lists: Vec<FloatListExpr>,
-    bool_lists: Vec<BoolListExpr>,
-    nil_lists: Vec<NilListExpr>,
-    tuple_lists: Vec<TupleListExpr>,
-    list_lists: Vec<ListListExpr>,
-    function_lists: Vec<FunctionListExpr>,
-    generic_functions: Vec<GenericFunctionExpr>,
-    never_functions: Vec<NeverFunctionExpr>,
-    int_functions: Vec<IntFunctionExpr>,
-    string_functions: Vec<StringFunctionExpr>,
-    bit_array_functions: Vec<BitArrayFunctionExpr>,
-    utf_codepoint_functions: Vec<UtfCodepointFunctionExpr>,
-    custom_functions: Vec<CustomFunctionExpr>,
-    float_functions: Vec<FloatFunctionExpr>,
-    bool_functions: Vec<BoolFunctionExpr>,
-    nil_functions: Vec<NilFunctionExpr>,
-    tuple_functions: Vec<TupleFunctionExpr>,
-    list_functions: Vec<super::ListFunctionExpr>,
-    function_functions: Vec<FunctionFunctionExpr>,
+    ints: Vec<ConstantProgram<IntLocalId>>,
+    strings: Vec<ConstantProgram<StringLocalId>>,
+    bit_arrays: Vec<ConstantProgram<BitArrayLocalId>>,
+    customs: Vec<ConstantProgram<CustomLocal>>,
+    floats: Vec<ConstantProgram<FloatLocalId>>,
+    bools: Vec<ConstantProgram<BoolLocalId>>,
+    nils: Vec<ConstantProgram<NilLocalId>>,
+    tuples: Vec<ConstantProgram<TupleLocalId>>,
+    parameter_lists: Vec<ConstantProgram<ParameterListLocalId>>,
+    parameter_list_lists: Vec<ConstantProgram<ParameterListListLocalId>>,
+    int_lists: Vec<ConstantProgram<IntListLocalId>>,
+    string_lists: Vec<ConstantProgram<StringListLocalId>>,
+    bit_array_lists: Vec<ConstantProgram<BitArrayListLocalId>>,
+    utf_codepoint_lists: Vec<ConstantProgram<UtfCodepointListLocalId>>,
+    custom_lists: Vec<ConstantProgram<CustomListLocalId>>,
+    float_lists: Vec<ConstantProgram<FloatListLocalId>>,
+    bool_lists: Vec<ConstantProgram<BoolListLocalId>>,
+    nil_lists: Vec<ConstantProgram<NilListLocalId>>,
+    tuple_lists: Vec<ConstantProgram<TupleListLocalId>>,
+    list_lists: Vec<ConstantProgram<ListListLocalId>>,
+    function_lists: Vec<ConstantProgram<FunctionListLocalId>>,
+    functions: Vec<ConstantProgram<FunctionLocal>>,
 }
 
-pub(crate) trait ConstantExpression: Sized {
-    fn values(table: &ConstantTable) -> &[Self];
-    fn values_mut(table: &mut ConstantTable) -> &mut Vec<Self>;
+pub(crate) trait ConstantValue: Sized {
+    fn programs(table: &ConstantTable) -> &[ConstantProgram<Self>];
+    fn programs_mut(table: &mut ConstantTable) -> &mut Vec<ConstantProgram<Self>>;
 }
 
-macro_rules! constant_expression {
-    ($expression:ty, $field:ident) => {
-        impl ConstantExpression for $expression {
-            fn values(table: &ConstantTable) -> &[Self] {
+macro_rules! constant_value {
+    ($value:ty, $field:ident) => {
+        impl ConstantValue for $value {
+            fn programs(table: &ConstantTable) -> &[ConstantProgram<Self>] {
                 &table.$field
             }
 
-            fn values_mut(table: &mut ConstantTable) -> &mut Vec<Self> {
+            fn programs_mut(table: &mut ConstantTable) -> &mut Vec<ConstantProgram<Self>> {
                 &mut table.$field
             }
         }
     };
 }
 
-constant_expression!(IntExpr, ints);
-constant_expression!(StringExpr, strings);
-constant_expression!(BitArrayExpr, bit_arrays);
-constant_expression!(CustomExpr, customs);
-constant_expression!(FloatExpr, floats);
-constant_expression!(BoolExpr, bools);
-constant_expression!(NilExpr, nils);
-constant_expression!(TupleExpr, tuples);
-constant_expression!(ParameterListExpr, parameter_lists);
-constant_expression!(ParameterListListExpr, parameter_list_lists);
-constant_expression!(IntListExpr, int_lists);
-constant_expression!(StringListExpr, string_lists);
-constant_expression!(BitArrayListExpr, bit_array_lists);
-constant_expression!(UtfCodepointListExpr, utf_codepoint_lists);
-constant_expression!(CustomListExpr, custom_lists);
-constant_expression!(FloatListExpr, float_lists);
-constant_expression!(BoolListExpr, bool_lists);
-constant_expression!(NilListExpr, nil_lists);
-constant_expression!(TupleListExpr, tuple_lists);
-constant_expression!(ListListExpr, list_lists);
-constant_expression!(FunctionListExpr, function_lists);
-constant_expression!(GenericFunctionExpr, generic_functions);
-constant_expression!(NeverFunctionExpr, never_functions);
-constant_expression!(IntFunctionExpr, int_functions);
-constant_expression!(StringFunctionExpr, string_functions);
-constant_expression!(BitArrayFunctionExpr, bit_array_functions);
-constant_expression!(UtfCodepointFunctionExpr, utf_codepoint_functions);
-constant_expression!(CustomFunctionExpr, custom_functions);
-constant_expression!(FloatFunctionExpr, float_functions);
-constant_expression!(BoolFunctionExpr, bool_functions);
-constant_expression!(NilFunctionExpr, nil_functions);
-constant_expression!(TupleFunctionExpr, tuple_functions);
-constant_expression!(super::ListFunctionExpr, list_functions);
-constant_expression!(FunctionFunctionExpr, function_functions);
+constant_value!(IntLocalId, ints);
+constant_value!(StringLocalId, strings);
+constant_value!(BitArrayLocalId, bit_arrays);
+constant_value!(CustomLocal, customs);
+constant_value!(FloatLocalId, floats);
+constant_value!(BoolLocalId, bools);
+constant_value!(NilLocalId, nils);
+constant_value!(TupleLocalId, tuples);
+constant_value!(ParameterListLocalId, parameter_lists);
+constant_value!(ParameterListListLocalId, parameter_list_lists);
+constant_value!(IntListLocalId, int_lists);
+constant_value!(StringListLocalId, string_lists);
+constant_value!(BitArrayListLocalId, bit_array_lists);
+constant_value!(UtfCodepointListLocalId, utf_codepoint_lists);
+constant_value!(CustomListLocalId, custom_lists);
+constant_value!(FloatListLocalId, float_lists);
+constant_value!(BoolListLocalId, bool_lists);
+constant_value!(NilListLocalId, nil_lists);
+constant_value!(TupleListLocalId, tuple_lists);
+constant_value!(ListListLocalId, list_lists);
+constant_value!(FunctionListLocalId, function_lists);
+constant_value!(FunctionLocal, functions);
 
 impl ConstantTable {
-    pub(in crate::plan::execution) fn push<Expression: ConstantExpression>(
+    pub(in crate::plan::execution) fn push<Value: ConstantValue>(
         &mut self,
-        value: Expression,
-    ) -> ConstantId<Expression> {
-        let values = Expression::values_mut(self);
-        let id = ConstantId::new(values.len());
-        values.push(value);
+        program: ConstantProgram<Value>,
+    ) -> ConstantId<Value> {
+        let programs = Value::programs_mut(self);
+        let id = ConstantId::new(programs.len());
+        programs.push(program);
         id
     }
 
-    pub(crate) fn get<Expression: ConstantExpression>(
+    pub(crate) fn get<Value: ConstantValue>(
         &self,
-        id: ConstantId<Expression>,
-    ) -> &Expression {
-        &Expression::values(self)[id.index()]
-    }
-
-    #[cfg(test)]
-    pub(crate) fn len(&self) -> usize {
-        self.ints.len()
-            + self.strings.len()
-            + self.bit_arrays.len()
-            + self.customs.len()
-            + self.floats.len()
-            + self.bools.len()
-            + self.nils.len()
-            + self.tuples.len()
-            + self.parameter_lists.len()
-            + self.parameter_list_lists.len()
-            + self.int_lists.len()
-            + self.string_lists.len()
-            + self.bit_array_lists.len()
-            + self.utf_codepoint_lists.len()
-            + self.custom_lists.len()
-            + self.float_lists.len()
-            + self.bool_lists.len()
-            + self.nil_lists.len()
-            + self.tuple_lists.len()
-            + self.list_lists.len()
-            + self.function_lists.len()
-            + self.generic_functions.len()
-            + self.never_functions.len()
-            + self.int_functions.len()
-            + self.string_functions.len()
-            + self.bit_array_functions.len()
-            + self.utf_codepoint_functions.len()
-            + self.custom_functions.len()
-            + self.float_functions.len()
-            + self.bool_functions.len()
-            + self.nil_functions.len()
-            + self.tuple_functions.len()
-            + self.list_functions.len()
-            + self.function_functions.len()
+        id: ConstantId<Value>,
+    ) -> &ConstantProgram<Value> {
+        &Value::programs(self)[id.index()]
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::graph::IntInstruction;
     use super::ConstantId;
+    use crate::plan::execution::{
+        BlockId, ExecutionPlan, Instruction, InstructionKind, IntLocalId, ParamLocal,
+        SourceStopKind, Terminator,
+    };
+    use num_bigint::BigInt;
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 
@@ -240,5 +200,90 @@ mod tests {
 
         assert_eq!(id_hasher.finish(), copied_hasher.finish());
         assert_ne!(id_hasher.finish(), different_hasher.finish());
+    }
+
+    #[test]
+    fn constant_entry_is_a_reusable_zero_argument_typed_graph_program() {
+        let plan = execution_plan("const one = 1 pub fn main() { one + one }");
+        let program = plan.constant(ConstantId::<IntLocalId>::new(0));
+        let graph = program.graph();
+
+        assert_eq!(graph.entry(), BlockId::new(0));
+        assert_eq!(graph.blocks().len(), 1);
+        let block = graph.block(BlockId::new(0));
+        assert!(block.params().is_empty());
+        assert_eq!(block.instructions().len(), 1);
+        let instruction = &block.instructions()[0];
+        assert_eq!(
+            instruction.output().local(),
+            &ParamLocal::Int(IntLocalId(0))
+        );
+        assert_eq!(int_literal(instruction), &1.into());
+        assert_eq!(returned_int(block.terminator()), IntLocalId(0));
+
+        let main = plan.int_function(crate::plan::execution::IntFunctionId(0));
+        let block = main.graph().block(BlockId::new(0));
+        assert_eq!(block.instructions().len(), 3);
+        for (index, instruction) in block.instructions()[..2].iter().enumerate() {
+            let output = IntLocalId(index);
+            assert_eq!(instruction.output().local(), &ParamLocal::Int(output));
+            assert_eq!(int_constant(instruction), ConstantId::new(0));
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "constant fixture should contain an Int literal")]
+    fn int_literal_guard_rejects_other_instructions() {
+        let plan = execution_plan("const one = 1 pub fn main() { one }");
+        let graph = plan
+            .int_function(crate::plan::execution::IntFunctionId(0))
+            .graph();
+        int_literal(&graph.block(graph.entry()).instructions()[0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "constant fixture should return an Int local")]
+    fn returned_int_guard_rejects_other_terminators() {
+        returned_int(&Terminator::SourceStop {
+            kind: SourceStopKind::Panic,
+            message: None,
+            site: crate::plan::PanicSite::unknown(),
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "constant fixture should reference an Int constant")]
+    fn int_constant_guard_rejects_other_instructions() {
+        let plan = execution_plan("const one = 1 pub fn main() { one }");
+        let graph = plan.constant(ConstantId::<IntLocalId>::new(0)).graph();
+        int_constant(&graph.block(graph.entry()).instructions()[0]);
+    }
+
+    fn int_literal(instruction: &Instruction) -> &BigInt {
+        match instruction.kind() {
+            InstructionKind::Int(IntInstruction::Value(value)) => value,
+            _ => panic!("constant fixture should contain an Int literal"),
+        }
+    }
+
+    fn returned_int(terminator: &Terminator<IntLocalId, super::ConstantTailCall>) -> IntLocalId {
+        match terminator {
+            Terminator::Return(value) => *value,
+            _ => panic!("constant fixture should return an Int local"),
+        }
+    }
+
+    fn int_constant(instruction: &Instruction) -> ConstantId<IntLocalId> {
+        match instruction.kind() {
+            InstructionKind::Int(IntInstruction::Constant(id)) => *id,
+            _ => panic!("constant fixture should reference an Int constant"),
+        }
+    }
+
+    fn execution_plan(source: &str) -> ExecutionPlan {
+        let typed = crate::compile_typed_module("main", "main.gleam", source)
+            .expect("source should compile");
+        let module_plan = crate::plan_module(typed).expect("source should plan");
+        ExecutionPlan::from_module_plan(module_plan)
     }
 }

@@ -428,20 +428,6 @@ impl FunctionReferenceId for FunctionFunctionId {
     }
 }
 
-pub(in crate::runtime) fn function_type_from_slots(
-    plan: &crate::plan::execution::ExecutionPlan,
-    params: &[crate::plan::execution::ParamSlot],
-    return_: crate::plan::execution::ValueType,
-) -> FunctionType {
-    FunctionType::new(
-        params
-            .iter()
-            .map(|param| plan.shape_value_type(param.shape()))
-            .collect(),
-        return_,
-    )
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub(in crate::runtime) struct EvaluatedFunctionValue {
     kind: EvaluatedFunctionValueKind,
@@ -696,6 +682,7 @@ impl<Id: Clone> EvaluatedFunction<Id> {
 }
 
 impl EvaluatedCustomFunction {
+    #[cfg(test)]
     pub(in crate::runtime) fn reference(
         runtime_id: CustomFunctionId,
         params: Vec<ParamLocal>,
@@ -703,17 +690,6 @@ impl EvaluatedCustomFunction {
         type_: FunctionType,
     ) -> Self {
         Self::Function(EvaluatedFunction::reference(
-            runtime_id, params, captures, type_,
-        ))
-    }
-
-    pub(in crate::runtime) fn closure(
-        runtime_id: CustomFunctionId,
-        params: Vec<ParamLocal>,
-        captures: Vec<EvaluatedCapture>,
-        type_: FunctionType,
-    ) -> Self {
-        Self::Function(EvaluatedFunction::closure(
             runtime_id, params, captures, type_,
         ))
     }

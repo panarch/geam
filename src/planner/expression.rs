@@ -586,37 +586,7 @@ pub(super) fn tuple_index_expr(
             },
         });
     }
-    Ok(match shape {
-        crate::plan::ValueShape::Parameter(parameter) => {
-            Expr::generic(GenericExpr::tuple_index(parameter, tuple, index))
-        }
-        crate::plan::ValueShape::Int => Expr::int(IntExpr::tuple_index(tuple, index)),
-        crate::plan::ValueShape::String => Expr::string(StringExpr::tuple_index(tuple, index)),
-        crate::plan::ValueShape::BitArray => {
-            Expr::bit_array(BitArrayExpr::tuple_index(tuple, index))
-        }
-        crate::plan::ValueShape::UtfCodepoint => {
-            Expr::utf_codepoint(crate::plan::UtfCodepointExpr::tuple_index(tuple, index))
-        }
-        crate::plan::ValueShape::Custom(shape) => {
-            Expr::custom(CustomExpr::tuple_index_shape(tuple, index, shape))
-        }
-        crate::plan::ValueShape::Float => Expr::float(FloatExpr::tuple_index(tuple, index)),
-        crate::plan::ValueShape::Bool => Expr::bool(BoolExpr::tuple_index(tuple, index)),
-        crate::plan::ValueShape::Nil => Expr::nil(crate::plan::NilExpr::tuple_index(tuple, index)),
-        crate::plan::ValueShape::Tuple(shape) => {
-            let type_ = shape
-                .iter()
-                .map(crate::plan::ValueShape::value_type)
-                .collect();
-            Expr::tuple(TupleExpr::tuple_index(tuple, index, type_).with_shape(shape))
-        }
-        crate::plan::ValueShape::List(item_shape) => {
-            let item_type = item_shape.value_type();
-            Expr::list(ListExpr::tuple_index(tuple, index, item_type).with_item_shape(*item_shape))
-        }
-        crate::plan::ValueShape::Function(shape) => tuple_index_function_expr(tuple, index, *shape),
-    })
+    Ok(Expr::tuple_index_shape(tuple, index, shape))
 }
 
 pub(super) fn list_index_expr(
@@ -702,95 +672,6 @@ pub(super) fn list_index_expr(
             });
         }
     })
-}
-
-fn tuple_index_function_expr(
-    tuple: TupleExpr,
-    index: usize,
-    shape: crate::plan::FunctionShape,
-) -> Expr {
-    let type_ = shape.type_();
-    match shape.return_shape().clone() {
-        crate::plan::ValueShape::Parameter(parameter) => {
-            Expr::function(FunctionExpr::generic_with_shape(
-                crate::plan::GenericFunctionExpr::tuple_index(
-                    tuple,
-                    index,
-                    crate::plan::GenericFunctionType::new(
-                        shape.argument_shapes().to_vec(),
-                        parameter,
-                    ),
-                ),
-                shape,
-            ))
-        }
-        crate::plan::ValueShape::Int => Expr::function(FunctionExpr::int_with_shape(
-            crate::plan::IntFunctionExpr::tuple_index(tuple, index, type_),
-            shape,
-        )),
-        crate::plan::ValueShape::String => Expr::function(FunctionExpr::string_with_shape(
-            crate::plan::StringFunctionExpr::tuple_index(tuple, index, type_),
-            shape,
-        )),
-        crate::plan::ValueShape::BitArray => Expr::function(FunctionExpr::bit_array_with_shape(
-            crate::plan::BitArrayFunctionExpr::tuple_index(tuple, index, type_),
-            shape,
-        )),
-        crate::plan::ValueShape::UtfCodepoint => {
-            Expr::function(FunctionExpr::utf_codepoint_with_shape(
-                crate::plan::UtfCodepointFunctionExpr::tuple_index(tuple, index, type_),
-                shape,
-            ))
-        }
-        crate::plan::ValueShape::Custom(return_shape) => {
-            Expr::function(FunctionExpr::custom(CustomFunctionExpr::tuple_index(
-                tuple,
-                index,
-                crate::plan::CustomFunctionType::from_shapes(
-                    shape.argument_shapes().to_vec(),
-                    return_shape,
-                ),
-            )))
-        }
-        crate::plan::ValueShape::Float => Expr::function(FunctionExpr::float_with_shape(
-            crate::plan::FloatFunctionExpr::tuple_index(tuple, index, type_),
-            shape,
-        )),
-        crate::plan::ValueShape::Bool => Expr::function(FunctionExpr::bool_with_shape(
-            crate::plan::BoolFunctionExpr::tuple_index(tuple, index, type_),
-            shape,
-        )),
-        crate::plan::ValueShape::Nil => Expr::function(FunctionExpr::nil_with_shape(
-            crate::plan::NilFunctionExpr::tuple_index(tuple, index, type_),
-            shape,
-        )),
-        crate::plan::ValueShape::Tuple(_) => Expr::function(FunctionExpr::tuple_with_shape(
-            crate::plan::TupleFunctionExpr::tuple_index(tuple, index, type_),
-            shape,
-        )),
-        crate::plan::ValueShape::List(item_shape) => Expr::function(FunctionExpr::list_with_shape(
-            crate::plan::ListFunctionExpr::tuple_index(
-                tuple,
-                index,
-                type_,
-                item_shape.value_type(),
-            ),
-            shape,
-        )),
-        crate::plan::ValueShape::Function(return_shape) => {
-            Expr::function(FunctionExpr::function_with_shape(
-                FunctionFunctionExpr::tuple_index(
-                    tuple,
-                    index,
-                    crate::plan::FunctionFunctionType::from_shapes(
-                        shape.argument_shapes().to_vec(),
-                        *return_shape,
-                    ),
-                ),
-                shape,
-            ))
-        }
-    }
 }
 
 fn list_index_function_expr(

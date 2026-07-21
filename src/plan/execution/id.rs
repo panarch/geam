@@ -1,8 +1,9 @@
+#[cfg(test)]
+use super::ListTypeId;
 use super::{
-    BitArrayListTypeId, BoolListTypeId, CustomListTypeId, CustomTypeId, FloatListTypeId,
-    FunctionListTypeId, FunctionType, IntListTypeId, ListListTypeId, ListTypeId, NilListTypeId,
-    ParameterListListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
-    UtfCodepointListTypeId, ValueType,
+    BitArrayListTypeId, BoolListTypeId, CustomListTypeId, FloatListTypeId, FunctionListTypeId,
+    FunctionType, IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId,
+    ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId, ValueType,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -637,11 +638,6 @@ impl CustomFunctionLocal {
     pub(crate) fn id(&self) -> CustomFunctionLocalId {
         self.id
     }
-
-    #[cfg(test)]
-    pub(crate) fn type_(&self) -> &super::CustomFunctionType {
-        &self.type_
-    }
 }
 
 impl GenericFunctionLocal {
@@ -681,10 +677,6 @@ impl CustomLocal {
     pub(crate) fn id(self) -> CustomLocalId {
         self.id
     }
-
-    pub(crate) fn type_id(self) -> CustomTypeId {
-        self.shape.type_id()
-    }
 }
 
 impl CustomFunctionId {
@@ -700,11 +692,6 @@ impl CustomFunctionId {
 
     pub(crate) fn index(self) -> usize {
         self.index
-    }
-
-    #[cfg(test)]
-    pub(crate) fn return_type(self) -> CustomTypeId {
-        self.return_shape.type_id()
     }
 }
 
@@ -729,11 +716,6 @@ impl CustomFunctionFunctionId {
     pub(crate) fn index(&self) -> usize {
         self.index
     }
-
-    #[cfg(test)]
-    pub(crate) fn type_(&self) -> &super::CustomFunctionType {
-        &self.type_
-    }
 }
 
 impl GenericFunctionFunctionId {
@@ -744,10 +726,6 @@ impl GenericFunctionFunctionId {
     pub(crate) fn index(&self) -> usize {
         self.index
     }
-
-    pub(crate) fn type_(&self) -> &super::GenericFunctionType {
-        &self.type_
-    }
 }
 
 impl NeverFunctionFunctionId {
@@ -757,10 +735,6 @@ impl NeverFunctionFunctionId {
 
     pub(crate) fn index(&self) -> usize {
         self.index
-    }
-
-    pub(crate) fn type_(&self) -> &super::GenericFunctionType {
-        &self.type_
     }
 }
 
@@ -782,32 +756,8 @@ impl FunctionFunctionFunctionId {
     }
 }
 
+#[cfg(test)]
 impl FunctionFunctionId {
-    pub(crate) fn family(&self) -> FunctionReturnFamily {
-        match self {
-            Self::Generic(_) => FunctionReturnFamily::Generic,
-            Self::Never(_) => FunctionReturnFamily::Never,
-            Self::Int(_) => FunctionReturnFamily::Int,
-            Self::Float(_) => FunctionReturnFamily::Float,
-            Self::String(_) => FunctionReturnFamily::String,
-            Self::BitArray(_) => FunctionReturnFamily::BitArray,
-            Self::UtfCodepoint(_) => FunctionReturnFamily::UtfCodepoint,
-            Self::Custom(_) => FunctionReturnFamily::Custom,
-            Self::Bool(_) => FunctionReturnFamily::Bool,
-            Self::Nil(_) => FunctionReturnFamily::Nil,
-            Self::Tuple(_) => FunctionReturnFamily::Tuple,
-            Self::List(_) => FunctionReturnFamily::List,
-            Self::Function(_) => FunctionReturnFamily::Function,
-        }
-    }
-
-    pub(crate) fn int(&self) -> Option<IntFunctionFunctionId> {
-        match self {
-            Self::Int(id) => Some(*id),
-            _ => None,
-        }
-    }
-
     pub(crate) fn generic(&self) -> Option<GenericFunctionFunctionId> {
         match self {
             Self::Generic(id) => Some(id.clone()),
@@ -818,13 +768,6 @@ impl FunctionFunctionId {
     pub(crate) fn never(&self) -> Option<NeverFunctionFunctionId> {
         match self {
             Self::Never(id) => Some(id.clone()),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn string(&self) -> Option<StringFunctionFunctionId> {
-        match self {
-            Self::String(id) => Some(*id),
             _ => None,
         }
     }
@@ -849,52 +792,10 @@ impl FunctionFunctionId {
             _ => None,
         }
     }
-
-    pub(crate) fn float(&self) -> Option<FloatFunctionFunctionId> {
-        match self {
-            Self::Float(id) => Some(*id),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn bool(&self) -> Option<BoolFunctionFunctionId> {
-        match self {
-            Self::Bool(id) => Some(*id),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn nil(&self) -> Option<NilFunctionFunctionId> {
-        match self {
-            Self::Nil(id) => Some(*id),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn tuple(&self) -> Option<TupleFunctionFunctionId> {
-        match self {
-            Self::Tuple(id) => Some(*id),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn list(&self) -> Option<ListFunctionFunctionId> {
-        match self {
-            Self::List(id) => Some(id.clone()),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn function(&self) -> Option<FunctionFunctionFunctionId> {
-        match self {
-            Self::Function(id) => Some(id.clone()),
-            _ => None,
-        }
-    }
 }
 
+#[cfg(test)]
 impl ListFunctionLocal {
-    #[cfg(test)]
     pub(crate) fn type_(&self) -> &FunctionType {
         match self {
             Self::Parameter { type_, .. }
@@ -954,26 +855,6 @@ impl ListLocal {
     }
 }
 
-impl ListFunctionId {
-    pub(crate) fn list_type(&self) -> ListTypeId {
-        match self {
-            Self::Parameter(id) => id.type_id().list_type(),
-            Self::ParameterList(id) => id.type_id().list_type(),
-            Self::Int(id) => id.type_id().list_type(),
-            Self::String(id) => id.type_id().list_type(),
-            Self::BitArray(id) => id.type_id().list_type(),
-            Self::UtfCodepoint(id) => id.type_id().list_type(),
-            Self::Custom(id) => id.type_id().list_type(),
-            Self::Float(id) => id.type_id().list_type(),
-            Self::Bool(id) => id.type_id().list_type(),
-            Self::Nil(id) => id.type_id().list_type(),
-            Self::Tuple(id) => id.type_id().list_type(),
-            Self::List(id) => id.type_id().list_type(),
-            Self::Function(id) => id.type_id().list_type(),
-        }
-    }
-}
-
 #[cfg(test)]
 impl ListFunctionFunctionId {
     pub(crate) fn type_(&self) -> &FunctionType {
@@ -1018,17 +899,15 @@ impl std::fmt::Display for FunctionReturnFamily {
 #[cfg(test)]
 mod tests {
     use super::{
-        BitArrayFunctionFunctionId, BitArrayListLocalId, BoolListFunctionFunctionId,
-        BoolListLocalId, CustomFunctionFunctionId, CustomListLocalId, FloatListFunctionFunctionId,
-        FloatListLocalId, FunctionFunctionId, FunctionListFunctionFunctionId, FunctionListLocalId,
-        FunctionReturnFamily, IntFunctionFunctionId, IntListFunctionFunctionId, IntListLocalId,
-        ListFunctionFunctionId, ListFunctionLocal, ListListFunctionFunctionId, ListListLocalId,
-        ListLocal, NeverFunctionFunctionId, NilListFunctionFunctionId, NilListLocalId,
-        ParameterListFunctionFunctionId, ParameterListFunctionLocalId,
-        ParameterListListFunctionFunctionId, ParameterListListFunctionLocalId,
-        ParameterListListLocalId, ParameterListLocalId, RuntimeFunctionId,
-        StringListFunctionFunctionId, StringListLocalId, TupleListFunctionFunctionId,
-        TupleListLocalId, UtfCodepointFunctionFunctionId, UtfCodepointListLocalId,
+        BitArrayFunctionFunctionId, BoolListFunctionFunctionId, CustomFunctionFunctionId,
+        FloatListFunctionFunctionId, FunctionFunctionId, FunctionListFunctionFunctionId,
+        FunctionReturnFamily, IntFunctionFunctionId, IntListFunctionFunctionId,
+        ListFunctionFunctionId, ListFunctionLocal, ListListFunctionFunctionId, ListLocal,
+        NeverFunctionFunctionId, NilListFunctionFunctionId, ParameterListFunctionFunctionId,
+        ParameterListFunctionLocalId, ParameterListListFunctionFunctionId,
+        ParameterListListFunctionLocalId, ParameterListListLocalId, ParameterListLocalId,
+        RuntimeFunctionId, StringListFunctionFunctionId, TupleListFunctionFunctionId,
+        UtfCodepointFunctionFunctionId,
     };
     use crate::plan::{CustomType, CustomTypeName, ValueType};
 
@@ -1037,205 +916,6 @@ mod tests {
             CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
             Vec::new(),
         )
-    }
-
-    #[test]
-    fn list_locals_preserve_every_lowered_list_type() {
-        let plan = execution_plan(
-            r#"
-type Boxed { Boxed(Int) }
-
-fn int_values(values: List(Int)) { values }
-fn string_values(values: List(String)) { values }
-fn bit_array_values(values: List(BitArray)) { values }
-fn utf_codepoint_values(values: List(UtfCodepoint)) { values }
-fn custom_values(values: List(Boxed)) { values }
-fn float_values(values: List(Float)) { values }
-fn bool_values(values: List(Bool)) { values }
-fn nil_values(values: List(Nil)) { values }
-fn tuple_values(values: List(#(Int))) { values }
-fn list_values(values: List(List(Int))) { values }
-fn function_values(values: List(fn() -> Int)) { values }
-fn bit_array_function_value(function: fn() -> List(BitArray)) { function() }
-fn utf_codepoint_function_value(function: fn() -> List(UtfCodepoint)) { function() }
-fn custom_function_value(function: fn() -> List(Boxed)) { function() }
-
-pub fn main() {
-  let _ = #(
-    int_values,
-    string_values,
-    bit_array_values,
-    utf_codepoint_values,
-    custom_values,
-    float_values,
-    bool_values,
-    nil_values,
-    tuple_values,
-    list_values,
-    function_values,
-    bit_array_function_value,
-    utf_codepoint_function_value,
-    custom_function_value,
-  )
-  Nil
-}
-"#,
-        );
-        let int = plan
-            .int_list_function(plan.int_list_function_id(0))
-            .frame_layout()
-            .int_lists()[0];
-        let string = plan
-            .string_list_function(plan.string_list_function_id(0))
-            .frame_layout()
-            .string_lists()[0];
-        let bit_array = plan
-            .bit_array_list_function(plan.bit_array_list_function_id(0))
-            .frame_layout()
-            .bit_array_lists()[0];
-        let utf_codepoint = plan
-            .utf_codepoint_list_function(plan.utf_codepoint_list_function_id(0))
-            .frame_layout()
-            .utf_codepoint_lists()[0];
-        let custom = plan
-            .custom_list_function(plan.custom_list_function_id(0))
-            .frame_layout()
-            .custom_lists()[0];
-        let float = plan
-            .float_list_function(plan.float_list_function_id(0))
-            .frame_layout()
-            .float_lists()[0];
-        let bool_ = plan
-            .bool_list_function(plan.bool_list_function_id(0))
-            .frame_layout()
-            .bool_lists()[0];
-        let nil = plan
-            .nil_list_function(plan.nil_list_function_id(0))
-            .frame_layout()
-            .nil_lists()[0];
-        let tuple = plan
-            .tuple_list_function(plan.tuple_list_function_id(0))
-            .frame_layout()
-            .tuple_lists()[0];
-        let list = plan
-            .list_list_function(plan.list_list_function_id(0))
-            .frame_layout()
-            .list_lists()[0];
-        let function = plan
-            .function_list_function(plan.function_list_function_id(0))
-            .frame_layout()
-            .function_lists()[0];
-        let locals = [
-            ListLocal::Int {
-                local: IntListLocalId(0),
-                type_id: int,
-            },
-            ListLocal::String {
-                local: StringListLocalId(0),
-                type_id: string,
-            },
-            ListLocal::BitArray {
-                local: BitArrayListLocalId(0),
-                type_id: bit_array,
-            },
-            ListLocal::UtfCodepoint {
-                local: UtfCodepointListLocalId(0),
-                type_id: utf_codepoint,
-            },
-            ListLocal::Custom {
-                local: CustomListLocalId(0),
-                type_id: custom,
-            },
-            ListLocal::Float {
-                local: FloatListLocalId(0),
-                type_id: float,
-            },
-            ListLocal::Bool {
-                local: BoolListLocalId(0),
-                type_id: bool_,
-            },
-            ListLocal::Nil {
-                local: NilListLocalId(0),
-                type_id: nil,
-            },
-            ListLocal::Tuple {
-                local: TupleListLocalId(0),
-                type_id: tuple,
-            },
-            ListLocal::List {
-                local: ListListLocalId(0),
-                type_id: list,
-            },
-            ListLocal::Function {
-                local: FunctionListLocalId(0),
-                type_id: function,
-            },
-        ];
-
-        assert_eq!(
-            locals
-                .iter()
-                .map(|local| plan.list_value_type(local.list_type()))
-                .collect::<Vec<_>>(),
-            vec![
-                ValueType::List(Box::new(ValueType::Int)),
-                ValueType::List(Box::new(ValueType::String)),
-                ValueType::List(Box::new(ValueType::BitArray)),
-                ValueType::List(Box::new(ValueType::UtfCodepoint)),
-                ValueType::List(Box::new(ValueType::Custom(custom_type()))),
-                ValueType::List(Box::new(ValueType::Float)),
-                ValueType::List(Box::new(ValueType::Bool)),
-                ValueType::List(Box::new(ValueType::Nil)),
-                ValueType::List(Box::new(ValueType::Tuple(vec![ValueType::Int]))),
-                ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Int)))),
-                ValueType::List(Box::new(ValueType::Function(Box::new(
-                    crate::plan::FunctionType::new(Vec::new(), ValueType::Int),
-                )))),
-            ],
-        );
-        let bit_array_function_local = plan
-            .bit_array_list_function(plan.bit_array_list_function_id(1))
-            .frame_layout()
-            .list_functions()[0]
-            .clone();
-        assert_eq!(
-            plan.list_value_type(bit_array_function_local.list_type()),
-            ValueType::List(Box::new(ValueType::BitArray)),
-        );
-
-        let utf_codepoint_function_local = plan
-            .utf_codepoint_list_function(plan.utf_codepoint_list_function_id(1))
-            .frame_layout()
-            .list_functions()[0]
-            .clone();
-        assert_eq!(
-            plan.list_value_type(utf_codepoint_function_local.list_type()),
-            ValueType::List(Box::new(ValueType::UtfCodepoint)),
-        );
-        assert_eq!(
-            plan.function_type(utf_codepoint_function_local.type_()),
-            crate::plan::FunctionType::new(
-                Vec::new(),
-                ValueType::List(Box::new(ValueType::UtfCodepoint)),
-            ),
-        );
-
-        let custom_function_local = plan
-            .custom_list_function(plan.custom_list_function_id(1))
-            .frame_layout()
-            .list_functions()[0]
-            .clone();
-        assert_eq!(
-            plan.list_value_type(custom_function_local.list_type()),
-            ValueType::List(Box::new(ValueType::Custom(custom_type()))),
-        );
-        assert_eq!(
-            plan.function_type(custom_function_local.type_()),
-            crate::plan::FunctionType::new(
-                Vec::new(),
-                ValueType::List(Box::new(ValueType::Custom(custom_type()))),
-            ),
-        );
     }
 
     #[test]
@@ -1368,6 +1048,29 @@ pub fn main() {
         assert_eq!(
             FunctionFunctionId::Int(IntFunctionFunctionId(0)).never(),
             None
+        );
+    }
+
+    #[test]
+    fn generic_function_function_id_projection_is_typed() {
+        let function_type = crate::plan::execution::FunctionType::new(
+            Vec::new(),
+            crate::plan::execution::ValueType::Parameter(crate::plan::TypeParameterId(0)),
+        );
+        let type_ = crate::plan::execution::GenericFunctionType::from_shapes(
+            function_type.clone(),
+            crate::plan::execution::FunctionShape::new(
+                crate::plan::execution::ValueShapeId::new(0),
+                function_type,
+            ),
+        );
+        let generic = super::GenericFunctionFunctionId::new(2, type_);
+        let id = FunctionFunctionId::Generic(generic.clone());
+
+        assert_eq!(id.generic(), Some(generic));
+        assert_eq!(
+            FunctionFunctionId::Int(IntFunctionFunctionId(0)).generic(),
+            None,
         );
     }
 
@@ -1516,8 +1219,13 @@ pub fn main() {
     fn list_function_function_ids_preserve_every_exact_return_type() {
         let plan = execution_plan(
             r#"
+pub type Boxed { Boxed(Int) }
+
 fn ints() -> List(Int) { [] }
 fn strings() -> List(String) { [] }
+fn bit_arrays() -> List(BitArray) { [] }
+fn utf_codepoints() -> List(UtfCodepoint) { [] }
+fn customs() -> List(Boxed) { [] }
 fn floats() -> List(Float) { [] }
 fn bools() -> List(Bool) { [] }
 fn nils() -> List(Nil) { [] }
@@ -1526,7 +1234,19 @@ fn lists() -> List(List(Int)) { [] }
 fn functions() -> List(fn() -> Int) { [] }
 
 pub fn main() {
-  let _ = #(ints, strings, floats, bools, nils, tuples, lists, functions)
+  let _ = #(
+    ints,
+    strings,
+    bit_arrays,
+    utf_codepoints,
+    customs,
+    floats,
+    bools,
+    nils,
+    tuples,
+    lists,
+    functions,
+  )
   Nil
 }
 "#,
@@ -1545,6 +1265,21 @@ pub fn main() {
                 id: StringListFunctionFunctionId(0),
                 type_: type_.clone(),
                 list_type: plan.string_list_function_id(0).type_id(),
+            },
+            ListFunctionFunctionId::BitArray {
+                id: super::BitArrayListFunctionFunctionId(0),
+                type_: type_.clone(),
+                list_type: plan.bit_array_list_function_id(0).type_id(),
+            },
+            ListFunctionFunctionId::UtfCodepoint {
+                id: super::UtfCodepointListFunctionFunctionId(0),
+                type_: type_.clone(),
+                list_type: plan.utf_codepoint_list_function_id(0).type_id(),
+            },
+            ListFunctionFunctionId::Custom {
+                id: super::CustomListFunctionFunctionId(0),
+                type_: type_.clone(),
+                list_type: plan.custom_list_function_id(0).type_id(),
             },
             ListFunctionFunctionId::Float {
                 id: FloatListFunctionFunctionId(0),
@@ -1580,6 +1315,119 @@ pub fn main() {
 
         assert_eq!(
             ids.map(|id| id.type_().clone()),
+            std::array::from_fn(|_| type_.clone()),
+        );
+
+        let locals = [
+            ListLocal::Int {
+                local: super::IntListLocalId(0),
+                type_id: plan.int_list_function_id(0).type_id(),
+            },
+            ListLocal::String {
+                local: super::StringListLocalId(0),
+                type_id: plan.string_list_function_id(0).type_id(),
+            },
+            ListLocal::BitArray {
+                local: super::BitArrayListLocalId(0),
+                type_id: plan.bit_array_list_function_id(0).type_id(),
+            },
+            ListLocal::UtfCodepoint {
+                local: super::UtfCodepointListLocalId(0),
+                type_id: plan.utf_codepoint_list_function_id(0).type_id(),
+            },
+            ListLocal::Custom {
+                local: super::CustomListLocalId(0),
+                type_id: plan.custom_list_function_id(0).type_id(),
+            },
+            ListLocal::Float {
+                local: super::FloatListLocalId(0),
+                type_id: plan.float_list_function_id(0).type_id(),
+            },
+            ListLocal::Bool {
+                local: super::BoolListLocalId(0),
+                type_id: plan.bool_list_function_id(0).type_id(),
+            },
+            ListLocal::Nil {
+                local: super::NilListLocalId(0),
+                type_id: plan.nil_list_function_id(0).type_id(),
+            },
+            ListLocal::Tuple {
+                local: super::TupleListLocalId(0),
+                type_id: plan.tuple_list_function_id(0).type_id(),
+            },
+            ListLocal::List {
+                local: super::ListListLocalId(0),
+                type_id: plan.list_list_function_id(0).type_id(),
+            },
+            ListLocal::Function {
+                local: super::FunctionListLocalId(0),
+                type_id: plan.function_list_function_id(0).type_id(),
+            },
+        ];
+        let function_locals = [
+            ListFunctionLocal::Int {
+                local: super::IntListFunctionLocalId(0),
+                type_: type_.clone(),
+                list_type: plan.int_list_function_id(0).type_id(),
+            },
+            ListFunctionLocal::String {
+                local: super::StringListFunctionLocalId(0),
+                type_: type_.clone(),
+                list_type: plan.string_list_function_id(0).type_id(),
+            },
+            ListFunctionLocal::BitArray {
+                local: super::BitArrayListFunctionLocalId(0),
+                type_: type_.clone(),
+                list_type: plan.bit_array_list_function_id(0).type_id(),
+            },
+            ListFunctionLocal::UtfCodepoint {
+                local: super::UtfCodepointListFunctionLocalId(0),
+                type_: type_.clone(),
+                list_type: plan.utf_codepoint_list_function_id(0).type_id(),
+            },
+            ListFunctionLocal::Custom {
+                local: super::CustomListFunctionLocalId(0),
+                type_: type_.clone(),
+                list_type: plan.custom_list_function_id(0).type_id(),
+            },
+            ListFunctionLocal::Float {
+                local: super::FloatListFunctionLocalId(0),
+                type_: type_.clone(),
+                list_type: plan.float_list_function_id(0).type_id(),
+            },
+            ListFunctionLocal::Bool {
+                local: super::BoolListFunctionLocalId(0),
+                type_: type_.clone(),
+                list_type: plan.bool_list_function_id(0).type_id(),
+            },
+            ListFunctionLocal::Nil {
+                local: super::NilListFunctionLocalId(0),
+                type_: type_.clone(),
+                list_type: plan.nil_list_function_id(0).type_id(),
+            },
+            ListFunctionLocal::Tuple {
+                local: super::TupleListFunctionLocalId(0),
+                type_: type_.clone(),
+                list_type: plan.tuple_list_function_id(0).type_id(),
+            },
+            ListFunctionLocal::List {
+                local: super::ListListFunctionLocalId(0),
+                type_: type_.clone(),
+                list_type: plan.list_list_function_id(0).type_id(),
+            },
+            ListFunctionLocal::Function {
+                local: super::FunctionListFunctionLocalId(0),
+                type_: type_.clone(),
+                list_type: plan.function_list_function_id(0).type_id(),
+            },
+        ];
+
+        assert_eq!(
+            locals.map(|local| local.list_type()),
+            function_locals.clone().map(|local| local.list_type()),
+        );
+        assert_eq!(
+            function_locals.map(|local| local.type_().clone()),
             std::array::from_fn(|_| type_.clone()),
         );
     }

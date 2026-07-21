@@ -1,7 +1,6 @@
 mod constant;
 mod custom_type;
 mod expression;
-mod frame;
 mod function;
 mod id;
 mod pattern;
@@ -38,6 +37,8 @@ pub use custom_type::{
     CustomTypeParameterId, CustomTypePublicity, CustomTypeTemplate,
 };
 
+#[cfg(test)]
+pub(crate) use expression::TypedFunctionExpr;
 pub(crate) use expression::custom_constructor_expr;
 pub(crate) use expression::{
     BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayExprKind, BitArrayFunctionExprKind,
@@ -50,7 +51,7 @@ pub(crate) use expression::{
     IntFunctionExprKind, ListElements, ListFunctionExprKind, NilExprKind, NilFunctionExprKind,
     PanicExpr, PanicExprKind, PotentiallyUninhabitedCallArg, StringCaseBranches, StringEncoding,
     StringExprKind, StringFunctionExprKind, TupleExprKind, TupleFunctionExprKind,
-    TypedFunctionExpr, TypedFunctionExprKind, UtfCodepointExprKind, UtfCodepointFunctionExprKind,
+    TypedFunctionExprKind, UtfCodepointExprKind, UtfCodepointFunctionExprKind,
 };
 pub use expression::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CallArg, CustomExpr,
@@ -67,19 +68,19 @@ pub(crate) use expression::{
     StoredListExpr, StringListExpr, StringListItem, TupleListExpr, TupleListItem, TypedListExpr,
     TypedListExprKind, TypedListReturnKind, UtfCodepointListExpr, UtfCodepointListItem,
 };
-pub(crate) use frame::{FrameLayout, FrameLayoutParts};
-#[cfg(test)]
-pub(crate) use function::ListReturn;
 pub(crate) use function::{
-    BitArrayFunctionReturn, BitArrayListReturn, BitArrayReturn, BoolFunctionReturn, BoolListReturn,
-    BoolReturn, CapturePosition, CustomFunctionReturn, CustomListReturn, CustomReturn,
-    FloatFunctionReturn, FloatListReturn, FloatReturn, FunctionFunctionReturn, FunctionListReturn,
-    GenericFunctionReturn, GenericListReturn, GenericReturn, IntFunctionReturn, IntListReturn,
-    IntReturn, ListFunctionReturn, ListListReturn, NilFunctionReturn, NilListReturn, NilReturn,
-    ParamLocal, ParamPosition, ParamSlot, ParameterListListReturn, ReturnBody, ReturnBodyKind,
-    ReturnExprKind, StringFunctionReturn, StringListReturn, StringReturn, TupleFunctionReturn,
-    TupleListReturn, TupleReturn, UtfCodepointFunctionReturn, UtfCodepointListReturn,
-    UtfCodepointReturn,
+    BitArrayFunctionReturn, BitArrayReturn, BoolFunctionReturn, BoolReturn, CapturePosition,
+    CustomFunctionReturn, CustomReturn, FloatFunctionReturn, FloatReturn, FunctionFunctionReturn,
+    GenericFunctionReturn, GenericListReturn, GenericReturn, IntFunctionReturn, IntReturn,
+    ListFunctionReturn, NilFunctionReturn, NilReturn, ParamLocal, ParamSlot,
+    ParameterListListReturn, ReturnBody, ReturnBodyKind, ReturnExprKind, StringFunctionReturn,
+    StringReturn, TupleFunctionReturn, TupleReturn, UtfCodepointFunctionReturn, UtfCodepointReturn,
+};
+#[cfg(test)]
+pub(crate) use function::{
+    BitArrayListReturn, BoolListReturn, CustomListReturn, FloatListReturn, FunctionListReturn,
+    IntListReturn, ListListReturn, ListReturn, NilListReturn, StringListReturn, TupleListReturn,
+    UtfCodepointListReturn,
 };
 pub use function::{FunctionTemplate, Param, ParamBinding, ReturnExpr};
 #[cfg(test)]

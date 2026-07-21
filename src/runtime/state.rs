@@ -9,10 +9,9 @@ use super::evaluated::{
     EvaluatedBitArray, EvaluatedCustomValue, EvaluatedFunctionValue, EvaluatedValue,
 };
 use crate::plan::execution::{
-    BitArrayListTypeId, BoolListTypeId, CustomListItem, CustomListTypeId, FloatListTypeId,
-    FunctionListTypeId, IntListTypeId, ListListTypeId, ListTypeId, NilListTypeId,
-    ParameterListListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
-    UtfCodepointListTypeId,
+    BitArrayListTypeId, BoolListTypeId, CustomListTypeId, FloatListTypeId, FunctionListTypeId,
+    IntListTypeId, ListListTypeId, ListTypeId, NilListTypeId, ParameterListListTypeId,
+    ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -206,11 +205,8 @@ pub(super) struct CustomListAllocation {
 }
 
 impl CustomListAllocation {
-    pub(super) fn from_item(item: &CustomListItem, values: Vec<EvaluatedCustomValue>) -> Self {
-        Self {
-            type_id: item.type_id(),
-            values,
-        }
+    pub(super) fn new(type_id: CustomListTypeId, values: Vec<EvaluatedCustomValue>) -> Self {
+        Self { type_id, values }
     }
 
     fn from_value(value: &CustomListValueId, values: Vec<EvaluatedCustomValue>) -> Self {
@@ -442,12 +438,6 @@ impl RuntimeState {
             allocation.type_id,
             self.core(ListStorageKey::Custom { slot }),
         )
-    }
-
-    pub(super) fn empty_custom(&mut self, type_id: CustomListTypeId) -> CustomListValueId {
-        self.prepare_allocation();
-        let slot = self.customs.allocate(Vec::new());
-        CustomListValueId::new(type_id, self.core(ListStorageKey::Custom { slot }))
     }
 
     pub(super) fn float(&mut self, type_id: FloatListTypeId, values: Vec<f64>) -> FloatListValueId {
@@ -719,15 +709,31 @@ impl RuntimeState {
 #[cfg(test)]
 mod tests {
     use super::{
-        ListListTypeId, ListValueId, ParameterListValueId, RuntimeState, StoredListValueId,
+        CustomListAllocation, ListListTypeId, ListValueId, ParameterListValueId, RuntimeState,
+        StoredListValueId,
     };
     use crate::plan::execution::{ListFunctionId, ListStorageTypeId, RuntimeFunctionId};
-    use crate::runtime::frame::Frame;
-    use crate::runtime::function::return_graph::run_int_list_loop;
+    use crate::runtime::environment::RetainedValues;
     use crate::runtime::{
-        EvaluatedBitArray, EvaluatedCapture, EvaluatedFunctionValue, EvaluatedIntFunction,
-        EvaluatedValue,
+        EvaluatedBitArray, EvaluatedCapture, EvaluatedCustomValue, EvaluatedFunctionValue,
+        EvaluatedIntFunction, EvaluatedValue,
     };
+
+    fn int_main(plan: &crate::ExecutionPlan) -> crate::plan::execution::IntFunctionId {
+        match plan.main_runtime() {
+            RuntimeFunctionId::Int(main) => main,
+            _ => panic!("main should lower into the Int function table"),
+        }
+    }
+
+    fn source_panic(
+        result: crate::runtime::error::ExecutionResult<num_bigint::BigInt>,
+    ) -> crate::runtime::Panic {
+        match result {
+            Err(crate::runtime::ExecutionError::Panic(panic)) => panic,
+            other => panic!("expected source panic, got {other:?}"),
+        }
+    }
 
     const EVERY_LIST_FAMILY_SOURCE: &str = r#"
 fn ints() -> List(Int) { [] }
@@ -735,7 +741,7 @@ fn strings() -> List(String) { [] }
 fn bit_arrays() -> List(BitArray) { [] }
 fn utf_codepoints() -> List(UtfCodepoint) { [] }
 pub type Boxed { Boxed(Int) }
-fn customs() -> List(Boxed) { [] }
+fn customs() -> List(Boxed) { [Boxed(1)] }
 fn floats() -> List(Float) { [] }
 fn bools() -> List(Bool) { [] }
 fn nils() -> List(Nil) { [] }
@@ -835,7 +841,7 @@ pub fn main() {
     }
 
     #[test]
-    fn tail_recursive_frame_replacement_reuses_a_fixed_list_slot_set() {
+    fn tail_recursive_block_replacement_reuses_a_fixed_list_slot_set() {
         let plan = crate::runtime::plan_src(include_str!(
             "../../tests/fixtures/execution/functions/tail_call/list_tail_recursion_replaces_allocations.gleam"
         ));
@@ -844,20 +850,97 @@ pub fn main() {
             plan.main_runtime(),
             RuntimeFunctionId::List(ListFunctionId::Int(main)),
         );
-        let function = plan.int_list_function(main);
         let mut state = RuntimeState::new();
-        let frame = Frame::new(function.frame_layout(), &mut state);
 
-        let value = run_int_list_loop(&plan, &mut state, main, frame)
-            .expect("tail-recursive list function should return");
+        let value =
+            crate::runtime::graph::run_int_list(&plan, &mut state, main, RetainedValues::empty())
+                .expect("tail-recursive list graph should return");
 
         assert_eq!(state.int_values(&value), &[1.into()]);
-        assert_eq!(state.ints.slots.len(), 3);
-        assert_eq!(state.ints.free.len(), 2);
+        assert_eq!(state.ints.slots.len(), 1);
+        assert_eq!(state.ints.free.len(), 0);
         drop(value);
         state.drain_releases();
-        assert_eq!(state.ints.free.len(), 3);
+        assert_eq!(state.ints.free.len(), 1);
         assert_eq!(state.releases.borrow().as_slice(), &[]);
+    }
+
+    #[test]
+    fn never_terminator_releases_the_caller_environment_before_running_the_callee() {
+        let plan = crate::runtime::plan_src(
+            r#"
+fn stop() -> value { panic as "stop" }
+
+pub fn main() -> Int {
+  let values = [1]
+  let _ = values
+  stop()
+}
+"#,
+        );
+        let main = int_main(&plan);
+        let mut state = RuntimeState::new();
+
+        let panic = source_panic(crate::runtime::graph::run_int(
+            &plan,
+            &mut state,
+            main,
+            RetainedValues::empty(),
+        ));
+
+        assert_eq!(panic.kind(), crate::runtime::PanicKind::Panic);
+        assert_eq!(
+            panic.message(),
+            &crate::runtime::PanicMessage::Explicit("stop".into()),
+        );
+        assert_eq!(state.ints.slots.len(), 1);
+        assert_eq!(state.ints.free, vec![0]);
+        assert_eq!(state.releases.borrow().as_slice(), &[]);
+    }
+
+    #[test]
+    fn match_transition_releases_unretained_subject_before_the_target_runs() {
+        let plan = crate::runtime::plan_src(
+            r#"
+pub fn main() -> Int {
+  case [1] {
+    [] -> panic as "empty"
+    _ -> panic as "non-empty"
+  }
+}
+"#,
+        );
+        let main = int_main(&plan);
+        let mut state = RuntimeState::new();
+
+        let panic = source_panic(crate::runtime::graph::run_int(
+            &plan,
+            &mut state,
+            main,
+            RetainedValues::empty(),
+        ));
+
+        assert_eq!(
+            panic.message(),
+            &crate::runtime::PanicMessage::Explicit("non-empty".into()),
+        );
+        assert_eq!(state.ints.slots.len(), 1);
+        assert_eq!(state.ints.free, vec![0]);
+        assert_eq!(state.releases.borrow().as_slice(), &[]);
+    }
+
+    #[test]
+    #[should_panic(expected = "main should lower into the Int function table")]
+    fn int_main_guard_rejects_other_function_tables() {
+        int_main(&crate::runtime::plan_src(
+            "pub fn main() -> List(Int) { [] }",
+        ));
+    }
+
+    #[test]
+    #[should_panic(expected = "expected source panic, got Ok(0)")]
+    fn source_panic_guard_rejects_success() {
+        source_panic(Ok(0.into()));
     }
 
     #[test]
@@ -912,7 +995,14 @@ pub fn main() {
             plan.utf_codepoint_list_function_id(0).type_id(),
             vec!['\u{10ffff}'],
         );
-        let custom = state.empty_custom(plan.custom_list_function_id(0).type_id());
+        let custom_constructor = plan.custom_constructor_id(0, 0);
+        let custom = state.custom(CustomListAllocation::new(
+            plan.custom_list_function_id(0).type_id(),
+            vec![EvaluatedCustomValue::from_fields(
+                custom_constructor,
+                vec![EvaluatedValue::Int(1.into())].into_boxed_slice(),
+            )],
+        ));
         let float = state.float(plan.float_list_function_id(0).type_id(), vec![1.5]);
         let bool_ = state.bool(plan.bool_list_function_id(0).type_id(), vec![true]);
         let nil = state.nil(plan.nil_list_function_id(0).type_id(), 1);
@@ -930,35 +1020,41 @@ pub fn main() {
             vec![EvaluatedFunctionValue::from(int_function)],
         );
         let values = [
-            (StoredListValueId::from(int.clone()), ListValueId::Int(int)),
+            (
+                StoredListValueId::from(int.clone()),
+                ListValueId::Int(int.clone()),
+            ),
             (
                 StoredListValueId::from(string.clone()),
-                ListValueId::String(string),
+                ListValueId::String(string.clone()),
             ),
             (
                 StoredListValueId::from(bit_array.clone()),
-                ListValueId::BitArray(bit_array),
+                ListValueId::BitArray(bit_array.clone()),
             ),
             (
                 StoredListValueId::from(utf_codepoint.clone()),
-                ListValueId::UtfCodepoint(utf_codepoint),
+                ListValueId::UtfCodepoint(utf_codepoint.clone()),
             ),
             (
                 StoredListValueId::from(custom.clone()),
-                ListValueId::Custom(custom),
+                ListValueId::Custom(custom.clone()),
             ),
             (
                 StoredListValueId::from(float.clone()),
-                ListValueId::Float(float),
+                ListValueId::Float(float.clone()),
             ),
             (
                 StoredListValueId::from(bool_.clone()),
-                ListValueId::Bool(bool_),
+                ListValueId::Bool(bool_.clone()),
             ),
-            (StoredListValueId::from(nil.clone()), ListValueId::Nil(nil)),
+            (
+                StoredListValueId::from(nil.clone()),
+                ListValueId::Nil(nil.clone()),
+            ),
             (
                 StoredListValueId::from(tuple.clone()),
-                ListValueId::Tuple(tuple),
+                ListValueId::Tuple(tuple.clone()),
             ),
             (
                 StoredListValueId::from(parameter_list.clone()),
@@ -966,17 +1062,45 @@ pub fn main() {
             ),
             (
                 StoredListValueId::from(list.clone()),
-                ListValueId::List(list),
+                ListValueId::List(list.clone()),
             ),
             (
                 StoredListValueId::from(function.clone()),
-                ListValueId::Function(function),
+                ListValueId::Function(function.clone()),
             ),
         ];
 
         for (stored, value) in values {
             assert_eq!(stored.into_value(), value);
         }
+
+        let stored_lists = [
+            ListValueId::Int(int),
+            ListValueId::String(string),
+            ListValueId::BitArray(bit_array),
+            ListValueId::UtfCodepoint(utf_codepoint),
+            ListValueId::Custom(custom),
+            ListValueId::Float(float),
+            ListValueId::Bool(bool_),
+            ListValueId::Nil(nil),
+            ListValueId::Tuple(tuple),
+            ListValueId::ParameterList(parameter_list.clone()),
+            ListValueId::List(list),
+            ListValueId::Function(function),
+        ];
+        for value in stored_lists {
+            let list_type = value.list_type();
+            assert_eq!(state.list_len(&value), 1);
+
+            let dropped = state.drop_first(&value, 1);
+            assert_eq!(dropped.list_type(), list_type);
+            assert_eq!(state.list_len(&dropped), 0);
+        }
+
+        assert_eq!(
+            StoredListValueId::from(parameter_list.clone()).into_core(),
+            parameter_list.clone().into_core(),
+        );
         assert_eq!(state.list_len(&ListValueId::Parameter(parameter)), 0);
         assert_eq!(
             state.drop_first(&ListValueId::Parameter(parameter), usize::MAX),

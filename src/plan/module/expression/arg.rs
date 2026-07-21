@@ -12,7 +12,7 @@ pub(crate) struct CaptureArg {
 
 #[cfg_attr(test, derive(Debug, PartialEq))]
 pub(crate) enum CallArgStorage<'a> {
-    Stored(crate::plan::ValueStorageShape),
+    Stored,
     PotentiallyUninhabited(PotentiallyUninhabitedCallArg<'a>),
 }
 
@@ -33,8 +33,6 @@ impl CallArg {
     }
 
     pub(crate) fn storage(&self) -> CallArgStorage<'_> {
-        use crate::plan::ValueStorageShape as S;
-
         match self.value.kind() {
             ExprKind::Generic(value) => CallArgStorage::PotentiallyUninhabited(
                 PotentiallyUninhabitedCallArg::Generic(value),
@@ -45,19 +43,15 @@ impl CallArg {
             ExprKind::Custom(value) => {
                 CallArgStorage::PotentiallyUninhabited(PotentiallyUninhabitedCallArg::Custom(value))
             }
-            ExprKind::Int(_) => CallArgStorage::Stored(S::Int),
-            ExprKind::Float(_) => CallArgStorage::Stored(S::Float),
-            ExprKind::String(_) => CallArgStorage::Stored(S::String),
-            ExprKind::BitArray(_) => CallArgStorage::Stored(S::BitArray),
-            ExprKind::UtfCodepoint(_) => CallArgStorage::Stored(S::UtfCodepoint),
-            ExprKind::Bool(_) => CallArgStorage::Stored(S::Bool),
-            ExprKind::Nil(_) => CallArgStorage::Stored(S::Nil),
-            ExprKind::List(value) => {
-                CallArgStorage::Stored(S::List(Box::new(value.item_shape().clone())))
-            }
-            ExprKind::Function(value) => {
-                CallArgStorage::Stored(S::Function(Box::new(value.shape().clone())))
-            }
+            ExprKind::Int(_)
+            | ExprKind::Float(_)
+            | ExprKind::String(_)
+            | ExprKind::BitArray(_)
+            | ExprKind::UtfCodepoint(_)
+            | ExprKind::Bool(_)
+            | ExprKind::Nil(_)
+            | ExprKind::List(_)
+            | ExprKind::Function(_) => CallArgStorage::Stored,
         }
     }
 
@@ -81,8 +75,9 @@ impl CaptureArg {
 mod tests {
     use super::{CallArg, CallArgStorage, CaptureArg, PotentiallyUninhabitedCallArg};
     use crate::plan::{
-        Expr, FunctionExpr, FunctionReference, FunctionShape, IntExpr, ListExpr, TypeParameterId,
-        ValueShape, monomorphic_function_instantiation,
+        CustomConstructorRefinement, CustomExpr, CustomLocal, CustomLocalId, CustomTypeName,
+        CustomValueShape, Expr, FunctionExpr, FunctionReference, FunctionShape, IntExpr, ListExpr,
+        TupleExpr, TypeParameterId, ValueShape, monomorphic_function_instantiation,
     };
     use num_bigint::BigInt;
 
@@ -96,8 +91,7 @@ mod tests {
     }
 
     #[test]
-    fn call_argument_storage_preserves_exact_source_shape() {
-        let item_shape = ValueShape::Parameter(TypeParameterId(0));
+    fn call_argument_storage_distinguishes_stored_values() {
         let list = CallArg::new(Expr::list(
             ListExpr::try_value(
                 Vec::new(),
@@ -113,16 +107,8 @@ mod tests {
             )),
         )));
 
-        assert_eq!(
-            list.storage(),
-            CallArgStorage::Stored(crate::plan::ValueStorageShape::List(Box::new(item_shape))),
-        );
-        assert_eq!(
-            function.storage(),
-            CallArgStorage::Stored(crate::plan::ValueStorageShape::Function(Box::new(
-                function_shape,
-            ))),
-        );
+        assert_eq!(list.storage(), CallArgStorage::Stored);
+        assert_eq!(function.storage(), CallArgStorage::Stored);
     }
 
     #[test]
@@ -139,6 +125,33 @@ mod tests {
             CallArgStorage::PotentiallyUninhabited(PotentiallyUninhabitedCallArg::Generic(
                 &generic,
             )),
+        );
+
+        let tuple = TupleExpr::value(
+            vec![Expr::generic(generic)],
+            vec![crate::plan::ValueType::Parameter(parameter)],
+        );
+        let argument = CallArg::new(Expr::tuple(tuple.clone()));
+        assert_eq!(
+            argument.storage(),
+            CallArgStorage::PotentiallyUninhabited(PotentiallyUninhabitedCallArg::Tuple(&tuple)),
+        );
+
+        let custom = CustomExpr::local_get(
+            CustomLocal::from_shape(
+                CustomLocalId(0),
+                CustomValueShape::new(
+                    CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+                    vec![ValueShape::Parameter(parameter)],
+                    CustomConstructorRefinement::Exact(0),
+                ),
+            ),
+            "boxed".into(),
+        );
+        let argument = CallArg::new(Expr::custom(custom.clone()));
+        assert_eq!(
+            argument.storage(),
+            CallArgStorage::PotentiallyUninhabited(PotentiallyUninhabitedCallArg::Custom(&custom)),
         );
     }
 }

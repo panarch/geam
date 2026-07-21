@@ -85,10 +85,6 @@ impl CustomValueShape {
         Self { type_id, shape_id }
     }
 
-    pub(crate) fn type_id(self) -> CustomTypeId {
-        self.type_id
-    }
-
     #[cfg(test)]
     pub(super) fn shape_id(self) -> CustomValueShapeId {
         self.shape_id
@@ -103,10 +99,6 @@ impl FunctionShape {
     #[cfg(test)]
     pub(crate) fn shape_id(&self) -> ValueShapeId {
         self.shape_id
-    }
-
-    pub(crate) fn type_(&self) -> &FunctionType {
-        &self.type_
     }
 }
 
@@ -250,6 +242,10 @@ pub fn main() {
                     ]
                     .into_boxed_slice(),
                 ),
+                ValueShapeDescriptor::Bool,
+                ValueShapeDescriptor::Int,
+                ValueShapeDescriptor::Custom(CustomValueShapeId::new(5)),
+                ValueShapeDescriptor::Custom(CustomValueShapeId::new(6)),
             ],
         );
         assert_eq!(
@@ -329,15 +325,6 @@ pub fn main() {
                 ValueShapeDescriptor::Custom(CustomValueShapeId::new(0)),
                 ValueShapeDescriptor::Tuple(vec![ValueShapeId::new(0); 6].into_boxed_slice(),),
                 ValueShapeDescriptor::Custom(CustomValueShapeId::new(2)),
-                ValueShapeDescriptor::Int,
-                ValueShapeDescriptor::Function {
-                    arguments: Vec::new().into_boxed_slice(),
-                    return_: ValueShapeId::new(2),
-                },
-                ValueShapeDescriptor::Function {
-                    arguments: vec![ValueShapeId::new(3)].into_boxed_slice(),
-                    return_: ValueShapeId::new(2),
-                },
                 ValueShapeDescriptor::Tuple(
                     vec![
                         ValueShapeId::new(2),
@@ -349,6 +336,24 @@ pub fn main() {
                     ]
                     .into_boxed_slice(),
                 ),
+                ValueShapeDescriptor::Int,
+                ValueShapeDescriptor::Tuple(vec![ValueShapeId::new(2)].into_boxed_slice()),
+                ValueShapeDescriptor::String,
+                ValueShapeDescriptor::Custom(CustomValueShapeId::new(4)),
+                ValueShapeDescriptor::Function {
+                    arguments: Vec::new().into_boxed_slice(),
+                    return_: ValueShapeId::new(0),
+                },
+                ValueShapeDescriptor::Function {
+                    arguments: vec![ValueShapeId::new(4)].into_boxed_slice(),
+                    return_: ValueShapeId::new(0),
+                },
+                ValueShapeDescriptor::Custom(CustomValueShapeId::new(5)),
+                ValueShapeDescriptor::Custom(CustomValueShapeId::new(3)),
+                ValueShapeDescriptor::Function {
+                    arguments: vec![ValueShapeId::new(4)].into_boxed_slice(),
+                    return_: ValueShapeId::new(2),
+                },
             ],
         );
         assert_eq!(
@@ -370,6 +375,11 @@ pub fn main() {
                     CustomConstructorRefinement::Exact(0),
                 ),
                 CustomValueShapeDescriptor::new(
+                    CustomTypeId::new(0),
+                    vec![ValueShapeId::new(3)].into_boxed_slice(),
+                    CustomConstructorRefinement::Exact(0),
+                ),
+                CustomValueShapeDescriptor::new(
                     CustomTypeId::new(2),
                     vec![ValueShapeId::new(2)].into_boxed_slice(),
                     CustomConstructorRefinement::Exact(0),
@@ -377,11 +387,6 @@ pub fn main() {
                 CustomValueShapeDescriptor::new(
                     CustomTypeId::new(3),
                     vec![ValueShapeId::new(2)].into_boxed_slice(),
-                    CustomConstructorRefinement::Exact(0),
-                ),
-                CustomValueShapeDescriptor::new(
-                    CustomTypeId::new(0),
-                    vec![ValueShapeId::new(6)].into_boxed_slice(),
                     CustomConstructorRefinement::Exact(0),
                 ),
             ],
@@ -487,7 +492,7 @@ pub fn main() -> Wrapper(#(
         );
         let shape = plan
             .custom_function(plan.custom_function_id(1))
-            .return_()
+            .graph()
             .signature_shape();
 
         assert_eq!(
@@ -559,7 +564,7 @@ pub fn main() { Phantom }
         let RuntimeFunctionId::Custom(id) = plan.main_runtime() else {
             panic!("expected a custom main function");
         };
-        plan.custom_function(id).return_().body_shape().shape_id()
+        plan.custom_function(id).graph().body_shape().shape_id()
     }
 
     fn function_shape(

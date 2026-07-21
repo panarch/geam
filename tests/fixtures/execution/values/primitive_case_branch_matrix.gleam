@@ -1,3 +1,7 @@
+pub type Marker {
+  Marker(Int)
+}
+
 pub fn main() {
   assert case 1.0 { 1.0 -> True _ -> False }
   assert case 0.0 { 1.0 -> False _ -> True }
@@ -19,6 +23,11 @@ pub fn main() {
   assert case 1.0 { 1.0 -> "one" _ -> "zero" } == "one"
   assert case 0.0 { 1.0 -> "zero" _ -> "two" } == "two"
   assert case False { True -> "zero" False -> "two" } == "two"
+
+  assert case 1 { 1 -> Marker(1) _ -> Marker(0) } == Marker(1)
+  assert case 1.0 { 1.0 -> Marker(1) _ -> Marker(0) } == Marker(1)
+  assert case "hit" { "hit" -> Marker(1) _ -> Marker(0) } == Marker(1)
+  assert case True { True -> Marker(1) False -> Marker(0) } == Marker(1)
 
   Nil
 }

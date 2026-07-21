@@ -290,6 +290,10 @@ impl ListAssertPattern {
         &self.elements
     }
 
+    pub(crate) fn element_type(&self) -> &ValueType {
+        &self.element_type
+    }
+
     pub(crate) fn tail(&self) -> Option<&ListAssertTail> {
         self.tail.as_ref()
     }

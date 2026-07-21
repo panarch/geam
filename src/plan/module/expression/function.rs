@@ -265,6 +265,76 @@ impl FunctionExpr {
         }
     }
 
+    pub(crate) fn tuple_index_shape(
+        tuple: super::TupleExpr,
+        index: usize,
+        shape: FunctionShape,
+    ) -> Self {
+        let type_ = shape.type_();
+        match shape.return_shape().clone() {
+            ValueShape::Parameter(parameter) => Self::generic_with_shape(
+                GenericFunctionExpr::tuple_index(
+                    tuple,
+                    index,
+                    crate::plan::GenericFunctionType::new(
+                        shape.argument_shapes().to_vec(),
+                        parameter,
+                    ),
+                ),
+                shape,
+            ),
+            ValueShape::Int => {
+                Self::int_with_shape(IntFunctionExpr::tuple_index(tuple, index, type_), shape)
+            }
+            ValueShape::String => {
+                Self::string_with_shape(StringFunctionExpr::tuple_index(tuple, index, type_), shape)
+            }
+            ValueShape::BitArray => Self::bit_array_with_shape(
+                BitArrayFunctionExpr::tuple_index(tuple, index, type_),
+                shape,
+            ),
+            ValueShape::UtfCodepoint => Self::utf_codepoint_with_shape(
+                UtfCodepointFunctionExpr::tuple_index(tuple, index, type_),
+                shape,
+            ),
+            ValueShape::Custom(return_shape) => Self::custom(CustomFunctionExpr::tuple_index(
+                tuple,
+                index,
+                crate::plan::CustomFunctionType::from_shapes(
+                    shape.argument_shapes().to_vec(),
+                    return_shape,
+                ),
+            )),
+            ValueShape::Float => {
+                Self::float_with_shape(FloatFunctionExpr::tuple_index(tuple, index, type_), shape)
+            }
+            ValueShape::Bool => {
+                Self::bool_with_shape(BoolFunctionExpr::tuple_index(tuple, index, type_), shape)
+            }
+            ValueShape::Nil => {
+                Self::nil_with_shape(NilFunctionExpr::tuple_index(tuple, index, type_), shape)
+            }
+            ValueShape::Tuple(_) => {
+                Self::tuple_with_shape(TupleFunctionExpr::tuple_index(tuple, index, type_), shape)
+            }
+            ValueShape::List(item_shape) => Self::list_with_shape(
+                ListFunctionExpr::tuple_index(tuple, index, type_, item_shape.value_type()),
+                shape,
+            ),
+            ValueShape::Function(return_shape) => Self::function_with_shape(
+                FunctionFunctionExpr::tuple_index(
+                    tuple,
+                    index,
+                    crate::plan::FunctionFunctionType::from_shapes(
+                        shape.argument_shapes().to_vec(),
+                        *return_shape,
+                    ),
+                ),
+                shape,
+            ),
+        }
+    }
+
     pub(crate) fn reference(reference: FunctionReference) -> Self {
         let instantiation = reference.into_instantiation();
         let shape = instantiation.shape().clone();
