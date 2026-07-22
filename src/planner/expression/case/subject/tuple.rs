@@ -1865,11 +1865,7 @@ pub fn main() {
             Ok(super::TupleCasePattern {
                 match_condition: Some(BoolExpr::custom_matches(
                     value,
-                    AssertPattern::custom(CustomPattern::new(
-                        constructor,
-                        vec![AssertPattern::Int(1.into())],
-                        None,
-                    )),
+                    CustomPattern::new(constructor, vec![AssertPattern::Int(1.into())], None,),
                 )),
                 branch_bindings: Vec::new(),
                 total_branch_steps: Vec::new(),
@@ -1950,11 +1946,11 @@ pub fn main() {
             Ok(super::TupleCasePattern {
                 match_condition: Some(BoolExpr::custom_matches(
                     value.clone(),
-                    AssertPattern::custom(CustomPattern::new(
+                    CustomPattern::new(
                         constructor,
                         vec![AssertPattern::Discard],
                         Some(vec![TotalBindingPattern::discard(ValueType::Int)]),
-                    )),
+                    ),
                 )),
                 branch_bindings: Vec::new(),
                 total_branch_steps: vec![

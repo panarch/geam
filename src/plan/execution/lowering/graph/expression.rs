@@ -14,7 +14,7 @@ mod utf_codepoint;
 use super::{DraftCursor, DraftFlow, DraftGraph, DraftGraphValue, DraftScope, DraftValueRef};
 use crate::plan::execution::lowering::specialization::{
     CompoundInhabitation, Representability, StoredValueShape, UninhabitedCustomValueShape,
-    UninhabitedTupleValueShape, ValueInhabitation,
+    UninhabitedTupleValueShape,
 };
 use crate::plan::module;
 
@@ -85,27 +85,25 @@ pub(super) fn expr(
 
 pub(super) fn call_args(
     args: &[module::CallArg],
-    mut cursor: DraftCursor,
+    cursor: DraftCursor,
     graph: &mut DraftGraph,
     context: &mut super::super::LoweringContext,
 ) -> Lowered<Vec<DraftValueRef>> {
-    let mut values = Vec::with_capacity(args.len());
-    for arg in args {
-        match expr(arg.value(), cursor, graph, context) {
-            Representability::Uninhabited => return Representability::Uninhabited,
-            Representability::Inhabited(DraftFlow::Diverged) => {
-                return Representability::Inhabited(DraftFlow::Diverged);
-            }
-            Representability::Inhabited(DraftFlow::Value {
-                cursor: next,
-                value,
-            }) => {
-                cursor = next;
-                values.push(value);
-            }
-        }
-    }
-    Representability::Inhabited(DraftFlow::value(cursor, values))
+    args.iter().fold(
+        Representability::Inhabited(DraftFlow::value(cursor, Vec::with_capacity(args.len()))),
+        |lowered, arg| {
+            lowered.and_then(|flow| {
+                flow.and_then(|cursor, mut values| {
+                    expr(arg.value(), cursor, graph, context).map(|flow| {
+                        flow.map(|value| {
+                            values.push(value);
+                            values
+                        })
+                    })
+                })
+            })
+        },
+    )
 }
 
 #[cfg_attr(test, derive(Debug, PartialEq))]
@@ -145,9 +143,13 @@ fn call_arguments<'a>(
         let value = match value {
             module::PotentiallyUninhabitedCallArg::Generic(expression) => {
                 let shape = context.concrete_parameter(expression.parameter());
-                match context.representations.inhabitation(&shape) {
-                    ValueInhabitation::Inhabited(_) => continue,
-                    ValueInhabitation::Uninhabited(_) => DivergingCallArgument::Generic(expression),
+                match context
+                    .representations
+                    .inhabitation(&shape)
+                    .into_representability()
+                {
+                    Representability::Inhabited(_) => continue,
+                    Representability::Uninhabited => DivergingCallArgument::Generic(expression),
                 }
             }
             module::PotentiallyUninhabitedCallArg::Tuple(expression) => {
@@ -183,32 +185,36 @@ fn call_arguments<'a>(
 
 fn diverging_call_arguments(
     arguments: DivergingCallArguments<'_>,
-    mut cursor: DraftCursor,
+    cursor: DraftCursor,
     graph: &mut DraftGraph,
     context: &mut super::super::LoweringContext,
 ) -> Representability<()> {
-    for arg in arguments.prefix {
-        match expr(arg.value(), cursor, graph, context) {
-            Representability::Uninhabited => return Representability::Uninhabited,
-            Representability::Inhabited(DraftFlow::Diverged) => {
-                return Representability::Inhabited(());
-            }
-            Representability::Inhabited(DraftFlow::Value { cursor: next, .. }) => {
-                cursor = next;
-            }
-        }
-    }
-    match arguments.value {
-        DivergingCallArgument::Generic(expression) => {
-            generic::never_expr(expression, cursor, graph, context)
-        }
-        DivergingCallArgument::Tuple { expression, proof } => {
-            generic::tuple_never_expr(expression, &proof, cursor, graph, context)
-        }
-        DivergingCallArgument::Custom { expression, proof } => {
-            generic::custom_never_expr(expression, &proof, cursor, graph, context)
-        }
-    }
+    let DivergingCallArguments { prefix, value } = arguments;
+    prefix
+        .iter()
+        .fold(
+            Representability::Inhabited(DraftFlow::value(cursor, ())),
+            |lowered, arg| {
+                lowered.and_then(|flow| {
+                    flow.and_then(|cursor, ()| {
+                        expr(arg.value(), cursor, graph, context).map(|flow| flow.map(|_| ()))
+                    })
+                })
+            },
+        )
+        .and_then(|flow| {
+            flow.fold(Representability::Inhabited(()), |cursor, ()| match value {
+                DivergingCallArgument::Generic(expression) => {
+                    generic::never_expr(expression, cursor, graph, context)
+                }
+                DivergingCallArgument::Tuple { expression, proof } => {
+                    generic::tuple_never_expr(expression, &proof, cursor, graph, context)
+                }
+                DivergingCallArgument::Custom { expression, proof } => {
+                    generic::custom_never_expr(expression, &proof, cursor, graph, context)
+                }
+            })
+        })
 }
 
 pub(super) fn lower_function_call<Function, Output>(
@@ -237,28 +243,21 @@ pub(super) fn lower_function_call<Function, Output>(
 where
 {
     match call_arguments(args, context) {
-        CallArguments::Complete => executable(cursor, graph, context).and_then(|flow| match flow {
-            DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
-            DraftFlow::Value {
-                cursor,
-                value: function,
-            } => call_args(args, cursor, graph, context).map(|flow| match flow {
-                DraftFlow::Diverged => DraftFlow::Diverged,
-                DraftFlow::Value {
-                    cursor,
-                    value: args,
-                } => emit(cursor, function, args, graph, context),
-            }),
-        }),
-        CallArguments::Diverging(arguments) => {
-            evaluated(cursor, graph, context).and_then(|flow| match flow {
-                DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
-                DraftFlow::Value { cursor, value: () } => {
-                    diverging_call_arguments(arguments, cursor, graph, context)
-                        .map(|()| DraftFlow::Diverged)
-                }
+        CallArguments::Complete => executable(cursor, graph, context).and_then(|flow| {
+            flow.and_then(|cursor, function| {
+                call_args(args, cursor, graph, context).and_then(|flow| {
+                    flow.and_then(|cursor, args| {
+                        Representability::Inhabited(emit(cursor, function, args, graph, context))
+                    })
+                })
             })
-        }
+        }),
+        CallArguments::Diverging(arguments) => evaluated(cursor, graph, context).and_then(|flow| {
+            flow.and_then(|cursor, ()| {
+                diverging_call_arguments(arguments, cursor, graph, context)
+                    .map(|()| DraftFlow::Diverged)
+            })
+        }),
     }
 }
 
@@ -459,19 +458,28 @@ where
                     .collect(),
                 fallback_cursor.id(),
             );
-            let mut branches = Vec::with_capacity(clauses.len() + 1);
-            for (index, cursor) in clause_cursors.into_iter().enumerate() {
-                let branch = &clauses[index].1;
-                match lower(branch, cursor, graph, context) {
-                    Representability::Inhabited(flow) => branches.push(flow),
-                    Representability::Uninhabited => return Representability::Uninhabited,
-                }
-            }
-            match lower(fallback, fallback_cursor, graph, context) {
-                Representability::Inhabited(flow) => branches.push(flow),
-                Representability::Uninhabited => return Representability::Uninhabited,
-            }
-            Representability::Inhabited(join_branches(scope, result_shape, branches, graph, result))
+            clause_cursors
+                .into_iter()
+                .enumerate()
+                .fold(
+                    Representability::Inhabited(Vec::with_capacity(clauses.len() + 1)),
+                    |lowered, (index, cursor)| {
+                        let branch = &clauses[index].1;
+                        lowered.and_then(|mut branches| {
+                            lower(branch, cursor, graph, context).map(|flow| {
+                                branches.push(flow);
+                                branches
+                            })
+                        })
+                    },
+                )
+                .and_then(|mut branches| {
+                    lower(fallback, fallback_cursor, graph, context).map(|flow| {
+                        branches.push(flow);
+                        branches
+                    })
+                })
+                .map(|branches| join_branches(scope, result_shape, branches, graph, result))
         }
     })
 }
@@ -517,19 +525,28 @@ where
                     .collect(),
                 fallback_cursor.id(),
             );
-            let mut branches = Vec::with_capacity(clauses.len() + 1);
-            for (index, cursor) in clause_cursors.into_iter().enumerate() {
-                let branch = &clauses[index].1;
-                match lower(branch, cursor, graph, context) {
-                    Representability::Inhabited(flow) => branches.push(flow),
-                    Representability::Uninhabited => return Representability::Uninhabited,
-                }
-            }
-            match lower(fallback, fallback_cursor, graph, context) {
-                Representability::Inhabited(flow) => branches.push(flow),
-                Representability::Uninhabited => return Representability::Uninhabited,
-            }
-            Representability::Inhabited(join_branches(scope, result_shape, branches, graph, result))
+            clause_cursors
+                .into_iter()
+                .enumerate()
+                .fold(
+                    Representability::Inhabited(Vec::with_capacity(clauses.len() + 1)),
+                    |lowered, (index, cursor)| {
+                        let branch = &clauses[index].1;
+                        lowered.and_then(|mut branches| {
+                            lower(branch, cursor, graph, context).map(|flow| {
+                                branches.push(flow);
+                                branches
+                            })
+                        })
+                    },
+                )
+                .and_then(|mut branches| {
+                    lower(fallback, fallback_cursor, graph, context).map(|flow| {
+                        branches.push(flow);
+                        branches
+                    })
+                })
+                .map(|branches| join_branches(scope, result_shape, branches, graph, result))
         }
     })
 }
@@ -575,19 +592,28 @@ where
                     .collect(),
                 fallback_cursor.id(),
             );
-            let mut branches = Vec::with_capacity(clauses.len() + 1);
-            for (index, cursor) in clause_cursors.into_iter().enumerate() {
-                let branch = &clauses[index].1;
-                match lower(branch, cursor, graph, context) {
-                    Representability::Inhabited(flow) => branches.push(flow),
-                    Representability::Uninhabited => return Representability::Uninhabited,
-                }
-            }
-            match lower(fallback, fallback_cursor, graph, context) {
-                Representability::Inhabited(flow) => branches.push(flow),
-                Representability::Uninhabited => return Representability::Uninhabited,
-            }
-            Representability::Inhabited(join_branches(scope, result_shape, branches, graph, result))
+            clause_cursors
+                .into_iter()
+                .enumerate()
+                .fold(
+                    Representability::Inhabited(Vec::with_capacity(clauses.len() + 1)),
+                    |lowered, (index, cursor)| {
+                        let branch = &clauses[index].1;
+                        lowered.and_then(|mut branches| {
+                            lower(branch, cursor, graph, context).map(|flow| {
+                                branches.push(flow);
+                                branches
+                            })
+                        })
+                    },
+                )
+                .and_then(|mut branches| {
+                    lower(fallback, fallback_cursor, graph, context).map(|flow| {
+                        branches.push(flow);
+                        branches
+                    })
+                })
+                .map(|branches| join_branches(scope, result_shape, branches, graph, result))
         }
     })
 }
@@ -640,6 +666,14 @@ mod tests {
         _context: &mut crate::plan::execution::lowering::LoweringContext,
     ) -> Representability<DraftFlow<()>> {
         Representability::Inhabited(DraftFlow::Diverged)
+    }
+
+    fn uninhabited_flow(
+        _cursor: DraftCursor,
+        _graph: &mut DraftGraph,
+        _context: &mut crate::plan::execution::lowering::LoweringContext,
+    ) -> Representability<DraftFlow<()>> {
+        Representability::Uninhabited
     }
 
     fn uninhabited_branch<Branch>(
@@ -873,20 +907,6 @@ mod tests {
         }
     }
 
-    fn uninhabited_tuple_proof(
-        context: &crate::plan::execution::lowering::LoweringContext,
-        elements: &[crate::plan::execution::lowering::specialization::SpecializedValueShape],
-    ) -> crate::plan::execution::lowering::specialization::UninhabitedTupleValueShape {
-        match context.representations.tuple_inhabitation(elements) {
-            crate::plan::execution::lowering::specialization::CompoundInhabitation::Uninhabited(
-                proof,
-            ) => proof,
-            crate::plan::execution::lowering::specialization::CompoundInhabitation::Inhabited => {
-                panic!("expected an uninhabited tuple")
-            }
-        }
-    }
-
     fn uninhabited_custom_proof(
         context: &crate::plan::execution::lowering::LoweringContext,
         shape: &crate::plan::execution::lowering::specialization::SpecializedCustomValueShape,
@@ -922,29 +942,6 @@ mod tests {
         let context = crate::plan::execution::lowering::test_support::lowering_context(vec![
             custom_definition,
         ]);
-        let uninhabited_tuple = TupleExpr::local_get(
-            crate::plan::TupleLocalId(0),
-            "tuple".into(),
-            vec![ValueType::Parameter(parameter)],
-        );
-        let tuple_elements = uninhabited_tuple
-            .shape()
-            .iter()
-            .map(|shape| context.concrete_value_shape(shape))
-            .collect::<Vec<_>>();
-        let tuple_proof = uninhabited_tuple_proof(&context, &tuple_elements);
-        let args = vec![CallArg::new(Expr::tuple(uninhabited_tuple.clone()))];
-        assert_eq!(
-            super::call_arguments(&args, &context),
-            super::CallArguments::Diverging(super::DivergingCallArguments {
-                prefix: &[],
-                value: super::DivergingCallArgument::Tuple {
-                    expression: &uninhabited_tuple,
-                    proof: tuple_proof,
-                },
-            }),
-        );
-
         let inhabited_tuple = TupleExpr::value(
             vec![Expr::int(IntExpr::value(1.into()))],
             vec![ValueType::Int],
@@ -991,16 +988,6 @@ mod tests {
         assert_eq!(
             super::call_arguments(&[CallArg::new(Expr::custom(inhabited_custom))], &context,),
             super::CallArguments::Complete,
-        );
-    }
-
-    #[test]
-    #[should_panic(expected = "expected an uninhabited tuple")]
-    fn uninhabited_tuple_proof_rejects_inhabited_shape() {
-        let context = crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
-        uninhabited_tuple_proof(
-            &context,
-            &[crate::plan::execution::lowering::specialization::SpecializedValueShape::Int],
         );
     }
 
@@ -1116,6 +1103,34 @@ mod tests {
                 emit_unit,
             )),
             FlowOutcome::Value,
+        );
+
+        let cursor = graph.empty_block(Default::default());
+        assert_eq!(
+            flow_outcome(&super::lower_function_call(
+                &[],
+                cursor,
+                &mut graph,
+                &mut context,
+                uninhabited_flow,
+                unit_flow,
+                emit_unit,
+            )),
+            FlowOutcome::Uninhabited,
+        );
+
+        let cursor = graph.empty_block(Default::default());
+        assert_eq!(
+            flow_outcome(&super::lower_function_call(
+                &[],
+                cursor,
+                &mut graph,
+                &mut context,
+                diverged_flow,
+                unit_flow,
+                emit_unit,
+            )),
+            FlowOutcome::Diverged,
         );
 
         let cursor = graph.empty_block(Default::default());

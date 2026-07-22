@@ -13,7 +13,6 @@ use super::{
 };
 use crate::plan::execution::lowering::specialization::{
     CustomConstructorMatch, FunctionRepresentation, Representability, StoredValueShape,
-    ValueInhabitation, ValueRepresentation,
 };
 use crate::plan::{execution, module};
 use std::collections::HashMap;
@@ -22,35 +21,28 @@ type Lowered<T> = Representability<DraftFlow<T>>;
 
 pub(super) fn steps(
     steps: &[module::Step],
-    mut cursor: DraftCursor,
+    cursor: DraftCursor,
     graph: &mut DraftGraph,
     context: &mut super::super::LoweringContext,
 ) -> Lowered<()> {
-    for step in steps {
-        match lower_step(step, cursor, graph, context) {
-            Representability::Uninhabited => return Representability::Uninhabited,
-            Representability::Inhabited(DraftFlow::Diverged) => {
-                return Representability::Inhabited(DraftFlow::Diverged);
-            }
-            Representability::Inhabited(DraftFlow::Value {
-                cursor: next,
-                value: (),
-            }) => cursor = next,
-        }
-    }
-    Representability::Inhabited(DraftFlow::value(cursor, ()))
+    steps.iter().fold(
+        Representability::Inhabited(DraftFlow::value(cursor, ())),
+        |lowered, step| {
+            lowered.and_then(|flow| {
+                flow.and_then(|cursor, ()| lower_step(step, cursor, graph, context))
+            })
+        },
+    )
 }
 
 fn bind_value<Value: DraftGraphValue>(
     key: super::super::local::LocalKey,
     lowered: Lowered<Value>,
 ) -> Lowered<()> {
-    lowered.map(|flow| match flow {
-        DraftFlow::Diverged => DraftFlow::Diverged,
-        DraftFlow::Value { mut cursor, value } => {
+    lowered.map(|flow| {
+        flow.map_cursor(|cursor, value| {
             cursor.scope_mut().insert(key, value.erase());
-            DraftFlow::value(cursor, ())
-        }
+        })
     })
 }
 
@@ -721,11 +713,13 @@ pub(super) fn bit_array_match_paths(
         flow.fold(
             super::expression::bool::BoolPaths::Diverged,
             |cursor, value| {
-                match_paths(value.erase(), cursor, graph, context, |planner| {
-                    Representability::Inhabited(DraftMatchPattern::BitArray(
-                        planner.bit_array_pattern(pattern),
-                    ))
-                })
+                match_paths(
+                    value.erase(),
+                    cursor,
+                    graph,
+                    context,
+                    MatchPattern::BitArray(pattern),
+                )
             },
         )
     })
@@ -733,7 +727,7 @@ pub(super) fn bit_array_match_paths(
 
 pub(super) fn custom_match_paths(
     value: &module::CustomExpr,
-    pattern: &module::AssertPattern,
+    pattern: &module::CustomPattern,
     cursor: DraftCursor,
     graph: &mut DraftGraph,
     context: &mut super::super::LoweringContext,
@@ -758,7 +752,7 @@ pub(super) fn custom_match_paths(
                     cursor,
                     graph,
                     context,
-                    |planner| planner.assert_pattern(pattern),
+                    MatchPattern::Custom(pattern),
                 )),
             },
         )
@@ -768,38 +762,12 @@ pub(super) fn custom_match_paths(
 struct TotalCustomMatch<'a> {
     constructor: &'a crate::plan::CustomConstructor,
     fields: &'a [module::TotalBindingPattern],
-    aliases: Vec<&'a module::AssertBinding>,
 }
 
-fn total_custom_match(pattern: &module::AssertPattern) -> Option<TotalCustomMatch<'_>> {
-    fn collect<'a>(
-        pattern: &'a module::AssertPattern,
-        aliases: &mut Vec<&'a module::AssertBinding>,
-    ) -> Option<(
-        &'a crate::plan::CustomConstructor,
-        &'a [module::TotalBindingPattern],
-    )> {
-        match pattern {
-            module::AssertPattern::Custom(pattern) => match pattern.total_fields() {
-                Some(fields) => Some((pattern.constructor(), fields)),
-                None => None,
-            },
-            module::AssertPattern::Alias { pattern, binding } => {
-                let custom = collect(pattern, aliases);
-                if custom.is_some() {
-                    aliases.push(binding);
-                }
-                custom
-            }
-            _ => None,
-        }
-    }
-
-    let mut aliases = Vec::new();
-    collect(pattern, &mut aliases).map(|(constructor, fields)| TotalCustomMatch {
-        constructor,
+fn total_custom_match(pattern: &module::CustomPattern) -> Option<TotalCustomMatch<'_>> {
+    pattern.total_fields().map(|fields| TotalCustomMatch {
+        constructor: pattern.constructor(),
         fields,
-        aliases,
     })
 }
 
@@ -810,21 +778,14 @@ fn bind_certain_custom_match(
     graph: &mut DraftGraph,
     context: &mut super::super::LoweringContext,
 ) -> Representability<DraftCursor> {
-    let mut cursor = cursor;
-    for (index, field) in total.fields.iter().enumerate() {
-        cursor = match bind_total_custom_field(field, source.clone(), index, cursor, graph, context)
-        {
-            Representability::Uninhabited => return Representability::Uninhabited,
-            Representability::Inhabited(cursor) => cursor,
-        };
-    }
-    for binding in total.aliases {
-        cursor.scope_mut().insert(
-            super::super::local::param_local_key(binding.slot().local()),
-            source.erase(),
-        );
-    }
-    Representability::Inhabited(cursor)
+    total.fields.iter().enumerate().fold(
+        Representability::Inhabited(cursor),
+        |cursor, (index, field)| {
+            cursor.and_then(|cursor| {
+                bind_total_custom_field(field, source.clone(), index, cursor, graph, context)
+            })
+        },
+    )
 }
 
 fn match_paths(
@@ -832,11 +793,16 @@ fn match_paths(
     cursor: DraftCursor,
     graph: &mut DraftGraph,
     context: &mut super::super::LoweringContext,
-    pattern: impl FnOnce(&mut MatchPlanner<'_>) -> Representability<DraftMatchPattern>,
+    pattern: MatchPattern<'_>,
 ) -> super::expression::bool::BoolPaths {
     let failure_scope = cursor.scope().clone();
     let mut planner = MatchPlanner::new(cursor.scope().clone(), graph, context);
-    let pattern = pattern(&mut planner);
+    let pattern = match pattern {
+        MatchPattern::Custom(pattern) => planner.custom_pattern(pattern),
+        MatchPattern::BitArray(pattern) => Representability::Inhabited(
+            DraftMatchPattern::BitArray(planner.bit_array_pattern(pattern)),
+        ),
+    };
     let Representability::Inhabited(pattern) = pattern else {
         return super::expression::bool::BoolPaths::False(cursor);
     };
@@ -861,6 +827,11 @@ fn match_paths(
         true_: success,
         false_: failure,
     }
+}
+
+enum MatchPattern<'a> {
+    Custom(&'a module::CustomPattern),
+    BitArray(&'a module::BitArrayPattern),
 }
 
 struct MatchPlanner<'a> {
@@ -909,13 +880,16 @@ impl<'a> MatchPlanner<'a> {
         binding: &module::AssertBinding,
     ) -> Representability<DraftMatchPatternBinding> {
         let shape = self.context.concrete_value_shape(binding.slot().shape());
-        match self.context.representations.inhabitation(&shape) {
-            ValueInhabitation::Uninhabited(_) => Representability::Uninhabited,
-            ValueInhabitation::Inhabited(shape) => Representability::Inhabited(self.bind(
-                super::super::local::param_local_key(binding.slot().local()),
-                shape,
-            )),
-        }
+        self.context
+            .representations
+            .inhabitation(&shape)
+            .into_representability()
+            .map(|shape| {
+                self.bind(
+                    super::super::local::param_local_key(binding.slot().local()),
+                    shape,
+                )
+            })
     }
 
     fn assert_pattern(
@@ -971,33 +945,7 @@ impl<'a> MatchPlanner<'a> {
             module::AssertPattern::BitArray(pattern) => Representability::Inhabited(
                 DraftMatchPattern::BitArray(self.bit_array_pattern(pattern)),
             ),
-            module::AssertPattern::Custom(pattern) => {
-                let source =
-                    self.context
-                        .concrete_custom_value_shape(&crate::plan::CustomValueShape::any(
-                            pattern.constructor().type_().clone(),
-                        ));
-                if self
-                    .context
-                    .representations
-                    .custom_constructor_match(&source, pattern.constructor().index())
-                    == CustomConstructorMatch::Impossible
-                {
-                    return Representability::Uninhabited;
-                }
-                Representability::collect(
-                    pattern
-                        .fields()
-                        .iter()
-                        .map(|field| self.assert_pattern(field)),
-                )
-                .map(|fields| DraftMatchPattern::Custom {
-                    constructor: self
-                        .context
-                        .custom_constructor(pattern.constructor().clone()),
-                    fields,
-                })
-            }
+            module::AssertPattern::Custom(pattern) => self.custom_pattern(pattern),
             module::AssertPattern::StringPrefix {
                 prefix,
                 left,
@@ -1032,6 +980,37 @@ impl<'a> MatchPlanner<'a> {
                     }
                 }),
         }
+    }
+
+    fn custom_pattern(
+        &mut self,
+        pattern: &module::CustomPattern,
+    ) -> Representability<DraftMatchPattern> {
+        let source = self
+            .context
+            .concrete_custom_value_shape(&crate::plan::CustomValueShape::any(
+                pattern.constructor().type_().clone(),
+            ));
+        if self
+            .context
+            .representations
+            .custom_constructor_match(&source, pattern.constructor().index())
+            == CustomConstructorMatch::Impossible
+        {
+            return Representability::Uninhabited;
+        }
+        Representability::collect(
+            pattern
+                .fields()
+                .iter()
+                .map(|field| self.assert_pattern(field)),
+        )
+        .map(|fields| DraftMatchPattern::Custom {
+            constructor: self
+                .context
+                .custom_constructor(pattern.constructor().clone()),
+            fields,
+        })
     }
 
     fn list_tail(&mut self, tail: &module::ListAssertTail) -> DraftMatchListTail {
@@ -1274,15 +1253,14 @@ fn bind_custom_fields(
     graph: &mut DraftGraph,
     context: &mut super::super::LoweringContext,
 ) -> Representability<DraftCursor> {
-    let mut cursor = cursor;
-    for (index, pattern) in pattern.fields().iter().enumerate() {
-        cursor =
-            match bind_total_custom_field(pattern, source.clone(), index, cursor, graph, context) {
-                Representability::Uninhabited => return Representability::Uninhabited,
-                Representability::Inhabited(cursor) => cursor,
-            };
-    }
-    Representability::Inhabited(cursor)
+    pattern.fields().iter().enumerate().fold(
+        Representability::Inhabited(cursor),
+        |cursor, (index, pattern)| {
+            cursor.and_then(|cursor| {
+                bind_total_custom_field(pattern, source.clone(), index, cursor, graph, context)
+            })
+        },
+    )
 }
 
 fn bind_total_custom_field(
@@ -1322,20 +1300,27 @@ fn bind_total_pattern(
         P::Discard => Representability::Inhabited(cursor),
         P::Tuple(elements) => {
             let tuple = DraftTuple::from_ref(&source);
-            for (index, element) in elements.iter().enumerate() {
-                if !total_pattern_requires_value(element) {
-                    continue;
-                }
-                cursor = match stored_pattern_shape(element, context).and_then(|shape| {
-                    let (cursor, value) =
-                        generic::tuple_index(&shape, tuple.clone(), index, cursor, graph, context);
-                    bind_total_pattern(element, value, cursor, graph, context)
-                }) {
-                    Representability::Uninhabited => return Representability::Uninhabited,
-                    Representability::Inhabited(cursor) => cursor,
-                };
-            }
-            Representability::Inhabited(cursor)
+            elements.iter().enumerate().fold(
+                Representability::Inhabited(cursor),
+                |cursor, (index, element)| {
+                    cursor.and_then(|cursor| {
+                        if !total_pattern_requires_value(element) {
+                            return Representability::Inhabited(cursor);
+                        }
+                        stored_pattern_shape(element, context).and_then(|shape| {
+                            let (cursor, value) = generic::tuple_index(
+                                &shape,
+                                tuple.clone(),
+                                index,
+                                cursor,
+                                graph,
+                                context,
+                            );
+                            bind_total_pattern(element, value, cursor, graph, context)
+                        })
+                    })
+                },
+            )
         }
         P::List(tail) => {
             if let module::ListAssertTail::Bind(binding) = tail {
@@ -1401,10 +1386,10 @@ fn stored_pattern_shape(
     let shape = context.concrete_value_shape(&crate::plan::ValueShape::from_value_type(
         pattern.type_().clone(),
     ));
-    match context.representations.representation(&shape) {
-        ValueRepresentation::Uninhabited(_) => Representability::Uninhabited,
-        ValueRepresentation::Stored(shape) => Representability::Inhabited(shape),
-    }
+    context
+        .representations
+        .representation(&shape)
+        .into_representability()
 }
 
 fn total_pattern_requires_value(pattern: &module::TotalBindingPattern) -> bool {
@@ -1431,11 +1416,11 @@ mod tests {
         Representability, SpecializedValueShape, StoredValueShape,
     };
     use crate::plan::{
-        AssertBinding, AssertPattern, BoolExpr, CustomBindingPattern, CustomConstructor,
-        CustomConstructorDefinition, CustomConstructorField, CustomConstructorRefinement,
-        CustomFieldDefinition, CustomLocalId, CustomPattern, CustomType, CustomTypeDefinition,
-        CustomTypeName, CustomTypeParameterId, CustomTypePublicity, CustomTypeTemplate,
-        CustomValueShape, GenericLocal, GenericLocalId, PanicExpr, PanicSite, ParamLocal,
+        AssertBinding, BoolExpr, CustomBindingPattern, CustomConstructor,
+        CustomConstructorDefinition, CustomConstructorField, CustomFieldDefinition, CustomPattern,
+        CustomType, CustomTypeDefinition, CustomTypeName, CustomTypeParameterId,
+        CustomTypePublicity, CustomTypeTemplate, CustomValueShape, GenericLocal, GenericLocalId,
+        IntListLocalId, ListAssertTail, ListLocal, PanicExpr, PanicSite, ParamLocal,
         TotalBindingPattern, TypeParameterId, ValueShape, ValueType,
     };
 
@@ -1460,58 +1445,22 @@ mod tests {
     }
 
     #[test]
-    fn total_custom_match_collects_only_complete_custom_aliases() {
+    fn total_custom_match_accepts_only_complete_custom_patterns() {
         let name = CustomTypeName::new("geam".into(), "main".into(), "Empty".into());
         let type_ = CustomType::new(name, Vec::new());
         let constructor = CustomConstructor::new(type_.clone(), "Empty".into(), 0, Vec::new());
-        let custom = AssertPattern::Custom(CustomPattern::new(
-            constructor,
-            Vec::new(),
-            Some(Vec::new()),
-        ));
-        let binding = AssertBinding::new(
-            ParamLocal::custom_shape(
-                CustomLocalId(0),
-                CustomValueShape::new(
-                    type_.type_name().clone(),
-                    Vec::new(),
-                    CustomConstructorRefinement::Exact(0),
-                ),
-            ),
-            "whole".into(),
-            ValueShape::Custom(CustomValueShape::any(type_.clone())),
-        );
-        let alias = AssertPattern::Alias {
-            pattern: Box::new(custom),
-            binding: binding.clone(),
-        };
-
+        let custom = CustomPattern::new(constructor, Vec::new(), Some(Vec::new()));
         assert_eq!(
-            super::total_custom_match(&alias).map(|total| (
-                total.constructor.index(),
-                total.fields.len(),
-                total.aliases.len(),
-            )),
-            Some((0, 0, 1)),
+            super::total_custom_match(&custom)
+                .map(|total| (total.constructor.index(), total.fields.len())),
+            Some((0, 0)),
         );
         assert_eq!(
-            super::total_custom_match(&AssertPattern::Int(1.into())).map(|_| ()),
-            None
-        );
-        assert_eq!(
-            super::total_custom_match(&AssertPattern::Alias {
-                pattern: Box::new(AssertPattern::Int(1.into())),
-                binding,
-            })
-            .map(|_| ()),
-            None,
-        );
-        assert_eq!(
-            super::total_custom_match(&AssertPattern::Custom(CustomPattern::new(
+            super::total_custom_match(&CustomPattern::new(
                 CustomConstructor::new(type_, "Empty".into(), 0, Vec::new()),
                 Vec::new(),
                 None,
-            )))
+            ))
             .map(|_| ()),
             None,
         );
@@ -1540,7 +1489,6 @@ mod tests {
         );
         let type_ = CustomType::new(name.clone(), vec![ValueType::Parameter(parameter)]);
         let source_shape = CustomValueShape::any(type_.clone());
-        let empty = CustomConstructor::new(type_.clone(), "Empty".into(), 0, Vec::new());
         let filled = CustomConstructor::new(
             type_.clone(),
             "Filled".into(),
@@ -1556,41 +1504,10 @@ mod tests {
             ValueShape::Parameter(parameter),
         );
         let field_pattern = TotalBindingPattern::bind(field_binding.clone());
-        let alias_binding = AssertBinding::new(
-            ParamLocal::custom_shape(CustomLocalId(0), source_shape.clone()),
-            "whole".into(),
-            ValueShape::Custom(source_shape.clone()),
-        );
         let mut context =
             crate::plan::execution::lowering::test_support::lowering_context(vec![definition]);
         let stored_custom =
             StoredValueShape::Custom(context.concrete_custom_value_shape(&source_shape));
-
-        let (mut graph, cursor) =
-            DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
-        let source = DraftCustom::from_owned(graph.value_ref(stored_custom.clone()));
-        let alias_result = super::bind_certain_custom_match(
-            super::TotalCustomMatch {
-                constructor: &empty,
-                fields: &[],
-                aliases: vec![&alias_binding],
-            },
-            source.clone(),
-            cursor,
-            &mut graph,
-            &mut context,
-        )
-        .map(|cursor| {
-            cursor
-                .scope()
-                .custom(super::super::super::local::LocalKey::new(
-                    super::super::super::local::LocalKind::Custom,
-                    0,
-                ))
-                .shape()
-                == &stored_custom
-        });
-        assert_eq!(alias_result, Representability::Inhabited(true));
 
         let (mut graph, cursor) =
             DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
@@ -1600,7 +1517,6 @@ mod tests {
                 super::TotalCustomMatch {
                     constructor: &filled,
                     fields: std::slice::from_ref(&field_pattern),
-                    aliases: Vec::new(),
                 },
                 source,
                 cursor,
@@ -1646,16 +1562,42 @@ mod tests {
                 .map(|_| ()),
             Representability::Uninhabited,
         );
+    }
 
-        let list_pattern =
-            TotalBindingPattern::list(ValueType::Int, crate::plan::ListAssertTail::Ignore);
+    #[test]
+    fn total_list_bindings_preserve_ignored_and_bound_tails() {
+        let mut context =
+            crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
+        let ignored = TotalBindingPattern::list(ValueType::Int, ListAssertTail::Ignore);
         let (mut graph, cursor) =
             DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
         let list = graph.value_ref(StoredValueShape::List(Box::new(SpecializedValueShape::Int)));
         assert_eq!(
-            super::bind_total_pattern(&list_pattern, list, cursor, &mut graph, &mut context)
-                .map(|_| ()),
+            super::bind_total_pattern(&ignored, list, cursor, &mut graph, &mut context).map(|_| ()),
             Representability::Inhabited(()),
+        );
+
+        let local = ListLocal::int(IntListLocalId(0));
+        let bound = TotalBindingPattern::list(
+            ValueType::Int,
+            ListAssertTail::bind(local.clone(), "rest".into()),
+        );
+        let (mut graph, cursor) =
+            DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
+        let list = graph.value_ref(StoredValueShape::List(Box::new(SpecializedValueShape::Int)));
+        assert_eq!(
+            super::bind_total_pattern(&bound, list, cursor, &mut graph, &mut context).map(
+                |cursor| {
+                    cursor
+                        .scope()
+                        .list(super::super::super::local::list_local_key(&local))
+                        .shape()
+                        .clone()
+                }
+            ),
+            Representability::Inhabited(StoredValueShape::List(Box::new(
+                SpecializedValueShape::Int,
+            ))),
         );
     }
 }

@@ -2,7 +2,7 @@ use super::{
     BoolFunctionExpr, BoolListExpr, CallArg, CustomExpr, CustomFieldAccess, Expr, FloatExpr,
     IntExpr, ListExpr, PanicExpr, StringExpr, TupleExpr,
 };
-use crate::plan::{AssertPattern, BitArrayExpr, BitArrayPattern};
+use crate::plan::{BitArrayExpr, BitArrayPattern, CustomPattern};
 use crate::plan::{BoolLocalId, ConstantBoolReference, FunctionInstantiation, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -97,7 +97,7 @@ pub(crate) enum BoolExprKind {
     },
     CustomMatches {
         value: Box<CustomExpr>,
-        pattern: Box<AssertPattern>,
+        pattern: CustomPattern,
     },
     And {
         left: Box<BoolExpr>,
@@ -329,11 +329,11 @@ impl BoolExpr {
         }
     }
 
-    pub(crate) fn custom_matches(value: CustomExpr, pattern: AssertPattern) -> Self {
+    pub(crate) fn custom_matches(value: CustomExpr, pattern: CustomPattern) -> Self {
         Self {
             kind: BoolExprKind::CustomMatches {
                 value: Box::new(value),
-                pattern: Box::new(pattern),
+                pattern,
             },
         }
     }

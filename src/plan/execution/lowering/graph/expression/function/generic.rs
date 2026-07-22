@@ -183,22 +183,18 @@ where
                 ));
             Representability::Inhabited(DraftFlow::value(cursor, make(value)))
         }
-        E::Call { function, args } => {
-            call_args(args, cursor, graph, context).and_then(|flow| match flow {
-                DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
-                DraftFlow::Value {
-                    mut cursor,
-                    value: args,
-                } => direct(function, context).map(|function| {
+        E::Call { function, args } => call_args(args, cursor, graph, context).and_then(|flow| {
+            flow.and_then(|mut cursor, args| {
+                direct(function, context).map(|function| {
                     let value = graph.function_instruction(
                         &mut cursor,
                         shape.clone(),
                         I::Call { function, args },
                     );
                     DraftFlow::value(cursor, make(value))
-                }),
+                })
             })
-        }
+        }),
         E::FunctionCall { function, args } => lower_function_call(
             args,
             cursor,
@@ -223,61 +219,49 @@ where
         E::TupleIndex {
             tuple: source,
             index,
-        } => tuple::tuple_expr(source, cursor, graph, context).map(|flow| match flow {
-            DraftFlow::Diverged => DraftFlow::Diverged,
-            DraftFlow::Value {
-                mut cursor,
-                value: tuple,
-            } => {
+        } => tuple::tuple_expr(source, cursor, graph, context).map(|flow| {
+            flow.map_cursor(|cursor, tuple| {
                 let value = graph.function_instruction(
-                    &mut cursor,
+                    cursor,
                     shape.clone(),
                     I::TupleIndex {
                         tuple,
                         index: *index,
                     },
                 );
-                DraftFlow::value(cursor, make(value))
-            }
+                make(value)
+            })
         }),
         E::CustomField(access) => {
-            custom::custom_expr(access.source(), cursor, graph, context).map(|flow| match flow {
-                DraftFlow::Diverged => DraftFlow::Diverged,
-                DraftFlow::Value {
-                    mut cursor,
-                    value: source,
-                } => {
+            custom::custom_expr(access.source(), cursor, graph, context).map(|flow| {
+                flow.map_cursor(|cursor, source| {
                     let value = graph.function_instruction(
-                        &mut cursor,
+                        cursor,
                         shape.clone(),
                         I::CustomField {
                             source,
                             index: access.index(),
                         },
                     );
-                    DraftFlow::value(cursor, make(value))
-                }
+                    make(value)
+                })
             })
         }
         E::ListIndex {
             list: source,
             index,
-        } => list::function_list_expr(source, cursor, graph, context).map(|flow| match flow {
-            DraftFlow::Diverged => DraftFlow::Diverged,
-            DraftFlow::Value {
-                mut cursor,
-                value: list,
-            } => {
+        } => list::function_list_expr(source, cursor, graph, context).map(|flow| {
+            flow.map_cursor(|cursor, list| {
                 let value = graph.function_instruction(
-                    &mut cursor,
+                    cursor,
                     shape.clone(),
                     I::ListIndex {
                         list: list.value().clone(),
                         index: *index,
                     },
                 );
-                DraftFlow::value(cursor, make(value))
-            }
+                make(value)
+            })
         }),
         E::Panic(value) => source_stop(value, cursor, graph, context).map(|flow| flow.map(make)),
         E::BoolCase {
@@ -339,12 +323,7 @@ where
         ),
         E::Block { steps, return_ } => {
             super::super::super::step::steps(steps, cursor, graph, context).and_then(|flow| {
-                match flow {
-                    DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
-                    DraftFlow::Value { cursor, value: () } => {
-                        branch(return_.kind(), cursor, graph, context)
-                    }
-                }
+                flow.and_then(|cursor, ()| branch(return_.kind(), cursor, graph, context))
             })
         }
     }
