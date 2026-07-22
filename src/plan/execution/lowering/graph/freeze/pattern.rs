@@ -1,4 +1,4 @@
-use super::super::pattern::{
+use super::super::draft::pattern::{
     DraftBitArrayBindingPattern, DraftBitArrayPattern, DraftBitArrayPatternSegment,
     DraftBitArrayPatternSize, DraftBitArrayPatternSizeExpr, DraftBitArrayPatternValue,
     DraftBitArrayStringPattern, DraftMatchListTail, DraftMatchPattern, DraftMatchPatternBinding,

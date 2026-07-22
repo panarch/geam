@@ -2,12 +2,12 @@ mod instruction;
 mod pattern;
 mod value;
 
-use super::liveness::GraphLiveness;
-use super::{
+use super::draft::{
     DraftBlock, DraftBlockId, DraftEdge, DraftGraph, DraftGraphBuilder, DraftGraphValue,
     DraftInstruction, DraftMatchEdge, DraftMatchEdgeArgument, DraftNeverCallTarget,
-    DraftTerminator, DraftValueRef,
+    DraftTerminator, DraftValueRef, LoweredFunctionGraph,
 };
+use super::liveness::GraphLiveness;
 use crate::plan::execution;
 use std::collections::{HashMap, HashSet};
 use value::BlockValues;
@@ -21,7 +21,7 @@ struct BlockLayout {
 pub(super) fn freeze<Return, TailCall>(
     graph: DraftGraphBuilder<Return, TailCall>,
     context: &mut super::super::LoweringContext,
-) -> super::LoweredFunctionGraph<execution::graph::FunctionGraph<Return::Frozen, TailCall>>
+) -> LoweredFunctionGraph<execution::graph::FunctionGraph<Return::Frozen, TailCall>>
 where
     Return: DraftGraphValue + FreezeGraphValue,
     TailCall: Clone,
@@ -79,7 +79,7 @@ where
         ));
     }
 
-    super::LoweredFunctionGraph {
+    LoweredFunctionGraph {
         parameter_count,
         body: execution::graph::FunctionGraph::from_parts(block_ids[&entry], blocks, exits),
     }

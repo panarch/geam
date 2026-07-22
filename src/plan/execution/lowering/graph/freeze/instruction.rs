@@ -1,11 +1,11 @@
-use super::super::DraftInstruction;
-use super::super::instruction::{
+use super::super::draft::instruction::{
     DraftBitArrayBitsSize, DraftBitArrayEvaluatedSize, DraftBitArrayInstruction,
     DraftBitArraySegment, DraftBoolInstruction, DraftCustomInstruction, DraftFloatInstruction,
     DraftFunctionInstruction, DraftIntInstruction, DraftListInstruction, DraftNilInstruction,
     DraftParameterListInstruction, DraftStringInstruction, DraftTupleInstruction,
     DraftTypedListInstruction, DraftUtfCodepointInstruction,
 };
+use super::super::draft::{DraftInstruction, DraftList};
 use super::value::BlockValues;
 use crate::plan::execution;
 
@@ -717,7 +717,7 @@ fn freeze_typed_list<Element, FinalElement, Local, Function>(
     instruction: &DraftTypedListInstruction<Element, Local, Function>,
     values: &BlockValues,
     element: fn(&BlockValues, &Element) -> FinalElement,
-    list: fn(&BlockValues, &super::super::DraftList) -> Local,
+    list: fn(&BlockValues, &DraftList) -> Local,
 ) -> execution::graph::TypedListInstruction<FinalElement, Local, Function>
 where
     Local: Copy,
