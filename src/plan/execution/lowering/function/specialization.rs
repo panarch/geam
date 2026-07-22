@@ -1,4 +1,4 @@
-use super::{FunctionTableBuilder, lowered_function, push_list_function_function};
+use super::table::{FunctionTableBuilder, lowered_function, push_list_function_function};
 use crate::plan::execution::lowering::LoweringContext;
 use crate::plan::execution::lowering::graph;
 use crate::plan::execution::lowering::specialization::{

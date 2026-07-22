@@ -1,8 +1,8 @@
 mod constant;
+mod function;
 mod graph;
 mod local;
 mod specialization;
-mod table;
 mod value_type;
 
 use super::ExecutionPlan;
@@ -110,9 +110,9 @@ struct LoweringContext {
     constants: constant::ConstantLowering,
     types: value_type::TypeInterner,
     representations: RepresentationContext,
-    functions: table::FunctionTableBuilder,
+    functions: function::FunctionTableBuilder,
     entry_templates: HashMap<crate::plan::FunctionTemplateId, local::FunctionEntryTemplate>,
-    next_function_indices: HashMap<table::FunctionTableFamily, usize>,
+    next_function_indices: HashMap<function::FunctionTableFamily, usize>,
     provisional_specializations: HashMap<SpecializationKey, ProvisionalSpecialization>,
     erased_specializations: HashSet<SpecializationKey>,
     pending: VecDeque<SpecializationKey>,
@@ -192,7 +192,7 @@ impl LoweringContext {
             constants: constant::ConstantLowering::default(),
             types: value_type::TypeInterner::new(),
             representations,
-            functions: table::FunctionTableBuilder::default(),
+            functions: function::FunctionTableBuilder::default(),
             entry_templates,
             next_function_indices: HashMap::new(),
             provisional_specializations: HashMap::new(),
@@ -1491,15 +1491,15 @@ impl LoweringContext {
     ) -> super::RuntimeFunctionId {
         match return_ {
             specialization::ValueInhabitation::Uninhabited(_) => {
-                let specialization =
-                    self.reserve_provisional_specialization(key, table::FunctionTableFamily::Never);
+                let specialization = self
+                    .reserve_provisional_specialization(key, function::FunctionTableFamily::Never);
                 super::RuntimeFunctionId::Never(super::NeverFunctionId(specialization.index))
             }
             specialization::ValueInhabitation::Inhabited(return_shape) => {
                 let family =
-                    table::stored_function_table_family(&return_shape, &self.representations);
+                    function::stored_function_table_family(&return_shape, &self.representations);
                 let specialization = self.reserve_provisional_specialization(key, family);
-                table::function_id(
+                function::function_id(
                     &return_shape,
                     specialization.index,
                     &mut self.types,
@@ -1512,7 +1512,7 @@ impl LoweringContext {
     fn provisional_specialization(
         &mut self,
         key: SpecializationKey,
-        family: table::FunctionTableFamily,
+        family: function::FunctionTableFamily,
     ) -> specialization::Representability<ProvisionalSpecialization> {
         if self.erased_specializations.contains(&key) {
             specialization::Representability::Uninhabited
@@ -1526,7 +1526,7 @@ impl LoweringContext {
     fn reserve_provisional_specialization(
         &mut self,
         key: SpecializationKey,
-        family: table::FunctionTableFamily,
+        family: function::FunctionTableFamily,
     ) -> ProvisionalSpecialization {
         match self.provisional_specializations.get(&key) {
             Some(specialization) => specialization.clone(),
@@ -1544,7 +1544,7 @@ impl LoweringContext {
     fn reserve_index_for(
         &mut self,
         instantiation: &crate::plan::FunctionInstantiation,
-        family: table::FunctionTableFamily,
+        family: function::FunctionTableFamily,
     ) -> specialization::Representability<usize> {
         let (key, _) = SpecializationKey::from_instantiation(instantiation, &self.substitution);
         self.provisional_specialization(key, family)
@@ -1556,11 +1556,11 @@ impl LoweringContext {
         function: &crate::plan::FunctionInstantiation,
     ) -> specialization::Representability<super::NeverFunctionId> {
         let (key, _) = SpecializationKey::from_instantiation(function, &self.substitution);
-        self.provisional_specialization(key, table::FunctionTableFamily::Never)
+        self.provisional_specialization(key, function::FunctionTableFamily::Never)
             .map(|specialization| super::NeverFunctionId(specialization.index))
     }
 
-    fn next_function_index(&mut self, family: table::FunctionTableFamily) -> usize {
+    fn next_function_index(&mut self, family: function::FunctionTableFamily) -> usize {
         let next = self.next_function_indices.entry(family).or_default();
         let index = *next;
         *next += 1;
@@ -1570,7 +1570,7 @@ impl LoweringContext {
     fn reserve_function_id<Function>(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-        family: table::FunctionTableFamily,
+        family: function::FunctionTableFamily,
         lower: impl FnOnce(usize, &mut Self) -> Function,
     ) -> specialization::Representability<Function> {
         self.reserve_index_for(function, family)
@@ -1581,7 +1581,7 @@ impl LoweringContext {
         &mut self,
         function: &crate::plan::FunctionInstantiation,
     ) -> specialization::Representability<super::IntFunctionId> {
-        self.reserve_function_id(function, table::FunctionTableFamily::Int, |index, _| {
+        self.reserve_function_id(function, function::FunctionTableFamily::Int, |index, _| {
             super::IntFunctionId(index)
         })
     }
@@ -1590,18 +1590,22 @@ impl LoweringContext {
         &mut self,
         function: &crate::plan::FunctionInstantiation,
     ) -> specialization::Representability<super::FloatFunctionId> {
-        self.reserve_function_id(function, table::FunctionTableFamily::Float, |index, _| {
-            super::FloatFunctionId(index)
-        })
+        self.reserve_function_id(
+            function,
+            function::FunctionTableFamily::Float,
+            |index, _| super::FloatFunctionId(index),
+        )
     }
 
     fn string_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
     ) -> specialization::Representability<super::StringFunctionId> {
-        self.reserve_function_id(function, table::FunctionTableFamily::String, |index, _| {
-            super::StringFunctionId(index)
-        })
+        self.reserve_function_id(
+            function,
+            function::FunctionTableFamily::String,
+            |index, _| super::StringFunctionId(index),
+        )
     }
 
     fn bit_array_function_id(
@@ -1610,7 +1614,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::BitArrayFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::BitArray,
+            function::FunctionTableFamily::BitArray,
             |index, _| super::BitArrayFunctionId(index),
         )
     }
@@ -1621,7 +1625,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::UtfCodepointFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::UtfCodepoint,
+            function::FunctionTableFamily::UtfCodepoint,
             |index, _| super::UtfCodepointFunctionId(index),
         )
     }
@@ -1633,7 +1637,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::CustomFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::Custom,
+            function::FunctionTableFamily::Custom,
             |index, context| {
                 super::CustomFunctionId::new(index, context.types.custom_value_shape(shape))
             },
@@ -1644,7 +1648,7 @@ impl LoweringContext {
         &mut self,
         function: &crate::plan::FunctionInstantiation,
     ) -> specialization::Representability<super::BoolFunctionId> {
-        self.reserve_function_id(function, table::FunctionTableFamily::Bool, |index, _| {
+        self.reserve_function_id(function, function::FunctionTableFamily::Bool, |index, _| {
             super::BoolFunctionId(index)
         })
     }
@@ -1653,7 +1657,7 @@ impl LoweringContext {
         &mut self,
         function: &crate::plan::FunctionInstantiation,
     ) -> specialization::Representability<super::NilFunctionId> {
-        self.reserve_function_id(function, table::FunctionTableFamily::Nil, |index, _| {
+        self.reserve_function_id(function, function::FunctionTableFamily::Nil, |index, _| {
             super::NilFunctionId(index)
         })
     }
@@ -1662,9 +1666,11 @@ impl LoweringContext {
         &mut self,
         function: &crate::plan::FunctionInstantiation,
     ) -> specialization::Representability<super::TupleFunctionId> {
-        self.reserve_function_id(function, table::FunctionTableFamily::Tuple, |index, _| {
-            super::TupleFunctionId(index)
-        })
+        self.reserve_function_id(
+            function,
+            function::FunctionTableFamily::Tuple,
+            |index, _| super::TupleFunctionId(index),
+        )
     }
 
     fn list_function_id(
@@ -1674,8 +1680,8 @@ impl LoweringContext {
     ) -> specialization::Representability<super::ListFunctionId> {
         self.reserve_function_id(
             function,
-            table::list_function_table_family(item),
-            |index, context| table::list_function_id(item, index, &mut context.types),
+            function::list_function_table_family(item),
+            |index, context| function::list_function_id(item, index, &mut context.types),
         )
     }
 
@@ -1685,7 +1691,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::IntListFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::IntList,
+            function::FunctionTableFamily::IntList,
             |index, context| super::IntListFunctionId::new(index, context.types.int_list_type()),
         )
     }
@@ -1697,7 +1703,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::ParameterListFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::ParameterList,
+            function::FunctionTableFamily::ParameterList,
             |index, context| {
                 super::ParameterListFunctionId::new(
                     index,
@@ -1713,7 +1719,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::StringListFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::StringList,
+            function::FunctionTableFamily::StringList,
             |index, context| {
                 super::StringListFunctionId::new(index, context.types.string_list_type())
             },
@@ -1726,7 +1732,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::BitArrayListFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::BitArrayList,
+            function::FunctionTableFamily::BitArrayList,
             |index, context| {
                 super::BitArrayListFunctionId::new(index, context.types.bit_array_list_type())
             },
@@ -1739,7 +1745,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::UtfCodepointListFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::UtfCodepointList,
+            function::FunctionTableFamily::UtfCodepointList,
             |index, context| {
                 super::UtfCodepointListFunctionId::new(
                     index,
@@ -1756,7 +1762,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::CustomListFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::CustomList,
+            function::FunctionTableFamily::CustomList,
             |index, _| super::CustomListFunctionId::new(index, type_id),
         )
     }
@@ -1767,7 +1773,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::FloatListFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::FloatList,
+            function::FunctionTableFamily::FloatList,
             |index, context| {
                 super::FloatListFunctionId::new(index, context.types.float_list_type())
             },
@@ -1780,7 +1786,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::BoolListFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::BoolList,
+            function::FunctionTableFamily::BoolList,
             |index, context| super::BoolListFunctionId::new(index, context.types.bool_list_type()),
         )
     }
@@ -1791,7 +1797,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::NilListFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::NilList,
+            function::FunctionTableFamily::NilList,
             |index, context| super::NilListFunctionId::new(index, context.types.nil_list_type()),
         )
     }
@@ -1803,7 +1809,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::TupleListFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::TupleList,
+            function::FunctionTableFamily::TupleList,
             |index, _| super::TupleListFunctionId::new(index, type_id),
         )
     }
@@ -1815,7 +1821,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::ListListFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::ListList,
+            function::FunctionTableFamily::ListList,
             |index, _| super::ListListFunctionId::new(index, type_id),
         )
     }
@@ -1827,7 +1833,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::ParameterListListFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::ParameterListList,
+            function::FunctionTableFamily::ParameterListList,
             |index, _| super::ParameterListListFunctionId::new(index, type_id),
         )
     }
@@ -1839,7 +1845,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::FunctionListFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::FunctionList,
+            function::FunctionTableFamily::FunctionList,
             |index, _| super::FunctionListFunctionId::new(index, type_id),
         )
     }
@@ -1851,9 +1857,9 @@ impl LoweringContext {
     ) -> specialization::Representability<super::FunctionFunctionId> {
         self.reserve_function_id(
             function,
-            table::function_function_table_family(return_, &self.representations),
+            function::function_function_table_family(return_, &self.representations),
             |index, context| {
-                table::function_function_id(
+                function::function_function_id(
                     return_,
                     index,
                     &mut context.types,
@@ -1869,7 +1875,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::IntFunctionFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::IntFunction,
+            function::FunctionTableFamily::IntFunction,
             |index, _| super::IntFunctionFunctionId(index),
         )
     }
@@ -1880,7 +1886,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::FloatFunctionFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::FloatFunction,
+            function::FunctionTableFamily::FloatFunction,
             |index, _| super::FloatFunctionFunctionId(index),
         )
     }
@@ -1891,7 +1897,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::StringFunctionFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::StringFunction,
+            function::FunctionTableFamily::StringFunction,
             |index, _| super::StringFunctionFunctionId(index),
         )
     }
@@ -1902,7 +1908,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::BitArrayFunctionFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::BitArrayFunction,
+            function::FunctionTableFamily::BitArrayFunction,
             |index, _| super::BitArrayFunctionFunctionId(index),
         )
     }
@@ -1913,7 +1919,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::UtfCodepointFunctionFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::UtfCodepointFunction,
+            function::FunctionTableFamily::UtfCodepointFunction,
             |index, _| super::UtfCodepointFunctionFunctionId(index),
         )
     }
@@ -1925,7 +1931,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::CustomFunctionFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::CustomFunction,
+            function::FunctionTableFamily::CustomFunction,
             |index, _| super::CustomFunctionFunctionId::new(index, type_),
         )
     }
@@ -1936,7 +1942,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::BoolFunctionFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::BoolFunction,
+            function::FunctionTableFamily::BoolFunction,
             |index, _| super::BoolFunctionFunctionId(index),
         )
     }
@@ -1947,7 +1953,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::NilFunctionFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::NilFunction,
+            function::FunctionTableFamily::NilFunction,
             |index, _| super::NilFunctionFunctionId(index),
         )
     }
@@ -1958,7 +1964,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::TupleFunctionFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::TupleFunction,
+            function::FunctionTableFamily::TupleFunction,
             |index, _| super::TupleFunctionFunctionId(index),
         )
     }
@@ -1971,9 +1977,9 @@ impl LoweringContext {
     ) -> specialization::Representability<super::ListFunctionFunctionId> {
         self.reserve_function_id(
             function,
-            table::list_function_function_table_family(item),
+            function::list_function_function_table_family(item),
             |index, context| {
-                table::list_function_function_id(type_, item, index, &mut context.types)
+                function::list_function_function_id(type_, item, index, &mut context.types)
             },
         )
     }
@@ -1985,7 +1991,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::FunctionFunctionFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::FunctionFunction,
+            function::FunctionTableFamily::FunctionFunction,
             |index, _| super::FunctionFunctionFunctionId::new(index, type_),
         )
     }
@@ -1997,7 +2003,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::GenericFunctionFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::GenericFunction,
+            function::FunctionTableFamily::GenericFunction,
             |index, _| super::GenericFunctionFunctionId::new(index, type_),
         )
     }
@@ -2009,7 +2015,7 @@ impl LoweringContext {
     ) -> specialization::Representability<super::NeverFunctionFunctionId> {
         self.reserve_function_id(
             function,
-            table::FunctionTableFamily::NeverFunction,
+            function::FunctionTableFamily::NeverFunction,
             |index, _| super::NeverFunctionFunctionId::new(index, type_),
         )
     }
@@ -2132,7 +2138,7 @@ pub(super) fn lower(module_plan: ModulePlan) -> ExecutionPlan {
 
         while let Some(key) = context.pending.pop_front() {
             context.begin(&key);
-            table::lower_specialized(templates.get(key.template()), &key, &mut context);
+            function::lower_specialized(templates.get(key.template()), &key, &mut context);
         }
 
         let (constant_templates, representations, outcome) = context.finish();
@@ -2307,7 +2313,10 @@ mod tests {
         let seeded = SpecializationKey::monomorphic(crate::plan::FunctionTemplateId::new(0));
         assert_eq!(
             context
-                .provisional_specialization(seeded.clone(), super::table::FunctionTableFamily::Int,)
+                .provisional_specialization(
+                    seeded.clone(),
+                    super::function::FunctionTableFamily::Int,
+                )
                 .map(|specialization| specialization.index),
             Representability::Inhabited(0),
         );
@@ -2318,7 +2327,7 @@ mod tests {
         assert!(!context.provisional_specializations.contains_key(&erased));
         assert_eq!(
             context
-                .provisional_specialization(erased, super::table::FunctionTableFamily::Never)
+                .provisional_specialization(erased, super::function::FunctionTableFamily::Never)
                 .map(|_| ()),
             Representability::Uninhabited,
         );
