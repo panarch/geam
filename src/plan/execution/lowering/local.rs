@@ -1,10 +1,51 @@
+use super::LoweringContext;
 use super::specialization::{
     FunctionRepresentation, SpecializedFunctionShape, SpecializedTypeSubstitution,
     SpecializedValueShape, StoredValueShape,
 };
-use super::{LoweringContext, SpecializedFunctionLocal};
 use crate::plan::{execution, module};
 use std::collections::HashMap;
+
+#[derive(Clone)]
+pub(super) enum SpecializedFunctionLocal {
+    Generic(execution::GenericFunctionLocal),
+    Never(execution::NeverFunctionLocal),
+    Int {
+        local: execution::IntFunctionLocalId,
+        type_: execution::FunctionType,
+    },
+    Float {
+        local: execution::FloatFunctionLocalId,
+        type_: execution::FunctionType,
+    },
+    String {
+        local: execution::StringFunctionLocalId,
+        type_: execution::FunctionType,
+    },
+    BitArray {
+        local: execution::BitArrayFunctionLocalId,
+        type_: execution::FunctionType,
+    },
+    UtfCodepoint {
+        local: execution::UtfCodepointFunctionLocalId,
+        type_: execution::FunctionType,
+    },
+    Custom(execution::CustomFunctionLocal),
+    Bool {
+        local: execution::BoolFunctionLocalId,
+        type_: execution::FunctionType,
+    },
+    Nil {
+        local: execution::NilFunctionLocalId,
+        type_: execution::FunctionType,
+    },
+    Tuple {
+        local: execution::TupleFunctionLocalId,
+        type_: execution::FunctionType,
+    },
+    List(execution::ListFunctionLocal),
+    Function(execution::FunctionFunctionLocal),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(super) enum LocalKind {
