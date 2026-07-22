@@ -890,10 +890,7 @@ mod tests {
     }
 
     fn source_stop_kind(
-        graph: &crate::plan::execution::graph::FunctionGraph<
-            crate::plan::execution::graph::NeverReturn,
-            (),
-        >,
+        graph: &crate::plan::execution::FunctionGraph<std::convert::Infallible, ()>,
     ) -> (
         SourceStopKind,
         Option<crate::plan::execution::StringLocalId>,

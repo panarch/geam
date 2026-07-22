@@ -1,11 +1,23 @@
-use crate::plan::execution::{
-    BitArrayFunctionLocalId, BitArrayListLocalId, BoolFunctionLocalId, BoolListLocalId,
-    CustomFunctionLocal, CustomListLocalId, FloatFunctionLocalId, FloatListLocalId,
-    FunctionFunctionLocal, FunctionListLocalId, GenericFunctionLocal, IntFunctionLocalId,
-    IntListLocalId, ListFunctionLocal, ListListLocalId, NeverFunctionLocal, NilFunctionLocalId,
-    NilListLocalId, ParameterListListLocalId, StringFunctionLocalId, StringListLocalId,
-    TupleFunctionLocalId, TupleListLocalId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
+mod id;
+mod param;
+
+pub(crate) use id::{
+    BitArrayFunctionLocalId, BitArrayListFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
+    BoolFunctionLocalId, BoolListFunctionLocalId, BoolListLocalId, BoolLocalId,
+    CustomFunctionLocal, CustomFunctionLocalId, CustomListFunctionLocalId, CustomListLocalId,
+    CustomLocal, CustomLocalId, FloatFunctionLocalId, FloatListFunctionLocalId, FloatListLocalId,
+    FloatLocalId, FunctionFunctionLocal, FunctionFunctionLocalId, FunctionListFunctionLocalId,
+    FunctionListLocalId, GenericFunctionLocal, GenericFunctionLocalId, IntFunctionLocalId,
+    IntListFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionLocal, ListListFunctionLocalId,
+    ListListLocalId, ListLocal, NeverFunctionLocal, NeverFunctionLocalId, NilFunctionLocalId,
+    NilListFunctionLocalId, NilListLocalId, NilLocalId, ParameterListFunctionLocalId,
+    ParameterListListFunctionLocalId, ParameterListListLocalId, ParameterListLocalId,
+    StringFunctionLocalId, StringListFunctionLocalId, StringListLocalId, StringLocalId,
+    TupleFunctionLocalId, TupleListFunctionLocalId, TupleListLocalId, TupleLocalId,
+    UtfCodepointFunctionLocalId, UtfCodepointListFunctionLocalId, UtfCodepointListLocalId,
+    UtfCodepointLocalId,
 };
+pub(crate) use param::{ParamLocal, ParamSlot};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum FunctionLocal {
@@ -23,8 +35,6 @@ pub(crate) enum FunctionLocal {
     List(ListFunctionLocal),
     Function(FunctionFunctionLocal),
 }
-
-pub(crate) enum NeverReturn {}
 
 pub(crate) enum StoredListLocal {
     ParameterList(ParameterListListLocalId),

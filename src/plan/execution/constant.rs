@@ -1,7 +1,7 @@
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 
-use super::graph::{FunctionGraph, FunctionGraphExit, FunctionLocal, Graph, GraphExitId};
+use super::graph::{FunctionLocal, Graph, GraphExitId};
 use super::{
     BitArrayListLocalId, BitArrayLocalId, BoolListLocalId, BoolLocalId, CustomListLocalId,
     CustomLocal, FloatListLocalId, FloatLocalId, FunctionListLocalId, IntListLocalId, IntLocalId,
@@ -58,29 +58,17 @@ impl<Value> Hash for ConstantId<Value> {
     }
 }
 
-#[derive(Clone)]
-pub(crate) enum ConstantTailCall {}
-
 pub(crate) struct ConstantProgram<Value> {
     graph: Graph,
     returns: Box<[Value]>,
 }
 
 impl<Value> ConstantProgram<Value> {
-    pub(in crate::plan::execution) fn from_graph(
-        graph: FunctionGraph<Value, ConstantTailCall>,
-    ) -> Self {
-        let (graph, exits) = graph.into_parts();
-        let returns = exits
-            .into_vec()
-            .into_iter()
-            .map(|exit| match exit {
-                FunctionGraphExit::Return(value) => value,
-                FunctionGraphExit::TailCall { function, .. } => match function {},
-            })
-            .collect::<Vec<_>>()
-            .into_boxed_slice();
-        Self { graph, returns }
+    pub(in crate::plan::execution) fn from_parts(graph: Graph, returns: Vec<Value>) -> Self {
+        Self {
+            graph,
+            returns: returns.into_boxed_slice(),
+        }
     }
 
     pub(crate) fn graph(&self) -> &Graph {

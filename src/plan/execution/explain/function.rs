@@ -1,6 +1,6 @@
 use super::super::ExecutionPlan;
+use super::super::FunctionTables;
 use super::super::function::ExecutableFunction;
-use super::super::table::FunctionTables;
 use super::graph::ExplainedGraph;
 use super::label::FunctionLabel;
 

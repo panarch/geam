@@ -1,4 +1,4 @@
-use super::BlockId;
+use super::super::BlockId;
 use crate::plan::execution::ParamLocal;
 
 pub(crate) struct Edge {

@@ -916,7 +916,7 @@ impl FreezeFunctionFamily for FunctionFunctionFamily {
 }
 
 impl FreezeGraphValue for DraftNeverReturn {
-    type Frozen = execution::graph::NeverReturn;
+    type Frozen = std::convert::Infallible;
 
     fn freeze(&self, _values: &BlockValues) -> Self::Frozen {
         match *self {}

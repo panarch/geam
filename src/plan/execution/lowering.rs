@@ -30,7 +30,7 @@ struct SpecializationState {
 
 struct LoweredExecution {
     constants: super::constant::ConstantTable,
-    functions: super::table::FunctionTables,
+    functions: super::FunctionTables,
     list_types: ListTypeTable,
     custom_types: CustomTypeTable,
     value_shapes: ValueShapeTable,

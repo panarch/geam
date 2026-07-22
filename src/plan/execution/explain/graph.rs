@@ -1,8 +1,8 @@
 use super::super::constant::ConstantProgram;
-use super::super::function::FunctionEntry;
+use super::super::function::{FunctionEntry, FunctionGraph, FunctionGraphExit};
 use super::super::graph::{
-    Edge, FunctionGraph, FunctionGraphExit, Graph, GraphExitId, MatchEdge, MatchEdgeArgument,
-    NeverCallTarget, SourceStopKind, Terminator,
+    Edge, Graph, GraphExitId, MatchEdge, MatchEdgeArgument, NeverCallTarget, SourceStopKind,
+    Terminator,
 };
 use super::super::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionFunctionId,

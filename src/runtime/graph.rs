@@ -8,8 +8,8 @@ pub(in crate::runtime) use function::{run_int, run_int_list};
 
 use crate::plan::execution::{
     BlockId, ConstantProgram, Edge, ExecutionPlan, FunctionGraph, FunctionGraphExit, Graph,
-    GraphExitId, GraphNeverReturn, MatchEdge, MatchEdgeArgument, NeverCallTarget, NeverFunctionId,
-    RuntimeFunctionId, SourceStopKind, Terminator,
+    GraphExitId, MatchEdge, MatchEdgeArgument, NeverCallTarget, NeverFunctionId, RuntimeFunctionId,
+    SourceStopKind, Terminator,
 };
 use crate::runtime::environment::{BlockEnvironment, RetainedValues};
 use crate::runtime::error::{ExecutionResult, PanicKind};
@@ -355,7 +355,7 @@ fn panic_kind(kind: SourceStopKind) -> PanicKind {
     }
 }
 
-impl GraphValue for GraphNeverReturn {
+impl GraphValue for Infallible {
     type Evaluated = Infallible;
 
     fn read(&self, _environment: &BlockEnvironment) -> Self::Evaluated {
