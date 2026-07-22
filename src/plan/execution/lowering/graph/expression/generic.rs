@@ -2,7 +2,7 @@ use super::{call_args, custom, function, list, lower_function_call, panic_expr, 
 use crate::plan::execution::lowering::graph::{DraftCursor, DraftFlow, DraftGraph, DraftValueRef};
 use crate::plan::execution::lowering::specialization::{
     Representability, StoredValueShape, UninhabitedCustomValueShape, UninhabitedTupleValueShape,
-    UninhabitedValueShape, ValueInhabitation, ValueRepresentation,
+    UninhabitedValueShape, ValueInhabitation,
 };
 use crate::plan::module;
 
@@ -15,11 +15,15 @@ pub(in crate::plan::execution::lowering) fn generic_expr(
     context: &mut super::super::super::LoweringContext,
 ) -> Lowered {
     let shape = context.concrete_parameter(expression.parameter());
-    match context.representations.representation(&shape) {
-        ValueRepresentation::Uninhabited(_) => {
+    match context
+        .representations
+        .representation(&shape)
+        .into_representability()
+    {
+        Representability::Uninhabited => {
             never_expr(expression, cursor, graph, context).map(|()| DraftFlow::Diverged)
         }
-        ValueRepresentation::Stored(shape) => {
+        Representability::Inhabited(shape) => {
             stored_expr(expression, &shape, cursor, graph, context)
         }
     }

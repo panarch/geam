@@ -8,12 +8,12 @@ pub(in crate::runtime) use function::{run_int, run_int_list};
 
 use crate::plan::execution::{
     BlockId, ConstantProgram, Edge, ExecutionPlan, FunctionGraph, FunctionGraphExit, Graph,
-    GraphExitId, GraphNeverReturn, MatchEdge, MatchEdgeArgument, RuntimeFunctionId, SourceStopKind,
-    Terminator,
+    GraphExitId, GraphNeverReturn, MatchEdge, MatchEdgeArgument, NeverCallTarget, NeverFunctionId,
+    RuntimeFunctionId, SourceStopKind, Terminator,
 };
 use crate::runtime::environment::{BlockEnvironment, RetainedValues};
 use crate::runtime::error::{ExecutionResult, PanicKind};
-use crate::runtime::evaluated::{EvaluatedFunctionValue, EvaluatedValue};
+use crate::runtime::evaluated::{EvaluatedFunctionValue, EvaluatedNeverFunction, EvaluatedValue};
 use crate::runtime::state::RuntimeState;
 use crate::runtime::{ExecutionError, Value};
 use ecow::EcoString;
@@ -37,6 +37,23 @@ pub(super) trait GraphValue {
 struct ExecutedGraph {
     exit: GraphExitId,
     environment: BlockEnvironment,
+}
+
+enum GraphAction {
+    Continue {
+        block: BlockId,
+        inputs: RetainedValues,
+    },
+    Exit(GraphExitId),
+    NeverCall {
+        function: NeverCall,
+        inputs: RetainedValues,
+    },
+}
+
+enum NeverCall {
+    Direct(NeverFunctionId),
+    Value(EvaluatedNeverFunction),
 }
 
 pub(super) fn run_main(plan: &ExecutionPlan) -> ExecutionResult<Value> {
@@ -148,177 +165,183 @@ fn execute_graph(
             instruction::execute(plan, state, &mut environment, instruction)?;
         }
 
-        match block.terminator() {
-            Terminator::Jump(edge) => {
-                (block_id, environment) = transition(state, environment, edge);
+        match terminator_action(plan, state, &environment, block.terminator())? {
+            GraphAction::Continue { block, inputs } => {
+                drop(environment);
+                state.drain_releases();
+                block_id = block;
+                environment = BlockEnvironment::from_retained(inputs);
             }
-            Terminator::BoolBranch {
-                subject,
-                true_,
-                false_,
-            } => {
-                let edge = if environment.bool(*subject) {
-                    true_
-                } else {
-                    false_
-                };
-                (block_id, environment) = transition(state, environment, edge);
-            }
-            Terminator::IntSwitch {
-                subject,
-                clauses,
-                fallback,
-            } => {
-                let subject = environment.int(*subject);
-                let selected = clauses
-                    .iter()
-                    .find_map(|(pattern, edge)| (pattern == &subject).then_some(edge));
-                let edge = match selected {
-                    Some(edge) => edge,
-                    None => fallback,
-                };
-                (block_id, environment) = transition(state, environment, edge);
-            }
-            Terminator::FloatSwitch {
-                subject,
-                clauses,
-                fallback,
-            } => {
-                let subject = environment.float(*subject);
-                let selected = clauses
-                    .iter()
-                    .find_map(|(pattern, edge)| (pattern == &subject).then_some(edge));
-                let edge = match selected {
-                    Some(edge) => edge,
-                    None => fallback,
-                };
-                (block_id, environment) = transition(state, environment, edge);
-            }
-            Terminator::StringSwitch {
-                subject,
-                clauses,
-                fallback,
-            } => {
-                let subject = environment.string(*subject);
-                let selected = clauses
-                    .iter()
-                    .find_map(|(pattern, edge)| (pattern == &subject).then_some(edge));
-                let edge = match selected {
-                    Some(edge) => edge,
-                    None => fallback,
-                };
-                (block_id, environment) = transition(state, environment, edge);
-            }
-            Terminator::Match {
-                subject,
-                pattern: matcher,
-                success,
-                failure,
-            } => {
-                let subject = environment.value(subject);
-                let matched = pattern::match_pattern(plan, state, &environment, matcher, &subject)?;
-                drop(subject);
-                match matched {
-                    Some(bindings) => {
-                        (block_id, environment) =
-                            transition_match(state, environment, success, bindings);
+            GraphAction::Exit(exit) => return Ok(ExecutedGraph { exit, environment }),
+            GraphAction::NeverCall { function, inputs } => {
+                drop(environment);
+                state.drain_releases();
+                return match function {
+                    NeverCall::Direct(function) => {
+                        function::run_never(plan, state, function, inputs)
+                            .map(|never| match never {})
                     }
-                    None => {
-                        (block_id, environment) = transition(state, environment, failure);
+                    NeverCall::Value(function) => {
+                        function::run_never_value(plan, state, function, inputs)
+                            .map(|never| match never {})
                     }
-                }
-            }
-            Terminator::Exit(exit) => {
-                return Ok(ExecutedGraph {
-                    exit: *exit,
-                    environment,
-                });
-            }
-            Terminator::SourceStop {
-                kind,
-                message,
-                site,
-            } => {
-                let message = message.map(|message| environment.string(message));
-                return Err(ExecutionError::source_panic(
-                    plan.source_context(),
-                    panic_kind(*kind),
-                    message,
-                    site.clone(),
-                ));
-            }
-            Terminator::LetAssertPanic {
-                subject,
-                message,
-                site,
-                pattern_span,
-            } => {
-                let subject = environment.value(subject);
-                let message = message.map(|message| environment.string(message));
-                let subject = crate::runtime::materialize::value(plan, state, subject);
-                return Err(ExecutionError::let_assert_panic(
-                    plan.source_context(),
-                    message,
-                    site.clone(),
-                    subject,
-                    *pattern_span,
-                ));
-            }
-            Terminator::NeverCall { function, args } => {
-                let args = environment.retain(args);
-                match function {
-                    crate::plan::execution::NeverCallTarget::Direct(function) => {
-                        let function = *function;
-                        drop(environment);
-                        state.drain_releases();
-                        return function::run_never(plan, state, function, args)
-                            .map(|never| match never {});
-                    }
-                    crate::plan::execution::NeverCallTarget::Value(function) => {
-                        let function = environment.never_function(function);
-                        drop(environment);
-                        state.drain_releases();
-                        return function::run_never_value(plan, state, function, args)
-                            .map(|never| match never {});
-                    }
-                }
+                };
             }
         }
     }
 }
 
-fn transition(
+fn terminator_action(
+    plan: &ExecutionPlan,
     state: &mut RuntimeState,
-    environment: BlockEnvironment,
-    edge: &Edge,
-) -> (BlockId, BlockEnvironment) {
-    let values = environment.retain(edge.args());
-    drop(environment);
-    state.drain_releases();
-    (edge.target(), BlockEnvironment::from_retained(values))
+    environment: &BlockEnvironment,
+    terminator: &Terminator,
+) -> ExecutionResult<GraphAction> {
+    match terminator {
+        Terminator::Jump(edge) => Ok(transition(environment, edge)),
+        Terminator::BoolBranch {
+            subject,
+            true_,
+            false_,
+        } => {
+            let edge = if environment.bool(*subject) {
+                true_
+            } else {
+                false_
+            };
+            Ok(transition(environment, edge))
+        }
+        Terminator::IntSwitch {
+            subject,
+            clauses,
+            fallback,
+        } => {
+            let subject = environment.int(*subject);
+            let selected = clauses
+                .iter()
+                .find_map(|(pattern, edge)| (pattern == &subject).then_some(edge));
+            let edge = match selected {
+                Some(edge) => edge,
+                None => fallback,
+            };
+            Ok(transition(environment, edge))
+        }
+        Terminator::FloatSwitch {
+            subject,
+            clauses,
+            fallback,
+        } => {
+            let subject = environment.float(*subject);
+            let selected = clauses
+                .iter()
+                .find_map(|(pattern, edge)| (pattern == &subject).then_some(edge));
+            let edge = match selected {
+                Some(edge) => edge,
+                None => fallback,
+            };
+            Ok(transition(environment, edge))
+        }
+        Terminator::StringSwitch {
+            subject,
+            clauses,
+            fallback,
+        } => {
+            let subject = environment.string(*subject);
+            let selected = clauses
+                .iter()
+                .find_map(|(pattern, edge)| (pattern == &subject).then_some(edge));
+            let edge = match selected {
+                Some(edge) => edge,
+                None => fallback,
+            };
+            Ok(transition(environment, edge))
+        }
+        Terminator::Match {
+            subject,
+            pattern: matcher,
+            success,
+            failure,
+        } => {
+            let subject = environment.value(subject);
+            let matched = pattern::match_pattern(plan, state, environment, matcher, &subject);
+            drop(subject);
+            matched.map(|matched| match matched {
+                Some(bindings) => transition_match(environment, success, bindings),
+                None => transition(environment, failure),
+            })
+        }
+        Terminator::Exit(exit) => Ok(GraphAction::Exit(*exit)),
+        Terminator::SourceStop {
+            kind,
+            message,
+            site,
+        } => {
+            let message = message.map(|message| environment.string(message));
+            Err(ExecutionError::source_panic(
+                plan.source_context(),
+                panic_kind(*kind),
+                message,
+                site.clone(),
+            ))
+        }
+        Terminator::LetAssertPanic {
+            subject,
+            message,
+            site,
+            pattern_span,
+        } => {
+            let subject = environment.value(subject);
+            let message = message.map(|message| environment.string(message));
+            let subject = crate::runtime::materialize::value(plan, state, subject);
+            Err(ExecutionError::let_assert_panic(
+                plan.source_context(),
+                message,
+                site.clone(),
+                subject,
+                *pattern_span,
+            ))
+        }
+        Terminator::NeverCall { function, args } => {
+            let inputs = environment.retain(args);
+            let function = match function {
+                NeverCallTarget::Direct(function) => NeverCall::Direct(*function),
+                NeverCallTarget::Value(function) => {
+                    NeverCall::Value(environment.never_function(function))
+                }
+            };
+            Ok(GraphAction::NeverCall { function, inputs })
+        }
+    }
+}
+
+fn transition(environment: &BlockEnvironment, edge: &Edge) -> GraphAction {
+    GraphAction::Continue {
+        block: edge.target(),
+        inputs: environment.retain(edge.args()),
+    }
 }
 
 fn transition_match(
-    state: &mut RuntimeState,
-    environment: BlockEnvironment,
+    environment: &BlockEnvironment,
     edge: &MatchEdge,
     bindings: pattern::MatchBindings,
-) -> (BlockId, BlockEnvironment) {
-    let mut values = RetainedValues::empty();
+) -> GraphAction {
+    let mut inputs = RetainedValues::empty();
     for argument in edge.args() {
         match argument {
             MatchEdgeArgument::Binding(index) => {
-                values.push_evaluated(bindings.value(*index));
+                inputs.push_evaluated(bindings.value(*index));
             }
             MatchEdgeArgument::Value(local) => {
-                values.push_evaluated(environment.value(local));
+                inputs.push_evaluated(environment.value(local));
             }
         }
     }
     drop(bindings);
-    drop(environment);
-    state.drain_releases();
-    (edge.target(), BlockEnvironment::from_retained(values))
+    GraphAction::Continue {
+        block: edge.target(),
+        inputs,
+    }
 }
 
 fn panic_kind(kind: SourceStopKind) -> PanicKind {

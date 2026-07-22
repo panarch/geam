@@ -504,11 +504,11 @@ pub fn main() { 0 }
             crate::plan::IntReturn::bool_case(
                 BoolExpr::custom_matches(
                     subject,
-                    AssertPattern::custom(CustomPattern::new(
+                    CustomPattern::new(
                         first,
                         vec![AssertPattern::Bind(first_binding.clone())],
                         Some(vec![TotalBindingPattern::bind(first_binding)]),
-                    )),
+                    ),
                 ),
                 int_return_expr(local_int(0, "inner")),
                 int_return_block(

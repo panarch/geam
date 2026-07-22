@@ -2003,11 +2003,7 @@ pub fn main() {
             Ok(super::ListCasePattern {
                 match_condition: Some(BoolExpr::custom_matches(
                     value,
-                    AssertPattern::custom(CustomPattern::new(
-                        constructor,
-                        vec![AssertPattern::Int(1.into())],
-                        None,
-                    )),
+                    CustomPattern::new(constructor, vec![AssertPattern::Int(1.into())], None,),
                 )),
                 branch_bindings: Vec::new(),
                 total_branch_steps: Vec::new(),

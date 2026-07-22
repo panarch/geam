@@ -1,6 +1,6 @@
 use super::specialization::{
     FunctionRepresentation, SpecializedFunctionShape, SpecializedTypeSubstitution,
-    SpecializedValueShape, StoredValueShape, ValueRepresentation,
+    SpecializedValueShape, StoredValueShape,
 };
 use super::{LoweringContext, SpecializedFunctionLocal};
 use crate::plan::{execution, module};
@@ -159,7 +159,7 @@ impl FunctionEntryTemplate {
         let mut prefix = ParameterPrefix::default();
         for shape in self.params.iter().chain(&self.captures[..position.index()]) {
             let shape = SpecializedValueShape::instantiate(shape, substitution);
-            if let ValueRepresentation::Stored(stored) = representations.representation(&shape) {
+            if let Some(stored) = representations.stored_shape(&shape) {
                 prefix.allocate_stored(stored, representations);
             }
         }

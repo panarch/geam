@@ -164,6 +164,24 @@ pub(super) enum Representability<T> {
     Uninhabited,
 }
 
+impl ValueInhabitation {
+    pub(super) fn into_representability(self) -> Representability<StoredValueShape> {
+        match self {
+            Self::Inhabited(shape) => Representability::Inhabited(shape),
+            Self::Uninhabited(_) => Representability::Uninhabited,
+        }
+    }
+}
+
+impl ValueRepresentation {
+    pub(super) fn into_representability(self) -> Representability<StoredValueShape> {
+        match self {
+            Self::Stored(shape) => Representability::Inhabited(shape),
+            Self::Uninhabited(_) => Representability::Uninhabited,
+        }
+    }
+}
+
 impl<T> Representability<T> {
     pub(super) fn map<U>(self, map: impl FnOnce(T) -> U) -> Representability<U> {
         match self {
@@ -525,6 +543,13 @@ impl SpecializedValueShape {
 }
 
 impl RepresentationContext {
+    pub(super) fn stored_shape(&self, shape: &SpecializedValueShape) -> Option<StoredValueShape> {
+        match self.representation(shape) {
+            ValueRepresentation::Stored(shape) => Some(shape),
+            ValueRepresentation::Uninhabited(_) => None,
+        }
+    }
+
     pub(super) fn new(custom_types: Vec<crate::plan::CustomTypeDefinition>) -> Self {
         Self {
             custom_types: custom_types

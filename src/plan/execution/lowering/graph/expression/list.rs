@@ -1583,18 +1583,10 @@ where
         E::FunctionCall {
             function: value,
             args,
-        } => function::list_function_expr(value, cursor, graph, context).and_then(
-            |flow| match flow {
-                DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
-                DraftFlow::Value {
-                    cursor,
-                    value: function,
-                } => call_args(args, cursor, graph, context).map(|flow| match flow {
-                    DraftFlow::Diverged => DraftFlow::Diverged,
-                    DraftFlow::Value {
-                        mut cursor,
-                        value: args,
-                    } => {
+        } => function::list_function_expr(value, cursor, graph, context).and_then(|flow| {
+            flow.and_then(|cursor, function| {
+                call_args(args, cursor, graph, context).and_then(|flow| {
+                    flow.and_then(|mut cursor, args| {
                         let value = graph.list_instruction(
                             &mut cursor,
                             item_shape.clone(),
@@ -1606,11 +1598,11 @@ where
                                 },
                             ),
                         );
-                        DraftFlow::value(cursor, Item::wrap(value))
-                    }
-                }),
-            },
-        ),
+                        Representability::Inhabited(DraftFlow::value(cursor, Item::wrap(value)))
+                    })
+                })
+            })
+        }),
         E::TupleIndex {
             tuple: source,
             index,
@@ -1769,7 +1761,7 @@ where
 
 fn lower_element_sequence<Element, Value>(
     elements: &[Element],
-    mut cursor: DraftCursor,
+    cursor: DraftCursor,
     graph: &mut DraftGraph,
     context: &mut super::super::super::LoweringContext,
     mut lower: impl FnMut(
@@ -1779,23 +1771,21 @@ fn lower_element_sequence<Element, Value>(
         &mut super::super::super::LoweringContext,
     ) -> Lowered<Value>,
 ) -> Lowered<Vec<Value>> {
-    let mut values = Vec::with_capacity(elements.len());
-    for element in elements {
-        match lower(element, cursor, graph, context) {
-            Representability::Uninhabited => return Representability::Uninhabited,
-            Representability::Inhabited(DraftFlow::Diverged) => {
-                return Representability::Inhabited(DraftFlow::Diverged);
-            }
-            Representability::Inhabited(DraftFlow::Value {
-                cursor: next,
-                value,
-            }) => {
-                cursor = next;
-                values.push(value);
-            }
-        }
-    }
-    Representability::Inhabited(DraftFlow::value(cursor, values))
+    elements.iter().fold(
+        Representability::Inhabited(DraftFlow::value(cursor, Vec::with_capacity(elements.len()))),
+        |lowered, element| {
+            lowered.and_then(|flow| {
+                flow.and_then(|cursor, mut values| {
+                    lower(element, cursor, graph, context).map(|flow| {
+                        flow.map(|value| {
+                            values.push(value);
+                            values
+                        })
+                    })
+                })
+            })
+        },
+    )
 }
 
 fn lower_elements<Item>(
@@ -2554,6 +2544,26 @@ pub fn main() {
                 .unwrap_err()
                 .to_string(),
             "panic: selected",
+        );
+    }
+
+    #[test]
+    fn specialized_generic_list_constant_lowers_to_stored_list_storage() {
+        let source = r#"
+const empty = []
+
+fn selected(_sample: item) -> List(item) {
+  empty
+}
+
+pub fn main() {
+  selected(1) == []
+}
+"#;
+
+        assert_eq!(
+            crate::run_main(&execution_plan(source)),
+            Ok(Value::Bool(true)),
         );
     }
 

@@ -19,6 +19,24 @@ pub(in crate::planner) struct PlannedRuntimePattern {
     pub(in crate::planner) custom_binding: Option<PlannedCustomBinding>,
 }
 
+pub(in crate::planner) struct PlannedCustomPattern {
+    pub(in crate::planner) pattern: CustomPattern,
+    pub(in crate::planner) is_total: bool,
+    total_binding: Option<TotalBindingPattern>,
+    pub(in crate::planner) custom_binding: Option<PlannedCustomBinding>,
+}
+
+impl PlannedCustomPattern {
+    fn into_runtime(self) -> PlannedRuntimePattern {
+        PlannedRuntimePattern {
+            pattern: AssertPattern::custom(self.pattern),
+            is_total: self.is_total,
+            total_binding: self.total_binding,
+            custom_binding: self.custom_binding,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(in crate::planner) struct PlannedCustomBinding {
     constructor: CustomConstructor,
@@ -186,6 +204,7 @@ pub(in crate::planner) fn plan_runtime_pattern(
                 return Err(invalid_pattern());
             };
             plan_custom_pattern(arguments, constructor, type_, source_shape, context)
+                .map(PlannedCustomPattern::into_runtime)
         }
         Pattern::StringPrefix {
             left_side_string,
@@ -230,7 +249,7 @@ pub(in crate::planner) fn plan_custom_subject_pattern(
     pattern: TypedPattern,
     source_shape: CustomValueShape,
     context: &mut PlanContext<'_>,
-) -> Result<PlannedRuntimePattern, PlanError> {
+) -> Result<PlannedCustomPattern, PlanError> {
     let Pattern::Constructor {
         arguments,
         constructor,
@@ -348,7 +367,7 @@ fn plan_custom_pattern(
     type_: Arc<Type>,
     source_shape: CustomValueShape,
     context: &mut PlanContext<'_>,
-) -> Result<PlannedRuntimePattern, PlanError> {
+) -> Result<PlannedCustomPattern, PlanError> {
     let Inferred::Known(constructor) = constructor else {
         return Err(invalid_pattern());
     };
@@ -379,12 +398,12 @@ fn plan_custom_pattern(
         source_shape,
         constructor_count,
     });
-    Ok(PlannedRuntimePattern {
-        pattern: AssertPattern::custom(CustomPattern::new(
+    Ok(PlannedCustomPattern {
+        pattern: CustomPattern::new(
             custom_constructor,
             fields,
             fields_are_total.then_some(total_fields),
-        )),
+        ),
         is_total,
         total_binding: if is_total {
             custom_binding
@@ -520,9 +539,9 @@ fn invalid_pattern() -> PlanError {
 mod tests {
     use super::{CustomConstructorRefinement, CustomValueShape};
     use super::{
-        PlannedRuntimePattern, invalid_pattern, pattern_value_shape, pattern_value_type,
-        pattern_value_type_in_context, plan_bool_pattern, plan_custom_pattern, plan_list_tail,
-        plan_nil_pattern, plan_runtime_pattern, total_bit_array_binding,
+        invalid_pattern, pattern_value_shape, pattern_value_type, pattern_value_type_in_context,
+        plan_bool_pattern, plan_custom_pattern, plan_list_tail, plan_nil_pattern,
+        plan_runtime_pattern, total_bit_array_binding,
     };
     use crate::plan::{
         AssertBinding, AssertPattern, BitArrayBindingPattern, BitArrayLocalId, BitArrayPattern,
@@ -1111,11 +1130,11 @@ mod tests {
             .clone();
         assert_eq!(
             any.pattern,
-            AssertPattern::custom(CustomPattern::new(
+            CustomPattern::new(
                 any_constructor.clone(),
                 vec![AssertPattern::Discard],
                 Some(vec![TotalBindingPattern::discard(ValueType::Int)]),
-            )),
+            ),
         );
         assert_eq!(
             any.custom_binding
@@ -1227,7 +1246,7 @@ mod tests {
         );
     }
 
-    fn assert_invalid(result: Result<PlannedRuntimePattern, crate::planner::PlanError>) {
+    fn assert_invalid<T>(result: Result<T, crate::planner::PlanError>) {
         assert_eq!(result.map(|_| ()), Err(invalid_pattern()));
     }
 

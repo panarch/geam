@@ -2,8 +2,9 @@ use super::freeze::FreezeGraphValue;
 use super::{
     DraftCursor, DraftFlow, DraftGraph, DraftGraphBuilder, DraftGraphValue, DraftNeverReturn,
 };
+use crate::plan::ValueShape;
 use crate::plan::execution;
-use crate::plan::execution::lowering::specialization::{Representability, ValueRepresentation};
+use crate::plan::execution::lowering::specialization::{Representability, StoredValueShape};
 use crate::plan::module;
 
 pub(in crate::plan::execution::lowering) fn lower_function_graph<
@@ -35,18 +36,21 @@ where
     TailCall: Clone,
 {
     let (mut graph, cursor) = graph_builder(template, context);
-    lower_prefix(template.steps(), cursor, &mut graph, context).and_then(|flow| match flow {
-        DraftFlow::Diverged => Representability::Inhabited(super::freeze::freeze(graph, context)),
-        DraftFlow::Value { cursor, value: () } => lower_return_body(
-            body,
-            cursor,
-            &mut graph,
-            context,
-            lower_expression,
-            lower_function,
-        )
-        .map(|()| super::freeze::freeze(graph, context)),
-    })
+    lower_prefix(template.steps(), cursor, &mut graph, context)
+        .and_then(|flow| {
+            flow.and_then(|cursor, ()| {
+                lower_return_body(
+                    body,
+                    cursor,
+                    &mut graph,
+                    context,
+                    lower_expression,
+                    lower_function,
+                )
+                .map(|()| DraftFlow::<()>::Diverged)
+            })
+        })
+        .map(|_| super::freeze::freeze(graph, context))
 }
 
 pub(in crate::plan::execution::lowering) fn lower_never_function_graph<ModuleExpression>(
@@ -66,13 +70,14 @@ pub(in crate::plan::execution::lowering) fn lower_never_function_graph<ModuleExp
     >,
 > {
     let (mut graph, cursor) = graph_builder(template, context);
-    lower_prefix(template.steps(), cursor, &mut graph, context).and_then(|flow| match flow {
-        DraftFlow::Diverged => Representability::Inhabited(super::freeze::freeze(graph, context)),
-        DraftFlow::Value { cursor, value: () } => {
-            lower_never_return_body(body, cursor, &mut graph, context, lower_expression)
-                .map(|()| super::freeze::freeze(graph, context))
-        }
-    })
+    lower_prefix(template.steps(), cursor, &mut graph, context)
+        .and_then(|flow| {
+            flow.and_then(|cursor, ()| {
+                lower_never_return_body(body, cursor, &mut graph, context, lower_expression)
+                    .map(|()| DraftFlow::<()>::Diverged)
+            })
+        })
+        .map(|_| super::freeze::freeze(graph, context))
 }
 
 pub(in crate::plan::execution::lowering) fn lower_constant_graph<
@@ -106,37 +111,41 @@ fn graph_builder<Return, TailCall>(
     template: &module::FunctionTemplate,
     context: &super::super::LoweringContext,
 ) -> (DraftGraphBuilder<Return, TailCall>, DraftCursor) {
-    let params = template
-        .entry()
-        .params()
-        .iter()
-        .map(|param| (param.local(), param.shape()))
-        .filter_map(|(local, shape)| {
-            let shape = context.concrete_value_shape(shape);
-            match context.representations.representation(&shape) {
-                ValueRepresentation::Uninhabited(_) => None,
-                ValueRepresentation::Stored(shape) => {
-                    Some((super::super::local::param_local_key(local), shape))
-                }
-            }
-        })
-        .collect();
-    let captures = template
-        .entry()
-        .captures()
-        .iter()
-        .map(|capture| (capture.local(), capture.shape()))
-        .filter_map(|(local, shape)| {
-            let shape = context.concrete_value_shape(shape);
-            match context.representations.representation(&shape) {
-                ValueRepresentation::Uninhabited(_) => None,
-                ValueRepresentation::Stored(shape) => {
-                    Some((super::super::local::param_local_key(local), shape))
-                }
-            }
-        })
-        .collect();
+    let params = stored_params(template.entry().params(), context);
+    let captures = stored_captures(template.entry().captures(), context);
     DraftGraphBuilder::new(params, captures)
+}
+
+fn stored_params(
+    params: &[module::Param],
+    context: &super::super::LoweringContext,
+) -> Vec<(super::super::local::LocalKey, StoredValueShape)> {
+    params
+        .iter()
+        .filter_map(|param| stored_entry_slot(param.local(), param.shape(), context))
+        .collect()
+}
+
+fn stored_captures(
+    captures: &[module::ParamSlot],
+    context: &super::super::LoweringContext,
+) -> Vec<(super::super::local::LocalKey, StoredValueShape)> {
+    captures
+        .iter()
+        .filter_map(|capture| stored_entry_slot(capture.local(), capture.shape(), context))
+        .collect()
+}
+
+fn stored_entry_slot(
+    local: &module::ParamLocal,
+    shape: &ValueShape,
+    context: &super::super::LoweringContext,
+) -> Option<(super::super::local::LocalKey, StoredValueShape)> {
+    let shape = context.concrete_value_shape(shape);
+    context
+        .representations
+        .stored_shape(&shape)
+        .map(|shape| (super::super::local::param_local_key(local), shape))
 }
 
 fn lower_prefix(
@@ -352,28 +361,35 @@ where
                 fallback_cursor.id(),
                 graph,
             );
-            for (index, cursor) in branch_cursors.into_iter().enumerate() {
-                let branch = &clauses[index].1;
-                match lower_return_body(
-                    branch,
-                    cursor,
-                    graph,
-                    context,
-                    lower_expression,
-                    lower_function,
-                ) {
-                    Representability::Inhabited(()) => {}
-                    Representability::Uninhabited => return Representability::Uninhabited,
-                }
-            }
-            lower_return_body(
-                fallback,
-                fallback_cursor,
-                graph,
-                context,
-                lower_expression,
-                lower_function,
-            )
+            branch_cursors
+                .into_iter()
+                .enumerate()
+                .fold(
+                    Representability::Inhabited(()),
+                    |lowered, (index, cursor)| {
+                        let branch = &clauses[index].1;
+                        lowered.and_then(|()| {
+                            lower_return_body(
+                                branch,
+                                cursor,
+                                graph,
+                                context,
+                                lower_expression,
+                                lower_function,
+                            )
+                        })
+                    },
+                )
+                .and_then(|()| {
+                    lower_return_body(
+                        fallback,
+                        fallback_cursor,
+                        graph,
+                        context,
+                        lower_expression,
+                        lower_function,
+                    )
+                })
         })
     })
 }
@@ -538,14 +554,33 @@ where
                 fallback_cursor.id(),
                 graph,
             );
-            for (index, cursor) in branch_cursors.into_iter().enumerate() {
-                let branch = &clauses[index].1;
-                match lower_never_return_body(branch, cursor, graph, context, lower_expression) {
-                    Representability::Inhabited(()) => {}
-                    Representability::Uninhabited => return Representability::Uninhabited,
-                }
-            }
-            lower_never_return_body(fallback, fallback_cursor, graph, context, lower_expression)
+            branch_cursors
+                .into_iter()
+                .enumerate()
+                .fold(
+                    Representability::Inhabited(()),
+                    |lowered, (index, cursor)| {
+                        let branch = &clauses[index].1;
+                        lowered.and_then(|()| {
+                            lower_never_return_body(
+                                branch,
+                                cursor,
+                                graph,
+                                context,
+                                lower_expression,
+                            )
+                        })
+                    },
+                )
+                .and_then(|()| {
+                    lower_never_return_body(
+                        fallback,
+                        fallback_cursor,
+                        graph,
+                        context,
+                        lower_expression,
+                    )
+                })
         })
     })
 }

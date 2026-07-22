@@ -1,9 +1,5 @@
-fn fail_condition() -> Bool {
-  panic as "condition"
-}
-
 pub fn main() {
-  assert fail_condition() as "checked"
+  assert { panic as "condition" } as "checked"
   1
 }
 
@@ -11,10 +7,10 @@ pub fn main() {
 // geam::panic
 //
 //   x panic: condition
-//    ,-[tests/fixtures/execution_errors/statements/assert_condition_error_after_message.gleam:2:3]
-//  1 | fn fail_condition() -> Bool {
-//  2 |   panic as "condition"
-//    :   ^^^^^^^^^^|^^^^^^^^^
-//    :             `-- panic in main.fail_condition
-//  3 | }
+//    ,-[tests/fixtures/execution_errors/statements/assert_condition_error_after_message.gleam:2:12]
+//  1 | pub fn main() {
+//  2 |   assert { panic as "condition" } as "checked"
+//    :            ^^^^^^^^^^|^^^^^^^^^
+//    :                      `-- panic in main.main
+//  3 |   1
 //    `----
