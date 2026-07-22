@@ -1,8 +1,18 @@
-use super::super::{
+mod edge;
+mod pattern;
+
+pub(crate) use edge::{Edge, MatchEdge, MatchEdgeArgument};
+pub(crate) use pattern::{
+    BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
+    BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, MatchIntBindingId,
+    MatchPattern, MatchPatternBinding, MatchPatternList, MatchPatternListTail, Signedness,
+};
+
+use crate::plan::execution::graph::GraphExitId;
+use crate::plan::execution::{
     BoolLocalId, FloatLocalId, IntLocalId, NeverFunctionId, NeverFunctionLocal, ParamLocal,
     StringLocalId,
 };
-use super::{Edge, GraphExitId, MatchEdge};
 use crate::plan::{PanicSite, SourceSpan};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -46,7 +56,7 @@ pub(crate) enum Terminator {
     },
     Match {
         subject: ParamLocal,
-        pattern: super::MatchPattern,
+        pattern: MatchPattern,
         success: MatchEdge,
         failure: Edge,
     },

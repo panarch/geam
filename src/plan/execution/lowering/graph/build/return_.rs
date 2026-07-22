@@ -3,9 +3,9 @@ use super::{
 };
 use crate::plan::ValueShape;
 use crate::plan::execution;
-use crate::plan::execution::constant::ConstantTailCall;
 use crate::plan::execution::lowering::specialization::{Representability, StoredValueShape};
 use crate::plan::module;
+use std::convert::Infallible;
 
 pub(in crate::plan::execution::lowering::graph) fn build_function_graph<
     ModuleExpression,
@@ -85,7 +85,7 @@ pub(in crate::plan::execution::lowering::graph) fn build_constant_graph<
         &mut DraftGraph,
         &mut super::LoweringContext,
     ) -> Representability<DraftFlow<DraftReturn>>,
-) -> Representability<DraftGraphBuilder<DraftReturn, ConstantTailCall>>
+) -> Representability<DraftGraphBuilder<DraftReturn, Infallible>>
 where
     DraftReturn: DraftGraphValue,
 {

@@ -1,5 +1,5 @@
+use super::super::FunctionTables;
 use super::super::function::ExecutableFunction;
-use super::super::table::FunctionTables;
 use super::super::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionReturn, BitArrayListFunctionId,
     BitArrayListReturn, BitArrayReturn, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionReturn,

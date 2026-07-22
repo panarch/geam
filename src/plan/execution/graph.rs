@@ -1,31 +1,37 @@
 mod bit_array;
 mod block;
-mod edge;
-mod function;
-mod instruction;
-mod pattern;
-mod terminator;
+mod exit;
 mod value;
 
 pub(crate) use bit_array::{Endianness, FloatBitSize, StringEncoding};
-pub(crate) use block::{Block, BlockId};
-pub(crate) use edge::{Edge, MatchEdge, MatchEdgeArgument};
-pub(crate) use function::{FunctionGraph, FunctionGraphExit, GraphExitId};
-
-pub(crate) use instruction::{
-    BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayInstruction, BitArraySegment, BoolInstruction,
-    CustomInstruction, FloatInstruction, FunctionCapture, FunctionInstruction,
+pub(crate) use block::{
+    BitArrayBindingPattern, BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayInstruction,
+    BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize, BitArrayPatternSizeExpr,
+    BitArrayPatternValue, BitArraySegment, BitArrayStringPattern, Block, BlockId, BoolInstruction,
+    CustomInstruction, Edge, FloatInstruction, FunctionCapture, FunctionInstruction,
     FunctionInstructionKind, FunctionTarget, Instruction, InstructionKind, IntInstruction,
-    ListInstruction, NilInstruction, ParameterListInstruction, StringInstruction, TupleInstruction,
-    TypedListInstruction, UtfCodepointInstruction,
+    ListInstruction, MatchEdge, MatchEdgeArgument, MatchIntBindingId, MatchPattern,
+    MatchPatternBinding, MatchPatternList, MatchPatternListTail, NeverCallTarget, NilInstruction,
+    ParameterListInstruction, Signedness, SourceStopKind, StringInstruction, Terminator,
+    TupleInstruction, TypedListInstruction, UtfCodepointInstruction,
 };
-pub(crate) use pattern::{
-    BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
-    BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, MatchIntBindingId,
-    MatchPattern, MatchPatternBinding, MatchPatternList, MatchPatternListTail, Signedness,
+pub(crate) use exit::GraphExitId;
+pub(crate) use value::{
+    BitArrayFunctionLocalId, BitArrayListFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
+    BoolFunctionLocalId, BoolListFunctionLocalId, BoolListLocalId, BoolLocalId,
+    CustomFunctionLocal, CustomFunctionLocalId, CustomListFunctionLocalId, CustomListLocalId,
+    CustomLocal, CustomLocalId, FloatFunctionLocalId, FloatListFunctionLocalId, FloatListLocalId,
+    FloatLocalId, FunctionFunctionLocal, FunctionFunctionLocalId, FunctionListFunctionLocalId,
+    FunctionListLocalId, FunctionLocal, GenericFunctionLocal, GenericFunctionLocalId,
+    IntFunctionLocalId, IntListFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionLocal,
+    ListListFunctionLocalId, ListListLocalId, ListLocal, NeverFunctionLocal, NeverFunctionLocalId,
+    NilFunctionLocalId, NilListFunctionLocalId, NilListLocalId, NilLocalId, ParamLocal, ParamSlot,
+    ParameterListFunctionLocalId, ParameterListListFunctionLocalId, ParameterListListLocalId,
+    ParameterListLocalId, StoredListLocal, StringFunctionLocalId, StringListFunctionLocalId,
+    StringListLocalId, StringLocalId, TupleFunctionLocalId, TupleListFunctionLocalId,
+    TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointListFunctionLocalId,
+    UtfCodepointListLocalId, UtfCodepointLocalId,
 };
-pub(crate) use terminator::{NeverCallTarget, SourceStopKind, Terminator};
-pub(crate) use value::{FunctionLocal, NeverReturn, StoredListLocal};
 
 pub(crate) struct Graph {
     entry: BlockId,
@@ -33,6 +39,13 @@ pub(crate) struct Graph {
 }
 
 impl Graph {
+    pub(in crate::plan::execution) fn from_parts(entry: BlockId, blocks: Vec<Block>) -> Self {
+        Self {
+            entry,
+            blocks: blocks.into_boxed_slice(),
+        }
+    }
+
     pub(crate) fn entry(&self) -> BlockId {
         self.entry
     }
@@ -49,11 +62,12 @@ impl Graph {
 #[cfg(test)]
 mod tests {
     use super::{
-        BlockId, Edge, FunctionGraph, FunctionGraphExit, GraphExitId, Instruction, InstructionKind,
-        IntInstruction, MatchEdge, MatchEdgeArgument, MatchPattern, MatchPatternList, Terminator,
+        BlockId, Edge, GraphExitId, Instruction, InstructionKind, IntInstruction, MatchEdge,
+        MatchEdgeArgument, MatchPattern, MatchPatternList, Terminator,
     };
     use crate::plan::execution::{
-        BoolLocalId, ExecutionPlan, IntFunctionId, IntLocalId, ListLocal, ParamLocal,
+        BoolLocalId, ExecutionPlan, FunctionGraph, FunctionGraphExit, IntFunctionId, IntLocalId,
+        ListLocal, ParamLocal,
     };
 
     #[derive(Clone, Copy)]

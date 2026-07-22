@@ -1,4 +1,4 @@
-use super::super::graph::{FunctionLocal, NeverReturn};
+use super::super::graph::FunctionLocal;
 use super::super::{
     BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
     BoolListLocalId, BoolLocalId, CustomFunctionLocal, CustomListLocalId, CustomLocal,
@@ -10,6 +10,7 @@ use super::super::{
     TupleFunctionLocalId, TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId,
     UtfCodepointListLocalId, UtfCodepointLocalId, ValueType,
 };
+use std::convert::Infallible;
 
 pub(super) trait ExplainLocal {
     fn write_local(&self, output: &mut String);
@@ -176,7 +177,7 @@ impl ExplainLocal for FunctionLocal {
     }
 }
 
-impl ExplainLocal for NeverReturn {
+impl ExplainLocal for Infallible {
     fn write_local(&self, _output: &mut String) {
         match *self {}
     }

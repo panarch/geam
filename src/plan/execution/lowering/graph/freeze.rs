@@ -10,6 +10,7 @@ use super::draft::{
 use super::liveness::GraphLiveness;
 use crate::plan::execution;
 use std::collections::{HashMap, HashSet};
+use std::convert::Infallible;
 use value::BlockValues;
 pub(in crate::plan::execution::lowering) use value::FreezeGraphValue;
 
@@ -18,10 +19,65 @@ struct BlockLayout {
     values: BlockValues,
 }
 
+struct FrozenGraph<Return, TailCall> {
+    graph: execution::Graph,
+    exits: Vec<FrozenGraphExit<Return, TailCall>>,
+}
+
+enum FrozenGraphExit<Return, TailCall> {
+    Return(Return),
+    TailCall {
+        function: TailCall,
+        args: Box<[execution::ParamLocal]>,
+    },
+}
+
 pub(super) fn freeze<Return, TailCall>(
     graph: DraftGraphBuilder<Return, TailCall>,
     context: &mut super::super::LoweringContext,
-) -> LoweredFunctionGraph<execution::graph::FunctionGraph<Return::Frozen, TailCall>>
+) -> LoweredFunctionGraph<execution::FunctionGraph<Return::Frozen, TailCall>>
+where
+    Return: DraftGraphValue + FreezeGraphValue,
+    TailCall: Clone,
+{
+    freeze_graph(graph, context).map(|frozen| {
+        let exits = frozen
+            .exits
+            .into_iter()
+            .map(|exit| match exit {
+                FrozenGraphExit::Return(value) => execution::FunctionGraphExit::Return(value),
+                FrozenGraphExit::TailCall { function, args } => {
+                    execution::FunctionGraphExit::TailCall { function, args }
+                }
+            })
+            .collect();
+        execution::FunctionGraph::from_parts(frozen.graph, exits)
+    })
+}
+
+pub(super) fn freeze_constant<Return>(
+    graph: DraftGraphBuilder<Return, Infallible>,
+    context: &mut super::super::LoweringContext,
+) -> execution::ConstantProgram<Return::Frozen>
+where
+    Return: DraftGraphValue + FreezeGraphValue,
+{
+    let frozen = freeze_graph(graph, context).body;
+    let returns = frozen
+        .exits
+        .into_iter()
+        .map(|exit| match exit {
+            FrozenGraphExit::Return(value) => value,
+            FrozenGraphExit::TailCall { function, .. } => match function {},
+        })
+        .collect();
+    execution::ConstantProgram::from_parts(frozen.graph, returns)
+}
+
+fn freeze_graph<Return, TailCall>(
+    graph: DraftGraphBuilder<Return, TailCall>,
+    context: &mut super::super::LoweringContext,
+) -> LoweredFunctionGraph<FrozenGraph<Return::Frozen, TailCall>>
 where
     Return: DraftGraphValue + FreezeGraphValue,
     TailCall: Clone,
@@ -81,7 +137,10 @@ where
 
     LoweredFunctionGraph {
         parameter_count,
-        body: execution::graph::FunctionGraph::from_parts(block_ids[&entry], blocks, exits),
+        body: FrozenGraph {
+            graph: execution::Graph::from_parts(block_ids[&entry], blocks),
+            exits,
+        },
     }
 }
 
@@ -130,7 +189,7 @@ fn freeze_terminator<Return, TailCall>(
     layout: &BlockLayout,
     liveness: &GraphLiveness,
     block_ids: &HashMap<DraftBlockId, execution::graph::BlockId>,
-    exits: &mut Vec<execution::graph::FunctionGraphExit<Return::Frozen, TailCall>>,
+    exits: &mut Vec<FrozenGraphExit<Return::Frozen, TailCall>>,
 ) -> execution::graph::Terminator
 where
     Return: DraftGraphValue + FreezeGraphValue,
@@ -201,14 +260,14 @@ where
         },
         DraftTerminator::Return { value: _, index } => {
             let id = execution::graph::GraphExitId::new(exits.len());
-            exits.push(execution::graph::FunctionGraphExit::Return(
+            exits.push(FrozenGraphExit::Return(
                 returns[index].freeze(&layout.values),
             ));
             E::Exit(id)
         }
         DraftTerminator::TailCall { function, args } => {
             let id = execution::graph::GraphExitId::new(exits.len());
-            exits.push(execution::graph::FunctionGraphExit::TailCall {
+            exits.push(FrozenGraphExit::TailCall {
                 function: tail_calls[function].clone(),
                 args: layout.values.any_slice(&args),
             });

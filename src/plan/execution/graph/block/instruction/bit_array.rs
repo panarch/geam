@@ -1,4 +1,4 @@
-use super::super::{Endianness, FloatBitSize, StringEncoding};
+use super::super::super::{Endianness, FloatBitSize, StringEncoding};
 use crate::plan::PanicSite;
 use crate::plan::execution::{
     BitArrayFunctionId, BitArrayListLocalId, ConstantId, CustomLocal, FloatLocalId, IntLocalId,

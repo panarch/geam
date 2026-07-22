@@ -940,9 +940,7 @@ fn generic_item_list_graph<DraftList, FrozenList, TailCall>(
         &module::FunctionInstantiation,
         &mut LoweringContext,
     ) -> Representability<TailCall>,
-) -> Representability<
-    graph::LoweredFunctionGraph<execution::graph::FunctionGraph<FrozenList, TailCall>>,
->
+) -> Representability<graph::LoweredFunctionGraph<execution::FunctionGraph<FrozenList, TailCall>>>
 where
     DraftList: graph::DraftGraphValue + graph::FreezeGraphValue<Frozen = FrozenList>,
     TailCall: Clone,
@@ -1163,9 +1161,7 @@ fn generic_value_list_graph<DraftList, FrozenList, TailCall>(
         &module::FunctionInstantiation,
         &mut LoweringContext,
     ) -> Representability<TailCall>,
-) -> Representability<
-    graph::LoweredFunctionGraph<execution::graph::FunctionGraph<FrozenList, TailCall>>,
->
+) -> Representability<graph::LoweredFunctionGraph<execution::FunctionGraph<FrozenList, TailCall>>>
 where
     DraftList: graph::DraftGraphValue + graph::FreezeGraphValue<Frozen = FrozenList>,
     TailCall: Clone,

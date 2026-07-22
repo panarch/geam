@@ -3,11 +3,7 @@ mod custom_type;
 mod explain;
 mod function;
 mod graph;
-mod id;
 mod lowering;
-mod param;
-mod return_;
-mod table;
 mod value_shape;
 mod value_type;
 
@@ -16,66 +12,36 @@ pub use explain::ExecutionPlanExplanation;
 pub(crate) use graph::{
     BitArrayBindingPattern as GraphBitArrayBindingPattern,
     BitArrayBitsSize as GraphBitArrayBitsSize, BitArrayEvaluatedSize as GraphBitArrayEvaluatedSize,
-    BitArrayInstruction as GraphBitArrayInstruction, BitArrayPattern as GraphBitArrayPattern,
-    BitArrayPatternSegment as GraphBitArrayPatternSegment,
+    BitArrayFunctionLocalId, BitArrayInstruction as GraphBitArrayInstruction,
+    BitArrayListFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
+    BitArrayPattern as GraphBitArrayPattern, BitArrayPatternSegment as GraphBitArrayPatternSegment,
     BitArrayPatternSize as GraphBitArrayPatternSize,
     BitArrayPatternSizeExpr as GraphBitArrayPatternSizeExpr,
     BitArrayPatternValue as GraphBitArrayPatternValue, BitArraySegment as GraphBitArraySegment,
-    BitArrayStringPattern as GraphBitArrayStringPattern, BlockId,
-    BoolInstruction as GraphBoolInstruction, CustomInstruction as GraphCustomInstruction, Edge,
-    Endianness, FloatBitSize, FloatInstruction as GraphFloatInstruction, FunctionCapture,
-    FunctionGraph, FunctionGraphExit, FunctionInstruction, FunctionInstructionKind, FunctionLocal,
-    FunctionTarget, Graph, GraphExitId, Instruction, InstructionKind,
-    IntInstruction as GraphIntInstruction, ListInstruction as GraphListInstruction, MatchEdge,
-    MatchEdgeArgument, MatchIntBindingId, MatchPattern, MatchPatternBinding, MatchPatternListTail,
-    NeverCallTarget, NeverReturn as GraphNeverReturn, NilInstruction as GraphNilInstruction,
-    ParameterListInstruction as GraphParameterListInstruction, Signedness, SourceStopKind,
-    StoredListLocal, StringEncoding, StringInstruction as GraphStringInstruction, Terminator,
-    TupleInstruction as GraphTupleInstruction, TypedListInstruction as GraphTypedListInstruction,
-    UtfCodepointInstruction as GraphUtfCodepointInstruction,
-};
-pub(crate) use id::{
-    BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionLocalId,
-    BitArrayListFunctionFunctionId, BitArrayListFunctionId, BitArrayListFunctionLocalId,
-    BitArrayListLocalId, BitArrayLocalId, BoolFunctionFunctionId, BoolFunctionId,
-    BoolFunctionLocalId, BoolListFunctionFunctionId, BoolListFunctionId, BoolListFunctionLocalId,
-    BoolListLocalId, BoolLocalId, CustomFunctionFunctionId, CustomFunctionId, CustomFunctionLocal,
-    CustomFunctionLocalId, CustomListFunctionFunctionId, CustomListFunctionId,
-    CustomListFunctionLocalId, CustomListLocalId, CustomLocal, CustomLocalId,
-    FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatListFunctionFunctionId,
-    FloatListFunctionId, FloatListFunctionLocalId, FloatListLocalId, FloatLocalId,
-    FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocal, FunctionFunctionLocalId,
-    FunctionListFunctionFunctionId, FunctionListFunctionId, FunctionListFunctionLocalId,
-    FunctionListLocalId, FunctionReturnFamily, GenericCallableId, GenericFunctionFunctionId,
-    GenericFunctionLocal, GenericFunctionLocalId, IntFunctionFunctionId, IntFunctionId,
-    IntFunctionLocalId, IntListFunctionFunctionId, IntListFunctionId, IntListFunctionLocalId,
-    IntListLocalId, IntLocalId, ListFunctionFunctionId, ListFunctionId, ListFunctionLocal,
-    ListListFunctionFunctionId, ListListFunctionId, ListListFunctionLocalId, ListListLocalId,
-    ListLocal, NeverFunctionFunctionId, NeverFunctionId, NeverFunctionLocal, NeverFunctionLocalId,
-    NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId, NilListFunctionFunctionId,
-    NilListFunctionId, NilListFunctionLocalId, NilListLocalId, NilLocalId,
-    ParameterListFunctionFunctionId, ParameterListFunctionId, ParameterListFunctionLocalId,
-    ParameterListListFunctionFunctionId, ParameterListListFunctionId,
-    ParameterListListFunctionLocalId, ParameterListListLocalId, ParameterListLocalId,
-    RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId,
-    StringListFunctionFunctionId, StringListFunctionId, StringListFunctionLocalId,
-    StringListLocalId, StringLocalId, TupleFunctionFunctionId, TupleFunctionId,
-    TupleFunctionLocalId, TupleListFunctionFunctionId, TupleListFunctionId,
-    TupleListFunctionLocalId, TupleListLocalId, TupleLocalId, UtfCodepointFunctionFunctionId,
-    UtfCodepointFunctionId, UtfCodepointFunctionLocalId, UtfCodepointListFunctionFunctionId,
-    UtfCodepointListFunctionId, UtfCodepointListFunctionLocalId, UtfCodepointListLocalId,
-    UtfCodepointLocalId,
-};
-pub(crate) use param::{ParamLocal, ParamSlot};
-pub(crate) use return_::{
-    BitArrayFunctionReturn, BitArrayListReturn, BitArrayReturn, BoolFunctionReturn, BoolListReturn,
-    BoolReturn, CustomFunctionReturn, CustomListReturn, CustomReturn, FloatFunctionReturn,
-    FloatListReturn, FloatReturn, FunctionFunctionReturn, FunctionListReturn,
-    GenericFunctionReturn, IntFunctionReturn, IntListReturn, IntReturn, ListFunctionReturn,
-    ListListReturn, NeverFunctionReturn, NeverReturn, NilFunctionReturn, NilListReturn, NilReturn,
-    ParameterListListReturn, ParameterListReturn, StringFunctionReturn, StringListReturn,
-    StringReturn, TupleFunctionReturn, TupleListReturn, TupleReturn, TypedFunctionReturn,
-    UtfCodepointFunctionReturn, UtfCodepointListReturn, UtfCodepointReturn,
+    BitArrayStringPattern as GraphBitArrayStringPattern, BlockId, BoolFunctionLocalId,
+    BoolInstruction as GraphBoolInstruction, BoolListFunctionLocalId, BoolListLocalId, BoolLocalId,
+    CustomFunctionLocal, CustomFunctionLocalId, CustomInstruction as GraphCustomInstruction,
+    CustomListFunctionLocalId, CustomListLocalId, CustomLocal, CustomLocalId, Edge, Endianness,
+    FloatBitSize, FloatFunctionLocalId, FloatInstruction as GraphFloatInstruction,
+    FloatListFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionCapture,
+    FunctionFunctionLocal, FunctionFunctionLocalId, FunctionInstruction, FunctionInstructionKind,
+    FunctionListFunctionLocalId, FunctionListLocalId, FunctionLocal, FunctionTarget,
+    GenericFunctionLocal, GenericFunctionLocalId, Graph, GraphExitId, Instruction, InstructionKind,
+    IntFunctionLocalId, IntInstruction as GraphIntInstruction, IntListFunctionLocalId,
+    IntListLocalId, IntLocalId, ListFunctionLocal, ListInstruction as GraphListInstruction,
+    ListListFunctionLocalId, ListListLocalId, ListLocal, MatchEdge, MatchEdgeArgument,
+    MatchIntBindingId, MatchPattern, MatchPatternBinding, MatchPatternListTail, NeverCallTarget,
+    NeverFunctionLocal, NeverFunctionLocalId, NilFunctionLocalId,
+    NilInstruction as GraphNilInstruction, NilListFunctionLocalId, NilListLocalId, NilLocalId,
+    ParamLocal, ParamSlot, ParameterListFunctionLocalId,
+    ParameterListInstruction as GraphParameterListInstruction, ParameterListListFunctionLocalId,
+    ParameterListListLocalId, ParameterListLocalId, Signedness, SourceStopKind, StoredListLocal,
+    StringEncoding, StringFunctionLocalId, StringInstruction as GraphStringInstruction,
+    StringListFunctionLocalId, StringListLocalId, StringLocalId, Terminator, TupleFunctionLocalId,
+    TupleInstruction as GraphTupleInstruction, TupleListFunctionLocalId, TupleListLocalId,
+    TupleLocalId, TypedListInstruction as GraphTypedListInstruction, UtfCodepointFunctionLocalId,
+    UtfCodepointInstruction as GraphUtfCodepointInstruction, UtfCodepointListFunctionLocalId,
+    UtfCodepointListLocalId, UtfCodepointLocalId,
 };
 #[cfg(test)]
 pub(crate) use value_shape::ValueShapeDescriptor;
@@ -91,8 +57,33 @@ pub(crate) use value_type::{
 };
 
 use self::custom_type::CustomTypeTable;
-pub(crate) use self::function::{ExecutableFunction, FunctionEntry};
-use self::table::FunctionTables;
+use self::function::FunctionTables;
+pub(crate) use self::function::{
+    BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionReturn,
+    BitArrayListFunctionFunctionId, BitArrayListFunctionId, BitArrayListReturn, BitArrayReturn,
+    BoolFunctionFunctionId, BoolFunctionId, BoolFunctionReturn, BoolListFunctionFunctionId,
+    BoolListFunctionId, BoolListReturn, BoolReturn, CustomFunctionFunctionId, CustomFunctionId,
+    CustomFunctionReturn, CustomListFunctionFunctionId, CustomListFunctionId, CustomListReturn,
+    CustomReturn, ExecutableFunction, FloatFunctionFunctionId, FloatFunctionId,
+    FloatFunctionReturn, FloatListFunctionFunctionId, FloatListFunctionId, FloatListReturn,
+    FloatReturn, FunctionEntry, FunctionFunctionFunctionId, FunctionFunctionId,
+    FunctionFunctionReturn, FunctionGraph, FunctionGraphExit, FunctionListFunctionFunctionId,
+    FunctionListFunctionId, FunctionListReturn, FunctionReturnFamily, GenericCallableId,
+    GenericFunctionFunctionId, GenericFunctionReturn, IntFunctionFunctionId, IntFunctionId,
+    IntFunctionReturn, IntListFunctionFunctionId, IntListFunctionId, IntListReturn, IntReturn,
+    ListFunctionFunctionId, ListFunctionId, ListFunctionReturn, ListListFunctionFunctionId,
+    ListListFunctionId, ListListReturn, NeverFunctionFunctionId, NeverFunctionId,
+    NeverFunctionReturn, NeverReturn, NilFunctionFunctionId, NilFunctionId, NilFunctionReturn,
+    NilListFunctionFunctionId, NilListFunctionId, NilListReturn, NilReturn,
+    ParameterListFunctionFunctionId, ParameterListFunctionId, ParameterListListFunctionFunctionId,
+    ParameterListListFunctionId, ParameterListListReturn, ParameterListReturn, RuntimeFunctionId,
+    StringFunctionFunctionId, StringFunctionId, StringFunctionReturn, StringListFunctionFunctionId,
+    StringListFunctionId, StringListReturn, StringReturn, TupleFunctionFunctionId, TupleFunctionId,
+    TupleFunctionReturn, TupleListFunctionFunctionId, TupleListFunctionId, TupleListReturn,
+    TupleReturn, TypedFunctionReturn, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+    UtfCodepointFunctionReturn, UtfCodepointListFunctionFunctionId, UtfCodepointListFunctionId,
+    UtfCodepointListReturn, UtfCodepointReturn,
+};
 use self::value_shape::ValueShapeTable;
 use self::value_type::ListTypeTable;
 use crate::plan::{ModulePlan, SourceContext};

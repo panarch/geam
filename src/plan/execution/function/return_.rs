@@ -1,38 +1,40 @@
-use super::graph::{FunctionGraph, NeverReturn as NeverValue};
-use super::{
+use super::graph::FunctionGraph;
+use crate::plan::execution::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionLocalId,
-    BitArrayListFunctionId, BitArrayListLocalId, BoolFunctionFunctionId, BoolFunctionId,
-    BoolFunctionLocalId, BoolListFunctionId, BoolListLocalId, CustomFunctionFunctionId,
-    CustomFunctionId, CustomFunctionLocal, CustomFunctionType, CustomListFunctionId,
-    CustomListLocalId, CustomLocal, FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId,
-    FloatListFunctionId, FloatListLocalId, FunctionFunctionFunctionId, FunctionFunctionLocal,
-    FunctionFunctionType, FunctionListFunctionId, FunctionListLocalId, GenericFunctionFunctionId,
-    GenericFunctionLocal, IntFunctionFunctionId, IntFunctionId, IntFunctionLocalId,
-    IntListFunctionId, IntListLocalId, ListFunctionFunctionId, ListFunctionLocal,
-    ListListFunctionId, ListListLocalId, NeverFunctionFunctionId, NeverFunctionId,
-    NeverFunctionLocal, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId,
-    NilListFunctionId, NilListLocalId, ParameterListFunctionId, ParameterListListFunctionId,
-    ParameterListListLocalId, ParameterListLocalId, StringFunctionFunctionId, StringFunctionId,
-    StringFunctionLocalId, StringListFunctionId, StringListLocalId, TupleFunctionFunctionId,
-    TupleFunctionId, TupleFunctionLocalId, TupleListFunctionId, TupleListLocalId, TupleLocalId,
+    BitArrayListFunctionId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionFunctionId,
+    BoolFunctionId, BoolFunctionLocalId, BoolListFunctionId, BoolListLocalId, BoolLocalId,
+    CustomFunctionFunctionId, CustomFunctionId, CustomFunctionLocal, CustomFunctionType,
+    CustomListFunctionId, CustomListLocalId, CustomLocal, CustomValueShape,
+    FloatFunctionFunctionId, FloatFunctionId, FloatFunctionLocalId, FloatListFunctionId,
+    FloatListLocalId, FloatLocalId, FunctionFunctionFunctionId, FunctionFunctionLocal,
+    FunctionFunctionType, FunctionListFunctionId, FunctionListLocalId, FunctionShape,
+    GenericFunctionFunctionId, GenericFunctionLocal, IntFunctionFunctionId, IntFunctionId,
+    IntFunctionLocalId, IntListFunctionId, IntListLocalId, IntLocalId, ListFunctionFunctionId,
+    ListFunctionLocal, ListListFunctionId, ListListLocalId, NeverFunctionFunctionId,
+    NeverFunctionId, NeverFunctionLocal, NilFunctionFunctionId, NilFunctionId, NilFunctionLocalId,
+    NilListFunctionId, NilListLocalId, NilLocalId, ParameterListFunctionId,
+    ParameterListListFunctionId, ParameterListListLocalId, ParameterListLocalId,
+    StringFunctionFunctionId, StringFunctionId, StringFunctionLocalId, StringListFunctionId,
+    StringListLocalId, StringLocalId, TupleFunctionFunctionId, TupleFunctionId,
+    TupleFunctionLocalId, TupleListFunctionId, TupleListLocalId, TupleLocalId,
     UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, UtfCodepointFunctionLocalId,
-    UtfCodepointListFunctionId, UtfCodepointListLocalId,
+    UtfCodepointListFunctionId, UtfCodepointListLocalId, UtfCodepointLocalId,
 };
+use std::convert::Infallible;
 
-pub(crate) type IntReturn = FunctionGraph<super::IntLocalId, IntFunctionId>;
-pub(crate) type NeverReturn = FunctionGraph<NeverValue, NeverFunctionId>;
-pub(crate) type FloatReturn = FunctionGraph<super::FloatLocalId, FloatFunctionId>;
-pub(crate) type StringReturn = FunctionGraph<super::StringLocalId, StringFunctionId>;
-pub(crate) type BitArrayReturn = FunctionGraph<super::BitArrayLocalId, BitArrayFunctionId>;
-pub(crate) type UtfCodepointReturn =
-    FunctionGraph<super::UtfCodepointLocalId, UtfCodepointFunctionId>;
+pub(crate) type IntReturn = FunctionGraph<IntLocalId, IntFunctionId>;
+pub(crate) type NeverReturn = FunctionGraph<Infallible, NeverFunctionId>;
+pub(crate) type FloatReturn = FunctionGraph<FloatLocalId, FloatFunctionId>;
+pub(crate) type StringReturn = FunctionGraph<StringLocalId, StringFunctionId>;
+pub(crate) type BitArrayReturn = FunctionGraph<BitArrayLocalId, BitArrayFunctionId>;
+pub(crate) type UtfCodepointReturn = FunctionGraph<UtfCodepointLocalId, UtfCodepointFunctionId>;
 pub(crate) struct CustomReturn {
-    signature_shape: super::CustomValueShape,
-    _body_shape: super::CustomValueShape,
+    signature_shape: CustomValueShape,
+    _body_shape: CustomValueShape,
     body: FunctionGraph<CustomLocal, usize>,
 }
-pub(crate) type BoolReturn = FunctionGraph<super::BoolLocalId, BoolFunctionId>;
-pub(crate) type NilReturn = FunctionGraph<super::NilLocalId, NilFunctionId>;
+pub(crate) type BoolReturn = FunctionGraph<BoolLocalId, BoolFunctionId>;
+pub(crate) type NilReturn = FunctionGraph<NilLocalId, NilFunctionId>;
 pub(crate) type TupleReturn = FunctionGraph<TupleLocalId, TupleFunctionId>;
 pub(crate) type ParameterListReturn = FunctionGraph<ParameterListLocalId, ParameterListFunctionId>;
 pub(crate) type IntListReturn = FunctionGraph<IntListLocalId, IntListFunctionId>;
@@ -64,7 +66,7 @@ pub(crate) type GenericFunctionReturn =
 pub(crate) type NeverFunctionReturn =
     TypedFunctionReturn<FunctionGraph<NeverFunctionLocal, NeverFunctionFunctionId>>;
 pub(crate) struct CustomFunctionReturn {
-    _shape: super::FunctionShape,
+    _shape: FunctionShape,
     type_: CustomFunctionType,
     body: FunctionGraph<CustomFunctionLocal, usize>,
 }
@@ -77,20 +79,20 @@ pub(crate) type TupleFunctionReturn =
 pub(crate) type ListFunctionReturn =
     TypedFunctionReturn<FunctionGraph<ListFunctionLocal, ListFunctionFunctionId>>;
 pub(crate) struct FunctionFunctionReturn {
-    _shape: super::FunctionShape,
+    _shape: FunctionShape,
     type_: FunctionFunctionType,
     body: FunctionGraph<FunctionFunctionLocal, usize>,
 }
 
 pub(crate) struct TypedFunctionReturn<Body> {
-    _shape: super::FunctionShape,
+    _shape: FunctionShape,
     body: Body,
 }
 
 impl CustomReturn {
     pub(in crate::plan::execution) fn from_parts(
-        signature_shape: super::CustomValueShape,
-        body_shape: super::CustomValueShape,
+        signature_shape: CustomValueShape,
+        body_shape: CustomValueShape,
         body: FunctionGraph<CustomLocal, usize>,
     ) -> Self {
         Self {
@@ -101,12 +103,12 @@ impl CustomReturn {
     }
 
     #[cfg(test)]
-    pub(crate) fn body_shape(&self) -> &super::CustomValueShape {
+    pub(crate) fn body_shape(&self) -> &CustomValueShape {
         &self._body_shape
     }
 
     #[cfg(test)]
-    pub(crate) fn signature_shape(&self) -> &super::CustomValueShape {
+    pub(crate) fn signature_shape(&self) -> &CustomValueShape {
         &self.signature_shape
     }
 
@@ -121,7 +123,7 @@ impl CustomReturn {
 
 impl CustomFunctionReturn {
     pub(in crate::plan::execution) fn from_parts(
-        shape: super::FunctionShape,
+        shape: FunctionShape,
         type_: CustomFunctionType,
         body: FunctionGraph<CustomFunctionLocal, usize>,
     ) -> Self {
@@ -143,7 +145,7 @@ impl CustomFunctionReturn {
 
 impl FunctionFunctionReturn {
     pub(in crate::plan::execution) fn from_parts(
-        shape: super::FunctionShape,
+        shape: FunctionShape,
         type_: FunctionFunctionType,
         body: FunctionGraph<FunctionFunctionLocal, usize>,
     ) -> Self {
@@ -169,7 +171,7 @@ impl FunctionFunctionReturn {
 }
 
 impl<Body> TypedFunctionReturn<Body> {
-    pub(in crate::plan::execution) fn new(shape: super::FunctionShape, body: Body) -> Self {
+    pub(in crate::plan::execution) fn new(shape: FunctionShape, body: Body) -> Self {
         Self {
             _shape: shape,
             body,

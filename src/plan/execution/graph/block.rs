@@ -1,4 +1,20 @@
-use super::{Instruction, Terminator};
+mod instruction;
+mod terminator;
+
+pub(crate) use instruction::{
+    BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayInstruction, BitArraySegment, BoolInstruction,
+    CustomInstruction, FloatInstruction, FunctionCapture, FunctionInstruction,
+    FunctionInstructionKind, FunctionTarget, Instruction, InstructionKind, IntInstruction,
+    ListInstruction, NilInstruction, ParameterListInstruction, StringInstruction, TupleInstruction,
+    TypedListInstruction, UtfCodepointInstruction,
+};
+pub(crate) use terminator::{
+    BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
+    BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, Edge, MatchEdge,
+    MatchEdgeArgument, MatchIntBindingId, MatchPattern, MatchPatternBinding, MatchPatternList,
+    MatchPatternListTail, NeverCallTarget, Signedness, SourceStopKind, Terminator,
+};
+
 use crate::plan::execution::ParamSlot;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
