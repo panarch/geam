@@ -50,8 +50,6 @@ pub fn main() {
 }
 
 
-
-// geam:run
 // geam:explain
 // module main
 // main tuple#0
