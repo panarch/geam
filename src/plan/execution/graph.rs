@@ -1,93 +1,35 @@
+mod bit_array;
+mod block;
+mod edge;
+mod function;
 mod instruction;
 mod pattern;
 mod terminator;
 mod value;
 
+pub(crate) use bit_array::{Endianness, FloatBitSize, StringEncoding};
+pub(crate) use block::{Block, BlockId};
+pub(crate) use edge::{Edge, MatchEdge, MatchEdgeArgument};
+pub(crate) use function::{FunctionGraph, FunctionGraphExit, GraphExitId};
+
 pub(crate) use instruction::{
     BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayInstruction, BitArraySegment, BoolInstruction,
-    CustomInstruction, Endianness, FloatBitSize, FloatInstruction, FunctionCapture,
-    FunctionInstruction, FunctionInstructionKind, FunctionTarget, Instruction, InstructionKind,
-    IntInstruction, ListInstruction, NilInstruction, ParameterListInstruction, StringEncoding,
-    StringInstruction, TupleInstruction, TypedListInstruction, UtfCodepointInstruction,
+    CustomInstruction, FloatInstruction, FunctionCapture, FunctionInstruction,
+    FunctionInstructionKind, FunctionTarget, Instruction, InstructionKind, IntInstruction,
+    ListInstruction, NilInstruction, ParameterListInstruction, StringInstruction, TupleInstruction,
+    TypedListInstruction, UtfCodepointInstruction,
 };
 pub(crate) use pattern::{
     BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
     BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, MatchIntBindingId,
     MatchPattern, MatchPatternBinding, MatchPatternList, MatchPatternListTail, Signedness,
 };
-pub(crate) use terminator::{
-    BlockId, Edge, GraphExitId, MatchEdge, MatchEdgeArgument, NeverCallTarget, SourceStopKind,
-    Terminator,
-};
+pub(crate) use terminator::{NeverCallTarget, SourceStopKind, Terminator};
 pub(crate) use value::{FunctionLocal, NeverReturn, StoredListLocal};
-
-use super::ParamSlot;
-
-pub(crate) struct FunctionGraph<Return, TailCall> {
-    graph: Graph,
-    exits: Box<[FunctionGraphExit<Return, TailCall>]>,
-}
 
 pub(crate) struct Graph {
     entry: BlockId,
     blocks: Box<[Block]>,
-}
-
-pub(crate) struct Block {
-    params: Box<[ParamSlot]>,
-    instructions: Box<[Instruction]>,
-    terminator: Terminator,
-}
-
-pub(crate) enum FunctionGraphExit<Return, TailCall> {
-    Return(Return),
-    TailCall {
-        function: TailCall,
-        args: Box<[super::ParamLocal]>,
-    },
-}
-
-impl<Return, TailCall> FunctionGraph<Return, TailCall> {
-    pub(in crate::plan::execution) fn from_parts(
-        entry: BlockId,
-        blocks: Vec<Block>,
-        exits: Vec<FunctionGraphExit<Return, TailCall>>,
-    ) -> Self {
-        Self {
-            graph: Graph {
-                entry,
-                blocks: blocks.into_boxed_slice(),
-            },
-            exits: exits.into_boxed_slice(),
-        }
-    }
-
-    pub(crate) fn entry(&self) -> BlockId {
-        self.graph.entry()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn blocks(&self) -> &[Block] {
-        self.graph.blocks()
-    }
-
-    pub(crate) fn block(&self, id: BlockId) -> &Block {
-        self.graph.block(id)
-    }
-
-    pub(crate) fn graph(&self) -> &Graph {
-        &self.graph
-    }
-
-    pub(crate) fn exit(&self, id: GraphExitId) -> &FunctionGraphExit<Return, TailCall> {
-        &self.exits[id.index()]
-    }
-
-    pub(in crate::plan::execution) fn into_parts(
-        self,
-    ) -> (Graph, Box<[FunctionGraphExit<Return, TailCall>]>) {
-        (self.graph, self.exits)
-    }
 }
 
 impl Graph {
@@ -101,32 +43,6 @@ impl Graph {
 
     pub(crate) fn block(&self, id: BlockId) -> &Block {
         &self.blocks[id.index()]
-    }
-}
-
-impl Block {
-    pub(in crate::plan::execution) fn new(
-        params: Vec<ParamSlot>,
-        instructions: Vec<Instruction>,
-        terminator: Terminator,
-    ) -> Self {
-        Self {
-            params: params.into_boxed_slice(),
-            instructions: instructions.into_boxed_slice(),
-            terminator,
-        }
-    }
-
-    pub(crate) fn params(&self) -> &[ParamSlot] {
-        &self.params
-    }
-
-    pub(crate) fn instructions(&self) -> &[Instruction] {
-        &self.instructions
-    }
-
-    pub(crate) fn terminator(&self) -> &Terminator {
-        &self.terminator
     }
 }
 
