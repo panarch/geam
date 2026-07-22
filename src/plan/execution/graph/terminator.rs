@@ -2,30 +2,10 @@ use super::super::{
     BoolLocalId, FloatLocalId, IntLocalId, NeverFunctionId, NeverFunctionLocal, ParamLocal,
     StringLocalId,
 };
+use super::{Edge, GraphExitId, MatchEdge};
 use crate::plan::{PanicSite, SourceSpan};
 use ecow::EcoString;
 use num_bigint::BigInt;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct BlockId(usize);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct GraphExitId(usize);
-
-pub(crate) struct Edge {
-    target: BlockId,
-    args: Box<[ParamLocal]>,
-}
-
-pub(crate) struct MatchEdge {
-    target: BlockId,
-    args: Box<[MatchEdgeArgument]>,
-}
-
-pub(crate) enum MatchEdgeArgument {
-    Binding(usize),
-    Value(ParamLocal),
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SourceStopKind {
@@ -86,58 +66,4 @@ pub(crate) enum Terminator {
         function: NeverCallTarget,
         args: Box<[ParamLocal]>,
     },
-}
-
-impl BlockId {
-    pub(in crate::plan::execution) fn new(index: usize) -> Self {
-        Self(index)
-    }
-
-    pub(crate) fn index(self) -> usize {
-        self.0
-    }
-}
-
-impl GraphExitId {
-    pub(in crate::plan::execution) fn new(index: usize) -> Self {
-        Self(index)
-    }
-
-    pub(crate) fn index(self) -> usize {
-        self.0
-    }
-}
-
-impl Edge {
-    pub(in crate::plan::execution) fn new(target: BlockId, args: Vec<ParamLocal>) -> Self {
-        Self {
-            target,
-            args: args.into_boxed_slice(),
-        }
-    }
-
-    pub(crate) fn target(&self) -> BlockId {
-        self.target
-    }
-
-    pub(crate) fn args(&self) -> &[ParamLocal] {
-        &self.args
-    }
-}
-
-impl MatchEdge {
-    pub(in crate::plan::execution) fn new(target: BlockId, args: Vec<MatchEdgeArgument>) -> Self {
-        Self {
-            target,
-            args: args.into_boxed_slice(),
-        }
-    }
-
-    pub(crate) fn target(&self) -> BlockId {
-        self.target
-    }
-
-    pub(crate) fn args(&self) -> &[MatchEdgeArgument] {
-        &self.args
-    }
 }
