@@ -1,13 +1,14 @@
-use super::super::{
+use super::super::draft::{
     BitArrayFunctionFamily, BitArrayListFamily, BoolFunctionFamily, BoolListFamily,
     CustomFunctionFamily, CustomListFamily, DraftBitArray, DraftBool, DraftCustom, DraftFloat,
-    DraftFunction, DraftGraphValue, DraftInt, DraftList, DraftNeverReturn, DraftNil, DraftString,
-    DraftTuple, DraftTypedFunction, DraftTypedList, DraftUtfCodepoint, DraftValueKey,
-    DraftValueRef, FloatFunctionFamily, FloatListFamily, FunctionFunctionFamily,
-    FunctionListFamily, GenericFunctionFamily, IntFunctionFamily, IntListFamily,
-    ListFunctionFamily, ListListFamily, NeverFunctionFamily, NilFunctionFamily, NilListFamily,
-    ParameterListFamily, ParameterListListFamily, StringFunctionFamily, StringListFamily,
-    TupleFunctionFamily, TupleListFamily, UtfCodepointFunctionFamily, UtfCodepointListFamily,
+    DraftFunction, DraftGraphValue, DraftInt, DraftList, DraftNeverReturn, DraftNil,
+    DraftStoredList, DraftString, DraftTuple, DraftTypedFunction, DraftTypedList,
+    DraftUtfCodepoint, DraftValueKey, DraftValueRef, FloatFunctionFamily, FloatListFamily,
+    FunctionFunctionFamily, FunctionListFamily, GenericFunctionFamily, IntFunctionFamily,
+    IntListFamily, ListFunctionFamily, ListListFamily, NeverFunctionFamily, NilFunctionFamily,
+    NilListFamily, ParameterListFamily, ParameterListListFamily, StringFunctionFamily,
+    StringListFamily, TupleFunctionFamily, TupleListFamily, UtfCodepointFunctionFamily,
+    UtfCodepointListFamily,
 };
 use crate::plan::execution;
 use std::collections::HashMap;
@@ -519,37 +520,26 @@ impl BlockValues {
         self.function_lists[&value.key]
     }
 
-    pub(super) fn stored_list(
-        &self,
-        value: &super::super::DraftStoredList,
-    ) -> execution::graph::StoredListLocal {
+    pub(super) fn stored_list(&self, value: &DraftStoredList) -> execution::graph::StoredListLocal {
         use execution::graph::StoredListLocal as S;
 
         match value {
-            super::super::DraftStoredList::ParameterList(value) => {
+            DraftStoredList::ParameterList(value) => {
                 S::ParameterList(self.parameter_list_lists[&value.key])
             }
-            super::super::DraftStoredList::Int(value) => S::Int(self.int_lists[&value.key]),
-            super::super::DraftStoredList::String(value) => {
-                S::String(self.string_lists[&value.key])
-            }
-            super::super::DraftStoredList::BitArray(value) => {
-                S::BitArray(self.bit_array_lists[&value.key])
-            }
-            super::super::DraftStoredList::UtfCodepoint(value) => {
+            DraftStoredList::Int(value) => S::Int(self.int_lists[&value.key]),
+            DraftStoredList::String(value) => S::String(self.string_lists[&value.key]),
+            DraftStoredList::BitArray(value) => S::BitArray(self.bit_array_lists[&value.key]),
+            DraftStoredList::UtfCodepoint(value) => {
                 S::UtfCodepoint(self.utf_codepoint_lists[&value.key])
             }
-            super::super::DraftStoredList::Custom(value) => {
-                S::Custom(self.custom_lists[&value.key])
-            }
-            super::super::DraftStoredList::Float(value) => S::Float(self.float_lists[&value.key]),
-            super::super::DraftStoredList::Bool(value) => S::Bool(self.bool_lists[&value.key]),
-            super::super::DraftStoredList::Nil(value) => S::Nil(self.nil_lists[&value.key]),
-            super::super::DraftStoredList::Tuple(value) => S::Tuple(self.tuple_lists[&value.key]),
-            super::super::DraftStoredList::List(value) => S::List(self.list_lists[&value.key]),
-            super::super::DraftStoredList::Function(value) => {
-                S::Function(self.function_lists[&value.key])
-            }
+            DraftStoredList::Custom(value) => S::Custom(self.custom_lists[&value.key]),
+            DraftStoredList::Float(value) => S::Float(self.float_lists[&value.key]),
+            DraftStoredList::Bool(value) => S::Bool(self.bool_lists[&value.key]),
+            DraftStoredList::Nil(value) => S::Nil(self.nil_lists[&value.key]),
+            DraftStoredList::Tuple(value) => S::Tuple(self.tuple_lists[&value.key]),
+            DraftStoredList::List(value) => S::List(self.list_lists[&value.key]),
+            DraftStoredList::Function(value) => S::Function(self.function_lists[&value.key]),
         }
     }
 

@@ -1,4 +1,4 @@
-use super::{DraftBlock, DraftBlockId, DraftGraph, DraftValueKey, DraftValueRef};
+use super::draft::{DraftBlock, DraftBlockId, DraftGraph, DraftValueKey, DraftValueRef};
 use std::collections::HashSet;
 
 pub(super) struct GraphLiveness {
@@ -124,8 +124,8 @@ fn collect_uses(
 #[cfg(test)]
 mod tests {
     use super::GraphLiveness;
-    use crate::plan::execution::lowering::graph::instruction::DraftIntInstruction;
-    use crate::plan::execution::lowering::graph::{DraftGraphBuilder, DraftInt};
+    use crate::plan::execution::lowering::graph::draft::instruction::DraftIntInstruction;
+    use crate::plan::execution::lowering::graph::draft::{DraftGraphBuilder, DraftInt};
     use crate::plan::execution::lowering::specialization::StoredValueShape;
 
     #[test]
