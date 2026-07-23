@@ -64,13 +64,13 @@ pub use module::{
     GenericListFunctionLocalId, GenericListLocalId, GenericLocal, GenericLocalId, IntExpr,
     IntFunctionExpr, IntFunctionLocalId, IntListFunctionLocalId, IntListLocalId, IntLocalId,
     ListFunctionExpr, ListFunctionLocal, ListListFunctionLocalId, ListListLocalId, ListLocal,
-    LocalId, ModulePlan, NilExpr, NilFunctionExpr, NilFunctionLocalId, NilListFunctionLocalId,
-    NilListLocalId, NilLocalId, Param, ParamBinding, ReturnExpr, Step, StringExpr,
-    StringFunctionExpr, StringFunctionLocalId, StringListFunctionLocalId, StringListLocalId,
-    StringLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleListFunctionLocalId,
-    TupleListLocalId, TupleLocalId, TypeScheme, UtfCodepointExpr, UtfCodepointFunctionExpr,
-    UtfCodepointFunctionLocalId, UtfCodepointListFunctionLocalId, UtfCodepointListLocalId,
-    UtfCodepointLocalId,
+    LocalId, ModuleId, ModulePlan, NilExpr, NilFunctionExpr, NilFunctionLocalId,
+    NilListFunctionLocalId, NilListLocalId, NilLocalId, Param, ParamBinding, PlannedModule,
+    ReturnExpr, Step, StringExpr, StringFunctionExpr, StringFunctionLocalId,
+    StringListFunctionLocalId, StringListLocalId, StringLocalId, TupleExpr, TupleFunctionExpr,
+    TupleFunctionLocalId, TupleListFunctionLocalId, TupleListLocalId, TupleLocalId, TypeScheme,
+    UtfCodepointExpr, UtfCodepointFunctionExpr, UtfCodepointFunctionLocalId,
+    UtfCodepointListFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
 };
 #[cfg(test)]
 pub(crate) use module::{

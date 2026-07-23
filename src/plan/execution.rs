@@ -39,13 +39,13 @@ use self::type_::{
     CustomConstructorRefinement, CustomValueShape, CustomValueShapeId, ListStorageTypeId,
     ValueShapeDescriptor,
 };
-use crate::plan::{ModulePlan, SourceContext};
+use crate::plan::{ModuleId, ModulePlan, SourceContext};
 use ecow::EcoString;
 pub use explain::ExecutionPlanExplanation;
 
 pub struct ExecutionPlan {
-    module: EcoString,
-    source_context: Option<SourceContext>,
+    root: ModuleId,
+    modules: Box<[ExecutionModuleContext]>,
     main: RuntimeFunctionId,
     constants: ConstantTable,
     functions: FunctionTables,
@@ -54,10 +54,24 @@ pub struct ExecutionPlan {
     value_shapes: ValueShapeTable,
 }
 
+struct ExecutionModuleContext {
+    module: EcoString,
+    source_context: Option<SourceContext>,
+}
+
+impl ExecutionModuleContext {
+    fn new(module: EcoString, source_context: Option<SourceContext>) -> Self {
+        Self {
+            module,
+            source_context,
+        }
+    }
+}
+
 impl explain::Explain for ExecutionPlan {
     fn write_explanation(&self, context: &mut explain::ExplainContext<'_, '_>) {
         context.push_str("module ");
-        context.push_str(&self.module);
+        context.push_str(self.module());
         context.push_str("\nmain ");
         self.main.function_label().write(context.output());
         context.push('\n');
@@ -72,11 +86,18 @@ impl ExecutionPlan {
     }
 
     pub fn module(&self) -> &EcoString {
-        &self.module
+        &self.modules[self.root.index()].module
     }
 
     pub fn source_context(&self) -> Option<&SourceContext> {
-        self.source_context.as_ref()
+        self.modules[self.root.index()].source_context.as_ref()
+    }
+
+    pub(crate) fn source_context_for(&self, module: &EcoString) -> Option<&SourceContext> {
+        self.modules
+            .iter()
+            .find(|context| &context.module == module)
+            .and_then(|context| context.source_context.as_ref())
     }
 
     pub fn explain(&self) -> ExecutionPlanExplanation<'_> {
@@ -583,5 +604,47 @@ mod tests {
 
         assert_eq!(execution.module(), "sample");
         assert_eq!(execution.source_context(), Some(&context));
+    }
+
+    #[test]
+    fn lowering_seeds_only_the_root_entry_and_preserves_module_sources() {
+        let root_source = "pub fn main() { 7 }";
+        let dependency_source = "pub fn main(value: Int) { value }";
+        let typed = crate::compile_typed_program(
+            "root",
+            [
+                crate::ModuleSource::new("root", "root.gleam", root_source),
+                crate::ModuleSource::new("alpha", "alpha.gleam", dependency_source),
+            ],
+        )
+        .expect("program should compile");
+        let module = crate::plan_program(typed).expect("program should plan");
+        let execution = super::ExecutionPlan::from_module_plan(module);
+
+        assert_eq!(execution.module(), "root");
+        assert_eq!(
+            execution.source_context().map(|context| context.source()),
+            Some(root_source),
+        );
+        assert_eq!(
+            execution
+                .source_context_for(&"alpha".into())
+                .map(|context| context.source()),
+            Some(dependency_source),
+        );
+        assert_eq!(crate::run_main(&execution), Ok(crate::Value::Int(7.into())),);
+        assert_eq!(
+            execution.explain().to_string(),
+            concat!(
+                "module root\n",
+                "main int#0\n",
+                "\n",
+                "function int#0\n",
+                "  entry b0 params=[] captures=[]\n",
+                "  block b0 params=[]\n",
+                "    %int#0:shape#0(Int) = int.value 7\n",
+                "    return %int#0\n",
+            ),
+        );
     }
 }

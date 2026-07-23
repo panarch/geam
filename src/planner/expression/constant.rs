@@ -434,21 +434,33 @@ pub fn main() {
         let entries = vec![
             (
                 ConstantTemplate::new(
-                    ConstantTemplateSignature::nil(ConstantTemplateId(0), 0, TypeScheme::new(0)),
+                    ConstantTemplateSignature::nil(
+                        ConstantTemplateId::new(0),
+                        0,
+                        TypeScheme::new(0),
+                    ),
                     "nothing".into(),
                 ),
                 ConstantValue::nil(),
             ),
             (
                 ConstantTemplate::new(
-                    ConstantTemplateSignature::bool(ConstantTemplateId(1), 0, TypeScheme::new(0)),
+                    ConstantTemplateSignature::bool(
+                        ConstantTemplateId::new(1),
+                        0,
+                        TypeScheme::new(0),
+                    ),
                     "falsehood".into(),
                 ),
                 ConstantValue::bool(false),
             ),
             (
                 ConstantTemplate::new(
-                    ConstantTemplateSignature::bool(ConstantTemplateId(2), 1, TypeScheme::new(0)),
+                    ConstantTemplateSignature::bool(
+                        ConstantTemplateId::new(2),
+                        1,
+                        TypeScheme::new(0),
+                    ),
                     "truth".into(),
                 ),
                 ConstantValue::bool(true),
@@ -456,7 +468,7 @@ pub fn main() {
             (
                 ConstantTemplate::new(
                     ConstantTemplateSignature::tuple(
-                        ConstantTemplateId(3),
+                        ConstantTemplateId::new(3),
                         0,
                         TypeScheme::new(0),
                         pair_elements.clone(),
@@ -474,21 +486,33 @@ pub fn main() {
             ),
             (
                 ConstantTemplate::new(
-                    ConstantTemplateSignature::string(ConstantTemplateId(4), 0, TypeScheme::new(0)),
+                    ConstantTemplateSignature::string(
+                        ConstantTemplateId::new(4),
+                        0,
+                        TypeScheme::new(0),
+                    ),
                     "label".into(),
                 ),
                 ConstantValue::string_concatenation(left, right),
             ),
             (
                 ConstantTemplate::new(
-                    ConstantTemplateSignature::float(ConstantTemplateId(5), 0, TypeScheme::new(0)),
+                    ConstantTemplateSignature::float(
+                        ConstantTemplateId::new(5),
+                        0,
+                        TypeScheme::new(0),
+                    ),
                     "ratio".into(),
                 ),
                 ConstantValue::float(1.5),
             ),
             (
                 ConstantTemplate::new(
-                    ConstantTemplateSignature::int(ConstantTemplateId(6), 0, TypeScheme::new(0)),
+                    ConstantTemplateSignature::int(
+                        ConstantTemplateId::new(6),
+                        0,
+                        TypeScheme::new(0),
+                    ),
                     "number".into(),
                 ),
                 ConstantValue::int(1.into()),
@@ -498,7 +522,7 @@ pub fn main() {
         let reference = |id: usize| {
             ConstantTemplates::reference(
                 constants
-                    .header(ConstantTemplateId(id))
+                    .header(ConstantTemplateId::new(id))
                     .signature()
                     .try_instantiate(Vec::new())
                     .expect("a monomorphic constant signature should instantiate"),
@@ -539,7 +563,7 @@ pub fn main() {
         ))
         .expect("source should plan");
         let rest_signature = ConstantTemplateSignature::list(
-            ConstantTemplateId(0),
+            ConstantTemplateId::new(0),
             0,
             TypeScheme::new(0),
             ValueShape::Int,
@@ -548,7 +572,7 @@ pub fn main() {
             .try_instantiate(Vec::new())
             .expect("a monomorphic constant signature should instantiate");
         let values_signature = ConstantTemplateSignature::list(
-            ConstantTemplateId(1),
+            ConstantTemplateId::new(1),
             1,
             TypeScheme::new(0),
             ValueShape::Int,
@@ -613,7 +637,7 @@ pub fn main() {
         .expect("source should plan");
         let function_shape = FunctionShape::new(vec![ValueShape::Int], ValueShape::Int);
         let signature = ConstantTemplateSignature::function(
-            ConstantTemplateId(0),
+            ConstantTemplateId::new(0),
             0,
             TypeScheme::new(0),
             function_shape.clone(),
@@ -968,7 +992,7 @@ pub fn main() {
             ValueShape::Custom(custom_shape),
         );
         let signature = ConstantTemplateSignature::function(
-            ConstantTemplateId(0),
+            ConstantTemplateId::new(0),
             0,
             TypeScheme::new(1),
             function_shape,

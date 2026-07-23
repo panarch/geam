@@ -18,7 +18,7 @@ pub use error::{
     UnsupportedCaseReason, UnsupportedExpressionKind, UnsupportedFunctionReason,
     UnsupportedPatternKind, UnsupportedPipelineReason, UnsupportedTopLevelKind,
 };
-pub use module::{plan_module, plan_module_with_source};
+pub use module::{plan_module, plan_module_with_source, plan_program};
 
 #[cfg(test)]
 mod support {

@@ -101,8 +101,8 @@ pub use id::{
     FunctionReturnFamily, FunctionTemplateId, GenericFunctionLocalId, GenericListFunctionLocalId,
     GenericListLocalId, GenericLocal, GenericLocalId, IntFunctionLocalId, IntListFunctionLocalId,
     IntListLocalId, IntLocalId, ListFunctionLocal, ListListFunctionLocalId, ListListLocalId,
-    ListLocal, LocalId, NilFunctionLocalId, NilListFunctionLocalId, NilListLocalId, NilLocalId,
-    StringFunctionLocalId, StringListFunctionLocalId, StringListLocalId, StringLocalId,
+    ListLocal, LocalId, ModuleId, NilFunctionLocalId, NilListFunctionLocalId, NilListLocalId,
+    NilLocalId, StringFunctionLocalId, StringListFunctionLocalId, StringListLocalId, StringLocalId,
     TupleFunctionLocalId, TupleListFunctionLocalId, TupleListLocalId, TupleLocalId,
     UtfCodepointFunctionLocalId, UtfCodepointListFunctionLocalId, UtfCodepointListLocalId,
     UtfCodepointLocalId,
@@ -133,63 +133,185 @@ pub(crate) use type_scheme::{FunctionInstantiation, FunctionTemplateSignature, T
 
 #[derive(Debug, PartialEq)]
 pub struct ModulePlan {
+    root: ModuleId,
+    entry: FunctionTemplateId,
+    modules: Vec<PlannedModule>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct PlannedModule {
+    id: ModuleId,
     module: EcoString,
     source_context: Option<SourceContext>,
     custom_types: Vec<CustomTypeDefinition>,
     constants: ConstantTemplates,
-    main: FunctionTemplate,
     functions: Vec<FunctionTemplate>,
     anonymous_functions: Vec<FunctionTemplate>,
 }
 
 pub(crate) struct ModulePlanParts {
+    pub(crate) root: ModuleId,
+    pub(crate) entry: FunctionTemplateId,
+    pub(crate) modules: Vec<PlannedModule>,
+}
+
+pub(crate) struct PlannedModuleParts {
     pub(crate) module: EcoString,
     pub(crate) source_context: Option<SourceContext>,
     pub(crate) custom_types: Vec<CustomTypeDefinition>,
     pub(crate) constants: ConstantTemplates,
-    pub(crate) main: FunctionTemplate,
     pub(crate) functions: Vec<FunctionTemplate>,
     pub(crate) anonymous_functions: Vec<FunctionTemplate>,
 }
 
 impl ModulePlan {
+    #[cfg(test)]
     pub(crate) fn new(
         module: EcoString,
         main: FunctionTemplate,
         functions: Vec<FunctionTemplate>,
     ) -> Self {
+        let root = ModuleId::root();
+        let entry = main.id();
+        let mut named_functions = Vec::with_capacity(functions.len() + 1);
+        named_functions.push(main);
+        named_functions.extend(functions);
         Self {
-            module,
-            source_context: None,
-            custom_types: Vec::new(),
-            constants: ConstantTemplates::empty(),
-            main,
-            functions,
-            anonymous_functions: Vec::new(),
+            root,
+            entry,
+            modules: vec![PlannedModule {
+                id: root,
+                module,
+                source_context: None,
+                custom_types: Vec::new(),
+                constants: ConstantTemplates::empty(),
+                functions: named_functions,
+                anonymous_functions: Vec::new(),
+            }],
         }
     }
 
+    pub(crate) fn from_modules(
+        root: ModuleId,
+        entry: FunctionTemplateId,
+        modules: Vec<PlannedModule>,
+    ) -> Self {
+        Self {
+            root,
+            entry,
+            modules,
+        }
+    }
+
+    #[cfg(test)]
     pub(crate) fn with_anonymous_functions(
         mut self,
         anonymous_functions: Vec<FunctionTemplate>,
     ) -> Self {
-        self.anonymous_functions = anonymous_functions;
+        self.root_module_mut().anonymous_functions = anonymous_functions;
         self
     }
 
+    #[cfg(test)]
     pub(crate) fn with_custom_types(mut self, custom_types: Vec<CustomTypeDefinition>) -> Self {
-        self.custom_types = custom_types;
+        self.root_module_mut().custom_types = custom_types;
         self
     }
 
+    #[cfg(test)]
     pub(crate) fn with_constants(mut self, constants: ConstantTemplates) -> Self {
-        self.constants = constants;
+        self.root_module_mut().constants = constants;
         self
     }
 
+    #[cfg(test)]
     pub(crate) fn with_source_context(mut self, source_context: SourceContext) -> Self {
-        self.source_context = Some(source_context);
+        self.root_module_mut().source_context = Some(source_context);
         self
+    }
+
+    pub fn module(&self) -> &EcoString {
+        self.root_module().module()
+    }
+
+    pub fn source_context(&self) -> Option<&SourceContext> {
+        self.root_module().source_context()
+    }
+
+    pub fn custom_types(&self) -> &[CustomTypeDefinition] {
+        self.root_module().custom_types()
+    }
+
+    pub fn constants(&self) -> &[ConstantTemplate] {
+        self.root_module().constants()
+    }
+
+    pub fn main_function(&self) -> &FunctionTemplate {
+        &self.root_module().functions[self.entry.index()]
+    }
+
+    pub fn functions(&self) -> &[FunctionTemplate] {
+        &self.root_module().functions[1..]
+    }
+
+    pub fn root(&self) -> ModuleId {
+        self.root
+    }
+
+    pub fn entry(&self) -> FunctionTemplateId {
+        self.entry
+    }
+
+    pub fn modules(&self) -> &[PlannedModule] {
+        &self.modules
+    }
+
+    #[cfg(test)]
+    pub(crate) fn anonymous_functions(&self) -> &[FunctionTemplate] {
+        &self.root_module().anonymous_functions
+    }
+
+    pub(crate) fn into_parts(self) -> ModulePlanParts {
+        ModulePlanParts {
+            root: self.root,
+            entry: self.entry,
+            modules: self.modules,
+        }
+    }
+
+    fn root_module(&self) -> &PlannedModule {
+        &self.modules[self.root.index()]
+    }
+
+    #[cfg(test)]
+    fn root_module_mut(&mut self) -> &mut PlannedModule {
+        &mut self.modules[self.root.index()]
+    }
+}
+
+impl PlannedModule {
+    pub(crate) fn new(
+        id: ModuleId,
+        module: EcoString,
+        source_context: Option<SourceContext>,
+        custom_types: Vec<CustomTypeDefinition>,
+        constants: ConstantTemplates,
+        functions: Vec<FunctionTemplate>,
+        anonymous_functions: Vec<FunctionTemplate>,
+    ) -> Self {
+        Self {
+            id,
+            module,
+            source_context,
+            custom_types,
+            constants,
+            functions,
+            anonymous_functions,
+        }
+    }
+
+    pub fn id(&self) -> ModuleId {
+        self.id
     }
 
     pub fn module(&self) -> &EcoString {
@@ -208,26 +330,16 @@ impl ModulePlan {
         self.constants.headers()
     }
 
-    pub fn main_function(&self) -> &FunctionTemplate {
-        &self.main
-    }
-
     pub fn functions(&self) -> &[FunctionTemplate] {
         &self.functions
     }
 
-    #[cfg(test)]
-    pub(crate) fn anonymous_functions(&self) -> &[FunctionTemplate] {
-        &self.anonymous_functions
-    }
-
-    pub(crate) fn into_parts(self) -> ModulePlanParts {
-        ModulePlanParts {
+    pub(crate) fn into_parts(self) -> PlannedModuleParts {
+        PlannedModuleParts {
             module: self.module,
             source_context: self.source_context,
             custom_types: self.custom_types,
             constants: self.constants,
-            main: self.main,
             functions: self.functions,
             anonymous_functions: self.anonymous_functions,
         }
@@ -250,7 +362,7 @@ mod tests {
         let helper = function(1, "helper", 2);
         let anonymous = function(2, "<anonymous:0>", 3);
         let signature =
-            ConstantTemplateSignature::int(ConstantTemplateId(0), 0, TypeScheme::new(0));
+            ConstantTemplateSignature::int(ConstantTemplateId::new(0), 0, TypeScheme::new(0));
         let constant = ConstantTemplate::new(signature, "answer".into());
         let plan = ModulePlan::new("main".into(), main, vec![helper])
             .with_anonymous_functions(vec![anonymous])
@@ -279,14 +391,8 @@ mod tests {
         assert_eq!(
             debug,
             format!(
-                "ModulePlan {{ module: {:?}, source_context: {:?}, custom_types: {:?}, constants: {:?}, main: {:?}, functions: {:?}, anonymous_functions: {:?} }}",
-                plan.module,
-                plan.source_context,
-                plan.custom_types,
-                plan.constants,
-                plan.main,
-                plan.functions,
-                plan.anonymous_functions,
+                "ModulePlan {{ root: {:?}, entry: {:?}, modules: {:?} }}",
+                plan.root, plan.entry, plan.modules,
             ),
         );
     }

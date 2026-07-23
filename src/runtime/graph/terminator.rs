@@ -94,7 +94,7 @@ pub(super) fn terminator_action(
         Terminator::SourceStop(stop) => {
             let message = stop.message().map(|message| environment.string(message));
             Err(ExecutionError::source_panic(
-                plan.source_context(),
+                plan.source_context_for(stop.site().module()),
                 panic_kind(stop.kind()),
                 message,
                 stop.site().clone(),
@@ -105,7 +105,7 @@ pub(super) fn terminator_action(
             let message = panic.message().map(|message| environment.string(message));
             let subject = crate::runtime::materialize::value(plan, state, subject);
             Err(ExecutionError::let_assert_panic(
-                plan.source_context(),
+                plan.source_context_for(panic.site().module()),
                 message,
                 panic.site().clone(),
                 subject,

@@ -75,6 +75,7 @@ pub(crate) enum ConstantFunctionTemplateSource<Id> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct TypedConstantFunctionInstantiation<Source, Return> {
+    module: crate::plan::ModuleId,
     source: Source,
     substitution: TypeSubstitution,
     shape: FunctionShape,
@@ -253,55 +254,65 @@ impl ConstantFunctionTemplate {
 
     pub(super) fn instantiate(
         &self,
+        module: crate::plan::ModuleId,
         substitution: TypeSubstitution,
         shape: FunctionShape,
     ) -> ConstantFunctionInstantiation {
         match self {
-            Self::Generic(source) => {
-                ConstantFunctionInstantiation::from_generic_source(*source, substitution, shape)
-            }
+            Self::Generic(source) => ConstantFunctionInstantiation::from_generic_source(
+                module,
+                *source,
+                substitution,
+                shape,
+            ),
             Self::Int(source) => {
-                ConstantFunctionInstantiation::Int(TypedConstantFunctionInstantiation::new(
+                ConstantFunctionInstantiation::Int(TypedConstantFunctionInstantiation::in_module(
+                    module,
                     ConstantFunctionTemplateSource::Exact(*source),
                     substitution,
                     shape,
                     (),
                 ))
             }
-            Self::String(source) => {
-                ConstantFunctionInstantiation::String(TypedConstantFunctionInstantiation::new(
-                    ConstantFunctionTemplateSource::Exact(*source),
-                    substitution,
-                    shape,
-                    (),
-                ))
-            }
-            Self::BitArray(source) => {
-                ConstantFunctionInstantiation::BitArray(TypedConstantFunctionInstantiation::new(
-                    ConstantFunctionTemplateSource::Exact(*source),
-                    substitution,
-                    shape,
-                    (),
-                ))
-            }
-            Self::UtfCodepoint(source) => ConstantFunctionInstantiation::UtfCodepoint(
-                TypedConstantFunctionInstantiation::new(
+            Self::String(source) => ConstantFunctionInstantiation::String(
+                TypedConstantFunctionInstantiation::in_module(
+                    module,
                     ConstantFunctionTemplateSource::Exact(*source),
                     substitution,
                     shape,
                     (),
                 ),
             ),
-            Self::Custom { template, return_ } => {
-                ConstantFunctionInstantiation::Custom(TypedConstantFunctionInstantiation::new(
+            Self::BitArray(source) => ConstantFunctionInstantiation::BitArray(
+                TypedConstantFunctionInstantiation::in_module(
+                    module,
+                    ConstantFunctionTemplateSource::Exact(*source),
+                    substitution,
+                    shape,
+                    (),
+                ),
+            ),
+            Self::UtfCodepoint(source) => ConstantFunctionInstantiation::UtfCodepoint(
+                TypedConstantFunctionInstantiation::in_module(
+                    module,
+                    ConstantFunctionTemplateSource::Exact(*source),
+                    substitution,
+                    shape,
+                    (),
+                ),
+            ),
+            Self::Custom { template, return_ } => ConstantFunctionInstantiation::Custom(
+                TypedConstantFunctionInstantiation::in_module(
+                    module,
                     ConstantFunctionTemplateSource::Exact(*template),
                     substitution.clone(),
                     shape,
                     return_.substitute(&substitution),
-                ))
-            }
+                ),
+            ),
             Self::Float(source) => {
-                ConstantFunctionInstantiation::Float(TypedConstantFunctionInstantiation::new(
+                ConstantFunctionInstantiation::Float(TypedConstantFunctionInstantiation::in_module(
+                    module,
                     ConstantFunctionTemplateSource::Exact(*source),
                     substitution,
                     shape,
@@ -309,7 +320,8 @@ impl ConstantFunctionTemplate {
                 ))
             }
             Self::Bool(source) => {
-                ConstantFunctionInstantiation::Bool(TypedConstantFunctionInstantiation::new(
+                ConstantFunctionInstantiation::Bool(TypedConstantFunctionInstantiation::in_module(
+                    module,
                     ConstantFunctionTemplateSource::Exact(*source),
                     substitution,
                     shape,
@@ -317,7 +329,8 @@ impl ConstantFunctionTemplate {
                 ))
             }
             Self::Nil(source) => {
-                ConstantFunctionInstantiation::Nil(TypedConstantFunctionInstantiation::new(
+                ConstantFunctionInstantiation::Nil(TypedConstantFunctionInstantiation::in_module(
+                    module,
                     ConstantFunctionTemplateSource::Exact(*source),
                     substitution,
                     shape,
@@ -325,7 +338,8 @@ impl ConstantFunctionTemplate {
                 ))
             }
             Self::Tuple { template, return_ } => {
-                ConstantFunctionInstantiation::Tuple(TypedConstantFunctionInstantiation::new(
+                ConstantFunctionInstantiation::Tuple(TypedConstantFunctionInstantiation::in_module(
+                    module,
                     ConstantFunctionTemplateSource::Exact(*template),
                     substitution.clone(),
                     shape,
@@ -337,33 +351,53 @@ impl ConstantFunctionTemplate {
                 ))
             }
             Self::List { template, item } => {
-                ConstantFunctionInstantiation::List(TypedConstantFunctionInstantiation::new(
+                ConstantFunctionInstantiation::List(TypedConstantFunctionInstantiation::in_module(
+                    module,
                     ConstantFunctionTemplateSource::Exact(*template),
                     substitution.clone(),
                     shape,
                     Box::new(item.as_ref().substitute(&substitution)),
                 ))
             }
-            Self::Function { template, return_ } => {
-                ConstantFunctionInstantiation::Function(TypedConstantFunctionInstantiation::new(
+            Self::Function { template, return_ } => ConstantFunctionInstantiation::Function(
+                TypedConstantFunctionInstantiation::in_module(
+                    module,
                     ConstantFunctionTemplateSource::Exact(*template),
                     substitution.clone(),
                     shape,
                     Box::new(return_.as_ref().substitute(&substitution)),
-                ))
-            }
+                ),
+            ),
         }
     }
 }
 
 impl<Source, Return> TypedConstantFunctionInstantiation<Source, Return> {
+    #[cfg(test)]
     fn new(
         source: Source,
         substitution: TypeSubstitution,
         shape: FunctionShape,
         return_: Return,
     ) -> Self {
+        Self::in_module(
+            crate::plan::ModuleId::root(),
+            source,
+            substitution,
+            shape,
+            return_,
+        )
+    }
+
+    fn in_module(
+        module: crate::plan::ModuleId,
+        source: Source,
+        substitution: TypeSubstitution,
+        shape: FunctionShape,
+        return_: Return,
+    ) -> Self {
         Self {
+            module,
             source,
             substitution,
             shape,
@@ -373,6 +407,10 @@ impl<Source, Return> TypedConstantFunctionInstantiation<Source, Return> {
 
     pub(crate) fn source(&self) -> &Source {
         &self.source
+    }
+
+    pub(crate) fn module(&self) -> crate::plan::ModuleId {
+        self.module
     }
 
     pub(crate) fn substitution(&self) -> &TypeSubstitution {
@@ -427,7 +465,8 @@ impl<Source: Copy, Return: SubstituteFunctionReturn>
     TypedConstantFunctionInstantiation<Source, Return>
 {
     pub(super) fn substitute(&self, outer: &TypeSubstitution) -> Self {
-        Self::new(
+        Self::in_module(
+            self.module,
             self.source,
             self.substitution.substitute(outer),
             self.shape.substitute(outer),
@@ -442,7 +481,8 @@ impl ConstantGenericFunctionInstantiation {
         outer: &TypeSubstitution,
         return_: Return,
     ) -> TypedConstantFunctionInstantiation<ConstantFunctionTemplateSource<Id>, Return> {
-        TypedConstantFunctionInstantiation::new(
+        TypedConstantFunctionInstantiation::in_module(
+            self.module(),
             ConstantFunctionTemplateSource::Generic(*self.source()),
             self.substitution().substitute(outer),
             self.shape().substitute(outer),
@@ -455,7 +495,8 @@ impl ConstantGenericFunctionInstantiation {
         outer: &TypeSubstitution,
         return_: TypeParameterId,
     ) -> Self {
-        TypedConstantFunctionInstantiation::new(
+        TypedConstantFunctionInstantiation::in_module(
+            self.module(),
             *self.source(),
             self.substitution().substitute(outer),
             self.shape().substitute(outer),
@@ -465,79 +506,118 @@ impl ConstantGenericFunctionInstantiation {
 }
 
 impl ConstantFunctionInstantiation {
+    pub(super) fn module(&self) -> crate::plan::ModuleId {
+        match self {
+            Self::Generic(value) => value.module(),
+            Self::Int(value) => value.module(),
+            Self::String(value) => value.module(),
+            Self::BitArray(value) => value.module(),
+            Self::UtfCodepoint(value) => value.module(),
+            Self::Custom(value) => value.module(),
+            Self::Float(value) => value.module(),
+            Self::Bool(value) => value.module(),
+            Self::Nil(value) => value.module(),
+            Self::Tuple(value) => value.module(),
+            Self::List(value) => value.module(),
+            Self::Function(value) => value.module(),
+        }
+    }
+
     fn from_generic_source(
+        module: crate::plan::ModuleId,
         source: ConstantGenericFunctionTemplateId,
         substitution: TypeSubstitution,
         shape: FunctionShape,
     ) -> Self {
         match shape.return_shape().clone() {
-            ValueShape::Parameter(parameter) => Self::Generic(
-                TypedConstantFunctionInstantiation::new(source, substitution, shape, parameter),
-            ),
-            ValueShape::Int => Self::Int(TypedConstantFunctionInstantiation::new(
+            ValueShape::Parameter(parameter) => {
+                Self::Generic(TypedConstantFunctionInstantiation::in_module(
+                    module,
+                    source,
+                    substitution,
+                    shape,
+                    parameter,
+                ))
+            }
+            ValueShape::Int => Self::Int(TypedConstantFunctionInstantiation::in_module(
+                module,
                 ConstantFunctionTemplateSource::Generic(source),
                 substitution,
                 shape,
                 (),
             )),
-            ValueShape::String => Self::String(TypedConstantFunctionInstantiation::new(
+            ValueShape::String => Self::String(TypedConstantFunctionInstantiation::in_module(
+                module,
                 ConstantFunctionTemplateSource::Generic(source),
                 substitution,
                 shape,
                 (),
             )),
-            ValueShape::BitArray => Self::BitArray(TypedConstantFunctionInstantiation::new(
+            ValueShape::BitArray => Self::BitArray(TypedConstantFunctionInstantiation::in_module(
+                module,
                 ConstantFunctionTemplateSource::Generic(source),
                 substitution,
                 shape,
                 (),
             )),
             ValueShape::UtfCodepoint => {
-                Self::UtfCodepoint(TypedConstantFunctionInstantiation::new(
+                Self::UtfCodepoint(TypedConstantFunctionInstantiation::in_module(
+                    module,
                     ConstantFunctionTemplateSource::Generic(source),
                     substitution,
                     shape,
                     (),
                 ))
             }
-            ValueShape::Custom(return_) => Self::Custom(TypedConstantFunctionInstantiation::new(
-                ConstantFunctionTemplateSource::Generic(source),
-                substitution,
-                shape,
-                return_,
-            )),
-            ValueShape::Float => Self::Float(TypedConstantFunctionInstantiation::new(
-                ConstantFunctionTemplateSource::Generic(source),
-                substitution,
-                shape,
-                (),
-            )),
-            ValueShape::Bool => Self::Bool(TypedConstantFunctionInstantiation::new(
-                ConstantFunctionTemplateSource::Generic(source),
-                substitution,
-                shape,
-                (),
-            )),
-            ValueShape::Nil => Self::Nil(TypedConstantFunctionInstantiation::new(
+            ValueShape::Custom(return_) => {
+                Self::Custom(TypedConstantFunctionInstantiation::in_module(
+                    module,
+                    ConstantFunctionTemplateSource::Generic(source),
+                    substitution,
+                    shape,
+                    return_,
+                ))
+            }
+            ValueShape::Float => Self::Float(TypedConstantFunctionInstantiation::in_module(
+                module,
                 ConstantFunctionTemplateSource::Generic(source),
                 substitution,
                 shape,
                 (),
             )),
-            ValueShape::Tuple(return_) => Self::Tuple(TypedConstantFunctionInstantiation::new(
+            ValueShape::Bool => Self::Bool(TypedConstantFunctionInstantiation::in_module(
+                module,
                 ConstantFunctionTemplateSource::Generic(source),
                 substitution,
                 shape,
-                return_,
+                (),
             )),
-            ValueShape::List(item) => Self::List(TypedConstantFunctionInstantiation::new(
+            ValueShape::Nil => Self::Nil(TypedConstantFunctionInstantiation::in_module(
+                module,
+                ConstantFunctionTemplateSource::Generic(source),
+                substitution,
+                shape,
+                (),
+            )),
+            ValueShape::Tuple(return_) => {
+                Self::Tuple(TypedConstantFunctionInstantiation::in_module(
+                    module,
+                    ConstantFunctionTemplateSource::Generic(source),
+                    substitution,
+                    shape,
+                    return_,
+                ))
+            }
+            ValueShape::List(item) => Self::List(TypedConstantFunctionInstantiation::in_module(
+                module,
                 ConstantFunctionTemplateSource::Generic(source),
                 substitution,
                 shape,
                 item,
             )),
             ValueShape::Function(return_) => {
-                Self::Function(TypedConstantFunctionInstantiation::new(
+                Self::Function(TypedConstantFunctionInstantiation::in_module(
+                    module,
                     ConstantFunctionTemplateSource::Generic(source),
                     substitution,
                     shape,
@@ -550,6 +630,7 @@ impl ConstantFunctionInstantiation {
     pub(super) fn substitute(&self, outer: &TypeSubstitution) -> Self {
         match self {
             Self::Generic(value) => Self::from_generic_source(
+                value.module(),
                 *value.source(),
                 value.substitution().substitute(outer),
                 value.shape().substitute(outer),

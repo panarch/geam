@@ -264,7 +264,13 @@ pub(crate) struct GenericFunctionLocal {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct FunctionTemplateId(usize);
+pub struct ModuleId(usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct FunctionTemplateId {
+    module: ModuleId,
+    index: usize,
+}
 
 #[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -741,11 +747,34 @@ impl LocalId {
 }
 
 impl FunctionTemplateId {
+    #[cfg(test)]
+    pub(crate) fn new(index: usize) -> Self {
+        Self::in_module(ModuleId::root(), index)
+    }
+
+    pub(crate) fn in_module(module: ModuleId, index: usize) -> Self {
+        Self { module, index }
+    }
+
+    pub fn module(self) -> ModuleId {
+        self.module
+    }
+
+    pub(crate) fn index(self) -> usize {
+        self.index
+    }
+}
+
+impl ModuleId {
     pub(crate) fn new(index: usize) -> Self {
         Self(index)
     }
 
-    pub(crate) fn index(self) -> usize {
+    pub(crate) fn root() -> Self {
+        Self(0)
+    }
+
+    pub fn index(self) -> usize {
         self.0
     }
 }

@@ -345,7 +345,7 @@ mod tests {
     #[test]
     fn constant_instantiation_requires_a_complete_matching_substitution() {
         let signature = ConstantTemplateSignature::list(
-            ConstantTemplateId(0),
+            ConstantTemplateId::new(0),
             0,
             TypeScheme::new(1),
             ValueShape::Parameter(TypeParameterId(0)),
@@ -362,7 +362,7 @@ mod tests {
         assert_eq!(instantiate_constant(&signature, &ValueShape::Int), None);
 
         let unresolved = ConstantTemplateSignature::list(
-            ConstantTemplateId(1),
+            ConstantTemplateId::new(1),
             1,
             TypeScheme::new(2),
             ValueShape::Parameter(TypeParameterId(0)),

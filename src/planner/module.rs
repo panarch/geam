@@ -1,6 +1,7 @@
+use crate::frontend::TypedProgram;
 use crate::plan::{
-    FunctionFunctionLocalId, FunctionTemplateId, IntFunctionLocalId, ModulePlan, ParamBinding,
-    ParamLocal, SourceContext,
+    FunctionFunctionLocalId, FunctionTemplateId, IntFunctionLocalId, ModuleId, ModulePlan,
+    ParamBinding, ParamLocal, PlannedModule, SourceContext,
 };
 use crate::planner::context::{AnonymousFunctions, FunctionInfo, FunctionParam};
 use crate::planner::error::{
@@ -17,19 +18,70 @@ use std::collections::HashMap;
 pub(in crate::planner) use constant::ConstantRegistry;
 #[cfg(test)]
 pub(in crate::planner) use constant::plan_constants;
+use constant::plan_constants_in;
 
 pub fn plan_module(module: TypedModule) -> Result<ModulePlan, PlanError> {
-    plan_module_inner(module)
+    plan_module_inner(module, None)
 }
 
 pub fn plan_module_with_source(
     module: TypedModule,
     source_context: SourceContext,
 ) -> Result<ModulePlan, PlanError> {
-    plan_module_inner(module).map(|plan| plan.with_source_context(source_context))
+    plan_module_inner(module, Some(source_context))
 }
 
-fn plan_module_inner(module: TypedModule) -> Result<ModulePlan, PlanError> {
+pub fn plan_program(program: TypedProgram) -> Result<ModulePlan, PlanError> {
+    let (root_index, modules) = program.into_parts();
+    let root = ModuleId::new(root_index);
+    let mut planned_modules = Vec::with_capacity(modules.len());
+
+    for (index, module) in modules.into_iter().enumerate() {
+        let id = ModuleId::new(index);
+        let role = if id == root {
+            ModuleRole::Root
+        } else {
+            ModuleRole::Dependency
+        };
+        planned_modules.push(plan_typed_module(
+            id,
+            module.module,
+            Some(SourceContext::new(module.path, module.source)),
+            role,
+        )?);
+    }
+
+    Ok(ModulePlan::from_modules(
+        root,
+        FunctionTemplateId::in_module(root, 0),
+        planned_modules,
+    ))
+}
+
+fn plan_module_inner(
+    module: TypedModule,
+    source_context: Option<SourceContext>,
+) -> Result<ModulePlan, PlanError> {
+    let module = plan_typed_module(ModuleId::root(), module, source_context, ModuleRole::Root)?;
+    Ok(ModulePlan::from_modules(
+        ModuleId::root(),
+        FunctionTemplateId::in_module(ModuleId::root(), 0),
+        vec![module],
+    ))
+}
+
+#[derive(Clone, Copy)]
+enum ModuleRole {
+    Root,
+    Dependency,
+}
+
+fn plan_typed_module(
+    module_id: ModuleId,
+    module: TypedModule,
+    source_context: Option<SourceContext>,
+    role: ModuleRole,
+) -> Result<PlannedModule, PlanError> {
     let package = module.type_info.package.clone();
     let definitions = module.definitions;
 
@@ -45,22 +97,20 @@ fn plan_module_inner(module: TypedModule) -> Result<ModulePlan, PlanError> {
         custom_type::plan_custom_types(&package, &module_name, definitions.custom_types)?;
     let FunctionTable {
         by_name,
-        main,
-        functions_before_main,
-        functions_after_main,
+        functions,
         mut anonymous_functions,
-    } = function_table(&definitions.functions)?;
-    let main = validate_main_function(main)?;
-    let constants = constant::plan_constants(
+    } = function_table(module_id, &definitions.functions, role)?;
+    let constants = plan_constants_in(
+        module_id,
         definitions.constants,
         &module_name,
         &by_name,
         &custom_types,
         &mut anonymous_functions,
     )?;
-    let mut functions = Vec::new();
+    let mut planned_functions = Vec::with_capacity(functions.len());
 
-    for function in functions_before_main {
+    for function in functions {
         let planned = plan_function(
             function.info,
             &module_name,
@@ -70,45 +120,27 @@ fn plan_module_inner(module: TypedModule) -> Result<ModulePlan, PlanError> {
             function.function,
             &mut anonymous_functions,
         )?;
-        functions.push(planned);
+        planned_functions.push(planned);
     }
-
-    let main = plan_function(
-        main.info,
-        &module_name,
-        &by_name,
-        &custom_types,
-        &constants,
-        main.function,
-        &mut anonymous_functions,
-    )?;
-
-    for function in functions_after_main {
-        let planned = plan_function(
-            function.info,
-            &module_name,
-            &by_name,
-            &custom_types,
-            &constants,
-            function.function,
-            &mut anonymous_functions,
-        )?;
-        functions.push(planned);
-    }
+    planned_functions.sort_by_key(|function| function.id().index());
     let anonymous_functions = anonymous_functions.into_functions();
     let constants = constants.into_templates();
+    let module = PlannedModule::new(
+        module_id,
+        module_name,
+        source_context,
+        custom_types,
+        constants,
+        planned_functions,
+        anonymous_functions,
+    );
 
-    Ok(ModulePlan::new(module_name, main, functions)
-        .with_custom_types(custom_types)
-        .with_constants(constants)
-        .with_anonymous_functions(anonymous_functions))
+    Ok(module)
 }
 
 struct FunctionTable {
     by_name: HashMap<EcoString, FunctionInfo>,
-    main: FunctionToPlan,
-    functions_before_main: Vec<FunctionToPlan>,
-    functions_after_main: Vec<FunctionToPlan>,
+    functions: Vec<FunctionToPlan>,
     anonymous_functions: AnonymousFunctions,
 }
 
@@ -118,7 +150,9 @@ struct FunctionToPlan {
 }
 
 fn function_table(
+    module: ModuleId,
     functions: &[gleam_core::ast::TypedFunction],
+    role: ModuleRole,
 ) -> Result<FunctionTable, PlanError> {
     let mut seeds = Vec::new();
 
@@ -138,63 +172,60 @@ fn function_table(
         });
     }
 
-    let Some((main_index, main_seed)) = seeds
-        .iter()
-        .enumerate()
-        .find(|(_, seed)| seed.name == "main")
-        .map(|(index, seed)| (index, seed.clone()))
-    else {
-        return Err(PlanError::UnsupportedFunction {
-            name: "main".into(),
-            reason: UnsupportedFunctionReason::MissingMain,
-        });
-    };
-
-    let main_info = function_info(0, &main_seed);
-    let main = FunctionToPlan {
-        info: main_info.clone(),
-        function: main_seed.function,
-    };
-    let mut by_name = HashMap::from([(main_seed.name, main_info)]);
-    let mut functions_before_main = Vec::new();
-    let mut functions_after_main = Vec::new();
-    let mut next_function_index = 1;
-
-    for (source_index, seed) in seeds.into_iter().enumerate() {
-        if source_index == main_index {
-            continue;
-        }
-
-        let info = function_info(next_function_index, &seed);
-        next_function_index += 1;
-        by_name.insert(seed.name.clone(), info.clone());
-        let function = FunctionToPlan {
-            info,
-            function: seed.function,
-        };
-
-        if source_index < main_index {
-            functions_before_main.push(function);
-        } else {
-            functions_after_main.push(function);
-        }
+    enum FunctionIndexing {
+        Root { main_index: usize },
+        Dependency,
     }
 
-    let anonymous_functions = AnonymousFunctions::new(next_function_index);
+    let indexing = match role {
+        ModuleRole::Root => {
+            let main_index = seeds
+                .iter()
+                .position(|seed| seed.name == "main")
+                .ok_or_else(|| PlanError::UnsupportedFunction {
+                    name: "main".into(),
+                    reason: UnsupportedFunctionReason::MissingMain,
+                })?;
+            if !seeds[main_index].params.is_empty() {
+                return Err(PlanError::UnsupportedFunction {
+                    name: "main".into(),
+                    reason: UnsupportedFunctionReason::MainWithArguments,
+                });
+            }
+            FunctionIndexing::Root { main_index }
+        }
+        ModuleRole::Dependency => FunctionIndexing::Dependency,
+    };
+
+    let mut by_name = HashMap::with_capacity(seeds.len());
+    let mut functions_to_plan = Vec::with_capacity(seeds.len());
+    for (source_index, seed) in seeds.into_iter().enumerate() {
+        let local_index = match indexing {
+            FunctionIndexing::Root { main_index } if source_index == main_index => 0,
+            FunctionIndexing::Root { main_index } if source_index < main_index => source_index + 1,
+            FunctionIndexing::Root { .. } | FunctionIndexing::Dependency => source_index,
+        };
+        let info = function_info(module, local_index, &seed);
+        by_name.insert(seed.name.clone(), info.clone());
+        functions_to_plan.push(FunctionToPlan {
+            info,
+            function: seed.function,
+        });
+    }
+
+    let anonymous_functions = AnonymousFunctions::in_module(module, functions_to_plan.len());
 
     Ok(FunctionTable {
         by_name,
-        main,
-        functions_before_main,
-        functions_after_main,
+        functions: functions_to_plan,
         anonymous_functions,
     })
 }
 
-fn function_info(function_index: usize, seed: &FunctionSeed) -> FunctionInfo {
+fn function_info(module: ModuleId, function_index: usize, seed: &FunctionSeed) -> FunctionInfo {
     FunctionInfo {
         signature: crate::plan::FunctionTemplateSignature::new(
-            FunctionTemplateId::new(function_index),
+            FunctionTemplateId::in_module(module, function_index),
             seed.scheme.clone(),
             crate::plan::FunctionShape::new(
                 seed.params
@@ -592,20 +623,10 @@ impl FunctionParamLocalCounters {
     }
 }
 
-fn validate_main_function(main: FunctionToPlan) -> Result<FunctionToPlan, PlanError> {
-    if main.info.arity() != 0 {
-        return Err(PlanError::UnsupportedFunction {
-            name: "main".into(),
-            reason: UnsupportedFunctionReason::MainWithArguments,
-        });
-    }
-
-    Ok(main)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::plan_module;
+    use super::{plan_module, plan_program};
+    use crate::frontend::{ModuleSource, compile_typed_program};
     use crate::plan::{
         BitArrayListLocalId, BoolListLocalId, ConstantTemplate, ConstantTemplateId,
         ConstantTemplateSignature, ConstantTemplates, ConstantValue, CustomConstructorDefinition,
@@ -628,6 +649,105 @@ mod tests {
         UnsupportedFunctionReason, UnsupportedTopLevelKind,
     };
     use gleam_core::type_;
+
+    #[test]
+    fn plan_program_owns_dependency_first_modules_and_a_root_entry() {
+        let typed = compile_typed_program(
+            "root",
+            [
+                ModuleSource::new(
+                    "alpha",
+                    "support.gleam",
+                    r#"
+pub const answer = 1
+
+pub fn main(value: Int) {
+  value
+}
+"#,
+                ),
+                ModuleSource::new(
+                    "root",
+                    "main.gleam",
+                    r#"
+pub const answer = 2
+
+pub fn main() {
+  answer
+}
+"#,
+                ),
+            ],
+        )
+        .expect("program should compile");
+        let plan = plan_program(typed).expect("program should plan");
+
+        assert_eq!(plan.root(), crate::plan::ModuleId::new(1));
+        assert_eq!(plan.module(), "root");
+        assert_eq!(plan.entry().module(), plan.root());
+        assert_eq!(plan.entry().index(), 0);
+        assert_eq!(
+            plan.modules()
+                .iter()
+                .map(|module| module.module().as_str())
+                .collect::<Vec<_>>(),
+            ["alpha", "root"],
+        );
+        assert_eq!(plan.modules()[0].id(), crate::plan::ModuleId::new(0));
+        assert_eq!(plan.modules()[1].id(), crate::plan::ModuleId::new(1));
+        assert_eq!(
+            plan.modules()[0].functions()[0].id().module(),
+            crate::plan::ModuleId::new(0),
+        );
+        assert_eq!(
+            plan.modules()[1].functions()[0].id().module(),
+            crate::plan::ModuleId::new(1),
+        );
+        assert_eq!(
+            plan.modules()[0].constants()[0].id().module(),
+            crate::plan::ModuleId::new(0),
+        );
+        assert_eq!(
+            plan.modules()[1].constants()[0].id().module(),
+            crate::plan::ModuleId::new(1),
+        );
+        assert_eq!(plan.modules()[0].functions()[0].params().len(), 1);
+        assert_eq!(
+            plan.source_context().map(|context| context.source()),
+            Some(
+                r#"
+pub const answer = 2
+
+pub fn main() {
+  answer
+}
+"#,
+            )
+        );
+    }
+
+    #[test]
+    fn plan_program_validates_every_dependency_body() {
+        let typed = compile_typed_program(
+            "main",
+            [
+                ModuleSource::new("main", "main.gleam", "pub fn main() { 1 }"),
+                ModuleSource::new(
+                    "support",
+                    "support.gleam",
+                    "pub fn unsupported() { <<1:native>> }",
+                ),
+            ],
+        )
+        .expect("program should compile");
+
+        assert_eq!(
+            plan_program(typed),
+            Err(PlanError::UnsupportedBitArraySegment {
+                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
+            }),
+        );
+    }
 
     #[test]
     fn plan_integer_return() {
@@ -713,7 +833,7 @@ pub fn main() {
         ))
         .expect("source should plan");
         let signature =
-            ConstantTemplateSignature::int(ConstantTemplateId(0), 0, TypeScheme::new(0));
+            ConstantTemplateSignature::int(ConstantTemplateId::new(0), 0, TypeScheme::new(0));
         let instantiation = signature
             .try_instantiate(Vec::new())
             .expect("a monomorphic constant should instantiate");
@@ -784,7 +904,12 @@ pub fn main() {
         module.definitions.functions[0].name = None;
 
         assert_eq!(
-            super::function_table(&module.definitions.functions).err(),
+            super::function_table(
+                crate::plan::ModuleId::root(),
+                &module.definitions.functions,
+                super::ModuleRole::Root,
+            )
+            .err(),
             Some(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::FunctionShape {
                     name: "<anonymous>".into(),

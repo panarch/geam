@@ -2613,6 +2613,7 @@ impl<'a> PlanContext<'a> {
 }
 
 pub(in crate::planner) struct AnonymousFunctions {
+    module: crate::plan::ModuleId,
     next_function_index: usize,
     next_anonymous_index: usize,
     functions: Vec<FunctionTemplate>,
@@ -2620,7 +2621,15 @@ pub(in crate::planner) struct AnonymousFunctions {
 
 impl AnonymousFunctions {
     pub(in crate::planner) fn new(next_function_index: usize) -> Self {
+        Self::in_module(crate::plan::ModuleId::root(), next_function_index)
+    }
+
+    pub(in crate::planner) fn in_module(
+        module: crate::plan::ModuleId,
+        next_function_index: usize,
+    ) -> Self {
         Self {
+            module,
             next_function_index,
             next_anonymous_index: 0,
             functions: Vec::new(),
@@ -2649,7 +2658,7 @@ impl AnonymousFunctions {
         params: Vec<FunctionParam>,
         type_parameters: super::type_parameter::TypeParameterScope,
     ) -> (EcoString, FunctionInfo) {
-        let id = crate::plan::FunctionTemplateId::new(self.next_function_index);
+        let id = crate::plan::FunctionTemplateId::in_module(self.module, self.next_function_index);
         let shape = FunctionShape::new(
             params.iter().map(|param| param.shape().clone()).collect(),
             return_shape.clone(),

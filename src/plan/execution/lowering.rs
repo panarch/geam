@@ -16,12 +16,21 @@ use specialization::{
 use std::collections::{HashMap, HashSet, VecDeque};
 
 struct FunctionTemplates {
-    templates: Vec<crate::plan::FunctionTemplate>,
-    main: crate::plan::FunctionTemplateId,
+    templates: Vec<Vec<crate::plan::FunctionTemplate>>,
+}
+
+struct ProgramConstantTemplates {
+    modules: Vec<crate::plan::ConstantTemplates>,
+}
+
+impl ProgramConstantTemplates {
+    fn get(&self, module: crate::plan::ModuleId) -> &crate::plan::ConstantTemplates {
+        &self.modules[module.index()]
+    }
 }
 
 struct SpecializationState {
-    constant_templates: crate::plan::ConstantTemplates,
+    constant_templates: ProgramConstantTemplates,
     representations: RepresentationContext,
     erased_specializations: HashSet<SpecializationKey>,
 }
@@ -104,7 +113,7 @@ fn resolve_specialization_fixed_point<State, Output>(
 }
 
 struct LoweringContext {
-    constant_templates: crate::plan::ConstantTemplates,
+    constant_templates: ProgramConstantTemplates,
     constants: constant::ConstantLowering,
     types: value_type::TypeInterner,
     representations: RepresentationContext,
@@ -136,12 +145,13 @@ impl LoweringContext {
     fn new(
         templates: &FunctionTemplates,
         representations: RepresentationContext,
-        constant_templates: crate::plan::ConstantTemplates,
+        constant_templates: ProgramConstantTemplates,
         erased_specializations: HashSet<SpecializationKey>,
     ) -> Self {
         let entry_templates = templates
             .templates
             .iter()
+            .flatten()
             .map(|template| (template.id(), local::FunctionEntryTemplate::new(template)))
             .collect::<HashMap<_, _>>();
         Self {
@@ -1010,7 +1020,7 @@ impl LoweringContext {
     fn finish(
         self,
     ) -> (
-        crate::plan::ConstantTemplates,
+        ProgramConstantTemplates,
         RepresentationContext,
         SpecializationOutcome<Box<LoweredExecution>>,
     ) {
@@ -1042,12 +1052,40 @@ impl LoweringContext {
 
 pub(super) fn lower(module_plan: ModulePlan) -> ExecutionPlan {
     let parts = module_plan.into_parts();
-    let main_return_shape = parts.main.signature().shape().return_shape().clone();
-    let templates = FunctionTemplates::new(parts.main, parts.functions, parts.anonymous_functions);
-    let main_key = SpecializationKey::monomorphic(templates.main);
+    let root = parts.root;
+    let entry = parts.entry;
+    let mut module_contexts = Vec::with_capacity(parts.modules.len());
+    let mut module_templates = Vec::with_capacity(parts.modules.len());
+    let mut constant_templates = Vec::with_capacity(parts.modules.len());
+    let mut custom_types = Vec::new();
+
+    for module in parts.modules {
+        let parts = module.into_parts();
+        module_contexts.push(super::ExecutionModuleContext::new(
+            parts.module,
+            parts.source_context,
+        ));
+        custom_types.extend(parts.custom_types);
+        constant_templates.push(parts.constants);
+        let mut templates = parts.functions;
+        templates.extend(parts.anonymous_functions);
+        templates.sort_by_key(|template| template.id().index());
+        module_templates.push(templates);
+    }
+
+    let templates = FunctionTemplates::new(module_templates);
+    let main_return_shape = templates
+        .get(entry)
+        .signature()
+        .shape()
+        .return_shape()
+        .clone();
+    let main_key = SpecializationKey::monomorphic(entry);
     let initial = SpecializationState {
-        constant_templates: parts.constants,
-        representations: RepresentationContext::new(parts.custom_types),
+        constant_templates: ProgramConstantTemplates {
+            modules: constant_templates,
+        },
+        representations: RepresentationContext::new(custom_types),
         erased_specializations: HashSet::new(),
     };
 
@@ -1089,8 +1127,8 @@ pub(super) fn lower(module_plan: ModulePlan) -> ExecutionPlan {
     });
 
     ExecutionPlan {
-        module: parts.module,
-        source_context: parts.source_context,
+        root,
+        modules: module_contexts.into_boxed_slice(),
         main,
         constants: lowered.constants,
         functions: lowered.functions,
@@ -1101,32 +1139,19 @@ pub(super) fn lower(module_plan: ModulePlan) -> ExecutionPlan {
 }
 
 impl FunctionTemplates {
-    fn new(
-        main: crate::plan::FunctionTemplate,
-        functions: Vec<crate::plan::FunctionTemplate>,
-        anonymous_functions: Vec<crate::plan::FunctionTemplate>,
-    ) -> Self {
-        let main_id = main.id();
-        let mut templates = Vec::with_capacity(1 + functions.len() + anonymous_functions.len());
-        templates.push(main);
-        templates.extend(functions);
-        templates.extend(anonymous_functions);
-        templates.sort_by_key(|template| template.id().index());
-        Self {
-            templates,
-            main: main_id,
-        }
+    fn new(templates: Vec<Vec<crate::plan::FunctionTemplate>>) -> Self {
+        Self { templates }
     }
 
     fn get(&self, id: crate::plan::FunctionTemplateId) -> &crate::plan::FunctionTemplate {
-        &self.templates[id.index()]
+        &self.templates[id.module().index()][id.index()]
     }
 }
 
 #[cfg(test)]
 pub(super) mod test_support {
     use super::specialization::RepresentationContext;
-    use super::{FunctionTemplates, LoweringContext};
+    use super::{FunctionTemplates, LoweringContext, ProgramConstantTemplates};
     use crate::plan::TypeParameterId;
     use std::collections::HashSet;
 
@@ -1175,12 +1200,14 @@ pub(super) mod test_support {
                 crate::plan::IntExpr::value(0.into()),
             ),
         );
-        let templates = FunctionTemplates::new(main, vec![capture_target], Vec::new());
+        let templates = FunctionTemplates::new(vec![vec![main, capture_target]]);
 
         LoweringContext::new(
             &templates,
             RepresentationContext::new(custom_types),
-            crate::plan::ConstantTemplates::from_entries(Vec::new()),
+            ProgramConstantTemplates {
+                modules: vec![crate::plan::ConstantTemplates::from_entries(Vec::new())],
+            },
             HashSet::new(),
         )
     }

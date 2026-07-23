@@ -64,7 +64,7 @@ fn append_segment(
                 64 => FloatBitSize::SixtyFour,
                 bit_size => {
                     return Err(ExecutionError::bit_array_segment_panic(
-                        plan.source_context(),
+                        plan.source_context_for(site.module()),
                         BitArraySegmentPanicReason::InvalidFloatSize {
                             bit_size: BigInt::from(bit_size),
                         },
@@ -92,7 +92,7 @@ fn append_segment(
             };
             let Some(bits) = value.bits().get(..bit_size) else {
                 return Err(ExecutionError::bit_array_segment_panic(
-                    plan.source_context(),
+                    plan.source_context_for(site.module()),
                     BitArraySegmentPanicReason::InsufficientBits {
                         requested: bit_size,
                         available: value.bits().len(),
@@ -120,7 +120,7 @@ fn evaluate_size(
     };
     usize::try_from(bit_size.clone()).map_err(|_| {
         ExecutionError::bit_array_segment_panic(
-            plan.source_context(),
+            plan.source_context_for(site.module()),
             BitArraySegmentPanicReason::SizeOutOfRange { bit_size },
             site.clone(),
         )

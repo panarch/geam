@@ -91,7 +91,26 @@ struct ConstantStorageIndices {
     next: HashMap<ConstantStorageFamily, usize>,
 }
 
+#[cfg(test)]
 pub(in crate::planner) fn plan_constants(
+    constants: Vec<TypedModuleConstant>,
+    module_name: &EcoString,
+    functions: &HashMap<EcoString, FunctionInfo>,
+    custom_types: &[crate::plan::CustomTypeDefinition],
+    anonymous_functions: &mut AnonymousFunctions,
+) -> Result<ConstantRegistry, PlanError> {
+    plan_constants_in(
+        crate::plan::ModuleId::root(),
+        constants,
+        module_name,
+        functions,
+        custom_types,
+        anonymous_functions,
+    )
+}
+
+pub(in crate::planner) fn plan_constants_in(
+    module: crate::plan::ModuleId,
     constants: Vec<TypedModuleConstant>,
     module_name: &EcoString,
     functions: &HashMap<EcoString, FunctionInfo>,
@@ -111,7 +130,7 @@ pub(in crate::planner) fn plan_constants(
         .ok_or_else(invalid_constant_shape_error)?;
         let storage_index = storage_indices.reserve(storage_shape.family());
         let signature = storage_shape.into_signature(
-            ConstantTemplateId(index),
+            ConstantTemplateId::in_module(module, index),
             storage_index,
             type_parameters.scheme(),
         );

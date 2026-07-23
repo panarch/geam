@@ -144,57 +144,71 @@ impl ConstantListTemplate {
         }
     }
 
-    pub(super) fn instantiate(&self, substitution: TypeSubstitution) -> ConstantListInstantiation {
+    pub(super) fn instantiate(
+        &self,
+        module: crate::plan::ModuleId,
+        substitution: TypeSubstitution,
+    ) -> ConstantListInstantiation {
         match self {
             Self::Generic { id, parameter } => ConstantListInstantiation::from_generic_source(
+                module,
                 *id,
                 substitution.clone(),
                 ValueShape::Parameter(*parameter).substitute(&substitution),
             ),
             Self::Int(id) => Self::leaf_instantiation(
+                module,
                 ConstantListTemplateSource::Exact(*id),
                 substitution,
                 ConstantListInstantiation::Int,
             ),
             Self::String(id) => Self::leaf_instantiation(
+                module,
                 ConstantListTemplateSource::Exact(*id),
                 substitution,
                 ConstantListInstantiation::String,
             ),
             Self::BitArray(id) => Self::leaf_instantiation(
+                module,
                 ConstantListTemplateSource::Exact(*id),
                 substitution,
                 ConstantListInstantiation::BitArray,
             ),
             Self::UtfCodepoint(id) => Self::leaf_instantiation(
+                module,
                 ConstantListTemplateSource::Exact(*id),
                 substitution,
                 ConstantListInstantiation::UtfCodepoint,
             ),
             Self::Custom { id, shape } => {
-                ConstantListInstantiation::Custom(TypedConstantListInstantiation::new(
+                ConstantListInstantiation::Custom(TypedConstantListInstantiation::in_module(
+                    module,
                     ConstantListTemplateSource::Exact(*id),
                     substitution.clone(),
                     shape.substitute(&substitution),
                 ))
             }
             Self::Float(id) => Self::leaf_instantiation(
+                module,
                 ConstantListTemplateSource::Exact(*id),
                 substitution,
                 ConstantListInstantiation::Float,
             ),
             Self::Bool(id) => Self::leaf_instantiation(
+                module,
                 ConstantListTemplateSource::Exact(*id),
                 substitution,
                 ConstantListInstantiation::Bool,
             ),
             Self::Nil(id) => Self::leaf_instantiation(
+                module,
                 ConstantListTemplateSource::Exact(*id),
                 substitution,
                 ConstantListInstantiation::Nil,
             ),
             Self::Tuple { id, shape } => {
-                ConstantListInstantiation::Tuple(TypedConstantListInstantiation::new(
+                ConstantListInstantiation::Tuple(TypedConstantListInstantiation::in_module(
+                    module,
                     ConstantListTemplateSource::Exact(*id),
                     substitution.clone(),
                     shape
@@ -211,7 +225,8 @@ impl ConstantListTemplate {
                 {
                     ValueRepresentation::Uninhabited(parameter) => {
                         ConstantListInstantiation::ParameterList(
-                            TypedConstantListInstantiation::new(
+                            TypedConstantListInstantiation::in_module(
+                                module,
                                 ConstantListTemplateSource::Exact(*id),
                                 substitution,
                                 parameter,
@@ -219,7 +234,8 @@ impl ConstantListTemplate {
                         )
                     }
                     ValueRepresentation::Stored(shape) => {
-                        ConstantListInstantiation::List(TypedConstantListInstantiation::new(
+                        ConstantListInstantiation::List(TypedConstantListInstantiation::in_module(
+                            module,
                             ConstantNestedListTemplateSource::ParameterList(*id),
                             substitution,
                             shape,
@@ -228,14 +244,16 @@ impl ConstantListTemplate {
                 }
             }
             Self::List { id, shape } => {
-                ConstantListInstantiation::List(TypedConstantListInstantiation::new(
+                ConstantListInstantiation::List(TypedConstantListInstantiation::in_module(
+                    module,
                     ConstantNestedListTemplateSource::Exact(*id),
                     substitution.clone(),
                     shape.substitute(&substitution),
                 ))
             }
             Self::Function { id, shape } => {
-                ConstantListInstantiation::Function(TypedConstantListInstantiation::new(
+                ConstantListInstantiation::Function(TypedConstantListInstantiation::in_module(
+                    module,
                     ConstantListTemplateSource::Exact(*id),
                     substitution.clone(),
                     shape.substitute(&substitution),
@@ -245,13 +263,15 @@ impl ConstantListTemplate {
     }
 
     fn leaf_instantiation<Id>(
+        module: crate::plan::ModuleId,
         source: ConstantListTemplateSource<Id>,
         substitution: TypeSubstitution,
         into: fn(
             TypedConstantListInstantiation<ConstantListTemplateSource<Id>, ()>,
         ) -> ConstantListInstantiation,
     ) -> ConstantListInstantiation {
-        into(TypedConstantListInstantiation::new(
+        into(TypedConstantListInstantiation::in_module(
+            module,
             source,
             substitution,
             (),
@@ -274,6 +294,7 @@ pub(crate) enum ConstantNestedListTemplateSource {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct TypedConstantListInstantiation<Source, Shape> {
+    module: crate::plan::ModuleId,
     source: Source,
     substitution: TypeSubstitution,
     item_shape: Shape,
@@ -473,9 +494,28 @@ pub(super) enum ConstantStoredListValue {
 }
 
 impl ConstantListInstantiation {
+    pub(super) fn module(&self) -> crate::plan::ModuleId {
+        match self {
+            Self::Generic(value) => value.module(),
+            Self::Int(value) => value.module(),
+            Self::String(value) => value.module(),
+            Self::BitArray(value) => value.module(),
+            Self::UtfCodepoint(value) => value.module(),
+            Self::Custom(value) => value.module(),
+            Self::Float(value) => value.module(),
+            Self::Bool(value) => value.module(),
+            Self::Nil(value) => value.module(),
+            Self::Tuple(value) => value.module(),
+            Self::ParameterList(value) => value.module(),
+            Self::List(value) => value.module(),
+            Self::Function(value) => value.module(),
+        }
+    }
+
     pub(super) fn substitute(&self, outer: &TypeSubstitution) -> Self {
         match self {
             Self::Generic(value) => Self::from_generic_source(
+                value.module(),
                 *value.source(),
                 value.substitution().substitute(outer),
                 ValueShape::Parameter(*value.item_shape()).substitute(outer),
@@ -508,89 +548,125 @@ impl ConstantListInstantiation {
     }
 
     fn from_generic_source(
+        module: crate::plan::ModuleId,
         template: ConstantGenericListTemplateId,
         substitution: TypeSubstitution,
         item_shape: ValueShape,
     ) -> Self {
         match item_shape {
-            ValueShape::Parameter(parameter) => Self::Generic(TypedConstantListInstantiation::new(
-                template,
-                substitution,
-                parameter,
-            )),
-            ValueShape::Int => Self::Int(TypedConstantListInstantiation::new(
+            ValueShape::Parameter(parameter) => {
+                Self::Generic(TypedConstantListInstantiation::in_module(
+                    module,
+                    template,
+                    substitution,
+                    parameter,
+                ))
+            }
+            ValueShape::Int => Self::Int(TypedConstantListInstantiation::in_module(
+                module,
                 ConstantListTemplateSource::Generic(template),
                 substitution,
                 (),
             )),
-            ValueShape::String => Self::String(TypedConstantListInstantiation::new(
+            ValueShape::String => Self::String(TypedConstantListInstantiation::in_module(
+                module,
                 ConstantListTemplateSource::Generic(template),
                 substitution,
                 (),
             )),
-            ValueShape::BitArray => Self::BitArray(TypedConstantListInstantiation::new(
+            ValueShape::BitArray => Self::BitArray(TypedConstantListInstantiation::in_module(
+                module,
                 ConstantListTemplateSource::Generic(template),
                 substitution,
                 (),
             )),
-            ValueShape::UtfCodepoint => Self::UtfCodepoint(TypedConstantListInstantiation::new(
-                ConstantListTemplateSource::Generic(template),
-                substitution,
-                (),
-            )),
-            ValueShape::Custom(shape) => Self::Custom(TypedConstantListInstantiation::new(
+            ValueShape::UtfCodepoint => {
+                Self::UtfCodepoint(TypedConstantListInstantiation::in_module(
+                    module,
+                    ConstantListTemplateSource::Generic(template),
+                    substitution,
+                    (),
+                ))
+            }
+            ValueShape::Custom(shape) => Self::Custom(TypedConstantListInstantiation::in_module(
+                module,
                 ConstantListTemplateSource::Generic(template),
                 substitution,
                 shape,
             )),
-            ValueShape::Float => Self::Float(TypedConstantListInstantiation::new(
+            ValueShape::Float => Self::Float(TypedConstantListInstantiation::in_module(
+                module,
                 ConstantListTemplateSource::Generic(template),
                 substitution,
                 (),
             )),
-            ValueShape::Bool => Self::Bool(TypedConstantListInstantiation::new(
+            ValueShape::Bool => Self::Bool(TypedConstantListInstantiation::in_module(
+                module,
                 ConstantListTemplateSource::Generic(template),
                 substitution,
                 (),
             )),
-            ValueShape::Nil => Self::Nil(TypedConstantListInstantiation::new(
+            ValueShape::Nil => Self::Nil(TypedConstantListInstantiation::in_module(
+                module,
                 ConstantListTemplateSource::Generic(template),
                 substitution,
                 (),
             )),
-            ValueShape::Tuple(shape) => Self::Tuple(TypedConstantListInstantiation::new(
+            ValueShape::Tuple(shape) => Self::Tuple(TypedConstantListInstantiation::in_module(
+                module,
                 ConstantListTemplateSource::Generic(template),
                 substitution,
                 shape,
             )),
             ValueShape::List(shape) => match shape.representation() {
                 ValueRepresentation::Uninhabited(parameter) => {
-                    Self::ParameterList(TypedConstantListInstantiation::new(
+                    Self::ParameterList(TypedConstantListInstantiation::in_module(
+                        module,
                         ConstantListTemplateSource::Generic(template),
                         substitution,
                         parameter,
                     ))
                 }
                 ValueRepresentation::Stored(shape) => {
-                    Self::List(TypedConstantListInstantiation::new(
+                    Self::List(TypedConstantListInstantiation::in_module(
+                        module,
                         ConstantNestedListTemplateSource::Generic(template),
                         substitution,
                         shape,
                     ))
                 }
             },
-            ValueShape::Function(shape) => Self::Function(TypedConstantListInstantiation::new(
-                ConstantListTemplateSource::Generic(template),
-                substitution,
-                *shape,
-            )),
+            ValueShape::Function(shape) => {
+                Self::Function(TypedConstantListInstantiation::in_module(
+                    module,
+                    ConstantListTemplateSource::Generic(template),
+                    substitution,
+                    *shape,
+                ))
+            }
         }
     }
 }
 
 impl<Source, Shape> TypedConstantListInstantiation<Source, Shape> {
+    #[cfg(test)]
     fn new(source: Source, substitution: TypeSubstitution, item_shape: Shape) -> Self {
+        Self::in_module(
+            crate::plan::ModuleId::root(),
+            source,
+            substitution,
+            item_shape,
+        )
+    }
+
+    fn in_module(
+        module: crate::plan::ModuleId,
+        source: Source,
+        substitution: TypeSubstitution,
+        item_shape: Shape,
+    ) -> Self {
         Self {
+            module,
             source,
             substitution,
             item_shape,
@@ -599,6 +675,10 @@ impl<Source, Shape> TypedConstantListInstantiation<Source, Shape> {
 
     pub(crate) fn source(&self) -> &Source {
         &self.source
+    }
+
+    pub(crate) fn module(&self) -> crate::plan::ModuleId {
+        self.module
     }
 
     pub(crate) fn substitution(&self) -> &TypeSubstitution {
@@ -612,7 +692,12 @@ impl<Source, Shape> TypedConstantListInstantiation<Source, Shape> {
 
 impl<Id: Copy> TypedConstantListInstantiation<ConstantListTemplateSource<Id>, ()> {
     pub(super) fn substitute_leaf(&self, outer: &TypeSubstitution) -> Self {
-        Self::new(self.source, self.substitution.substitute(outer), ())
+        Self::in_module(
+            self.module,
+            self.source,
+            self.substitution.substitute(outer),
+            (),
+        )
     }
 }
 
@@ -623,7 +708,8 @@ impl
     >
 {
     pub(super) fn substitute_custom(&self, outer: &TypeSubstitution) -> Self {
-        Self::new(
+        Self::in_module(
+            self.module,
             self.source,
             self.substitution.substitute(outer),
             self.item_shape.substitute(outer),
@@ -638,7 +724,8 @@ impl
     >
 {
     pub(super) fn substitute_tuple(&self, outer: &TypeSubstitution) -> Self {
-        Self::new(
+        Self::in_module(
+            self.module,
             self.source,
             self.substitution.substitute(outer),
             self.item_shape
@@ -652,7 +739,8 @@ impl
 
 impl TypedConstantListInstantiation<ConstantNestedListTemplateSource, ValueStorageShape> {
     pub(super) fn substitute_list(&self, outer: &TypeSubstitution) -> Self {
-        Self::new(
+        Self::in_module(
+            self.module,
             self.source,
             self.substitution.substitute(outer),
             self.item_shape.substitute(outer),
@@ -671,7 +759,12 @@ impl
         outer: &TypeSubstitution,
         parameter: TypeParameterId,
     ) -> Self {
-        Self::new(self.source, self.substitution.substitute(outer), parameter)
+        Self::in_module(
+            self.module,
+            self.source,
+            self.substitution.substitute(outer),
+            parameter,
+        )
     }
 
     pub(super) fn retarget_stored(
@@ -687,7 +780,12 @@ impl
                 ConstantNestedListTemplateSource::ParameterList(source)
             }
         };
-        TypedConstantListInstantiation::new(source, self.substitution.substitute(outer), shape)
+        TypedConstantListInstantiation::in_module(
+            self.module,
+            source,
+            self.substitution.substitute(outer),
+            shape,
+        )
     }
 }
 
@@ -698,7 +796,8 @@ impl
     >
 {
     pub(super) fn substitute_function(&self, outer: &TypeSubstitution) -> Self {
-        Self::new(
+        Self::in_module(
+            self.module,
             self.source,
             self.substitution.substitute(outer),
             self.item_shape.substitute(outer),

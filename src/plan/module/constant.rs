@@ -68,7 +68,10 @@ use list::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ConstantTemplateId(pub(crate) usize);
+pub struct ConstantTemplateId {
+    module: crate::plan::ModuleId,
+    index: usize,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConstantTemplate {
@@ -171,6 +174,7 @@ pub(crate) struct ConstantTupleTemplateId(pub(crate) usize);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct TypedConstantInstantiation<Id, Shape> {
+    module: crate::plan::ModuleId,
     template: Id,
     substitution: TypeSubstitution,
     shape: Shape,
@@ -290,6 +294,21 @@ impl ConstantNilReference {
 }
 
 impl ConstantInstantiation {
+    pub(crate) fn module(&self) -> crate::plan::ModuleId {
+        match &self.kind {
+            ConstantInstantiationKind::Int(value) => value.module(),
+            ConstantInstantiationKind::String(value) => value.module(),
+            ConstantInstantiationKind::BitArray(value) => value.module(),
+            ConstantInstantiationKind::Custom(value) => value.module(),
+            ConstantInstantiationKind::Float(value) => value.module(),
+            ConstantInstantiationKind::Bool(value) => value.module(),
+            ConstantInstantiationKind::Nil(value) => value.module(),
+            ConstantInstantiationKind::Tuple(value) => value.module(),
+            ConstantInstantiationKind::List(value) => value.module(),
+            ConstantInstantiationKind::Function(value) => value.module(),
+        }
+    }
+
     pub(crate) fn from_int(value: ConstantIntInstantiation) -> Self {
         Self {
             kind: ConstantInstantiationKind::Int(value),
@@ -521,8 +540,21 @@ pub(crate) enum ConstantBitArraySegment {
 }
 
 impl ConstantTemplateId {
+    #[cfg(test)]
+    pub(crate) fn new(index: usize) -> Self {
+        Self::in_module(crate::plan::ModuleId::root(), index)
+    }
+
+    pub(crate) fn in_module(module: crate::plan::ModuleId, index: usize) -> Self {
+        Self { module, index }
+    }
+
+    pub fn module(self) -> crate::plan::ModuleId {
+        self.module
+    }
+
     pub(crate) fn index(self) -> usize {
-        self.0
+        self.index
     }
 }
 
@@ -593,6 +625,7 @@ impl ConstantTemplates {
         templates
     }
 
+    #[cfg(test)]
     pub(crate) fn empty() -> Self {
         Self::from_entries(Vec::new())
     }
@@ -2874,14 +2907,25 @@ impl ConstantTemplateSignature {
     ) -> Option<ConstantInstantiation> {
         let substitution = self.scheme.try_substitution(arguments)?;
         let kind = match &self.kind {
-            ConstantTemplateSignatureKind::Int(template) => ConstantInstantiationKind::Int(
-                TypedConstantInstantiation::new(*template, substitution, ()),
-            ),
-            ConstantTemplateSignatureKind::String(template) => ConstantInstantiationKind::String(
-                TypedConstantInstantiation::new(*template, substitution, ()),
-            ),
+            ConstantTemplateSignatureKind::Int(template) => {
+                ConstantInstantiationKind::Int(TypedConstantInstantiation::in_module(
+                    self.id.module(),
+                    *template,
+                    substitution,
+                    (),
+                ))
+            }
+            ConstantTemplateSignatureKind::String(template) => {
+                ConstantInstantiationKind::String(TypedConstantInstantiation::in_module(
+                    self.id.module(),
+                    *template,
+                    substitution,
+                    (),
+                ))
+            }
             ConstantTemplateSignatureKind::BitArray(template) => {
-                ConstantInstantiationKind::BitArray(TypedConstantInstantiation::new(
+                ConstantInstantiationKind::BitArray(TypedConstantInstantiation::in_module(
+                    self.id.module(),
                     *template,
                     substitution,
                     (),
@@ -2889,39 +2933,60 @@ impl ConstantTemplateSignature {
             }
             ConstantTemplateSignatureKind::Custom { template, shape } => {
                 let shape = shape.substitute(&substitution);
-                ConstantInstantiationKind::Custom(TypedConstantInstantiation::new(
+                ConstantInstantiationKind::Custom(TypedConstantInstantiation::in_module(
+                    self.id.module(),
                     *template,
                     substitution,
                     shape,
                 ))
             }
-            ConstantTemplateSignatureKind::Float(template) => ConstantInstantiationKind::Float(
-                TypedConstantInstantiation::new(*template, substitution, ()),
-            ),
-            ConstantTemplateSignatureKind::Bool(template) => ConstantInstantiationKind::Bool(
-                TypedConstantInstantiation::new(*template, substitution, ()),
-            ),
-            ConstantTemplateSignatureKind::Nil(template) => ConstantInstantiationKind::Nil(
-                TypedConstantInstantiation::new(*template, substitution, ()),
-            ),
+            ConstantTemplateSignatureKind::Float(template) => {
+                ConstantInstantiationKind::Float(TypedConstantInstantiation::in_module(
+                    self.id.module(),
+                    *template,
+                    substitution,
+                    (),
+                ))
+            }
+            ConstantTemplateSignatureKind::Bool(template) => {
+                ConstantInstantiationKind::Bool(TypedConstantInstantiation::in_module(
+                    self.id.module(),
+                    *template,
+                    substitution,
+                    (),
+                ))
+            }
+            ConstantTemplateSignatureKind::Nil(template) => {
+                ConstantInstantiationKind::Nil(TypedConstantInstantiation::in_module(
+                    self.id.module(),
+                    *template,
+                    substitution,
+                    (),
+                ))
+            }
             ConstantTemplateSignatureKind::Tuple { template, shape } => {
                 let shape = shape
                     .iter()
                     .map(|shape| shape.substitute(&substitution))
                     .collect::<Vec<_>>()
                     .into_boxed_slice();
-                ConstantInstantiationKind::Tuple(TypedConstantInstantiation::new(
+                ConstantInstantiationKind::Tuple(TypedConstantInstantiation::in_module(
+                    self.id.module(),
                     *template,
                     substitution,
                     shape,
                 ))
             }
-            ConstantTemplateSignatureKind::List(template) => {
-                ConstantInstantiationKind::List(template.instantiate(substitution))
-            }
+            ConstantTemplateSignatureKind::List(template) => ConstantInstantiationKind::List(
+                template.instantiate(self.id.module(), substitution),
+            ),
             ConstantTemplateSignatureKind::Function { template, shape } => {
                 let shape = shape.substitute(&substitution);
-                ConstantInstantiationKind::Function(template.instantiate(substitution, shape))
+                ConstantInstantiationKind::Function(template.instantiate(
+                    self.id.module(),
+                    substitution,
+                    shape,
+                ))
             }
         };
         Some(ConstantInstantiation { kind })
@@ -2929,8 +2994,19 @@ impl ConstantTemplateSignature {
 }
 
 impl<Id: Copy, Shape> TypedConstantInstantiation<Id, Shape> {
+    #[cfg(test)]
     fn new(template: Id, substitution: TypeSubstitution, shape: Shape) -> Self {
+        Self::in_module(crate::plan::ModuleId::root(), template, substitution, shape)
+    }
+
+    fn in_module(
+        module: crate::plan::ModuleId,
+        template: Id,
+        substitution: TypeSubstitution,
+        shape: Shape,
+    ) -> Self {
         Self {
+            module,
             template,
             substitution,
             shape,
@@ -2939,6 +3015,10 @@ impl<Id: Copy, Shape> TypedConstantInstantiation<Id, Shape> {
 
     pub(crate) fn template(&self) -> Id {
         self.template
+    }
+
+    pub(crate) fn module(&self) -> crate::plan::ModuleId {
+        self.module
     }
 
     pub(crate) fn substitution(&self) -> &TypeSubstitution {
@@ -2952,13 +3032,19 @@ impl<Id: Copy, Shape> TypedConstantInstantiation<Id, Shape> {
 
 impl<Id: Copy> TypedConstantInstantiation<Id, ()> {
     fn substitute_leaf(&self, outer: &TypeSubstitution) -> Self {
-        Self::new(self.template, self.substitution.substitute(outer), ())
+        Self::in_module(
+            self.module,
+            self.template,
+            self.substitution.substitute(outer),
+            (),
+        )
     }
 }
 
 impl TypedConstantInstantiation<ConstantCustomTemplateId, CustomValueShape> {
     fn substitute_custom(&self, outer: &TypeSubstitution) -> Self {
-        Self::new(
+        Self::in_module(
+            self.module,
             self.template,
             self.substitution.substitute(outer),
             self.shape.substitute(outer),
@@ -2968,7 +3054,8 @@ impl TypedConstantInstantiation<ConstantCustomTemplateId, CustomValueShape> {
 
 impl TypedConstantInstantiation<ConstantTupleTemplateId, Box<[ValueShape]>> {
     fn substitute_tuple(&self, outer: &TypeSubstitution) -> Self {
-        Self::new(
+        Self::in_module(
+            self.module,
             self.template,
             self.substitution.substitute(outer),
             self.shape
@@ -3627,49 +3714,55 @@ mod tests {
     fn constant_references_materialize_every_top_level_family() {
         let monomorphic = TypeScheme::new(0);
         let int_base =
-            ConstantTemplateSignature::int(ConstantTemplateId(0), 0, monomorphic.clone());
+            ConstantTemplateSignature::int(ConstantTemplateId::new(0), 0, monomorphic.clone());
         let int_alias =
-            ConstantTemplateSignature::int(ConstantTemplateId(1), 1, monomorphic.clone());
+            ConstantTemplateSignature::int(ConstantTemplateId::new(1), 1, monomorphic.clone());
         let int_reference = int_base
             .try_instantiate(Vec::new())
             .expect("a monomorphic Int constant should instantiate without arguments");
 
         let string_base =
-            ConstantTemplateSignature::string(ConstantTemplateId(2), 0, monomorphic.clone());
+            ConstantTemplateSignature::string(ConstantTemplateId::new(2), 0, monomorphic.clone());
         let string_alias =
-            ConstantTemplateSignature::string(ConstantTemplateId(3), 1, monomorphic.clone());
+            ConstantTemplateSignature::string(ConstantTemplateId::new(3), 1, monomorphic.clone());
         let string_reference = string_base
             .try_instantiate(Vec::new())
             .expect("a monomorphic String constant should instantiate without arguments");
 
         let float_base =
-            ConstantTemplateSignature::float(ConstantTemplateId(4), 0, monomorphic.clone());
+            ConstantTemplateSignature::float(ConstantTemplateId::new(4), 0, monomorphic.clone());
         let float_alias =
-            ConstantTemplateSignature::float(ConstantTemplateId(5), 1, monomorphic.clone());
+            ConstantTemplateSignature::float(ConstantTemplateId::new(5), 1, monomorphic.clone());
         let float_reference = float_base
             .try_instantiate(Vec::new())
             .expect("a monomorphic Float constant should instantiate without arguments");
 
         let bool_base =
-            ConstantTemplateSignature::bool(ConstantTemplateId(6), 0, monomorphic.clone());
+            ConstantTemplateSignature::bool(ConstantTemplateId::new(6), 0, monomorphic.clone());
         let bool_alias =
-            ConstantTemplateSignature::bool(ConstantTemplateId(7), 1, monomorphic.clone());
+            ConstantTemplateSignature::bool(ConstantTemplateId::new(7), 1, monomorphic.clone());
         let bool_reference = bool_base
             .try_instantiate(Vec::new())
             .expect("a monomorphic Bool constant should instantiate without arguments");
 
         let nil_base =
-            ConstantTemplateSignature::nil(ConstantTemplateId(8), 0, monomorphic.clone());
+            ConstantTemplateSignature::nil(ConstantTemplateId::new(8), 0, monomorphic.clone());
         let nil_alias =
-            ConstantTemplateSignature::nil(ConstantTemplateId(9), 1, monomorphic.clone());
+            ConstantTemplateSignature::nil(ConstantTemplateId::new(9), 1, monomorphic.clone());
         let nil_reference = nil_base
             .try_instantiate(Vec::new())
             .expect("a monomorphic Nil constant should instantiate without arguments");
 
-        let bit_array_base =
-            ConstantTemplateSignature::bit_array(ConstantTemplateId(10), 0, monomorphic.clone());
-        let bit_array_alias =
-            ConstantTemplateSignature::bit_array(ConstantTemplateId(11), 1, monomorphic.clone());
+        let bit_array_base = ConstantTemplateSignature::bit_array(
+            ConstantTemplateId::new(10),
+            0,
+            monomorphic.clone(),
+        );
+        let bit_array_alias = ConstantTemplateSignature::bit_array(
+            ConstantTemplateId::new(11),
+            1,
+            monomorphic.clone(),
+        );
         let bit_array_reference = bit_array_base
             .try_instantiate(Vec::new())
             .expect("a monomorphic BitArray constant should instantiate without arguments");
@@ -3686,13 +3779,13 @@ mod tests {
             vec![CustomConstructorField::new(None, ValueType::Int)],
         );
         let custom_base = ConstantTemplateSignature::custom(
-            ConstantTemplateId(12),
+            ConstantTemplateId::new(12),
             0,
             monomorphic.clone(),
             custom_shape.clone(),
         );
         let custom_alias = ConstantTemplateSignature::custom(
-            ConstantTemplateId(13),
+            ConstantTemplateId::new(13),
             1,
             monomorphic.clone(),
             custom_shape.clone(),
@@ -3703,13 +3796,13 @@ mod tests {
 
         let tuple_shape = vec![ValueShape::Int, ValueShape::String].into_boxed_slice();
         let tuple_base = ConstantTemplateSignature::tuple(
-            ConstantTemplateId(14),
+            ConstantTemplateId::new(14),
             0,
             monomorphic.clone(),
             tuple_shape.clone(),
         );
         let tuple_alias = ConstantTemplateSignature::tuple(
-            ConstantTemplateId(15),
+            ConstantTemplateId::new(15),
             1,
             monomorphic.clone(),
             tuple_shape.clone(),
@@ -3724,13 +3817,13 @@ mod tests {
             function_shape.clone(),
         ));
         let function_base = ConstantTemplateSignature::function(
-            ConstantTemplateId(16),
+            ConstantTemplateId::new(16),
             0,
             monomorphic.clone(),
             function_shape.clone(),
         );
         let function_alias = ConstantTemplateSignature::function(
-            ConstantTemplateId(17),
+            ConstantTemplateId::new(17),
             1,
             monomorphic.clone(),
             function_shape.clone(),
@@ -3744,7 +3837,7 @@ mod tests {
             ValueShape::Custom(custom_shape.clone()),
         );
         let constructor_function = ConstantTemplateSignature::function(
-            ConstantTemplateId(18),
+            ConstantTemplateId::new(18),
             0,
             monomorphic,
             constructor_function_shape.clone(),
@@ -3942,7 +4035,7 @@ mod tests {
 
         assert_eq!(templates.headers().len(), 19);
         assert_eq!(
-            templates.header(ConstantTemplateId(18)).name(),
+            templates.header(ConstantTemplateId::new(18)).name(),
             "constructor"
         );
         let int_alias_instantiation =
@@ -4090,7 +4183,11 @@ mod tests {
             ),
         );
         let function_alias_instantiation = ConstantFunctionTemplate::from_shape(&function_shape, 1)
-            .instantiate(empty.clone(), function_shape.clone());
+            .instantiate(
+                crate::plan::ModuleId::root(),
+                empty.clone(),
+                function_shape.clone(),
+            );
         assert_eq!(
             function_alias.try_instantiate(Vec::new()),
             Some(ConstantInstantiation {
@@ -4100,8 +4197,11 @@ mod tests {
         let constructor_function_shape =
             FunctionShape::new(vec![ValueShape::Int], ValueShape::Custom(custom_shape));
         let constructor_function_instantiation =
-            ConstantFunctionTemplate::from_shape(&constructor_function_shape, 0)
-                .instantiate(empty, constructor_function_shape);
+            ConstantFunctionTemplate::from_shape(&constructor_function_shape, 0).instantiate(
+                crate::plan::ModuleId::root(),
+                empty,
+                constructor_function_shape,
+            );
         assert_eq!(
             constructor_function.try_instantiate(Vec::new()),
             Some(ConstantInstantiation {
@@ -4206,13 +4306,13 @@ pub fn main() {
     fn generic_empty_list_references_materialize_every_item_shape() {
         let parameter = TypeParameterId(0);
         let base_signature = ConstantTemplateSignature::list(
-            ConstantTemplateId(0),
+            ConstantTemplateId::new(0),
             0,
             TypeScheme::new(1),
             ValueShape::Parameter(parameter),
         );
         let alias_signature = ConstantTemplateSignature::list(
-            ConstantTemplateId(1),
+            ConstantTemplateId::new(1),
             1,
             TypeScheme::new(1),
             ValueShape::Parameter(parameter),
@@ -4259,7 +4359,7 @@ pub fn main() {
             let substitution = TypeSubstitution::from_arguments(arguments.clone());
             let instantiation =
                 ConstantListTemplate::from_item_shape(ValueShape::Parameter(parameter), 1)
-                    .instantiate(substitution.clone());
+                    .instantiate(crate::plan::ModuleId::root(), substitution.clone());
             assert_eq!(
                 alias_signature.try_instantiate(arguments),
                 Some(ConstantInstantiation {
@@ -4599,13 +4699,13 @@ pub fn main() {
         let base = ConstantValue::try_list(item_shape.clone(), vec![generic_element()], Some(tail))
             .expect("a parameter-list spread should accept a matching tail");
         let base_signature = ConstantTemplateSignature::list(
-            ConstantTemplateId(0),
+            ConstantTemplateId::new(0),
             0,
             TypeScheme::new(1),
             item_shape.clone(),
         );
         let alias_signature = ConstantTemplateSignature::list(
-            ConstantTemplateId(1),
+            ConstantTemplateId::new(1),
             1,
             TypeScheme::new(1),
             item_shape,
@@ -4692,13 +4792,13 @@ pub fn main() {
             .flat_map(|(index, shape)| {
                 [
                     ConstantTemplateSignature::list(
-                        ConstantTemplateId(index * 2),
+                        ConstantTemplateId::new(index * 2),
                         0,
                         monomorphic.clone(),
                         shape.clone(),
                     ),
                     ConstantTemplateSignature::list(
-                        ConstantTemplateId(index * 2 + 1),
+                        ConstantTemplateId::new(index * 2 + 1),
                         1,
                         monomorphic.clone(),
                         shape.clone(),
@@ -4996,8 +5096,10 @@ pub fn main() {
 
         for (index, expected) in expected.into_iter().enumerate() {
             let instantiation =
-                ConstantListTemplate::from_item_shape(item_shapes[index].clone(), 1)
-                    .instantiate(TypeSubstitution::from_arguments(Vec::new()));
+                ConstantListTemplate::from_item_shape(item_shapes[index].clone(), 1).instantiate(
+                    crate::plan::ModuleId::root(),
+                    TypeSubstitution::from_arguments(Vec::new()),
+                );
             assert_eq!(
                 signatures[index * 2 + 1].try_instantiate(Vec::new()),
                 Some(ConstantInstantiation {
@@ -5017,7 +5119,7 @@ pub fn main() {
     #[test]
     fn constant_template_instantiation_rejects_wrong_argument_count() {
         let signature = ConstantTemplateSignature::list(
-            ConstantTemplateId(3),
+            ConstantTemplateId::new(3),
             0,
             TypeScheme::new(1),
             ValueShape::Parameter(TypeParameterId(0)),

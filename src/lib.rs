@@ -3,15 +3,17 @@ pub mod plan;
 pub mod planner;
 pub mod runtime;
 
-pub use frontend::{FrontendError, compile_typed_module};
+pub use frontend::{
+    FrontendError, ModuleSource, TypedProgram, compile_typed_module, compile_typed_program,
+};
 pub use plan::execution::{ExecutionPlan, ExecutionPlanExplanation};
 pub use plan::{
     BitArrayExpr, BitArrayLocalId, BoolExpr, BoolLocalId, CustomType, CustomTypeName, Expr,
-    FunctionTemplate, FunctionTemplateId, FunctionType, IntExpr, IntLocalId, LocalId, ModulePlan,
-    NilExpr, NilLocalId, PanicSite, Param, ParamBinding, SourceContext, SourceSpan, Step,
-    StringExpr, StringLocalId, ValueType,
+    FunctionTemplate, FunctionTemplateId, FunctionType, IntExpr, IntLocalId, LocalId, ModuleId,
+    ModulePlan, NilExpr, NilLocalId, PanicSite, Param, ParamBinding, PlannedModule, SourceContext,
+    SourceSpan, Step, StringExpr, StringLocalId, ValueType,
 };
-pub use planner::{PlanError, plan_module, plan_module_with_source};
+pub use planner::{PlanError, plan_module, plan_module_with_source, plan_program};
 pub use runtime::{
     BitArraySegmentPanicReason, BitArrayValue, BitArrayValueLengthError, CustomFieldValue,
     CustomValue, ExecutionError, FunctionValue, InvariantError, ListValue,

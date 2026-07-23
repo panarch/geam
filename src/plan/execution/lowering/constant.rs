@@ -56,7 +56,7 @@ impl LoweringContext {
             return specialization::Representability::Inhabited(id);
         }
 
-        let value = materialize(&self.constant_templates);
+        let value = materialize(self.constant_templates.get(key.module()));
         graph::lower_constant_graph(&value, self, lower)
             .map(|program| self.constants.insert(key, program))
     }
@@ -558,7 +558,7 @@ impl LoweringContext {
             return specialization::Representability::Inhabited(id);
         }
 
-        let value = materialize(&self.constant_templates);
+        let value = materialize(self.constant_templates.get(key.module()));
         graph::lower_constant_graph(&value, self, |expression, cursor, graph, context| {
             lower(expression, cursor, graph, context)
                 .map(|flow| flow.map(graph::DraftFunctionValue::into_function))
