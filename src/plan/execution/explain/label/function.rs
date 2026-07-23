@@ -24,7 +24,7 @@ pub(in super::super) fn function_function_label(function: &FunctionFunctionId) -
 
 #[cfg(test)]
 mod tests {
-    use crate::plan::execution::RuntimeFunctionId;
+    use crate::plan::execution::{ExecutionPlan, FunctionFunctionId, RuntimeFunctionId};
 
     #[test]
     fn labels_function_return_families() {
@@ -90,16 +90,22 @@ mod tests {
 
     fn assert_explanation(source: &str, expected: &str) {
         super::super::super::assert_rendered(source, expected, |plan, output| {
-            let RuntimeFunctionId::Function { id, .. } = plan.main_runtime() else {
-                panic!("source should lower a function-returning main function");
-            };
-            super::function_function_label(&id).push_to(output);
+            super::function_function_label(&main_function_id(plan)).push_to(output);
         });
+    }
+
+    fn main_function_id(plan: &ExecutionPlan) -> FunctionFunctionId {
+        let RuntimeFunctionId::Function { id, .. } = plan.main_runtime() else {
+            panic!("source should lower a function-returning main function");
+        };
+        id
     }
 
     #[test]
     #[should_panic(expected = "source should lower a function-returning main function")]
     fn function_return_shape_guard_is_visible() {
-        assert_explanation("pub fn main() { 1 }", "");
+        let source = "pub fn main() { 1 }";
+
+        super::super::super::with_execution_plan(source, main_function_id);
     }
 }

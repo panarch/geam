@@ -204,23 +204,23 @@ mod tests {
 
     #[test]
     fn writes_complete_graph_entry_and_block_order() {
-        assert_explanation(
-            r#"
+        let source = r#"
 fn choose(flag: Bool) { case flag { True -> 1 False -> 0 } }
 pub fn main() { choose(True) }
-"#,
-            concat!(
-                "  entry b0 params=[%bool#0:shape#0(Bool)] captures=[]\n",
-                "  block b0 params=[%bool#0:shape#0(Bool)]\n",
-                "    branch %bool#0 true=b1() false=b2()\n",
-                "  block b1 params=[]\n",
-                "    %int#0:shape#1(Int) = int.value 1\n",
-                "    return %int#0\n",
-                "  block b2 params=[]\n",
-                "    %int#0:shape#1(Int) = int.value 0\n",
-                "    return %int#0\n",
-            ),
+"#;
+        let expected = concat!(
+            "  entry b0 params=[%bool#0:shape#0(Bool)] captures=[]\n",
+            "  block b0 params=[%bool#0:shape#0(Bool)]\n",
+            "    branch %bool#0 true=b1() false=b2()\n",
+            "  block b1 params=[]\n",
+            "    %int#0:shape#1(Int) = int.value 1\n",
+            "    return %int#0\n",
+            "  block b2 params=[]\n",
+            "    %int#0:shape#1(Int) = int.value 0\n",
+            "    return %int#0\n",
         );
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

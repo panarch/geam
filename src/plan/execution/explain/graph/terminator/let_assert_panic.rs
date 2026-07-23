@@ -21,16 +21,16 @@ mod tests {
 
     #[test]
     fn writes_let_assert_panic() {
-        assert_explanation(
-            r#"
+        let source = r#"
 pub fn main() {
   let values = [1]
   let assert [head, ..] = values
   head
 }
-"#,
-            "let_assert_panic subject=%list.int#0 message=none",
-        );
+"#;
+        let expected = "let_assert_panic subject=%list.int#0 message=none";
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

@@ -56,8 +56,7 @@ mod tests {
 
     #[test]
     fn writes_function_instruction_targets_calls_and_captures() {
-        assert_explanation(
-            r#"
+        let source = r#"
 fn identity(value: Int) { value }
 fn returner(function: fn(Int) -> Int) { function }
 
@@ -70,24 +69,25 @@ pub fn main() {
   let indirect = caller(reference)
   #(reference, closure, direct, indirect)
 }
-"#,
-            concat!(
-                "    %int#0:shape#0(Int) = int.value 1\n",
-                "    %function.int#0:shape#1(fn(Int) -> Int) = function[Int] ",
-                "reference int#0\n",
-                "    %function.int#1:shape#1(fn(Int) -> Int) = function[Int] closure ",
-                "target=int#1 captures=[%int#1<-%int#0]\n",
-                "    %function.function#0:shape#2(fn(fn(Int) -> Int) -> fn(Int) -> Int) = ",
-                "function[Function] reference function.int#0\n",
-                "    %function.int#2:shape#1(fn(Int) -> Int) = function[Int] call ",
-                "function.int#0 args=[%function.int#0]\n",
-                "    %function.int#3:shape#1(fn(Int) -> Int) = function[Int] function_call ",
-                "%function.function#0 args=[%function.int#0]\n",
-                "    %tuple#0:shape#3(#(fn(Int) -> Int, fn(Int) -> Int, fn(Int) -> Int, ",
-                "fn(Int) -> Int)) = tuple.value elements=[%function.int#0, ",
-                "%function.int#1, %function.int#2, %function.int#3]\n",
-            ),
+"#;
+        let expected = concat!(
+            "    %int#0:shape#0(Int) = int.value 1\n",
+            "    %function.int#0:shape#1(fn(Int) -> Int) = function[Int] ",
+            "reference int#0\n",
+            "    %function.int#1:shape#1(fn(Int) -> Int) = function[Int] closure ",
+            "target=int#1 captures=[%int#1<-%int#0]\n",
+            "    %function.function#0:shape#2(fn(fn(Int) -> Int) -> fn(Int) -> Int) = ",
+            "function[Function] reference function.int#0\n",
+            "    %function.int#2:shape#1(fn(Int) -> Int) = function[Int] call ",
+            "function.int#0 args=[%function.int#0]\n",
+            "    %function.int#3:shape#1(fn(Int) -> Int) = function[Int] function_call ",
+            "%function.function#0 args=[%function.int#0]\n",
+            "    %tuple#0:shape#3(#(fn(Int) -> Int, fn(Int) -> Int, fn(Int) -> Int, ",
+            "fn(Int) -> Int)) = tuple.value elements=[%function.int#0, ",
+            "%function.int#1, %function.int#2, %function.int#3]\n",
         );
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

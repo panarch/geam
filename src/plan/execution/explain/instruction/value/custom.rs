@@ -40,19 +40,18 @@ mod tests {
 
     #[test]
     fn writes_custom_construction() {
-        assert_explanation(
-            r#"
+        let source = r#"
 pub type Boxed { Boxed(Int) }
 pub fn main() { Boxed(1) }
-"#,
-            "custom.construct custom_type#0.constructor#0 fields=[%int#0]",
-        );
+"#;
+        let expected = "custom.construct custom_type#0.constructor#0 fields=[%int#0]";
+
+        assert_explanation(source, expected);
     }
 
     #[test]
     fn writes_custom_constants_calls_and_projections() {
-        assert_explanation(
-            r#"
+        let source = r#"
 pub type Boxed {
   Boxed(Int)
 }
@@ -84,23 +83,24 @@ pub fn main() {
   )
   selected
 }
-"#,
-            concat!(
-                "custom.construct custom_type#0.constructor#0 fields=[%int#0] | ",
-                "custom.list_index %list.custom#0 index=0 | ",
-                "custom.construct custom_type#0.constructor#0 fields=[%int#0] | ",
-                "custom.construct custom_type#0.constructor#0 fields=[%int#1] | ",
-                "custom.construct custom_type#1.constructor#0 fields=[%custom#2] | ",
-                "constant.custom#0 | ",
-                "custom.construct custom_type#0.constructor#0 fields=[%int#2] | ",
-                "custom.call custom#1 args=[%custom#5] | ",
-                "custom.construct custom_type#0.constructor#0 fields=[%int#3] | ",
-                "custom.function_call %function.custom#0 args=[%custom#7] | ",
-                "custom.tuple_index %tuple#0 index=0 | ",
-                "custom.custom_field %custom#3 index=0 | ",
-                "custom.construct custom_type#0.constructor#0 fields=[%int#0]",
-            ),
+"#;
+        let expected = concat!(
+            "custom.construct custom_type#0.constructor#0 fields=[%int#0] | ",
+            "custom.list_index %list.custom#0 index=0 | ",
+            "custom.construct custom_type#0.constructor#0 fields=[%int#0] | ",
+            "custom.construct custom_type#0.constructor#0 fields=[%int#1] | ",
+            "custom.construct custom_type#1.constructor#0 fields=[%custom#2] | ",
+            "constant.custom#0 | ",
+            "custom.construct custom_type#0.constructor#0 fields=[%int#2] | ",
+            "custom.call custom#1 args=[%custom#5] | ",
+            "custom.construct custom_type#0.constructor#0 fields=[%int#3] | ",
+            "custom.function_call %function.custom#0 args=[%custom#7] | ",
+            "custom.tuple_index %tuple#0 index=0 | ",
+            "custom.custom_field %custom#3 index=0 | ",
+            "custom.construct custom_type#0.constructor#0 fields=[%int#0]",
         );
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

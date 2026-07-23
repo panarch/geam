@@ -22,8 +22,7 @@ mod tests {
 
     #[test]
     fn writes_bool_branch() {
-        assert_explanation(
-            r#"
+        let source = r#"
 fn identity(value: Bool) { value }
 
 pub fn main() {
@@ -32,9 +31,10 @@ pub fn main() {
     False -> 0
   }
 }
-"#,
-            "branch %bool#1 true=b1() false=b2()",
-        );
+"#;
+        let expected = "branch %bool#1 true=b1() false=b2()";
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

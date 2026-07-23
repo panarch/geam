@@ -33,16 +33,15 @@ mod tests {
 
     #[test]
     fn writes_tuple_construction() {
-        assert_explanation(
-            "pub fn main() { #(1, True) }",
-            "tuple.value elements=[%int#0, %bool#0]",
-        );
+        let source = "pub fn main() { #(1, True) }";
+        let expected = "tuple.value elements=[%int#0, %bool#0]";
+
+        assert_explanation(source, expected);
     }
 
     #[test]
     fn writes_tuple_constants_calls_and_projections() {
-        assert_explanation(
-            r#"
+        let source = r#"
 const saved = #(0)
 
 pub type Holder {
@@ -70,19 +69,20 @@ pub fn main() {
   )
   selected
 }
-"#,
-            concat!(
-                "tuple.value elements=[%int#0] | tuple.list_index %list.tuple#0 index=0 | ",
-                "tuple.value elements=[%int#0] | tuple.value elements=[%tuple#1] | ",
-                "tuple.value elements=[%int#1] | constant.tuple#0 | ",
-                "tuple.value elements=[%int#2] | tuple.call tuple#1 args=[%tuple#5] | ",
-                "tuple.value elements=[%int#3] | ",
-                "tuple.function_call %function.tuple#0 args=[%tuple#7] | ",
-                "tuple.tuple_index %tuple#2 index=0 | tuple.custom_field %custom#0 index=0 | ",
-                "tuple.value elements=[%tuple#4, %tuple#6, %tuple#8, %tuple#9, %tuple#10] | ",
-                "tuple.value elements=[%int#0]",
-            ),
+"#;
+        let expected = concat!(
+            "tuple.value elements=[%int#0] | tuple.list_index %list.tuple#0 index=0 | ",
+            "tuple.value elements=[%int#0] | tuple.value elements=[%tuple#1] | ",
+            "tuple.value elements=[%int#1] | constant.tuple#0 | ",
+            "tuple.value elements=[%int#2] | tuple.call tuple#1 args=[%tuple#5] | ",
+            "tuple.value elements=[%int#3] | ",
+            "tuple.function_call %function.tuple#0 args=[%tuple#7] | ",
+            "tuple.tuple_index %tuple#2 index=0 | tuple.custom_field %custom#0 index=0 | ",
+            "tuple.value elements=[%tuple#4, %tuple#6, %tuple#8, %tuple#9, %tuple#10] | ",
+            "tuple.value elements=[%int#0]",
         );
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

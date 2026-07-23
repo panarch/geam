@@ -81,8 +81,7 @@ mod tests {
 
     #[test]
     fn writes_nested_patterns_from_a_lowered_match() {
-        assert_explanation(
-            r#"
+        let source = r#"
 pub type Payload { Payload(Int) }
 
 fn identity(value: #(List(Int), Payload, String)) { value }
@@ -92,15 +91,15 @@ pub fn main() {
   let assert #([1, ..rest], Payload(number), "pre" <> suffix) as whole = value
   number
 }
-"#,
-            "alias(#([1, ..binding#0], custom_type#0.constructor#0(binding#1), string_prefix(\"pre\", left=_, right=binding#2)), binding#3)",
-        );
+"#;
+        let expected = "alias(#([1, ..binding#0], custom_type#0.constructor#0(binding#1), string_prefix(\"pre\", left=_, right=binding#2)), binding#3)";
+
+        assert_explanation(source, expected);
     }
 
     #[test]
     fn writes_bound_list_tail() {
-        assert_explanation(
-            r#"
+        let source = r#"
 fn identity(values: List(Int)) { values }
 
 pub fn main() {
@@ -108,15 +107,15 @@ pub fn main() {
   let assert [head, ..tail] = values
   head
 }
-"#,
-            "[binding#0, ..binding#1]",
-        );
+"#;
+        let expected = "[binding#0, ..binding#1]";
+
+        assert_explanation(source, expected);
     }
 
     #[test]
     fn writes_ignored_list_tail() {
-        assert_explanation(
-            r#"
+        let source = r#"
 fn identity(values: List(Int)) { values }
 
 pub fn main() {
@@ -124,9 +123,10 @@ pub fn main() {
   let assert [head, ..] = values
   head
 }
-"#,
-            "[binding#0, .._]",
-        );
+"#;
+        let expected = "[binding#0, .._]";
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

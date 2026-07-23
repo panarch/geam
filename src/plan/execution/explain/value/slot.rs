@@ -30,7 +30,10 @@ mod tests {
 
     #[test]
     fn writes_slot_from_a_lowered_instruction() {
-        assert_explanation("pub fn main() { 1 }", "%int#0:shape#0(Int)");
+        let source = "pub fn main() { 1 }";
+        let expected = "%int#0:shape#0(Int)";
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

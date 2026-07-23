@@ -27,28 +27,28 @@ pub(super) fn write_value_return_tables(
 mod tests {
     #[test]
     fn writes_value_return_families_in_storage_order() {
-        assert_explanation(
-            r#"
+        let source = r#"
 fn truth() { True }
 pub fn main() {
   let _ = truth()
   1
 }
-"#,
-            concat!(
-                "\nfunction int#0\n",
-                "  entry b0 params=[] captures=[]\n",
-                "  block b0 params=[]\n",
-                "    %bool#0:shape#0(Bool) = bool.call bool#0 args=[]\n",
-                "    %int#0:shape#1(Int) = int.value 1\n",
-                "    return %int#0\n",
-                "\nfunction bool#0\n",
-                "  entry b0 params=[] captures=[]\n",
-                "  block b0 params=[]\n",
-                "    %bool#0:shape#0(Bool) = bool.value True\n",
-                "    return %bool#0\n",
-            ),
+"#;
+        let expected = concat!(
+            "\nfunction int#0\n",
+            "  entry b0 params=[] captures=[]\n",
+            "  block b0 params=[]\n",
+            "    %bool#0:shape#0(Bool) = bool.call bool#0 args=[]\n",
+            "    %int#0:shape#1(Int) = int.value 1\n",
+            "    return %int#0\n",
+            "\nfunction bool#0\n",
+            "  entry b0 params=[] captures=[]\n",
+            "  block b0 params=[]\n",
+            "    %bool#0:shape#0(Bool) = bool.value True\n",
+            "    return %bool#0\n",
         );
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

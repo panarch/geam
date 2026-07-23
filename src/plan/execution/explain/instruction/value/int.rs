@@ -38,8 +38,7 @@ mod tests {
 
     #[test]
     fn writes_int_arithmetic() {
-        assert_explanation(
-            r#"
+        let source = r#"
 pub fn main() {
   let value = 6
   #(
@@ -51,21 +50,21 @@ pub fn main() {
     -value,
   )
 }
-"#,
-            concat!(
-                "int.value 6 | int.value 2 | int.add %int#0 %int#1 | ",
-                "int.value 2 | int.sub %int#0 %int#3 | ",
-                "int.value 2 | int.mult %int#0 %int#5 | ",
-                "int.value 2 | int.div %int#0 %int#7 | ",
-                "int.value 2 | int.remainder %int#0 %int#9 | int.negate %int#0",
-            ),
+"#;
+        let expected = concat!(
+            "int.value 6 | int.value 2 | int.add %int#0 %int#1 | ",
+            "int.value 2 | int.sub %int#0 %int#3 | ",
+            "int.value 2 | int.mult %int#0 %int#5 | ",
+            "int.value 2 | int.div %int#0 %int#7 | ",
+            "int.value 2 | int.remainder %int#0 %int#9 | int.negate %int#0",
         );
+
+        assert_explanation(source, expected);
     }
 
     #[test]
     fn writes_int_constants_calls_and_projections() {
-        assert_explanation(
-            r#"
+        let source = r#"
 const saved = 1
 
 pub type Holder {
@@ -93,16 +92,17 @@ pub fn main() {
     selected,
   )
 }
-"#,
-            concat!(
-                "int.value 2 | int.list_index %list.int#0 index=0 | int.value 3 | ",
-                "int.value 4 | constant.int#0 | int.value 5 | ",
-                "int.call int#0 args=[%int#4] | int.value 6 | ",
-                "int.function_call %function.int#0 args=[%int#6] | ",
-                "int.tuple_index %tuple#0 index=0 | int.custom_field %custom#0 index=0 | ",
-                "int.value 0",
-            ),
+"#;
+        let expected = concat!(
+            "int.value 2 | int.list_index %list.int#0 index=0 | int.value 3 | ",
+            "int.value 4 | constant.int#0 | int.value 5 | ",
+            "int.call int#0 args=[%int#4] | int.value 6 | ",
+            "int.function_call %function.int#0 args=[%int#6] | ",
+            "int.tuple_index %tuple#0 index=0 | int.custom_field %custom#0 index=0 | ",
+            "int.value 0",
         );
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

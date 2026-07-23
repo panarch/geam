@@ -60,25 +60,25 @@ fn write_table<Value>(
 mod tests {
     #[test]
     fn writes_constant_programs_in_family_order() {
-        assert_explanation(
-            r#"
+        let source = r#"
 const enabled = True
 const one = 1
 pub fn main() { #(one, enabled) }
-"#,
-            concat!(
-                "\nconstant.int#0\n",
-                "  entry b0 params=[] captures=[]\n",
-                "  block b0 params=[]\n",
-                "    %int#0:shape#0(Int) = int.value 1\n",
-                "    return %int#0\n",
-                "\nconstant.bool#0\n",
-                "  entry b0 params=[] captures=[]\n",
-                "  block b0 params=[]\n",
-                "    %bool#0:shape#1(Bool) = bool.value True\n",
-                "    return %bool#0\n",
-            ),
+"#;
+        let expected = concat!(
+            "\nconstant.int#0\n",
+            "  entry b0 params=[] captures=[]\n",
+            "  block b0 params=[]\n",
+            "    %int#0:shape#0(Int) = int.value 1\n",
+            "    return %int#0\n",
+            "\nconstant.bool#0\n",
+            "  entry b0 params=[] captures=[]\n",
+            "  block b0 params=[]\n",
+            "    %bool#0:shape#1(Bool) = bool.value True\n",
+            "    return %bool#0\n",
         );
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

@@ -36,8 +36,7 @@ mod tests {
 
     #[test]
     fn writes_bit_array_instruction_and_segment_grammar() {
-        assert_explanation(
-            r#"
+        let source = r#"
 pub fn main() {
   let size = 8
   let bits = <<1, 2>>
@@ -50,26 +49,27 @@ pub fn main() {
     bits:bits-size(size),
   >>
 }
-"#,
-            concat!(
-                "    %int#0:shape#0(Int) = int.value 8\n",
-                "    %int#1:shape#0(Int) = int.value 1\n",
-                "    %int#2:shape#0(Int) = int.value 2\n",
-                "    %bit_array#0:shape#1(BitArray) = bit_array.value ",
-                "[int(%int#1, bits=8, big), int(%int#2, bits=8, big)]\n",
-                "    %int#3:shape#0(Int) = int.value 1\n",
-                "    %int#4:shape#0(Int) = int.value 2\n",
-                "    %float#0:shape#2(Float) = float.value 1.5\n",
-                "    %float#1:shape#2(Float) = float.value 2.5\n",
-                "    %int#5:shape#0(Int) = int.value 4\n",
-                "    %int#6:shape#0(Int) = int.mult %int#0 %int#5\n",
-                "    %string#0:shape#3(String) = string.value \"a\"\n",
-                "    %bit_array#1:shape#1(BitArray) = bit_array.value ",
-                "[int(%int#3, bits=4, big), int(%int#4, bits=%int#0*1, little), ",
-                "float(%float#0, bits=16, big), float(%float#1, bits=%int#6*1, little), ",
-                "string(%string#0, utf8), bits(%bit_array#0, bits=%int#0*1)]\n",
-            ),
+"#;
+        let expected = concat!(
+            "    %int#0:shape#0(Int) = int.value 8\n",
+            "    %int#1:shape#0(Int) = int.value 1\n",
+            "    %int#2:shape#0(Int) = int.value 2\n",
+            "    %bit_array#0:shape#1(BitArray) = bit_array.value ",
+            "[int(%int#1, bits=8, big), int(%int#2, bits=8, big)]\n",
+            "    %int#3:shape#0(Int) = int.value 1\n",
+            "    %int#4:shape#0(Int) = int.value 2\n",
+            "    %float#0:shape#2(Float) = float.value 1.5\n",
+            "    %float#1:shape#2(Float) = float.value 2.5\n",
+            "    %int#5:shape#0(Int) = int.value 4\n",
+            "    %int#6:shape#0(Int) = int.mult %int#0 %int#5\n",
+            "    %string#0:shape#3(String) = string.value \"a\"\n",
+            "    %bit_array#1:shape#1(BitArray) = bit_array.value ",
+            "[int(%int#3, bits=4, big), int(%int#4, bits=%int#0*1, little), ",
+            "float(%float#0, bits=16, big), float(%float#1, bits=%int#6*1, little), ",
+            "string(%string#0, utf8), bits(%bit_array#0, bits=%int#0*1)]\n",
         );
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

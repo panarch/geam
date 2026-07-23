@@ -31,16 +31,16 @@ pub(super) fn write_table<'a, Return, Functions>(
 mod tests {
     #[test]
     fn writes_one_function_table_with_its_exact_graph() {
-        assert_explanation(
-            "pub fn main() { 1 }",
-            concat!(
-                "\nfunction int#0\n",
-                "  entry b0 params=[] captures=[]\n",
-                "  block b0 params=[]\n",
-                "    %int#0:shape#0(Int) = int.value 1\n",
-                "    return %int#0\n",
-            ),
+        let source = "pub fn main() { 1 }";
+        let expected = concat!(
+            "\nfunction int#0\n",
+            "  entry b0 params=[] captures=[]\n",
+            "  block b0 params=[]\n",
+            "    %int#0:shape#0(Int) = int.value 1\n",
+            "    return %int#0\n",
         );
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

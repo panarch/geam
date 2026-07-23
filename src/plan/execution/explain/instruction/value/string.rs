@@ -43,21 +43,21 @@ mod tests {
 
     #[test]
     fn writes_string_values_and_concatenation() {
-        assert_explanation(
-            r#"
+        let source = r#"
 pub fn main() {
   let prefix = "pre"
   #(prefix <> "fix")
 }
-"#,
-            "string.value \"pre\" | string.value \"fix\" | string.concatenate %string#0 %string#1",
-        );
+"#;
+        let expected =
+            "string.value \"pre\" | string.value \"fix\" | string.concatenate %string#0 %string#1";
+
+        assert_explanation(source, expected);
     }
 
     #[test]
     fn writes_string_constants_calls_and_projections() {
-        assert_explanation(
-            r#"
+        let source = r#"
 const saved = "saved"
 
 pub type Holder {
@@ -91,19 +91,20 @@ pub fn main() {
     suffix,
   )
 }
-"#,
-            concat!(
-                "string.value \"list\" | string.list_index %list.string#0 index=0 | ",
-                "string.value \"tuple\" | string.value \"record\" | ",
-                "string.value \"prefix-tail\" | string.call string#0 args=[%string#3] | ",
-                "string.drop_prefix %string#1 prefix=\"prefix-\" | constant.string#0 | ",
-                "string.value \"call\" | string.call string#0 args=[%string#3] | ",
-                "string.value \"function\" | ",
-                "string.function_call %function.string#0 args=[%string#5] | ",
-                "string.tuple_index %tuple#0 index=0 | ",
-                "string.custom_field %custom#0 index=0 | string.value \"\" | string.value \"\"",
-            ),
+"#;
+        let expected = concat!(
+            "string.value \"list\" | string.list_index %list.string#0 index=0 | ",
+            "string.value \"tuple\" | string.value \"record\" | ",
+            "string.value \"prefix-tail\" | string.call string#0 args=[%string#3] | ",
+            "string.drop_prefix %string#1 prefix=\"prefix-\" | constant.string#0 | ",
+            "string.value \"call\" | string.call string#0 args=[%string#3] | ",
+            "string.value \"function\" | ",
+            "string.function_call %function.string#0 args=[%string#5] | ",
+            "string.tuple_index %tuple#0 index=0 | ",
+            "string.custom_field %custom#0 index=0 | string.value \"\" | string.value \"\"",
         );
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

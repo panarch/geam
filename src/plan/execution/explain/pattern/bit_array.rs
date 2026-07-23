@@ -21,8 +21,7 @@ mod tests {
 
     #[test]
     fn writes_dynamic_and_remainder_bit_array_segments() {
-        assert_explanation(
-            r#"
+        let source = r#"
 fn identity(bits: BitArray) { bits }
 
 pub fn main() {
@@ -31,9 +30,11 @@ pub fn main() {
   let assert <<value:size(size), rest:bits>> = bits
   value
 }
-"#,
-            "<<int(binding#0, size=%int#2*1, big, unsigned), bits(binding#1, size=rest, unit=1)>>",
-        );
+"#;
+        let expected =
+            "<<int(binding#0, size=%int#2*1, big, unsigned), bits(binding#1, size=rest, unit=1)>>";
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

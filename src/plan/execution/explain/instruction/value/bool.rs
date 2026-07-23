@@ -72,8 +72,7 @@ mod tests {
 
     #[test]
     fn writes_bool_instruction_grammar() {
-        assert_explanation(
-            r#"
+        let source = r#"
 pub fn main() {
   let integer = 1
   let float = 1.0
@@ -91,23 +90,23 @@ pub fn main() {
   && integer != 2
   && values == [1]
 }
-"#,
-            concat!(
-                "bool.value True | bool.not %bool#0 | bool.lt_int %int#0 %int#1 | ",
-                "bool.lte_int %int#0 %int#1 | bool.gt_int %int#0 %int#1 | ",
-                "bool.gte_int %int#0 %int#1 | bool.lt_float %float#0 %float#1 | ",
-                "bool.lte_float %float#0 %float#1 | bool.gt_float %float#0 %float#1 | ",
-                "bool.gte_float %float#0 %float#1 | bool.equal %int#0 %int#1 | ",
-                "bool.not_equal %int#0 %int#1 | bool.equal %list.int#0 %list.int#1 | ",
-                "bool.value True | bool.value False",
-            ),
+"#;
+        let expected = concat!(
+            "bool.value True | bool.not %bool#0 | bool.lt_int %int#0 %int#1 | ",
+            "bool.lte_int %int#0 %int#1 | bool.gt_int %int#0 %int#1 | ",
+            "bool.gte_int %int#0 %int#1 | bool.lt_float %float#0 %float#1 | ",
+            "bool.lte_float %float#0 %float#1 | bool.gt_float %float#0 %float#1 | ",
+            "bool.gte_float %float#0 %float#1 | bool.equal %int#0 %int#1 | ",
+            "bool.not_equal %int#0 %int#1 | bool.equal %list.int#0 %list.int#1 | ",
+            "bool.value True | bool.value False",
         );
+
+        assert_explanation(source, expected);
     }
 
     #[test]
     fn writes_bool_constants_calls_projections_and_pattern_checks() {
-        assert_explanation(
-            r#"
+        let source = r#"
 const saved = True
 
 pub type Flag {
@@ -146,23 +145,24 @@ pub fn main() {
   && exact
   && prefix
 }
-"#,
-            concat!(
-                "bool.value True | bool.list_length_at_least %list.bool#1 length=1 | ",
-                "bool.list_index %list.bool#0 index=0 | bool.value True | bool.value True | ",
-                "bool.list_length_equals %list.bool#0 length=1 | ",
-                "bool.list_index %list.bool#0 index=0 | bool.value True | bool.value True | ",
-                "bool.value True | bool.value True | ",
-                "bool.string_starts_with %string#1 prefix=\"prefix-\" | bool.value True | ",
-                "bool.value True | constant.bool#0 | bool.value True | ",
-                "bool.call bool#1 args=[%bool#3] | bool.value True | ",
-                "bool.function_call %function.bool#0 args=[%bool#3] | ",
-                "bool.tuple_index %tuple#0 index=0 | bool.custom_field %custom#0 index=0 | ",
-                "bool.value True | bool.value False | bool.value False | bool.value False | ",
-                "bool.value False | bool.value False | bool.value False | bool.value False | ",
-                "bool.value False | bool.value False",
-            ),
+"#;
+        let expected = concat!(
+            "bool.value True | bool.list_length_at_least %list.bool#1 length=1 | ",
+            "bool.list_index %list.bool#0 index=0 | bool.value True | bool.value True | ",
+            "bool.list_length_equals %list.bool#0 length=1 | ",
+            "bool.list_index %list.bool#0 index=0 | bool.value True | bool.value True | ",
+            "bool.value True | bool.value True | ",
+            "bool.string_starts_with %string#1 prefix=\"prefix-\" | bool.value True | ",
+            "bool.value True | constant.bool#0 | bool.value True | ",
+            "bool.call bool#1 args=[%bool#3] | bool.value True | ",
+            "bool.function_call %function.bool#0 args=[%bool#3] | ",
+            "bool.tuple_index %tuple#0 index=0 | bool.custom_field %custom#0 index=0 | ",
+            "bool.value True | bool.value False | bool.value False | bool.value False | ",
+            "bool.value False | bool.value False | bool.value False | bool.value False | ",
+            "bool.value False | bool.value False",
         );
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

@@ -35,7 +35,9 @@ pub(super) fn list_function_function_label(function: &ListFunctionFunctionId) ->
 
 #[cfg(test)]
 mod tests {
-    use crate::plan::execution::{FunctionFunctionId, RuntimeFunctionId};
+    use crate::plan::execution::{
+        ExecutionPlan, FunctionFunctionId, ListFunctionFunctionId, RuntimeFunctionId,
+    };
 
     #[test]
     fn labels_list_returning_function_families() {
@@ -101,20 +103,26 @@ mod tests {
 
     fn assert_explanation(source: &str, expected: &str) {
         super::super::super::super::assert_rendered(source, expected, |plan, output| {
-            let RuntimeFunctionId::Function {
-                id: FunctionFunctionId::List(function),
-                ..
-            } = plan.main_runtime()
-            else {
-                panic!("source should lower a list-function-returning main function");
-            };
-            super::list_function_function_label(&function).push_to(output);
+            super::list_function_function_label(&main_list_function_id(plan)).push_to(output);
         });
+    }
+
+    fn main_list_function_id(plan: &ExecutionPlan) -> ListFunctionFunctionId {
+        let RuntimeFunctionId::Function {
+            id: FunctionFunctionId::List(function),
+            ..
+        } = plan.main_runtime()
+        else {
+            panic!("source should lower a list-function-returning main function");
+        };
+        function
     }
 
     #[test]
     #[should_panic(expected = "source should lower a list-function-returning main function")]
     fn list_function_return_shape_guard_is_visible() {
-        assert_explanation("pub fn main() { 1 }", "");
+        let source = "pub fn main() { 1 }";
+
+        super::super::super::super::with_execution_plan(source, main_list_function_id);
     }
 }
