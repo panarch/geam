@@ -48,6 +48,8 @@ mod explain {
         constant_programs,
         constant_utf_codepoint_list,
         function_instructions,
+        function_return_call_and_block,
+        function_return_control_flow,
         generic_instructions,
         list_instructions,
         pattern_details,

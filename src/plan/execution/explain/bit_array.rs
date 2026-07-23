@@ -24,3 +24,34 @@ pub(super) fn string_encoding(value: StringEncoding) -> &'static str {
         StringEncoding::Utf32(Endianness::Little) => "utf32.little",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Endianness, FloatBitSize, StringEncoding};
+
+    #[test]
+    fn writes_every_bit_array_metadata_token() {
+        assert_eq!(super::endianness(Endianness::Big), "big");
+        assert_eq!(super::endianness(Endianness::Little), "little");
+        assert_eq!(super::float_size(FloatBitSize::Sixteen), 16);
+        assert_eq!(super::float_size(FloatBitSize::ThirtyTwo), 32);
+        assert_eq!(super::float_size(FloatBitSize::SixtyFour), 64);
+        assert_eq!(super::string_encoding(StringEncoding::Utf8), "utf8");
+        assert_eq!(
+            super::string_encoding(StringEncoding::Utf16(Endianness::Big)),
+            "utf16.big",
+        );
+        assert_eq!(
+            super::string_encoding(StringEncoding::Utf16(Endianness::Little)),
+            "utf16.little",
+        );
+        assert_eq!(
+            super::string_encoding(StringEncoding::Utf32(Endianness::Big)),
+            "utf32.big",
+        );
+        assert_eq!(
+            super::string_encoding(StringEncoding::Utf32(Endianness::Little)),
+            "utf32.little",
+        );
+    }
+}

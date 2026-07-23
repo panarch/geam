@@ -55,3 +55,38 @@ fn write_table<Value>(
         write_constant_program(output, plan, program);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn writes_constant_programs_in_family_order() {
+        let source = r#"
+const enabled = True
+const one = 1
+pub fn main() { #(one, enabled) }
+"#;
+        let typed = crate::compile_typed_module("main", "main.gleam", source)
+            .expect("source should compile");
+        let module_plan = crate::plan_module(typed).expect("source should plan");
+        let plan = crate::ExecutionPlan::from_module_plan(module_plan);
+        let mut output = String::new();
+
+        super::write_constant_tables(&mut output, &plan, &plan.constants);
+
+        assert_eq!(
+            output,
+            concat!(
+                "\nconstant.int#0\n",
+                "  entry b0 params=[] captures=[]\n",
+                "  block b0 params=[]\n",
+                "    %int#0:shape#0(Int) = int.value 1\n",
+                "    return %int#0\n",
+                "\nconstant.bool#0\n",
+                "  entry b0 params=[] captures=[]\n",
+                "  block b0 params=[]\n",
+                "    %bool#0:shape#1(Bool) = bool.value True\n",
+                "    return %bool#0\n",
+            ),
+        );
+    }
+}

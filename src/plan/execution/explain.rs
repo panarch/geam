@@ -43,53 +43,29 @@ fn render(plan: &ExecutionPlan) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::{ExecutionPlan, ExecutionPlanExplanation, ListValue, Value, ValueType, run_main};
+    use crate::ExecutionPlanExplanation;
 
     #[test]
-    fn formats_public_typed_block_graph_without_source_names_and_preserves_execution() {
-        let source = include_str!("../../../tests/fixtures/explain/return_topology.gleam");
-        let plan = execution_plan(source);
-        assert_eq!(run_main(&plan), Ok(Value::Int(40.into())));
-
-        let explanation: ExecutionPlanExplanation<'_> = plan.explain();
-        assert_eq!(explanation.to_string(), expected_explanation(source));
-        assert!(!explanation.to_string().contains("choose"));
-        assert_eq!(run_main(&plan), Ok(Value::Int(40.into())));
-    }
-
-    #[test]
-    fn formats_and_executes_a_utf_codepoint_list_constant_program() {
-        let source =
-            include_str!("../../../tests/fixtures/explain/constant_utf_codepoint_list.gleam");
-        let plan = execution_plan(source);
-        let expected_value = Value::List(ListValue::empty(ValueType::UtfCodepoint));
-
-        assert_eq!(run_main(&plan), Ok(expected_value.clone()));
-        assert_eq!(plan.explain().to_string(), expected_explanation(source));
-        assert_eq!(run_main(&plan), Ok(expected_value));
-    }
-
-    fn expected_explanation(source: &str) -> String {
-        let (_, comments) = source
-            .split_once("\n// geam:explain\n")
-            .expect("explain fixture should contain an expected output block");
-        let mut expected = String::new();
-
-        for line in comments.lines() {
-            let comment = line
-                .strip_prefix("//")
-                .expect("expected output lines should be comments");
-            expected.push_str(comment.strip_prefix(' ').unwrap_or(comment));
-            expected.push('\n');
-        }
-
-        expected
-    }
-
-    fn execution_plan(source: &str) -> ExecutionPlan {
+    fn formats_the_public_execution_plan_facade() {
+        let source = "pub fn main() { 1 }";
         let typed = crate::compile_typed_module("main", "main.gleam", source)
             .expect("source should compile");
         let module_plan = crate::plan_module(typed).expect("source should plan");
-        ExecutionPlan::from_module_plan(module_plan)
+        let plan = crate::ExecutionPlan::from_module_plan(module_plan);
+        let explanation: ExecutionPlanExplanation<'_> = plan.explain();
+
+        assert_eq!(
+            explanation.to_string(),
+            concat!(
+                "module main\n",
+                "main int#0\n",
+                "\n",
+                "function int#0\n",
+                "  entry b0 params=[] captures=[]\n",
+                "  block b0 params=[]\n",
+                "    %int#0:shape#0(Int) = int.value 1\n",
+                "    return %int#0\n",
+            ),
+        );
     }
 }
