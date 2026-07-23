@@ -85,6 +85,18 @@ pub struct ExecutionPlan {
     value_shapes: ValueShapeTable,
 }
 
+impl explain::Explain for ExecutionPlan {
+    fn write_explanation(&self, context: &mut explain::ExplainContext<'_, '_>) {
+        context.push_str("module ");
+        context.push_str(&self.module);
+        context.push_str("\nmain ");
+        function::runtime_function_label(&self.main).write(context.output());
+        context.push('\n');
+        context.write(&self.functions);
+        context.write(&self.constants);
+    }
+}
+
 impl ExecutionPlan {
     pub fn from_module_plan(module_plan: ModulePlan) -> Self {
         lowering::lower(module_plan)

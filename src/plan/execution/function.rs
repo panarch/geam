@@ -6,8 +6,15 @@ mod runtime;
 mod table;
 mod value_return;
 
+use crate::plan::execution::explain::FunctionLabel;
+
+pub(in crate::plan::execution) trait ExplainFunctionId {
+    fn label(&self) -> FunctionLabel;
+}
+
 pub(crate) use entry::FunctionEntry;
 pub(in crate::plan::execution) use function_return::FunctionFunctionTables;
+pub(in crate::plan::execution) use function_return::function_function_label;
 pub(crate) use function_return::{
     BitArrayFunctionFunctionId, BitArrayFunctionReturn, BitArrayListFunctionFunctionId,
     BoolFunctionFunctionId, BoolFunctionReturn, BoolListFunctionFunctionId,
@@ -23,8 +30,10 @@ pub(crate) use function_return::{
     TupleFunctionReturn, TupleListFunctionFunctionId, TypedFunctionReturn,
     UtfCodepointFunctionFunctionId, UtfCodepointFunctionReturn, UtfCodepointListFunctionFunctionId,
 };
+pub(in crate::plan::execution::function) use graph::ExplainFunctionBody;
 pub(crate) use graph::{FunctionGraph, FunctionGraphExit};
 pub(in crate::plan::execution) use list_return::ListFunctionTables;
+pub(in crate::plan::execution) use list_return::list_function_label;
 pub(crate) use list_return::{
     BitArrayListFunctionId, BitArrayListReturn, BoolListFunctionId, BoolListReturn,
     CustomListFunctionId, CustomListReturn, FloatListFunctionId, FloatListReturn,
@@ -34,8 +43,10 @@ pub(crate) use list_return::{
     StringListFunctionId, StringListReturn, TupleListFunctionId, TupleListReturn,
     UtfCodepointListFunctionId, UtfCodepointListReturn,
 };
+pub(in crate::plan::execution) use runtime::runtime_function_label;
 pub(crate) use runtime::{FunctionReturnFamily, GenericCallableId, RuntimeFunctionId};
 pub(super) use table::FunctionTables;
+pub(in crate::plan::execution::function) use table::write_table;
 pub(in crate::plan::execution) use value_return::ValueFunctionTables;
 pub(crate) use value_return::{
     BitArrayFunctionId, BitArrayReturn, BoolFunctionId, BoolReturn, CustomFunctionId, CustomReturn,

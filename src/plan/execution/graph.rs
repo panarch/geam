@@ -4,6 +4,7 @@ mod exit;
 mod value;
 
 pub(crate) use bit_array::{Endianness, FloatBitSize, StringEncoding};
+pub(in crate::plan::execution::graph) use bit_array::{endianness, float_size, string_encoding};
 pub(crate) use block::{
     BitArrayBindingPattern, BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayInstruction,
     BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize, BitArrayPatternSizeExpr,
@@ -33,6 +34,7 @@ pub(crate) use value::{
     TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointListFunctionLocalId,
     UtfCodepointListLocalId, UtfCodepointLocalId,
 };
+pub(in crate::plan::execution) use value::{ExplainLocal, write_locals};
 
 pub(crate) struct Graph {
     entry: BlockId,
@@ -57,6 +59,73 @@ impl Graph {
 
     pub(crate) fn block(&self, id: BlockId) -> &Block {
         &self.blocks[id.index()]
+    }
+}
+
+use crate::plan::execution::explain::ExplainContext;
+
+pub(in crate::plan::execution) fn write_graph(
+    context: &mut ExplainContext<'_, '_>,
+    graph: &Graph,
+    entry_params: &[ParamSlot],
+    entry_captures: &[ParamSlot],
+    write_exit: &mut dyn FnMut(&mut ExplainContext<'_, '_>, GraphExitId),
+) {
+    context.push_str("  entry b");
+    context.push_str(&graph.entry().index().to_string());
+    context.push_str(" params=");
+    context.write_list(entry_params, |context, slot| context.write(slot));
+    context.push_str(" captures=");
+    context.write_list(entry_captures, |context, slot| context.write(slot));
+    context.push('\n');
+
+    for (index, block) in graph.blocks().iter().enumerate() {
+        block::write_block(context, index, block, write_exit);
+    }
+}
+
+#[cfg(test)]
+mod explain_tests {
+    use super::write_graph;
+    use crate::plan::execution::{IntFunctionId, explain};
+
+    #[test]
+    fn writes_complete_graph_entry_and_block_order() {
+        let source = r#"
+fn choose(flag: Bool) { case flag { True -> 1 False -> 0 } }
+pub fn main() { choose(True) }
+"#;
+        let expected = concat!(
+            "  entry b0 params=[%bool#0:shape#0(Bool)] captures=[]\n",
+            "  block b0 params=[%bool#0:shape#0(Bool)]\n",
+            "    branch %bool#0 true=b1() false=b2()\n",
+            "  block b1 params=[]\n",
+            "    %int#0:shape#1(Int) = int.value 1\n",
+            "    exit#0\n",
+            "  block b2 params=[]\n",
+            "    %int#0:shape#1(Int) = int.value 0\n",
+            "    exit#1\n",
+        );
+
+        assert_explanation(source, expected);
+    }
+
+    fn assert_explanation(source: &str, expected: &str) {
+        explain::assert_rendered(source, expected, |plan, output| {
+            let function = plan.int_function(IntFunctionId(1));
+            let body = function.graph();
+            let mut context = explain::ExplainContext::new(plan, output);
+            write_graph(
+                &mut context,
+                body.graph(),
+                function.entry().params(body),
+                function.entry().captures(body),
+                &mut |context, exit| {
+                    context.push_str("exit#");
+                    context.push_str(&exit.index().to_string());
+                },
+            );
+        });
     }
 }
 

@@ -36,3 +36,24 @@ pub(crate) enum Terminator {
     LetAssertPanic(LetAssertPanic),
     NeverCall(NeverCall),
 }
+
+use crate::plan::execution::explain::ExplainContext;
+
+pub(super) fn write_terminator(
+    context: &mut ExplainContext<'_, '_>,
+    terminator: &Terminator,
+    write_graph_exit: &mut dyn FnMut(&mut ExplainContext<'_, '_>, GraphExitId),
+) {
+    match terminator {
+        Terminator::Jump(jump) => context.write(jump),
+        Terminator::BoolBranch(branch) => context.write(branch),
+        Terminator::IntSwitch(switch) => context.write(switch),
+        Terminator::FloatSwitch(switch) => context.write(switch),
+        Terminator::StringSwitch(switch) => context.write(switch),
+        Terminator::Match(matcher) => context.write(matcher),
+        Terminator::Exit(exit) => write_graph_exit(context, *exit),
+        Terminator::SourceStop(stop) => context.write(stop),
+        Terminator::LetAssertPanic(panic) => context.write(panic),
+        Terminator::NeverCall(call) => context.write(call),
+    }
+}
