@@ -1,5 +1,5 @@
 use crate::plan::execution::explain::FunctionLabel;
-use crate::plan::execution::function::ExplainFunctionId;
+use crate::plan::execution::function::FunctionLabelSource;
 use crate::plan::execution::type_::{
     BitArrayListTypeId, BoolListTypeId, CustomListTypeId, FloatListTypeId, FunctionListTypeId,
     IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId, ParameterListTypeId,
@@ -283,108 +283,110 @@ impl FunctionListFunctionId {
     }
 }
 
-impl ExplainFunctionId for ParameterListFunctionId {
-    fn label(&self) -> FunctionLabel {
+impl FunctionLabelSource for ParameterListFunctionId {
+    fn function_label(&self) -> FunctionLabel {
         FunctionLabel::new("list.parameter", self.index())
     }
 }
 
-impl ExplainFunctionId for ParameterListListFunctionId {
-    fn label(&self) -> FunctionLabel {
+impl FunctionLabelSource for ParameterListListFunctionId {
+    fn function_label(&self) -> FunctionLabel {
         FunctionLabel::new("list.parameter_list", self.index())
     }
 }
 
-impl ExplainFunctionId for IntListFunctionId {
-    fn label(&self) -> FunctionLabel {
+impl FunctionLabelSource for IntListFunctionId {
+    fn function_label(&self) -> FunctionLabel {
         FunctionLabel::new("list.int", self.index())
     }
 }
 
-impl ExplainFunctionId for StringListFunctionId {
-    fn label(&self) -> FunctionLabel {
+impl FunctionLabelSource for StringListFunctionId {
+    fn function_label(&self) -> FunctionLabel {
         FunctionLabel::new("list.string", self.index())
     }
 }
 
-impl ExplainFunctionId for BitArrayListFunctionId {
-    fn label(&self) -> FunctionLabel {
+impl FunctionLabelSource for BitArrayListFunctionId {
+    fn function_label(&self) -> FunctionLabel {
         FunctionLabel::new("list.bit_array", self.index())
     }
 }
 
-impl ExplainFunctionId for UtfCodepointListFunctionId {
-    fn label(&self) -> FunctionLabel {
+impl FunctionLabelSource for UtfCodepointListFunctionId {
+    fn function_label(&self) -> FunctionLabel {
         FunctionLabel::new("list.utf_codepoint", self.index())
     }
 }
 
-impl ExplainFunctionId for CustomListFunctionId {
-    fn label(&self) -> FunctionLabel {
+impl FunctionLabelSource for CustomListFunctionId {
+    fn function_label(&self) -> FunctionLabel {
         FunctionLabel::new("list.custom", self.index())
     }
 }
 
-impl ExplainFunctionId for FloatListFunctionId {
-    fn label(&self) -> FunctionLabel {
+impl FunctionLabelSource for FloatListFunctionId {
+    fn function_label(&self) -> FunctionLabel {
         FunctionLabel::new("list.float", self.index())
     }
 }
 
-impl ExplainFunctionId for BoolListFunctionId {
-    fn label(&self) -> FunctionLabel {
+impl FunctionLabelSource for BoolListFunctionId {
+    fn function_label(&self) -> FunctionLabel {
         FunctionLabel::new("list.bool", self.index())
     }
 }
 
-impl ExplainFunctionId for NilListFunctionId {
-    fn label(&self) -> FunctionLabel {
+impl FunctionLabelSource for NilListFunctionId {
+    fn function_label(&self) -> FunctionLabel {
         FunctionLabel::new("list.nil", self.index())
     }
 }
 
-impl ExplainFunctionId for TupleListFunctionId {
-    fn label(&self) -> FunctionLabel {
+impl FunctionLabelSource for TupleListFunctionId {
+    fn function_label(&self) -> FunctionLabel {
         FunctionLabel::new("list.tuple", self.index())
     }
 }
 
-impl ExplainFunctionId for ListListFunctionId {
-    fn label(&self) -> FunctionLabel {
+impl FunctionLabelSource for ListListFunctionId {
+    fn function_label(&self) -> FunctionLabel {
         FunctionLabel::new("list.list", self.index())
     }
 }
 
-impl ExplainFunctionId for FunctionListFunctionId {
-    fn label(&self) -> FunctionLabel {
+impl FunctionLabelSource for FunctionListFunctionId {
+    fn function_label(&self) -> FunctionLabel {
         FunctionLabel::new("list.function", self.index())
     }
 }
 
-pub(in crate::plan::execution) fn list_function_label(function: &ListFunctionId) -> FunctionLabel {
-    match function {
-        ListFunctionId::Parameter(id) => id.label(),
-        ListFunctionId::ParameterList(id) => id.label(),
-        ListFunctionId::Int(id) => id.label(),
-        ListFunctionId::String(id) => id.label(),
-        ListFunctionId::BitArray(id) => id.label(),
-        ListFunctionId::UtfCodepoint(id) => id.label(),
-        ListFunctionId::Custom(id) => id.label(),
-        ListFunctionId::Float(id) => id.label(),
-        ListFunctionId::Bool(id) => id.label(),
-        ListFunctionId::Nil(id) => id.label(),
-        ListFunctionId::Tuple(id) => id.label(),
-        ListFunctionId::List(id) => id.label(),
-        ListFunctionId::Function(id) => id.label(),
+impl FunctionLabelSource for ListFunctionId {
+    fn function_label(&self) -> FunctionLabel {
+        match self {
+            Self::Parameter(id) => id.function_label(),
+            Self::ParameterList(id) => id.function_label(),
+            Self::Int(id) => id.function_label(),
+            Self::String(id) => id.function_label(),
+            Self::BitArray(id) => id.function_label(),
+            Self::UtfCodepoint(id) => id.function_label(),
+            Self::Custom(id) => id.function_label(),
+            Self::Float(id) => id.function_label(),
+            Self::Bool(id) => id.function_label(),
+            Self::Nil(id) => id.function_label(),
+            Self::Tuple(id) => id.function_label(),
+            Self::List(id) => id.function_label(),
+            Self::Function(id) => id.function_label(),
+        }
     }
 }
 
 #[cfg(test)]
 mod explain_tests {
-    use super::{ListFunctionId, list_function_label};
+    use super::ListFunctionId;
     use crate::plan::execution::ExecutionPlan;
     use crate::plan::execution::explain;
-    use crate::plan::execution::function::RuntimeFunctionId;
+    use crate::plan::execution::function::{FunctionLabelSource, RuntimeFunctionId};
 
     #[test]
     fn labels_list_function_families() {
@@ -436,7 +438,7 @@ mod explain_tests {
 
     fn assert_explanation(source: &str, expected: &str) {
         explain::assert_rendered(source, expected, |plan, output| {
-            list_function_label(&main_list_function_id(plan)).write(output);
+            main_list_function_id(plan).function_label().write(output);
         });
     }
 }

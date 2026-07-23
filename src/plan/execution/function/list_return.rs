@@ -8,7 +8,6 @@ pub(crate) use body::{
     ParameterListFunctionBody, ParameterListListFunctionBody, StringListFunctionBody,
     TupleListFunctionBody, UtfCodepointListFunctionBody,
 };
-pub(in crate::plan::execution) use id::list_function_label;
 pub(crate) use id::{
     BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId, FloatListFunctionId,
     FunctionListFunctionId, IntListFunctionId, ListFunctionId, ListListFunctionId,

@@ -16,9 +16,7 @@ pub(crate) use terminator::{
     NeverCall, NeverCallTarget, Signedness, SourceStop, SourceStopKind, StringSwitch, Terminator,
 };
 
-use crate::plan::execution::explain::ExplainContext;
-use crate::plan::execution::graph::BlockGraphExitId;
-use crate::plan::execution::graph::ParamSlot;
+use crate::plan::execution::graph::{BlockGraphExplainContext, ParamSlot};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct BlockId(usize);
@@ -63,30 +61,28 @@ impl Block {
     pub(crate) fn terminator(&self) -> &Terminator {
         &self.terminator
     }
-}
 
-pub(super) fn write_block(
-    context: &mut ExplainContext<'_, '_>,
-    index: usize,
-    block: &Block,
-    write_exit: &mut dyn FnMut(&mut ExplainContext<'_, '_>, BlockGraphExitId),
-) {
-    context.push_str("  block b");
-    context.push_str(&index.to_string());
-    context.push_str(" params=");
-    context.write_list(block.params(), |context, slot| context.write(slot));
-    context.push('\n');
-    for instruction in block.instructions() {
-        context.write(instruction);
+    pub(in crate::plan::execution::graph) fn write_explanation(
+        &self,
+        context: &mut BlockGraphExplainContext<'_, '_, '_>,
+        index: usize,
+    ) {
+        context.push_str("  block b");
+        context.push_str(&index.to_string());
+        context.push_str(" params=");
+        context.write_list(self.params(), |context, slot| context.write(slot));
+        context.push('\n');
+        for instruction in self.instructions() {
+            context.write(instruction);
+        }
+        context.push_str("    ");
+        self.terminator().write_explanation(context);
+        context.push('\n');
     }
-    context.push_str("    ");
-    terminator::write_terminator(context, block.terminator(), write_exit);
-    context.push('\n');
 }
 
 #[cfg(test)]
 mod explain_tests {
-    use super::write_block;
     use crate::plan::execution::explain;
     use crate::plan::execution::function::IntFunctionId;
 
@@ -94,9 +90,10 @@ mod explain_tests {
     fn writes_block_parameters_instructions_and_terminator() {
         let source = "pub fn main() { 1 }";
         let expected = concat!(
+            "  entry b0 params=[] captures=[]\n",
             "  block b0 params=[]\n",
             "    %int#0:shape#0(Int) = int.value 1\n",
-            "    exit#0\n",
+            "    return %int#0\n",
         );
 
         assert_explanation(source, expected);
@@ -104,16 +101,15 @@ mod explain_tests {
 
     fn assert_explanation(source: &str, expected: &str) {
         explain::assert_rendered(source, expected, |plan, output| {
-            let block = &plan
-                .int_function(IntFunctionId(0))
-                .body()
-                .block_graph()
-                .blocks()[0];
+            let function = plan.int_function(IntFunctionId(0));
+            let body = function.body();
             let mut context = explain::ExplainContext::new(plan, output);
-            write_block(&mut context, 0, block, &mut |context, exit| {
-                context.push_str("exit#");
-                context.push_str(&exit.index().to_string());
-            });
+            body.write_explanation(
+                &mut context,
+                "int",
+                function.entry().params(body),
+                function.entry().captures(body),
+            );
         });
     }
 }

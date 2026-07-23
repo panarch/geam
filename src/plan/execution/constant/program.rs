@@ -1,6 +1,6 @@
 use super::super::graph::{BlockGraph, BlockGraphExitId};
 use crate::plan::execution::explain::{Explain, ExplainContext};
-use crate::plan::execution::graph::{ExplainLocal, write_graph};
+use crate::plan::execution::graph::{BlockGraphExitExplanation, LocalLabel};
 
 pub(crate) struct ConstantProgram<Return> {
     block_graph: BlockGraph,
@@ -29,19 +29,21 @@ impl<Return> ConstantProgram<Return> {
 
 impl<Return> Explain for ConstantProgram<Return>
 where
-    Return: ExplainLocal,
+    Return: LocalLabel,
 {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
-        write_graph(
-            context,
-            self.block_graph(),
-            &[],
-            &[],
-            &mut |context, exit| {
-                context.push_str("return ");
-                context.write(self.return_(exit));
-            },
-        );
+        self.block_graph()
+            .write_explanation(context, &[], &[], self);
+    }
+}
+
+impl<Return> BlockGraphExitExplanation for ConstantProgram<Return>
+where
+    Return: LocalLabel,
+{
+    fn write_exit(&self, context: &mut ExplainContext<'_, '_>, exit: BlockGraphExitId) {
+        context.push_str("return ");
+        context.write(self.return_(exit));
     }
 }
 
@@ -49,7 +51,7 @@ where
 mod explain_tests {
     use crate::plan::execution::constant::ConstantId;
     use crate::plan::execution::explain;
-    use crate::plan::execution::graph::IntLocalId;
+    use crate::plan::execution::graph::{BlockGraphExitExplanation, BlockGraphExitId, IntLocalId};
 
     #[test]
     fn writes_reusable_constant_graph_program() {
@@ -65,6 +67,21 @@ pub fn main() { one }
         );
 
         assert_explanation(source, expected);
+    }
+
+    #[test]
+    fn writes_constant_block_graph_exit() {
+        let source = r#"
+const one = 1
+pub fn main() { one }
+"#;
+        let expected = "return %int#0";
+
+        explain::assert_rendered(source, expected, |plan, output| {
+            let program = plan.constant(ConstantId::<IntLocalId>::new(0));
+            let mut context = explain::ExplainContext::new(plan, output);
+            program.write_exit(&mut context, BlockGraphExitId::new(0));
+        });
     }
 
     fn assert_explanation(source: &str, expected: &str) {

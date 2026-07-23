@@ -1,4 +1,4 @@
-use super::super::super::value::write_locals;
+use super::super::super::value::write_local_labels;
 use super::{write_call, write_constant, write_function_call, write_projection};
 use crate::plan::execution::constant::ConstantId;
 use crate::plan::execution::explain::{Explain, ExplainContext};
@@ -49,7 +49,7 @@ impl Explain for CustomInstruction {
                 output.push_str(".constructor#");
                 output.push_str(&constructor.index().to_string());
                 output.push_str(" fields=");
-                write_locals(output, fields);
+                write_local_labels(output, fields);
             }
             CustomInstruction::Constant(id) => write_constant(output, "custom", *id),
             CustomInstruction::Call { function, args } => {

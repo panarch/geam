@@ -6,7 +6,7 @@ use super::{
     TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
 use crate::plan::execution::explain::{Explain, ExplainContext};
-use crate::plan::execution::graph::ExplainLocal;
+use crate::plan::execution::graph::LocalLabel;
 use crate::plan::execution::type_::{FunctionType, ValueShapeId, ValueType};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,7 +85,7 @@ impl ParamSlot {
 
 impl Explain for ParamSlot {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
-        self.local().write_local(context.output());
+        self.local().write_local_label(context.output());
         context.push_str(":shape#");
         context.push_str(&self.shape().index().to_string());
         context.push('(');

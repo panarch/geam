@@ -2,14 +2,14 @@ use super::super::super::{FunctionLocal, StoredListLocal};
 use super::{write_call, write_constant, write_function_call, write_projection};
 use crate::plan::execution::constant::ConstantId;
 use crate::plan::execution::explain::{Explain, ExplainContext};
-use crate::plan::execution::function::ExplainFunctionId;
+use crate::plan::execution::function::FunctionLabelSource;
 use crate::plan::execution::function::{
     BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId, FloatListFunctionId,
     FunctionListFunctionId, IntListFunctionId, ListListFunctionId, NilListFunctionId,
     ParameterListFunctionId, ParameterListListFunctionId, StringListFunctionId,
     TupleListFunctionId, UtfCodepointListFunctionId,
 };
-use crate::plan::execution::graph::ExplainLocal;
+use crate::plan::execution::graph::LocalLabel;
 use crate::plan::execution::graph::{
     BitArrayListLocalId, BoolListLocalId, CustomListLocalId, CustomLocal, FloatListLocalId,
     FloatLocalId, FunctionListLocalId, IntListLocalId, IntLocalId, ListFunctionLocal,
@@ -242,9 +242,9 @@ fn write_typed<Element, Local, Function>(
     type_id: usize,
     instruction: &TypedListInstruction<Element, Local, Function>,
 ) where
-    Element: ExplainLocal,
-    Local: ExplainLocal,
-    Function: ExplainFunctionId,
+    Element: LocalLabel,
+    Local: LocalLabel,
+    Function: FunctionLabelSource,
 {
     output.push_str("list.");
     output.push_str(family);
@@ -263,7 +263,7 @@ fn write_typed<Element, Local, Function>(
             output.push_str("spread elements=");
             write_list_values(output, elements);
             output.push_str(" tail=");
-            tail.write_local(output);
+            tail.write_local_label(output);
         }
         TypedListInstruction::Call { function, args } => write_call(output, "call", function, args),
         TypedListInstruction::FunctionCall { function, args } => {
@@ -280,20 +280,20 @@ fn write_typed<Element, Local, Function>(
         }
         TypedListInstruction::DropFirst { list, count } => {
             output.push_str("drop_first ");
-            list.write_local(output);
+            list.write_local_label(output);
             output.push_str(" count=");
             output.push_str(&count.to_string());
         }
     }
 }
 
-fn write_list_values<Value: ExplainLocal>(output: &mut String, values: &[Value]) {
+fn write_list_values<Value: LocalLabel>(output: &mut String, values: &[Value]) {
     output.push('[');
     for (index, value) in values.iter().enumerate() {
         if index > 0 {
             output.push_str(", ");
         }
-        value.write_local(output);
+        value.write_local_label(output);
     }
     output.push(']');
 }

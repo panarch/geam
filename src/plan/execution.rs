@@ -14,20 +14,20 @@ use self::function::{
     CustomFunctionId, CustomListFunctionBody, CustomListFunctionId, ExecutableFunction,
     FloatFunctionBody, FloatFunctionFunctionBody, FloatFunctionFunctionId, FloatFunctionId,
     FloatListFunctionBody, FloatListFunctionId, FunctionFunctionFunctionBody,
-    FunctionFunctionFunctionId, FunctionListFunctionBody, FunctionListFunctionId, FunctionTables,
-    GenericFunctionFunctionBody, GenericFunctionFunctionId, IntFunctionBody,
-    IntFunctionFunctionBody, IntFunctionFunctionId, IntFunctionId, IntListFunctionBody,
-    IntListFunctionId, ListFunctionFunctionBody, ListFunctionFunctionId, ListListFunctionBody,
-    ListListFunctionId, NeverFunctionBody, NeverFunctionFunctionBody, NeverFunctionFunctionId,
-    NeverFunctionId, NilFunctionBody, NilFunctionFunctionBody, NilFunctionFunctionId,
-    NilFunctionId, NilListFunctionBody, NilListFunctionId, ParameterListFunctionBody,
-    ParameterListFunctionId, ParameterListListFunctionBody, ParameterListListFunctionId,
-    RuntimeFunctionId, StringFunctionBody, StringFunctionFunctionBody, StringFunctionFunctionId,
-    StringFunctionId, StringListFunctionBody, StringListFunctionId, TupleFunctionBody,
-    TupleFunctionFunctionBody, TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionBody,
-    TupleListFunctionId, UtfCodepointFunctionBody, UtfCodepointFunctionFunctionBody,
-    UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, UtfCodepointListFunctionBody,
-    UtfCodepointListFunctionId,
+    FunctionFunctionFunctionId, FunctionLabelSource, FunctionListFunctionBody,
+    FunctionListFunctionId, FunctionTables, GenericFunctionFunctionBody, GenericFunctionFunctionId,
+    IntFunctionBody, IntFunctionFunctionBody, IntFunctionFunctionId, IntFunctionId,
+    IntListFunctionBody, IntListFunctionId, ListFunctionFunctionBody, ListFunctionFunctionId,
+    ListListFunctionBody, ListListFunctionId, NeverFunctionBody, NeverFunctionFunctionBody,
+    NeverFunctionFunctionId, NeverFunctionId, NilFunctionBody, NilFunctionFunctionBody,
+    NilFunctionFunctionId, NilFunctionId, NilListFunctionBody, NilListFunctionId,
+    ParameterListFunctionBody, ParameterListFunctionId, ParameterListListFunctionBody,
+    ParameterListListFunctionId, RuntimeFunctionId, StringFunctionBody, StringFunctionFunctionBody,
+    StringFunctionFunctionId, StringFunctionId, StringListFunctionBody, StringListFunctionId,
+    TupleFunctionBody, TupleFunctionFunctionBody, TupleFunctionFunctionId, TupleFunctionId,
+    TupleListFunctionBody, TupleListFunctionId, UtfCodepointFunctionBody,
+    UtfCodepointFunctionFunctionBody, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+    UtfCodepointListFunctionBody, UtfCodepointListFunctionId,
 };
 use self::type_::{
     CustomConstructorId, CustomTypeId, CustomTypeTable, FunctionListTypeId, FunctionType,
@@ -59,7 +59,7 @@ impl explain::Explain for ExecutionPlan {
         context.push_str("module ");
         context.push_str(&self.module);
         context.push_str("\nmain ");
-        function::runtime_function_label(&self.main).write(context.output());
+        self.main.function_label().write(context.output());
         context.push('\n');
         context.write(&self.functions);
         context.write(&self.constants);
@@ -549,6 +549,28 @@ impl ExecutionPlan {
 
 #[cfg(test)]
 mod tests {
+    use crate::plan::execution::explain;
+
+    #[test]
+    fn writes_the_complete_execution_plan() {
+        let source = "pub fn main() { 1 }";
+        let expected = concat!(
+            "module main\n",
+            "main int#0\n",
+            "\n",
+            "function int#0\n",
+            "  entry b0 params=[] captures=[]\n",
+            "  block b0 params=[]\n",
+            "    %int#0:shape#0(Int) = int.value 1\n",
+            "    return %int#0\n",
+        );
+
+        explain::assert_rendered(source, expected, |plan, output| {
+            let mut context = explain::ExplainContext::new(plan, output);
+            context.write(plan);
+        });
+    }
+
     #[test]
     fn lowering_preserves_public_module_and_source_context() {
         let source = "pub fn main() { 1 }";

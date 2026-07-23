@@ -4,7 +4,7 @@ use super::{
 use crate::plan::execution::constant::ConstantId;
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::StringFunctionId;
-use crate::plan::execution::graph::ExplainLocal;
+use crate::plan::execution::graph::LocalLabel;
 use crate::plan::execution::graph::{
     CustomLocal, ParamLocal, StringFunctionLocalId, StringListLocalId, StringLocalId, TupleLocalId,
 };
@@ -71,7 +71,7 @@ impl Explain for StringInstruction {
             }
             StringInstruction::DropPrefix { value, prefix } => {
                 output.push_str("string.drop_prefix ");
-                value.write_local(output);
+                value.write_local_label(output);
                 output.push_str(" prefix=");
                 output.push_str(&format!("{prefix:?}"));
             }

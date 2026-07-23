@@ -1,6 +1,6 @@
 use super::super::BlockId;
 use crate::plan::execution::explain::{Explain, ExplainContext};
-use crate::plan::execution::graph::ExplainLocal;
+use crate::plan::execution::graph::LocalLabel;
 use crate::plan::execution::graph::ParamLocal;
 
 pub(crate) struct Edge {
@@ -61,7 +61,7 @@ impl Explain for Edge {
             if index > 0 {
                 context.push_str(", ");
             }
-            argument.write_local(context.output());
+            argument.write_local_label(context.output());
         }
         context.push(')');
     }
@@ -81,7 +81,7 @@ impl Explain for MatchEdge {
                     context.push_str("binding#");
                     context.push_str(&binding.to_string());
                 }
-                MatchEdgeArgument::Value(value) => value.write_local(context.output()),
+                MatchEdgeArgument::Value(value) => value.write_local_label(context.output()),
             }
         }
         context.push(')');

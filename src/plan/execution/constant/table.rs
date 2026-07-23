@@ -1,7 +1,7 @@
 use super::{ConstantId, ConstantProgram};
 use crate::plan::execution::explain::{Explain, ExplainContext};
-use crate::plan::execution::graph::ExplainLocal;
 use crate::plan::execution::graph::FunctionLocal;
+use crate::plan::execution::graph::LocalLabel;
 use crate::plan::execution::graph::{
     BitArrayListLocalId, BitArrayLocalId, BoolListLocalId, BoolLocalId, CustomListLocalId,
     CustomLocal, FloatListLocalId, FloatLocalId, FunctionListLocalId, IntListLocalId, IntLocalId,
@@ -311,7 +311,7 @@ fn write_table<Value>(
     constants: &ConstantTable,
     family: &'static str,
 ) where
-    Value: ConstantValue + ExplainLocal,
+    Value: ConstantValue + LocalLabel,
 {
     for (index, program) in Value::programs(constants).iter().enumerate() {
         context.push_str("\nconstant.");

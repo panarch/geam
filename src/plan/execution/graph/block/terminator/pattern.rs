@@ -151,7 +151,7 @@ fn write_optional_binding(
 #[cfg(test)]
 mod explain_tests {
     use super::super::Terminator;
-    use super::MatchPattern;
+    use super::{MatchPattern, MatchPatternBinding};
     use crate::plan::execution::explain;
     use crate::plan::execution::function::IntFunctionId;
 
@@ -171,6 +171,17 @@ pub fn main() {
         let expected = "alias(#([1, ..binding#0], custom_type#0.constructor#0(binding#1), string_prefix(\"pre\", left=_, right=binding#2)), binding#3)";
 
         assert_explanation(source, expected);
+    }
+
+    #[test]
+    fn writes_match_pattern_binding() {
+        let source = "pub fn main() { 1 }";
+        let expected = "binding#3";
+
+        explain::assert_rendered(source, expected, |plan, output| {
+            let mut context = explain::ExplainContext::new(plan, output);
+            context.write(&MatchPatternBinding::new(3));
+        });
     }
 
     #[test]

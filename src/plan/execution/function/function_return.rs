@@ -9,7 +9,6 @@ pub(crate) use body::{
     NilFunctionFunctionBody, StringFunctionFunctionBody, TupleFunctionFunctionBody,
     TypedFunctionBody, UtfCodepointFunctionFunctionBody,
 };
-pub(in crate::plan::execution) use id::function_function_label;
 pub(crate) use id::{
     BitArrayFunctionFunctionId, BitArrayListFunctionFunctionId, BoolFunctionFunctionId,
     BoolListFunctionFunctionId, CustomFunctionFunctionId, CustomListFunctionFunctionId,

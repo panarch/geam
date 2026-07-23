@@ -1,4 +1,4 @@
-use super::super::super::value::write_locals;
+use super::super::super::value::write_local_labels;
 use super::{write_call, write_constant, write_function_call, write_projection};
 use crate::plan::execution::constant::ConstantId;
 use crate::plan::execution::explain::{Explain, ExplainContext};
@@ -38,7 +38,7 @@ impl Explain for TupleInstruction {
         match self {
             TupleInstruction::Value(elements) => {
                 output.push_str("tuple.value elements=");
-                write_locals(output, elements);
+                write_local_labels(output, elements);
             }
             TupleInstruction::Constant(id) => write_constant(output, "tuple", *id),
             TupleInstruction::Call { function, args } => {

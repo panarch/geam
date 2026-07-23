@@ -1,4 +1,5 @@
 use crate::plan::execution::explain::FunctionLabel;
+use crate::plan::execution::function::FunctionLabelSource;
 use crate::plan::execution::type_::{
     BitArrayListTypeId, BoolListTypeId, CustomListTypeId, FloatListTypeId, FunctionListTypeId,
     FunctionType, IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId,
@@ -294,64 +295,56 @@ impl ListFunctionFunctionId {
     }
 }
 
-pub(in crate::plan::execution) fn function_function_label(
-    function: &FunctionFunctionId,
-) -> FunctionLabel {
-    match function {
-        FunctionFunctionId::Generic(id) => FunctionLabel::new("function.generic", id.index()),
-        FunctionFunctionId::Never(id) => FunctionLabel::new("function.never", id.index()),
-        FunctionFunctionId::Int(id) => FunctionLabel::new("function.int", id.0),
-        FunctionFunctionId::Float(id) => FunctionLabel::new("function.float", id.0),
-        FunctionFunctionId::String(id) => FunctionLabel::new("function.string", id.0),
-        FunctionFunctionId::BitArray(id) => FunctionLabel::new("function.bit_array", id.0),
-        FunctionFunctionId::UtfCodepoint(id) => FunctionLabel::new("function.utf_codepoint", id.0),
-        FunctionFunctionId::Custom(id) => FunctionLabel::new("function.custom", id.index()),
-        FunctionFunctionId::Bool(id) => FunctionLabel::new("function.bool", id.0),
-        FunctionFunctionId::Nil(id) => FunctionLabel::new("function.nil", id.0),
-        FunctionFunctionId::Tuple(id) => FunctionLabel::new("function.tuple", id.0),
-        FunctionFunctionId::List(id) => list_function_function_label(id),
-        FunctionFunctionId::Function(id) => FunctionLabel::new("function.function", id.index()),
+impl FunctionLabelSource for FunctionFunctionId {
+    fn function_label(&self) -> FunctionLabel {
+        match self {
+            Self::Generic(id) => FunctionLabel::new("function.generic", id.index()),
+            Self::Never(id) => FunctionLabel::new("function.never", id.index()),
+            Self::Int(id) => FunctionLabel::new("function.int", id.0),
+            Self::Float(id) => FunctionLabel::new("function.float", id.0),
+            Self::String(id) => FunctionLabel::new("function.string", id.0),
+            Self::BitArray(id) => FunctionLabel::new("function.bit_array", id.0),
+            Self::UtfCodepoint(id) => FunctionLabel::new("function.utf_codepoint", id.0),
+            Self::Custom(id) => FunctionLabel::new("function.custom", id.index()),
+            Self::Bool(id) => FunctionLabel::new("function.bool", id.0),
+            Self::Nil(id) => FunctionLabel::new("function.nil", id.0),
+            Self::Tuple(id) => FunctionLabel::new("function.tuple", id.0),
+            Self::List(id) => id.function_label(),
+            Self::Function(id) => FunctionLabel::new("function.function", id.index()),
+        }
     }
 }
 
-fn list_function_function_label(function: &ListFunctionFunctionId) -> FunctionLabel {
-    match function {
-        ListFunctionFunctionId::Parameter { id, .. } => {
-            FunctionLabel::new("function.list.parameter", id.0)
-        }
-        ListFunctionFunctionId::ParameterList { id, .. } => {
-            FunctionLabel::new("function.list.parameter_list", id.0)
-        }
-        ListFunctionFunctionId::Int { id, .. } => FunctionLabel::new("function.list.int", id.0),
-        ListFunctionFunctionId::String { id, .. } => {
-            FunctionLabel::new("function.list.string", id.0)
-        }
-        ListFunctionFunctionId::BitArray { id, .. } => {
-            FunctionLabel::new("function.list.bit_array", id.0)
-        }
-        ListFunctionFunctionId::UtfCodepoint { id, .. } => {
-            FunctionLabel::new("function.list.utf_codepoint", id.0)
-        }
-        ListFunctionFunctionId::Custom { id, .. } => {
-            FunctionLabel::new("function.list.custom", id.0)
-        }
-        ListFunctionFunctionId::Float { id, .. } => FunctionLabel::new("function.list.float", id.0),
-        ListFunctionFunctionId::Bool { id, .. } => FunctionLabel::new("function.list.bool", id.0),
-        ListFunctionFunctionId::Nil { id, .. } => FunctionLabel::new("function.list.nil", id.0),
-        ListFunctionFunctionId::Tuple { id, .. } => FunctionLabel::new("function.list.tuple", id.0),
-        ListFunctionFunctionId::List { id, .. } => FunctionLabel::new("function.list.list", id.0),
-        ListFunctionFunctionId::Function { id, .. } => {
-            FunctionLabel::new("function.list.function", id.0)
+impl FunctionLabelSource for ListFunctionFunctionId {
+    fn function_label(&self) -> FunctionLabel {
+        match self {
+            Self::Parameter { id, .. } => FunctionLabel::new("function.list.parameter", id.0),
+            Self::ParameterList { id, .. } => {
+                FunctionLabel::new("function.list.parameter_list", id.0)
+            }
+            Self::Int { id, .. } => FunctionLabel::new("function.list.int", id.0),
+            Self::String { id, .. } => FunctionLabel::new("function.list.string", id.0),
+            Self::BitArray { id, .. } => FunctionLabel::new("function.list.bit_array", id.0),
+            Self::UtfCodepoint { id, .. } => {
+                FunctionLabel::new("function.list.utf_codepoint", id.0)
+            }
+            Self::Custom { id, .. } => FunctionLabel::new("function.list.custom", id.0),
+            Self::Float { id, .. } => FunctionLabel::new("function.list.float", id.0),
+            Self::Bool { id, .. } => FunctionLabel::new("function.list.bool", id.0),
+            Self::Nil { id, .. } => FunctionLabel::new("function.list.nil", id.0),
+            Self::Tuple { id, .. } => FunctionLabel::new("function.list.tuple", id.0),
+            Self::List { id, .. } => FunctionLabel::new("function.list.list", id.0),
+            Self::Function { id, .. } => FunctionLabel::new("function.list.function", id.0),
         }
     }
 }
 
 #[cfg(test)]
 mod explain_tests {
-    use super::{FunctionFunctionId, function_function_label};
+    use super::FunctionFunctionId;
     use crate::plan::execution::ExecutionPlan;
     use crate::plan::execution::explain;
-    use crate::plan::execution::function::RuntimeFunctionId;
+    use crate::plan::execution::function::{FunctionLabelSource, RuntimeFunctionId};
 
     #[test]
     fn labels_function_return_families() {
@@ -492,7 +485,7 @@ mod explain_tests {
 
     fn assert_explanation(source: &str, expected: &str) {
         explain::assert_rendered(source, expected, |plan, output| {
-            function_function_label(&main_function_id(plan)).write(output);
+            main_function_id(plan).function_label().write(output);
         });
     }
 }

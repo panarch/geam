@@ -1,10 +1,9 @@
 use super::{
     BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, FunctionFunctionId,
-    IntFunctionId, ListFunctionId, NeverFunctionId, NilFunctionId, StringFunctionId,
-    TupleFunctionId, UtfCodepointFunctionId,
+    FunctionLabelSource, IntFunctionId, ListFunctionId, NeverFunctionId, NilFunctionId,
+    StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
 };
 use crate::plan::execution::explain::FunctionLabel;
-use crate::plan::execution::function::{function_function_label, list_function_label};
 use crate::plan::execution::type_::{CustomConstructorId, FunctionType, ValueShapeId, ValueType};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -91,28 +90,29 @@ impl std::fmt::Display for FunctionReturnFamily {
     }
 }
 
-pub(in crate::plan::execution) fn runtime_function_label(
-    function: &RuntimeFunctionId,
-) -> FunctionLabel {
-    match function {
-        RuntimeFunctionId::Never(id) => FunctionLabel::new("never", id.0),
-        RuntimeFunctionId::Int(id) => FunctionLabel::new("int", id.0),
-        RuntimeFunctionId::Float(id) => FunctionLabel::new("float", id.0),
-        RuntimeFunctionId::String(id) => FunctionLabel::new("string", id.0),
-        RuntimeFunctionId::BitArray(id) => FunctionLabel::new("bit_array", id.0),
-        RuntimeFunctionId::UtfCodepoint(id) => FunctionLabel::new("utf_codepoint", id.0),
-        RuntimeFunctionId::Custom(id) => FunctionLabel::new("custom", id.index()),
-        RuntimeFunctionId::Bool(id) => FunctionLabel::new("bool", id.0),
-        RuntimeFunctionId::Nil(id) => FunctionLabel::new("nil", id.0),
-        RuntimeFunctionId::Tuple { id, .. } => FunctionLabel::new("tuple", id.0),
-        RuntimeFunctionId::List(id) => list_function_label(id),
-        RuntimeFunctionId::Function { id, .. } => function_function_label(id),
+impl FunctionLabelSource for RuntimeFunctionId {
+    fn function_label(&self) -> FunctionLabel {
+        match self {
+            Self::Never(id) => FunctionLabel::new("never", id.0),
+            Self::Int(id) => FunctionLabel::new("int", id.0),
+            Self::Float(id) => FunctionLabel::new("float", id.0),
+            Self::String(id) => FunctionLabel::new("string", id.0),
+            Self::BitArray(id) => FunctionLabel::new("bit_array", id.0),
+            Self::UtfCodepoint(id) => FunctionLabel::new("utf_codepoint", id.0),
+            Self::Custom(id) => FunctionLabel::new("custom", id.index()),
+            Self::Bool(id) => FunctionLabel::new("bool", id.0),
+            Self::Nil(id) => FunctionLabel::new("nil", id.0),
+            Self::Tuple { id, .. } => FunctionLabel::new("tuple", id.0),
+            Self::List(id) => id.function_label(),
+            Self::Function { id, .. } => id.function_label(),
+        }
     }
 }
 
 #[cfg(test)]
 mod explain_tests {
     use crate::plan::execution::explain;
+    use crate::plan::execution::function::FunctionLabelSource;
 
     #[test]
     fn labels_runtime_function_families() {
@@ -147,7 +147,7 @@ mod explain_tests {
 
     fn assert_explanation(source: &str, expected: &str) {
         explain::assert_rendered(source, expected, |plan, output| {
-            super::runtime_function_label(&plan.main_runtime()).write(output);
+            plan.main_runtime().function_label().write(output);
         });
     }
 }

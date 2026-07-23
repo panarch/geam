@@ -22,8 +22,7 @@ pub(crate) use pattern::{
 pub(crate) use source_stop::{SourceStop, SourceStopKind};
 pub(crate) use switch::{FloatSwitch, IntSwitch, StringSwitch};
 
-use crate::plan::execution::explain::ExplainContext;
-use crate::plan::execution::graph::BlockGraphExitId;
+use crate::plan::execution::graph::{BlockGraphExitId, BlockGraphExplainContext};
 
 pub(crate) enum Terminator {
     Jump(Jump),
@@ -38,21 +37,22 @@ pub(crate) enum Terminator {
     NeverCall(NeverCall),
 }
 
-pub(super) fn write_terminator(
-    context: &mut ExplainContext<'_, '_>,
-    terminator: &Terminator,
-    write_graph_exit: &mut dyn FnMut(&mut ExplainContext<'_, '_>, BlockGraphExitId),
-) {
-    match terminator {
-        Terminator::Jump(jump) => context.write(jump),
-        Terminator::BoolBranch(branch) => context.write(branch),
-        Terminator::IntSwitch(switch) => context.write(switch),
-        Terminator::FloatSwitch(switch) => context.write(switch),
-        Terminator::StringSwitch(switch) => context.write(switch),
-        Terminator::Match(matcher) => context.write(matcher),
-        Terminator::Exit(exit) => write_graph_exit(context, *exit),
-        Terminator::SourceStop(stop) => context.write(stop),
-        Terminator::LetAssertPanic(panic) => context.write(panic),
-        Terminator::NeverCall(call) => context.write(call),
+impl Terminator {
+    pub(in crate::plan::execution::graph) fn write_explanation(
+        &self,
+        context: &mut BlockGraphExplainContext<'_, '_, '_>,
+    ) {
+        match self {
+            Self::Jump(jump) => context.write(jump),
+            Self::BoolBranch(branch) => context.write(branch),
+            Self::IntSwitch(switch) => context.write(switch),
+            Self::FloatSwitch(switch) => context.write(switch),
+            Self::StringSwitch(switch) => context.write(switch),
+            Self::Match(matcher) => context.write(matcher),
+            Self::Exit(exit) => context.write_exit(*exit),
+            Self::SourceStop(stop) => context.write(stop),
+            Self::LetAssertPanic(panic) => context.write(panic),
+            Self::NeverCall(call) => context.write(call),
+        }
     }
 }

@@ -8,7 +8,7 @@ use crate::plan::execution::graph::{
     BitArrayListLocalId, CustomLocal, FloatLocalId, IntLocalId, ParamLocal, StringLocalId,
     TupleLocalId, UtfCodepointLocalId,
 };
-use crate::plan::execution::graph::{ExplainLocal, endianness, float_size, string_encoding};
+use crate::plan::execution::graph::{LocalLabel, endianness, float_size, string_encoding};
 
 pub(crate) struct BitArrayEvaluatedSize {
     value: IntLocalId,
@@ -127,7 +127,7 @@ impl Explain for BitArrayInstruction {
 
 impl Explain for BitArrayEvaluatedSize {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
-        self.value().write_local(context.output());
+        self.value().write_local_label(context.output());
         context.push('*');
         context.push_str(&self.unit().to_string());
     }
@@ -151,7 +151,7 @@ impl Explain for BitArraySegment {
                 endianness: order,
             } => {
                 context.push_str("int(");
-                value.write_local(context.output());
+                value.write_local_label(context.output());
                 context.push_str(", bits=");
                 context.push_str(&bit_size.to_string());
                 context.push_str(", ");
@@ -165,7 +165,7 @@ impl Explain for BitArraySegment {
                 ..
             } => {
                 context.push_str("int(");
-                value.write_local(context.output());
+                value.write_local_label(context.output());
                 context.push_str(", bits=");
                 context.write(size);
                 context.push_str(", ");
@@ -178,7 +178,7 @@ impl Explain for BitArraySegment {
                 endianness: order,
             } => {
                 context.push_str("float(");
-                value.write_local(context.output());
+                value.write_local_label(context.output());
                 context.push_str(", bits=");
                 context.push_str(&float_size(*bit_size).to_string());
                 context.push_str(", ");
@@ -192,7 +192,7 @@ impl Explain for BitArraySegment {
                 ..
             } => {
                 context.push_str("float(");
-                value.write_local(context.output());
+                value.write_local_label(context.output());
                 context.push_str(", bits=");
                 context.write(size);
                 context.push_str(", ");
@@ -201,26 +201,26 @@ impl Explain for BitArraySegment {
             }
             Self::String { value, encoding } => {
                 context.push_str("string(");
-                value.write_local(context.output());
+                value.write_local_label(context.output());
                 context.push_str(", ");
                 context.push_str(string_encoding(*encoding));
                 context.push(')');
             }
             Self::UtfCodepoint { value, encoding } => {
                 context.push_str("utf_codepoint(");
-                value.write_local(context.output());
+                value.write_local_label(context.output());
                 context.push_str(", ");
                 context.push_str(string_encoding(*encoding));
                 context.push(')');
             }
             Self::Bits(value) => {
                 context.push_str("bits(");
-                value.write_local(context.output());
+                value.write_local_label(context.output());
                 context.push(')');
             }
             Self::SizedBits { value, size, .. } => {
                 context.push_str("bits(");
-                value.write_local(context.output());
+                value.write_local_label(context.output());
                 context.push_str(", bits=");
                 context.write(size);
                 context.push(')');
@@ -231,8 +231,10 @@ impl Explain for BitArraySegment {
 
 #[cfg(test)]
 mod explain_tests {
+    use super::{BitArrayBitsSize, BitArrayEvaluatedSize, BitArraySegment};
     use crate::plan::execution::explain;
     use crate::plan::execution::function::BitArrayFunctionId;
+    use crate::plan::execution::graph::IntLocalId;
 
     #[test]
     fn writes_bit_array_instruction_and_segment_grammar() {
@@ -270,6 +272,48 @@ pub fn main() {
         );
 
         assert_explanation(source, expected);
+    }
+
+    #[test]
+    fn writes_bit_array_evaluated_size() {
+        let source = "pub fn main() { <<>> }";
+        let expected = "%int#2*4";
+
+        explain::assert_rendered(source, expected, |plan, output| {
+            let mut context = explain::ExplainContext::new(plan, output);
+            context.write(&BitArrayEvaluatedSize::new(IntLocalId(2), 4));
+        });
+    }
+
+    #[test]
+    fn writes_fixed_and_evaluated_bit_array_bits_size() {
+        let source = "pub fn main() { <<>> }";
+        let expected = "8 | %int#2*4";
+
+        explain::assert_rendered(source, expected, |plan, output| {
+            let mut context = explain::ExplainContext::new(plan, output);
+            context.write(&BitArrayBitsSize::Fixed(8));
+            context.push_str(" | ");
+            context.write(&BitArrayBitsSize::Evaluated(BitArrayEvaluatedSize::new(
+                IntLocalId(2),
+                4,
+            )));
+        });
+    }
+
+    #[test]
+    fn writes_bit_array_segment() {
+        let source = "pub fn main() { <<1>> }";
+        let expected = "int(%int#2, bits=4, big)";
+
+        explain::assert_rendered(source, expected, |plan, output| {
+            let mut context = explain::ExplainContext::new(plan, output);
+            context.write(&BitArraySegment::Int {
+                value: IntLocalId(2),
+                bit_size: 4,
+                endianness: crate::plan::execution::graph::Endianness::Big,
+            });
+        });
     }
 
     fn assert_explanation(source: &str, expected: &str) {
