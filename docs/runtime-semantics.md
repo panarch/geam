@@ -116,9 +116,9 @@ an additional execution model.
 ## Linked Source Diagnostics
 
 An execution plan retains one source context per planned module. A source-level
-panic site carries its owning module ID, so diagnostics select the dependency
-source and path when execution stops inside an imported function. Linking does
-not rewrite dependency sites to the root source.
+panic site carries its owning module identity, so diagnostics select the
+dependency source and path when execution stops inside an imported function.
+Linking does not rewrite dependency sites to the root source.
 
 ## Numeric Division By Zero
 
