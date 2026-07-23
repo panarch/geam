@@ -1,4 +1,8 @@
 use super::super::super::{FunctionLocal, StoredListLocal};
+use super::{write_call, write_constant, write_function_call, write_projection};
+use crate::plan::execution::explain::{Explain, ExplainContext};
+use crate::plan::execution::function::ExplainFunctionId;
+use crate::plan::execution::graph::ExplainLocal;
 use crate::plan::execution::{
     BitArrayListFunctionId, BitArrayListLocalId, BitArrayListTypeId, BoolListFunctionId,
     BoolListLocalId, BoolListTypeId, ConstantId, CustomListFunctionId, CustomListLocalId,
@@ -138,11 +142,6 @@ pub(crate) enum ListInstruction {
         TypedListInstruction<FunctionLocal, FunctionListLocalId, FunctionListFunctionId>,
     ),
 }
-
-use super::{write_call, write_constant, write_function_call, write_projection};
-use crate::plan::execution::explain::{Explain, ExplainContext};
-use crate::plan::execution::function::ExplainFunctionId;
-use crate::plan::execution::graph::ExplainLocal;
 
 impl Explain for ListInstruction {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {

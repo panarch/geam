@@ -1,4 +1,5 @@
 use super::Edge;
+use crate::plan::execution::explain::{Explain, ExplainContext};
 
 pub(crate) struct Jump {
     edge: Edge,
@@ -13,8 +14,6 @@ impl Jump {
         &self.edge
     }
 }
-
-use crate::plan::execution::explain::{Explain, ExplainContext};
 
 impl Explain for Jump {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {

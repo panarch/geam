@@ -1,3 +1,9 @@
+use super::{
+    write_binary, write_call, write_constant, write_function_call, write_length, write_literal,
+    write_projection, write_unary,
+};
+use crate::plan::execution::explain::{Explain, ExplainContext};
+use crate::plan::execution::graph::ExplainLocal;
 use crate::plan::execution::{
     BoolFunctionId, BoolFunctionLocalId, BoolListLocalId, BoolLocalId, ConstantId, CustomLocal,
     FloatLocalId, IntLocalId, ListLocal, ParamLocal, StringLocalId, TupleLocalId,
@@ -81,13 +87,6 @@ pub(crate) enum BoolInstruction {
         length: usize,
     },
 }
-
-use super::{
-    write_binary, write_call, write_constant, write_function_call, write_length, write_literal,
-    write_projection, write_unary,
-};
-use crate::plan::execution::explain::{Explain, ExplainContext};
-use crate::plan::execution::graph::ExplainLocal;
 
 impl Explain for BoolInstruction {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {

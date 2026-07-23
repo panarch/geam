@@ -1,5 +1,6 @@
 use crate::plan::PanicSite;
 use crate::plan::execution::StringLocalId;
+use crate::plan::execution::explain::{Explain, ExplainContext};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SourceStopKind {
@@ -42,8 +43,6 @@ impl SourceStop {
         &self.site
     }
 }
-
-use crate::plan::execution::explain::{Explain, ExplainContext};
 
 impl Explain for SourceStop {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {

@@ -1,5 +1,7 @@
 use super::super::BlockId;
 use crate::plan::execution::ParamLocal;
+use crate::plan::execution::explain::{Explain, ExplainContext};
+use crate::plan::execution::graph::ExplainLocal;
 
 pub(crate) struct Edge {
     target: BlockId,
@@ -49,9 +51,6 @@ impl MatchEdge {
         &self.args
     }
 }
-
-use crate::plan::execution::explain::{Explain, ExplainContext};
-use crate::plan::execution::graph::ExplainLocal;
 
 impl Explain for Edge {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {

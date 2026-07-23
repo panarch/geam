@@ -1,3 +1,4 @@
+use crate::plan::execution::explain::FunctionLabel;
 use crate::plan::execution::{
     BitArrayListTypeId, BoolListTypeId, CustomListTypeId, FloatListTypeId, FunctionListTypeId,
     FunctionType, IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId,
@@ -292,8 +293,6 @@ impl ListFunctionFunctionId {
         }
     }
 }
-
-use crate::plan::execution::explain::FunctionLabel;
 
 pub(in crate::plan::execution) fn function_function_label(
     function: &FunctionFunctionId,

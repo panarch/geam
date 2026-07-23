@@ -3,6 +3,8 @@ use super::{
     IntFunctionId, ListFunctionId, NeverFunctionId, NilFunctionId, StringFunctionId,
     TupleFunctionId, UtfCodepointFunctionId,
 };
+use crate::plan::execution::explain::FunctionLabel;
+use crate::plan::execution::function::{function_function_label, list_function_label};
 use crate::plan::execution::{CustomConstructorId, FunctionType, ValueShapeId, ValueType};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -88,9 +90,6 @@ impl std::fmt::Display for FunctionReturnFamily {
         })
     }
 }
-
-use crate::plan::execution::explain::FunctionLabel;
-use crate::plan::execution::function::{function_function_label, list_function_label};
 
 pub(in crate::plan::execution) fn runtime_function_label(
     function: &RuntimeFunctionId,

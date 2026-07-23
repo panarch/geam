@@ -1,4 +1,6 @@
 use crate::plan::execution::CustomValueShape;
+use crate::plan::execution::explain::FunctionLabel;
+use crate::plan::execution::function::ExplainFunctionId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct NeverFunctionId(pub(crate) usize);
@@ -45,9 +47,6 @@ impl CustomFunctionId {
         self.index
     }
 }
-
-use crate::plan::execution::explain::FunctionLabel;
-use crate::plan::execution::function::ExplainFunctionId;
 
 impl ExplainFunctionId for NeverFunctionId {
     fn label(&self) -> FunctionLabel {

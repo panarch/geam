@@ -1,4 +1,6 @@
 use super::{MatchIntBindingId, MatchPatternBinding};
+use crate::plan::execution::explain::{Explain, ExplainContext};
+use crate::plan::execution::graph::{ExplainLocal, endianness, string_encoding};
 use crate::plan::execution::{Endianness, IntLocalId, StringEncoding};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -105,9 +107,6 @@ impl BitArrayPatternSize {
         self.unit
     }
 }
-
-use crate::plan::execution::explain::{Explain, ExplainContext};
-use crate::plan::execution::graph::{ExplainLocal, endianness, string_encoding};
 
 impl Explain for BitArrayPattern {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {

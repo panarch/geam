@@ -27,6 +27,9 @@ pub(crate) use tuple::TupleInstruction;
 pub(crate) use utf_codepoint::UtfCodepointInstruction;
 
 use crate::plan::execution::ParamSlot;
+use crate::plan::execution::explain::{Explain, ExplainContext};
+use crate::plan::execution::function::ExplainFunctionId;
+use crate::plan::execution::graph::{ExplainLocal, ParamLocal, write_locals};
 
 pub(crate) struct Instruction {
     output: ParamSlot,
@@ -60,10 +63,6 @@ impl Instruction {
         &self.kind
     }
 }
-
-use crate::plan::execution::explain::{Explain, ExplainContext};
-use crate::plan::execution::function::ExplainFunctionId;
-use crate::plan::execution::graph::{ExplainLocal, ParamLocal, write_locals};
 
 impl Explain for Instruction {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {

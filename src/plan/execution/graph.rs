@@ -36,6 +36,8 @@ pub(crate) use value::{
 };
 pub(in crate::plan::execution) use value::{ExplainLocal, write_locals};
 
+use crate::plan::execution::explain::ExplainContext;
+
 pub(crate) struct Graph {
     entry: BlockId,
     blocks: Box<[Block]>,
@@ -61,8 +63,6 @@ impl Graph {
         &self.blocks[id.index()]
     }
 }
-
-use crate::plan::execution::explain::ExplainContext;
 
 pub(in crate::plan::execution) fn write_graph(
     context: &mut ExplainContext<'_, '_>,

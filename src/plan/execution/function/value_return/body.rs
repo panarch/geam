@@ -3,6 +3,8 @@ use super::{
     BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, IntFunctionId,
     NeverFunctionId, NilFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
 };
+use crate::plan::execution::explain::ExplainContext;
+use crate::plan::execution::function::{ExplainFunctionBody, FunctionEntry};
 use crate::plan::execution::{
     BitArrayLocalId, BoolLocalId, CustomLocal, CustomValueShape, FloatLocalId, IntLocalId,
     NilLocalId, StringLocalId, TupleLocalId, UtfCodepointLocalId,
@@ -56,9 +58,6 @@ impl CustomReturn {
         CustomFunctionId::new(index, self.signature_shape)
     }
 }
-
-use crate::plan::execution::explain::ExplainContext;
-use crate::plan::execution::function::{ExplainFunctionBody, FunctionEntry};
 
 impl ExplainFunctionBody for CustomReturn {
     fn write_function_body(

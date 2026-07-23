@@ -1,3 +1,7 @@
+use super::{
+    write_binary, write_call, write_constant, write_function_call, write_literal, write_projection,
+};
+use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::{
     ConstantId, CustomLocal, FloatFunctionId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
     ParamLocal, TupleLocalId,
@@ -43,11 +47,6 @@ pub(crate) enum FloatInstruction {
         right: FloatLocalId,
     },
 }
-
-use super::{
-    write_binary, write_call, write_constant, write_function_call, write_literal, write_projection,
-};
-use crate::plan::execution::explain::{Explain, ExplainContext};
 
 impl Explain for FloatInstruction {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {

@@ -1,4 +1,5 @@
 use super::{MatchPattern, MatchPatternBinding};
+use crate::plan::execution::explain::{Explain, ExplainContext};
 
 pub(crate) struct MatchPatternList {
     elements: Box<[MatchPattern]>,
@@ -29,8 +30,6 @@ impl MatchPatternList {
         self.tail.as_ref()
     }
 }
-
-use crate::plan::execution::explain::{Explain, ExplainContext};
 
 impl Explain for MatchPatternList {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {

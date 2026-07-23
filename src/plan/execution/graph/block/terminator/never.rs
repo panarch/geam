@@ -1,3 +1,5 @@
+use crate::plan::execution::explain::FunctionLabel;
+use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::{NeverFunctionId, NeverFunctionLocal, ParamLocal};
 
 pub(crate) enum NeverCallTarget {
@@ -26,9 +28,6 @@ impl NeverCall {
         &self.args
     }
 }
-
-use crate::plan::execution::explain::FunctionLabel;
-use crate::plan::execution::explain::{Explain, ExplainContext};
 
 impl Explain for NeverCall {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {

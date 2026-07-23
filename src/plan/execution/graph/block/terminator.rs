@@ -22,6 +22,7 @@ pub(crate) use pattern::{
 pub(crate) use source_stop::{SourceStop, SourceStopKind};
 pub(crate) use switch::{FloatSwitch, IntSwitch, StringSwitch};
 
+use crate::plan::execution::explain::ExplainContext;
 use crate::plan::execution::graph::GraphExitId;
 
 pub(crate) enum Terminator {
@@ -36,8 +37,6 @@ pub(crate) enum Terminator {
     LetAssertPanic(LetAssertPanic),
     NeverCall(NeverCall),
 }
-
-use crate::plan::execution::explain::ExplainContext;
 
 pub(super) fn write_terminator(
     context: &mut ExplainContext<'_, '_>,
