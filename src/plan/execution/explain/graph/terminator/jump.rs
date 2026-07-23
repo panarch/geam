@@ -46,7 +46,7 @@ pub fn main() {
             .iter()
             .copied()
             .filter_map(|terminator| match terminator {
-                Terminator::Jump(edge) => Some(edge),
+                Terminator::Jump(jump) => Some(jump.edge()),
                 _ => None,
             });
         let Some(edge) = jumps.next() else {

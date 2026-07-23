@@ -21,40 +21,42 @@ pub(super) fn write_terminator(
     write_graph_exit: &mut dyn FnMut(&mut String, GraphExitId),
 ) {
     match terminator {
-        Terminator::Jump(edge) => write_jump(output, edge),
-        Terminator::BoolBranch {
-            subject,
-            true_,
-            false_,
-        } => write_bool_branch(output, subject, true_, false_),
-        Terminator::IntSwitch {
-            subject,
-            clauses,
-            fallback,
-        } => write_int_switch(output, subject, clauses, fallback),
-        Terminator::FloatSwitch {
-            subject,
-            clauses,
-            fallback,
-        } => write_float_switch(output, subject, clauses, fallback),
-        Terminator::StringSwitch {
-            subject,
-            clauses,
-            fallback,
-        } => write_string_switch(output, subject, clauses, fallback),
-        Terminator::Match {
-            subject,
-            pattern,
-            success,
-            failure,
-        } => write_match(output, subject, pattern, success, failure),
-        Terminator::Exit(exit) => write_graph_exit(output, *exit),
-        Terminator::SourceStop { kind, message, .. } => {
-            write_source_stop(output, *kind, message.as_ref())
+        Terminator::Jump(jump) => write_jump(output, jump.edge()),
+        Terminator::BoolBranch(branch) => {
+            write_bool_branch(output, &branch.subject(), branch.true_(), branch.false_())
         }
-        Terminator::LetAssertPanic {
-            subject, message, ..
-        } => write_let_assert_panic(output, subject, message.as_ref()),
-        Terminator::NeverCall { function, args } => write_never_call(output, function, args),
+        Terminator::IntSwitch(switch) => write_int_switch(
+            output,
+            &switch.subject(),
+            switch.clauses(),
+            switch.fallback(),
+        ),
+        Terminator::FloatSwitch(switch) => write_float_switch(
+            output,
+            &switch.subject(),
+            switch.clauses(),
+            switch.fallback(),
+        ),
+        Terminator::StringSwitch(switch) => write_string_switch(
+            output,
+            &switch.subject(),
+            switch.clauses(),
+            switch.fallback(),
+        ),
+        Terminator::Match(matcher) => write_match(
+            output,
+            matcher.subject(),
+            matcher.pattern(),
+            matcher.success(),
+            matcher.failure(),
+        ),
+        Terminator::Exit(exit) => write_graph_exit(output, *exit),
+        Terminator::SourceStop(stop) => {
+            write_source_stop(output, stop.kind(), stop.message().as_ref())
+        }
+        Terminator::LetAssertPanic(panic) => {
+            write_let_assert_panic(output, panic.subject(), panic.message().as_ref())
+        }
+        Terminator::NeverCall(call) => write_never_call(output, call.function(), call.args()),
     }
 }

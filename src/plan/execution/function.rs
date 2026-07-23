@@ -1,53 +1,58 @@
+mod entry;
+mod function_return;
 mod graph;
-mod id;
-mod return_;
+mod list_return;
+mod runtime;
 mod table;
+mod value_return;
 
+pub(crate) use entry::FunctionEntry;
+pub(in crate::plan::execution) use function_return::FunctionFunctionTables;
+pub(crate) use function_return::{
+    BitArrayFunctionFunctionId, BitArrayFunctionReturn, BitArrayListFunctionFunctionId,
+    BoolFunctionFunctionId, BoolFunctionReturn, BoolListFunctionFunctionId,
+    CustomFunctionFunctionId, CustomFunctionReturn, CustomListFunctionFunctionId,
+    FloatFunctionFunctionId, FloatFunctionReturn, FloatListFunctionFunctionId,
+    FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionReturn,
+    FunctionListFunctionFunctionId, GenericFunctionFunctionId, GenericFunctionReturn,
+    IntFunctionFunctionId, IntFunctionReturn, IntListFunctionFunctionId, ListFunctionFunctionId,
+    ListFunctionReturn, ListListFunctionFunctionId, NeverFunctionFunctionId, NeverFunctionReturn,
+    NilFunctionFunctionId, NilFunctionReturn, NilListFunctionFunctionId,
+    ParameterListFunctionFunctionId, ParameterListListFunctionFunctionId, StringFunctionFunctionId,
+    StringFunctionReturn, StringListFunctionFunctionId, TupleFunctionFunctionId,
+    TupleFunctionReturn, TupleListFunctionFunctionId, TypedFunctionReturn,
+    UtfCodepointFunctionFunctionId, UtfCodepointFunctionReturn, UtfCodepointListFunctionFunctionId,
+};
 pub(crate) use graph::{FunctionGraph, FunctionGraphExit};
-pub(crate) use id::{
-    BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionFunctionId,
-    BitArrayListFunctionId, BoolFunctionFunctionId, BoolFunctionId, BoolListFunctionFunctionId,
-    BoolListFunctionId, CustomFunctionFunctionId, CustomFunctionId, CustomListFunctionFunctionId,
-    CustomListFunctionId, FloatFunctionFunctionId, FloatFunctionId, FloatListFunctionFunctionId,
-    FloatListFunctionId, FunctionFunctionFunctionId, FunctionFunctionId,
-    FunctionListFunctionFunctionId, FunctionListFunctionId, FunctionReturnFamily,
-    GenericCallableId, GenericFunctionFunctionId, IntFunctionFunctionId, IntFunctionId,
-    IntListFunctionFunctionId, IntListFunctionId, ListFunctionFunctionId, ListFunctionId,
-    ListListFunctionFunctionId, ListListFunctionId, NeverFunctionFunctionId, NeverFunctionId,
-    NilFunctionFunctionId, NilFunctionId, NilListFunctionFunctionId, NilListFunctionId,
-    ParameterListFunctionFunctionId, ParameterListFunctionId, ParameterListListFunctionFunctionId,
-    ParameterListListFunctionId, RuntimeFunctionId, StringFunctionFunctionId, StringFunctionId,
-    StringListFunctionFunctionId, StringListFunctionId, TupleFunctionFunctionId, TupleFunctionId,
-    TupleListFunctionFunctionId, TupleListFunctionId, UtfCodepointFunctionFunctionId,
-    UtfCodepointFunctionId, UtfCodepointListFunctionFunctionId, UtfCodepointListFunctionId,
+pub(in crate::plan::execution) use list_return::ListFunctionTables;
+pub(crate) use list_return::{
+    BitArrayListFunctionId, BitArrayListReturn, BoolListFunctionId, BoolListReturn,
+    CustomListFunctionId, CustomListReturn, FloatListFunctionId, FloatListReturn,
+    FunctionListFunctionId, FunctionListReturn, IntListFunctionId, IntListReturn, ListFunctionId,
+    ListListFunctionId, ListListReturn, NilListFunctionId, NilListReturn, ParameterListFunctionId,
+    ParameterListListFunctionId, ParameterListListReturn, ParameterListReturn,
+    StringListFunctionId, StringListReturn, TupleListFunctionId, TupleListReturn,
+    UtfCodepointListFunctionId, UtfCodepointListReturn,
 };
-pub(crate) use return_::{
-    BitArrayFunctionReturn, BitArrayListReturn, BitArrayReturn, BoolFunctionReturn, BoolListReturn,
-    BoolReturn, CustomFunctionReturn, CustomListReturn, CustomReturn, FloatFunctionReturn,
-    FloatListReturn, FloatReturn, FunctionFunctionReturn, FunctionListReturn,
-    GenericFunctionReturn, IntFunctionReturn, IntListReturn, IntReturn, ListFunctionReturn,
-    ListListReturn, NeverFunctionReturn, NeverReturn, NilFunctionReturn, NilListReturn, NilReturn,
-    ParameterListListReturn, ParameterListReturn, StringFunctionReturn, StringListReturn,
-    StringReturn, TupleFunctionReturn, TupleListReturn, TupleReturn, TypedFunctionReturn,
-    UtfCodepointFunctionReturn, UtfCodepointListReturn, UtfCodepointReturn,
-};
+pub(crate) use runtime::{FunctionReturnFamily, GenericCallableId, RuntimeFunctionId};
 pub(super) use table::FunctionTables;
-
-use super::graph::ParamSlot;
+pub(in crate::plan::execution) use value_return::ValueFunctionTables;
+pub(crate) use value_return::{
+    BitArrayFunctionId, BitArrayReturn, BoolFunctionId, BoolReturn, CustomFunctionId, CustomReturn,
+    FloatFunctionId, FloatReturn, IntFunctionId, IntReturn, NeverFunctionId, NeverReturn,
+    NilFunctionId, NilReturn, StringFunctionId, StringReturn, TupleFunctionId, TupleReturn,
+    UtfCodepointFunctionId, UtfCodepointReturn,
+};
 
 pub(crate) struct ExecutableFunction<Graph> {
     entry: FunctionEntry,
     graph: Graph,
 }
 
-pub(crate) struct FunctionEntry {
-    parameter_count: usize,
-}
-
 impl<Graph> ExecutableFunction<Graph> {
     pub(super) fn new(parameter_count: usize, graph: Graph) -> Self {
         Self {
-            entry: FunctionEntry { parameter_count },
+            entry: FunctionEntry::new(parameter_count),
             graph,
         }
     }
@@ -58,21 +63,5 @@ impl<Graph> ExecutableFunction<Graph> {
 
     pub(crate) fn entry(&self) -> &FunctionEntry {
         &self.entry
-    }
-}
-
-impl FunctionEntry {
-    pub(crate) fn params<'a, Return, TailCall>(
-        &self,
-        graph: &'a FunctionGraph<Return, TailCall>,
-    ) -> &'a [ParamSlot] {
-        &graph.block(graph.entry()).params()[..self.parameter_count]
-    }
-
-    pub(in crate::plan::execution) fn captures<'a, Return, TailCall>(
-        &self,
-        graph: &'a FunctionGraph<Return, TailCall>,
-    ) -> &'a [ParamSlot] {
-        &graph.block(graph.entry()).params()[self.parameter_count..]
     }
 }

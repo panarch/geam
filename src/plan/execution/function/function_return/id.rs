@@ -1,145 +1,8 @@
 use crate::plan::execution::{
     BitArrayListTypeId, BoolListTypeId, CustomListTypeId, FloatListTypeId, FunctionListTypeId,
     FunctionType, IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId,
-    ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId, ValueType,
+    ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
 };
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) enum GenericCallableId {
-    Function {
-        template: usize,
-        substitution: Box<[crate::plan::execution::ValueShapeId]>,
-    },
-    Constructor(crate::plan::execution::CustomConstructorId),
-}
-
-impl GenericCallableId {
-    pub(in crate::plan::execution) fn function(
-        template: usize,
-        substitution: Vec<crate::plan::execution::ValueShapeId>,
-    ) -> Self {
-        Self::Function {
-            template,
-            substitution: substitution.into_boxed_slice(),
-        }
-    }
-
-    pub(in crate::plan::execution) fn constructor(
-        constructor: crate::plan::execution::CustomConstructorId,
-    ) -> Self {
-        Self::Constructor(constructor)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum RuntimeFunctionId {
-    Never(NeverFunctionId),
-    Int(IntFunctionId),
-    Float(FloatFunctionId),
-    String(StringFunctionId),
-    BitArray(BitArrayFunctionId),
-    UtfCodepoint(UtfCodepointFunctionId),
-    Custom(CustomFunctionId),
-    Bool(BoolFunctionId),
-    Nil(NilFunctionId),
-    Tuple {
-        id: TupleFunctionId,
-        return_type: Vec<ValueType>,
-    },
-    List(ListFunctionId),
-    Function {
-        id: FunctionFunctionId,
-        return_type: FunctionType,
-    },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct NeverFunctionId(pub(crate) usize);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct IntFunctionId(pub(crate) usize);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FloatFunctionId(pub(crate) usize);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct StringFunctionId(pub(crate) usize);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BitArrayFunctionId(pub(crate) usize);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct UtfCodepointFunctionId(pub(crate) usize);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CustomFunctionId {
-    index: usize,
-    return_shape: crate::plan::execution::CustomValueShape,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BoolFunctionId(pub(crate) usize);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NilFunctionId(pub(crate) usize);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TupleFunctionId(pub(crate) usize);
-
-macro_rules! list_function_id {
-    ($name:ident, $type_id:ty) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-        pub struct $name {
-            index: usize,
-            type_id: $type_id,
-        }
-
-        impl $name {
-            pub(in crate::plan::execution) fn new(index: usize, type_id: $type_id) -> Self {
-                Self { index, type_id }
-            }
-
-            pub(crate) fn index(self) -> usize {
-                self.index
-            }
-
-            pub(crate) fn type_id(self) -> $type_id {
-                self.type_id
-            }
-        }
-    };
-}
-
-list_function_id!(IntListFunctionId, IntListTypeId);
-list_function_id!(StringListFunctionId, StringListTypeId);
-list_function_id!(BitArrayListFunctionId, BitArrayListTypeId);
-list_function_id!(UtfCodepointListFunctionId, UtfCodepointListTypeId);
-list_function_id!(ParameterListFunctionId, ParameterListTypeId);
-list_function_id!(ParameterListListFunctionId, ParameterListListTypeId);
-list_function_id!(CustomListFunctionId, CustomListTypeId);
-list_function_id!(FloatListFunctionId, FloatListTypeId);
-list_function_id!(BoolListFunctionId, BoolListTypeId);
-list_function_id!(NilListFunctionId, NilListTypeId);
-list_function_id!(TupleListFunctionId, TupleListTypeId);
-list_function_id!(ListListFunctionId, ListListTypeId);
-list_function_id!(FunctionListFunctionId, FunctionListTypeId);
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ListFunctionId {
-    Parameter(ParameterListFunctionId),
-    ParameterList(ParameterListListFunctionId),
-    Int(IntListFunctionId),
-    String(StringListFunctionId),
-    BitArray(BitArrayListFunctionId),
-    UtfCodepoint(UtfCodepointListFunctionId),
-    Custom(CustomListFunctionId),
-    Float(FloatListFunctionId),
-    Bool(BoolListFunctionId),
-    Nil(NilListFunctionId),
-    Tuple(TupleListFunctionId),
-    List(ListListFunctionId),
-    Function(FunctionListFunctionId),
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum FunctionFunctionId {
@@ -156,23 +19,6 @@ pub(crate) enum FunctionFunctionId {
     Tuple(TupleFunctionFunctionId),
     List(ListFunctionFunctionId),
     Function(FunctionFunctionFunctionId),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FunctionReturnFamily {
-    Generic,
-    Never,
-    Int,
-    Float,
-    String,
-    BitArray,
-    UtfCodepoint,
-    Custom,
-    Bool,
-    Nil,
-    Tuple,
-    List,
-    Function,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -331,22 +177,6 @@ pub struct FunctionFunctionFunctionId {
     type_: crate::plan::execution::FunctionFunctionType,
 }
 
-impl CustomFunctionId {
-    pub(in crate::plan::execution) fn new(
-        index: usize,
-        return_shape: crate::plan::execution::CustomValueShape,
-    ) -> Self {
-        Self {
-            index,
-            return_shape,
-        }
-    }
-
-    pub(crate) fn index(self) -> usize {
-        self.index
-    }
-}
-
 impl CustomFunctionFunctionId {
     pub(in crate::plan::execution) fn new(
         index: usize,
@@ -463,37 +293,17 @@ impl ListFunctionFunctionId {
     }
 }
 
-impl std::fmt::Display for FunctionReturnFamily {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Generic => f.write_str("Generic"),
-            Self::Never => f.write_str("Never"),
-            Self::Int => f.write_str("Int"),
-            Self::Float => f.write_str("Float"),
-            Self::String => f.write_str("String"),
-            Self::BitArray => f.write_str("BitArray"),
-            Self::UtfCodepoint => f.write_str("UtfCodepoint"),
-            Self::Custom => f.write_str("Custom"),
-            Self::Bool => f.write_str("Bool"),
-            Self::Nil => f.write_str("Nil"),
-            Self::Tuple => f.write_str("Tuple"),
-            Self::List => f.write_str("List"),
-            Self::Function => f.write_str("Function"),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         BitArrayFunctionFunctionId, BoolListFunctionFunctionId, CustomFunctionFunctionId,
         FloatListFunctionFunctionId, FunctionFunctionId, FunctionListFunctionFunctionId,
-        FunctionReturnFamily, IntFunctionFunctionId, IntListFunctionFunctionId,
-        ListFunctionFunctionId, ListListFunctionFunctionId, NeverFunctionFunctionId,
-        NilListFunctionFunctionId, ParameterListFunctionFunctionId,
-        ParameterListListFunctionFunctionId, RuntimeFunctionId, StringListFunctionFunctionId,
-        TupleListFunctionFunctionId, UtfCodepointFunctionFunctionId,
+        IntFunctionFunctionId, IntListFunctionFunctionId, ListFunctionFunctionId,
+        ListListFunctionFunctionId, NeverFunctionFunctionId, NilListFunctionFunctionId,
+        ParameterListFunctionFunctionId, ParameterListListFunctionFunctionId,
+        StringListFunctionFunctionId, TupleListFunctionFunctionId, UtfCodepointFunctionFunctionId,
     };
+    use crate::plan::execution::RuntimeFunctionId;
     use crate::plan::{CustomType, CustomTypeName, ValueType};
 
     fn custom_type() -> CustomType {
@@ -501,43 +311,6 @@ mod tests {
             CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
             Vec::new(),
         )
-    }
-
-    #[test]
-    fn function_return_family_display_names_every_family() {
-        assert_eq!(
-            [
-                FunctionReturnFamily::Generic,
-                FunctionReturnFamily::Never,
-                FunctionReturnFamily::Int,
-                FunctionReturnFamily::Float,
-                FunctionReturnFamily::String,
-                FunctionReturnFamily::BitArray,
-                FunctionReturnFamily::UtfCodepoint,
-                FunctionReturnFamily::Custom,
-                FunctionReturnFamily::Bool,
-                FunctionReturnFamily::Nil,
-                FunctionReturnFamily::Tuple,
-                FunctionReturnFamily::List,
-                FunctionReturnFamily::Function,
-            ]
-            .map(|family| family.to_string()),
-            [
-                "Generic",
-                "Never",
-                "Int",
-                "Float",
-                "String",
-                "BitArray",
-                "UtfCodepoint",
-                "Custom",
-                "Bool",
-                "Nil",
-                "Tuple",
-                "List",
-                "Function",
-            ],
-        );
     }
 
     #[test]

@@ -2,12 +2,9 @@ use super::super::GraphValue;
 use super::super::environment::BlockEnvironment;
 use crate::plan::ValueType;
 use crate::plan::execution::{
-    ConstantId, ConstantValue, ExecutionPlan, GraphBitArrayInstruction as BitArrayInstruction,
-    GraphBoolInstruction as BoolInstruction, GraphCustomInstruction as CustomInstruction,
-    GraphFloatInstruction as FloatInstruction, GraphIntInstruction as IntInstruction,
-    GraphNilInstruction as NilInstruction, GraphStringInstruction as StringInstruction,
-    GraphTupleInstruction as TupleInstruction,
-    GraphUtfCodepointInstruction as UtfCodepointInstruction, ParamLocal,
+    BitArrayInstruction, BoolInstruction, ConstantId, ConstantValue, CustomInstruction,
+    ExecutionPlan, FloatInstruction, IntInstruction, NilInstruction, ParamLocal, StringInstruction,
+    TupleInstruction, UtfCodepointInstruction,
 };
 use crate::runtime::constant::evaluate as evaluate_constant;
 use crate::runtime::error::ExecutionResult;

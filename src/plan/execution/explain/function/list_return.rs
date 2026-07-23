@@ -11,6 +11,7 @@ pub(super) fn write_list_return_tables(
         plan,
         "list.parameter",
         functions
+            .list_returns
             .parameter_list_functions
             .iter()
             .map(|(_, function)| function),
@@ -20,6 +21,7 @@ pub(super) fn write_list_return_tables(
         plan,
         "list.int",
         functions
+            .list_returns
             .int_list_functions
             .iter()
             .map(|(_, function)| function),
@@ -29,6 +31,7 @@ pub(super) fn write_list_return_tables(
         plan,
         "list.string",
         functions
+            .list_returns
             .string_list_functions
             .iter()
             .map(|(_, function)| function),
@@ -38,6 +41,7 @@ pub(super) fn write_list_return_tables(
         plan,
         "list.bit_array",
         functions
+            .list_returns
             .bit_array_list_functions
             .iter()
             .map(|(_, function)| function),
@@ -47,6 +51,7 @@ pub(super) fn write_list_return_tables(
         plan,
         "list.utf_codepoint",
         functions
+            .list_returns
             .utf_codepoint_list_functions
             .iter()
             .map(|(_, function)| function),
@@ -56,6 +61,7 @@ pub(super) fn write_list_return_tables(
         plan,
         "list.custom",
         functions
+            .list_returns
             .custom_list_functions
             .iter()
             .map(|(_, function)| function),
@@ -65,6 +71,7 @@ pub(super) fn write_list_return_tables(
         plan,
         "list.float",
         functions
+            .list_returns
             .float_list_functions
             .iter()
             .map(|(_, function)| function),
@@ -74,6 +81,7 @@ pub(super) fn write_list_return_tables(
         plan,
         "list.bool",
         functions
+            .list_returns
             .bool_list_functions
             .iter()
             .map(|(_, function)| function),
@@ -83,6 +91,7 @@ pub(super) fn write_list_return_tables(
         plan,
         "list.nil",
         functions
+            .list_returns
             .nil_list_functions
             .iter()
             .map(|(_, function)| function),
@@ -92,6 +101,7 @@ pub(super) fn write_list_return_tables(
         plan,
         "list.tuple",
         functions
+            .list_returns
             .tuple_list_functions
             .iter()
             .map(|(_, function)| function),
@@ -101,6 +111,7 @@ pub(super) fn write_list_return_tables(
         plan,
         "list.parameter_list",
         functions
+            .list_returns
             .parameter_list_list_functions
             .iter()
             .map(|(_, function)| function),
@@ -110,6 +121,7 @@ pub(super) fn write_list_return_tables(
         plan,
         "list.list",
         functions
+            .list_returns
             .list_list_functions
             .iter()
             .map(|(_, function)| function),
@@ -119,6 +131,7 @@ pub(super) fn write_list_return_tables(
         plan,
         "list.function",
         functions
+            .list_returns
             .function_list_functions
             .iter()
             .map(|(_, function)| function),

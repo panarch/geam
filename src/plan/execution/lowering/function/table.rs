@@ -1,5 +1,7 @@
 use crate::plan::execution;
-use crate::plan::execution::function::ExecutableFunction;
+use crate::plan::execution::function::{
+    ExecutableFunction, FunctionFunctionTables, ListFunctionTables, ValueFunctionTables,
+};
 use crate::plan::execution::lowering::SpecializationOutcome;
 use crate::plan::execution::lowering::specialization::{
     FunctionRepresentation, Representability, SpecializationKey, SpecializedFunctionShape,
@@ -168,157 +170,178 @@ impl FunctionTableBuilder {
     ) -> SpecializationOutcome<Box<FunctionTables>> {
         let mut erased = HashSet::new();
         let tables = FunctionTables {
-            never_functions: sort_functions(self.never_functions, &mut erased),
-            int_functions: sort_functions(self.int_functions, &mut erased),
-            float_functions: sort_functions(self.float_functions, &mut erased),
-            string_functions: sort_functions(self.string_functions, &mut erased),
-            bit_array_functions: sort_functions(self.bit_array_functions, &mut erased),
-            utf_codepoint_functions: sort_functions(self.utf_codepoint_functions, &mut erased),
-            custom_functions: sort_functions(self.custom_functions, &mut erased),
-            bool_functions: sort_functions(self.bool_functions, &mut erased),
-            nil_functions: sort_functions(self.nil_functions, &mut erased),
-            tuple_functions: sort_functions(self.tuple_functions, &mut erased),
-            parameter_list_functions: sort_list_functions(
-                self.parameter_list_functions,
-                |id| id.index(),
-                &mut erased,
-            ),
-            int_list_functions: sort_list_functions(
-                self.int_list_functions,
-                |id| id.index(),
-                &mut erased,
-            ),
-            string_list_functions: sort_list_functions(
-                self.string_list_functions,
-                |id| id.index(),
-                &mut erased,
-            ),
-            bit_array_list_functions: sort_list_functions(
-                self.bit_array_list_functions,
-                |id| id.index(),
-                &mut erased,
-            ),
-            utf_codepoint_list_functions: sort_list_functions(
-                self.utf_codepoint_list_functions,
-                |id| id.index(),
-                &mut erased,
-            ),
-            custom_list_functions: sort_list_functions(
-                self.custom_list_functions,
-                |id| id.index(),
-                &mut erased,
-            ),
-            float_list_functions: sort_list_functions(
-                self.float_list_functions,
-                |id| id.index(),
-                &mut erased,
-            ),
-            bool_list_functions: sort_list_functions(
-                self.bool_list_functions,
-                |id| id.index(),
-                &mut erased,
-            ),
-            nil_list_functions: sort_list_functions(
-                self.nil_list_functions,
-                |id| id.index(),
-                &mut erased,
-            ),
-            tuple_list_functions: sort_list_functions(
-                self.tuple_list_functions,
-                |id| id.index(),
-                &mut erased,
-            ),
-            parameter_list_list_functions: sort_list_functions(
-                self.parameter_list_list_functions,
-                |id| id.index(),
-                &mut erased,
-            ),
-            list_list_functions: sort_list_functions(
-                self.list_list_functions,
-                |id| id.index(),
-                &mut erased,
-            ),
-            function_list_functions: sort_list_functions(
-                self.function_list_functions,
-                |id| id.index(),
-                &mut erased,
-            ),
-            int_function_functions: sort_functions(self.int_function_functions, &mut erased),
-            float_function_functions: sort_functions(self.float_function_functions, &mut erased),
-            string_function_functions: sort_functions(self.string_function_functions, &mut erased),
-            bit_array_function_functions: sort_functions(
-                self.bit_array_function_functions,
-                &mut erased,
-            ),
-            utf_codepoint_function_functions: sort_functions(
-                self.utf_codepoint_function_functions,
-                &mut erased,
-            ),
-            custom_function_functions: sort_functions(self.custom_function_functions, &mut erased),
-            bool_function_functions: sort_functions(self.bool_function_functions, &mut erased),
-            nil_function_functions: sort_functions(self.nil_function_functions, &mut erased),
-            tuple_function_functions: sort_functions(self.tuple_function_functions, &mut erased),
-            generic_function_functions: sort_functions(
-                self.generic_function_functions,
-                &mut erased,
-            ),
-            never_function_functions: sort_functions(self.never_function_functions, &mut erased),
-            parameter_list_function_functions: sort_functions(
-                self.parameter_list_function_functions,
-                &mut erased,
-            ),
-            parameter_list_list_function_functions: sort_functions(
-                self.parameter_list_list_function_functions,
-                &mut erased,
-            ),
-            int_list_function_functions: sort_functions(
-                self.int_list_function_functions,
-                &mut erased,
-            ),
-            string_list_function_functions: sort_functions(
-                self.string_list_function_functions,
-                &mut erased,
-            ),
-            bit_array_list_function_functions: sort_functions(
-                self.bit_array_list_function_functions,
-                &mut erased,
-            ),
-            utf_codepoint_list_function_functions: sort_functions(
-                self.utf_codepoint_list_function_functions,
-                &mut erased,
-            ),
-            custom_list_function_functions: sort_functions(
-                self.custom_list_function_functions,
-                &mut erased,
-            ),
-            float_list_function_functions: sort_functions(
-                self.float_list_function_functions,
-                &mut erased,
-            ),
-            bool_list_function_functions: sort_functions(
-                self.bool_list_function_functions,
-                &mut erased,
-            ),
-            nil_list_function_functions: sort_functions(
-                self.nil_list_function_functions,
-                &mut erased,
-            ),
-            tuple_list_function_functions: sort_functions(
-                self.tuple_list_function_functions,
-                &mut erased,
-            ),
-            list_list_function_functions: sort_functions(
-                self.list_list_function_functions,
-                &mut erased,
-            ),
-            function_list_function_functions: sort_functions(
-                self.function_list_function_functions,
-                &mut erased,
-            ),
-            function_function_functions: sort_functions(
-                self.function_function_functions,
-                &mut erased,
-            ),
+            value_returns: ValueFunctionTables {
+                never_functions: sort_functions(self.never_functions, &mut erased),
+                int_functions: sort_functions(self.int_functions, &mut erased),
+                float_functions: sort_functions(self.float_functions, &mut erased),
+                string_functions: sort_functions(self.string_functions, &mut erased),
+                bit_array_functions: sort_functions(self.bit_array_functions, &mut erased),
+                utf_codepoint_functions: sort_functions(self.utf_codepoint_functions, &mut erased),
+                custom_functions: sort_functions(self.custom_functions, &mut erased),
+                bool_functions: sort_functions(self.bool_functions, &mut erased),
+                nil_functions: sort_functions(self.nil_functions, &mut erased),
+                tuple_functions: sort_functions(self.tuple_functions, &mut erased),
+            },
+            list_returns: ListFunctionTables {
+                parameter_list_functions: sort_list_functions(
+                    self.parameter_list_functions,
+                    |id| id.index(),
+                    &mut erased,
+                ),
+                int_list_functions: sort_list_functions(
+                    self.int_list_functions,
+                    |id| id.index(),
+                    &mut erased,
+                ),
+                string_list_functions: sort_list_functions(
+                    self.string_list_functions,
+                    |id| id.index(),
+                    &mut erased,
+                ),
+                bit_array_list_functions: sort_list_functions(
+                    self.bit_array_list_functions,
+                    |id| id.index(),
+                    &mut erased,
+                ),
+                utf_codepoint_list_functions: sort_list_functions(
+                    self.utf_codepoint_list_functions,
+                    |id| id.index(),
+                    &mut erased,
+                ),
+                custom_list_functions: sort_list_functions(
+                    self.custom_list_functions,
+                    |id| id.index(),
+                    &mut erased,
+                ),
+                float_list_functions: sort_list_functions(
+                    self.float_list_functions,
+                    |id| id.index(),
+                    &mut erased,
+                ),
+                bool_list_functions: sort_list_functions(
+                    self.bool_list_functions,
+                    |id| id.index(),
+                    &mut erased,
+                ),
+                nil_list_functions: sort_list_functions(
+                    self.nil_list_functions,
+                    |id| id.index(),
+                    &mut erased,
+                ),
+                tuple_list_functions: sort_list_functions(
+                    self.tuple_list_functions,
+                    |id| id.index(),
+                    &mut erased,
+                ),
+                parameter_list_list_functions: sort_list_functions(
+                    self.parameter_list_list_functions,
+                    |id| id.index(),
+                    &mut erased,
+                ),
+                list_list_functions: sort_list_functions(
+                    self.list_list_functions,
+                    |id| id.index(),
+                    &mut erased,
+                ),
+                function_list_functions: sort_list_functions(
+                    self.function_list_functions,
+                    |id| id.index(),
+                    &mut erased,
+                ),
+            },
+            function_returns: FunctionFunctionTables {
+                int_function_functions: sort_functions(self.int_function_functions, &mut erased),
+                float_function_functions: sort_functions(
+                    self.float_function_functions,
+                    &mut erased,
+                ),
+                string_function_functions: sort_functions(
+                    self.string_function_functions,
+                    &mut erased,
+                ),
+                bit_array_function_functions: sort_functions(
+                    self.bit_array_function_functions,
+                    &mut erased,
+                ),
+                utf_codepoint_function_functions: sort_functions(
+                    self.utf_codepoint_function_functions,
+                    &mut erased,
+                ),
+                custom_function_functions: sort_functions(
+                    self.custom_function_functions,
+                    &mut erased,
+                ),
+                bool_function_functions: sort_functions(self.bool_function_functions, &mut erased),
+                nil_function_functions: sort_functions(self.nil_function_functions, &mut erased),
+                tuple_function_functions: sort_functions(
+                    self.tuple_function_functions,
+                    &mut erased,
+                ),
+                generic_function_functions: sort_functions(
+                    self.generic_function_functions,
+                    &mut erased,
+                ),
+                never_function_functions: sort_functions(
+                    self.never_function_functions,
+                    &mut erased,
+                ),
+                parameter_list_function_functions: sort_functions(
+                    self.parameter_list_function_functions,
+                    &mut erased,
+                ),
+                parameter_list_list_function_functions: sort_functions(
+                    self.parameter_list_list_function_functions,
+                    &mut erased,
+                ),
+                int_list_function_functions: sort_functions(
+                    self.int_list_function_functions,
+                    &mut erased,
+                ),
+                string_list_function_functions: sort_functions(
+                    self.string_list_function_functions,
+                    &mut erased,
+                ),
+                bit_array_list_function_functions: sort_functions(
+                    self.bit_array_list_function_functions,
+                    &mut erased,
+                ),
+                utf_codepoint_list_function_functions: sort_functions(
+                    self.utf_codepoint_list_function_functions,
+                    &mut erased,
+                ),
+                custom_list_function_functions: sort_functions(
+                    self.custom_list_function_functions,
+                    &mut erased,
+                ),
+                float_list_function_functions: sort_functions(
+                    self.float_list_function_functions,
+                    &mut erased,
+                ),
+                bool_list_function_functions: sort_functions(
+                    self.bool_list_function_functions,
+                    &mut erased,
+                ),
+                nil_list_function_functions: sort_functions(
+                    self.nil_list_function_functions,
+                    &mut erased,
+                ),
+                tuple_list_function_functions: sort_functions(
+                    self.tuple_list_function_functions,
+                    &mut erased,
+                ),
+                list_list_function_functions: sort_functions(
+                    self.list_list_function_functions,
+                    &mut erased,
+                ),
+                function_list_function_functions: sort_functions(
+                    self.function_list_function_functions,
+                    &mut erased,
+                ),
+                function_function_functions: sort_functions(
+                    self.function_function_functions,
+                    &mut erased,
+                ),
+            },
         };
         SpecializationOutcome::complete_unless_erased(Box::new(tables), erased)
     }

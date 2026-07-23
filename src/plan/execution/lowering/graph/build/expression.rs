@@ -896,7 +896,7 @@ mod tests {
         Option<crate::plan::execution::StringLocalId>,
     ) {
         match graph.block(graph.entry()).terminator() {
-            Terminator::SourceStop { kind, message, .. } => (*kind, *message),
+            Terminator::SourceStop(stop) => (stop.kind(), stop.message()),
             _ => panic!("fixture should contain a source stop"),
         }
     }

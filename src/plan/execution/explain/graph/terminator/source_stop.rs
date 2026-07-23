@@ -70,21 +70,21 @@ pub fn main() -> Int {
                 .map(|block| block.terminator())
                 .collect::<Vec<_>>();
             let (kind, message) = source_stop(&terminators);
-            super::write_source_stop(output, kind, message);
+            super::write_source_stop(output, kind, message.as_ref());
         });
     }
 
-    fn source_stop<'a>(
-        terminators: &[&'a Terminator],
+    fn source_stop(
+        terminators: &[&Terminator],
     ) -> (
         crate::plan::execution::SourceStopKind,
-        Option<&'a crate::plan::execution::StringLocalId>,
+        Option<crate::plan::execution::StringLocalId>,
     ) {
         let mut stops = terminators
             .iter()
             .copied()
             .filter_map(|terminator| match terminator {
-                Terminator::SourceStop { kind, message, .. } => Some((*kind, message.as_ref())),
+                Terminator::SourceStop(stop) => Some((stop.kind(), stop.message())),
                 _ => None,
             });
         let Some(stop) = stops.next() else {

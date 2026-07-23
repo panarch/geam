@@ -43,12 +43,12 @@ pub fn main() { case identity(1) { 1 -> 1 _ -> 0 } }
                 .map(|block| block.terminator())
                 .collect::<Vec<_>>();
             let (subject, clauses, fallback) = int_switch(&terminators);
-            super::write_int_switch(output, subject, clauses, fallback);
+            super::write_int_switch(output, &subject, clauses, fallback);
         });
     }
 
     type IntSwitch<'a> = (
-        &'a crate::plan::execution::IntLocalId,
+        crate::plan::execution::IntLocalId,
         &'a [(num_bigint::BigInt, crate::plan::execution::Edge)],
         &'a crate::plan::execution::Edge,
     );
@@ -58,11 +58,9 @@ pub fn main() { case identity(1) { 1 -> 1 _ -> 0 } }
             .iter()
             .copied()
             .filter_map(|terminator| match terminator {
-                Terminator::IntSwitch {
-                    subject,
-                    clauses,
-                    fallback,
-                } => Some((subject, clauses.as_ref(), fallback)),
+                Terminator::IntSwitch(switch) => {
+                    Some((switch.subject(), switch.clauses(), switch.fallback()))
+                }
                 _ => None,
             });
         let Some(switch) = switches.next() else {
@@ -103,7 +101,7 @@ pub fn main() { case identity(1) { 1 -> 1 _ -> 0 } }
                 .blocks()
                 .iter()
                 .map(|block| block.terminator())
-                .find(|terminator| matches!(terminator, Terminator::IntSwitch { .. }))
+                .find(|terminator| matches!(terminator, Terminator::IntSwitch(_)))
                 .expect("source should lower an Int switch");
             int_switch(&[terminator, terminator]);
         });

@@ -51,10 +51,10 @@ pub fn main() {
     }
 
     fn bool_branch_edges(terminator: &Terminator) -> (&Edge, &Edge) {
-        let Terminator::BoolBranch { true_, false_, .. } = terminator else {
+        let Terminator::BoolBranch(branch) = terminator else {
             panic!("case should lower to a Bool branch");
         };
-        (true_, false_)
+        (branch.true_(), branch.false_())
     }
 
     #[test]

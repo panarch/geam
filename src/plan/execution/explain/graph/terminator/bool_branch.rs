@@ -47,14 +47,14 @@ pub fn main() {
                 .map(|block| block.terminator())
                 .collect::<Vec<_>>();
             let (subject, true_, false_) = bool_branch(&terminators);
-            super::write_bool_branch(output, subject, true_, false_);
+            super::write_bool_branch(output, &subject, true_, false_);
         });
     }
 
     fn bool_branch<'a>(
         terminators: &[&'a Terminator],
     ) -> (
-        &'a crate::plan::execution::BoolLocalId,
+        crate::plan::execution::BoolLocalId,
         &'a crate::plan::execution::Edge,
         &'a crate::plan::execution::Edge,
     ) {
@@ -62,11 +62,9 @@ pub fn main() {
             .iter()
             .copied()
             .filter_map(|terminator| match terminator {
-                Terminator::BoolBranch {
-                    subject,
-                    true_,
-                    false_,
-                } => Some((subject, true_, false_)),
+                Terminator::BoolBranch(branch) => {
+                    Some((branch.subject(), branch.true_(), branch.false_()))
+                }
                 _ => None,
             });
         let Some(branch) = branches.next() else {
@@ -113,7 +111,7 @@ pub fn main() {
                 .blocks()
                 .iter()
                 .map(|block| block.terminator())
-                .find(|terminator| matches!(terminator, Terminator::BoolBranch { .. }))
+                .find(|terminator| matches!(terminator, Terminator::BoolBranch(_)))
                 .expect("source should lower a Bool branch");
             bool_branch(&[terminator, terminator]);
         });

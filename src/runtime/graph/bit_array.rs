@@ -6,8 +6,8 @@ use num_bigint::BigInt;
 
 use super::environment::BlockEnvironment;
 use crate::plan::execution::{
-    Endianness, ExecutionPlan, FloatBitSize, GraphBitArrayBitsSize, GraphBitArrayEvaluatedSize,
-    GraphBitArraySegment, Signedness, StringEncoding,
+    BitArrayBitsSize, BitArrayEvaluatedSize, BitArraySegment, Endianness, ExecutionPlan,
+    FloatBitSize, Signedness, StringEncoding,
 };
 use crate::runtime::evaluated::EvaluatedBitArray;
 use crate::runtime::{BitArraySegmentPanicReason, ExecutionError};
@@ -15,7 +15,7 @@ use crate::runtime::{BitArraySegmentPanicReason, ExecutionError};
 pub(super) fn evaluate(
     plan: &ExecutionPlan,
     environment: &BlockEnvironment,
-    segments: &[GraphBitArraySegment],
+    segments: &[BitArraySegment],
 ) -> Result<EvaluatedBitArray, ExecutionError> {
     let mut bits = BitVec::<u8, Msb0>::new();
     for segment in segments {
@@ -28,15 +28,15 @@ fn append_segment(
     plan: &ExecutionPlan,
     environment: &BlockEnvironment,
     output: &mut BitVec<u8, Msb0>,
-    segment: &GraphBitArraySegment,
+    segment: &BitArraySegment,
 ) -> Result<(), ExecutionError> {
     match segment {
-        GraphBitArraySegment::Int {
+        BitArraySegment::Int {
             value,
             bit_size,
             endianness,
         } => append_integer(output, &environment.int(*value), *bit_size, *endianness),
-        GraphBitArraySegment::EvaluatedInt {
+        BitArraySegment::EvaluatedInt {
             value,
             size,
             endianness,
@@ -45,12 +45,12 @@ fn append_segment(
             let bit_size = evaluate_size(plan, environment, size, site)?;
             append_integer(output, &environment.int(*value), bit_size, *endianness);
         }
-        GraphBitArraySegment::Float {
+        BitArraySegment::Float {
             value,
             bit_size,
             endianness,
         } => append_float(output, environment.float(*value), *bit_size, *endianness),
-        GraphBitArraySegment::EvaluatedFloat {
+        BitArraySegment::EvaluatedFloat {
             value,
             size,
             endianness,
@@ -73,23 +73,21 @@ fn append_segment(
             };
             append_float(output, environment.float(*value), bit_size, *endianness);
         }
-        GraphBitArraySegment::String { value, encoding } => {
+        BitArraySegment::String { value, encoding } => {
             append_string(output, environment.string(*value).as_str(), *encoding);
         }
-        GraphBitArraySegment::UtfCodepoint { value, encoding } => {
+        BitArraySegment::UtfCodepoint { value, encoding } => {
             append_utf_codepoint(output, environment.utf_codepoint(*value), *encoding);
         }
-        GraphBitArraySegment::Bits(value) => {
+        BitArraySegment::Bits(value) => {
             let value = environment.bit_array(*value);
             output.extend_from_bitslice(value.bits());
         }
-        GraphBitArraySegment::SizedBits { value, size, site } => {
+        BitArraySegment::SizedBits { value, size, site } => {
             let value = environment.bit_array(*value);
             let bit_size = match size {
-                GraphBitArrayBitsSize::Fixed(bit_size) => *bit_size,
-                GraphBitArrayBitsSize::Evaluated(size) => {
-                    evaluate_size(plan, environment, size, site)?
-                }
+                BitArrayBitsSize::Fixed(bit_size) => *bit_size,
+                BitArrayBitsSize::Evaluated(size) => evaluate_size(plan, environment, size, site)?,
             };
             let Some(bits) = value.bits().get(..bit_size) else {
                 return Err(ExecutionError::bit_array_segment_panic(
@@ -110,7 +108,7 @@ fn append_segment(
 fn evaluate_size(
     plan: &ExecutionPlan,
     environment: &BlockEnvironment,
-    size: &GraphBitArrayEvaluatedSize,
+    size: &BitArrayEvaluatedSize,
     site: &crate::plan::PanicSite,
 ) -> Result<usize, ExecutionError> {
     let value = environment.int(size.value());

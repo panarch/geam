@@ -5,10 +5,9 @@ use std::collections::HashMap;
 use super::bit_array;
 use super::environment::BlockEnvironment;
 use crate::plan::execution::{
-    ExecutionPlan, GraphBitArrayBindingPattern, GraphBitArrayPattern, GraphBitArrayPatternSegment,
-    GraphBitArrayPatternSize, GraphBitArrayPatternSizeExpr, GraphBitArrayPatternValue,
-    GraphBitArrayStringPattern, MatchIntBindingId, MatchPattern, MatchPatternBinding,
-    MatchPatternListTail,
+    BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
+    BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, ExecutionPlan,
+    MatchIntBindingId, MatchPattern, MatchPatternBinding, MatchPatternListTail,
 };
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedValue};
@@ -197,13 +196,13 @@ fn matches(
 fn match_bit_array(
     environment: &BlockEnvironment,
     subject: &EvaluatedBitArray,
-    pattern: &GraphBitArrayPattern,
+    pattern: &BitArrayPattern,
     bindings: &mut MatchBindings,
 ) -> bool {
     let mut cursor = 0;
     for segment in pattern.segments() {
         let matched = match segment {
-            GraphBitArrayPatternSegment::Int {
+            BitArrayPatternSegment::Int {
                 pattern,
                 size,
                 endianness,
@@ -218,7 +217,7 @@ fn match_bit_array(
                 let value = bit_array::decode_integer(bits, *endianness, *signedness);
                 match_int(pattern, &value, bindings)
             }
-            GraphBitArrayPatternSegment::Float {
+            BitArrayPatternSegment::Float {
                 pattern,
                 size,
                 endianness,
@@ -238,7 +237,7 @@ fn match_bit_array(
                 let value = bit_array::decode_float(bits, width, *endianness);
                 match_float(pattern, value, bindings)
             }
-            GraphBitArrayPatternSegment::Bits {
+            BitArrayPatternSegment::Bits {
                 pattern,
                 size,
                 unit,
@@ -265,8 +264,8 @@ fn match_bit_array(
                 bind_bit_array(pattern, &value, bindings);
                 true
             }
-            GraphBitArrayPatternSegment::String { pattern, encoding } => match pattern {
-                GraphBitArrayStringPattern::Literal(literal) => {
+            BitArrayPatternSegment::String { pattern, encoding } => match pattern {
+                BitArrayStringPattern::Literal(literal) => {
                     let encoded = bit_array::encode_string(literal, *encoding);
                     let Some(bits) =
                         bit_array::take_bits(subject.bits(), &mut cursor, encoded.len())
@@ -275,7 +274,7 @@ fn match_bit_array(
                     };
                     bits == encoded.as_bitslice()
                 }
-                GraphBitArrayStringPattern::Discard => {
+                BitArrayStringPattern::Discard => {
                     let Some((_, bit_size)) =
                         bit_array::decode_codepoint(&subject.bits()[cursor..], *encoding)
                     else {
@@ -285,7 +284,7 @@ fn match_bit_array(
                     true
                 }
             },
-            GraphBitArrayPatternSegment::UtfCodepoint { pattern, encoding } => {
+            BitArrayPatternSegment::UtfCodepoint { pattern, encoding } => {
                 let Some((value, bit_size)) =
                     bit_array::decode_codepoint(&subject.bits()[cursor..], *encoding)
                 else {
@@ -306,7 +305,7 @@ fn match_bit_array(
 fn evaluate_size(
     environment: &BlockEnvironment,
     bindings: &MatchBindings,
-    size: &GraphBitArrayPatternSize,
+    size: &BitArrayPatternSize,
 ) -> Option<usize> {
     let value = evaluate_size_expression(environment, bindings, size.value());
     let Ok(value) = usize::try_from(value) else {
@@ -321,25 +320,25 @@ fn evaluate_size(
 fn evaluate_size_expression(
     environment: &BlockEnvironment,
     bindings: &MatchBindings,
-    expression: &GraphBitArrayPatternSizeExpr,
+    expression: &BitArrayPatternSizeExpr,
 ) -> BigInt {
     match expression {
-        GraphBitArrayPatternSizeExpr::Value(value) => value.clone(),
-        GraphBitArrayPatternSizeExpr::Local(local) => environment.int(*local),
-        GraphBitArrayPatternSizeExpr::Binding(binding) => bindings.int(*binding),
-        GraphBitArrayPatternSizeExpr::Add { left, right } => {
+        BitArrayPatternSizeExpr::Value(value) => value.clone(),
+        BitArrayPatternSizeExpr::Local(local) => environment.int(*local),
+        BitArrayPatternSizeExpr::Binding(binding) => bindings.int(*binding),
+        BitArrayPatternSizeExpr::Add { left, right } => {
             evaluate_size_expression(environment, bindings, left)
                 + evaluate_size_expression(environment, bindings, right)
         }
-        GraphBitArrayPatternSizeExpr::Subtract { left, right } => {
+        BitArrayPatternSizeExpr::Subtract { left, right } => {
             evaluate_size_expression(environment, bindings, left)
                 - evaluate_size_expression(environment, bindings, right)
         }
-        GraphBitArrayPatternSizeExpr::Multiply { left, right } => {
+        BitArrayPatternSizeExpr::Multiply { left, right } => {
             evaluate_size_expression(environment, bindings, left)
                 * evaluate_size_expression(environment, bindings, right)
         }
-        GraphBitArrayPatternSizeExpr::Divide { left, right } => {
+        BitArrayPatternSizeExpr::Divide { left, right } => {
             let right = evaluate_size_expression(environment, bindings, right);
             if right == BigInt::from(0) {
                 BigInt::from(0)
@@ -347,7 +346,7 @@ fn evaluate_size_expression(
                 evaluate_size_expression(environment, bindings, left) / right
             }
         }
-        GraphBitArrayPatternSizeExpr::Remainder { left, right } => {
+        BitArrayPatternSizeExpr::Remainder { left, right } => {
             let right = evaluate_size_expression(environment, bindings, right);
             if right == BigInt::from(0) {
                 BigInt::from(0)
@@ -359,18 +358,18 @@ fn evaluate_size_expression(
 }
 
 fn match_int(
-    pattern: &GraphBitArrayPatternValue<BigInt>,
+    pattern: &BitArrayPatternValue<BigInt>,
     value: &BigInt,
     bindings: &mut MatchBindings,
 ) -> bool {
     match pattern {
-        GraphBitArrayPatternValue::Literal(expected) => expected == value,
-        GraphBitArrayPatternValue::Bind(binding) => {
+        BitArrayPatternValue::Literal(expected) => expected == value,
+        BitArrayPatternValue::Bind(binding) => {
             bindings.bind_int(binding, value);
             true
         }
-        GraphBitArrayPatternValue::Discard => true,
-        GraphBitArrayPatternValue::Alias { pattern, binding } => {
+        BitArrayPatternValue::Discard => true,
+        BitArrayPatternValue::Alias { pattern, binding } => {
             if !match_int(pattern, value, bindings) {
                 return false;
             }
@@ -381,18 +380,18 @@ fn match_int(
 }
 
 fn match_float(
-    pattern: &GraphBitArrayPatternValue<f64>,
+    pattern: &BitArrayPatternValue<f64>,
     value: f64,
     bindings: &mut MatchBindings,
 ) -> bool {
     match pattern {
-        GraphBitArrayPatternValue::Literal(expected) => *expected == value,
-        GraphBitArrayPatternValue::Bind(binding) => {
+        BitArrayPatternValue::Literal(expected) => *expected == value,
+        BitArrayPatternValue::Bind(binding) => {
             bindings.bind(binding, EvaluatedValue::Float(value));
             true
         }
-        GraphBitArrayPatternValue::Discard => true,
-        GraphBitArrayPatternValue::Alias { pattern, binding } => {
+        BitArrayPatternValue::Discard => true,
+        BitArrayPatternValue::Alias { pattern, binding } => {
             if !match_float(pattern, value, bindings) {
                 return false;
             }
@@ -403,33 +402,29 @@ fn match_float(
 }
 
 fn bind_bit_array(
-    pattern: &GraphBitArrayBindingPattern,
+    pattern: &BitArrayBindingPattern,
     value: &EvaluatedBitArray,
     bindings: &mut MatchBindings,
 ) {
     match pattern {
-        GraphBitArrayBindingPattern::Bind(binding) => {
+        BitArrayBindingPattern::Bind(binding) => {
             bindings.bind(binding, EvaluatedValue::BitArray(value.clone()));
         }
-        GraphBitArrayBindingPattern::Discard => {}
-        GraphBitArrayBindingPattern::Alias { pattern, binding } => {
+        BitArrayBindingPattern::Discard => {}
+        BitArrayBindingPattern::Alias { pattern, binding } => {
             bind_bit_array(pattern, value, bindings);
             bindings.bind(binding, EvaluatedValue::BitArray(value.clone()));
         }
     }
 }
 
-fn bind_utf_codepoint(
-    pattern: &GraphBitArrayBindingPattern,
-    value: char,
-    bindings: &mut MatchBindings,
-) {
+fn bind_utf_codepoint(pattern: &BitArrayBindingPattern, value: char, bindings: &mut MatchBindings) {
     match pattern {
-        GraphBitArrayBindingPattern::Bind(binding) => {
+        BitArrayBindingPattern::Bind(binding) => {
             bindings.bind(binding, EvaluatedValue::UtfCodepoint(value));
         }
-        GraphBitArrayBindingPattern::Discard => {}
-        GraphBitArrayBindingPattern::Alias { pattern, binding } => {
+        BitArrayBindingPattern::Discard => {}
+        BitArrayBindingPattern::Alias { pattern, binding } => {
             bind_utf_codepoint(pattern, value, bindings);
             bindings.bind(binding, EvaluatedValue::UtfCodepoint(value));
         }
@@ -989,8 +984,8 @@ pub fn main() {
             .blocks()
             .iter()
             .find_map(|block| {
-                if let Terminator::Match { pattern, .. } = block.terminator() {
-                    Some(pattern)
+                if let Terminator::Match(matcher) = block.terminator() {
+                    Some(matcher.pattern())
                 } else {
                     None
                 }

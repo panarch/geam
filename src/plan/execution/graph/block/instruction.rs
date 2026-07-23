@@ -1,19 +1,30 @@
 mod bit_array;
+mod bool;
+mod custom;
+mod float;
 mod function;
+mod int;
 mod list;
-mod value;
+mod nil;
+mod string;
+mod tuple;
+mod utf_codepoint;
 
 pub(crate) use bit_array::{
     BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayInstruction, BitArraySegment,
 };
+pub(crate) use bool::BoolInstruction;
+pub(crate) use custom::CustomInstruction;
+pub(crate) use float::FloatInstruction;
 pub(crate) use function::{
     FunctionCapture, FunctionInstruction, FunctionInstructionKind, FunctionTarget,
 };
+pub(crate) use int::IntInstruction;
 pub(crate) use list::{ListInstruction, ParameterListInstruction, TypedListInstruction};
-pub(crate) use value::{
-    BoolInstruction, CustomInstruction, FloatInstruction, IntInstruction, NilInstruction,
-    StringInstruction, TupleInstruction, UtfCodepointInstruction,
-};
+pub(crate) use nil::NilInstruction;
+pub(crate) use string::StringInstruction;
+pub(crate) use tuple::TupleInstruction;
+pub(crate) use utf_codepoint::UtfCodepointInstruction;
 
 use crate::plan::execution::ParamSlot;
 

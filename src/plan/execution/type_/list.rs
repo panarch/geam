@@ -1,39 +1,43 @@
+use super::{CustomTypeId, CustomTypeTable, FunctionType, ValueType};
 use crate::plan;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct ListTypeId(usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct CustomTypeId(usize);
+pub(crate) struct IntListTypeId {
+    list_type: ListTypeId,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct CustomConstructorId {
-    type_id: CustomTypeId,
-    index: usize,
+pub(crate) struct StringListTypeId {
+    list_type: ListTypeId,
 }
 
-macro_rules! primitive_list_type_id {
-    ($name:ident) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-        pub(crate) struct $name {
-            list_type: ListTypeId,
-        }
-
-        impl $name {
-            pub(super) fn new(list_type: ListTypeId) -> Self {
-                Self { list_type }
-            }
-        }
-    };
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct BitArrayListTypeId {
+    list_type: ListTypeId,
 }
 
-primitive_list_type_id!(IntListTypeId);
-primitive_list_type_id!(StringListTypeId);
-primitive_list_type_id!(BitArrayListTypeId);
-primitive_list_type_id!(UtfCodepointListTypeId);
-primitive_list_type_id!(FloatListTypeId);
-primitive_list_type_id!(BoolListTypeId);
-primitive_list_type_id!(NilListTypeId);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct UtfCodepointListTypeId {
+    list_type: ListTypeId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct FloatListTypeId {
+    list_type: ListTypeId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct BoolListTypeId {
+    list_type: ListTypeId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct NilListTypeId {
+    list_type: ListTypeId,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct ParameterListTypeId {
@@ -94,57 +98,15 @@ pub(crate) enum ListStorageTypeId {
     Custom(CustomListTypeId),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) enum ValueType {
-    Parameter(plan::TypeParameterId),
-    Int,
-    Float,
-    String,
-    BitArray,
-    UtfCodepoint,
-    Bool,
-    Nil,
-    Tuple(Vec<ValueType>),
-    List(ListTypeId),
-    Function(Box<FunctionType>),
-    Custom(CustomTypeId),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct FunctionType {
-    arguments: Vec<ValueType>,
-    return_: Box<ValueType>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct CustomFunctionType {
-    type_: FunctionType,
-    arguments: Box<[super::ValueShapeId]>,
-    return_: super::CustomValueShape,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct GenericFunctionType {
-    type_: FunctionType,
-    shape: super::FunctionShape,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct FunctionFunctionType {
-    type_: FunctionType,
-    arguments: Box<[super::ValueShapeId]>,
-    return_: super::FunctionShape,
-}
-
 #[derive(Default)]
-pub(super) struct ListTypeTable {
+pub(crate) struct ListTypeTable {
     types: Vec<ListStorageTypeId>,
     tuple_items: Vec<Vec<ValueType>>,
     function_items: Vec<FunctionType>,
 }
 
 impl ListTypeId {
-    pub(super) fn new(index: usize) -> Self {
+    pub(in crate::plan::execution) fn new(index: usize) -> Self {
         Self(index)
     }
 
@@ -153,43 +115,86 @@ impl ListTypeId {
     }
 }
 
-macro_rules! list_type_id {
-    ($name:ident) => {
-        impl $name {
-            pub(crate) fn list_type(self) -> ListTypeId {
-                self.list_type
-            }
-        }
-    };
-}
-
-list_type_id!(IntListTypeId);
-list_type_id!(StringListTypeId);
-list_type_id!(BitArrayListTypeId);
-list_type_id!(UtfCodepointListTypeId);
-list_type_id!(FloatListTypeId);
-list_type_id!(BoolListTypeId);
-list_type_id!(NilListTypeId);
-list_type_id!(ParameterListTypeId);
-list_type_id!(TupleListTypeId);
-list_type_id!(ListListTypeId);
-list_type_id!(ParameterListListTypeId);
-list_type_id!(FunctionListTypeId);
-list_type_id!(CustomListTypeId);
-
-impl CustomTypeId {
-    pub(super) fn new(index: usize) -> Self {
-        Self(index)
+impl IntListTypeId {
+    pub(in crate::plan::execution) fn new(list_type: ListTypeId) -> Self {
+        Self { list_type }
     }
 
-    pub(crate) fn index(self) -> usize {
-        self.0
+    pub(crate) fn list_type(self) -> ListTypeId {
+        self.list_type
+    }
+}
+
+impl StringListTypeId {
+    pub(in crate::plan::execution) fn new(list_type: ListTypeId) -> Self {
+        Self { list_type }
+    }
+
+    pub(crate) fn list_type(self) -> ListTypeId {
+        self.list_type
+    }
+}
+
+impl BitArrayListTypeId {
+    pub(in crate::plan::execution) fn new(list_type: ListTypeId) -> Self {
+        Self { list_type }
+    }
+
+    pub(crate) fn list_type(self) -> ListTypeId {
+        self.list_type
+    }
+}
+
+impl UtfCodepointListTypeId {
+    pub(in crate::plan::execution) fn new(list_type: ListTypeId) -> Self {
+        Self { list_type }
+    }
+
+    pub(crate) fn list_type(self) -> ListTypeId {
+        self.list_type
+    }
+}
+
+impl FloatListTypeId {
+    pub(in crate::plan::execution) fn new(list_type: ListTypeId) -> Self {
+        Self { list_type }
+    }
+
+    pub(crate) fn list_type(self) -> ListTypeId {
+        self.list_type
+    }
+}
+
+impl BoolListTypeId {
+    pub(in crate::plan::execution) fn new(list_type: ListTypeId) -> Self {
+        Self { list_type }
+    }
+
+    pub(crate) fn list_type(self) -> ListTypeId {
+        self.list_type
+    }
+}
+
+impl NilListTypeId {
+    pub(in crate::plan::execution) fn new(list_type: ListTypeId) -> Self {
+        Self { list_type }
+    }
+
+    pub(crate) fn list_type(self) -> ListTypeId {
+        self.list_type
     }
 }
 
 impl ParameterListTypeId {
-    pub(super) fn new(list_type: ListTypeId, item: plan::TypeParameterId) -> Self {
+    pub(in crate::plan::execution) fn new(
+        list_type: ListTypeId,
+        item: plan::TypeParameterId,
+    ) -> Self {
         Self { list_type, item }
+    }
+
+    pub(crate) fn list_type(self) -> ListTypeId {
+        self.list_type
     }
 
     pub(crate) fn item(self) -> plan::TypeParameterId {
@@ -197,90 +202,29 @@ impl ParameterListTypeId {
     }
 }
 
-impl CustomConstructorId {
-    pub(super) fn new(type_id: CustomTypeId, index: usize) -> Self {
-        Self { type_id, index }
-    }
-
-    pub(crate) fn type_id(self) -> CustomTypeId {
-        self.type_id
-    }
-
-    pub(crate) fn index(self) -> usize {
-        self.index
-    }
-}
-
-impl FunctionType {
-    pub(crate) fn new(arguments: Vec<ValueType>, return_: ValueType) -> Self {
+impl TupleListTypeId {
+    pub(in crate::plan::execution) fn new(list_type: ListTypeId, item_index: usize) -> Self {
         Self {
-            arguments,
-            return_: Box::new(return_),
+            list_type,
+            item_type: TupleItemTypeId(item_index),
         }
     }
 
-    pub(crate) fn return_(&self) -> &ValueType {
-        &self.return_
-    }
-
-    pub(crate) fn argument_types(&self) -> &[ValueType] {
-        &self.arguments
-    }
-}
-
-impl CustomFunctionType {
-    pub(in crate::plan::execution) fn from_shapes(
-        type_: FunctionType,
-        arguments: Vec<super::ValueShapeId>,
-        return_: super::CustomValueShape,
-    ) -> Self {
-        Self {
-            type_,
-            arguments: arguments.into_boxed_slice(),
-            return_,
-        }
-    }
-}
-
-impl GenericFunctionType {
-    pub(in crate::plan::execution) fn from_shapes(
-        type_: FunctionType,
-        shape: super::FunctionShape,
-    ) -> Self {
-        Self { type_, shape }
-    }
-}
-
-impl FunctionFunctionType {
-    pub(in crate::plan::execution) fn from_shapes(
-        type_: FunctionType,
-        arguments: Vec<super::ValueShapeId>,
-        return_: super::FunctionShape,
-    ) -> Self {
-        Self {
-            type_,
-            arguments: arguments.into_boxed_slice(),
-            return_,
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn argument_shapes(&self) -> &[super::ValueShapeId] {
-        &self.arguments
-    }
-
-    #[cfg(test)]
-    pub(crate) fn return_shape(&self) -> &super::FunctionShape {
-        &self.return_
+    pub(crate) fn list_type(self) -> ListTypeId {
+        self.list_type
     }
 }
 
 impl ListListTypeId {
-    pub(super) fn new(list_type: ListTypeId, item_type: ListTypeId) -> Self {
+    pub(in crate::plan::execution) fn new(list_type: ListTypeId, item_type: ListTypeId) -> Self {
         Self {
             list_type,
             item_type,
         }
+    }
+
+    pub(crate) fn list_type(self) -> ListTypeId {
+        self.list_type
     }
 
     #[cfg(test)]
@@ -290,11 +234,18 @@ impl ListListTypeId {
 }
 
 impl ParameterListListTypeId {
-    pub(super) fn new(list_type: ListTypeId, item_type: ParameterListTypeId) -> Self {
+    pub(in crate::plan::execution) fn new(
+        list_type: ListTypeId,
+        item_type: ParameterListTypeId,
+    ) -> Self {
         Self {
             list_type,
             item_type,
         }
+    }
+
+    pub(crate) fn list_type(self) -> ListTypeId {
+        self.list_type
     }
 
     pub(crate) fn item_type(self) -> ParameterListTypeId {
@@ -302,30 +253,29 @@ impl ParameterListListTypeId {
     }
 }
 
-impl TupleListTypeId {
-    pub(super) fn new(list_type: ListTypeId, item_index: usize) -> Self {
-        Self {
-            list_type,
-            item_type: TupleItemTypeId(item_index),
-        }
-    }
-}
-
 impl FunctionListTypeId {
-    pub(super) fn new(list_type: ListTypeId, item_index: usize) -> Self {
+    pub(in crate::plan::execution) fn new(list_type: ListTypeId, item_index: usize) -> Self {
         Self {
             list_type,
             item_type: FunctionItemTypeId(item_index),
         }
     }
+
+    pub(crate) fn list_type(self) -> ListTypeId {
+        self.list_type
+    }
 }
 
 impl CustomListTypeId {
-    pub(super) fn new(list_type: ListTypeId, item_type: CustomTypeId) -> Self {
+    pub(in crate::plan::execution) fn new(list_type: ListTypeId, item_type: CustomTypeId) -> Self {
         Self {
             list_type,
             item_type,
         }
+    }
+
+    pub(crate) fn list_type(self) -> ListTypeId {
+        self.list_type
     }
 
     pub(crate) fn item_type(self) -> CustomTypeId {
@@ -334,7 +284,7 @@ impl CustomListTypeId {
 }
 
 impl ListTypeTable {
-    pub(super) fn from_parts(
+    pub(in crate::plan::execution) fn from_parts(
         types: Vec<ListStorageTypeId>,
         tuple_items: Vec<Vec<ValueType>>,
         function_items: Vec<FunctionType>,
@@ -347,7 +297,9 @@ impl ListTypeTable {
     }
 
     #[cfg(test)]
-    pub(super) fn entries(&self) -> impl Iterator<Item = (ListTypeId, ListStorageTypeId)> + '_ {
+    pub(in crate::plan::execution) fn entries(
+        &self,
+    ) -> impl Iterator<Item = (ListTypeId, ListStorageTypeId)> + '_ {
         self.types
             .iter()
             .copied()
@@ -366,7 +318,7 @@ impl ListTypeTable {
     pub(crate) fn value_type(
         &self,
         value: &ValueType,
-        custom_types: &super::custom_type::CustomTypeTable,
+        custom_types: &CustomTypeTable,
     ) -> plan::ValueType {
         match value {
             ValueType::Parameter(parameter) => plan::ValueType::Parameter(*parameter),
@@ -394,7 +346,7 @@ impl ListTypeTable {
     pub(crate) fn function_type(
         &self,
         type_: &FunctionType,
-        custom_types: &super::custom_type::CustomTypeTable,
+        custom_types: &CustomTypeTable,
     ) -> plan::FunctionType {
         plan::FunctionType::new(
             type_
@@ -409,7 +361,7 @@ impl ListTypeTable {
     pub(crate) fn list_value_type(
         &self,
         id: ListTypeId,
-        custom_types: &super::custom_type::CustomTypeTable,
+        custom_types: &CustomTypeTable,
     ) -> plan::ValueType {
         plan::ValueType::List(Box::new(self.item_value_type(id, custom_types)))
     }
@@ -417,7 +369,7 @@ impl ListTypeTable {
     pub(crate) fn item_value_type(
         &self,
         id: ListTypeId,
-        custom_types: &super::custom_type::CustomTypeTable,
+        custom_types: &CustomTypeTable,
     ) -> plan::ValueType {
         match self.storage_type(id) {
             ListStorageTypeId::Parameter(id) => plan::ValueType::Parameter(id.item()),
@@ -449,7 +401,7 @@ impl ListTypeTable {
     pub(crate) fn tuple_item_type(
         &self,
         id: TupleListTypeId,
-        custom_types: &super::custom_type::CustomTypeTable,
+        custom_types: &CustomTypeTable,
     ) -> Vec<plan::ValueType> {
         self.tuple_items[id.item_type.0]
             .iter()
@@ -460,7 +412,7 @@ impl ListTypeTable {
     pub(crate) fn nested_list_item_type(
         &self,
         id: ListListTypeId,
-        custom_types: &super::custom_type::CustomTypeTable,
+        custom_types: &CustomTypeTable,
     ) -> plan::ValueType {
         self.item_value_type(id.item_type, custom_types)
     }
@@ -468,7 +420,7 @@ impl ListTypeTable {
     pub(crate) fn function_item_type(
         &self,
         id: FunctionListTypeId,
-        custom_types: &super::custom_type::CustomTypeTable,
+        custom_types: &CustomTypeTable,
     ) -> plan::FunctionType {
         self.function_type(&self.function_items[id.item_type.0], custom_types)
     }
