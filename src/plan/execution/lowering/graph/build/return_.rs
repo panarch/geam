@@ -60,7 +60,7 @@ pub(in crate::plan::execution::lowering::graph) fn build_never_function_graph<Mo
         &mut DraftGraph,
         &mut super::LoweringContext,
     ) -> Representability<()>,
-) -> Representability<DraftGraphBuilder<DraftNeverReturn, execution::NeverFunctionId>> {
+) -> Representability<DraftGraphBuilder<DraftNeverReturn, execution::function::NeverFunctionId>> {
     let (mut graph, cursor) = graph_builder(template, context);
     lower_prefix(template.steps(), cursor, &mut graph, context)
         .and_then(|flow| {
@@ -388,7 +388,7 @@ where
 fn lower_never_return_body<ModuleExpression>(
     body: &module::ReturnBody<ModuleExpression, module::FunctionInstantiation>,
     cursor: DraftCursor,
-    graph: &mut DraftGraphBuilder<DraftNeverReturn, execution::NeverFunctionId>,
+    graph: &mut DraftGraphBuilder<DraftNeverReturn, execution::function::NeverFunctionId>,
     context: &mut super::LoweringContext,
     lower_expression: impl Copy
     + Fn(
@@ -506,7 +506,7 @@ fn lower_never_switch<Pattern, Subject, ModuleExpression>(
         module::ReturnBody<ModuleExpression, module::FunctionInstantiation>,
     )],
     fallback: &module::ReturnBody<ModuleExpression, module::FunctionInstantiation>,
-    graph: &mut DraftGraphBuilder<DraftNeverReturn, execution::NeverFunctionId>,
+    graph: &mut DraftGraphBuilder<DraftNeverReturn, execution::function::NeverFunctionId>,
     context: &mut super::LoweringContext,
     finish: impl FnOnce(
         DraftCursor,
@@ -582,9 +582,10 @@ mod tests {
     use super::super::{
         DraftCursor, DraftFlow, DraftGraph, DraftGraphBuilder, DraftInt, DraftNeverReturn,
     };
+    use crate::plan::execution::function::IntFunctionId as ExecutionIntFunctionId;
+    use crate::plan::execution::graph::ParamLocal;
     use crate::plan::execution::graph::{BlockId, SourceStopKind, Terminator};
     use crate::plan::execution::lowering::specialization::Representability;
-    use crate::plan::execution::{IntFunctionId as ExecutionIntFunctionId, ParamLocal};
     use crate::plan::{
         BoolExpr, Expr, FloatExpr, FunctionInstantiation, FunctionTemplate, FunctionTemplateId,
         GenericExpr, GenericLocal, GenericLocalId, IntExpr, IntFunctionId, IntLocalId, PanicExpr,
@@ -723,7 +724,7 @@ mod tests {
                 .block(lowered.body.block_graph().entry())
                 .params()[0]
                 .local(),
-            &ParamLocal::Int(crate::plan::execution::IntLocalId(0)),
+            &ParamLocal::Int(crate::plan::execution::graph::IntLocalId(0)),
         );
         assert_eq!(
             lowered
@@ -732,7 +733,7 @@ mod tests {
                 .block(lowered.body.block_graph().entry())
                 .params()[1]
                 .local(),
-            &ParamLocal::Int(crate::plan::execution::IntLocalId(1)),
+            &ParamLocal::Int(crate::plan::execution::graph::IntLocalId(1)),
         );
     }
 
@@ -811,7 +812,7 @@ mod tests {
         );
         let (mut graph, cursor) = DraftGraphBuilder::<
             DraftNeverReturn,
-            crate::plan::execution::NeverFunctionId,
+            crate::plan::execution::function::NeverFunctionId,
         >::new(Vec::new(), Vec::new());
         assert_eq!(
             super::lower_never_return_body(
@@ -839,7 +840,7 @@ mod tests {
         );
         let (mut graph, cursor) = DraftGraphBuilder::<
             DraftNeverReturn,
-            crate::plan::execution::NeverFunctionId,
+            crate::plan::execution::function::NeverFunctionId,
         >::new(Vec::new(), Vec::new());
         assert_eq!(
             super::lower_never_return_body(
@@ -874,7 +875,7 @@ mod tests {
         );
         let (mut graph, cursor) = DraftGraphBuilder::<
             DraftNeverReturn,
-            crate::plan::execution::NeverFunctionId,
+            crate::plan::execution::function::NeverFunctionId,
         >::new(Vec::new(), Vec::new());
         assert_eq!(
             super::lower_never_return_body(
@@ -913,7 +914,7 @@ mod tests {
         );
         let (mut graph, cursor) = DraftGraphBuilder::<
             DraftNeverReturn,
-            crate::plan::execution::NeverFunctionId,
+            crate::plan::execution::function::NeverFunctionId,
         >::new(Vec::new(), Vec::new());
         assert_eq!(
             super::lower_never_return_body(
@@ -938,7 +939,7 @@ mod tests {
         );
         let (mut graph, cursor) = DraftGraphBuilder::<
             DraftNeverReturn,
-            crate::plan::execution::NeverFunctionId,
+            crate::plan::execution::function::NeverFunctionId,
         >::new(Vec::new(), Vec::new());
 
         assert_eq!(
@@ -987,7 +988,7 @@ mod tests {
                 crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
             let (mut graph, cursor) = DraftGraphBuilder::<
                 DraftNeverReturn,
-                crate::plan::execution::NeverFunctionId,
+                crate::plan::execution::function::NeverFunctionId,
             >::new(Vec::new(), Vec::new());
             assert_eq!(
                 super::lower_never_return_body(
@@ -1033,7 +1034,7 @@ mod tests {
             crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
         let (mut graph, cursor) = DraftGraphBuilder::<
             DraftNeverReturn,
-            crate::plan::execution::NeverFunctionId,
+            crate::plan::execution::function::NeverFunctionId,
         >::new(Vec::new(), Vec::new());
         assert_eq!(
             super::lower_never_return_body(
@@ -1100,7 +1101,7 @@ mod tests {
             crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
         let (mut graph, cursor) = DraftGraphBuilder::<
             DraftNeverReturn,
-            crate::plan::execution::NeverFunctionId,
+            crate::plan::execution::function::NeverFunctionId,
         >::new(Vec::new(), Vec::new());
         assert_eq!(
             super::lower_never_return_body(
@@ -1125,7 +1126,7 @@ mod tests {
     #[should_panic(expected = "fixture should contain a Bool branch")]
     fn bool_branch_targets_rejects_the_wrong_fixture_shape() {
         bool_branch_targets(&Terminator::Exit(
-            crate::plan::execution::BlockGraphExitId::new(0),
+            crate::plan::execution::graph::BlockGraphExitId::new(0),
         ));
     }
 
@@ -1134,7 +1135,7 @@ mod tests {
     fn switch_targets_rejects_the_wrong_fixture_shape() {
         switch_targets(
             ExpectedSwitch::Int,
-            &Terminator::Exit(crate::plan::execution::BlockGraphExitId::new(0)),
+            &Terminator::Exit(crate::plan::execution::graph::BlockGraphExitId::new(0)),
         );
     }
 
@@ -1142,7 +1143,7 @@ mod tests {
     #[should_panic(expected = "fixture should contain a source stop")]
     fn source_stop_kind_rejects_the_wrong_fixture_shape() {
         source_stop_kind(&Terminator::Exit(
-            crate::plan::execution::BlockGraphExitId::new(0),
+            crate::plan::execution::graph::BlockGraphExitId::new(0),
         ));
     }
 

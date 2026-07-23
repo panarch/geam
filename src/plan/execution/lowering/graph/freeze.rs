@@ -15,12 +15,12 @@ use value::BlockValues;
 pub(in crate::plan::execution::lowering) use value::FreezeGraphValue;
 
 struct BlockLayout {
-    params: Vec<execution::ParamSlot>,
+    params: Vec<execution::graph::ParamSlot>,
     values: BlockValues,
 }
 
 struct FrozenGraph<Return, TailCall> {
-    graph: execution::BlockGraph,
+    graph: execution::graph::BlockGraph,
     exits: Vec<FrozenGraphExit<Return, TailCall>>,
 }
 
@@ -28,14 +28,14 @@ enum FrozenGraphExit<Return, TailCall> {
     Return(Return),
     TailCall {
         function: TailCall,
-        args: Box<[execution::ParamLocal]>,
+        args: Box<[execution::graph::ParamLocal]>,
     },
 }
 
 pub(super) fn freeze<Return, TailCall>(
     graph: DraftGraphBuilder<Return, TailCall>,
     context: &mut super::super::LoweringContext,
-) -> LoweredFunctionGraph<execution::FunctionBody<Return::Frozen, TailCall>>
+) -> LoweredFunctionGraph<execution::function::FunctionBody<Return::Frozen, TailCall>>
 where
     Return: DraftGraphValue + FreezeGraphValue,
     TailCall: Clone,
@@ -45,20 +45,20 @@ where
             .exits
             .into_iter()
             .map(|exit| match exit {
-                FrozenGraphExit::Return(value) => execution::FunctionExit::Return(value),
+                FrozenGraphExit::Return(value) => execution::function::FunctionExit::Return(value),
                 FrozenGraphExit::TailCall { function, args } => {
-                    execution::FunctionExit::TailCall { function, args }
+                    execution::function::FunctionExit::TailCall { function, args }
                 }
             })
             .collect();
-        execution::FunctionBody::from_parts(frozen.graph, exits)
+        execution::function::FunctionBody::from_parts(frozen.graph, exits)
     })
 }
 
 pub(super) fn freeze_constant<Return>(
     graph: DraftGraphBuilder<Return, Infallible>,
     context: &mut super::super::LoweringContext,
-) -> execution::ConstantProgram<Return::Frozen>
+) -> execution::constant::ConstantProgram<Return::Frozen>
 where
     Return: DraftGraphValue + FreezeGraphValue,
 {
@@ -71,7 +71,7 @@ where
             FrozenGraphExit::TailCall { function, .. } => match function {},
         })
         .collect();
-    execution::ConstantProgram::from_parts(frozen.graph, returns)
+    execution::constant::ConstantProgram::from_parts(frozen.graph, returns)
 }
 
 fn freeze_graph<Return, TailCall>(
@@ -138,7 +138,7 @@ where
     LoweredFunctionGraph {
         parameter_count,
         body: FrozenGraph {
-            graph: execution::BlockGraph::from_parts(block_ids[&entry], blocks),
+            graph: execution::graph::BlockGraph::from_parts(block_ids[&entry], blocks),
             exits,
         },
     }

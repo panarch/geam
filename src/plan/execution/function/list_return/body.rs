@@ -5,7 +5,7 @@ use super::{
     ParameterListFunctionId, ParameterListListFunctionId, StringListFunctionId,
     TupleListFunctionId, UtfCodepointListFunctionId,
 };
-use crate::plan::execution::{
+use crate::plan::execution::graph::{
     BitArrayListLocalId, BoolListLocalId, CustomListLocalId, FloatListLocalId, FunctionListLocalId,
     IntListLocalId, ListListLocalId, NilListLocalId, ParameterListListLocalId,
     ParameterListLocalId, StringListLocalId, TupleListLocalId, UtfCodepointListLocalId,

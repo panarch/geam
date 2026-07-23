@@ -2,7 +2,7 @@ use super::{ConstantId, ConstantProgram};
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::graph::ExplainLocal;
 use crate::plan::execution::graph::FunctionLocal;
-use crate::plan::execution::{
+use crate::plan::execution::graph::{
     BitArrayListLocalId, BitArrayLocalId, BoolListLocalId, BoolLocalId, CustomListLocalId,
     CustomLocal, FloatListLocalId, FloatLocalId, FunctionListLocalId, IntListLocalId, IntLocalId,
     ListListLocalId, NilListLocalId, NilLocalId, ParameterListListLocalId, ParameterListLocalId,
@@ -361,10 +361,11 @@ pub fn main() { #(one, enabled) }
 #[cfg(test)]
 mod tests {
     use super::ConstantId;
-    use crate::plan::execution::graph::{IntInstruction, SourceStop, SourceStopKind};
-    use crate::plan::execution::{
-        BlockId, ExecutionPlan, Instruction, InstructionKind, IntLocalId, ParamLocal, Terminator,
+    use crate::plan::execution::ExecutionPlan;
+    use crate::plan::execution::graph::{
+        BlockId, Instruction, InstructionKind, IntLocalId, ParamLocal, Terminator,
     };
+    use crate::plan::execution::graph::{IntInstruction, SourceStop, SourceStopKind};
     use num_bigint::BigInt;
     #[test]
     fn constant_entry_is_a_reusable_zero_argument_typed_graph_program() {
@@ -385,7 +386,7 @@ mod tests {
         assert_eq!(int_literal(instruction), &1.into());
         assert_eq!(returned_int(program, block.terminator()), IntLocalId(0));
 
-        let main = plan.int_function(crate::plan::execution::IntFunctionId(0));
+        let main = plan.int_function(crate::plan::execution::function::IntFunctionId(0));
         let block = main.body().block_graph().block(BlockId::new(0));
         assert_eq!(block.instructions().len(), 3);
         for (index, instruction) in block.instructions()[..2].iter().enumerate() {
@@ -400,7 +401,7 @@ mod tests {
     fn int_literal_guard_rejects_other_instructions() {
         let plan = execution_plan("const one = 1 pub fn main() { one }");
         let graph = plan
-            .int_function(crate::plan::execution::IntFunctionId(0))
+            .int_function(crate::plan::execution::function::IntFunctionId(0))
             .body()
             .block_graph();
         int_literal(&graph.block(graph.entry()).instructions()[0]);

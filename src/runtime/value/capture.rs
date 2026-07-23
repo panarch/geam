@@ -7,7 +7,7 @@ use super::{
     ListFunctionValue, ListValue, NeverFunctionValue, NilFunctionValue, StringFunctionValue,
     TupleFunctionValue, UtfCodepointFunctionValue, Value,
 };
-use crate::plan::execution::{
+use crate::plan::execution::graph::{
     BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
     BoolListLocalId, BoolLocalId, CustomFunctionLocalId, CustomListLocalId, CustomLocal,
     FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionFunctionLocalId,
@@ -338,15 +338,17 @@ impl CaptureValue {
 #[cfg(test)]
 mod tests {
     use super::{CaptureListValue, CaptureValue, CaptureValueKind};
-    use crate::plan::execution::{
-        BitArrayFunctionId, BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
-        BoolFunctionId, BoolFunctionLocalId, BoolLocalId, FloatFunctionId, FloatFunctionLocalId,
-        FloatLocalId, FunctionFunctionId, FunctionFunctionLocalId, IntFunctionFunctionId,
-        IntFunctionId, IntFunctionLocalId, IntListFunctionLocalId, IntListLocalId, IntLocalId,
-        ListFunctionId, ListFunctionLocal, NilFunctionId, NilFunctionLocalId, NilLocalId,
-        StringFunctionId, StringFunctionLocalId, StringLocalId, TupleFunctionId,
-        TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionId, UtfCodepointFunctionLocalId,
-        UtfCodepointListLocalId, UtfCodepointLocalId,
+    use crate::plan::execution::function::{
+        BitArrayFunctionId, BoolFunctionId, FloatFunctionId, FunctionFunctionId,
+        IntFunctionFunctionId, IntFunctionId, ListFunctionId, NilFunctionId, StringFunctionId,
+        TupleFunctionId, UtfCodepointFunctionId,
+    };
+    use crate::plan::execution::graph::{
+        BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
+        BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
+        IntFunctionLocalId, IntListFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionLocal,
+        NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId,
+        TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
     };
     use crate::plan::{FunctionType, ValueType};
     use crate::runtime::{
@@ -361,9 +363,9 @@ mod tests {
         let list_function_id = ListFunctionId::Int(list_plan.int_list_function_id(0));
         let list_type_id = list_plan.int_list_function_id(0).type_id();
         let module_int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
-        let execution_int_function_type = crate::plan::execution::FunctionType::new(
+        let execution_int_function_type = crate::plan::execution::type_::FunctionType::new(
             Vec::new(),
-            crate::plan::execution::ValueType::Int,
+            crate::plan::execution::type_::ValueType::Int,
         );
         let int_function = IntFunctionValue::new(
             IntFunctionId(0),

@@ -1,20 +1,13 @@
 use crate::plan::execution;
+use crate::plan::execution::function::FunctionTables;
 use crate::plan::execution::function::{
-    ExecutableFunction, FunctionFunctionTables, ListFunctionTables, ValueFunctionTables,
-};
-use crate::plan::execution::lowering::SpecializationOutcome;
-use crate::plan::execution::lowering::specialization::{
-    FunctionRepresentation, Representability, SpecializationKey, SpecializedFunctionShape,
-    SpecializedValueShape, StoredValueShape,
-};
-use crate::plan::execution::{
     BitArrayFunctionBody, BitArrayFunctionFunctionBody, BitArrayFunctionFunctionId,
     BitArrayFunctionId, BitArrayListFunctionBody, BitArrayListFunctionId, BoolFunctionBody,
     BoolFunctionFunctionBody, BoolFunctionFunctionId, BoolFunctionId, BoolListFunctionBody,
     BoolListFunctionId, CustomFunctionBody, CustomFunctionFunctionBody, CustomListFunctionBody,
     CustomListFunctionId, FloatFunctionBody, FloatFunctionFunctionBody, FloatFunctionFunctionId,
     FloatFunctionId, FloatListFunctionBody, FloatListFunctionId, FunctionFunctionFunctionBody,
-    FunctionFunctionId, FunctionListFunctionBody, FunctionListFunctionId, FunctionTables,
+    FunctionFunctionId, FunctionListFunctionBody, FunctionListFunctionId,
     GenericFunctionFunctionBody, IntFunctionBody, IntFunctionFunctionBody, IntFunctionFunctionId,
     IntFunctionId, IntListFunctionBody, IntListFunctionId, ListFunctionFunctionBody,
     ListFunctionFunctionId, ListFunctionId, ListListFunctionBody, ListListFunctionId,
@@ -27,6 +20,14 @@ use crate::plan::execution::{
     TupleListFunctionBody, TupleListFunctionId, UtfCodepointFunctionBody,
     UtfCodepointFunctionFunctionBody, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
     UtfCodepointListFunctionBody, UtfCodepointListFunctionId,
+};
+use crate::plan::execution::function::{
+    ExecutableFunction, FunctionFunctionTables, ListFunctionTables, ValueFunctionTables,
+};
+use crate::plan::execution::lowering::SpecializationOutcome;
+use crate::plan::execution::lowering::specialization::{
+    FunctionRepresentation, Representability, SpecializationKey, SpecializedFunctionShape,
+    SpecializedValueShape, StoredValueShape,
 };
 use std::collections::HashSet;
 
@@ -458,7 +459,7 @@ pub(in crate::plan::execution::lowering) fn function_id(
             RuntimeFunctionId::UtfCodepoint(UtfCodepointFunctionId(index))
         }
         StoredValueShape::Custom(shape) => RuntimeFunctionId::Custom(
-            execution::CustomFunctionId::new(index, types.custom_value_shape(shape)),
+            execution::function::CustomFunctionId::new(index, types.custom_value_shape(shape)),
         ),
         StoredValueShape::Bool => RuntimeFunctionId::Bool(BoolFunctionId(index)),
         StoredValueShape::Nil => RuntimeFunctionId::Nil(NilFunctionId(index)),
@@ -635,13 +636,15 @@ pub(in crate::plan::execution::lowering) fn function_function_id(
 ) -> FunctionFunctionId {
     let return_ = match function.representation(representations) {
         FunctionRepresentation::Symbolic => {
-            return FunctionFunctionId::Generic(execution::GenericFunctionFunctionId::new(
-                index,
-                types.generic_function_type(function),
-            ));
+            return FunctionFunctionId::Generic(
+                execution::function::GenericFunctionFunctionId::new(
+                    index,
+                    types.generic_function_type(function),
+                ),
+            );
         }
         FunctionRepresentation::Never(_) => {
-            return FunctionFunctionId::Never(execution::NeverFunctionFunctionId::new(
+            return FunctionFunctionId::Never(execution::function::NeverFunctionFunctionId::new(
                 index,
                 types.generic_function_type(function),
             ));
@@ -660,7 +663,7 @@ pub(in crate::plan::execution::lowering) fn function_function_id(
             FunctionFunctionId::UtfCodepoint(UtfCodepointFunctionFunctionId(index))
         }
         StoredValueShape::Custom(return_) => {
-            FunctionFunctionId::Custom(execution::CustomFunctionFunctionId::new(
+            FunctionFunctionId::Custom(execution::function::CustomFunctionFunctionId::new(
                 index,
                 types.custom_function_type(function.arguments(), &return_),
             ))
@@ -672,7 +675,7 @@ pub(in crate::plan::execution::lowering) fn function_function_id(
             FunctionFunctionId::List(list_function_function_id(function, &item, index, types))
         }
         StoredValueShape::Function(return_) => {
-            FunctionFunctionId::Function(execution::FunctionFunctionFunctionId::new(
+            FunctionFunctionId::Function(execution::function::FunctionFunctionFunctionId::new(
                 index,
                 types.function_function_type(function.arguments(), &return_),
             ))
@@ -690,73 +693,73 @@ pub(in crate::plan::execution::lowering) fn list_function_function_id(
 
     match item {
         SpecializedValueShape::Parameter(parameter) => ListFunctionFunctionId::Parameter {
-            id: execution::ParameterListFunctionFunctionId(index),
+            id: execution::function::ParameterListFunctionFunctionId(index),
             type_,
             list_type: types.parameter_list_type(*parameter),
         },
         SpecializedValueShape::Int => ListFunctionFunctionId::Int {
-            id: execution::IntListFunctionFunctionId(index),
+            id: execution::function::IntListFunctionFunctionId(index),
             type_,
             list_type: types.int_list_type(),
         },
         SpecializedValueShape::String => ListFunctionFunctionId::String {
-            id: execution::StringListFunctionFunctionId(index),
+            id: execution::function::StringListFunctionFunctionId(index),
             type_,
             list_type: types.string_list_type(),
         },
         SpecializedValueShape::BitArray => ListFunctionFunctionId::BitArray {
-            id: execution::BitArrayListFunctionFunctionId(index),
+            id: execution::function::BitArrayListFunctionFunctionId(index),
             type_,
             list_type: types.bit_array_list_type(),
         },
         SpecializedValueShape::UtfCodepoint => ListFunctionFunctionId::UtfCodepoint {
-            id: execution::UtfCodepointListFunctionFunctionId(index),
+            id: execution::function::UtfCodepointListFunctionFunctionId(index),
             type_,
             list_type: types.utf_codepoint_list_type(),
         },
         SpecializedValueShape::Custom(item) => ListFunctionFunctionId::Custom {
-            id: execution::CustomListFunctionFunctionId(index),
+            id: execution::function::CustomListFunctionFunctionId(index),
             type_,
             list_type: types.custom_list_type(item),
         },
         SpecializedValueShape::Float => ListFunctionFunctionId::Float {
-            id: execution::FloatListFunctionFunctionId(index),
+            id: execution::function::FloatListFunctionFunctionId(index),
             type_,
             list_type: types.float_list_type(),
         },
         SpecializedValueShape::Bool => ListFunctionFunctionId::Bool {
-            id: execution::BoolListFunctionFunctionId(index),
+            id: execution::function::BoolListFunctionFunctionId(index),
             type_,
             list_type: types.bool_list_type(),
         },
         SpecializedValueShape::Nil => ListFunctionFunctionId::Nil {
-            id: execution::NilListFunctionFunctionId(index),
+            id: execution::function::NilListFunctionFunctionId(index),
             type_,
             list_type: types.nil_list_type(),
         },
         SpecializedValueShape::Tuple(item) => ListFunctionFunctionId::Tuple {
-            id: execution::TupleListFunctionFunctionId(index),
+            id: execution::function::TupleListFunctionFunctionId(index),
             type_,
             list_type: types.tuple_list_type(item),
         },
         SpecializedValueShape::List(item) => match types.list_list_type(item) {
             super::super::value_type::NestedListTypeId::Parameter(list_type) => {
                 ListFunctionFunctionId::ParameterList {
-                    id: execution::ParameterListListFunctionFunctionId(index),
+                    id: execution::function::ParameterListListFunctionFunctionId(index),
                     type_,
                     list_type,
                 }
             }
             super::super::value_type::NestedListTypeId::Stored(list_type) => {
                 ListFunctionFunctionId::List {
-                    id: execution::ListListFunctionFunctionId(index),
+                    id: execution::function::ListListFunctionFunctionId(index),
                     type_,
                     list_type,
                 }
             }
         },
         SpecializedValueShape::Function(item) => ListFunctionFunctionId::Function {
-            id: execution::FunctionListFunctionFunctionId(index),
+            id: execution::function::FunctionListFunctionFunctionId(index),
             type_,
             list_type: types.function_list_type(item),
         },

@@ -5,10 +5,11 @@ use super::{
 };
 use crate::plan::execution::explain::ExplainContext;
 use crate::plan::execution::function::{ExplainFunctionBody, FunctionEntry};
-use crate::plan::execution::{
-    BitArrayLocalId, BoolLocalId, CustomLocal, CustomValueShape, FloatLocalId, IntLocalId,
-    NilLocalId, StringLocalId, TupleLocalId, UtfCodepointLocalId,
+use crate::plan::execution::graph::{
+    BitArrayLocalId, BoolLocalId, CustomLocal, FloatLocalId, IntLocalId, NilLocalId, StringLocalId,
+    TupleLocalId, UtfCodepointLocalId,
 };
+use crate::plan::execution::type_::CustomValueShape;
 use std::convert::Infallible;
 
 pub(crate) type IntFunctionBody = FunctionBody<IntLocalId, IntFunctionId>;

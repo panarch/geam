@@ -4,10 +4,11 @@ use std::collections::HashMap;
 
 use super::bit_array;
 use super::environment::BlockEnvironment;
-use crate::plan::execution::{
+use crate::plan::execution::ExecutionPlan;
+use crate::plan::execution::graph::{
     BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
-    BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, ExecutionPlan,
-    MatchIntBindingId, MatchPattern, MatchPatternBinding, MatchPatternListTail,
+    BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, MatchIntBindingId,
+    MatchPattern, MatchPatternBinding, MatchPatternListTail,
 };
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedValue};
@@ -226,9 +227,9 @@ fn match_bit_array(
                     return false;
                 };
                 let width = match bit_size {
-                    16 => crate::plan::execution::FloatBitSize::Sixteen,
-                    32 => crate::plan::execution::FloatBitSize::ThirtyTwo,
-                    64 => crate::plan::execution::FloatBitSize::SixtyFour,
+                    16 => crate::plan::execution::graph::FloatBitSize::Sixteen,
+                    32 => crate::plan::execution::graph::FloatBitSize::ThirtyTwo,
+                    64 => crate::plan::execution::graph::FloatBitSize::SixtyFour,
                     _ => return false,
                 };
                 let Some(bits) = bit_array::take_bits(subject.bits(), &mut cursor, bit_size) else {
@@ -436,7 +437,9 @@ mod tests {
     use super::super::environment::{BlockEnvironment, RetainedValues};
     use super::{MatchPattern, match_pattern};
     use crate::plan::ValueType;
-    use crate::plan::execution::{ExecutionPlan, RuntimeFunctionId, Terminator};
+    use crate::plan::execution::ExecutionPlan;
+    use crate::plan::execution::function::RuntimeFunctionId;
+    use crate::plan::execution::graph::Terminator;
     use crate::runtime::evaluated::{EvaluatedCustomValue, EvaluatedValue};
     use crate::runtime::state::{CustomListAllocation, ListValueId, RuntimeState};
     use crate::runtime::{ExecutionError, InvariantError, Value};
@@ -926,7 +929,7 @@ pub fn main() {
         state: &mut RuntimeState,
         pattern: &MatchPattern,
         subject: EvaluatedValue,
-        constructor: crate::plan::execution::CustomConstructorId,
+        constructor: crate::plan::execution::type_::CustomConstructorId,
     ) {
         let descriptor = plan.custom_constructor(constructor);
         let environment = BlockEnvironment::from_retained(RetainedValues::empty());
@@ -944,7 +947,7 @@ pub fn main() {
 
     fn custom_pattern_constructor(
         pattern: &MatchPattern,
-    ) -> crate::plan::execution::CustomConstructorId {
+    ) -> crate::plan::execution::type_::CustomConstructorId {
         match pattern {
             MatchPattern::Custom { constructor, .. } => *constructor,
             _ => panic!("fixture pattern should be a custom constructor"),
@@ -954,8 +957,8 @@ pub fn main() {
     fn nested_custom_constructors(
         pattern: &MatchPattern,
     ) -> (
-        crate::plan::execution::CustomConstructorId,
-        crate::plan::execution::CustomConstructorId,
+        crate::plan::execution::type_::CustomConstructorId,
+        crate::plan::execution::type_::CustomConstructorId,
     ) {
         match pattern {
             MatchPattern::Alias { pattern, .. } => match pattern.as_ref() {

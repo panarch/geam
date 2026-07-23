@@ -3,15 +3,18 @@ use super::{
     DraftList, DraftNil, DraftStoredList, DraftString, DraftTuple, DraftUtfCodepoint,
     DraftValueRef,
 };
+use crate::plan::execution::constant::ConstantId;
+use crate::plan::execution::function::{
+    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FunctionFunctionId, IntFunctionId,
+    NilFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
+};
 use crate::plan::execution::graph::FunctionLocal;
 use crate::plan::execution::graph::FunctionTarget;
-use crate::plan::execution::{
-    BitArrayFunctionId, BitArrayListTypeId, BoolFunctionId, BoolListTypeId, ConstantId,
-    CustomConstructorId, CustomFunctionId, CustomListTypeId, Endianness, FloatBitSize,
-    FloatListTypeId, FunctionFunctionId, FunctionListTypeId, IntFunctionId, IntListTypeId,
-    ListListTypeId, NilFunctionId, NilListTypeId, ParameterListListTypeId, ParameterListTypeId,
-    StringEncoding, StringFunctionId, StringListTypeId, TupleFunctionId, TupleListTypeId,
-    UtfCodepointFunctionId, UtfCodepointListTypeId,
+use crate::plan::execution::graph::{Endianness, FloatBitSize, StringEncoding};
+use crate::plan::execution::type_::{
+    BitArrayListTypeId, BoolListTypeId, CustomConstructorId, CustomListTypeId, FloatListTypeId,
+    FunctionListTypeId, IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId,
+    ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
 };
 
 pub(in crate::plan::execution::lowering) enum DraftInstructionKind {
@@ -33,7 +36,7 @@ pub(in crate::plan::execution::lowering) enum DraftInstructionKind {
 
 pub(in crate::plan::execution::lowering) enum DraftIntInstruction {
     Value(num_bigint::BigInt),
-    Constant(ConstantId<crate::plan::execution::IntLocalId>),
+    Constant(ConstantId<crate::plan::execution::graph::IntLocalId>),
     Call {
         function: IntFunctionId,
         args: Vec<DraftValueRef>,
@@ -79,9 +82,9 @@ pub(in crate::plan::execution::lowering) enum DraftIntInstruction {
 
 pub(in crate::plan::execution::lowering) enum DraftFloatInstruction {
     Value(f64),
-    Constant(ConstantId<crate::plan::execution::FloatLocalId>),
+    Constant(ConstantId<crate::plan::execution::graph::FloatLocalId>),
     Call {
-        function: crate::plan::execution::FloatFunctionId,
+        function: crate::plan::execution::function::FloatFunctionId,
         args: Vec<DraftValueRef>,
     },
     FunctionCall {
@@ -120,7 +123,7 @@ pub(in crate::plan::execution::lowering) enum DraftFloatInstruction {
 
 pub(in crate::plan::execution::lowering) enum DraftStringInstruction {
     Value(ecow::EcoString),
-    Constant(ConstantId<crate::plan::execution::StringLocalId>),
+    Constant(ConstantId<crate::plan::execution::graph::StringLocalId>),
     Call {
         function: StringFunctionId,
         args: Vec<DraftValueRef>,
@@ -202,7 +205,7 @@ pub(in crate::plan::execution::lowering) enum DraftBitArraySegment {
 
 pub(in crate::plan::execution::lowering) enum DraftBitArrayInstruction {
     Value(Vec<DraftBitArraySegment>),
-    Constant(ConstantId<crate::plan::execution::BitArrayLocalId>),
+    Constant(ConstantId<crate::plan::execution::graph::BitArrayLocalId>),
     Call {
         function: BitArrayFunctionId,
         args: Vec<DraftValueRef>,
@@ -253,7 +256,7 @@ pub(in crate::plan::execution::lowering) enum DraftCustomInstruction {
         constructor: CustomConstructorId,
         fields: Vec<DraftValueRef>,
     },
-    Constant(ConstantId<crate::plan::execution::CustomLocal>),
+    Constant(ConstantId<crate::plan::execution::graph::CustomLocal>),
     Call {
         function: CustomFunctionId,
         args: Vec<DraftValueRef>,
@@ -278,7 +281,7 @@ pub(in crate::plan::execution::lowering) enum DraftCustomInstruction {
 
 pub(in crate::plan::execution::lowering) enum DraftBoolInstruction {
     Value(bool),
-    Constant(ConstantId<crate::plan::execution::BoolLocalId>),
+    Constant(ConstantId<crate::plan::execution::graph::BoolLocalId>),
     Call {
         function: BoolFunctionId,
         args: Vec<DraftValueRef>,
@@ -356,7 +359,7 @@ pub(in crate::plan::execution::lowering) enum DraftBoolInstruction {
 
 pub(in crate::plan::execution::lowering) enum DraftNilInstruction {
     Value,
-    Constant(ConstantId<crate::plan::execution::NilLocalId>),
+    Constant(ConstantId<crate::plan::execution::graph::NilLocalId>),
     Call {
         function: NilFunctionId,
         args: Vec<DraftValueRef>,
@@ -381,7 +384,7 @@ pub(in crate::plan::execution::lowering) enum DraftNilInstruction {
 
 pub(in crate::plan::execution::lowering) enum DraftTupleInstruction {
     Value(Vec<DraftValueRef>),
-    Constant(ConstantId<crate::plan::execution::TupleLocalId>),
+    Constant(ConstantId<crate::plan::execution::graph::TupleLocalId>),
     Call {
         function: TupleFunctionId,
         args: Vec<DraftValueRef>,
@@ -406,9 +409,9 @@ pub(in crate::plan::execution::lowering) enum DraftTupleInstruction {
 
 pub(in crate::plan::execution::lowering) enum DraftParameterListInstruction {
     Empty,
-    Constant(ConstantId<crate::plan::execution::ParameterListLocalId>),
+    Constant(ConstantId<crate::plan::execution::graph::ParameterListLocalId>),
     Call {
-        function: crate::plan::execution::ParameterListFunctionId,
+        function: crate::plan::execution::function::ParameterListFunctionId,
         args: Vec<DraftValueRef>,
     },
     FunctionCall {
@@ -468,96 +471,96 @@ pub(in crate::plan::execution::lowering) enum DraftListInstruction {
         ParameterListListTypeId,
         DraftTypedListInstruction<
             DraftList,
-            crate::plan::execution::ParameterListListLocalId,
-            crate::plan::execution::ParameterListListFunctionId,
+            crate::plan::execution::graph::ParameterListListLocalId,
+            crate::plan::execution::function::ParameterListListFunctionId,
         >,
     ),
     Int(
         IntListTypeId,
         DraftTypedListInstruction<
             DraftInt,
-            crate::plan::execution::IntListLocalId,
-            crate::plan::execution::IntListFunctionId,
+            crate::plan::execution::graph::IntListLocalId,
+            crate::plan::execution::function::IntListFunctionId,
         >,
     ),
     String(
         StringListTypeId,
         DraftTypedListInstruction<
             DraftString,
-            crate::plan::execution::StringListLocalId,
-            crate::plan::execution::StringListFunctionId,
+            crate::plan::execution::graph::StringListLocalId,
+            crate::plan::execution::function::StringListFunctionId,
         >,
     ),
     BitArray(
         BitArrayListTypeId,
         DraftTypedListInstruction<
             DraftBitArray,
-            crate::plan::execution::BitArrayListLocalId,
-            crate::plan::execution::BitArrayListFunctionId,
+            crate::plan::execution::graph::BitArrayListLocalId,
+            crate::plan::execution::function::BitArrayListFunctionId,
         >,
     ),
     UtfCodepoint(
         UtfCodepointListTypeId,
         DraftTypedListInstruction<
             DraftUtfCodepoint,
-            crate::plan::execution::UtfCodepointListLocalId,
-            crate::plan::execution::UtfCodepointListFunctionId,
+            crate::plan::execution::graph::UtfCodepointListLocalId,
+            crate::plan::execution::function::UtfCodepointListFunctionId,
         >,
     ),
     Custom(
         CustomListTypeId,
         DraftTypedListInstruction<
             DraftCustom,
-            crate::plan::execution::CustomListLocalId,
-            crate::plan::execution::CustomListFunctionId,
+            crate::plan::execution::graph::CustomListLocalId,
+            crate::plan::execution::function::CustomListFunctionId,
         >,
     ),
     Float(
         FloatListTypeId,
         DraftTypedListInstruction<
             DraftFloat,
-            crate::plan::execution::FloatListLocalId,
-            crate::plan::execution::FloatListFunctionId,
+            crate::plan::execution::graph::FloatListLocalId,
+            crate::plan::execution::function::FloatListFunctionId,
         >,
     ),
     Bool(
         BoolListTypeId,
         DraftTypedListInstruction<
             DraftBool,
-            crate::plan::execution::BoolListLocalId,
-            crate::plan::execution::BoolListFunctionId,
+            crate::plan::execution::graph::BoolListLocalId,
+            crate::plan::execution::function::BoolListFunctionId,
         >,
     ),
     Nil(
         NilListTypeId,
         DraftTypedListInstruction<
             DraftNil,
-            crate::plan::execution::NilListLocalId,
-            crate::plan::execution::NilListFunctionId,
+            crate::plan::execution::graph::NilListLocalId,
+            crate::plan::execution::function::NilListFunctionId,
         >,
     ),
     Tuple(
         TupleListTypeId,
         DraftTypedListInstruction<
             DraftTuple,
-            crate::plan::execution::TupleListLocalId,
-            crate::plan::execution::TupleListFunctionId,
+            crate::plan::execution::graph::TupleListLocalId,
+            crate::plan::execution::function::TupleListFunctionId,
         >,
     ),
     List(
         ListListTypeId,
         DraftTypedListInstruction<
             DraftStoredList,
-            crate::plan::execution::ListListLocalId,
-            crate::plan::execution::ListListFunctionId,
+            crate::plan::execution::graph::ListListLocalId,
+            crate::plan::execution::function::ListListFunctionId,
         >,
     ),
     Function(
         FunctionListTypeId,
         DraftTypedListInstruction<
             DraftFunction,
-            crate::plan::execution::FunctionListLocalId,
-            crate::plan::execution::FunctionListFunctionId,
+            crate::plan::execution::graph::FunctionListLocalId,
+            crate::plan::execution::function::FunctionListFunctionId,
         >,
     ),
 }
@@ -593,7 +596,8 @@ pub(in crate::plan::execution::lowering) enum DraftFunctionInstruction {
 }
 
 pub(in crate::plan::execution::lowering) struct DraftFunctionCapture {
-    pub(in crate::plan::execution::lowering::graph) target: crate::plan::execution::ParamLocal,
+    pub(in crate::plan::execution::lowering::graph) target:
+        crate::plan::execution::graph::ParamLocal,
     pub(in crate::plan::execution::lowering::graph) source: DraftValueRef,
 }
 

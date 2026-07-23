@@ -1,13 +1,15 @@
 use super::CaptureValue;
 use crate::plan::FunctionType;
 
-use crate::plan::execution::{
-    BitArrayFunctionId, BoolFunctionId, CustomConstructorId, CustomFunctionId, FloatFunctionId,
-    FunctionFunctionId, GenericCallableId, IntFunctionId, ListFunctionId, NeverFunctionId,
-    NilFunctionId, ParamLocal, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
+use crate::plan::execution::function::{
+    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, FunctionFunctionId,
+    GenericCallableId, IntFunctionId, ListFunctionId, NeverFunctionId, NilFunctionId,
+    StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
 };
 #[cfg(test)]
-use crate::plan::execution::{FunctionReturnFamily, RuntimeFunctionId};
+use crate::plan::execution::function::{FunctionReturnFamily, RuntimeFunctionId};
+use crate::plan::execution::graph::ParamLocal;
+use crate::plan::execution::type_::CustomConstructorId;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionValue {
@@ -632,7 +634,7 @@ impl From<FunctionFunctionValue> for FunctionValue {
 #[cfg(test)]
 mod tests {
     use super::{FunctionValue, FunctionValueKind, GenericFunctionValue};
-    use crate::plan::execution::{FunctionReturnFamily, GenericCallableId};
+    use crate::plan::execution::function::{FunctionReturnFamily, GenericCallableId};
     use crate::plan::{CustomType, CustomTypeName, FunctionType, TypeParameterId, ValueType};
 
     #[test]

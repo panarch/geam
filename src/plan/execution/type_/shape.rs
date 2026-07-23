@@ -168,7 +168,9 @@ mod tests {
         CustomConstructorRefinement, CustomValueShapeDescriptor, CustomValueShapeId,
         ValueShapeDescriptor, ValueShapeId, ValueShapeTable,
     };
-    use crate::plan::execution::{CustomTypeId, ExecutionPlan, RuntimeFunctionId};
+    use crate::plan::execution::ExecutionPlan;
+    use crate::plan::execution::function::RuntimeFunctionId;
+    use crate::plan::execution::type_::CustomTypeId;
 
     #[test]
     fn lowering_preserves_exact_and_widened_custom_shapes() {
@@ -424,7 +426,7 @@ pub fn main() { Boxed(fn() { fn() { First(1) } }).value }
     fn function_shape_fixture_guard_rejects_int_shape() {
         let table = ValueShapeTable::new(
             vec![ValueShapeDescriptor::Int],
-            vec![crate::plan::execution::ValueType::Int],
+            vec![crate::plan::execution::type_::ValueType::Int],
             Vec::new(),
         );
 
@@ -436,7 +438,7 @@ pub fn main() { Boxed(fn() { fn() { First(1) } }).value }
     fn custom_shape_fixture_guard_rejects_int_shape() {
         let table = ValueShapeTable::new(
             vec![ValueShapeDescriptor::Int],
-            vec![crate::plan::execution::ValueType::Int],
+            vec![crate::plan::execution::type_::ValueType::Int],
             Vec::new(),
         );
 

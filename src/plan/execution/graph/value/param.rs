@@ -7,7 +7,7 @@ use super::{
 };
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::graph::ExplainLocal;
-use crate::plan::execution::{FunctionType, ValueShapeId, ValueType};
+use crate::plan::execution::type_::{FunctionType, ValueShapeId, ValueType};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ParamSlot {
@@ -97,7 +97,8 @@ impl Explain for ParamSlot {
 
 #[cfg(test)]
 mod explain_tests {
-    use crate::plan::execution::{IntFunctionId, explain};
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::IntFunctionId;
 
     #[test]
     fn writes_slot_from_a_lowered_instruction() {

@@ -1,20 +1,26 @@
 use super::super::super::{FunctionLocal, StoredListLocal};
 use super::{write_call, write_constant, write_function_call, write_projection};
+use crate::plan::execution::constant::ConstantId;
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::ExplainFunctionId;
+use crate::plan::execution::function::{
+    BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId, FloatListFunctionId,
+    FunctionListFunctionId, IntListFunctionId, ListListFunctionId, NilListFunctionId,
+    ParameterListFunctionId, ParameterListListFunctionId, StringListFunctionId,
+    TupleListFunctionId, UtfCodepointListFunctionId,
+};
 use crate::plan::execution::graph::ExplainLocal;
-use crate::plan::execution::{
-    BitArrayListFunctionId, BitArrayListLocalId, BitArrayListTypeId, BoolListFunctionId,
-    BoolListLocalId, BoolListTypeId, ConstantId, CustomListFunctionId, CustomListLocalId,
-    CustomListTypeId, CustomLocal, FloatListFunctionId, FloatListLocalId, FloatListTypeId,
-    FloatLocalId, FunctionListFunctionId, FunctionListLocalId, FunctionListTypeId,
-    IntListFunctionId, IntListLocalId, IntListTypeId, IntLocalId, ListFunctionLocal,
-    ListListFunctionId, ListListLocalId, ListListTypeId, NilListFunctionId, NilListLocalId,
-    NilListTypeId, ParamLocal, ParameterListFunctionId, ParameterListListFunctionId,
-    ParameterListListLocalId, ParameterListListTypeId, ParameterListLocalId, ParameterListTypeId,
-    StringListFunctionId, StringListLocalId, StringListTypeId, StringLocalId, TupleListFunctionId,
-    TupleListLocalId, TupleListTypeId, TupleLocalId, UtfCodepointListFunctionId,
-    UtfCodepointListLocalId, UtfCodepointListTypeId, UtfCodepointLocalId,
+use crate::plan::execution::graph::{
+    BitArrayListLocalId, BoolListLocalId, CustomListLocalId, CustomLocal, FloatListLocalId,
+    FloatLocalId, FunctionListLocalId, IntListLocalId, IntLocalId, ListFunctionLocal,
+    ListListLocalId, NilListLocalId, ParamLocal, ParameterListListLocalId, ParameterListLocalId,
+    StringListLocalId, StringLocalId, TupleListLocalId, TupleLocalId, UtfCodepointListLocalId,
+    UtfCodepointLocalId,
+};
+use crate::plan::execution::type_::{
+    BitArrayListTypeId, BoolListTypeId, CustomListTypeId, FloatListTypeId, FunctionListTypeId,
+    IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId, ParameterListTypeId,
+    StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
 };
 
 pub(crate) enum ParameterListInstruction {
@@ -96,7 +102,7 @@ pub(crate) enum ListInstruction {
     BitArray(
         BitArrayListTypeId,
         TypedListInstruction<
-            crate::plan::execution::BitArrayLocalId,
+            crate::plan::execution::graph::BitArrayLocalId,
             BitArrayListLocalId,
             BitArrayListFunctionId,
         >,
@@ -120,14 +126,18 @@ pub(crate) enum ListInstruction {
     Bool(
         BoolListTypeId,
         TypedListInstruction<
-            crate::plan::execution::BoolLocalId,
+            crate::plan::execution::graph::BoolLocalId,
             BoolListLocalId,
             BoolListFunctionId,
         >,
     ),
     Nil(
         NilListTypeId,
-        TypedListInstruction<crate::plan::execution::NilLocalId, NilListLocalId, NilListFunctionId>,
+        TypedListInstruction<
+            crate::plan::execution::graph::NilLocalId,
+            NilListLocalId,
+            NilListFunctionId,
+        >,
     ),
     Tuple(
         TupleListTypeId,
@@ -290,7 +300,8 @@ fn write_list_values<Value: ExplainLocal>(output: &mut String, values: &[Value])
 
 #[cfg(test)]
 mod explain_tests {
-    use crate::plan::execution::{TupleFunctionId, explain};
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::TupleFunctionId;
 
     #[test]
     fn writes_list_instruction_grammar() {

@@ -1,10 +1,11 @@
 use super::super::GraphValue;
 use super::super::environment::BlockEnvironment;
 use crate::plan::ValueType;
-use crate::plan::execution::{
-    BitArrayInstruction, BoolInstruction, ConstantId, ConstantValue, CustomInstruction,
-    ExecutionPlan, FloatInstruction, IntInstruction, NilInstruction, ParamLocal, StringInstruction,
-    TupleInstruction, UtfCodepointInstruction,
+use crate::plan::execution::ExecutionPlan;
+use crate::plan::execution::constant::{ConstantId, ConstantValue};
+use crate::plan::execution::graph::{
+    BitArrayInstruction, BoolInstruction, CustomInstruction, FloatInstruction, IntInstruction,
+    NilInstruction, ParamLocal, StringInstruction, TupleInstruction, UtfCodepointInstruction,
 };
 use crate::runtime::constant::evaluate as evaluate_constant;
 use crate::runtime::error::ExecutionResult;
@@ -602,7 +603,7 @@ where
 pub(super) fn tuple_projection<Value>(
     plan: &ExecutionPlan,
     environment: &BlockEnvironment,
-    tuple: crate::plan::execution::TupleLocalId,
+    tuple: crate::plan::execution::graph::TupleLocalId,
     index: usize,
     expected: &ValueType,
     project: impl FnOnce(&EvaluatedValue) -> Option<Value>,
@@ -636,7 +637,7 @@ pub(super) fn tuple_projection<Value>(
 pub(super) fn custom_projection<Value>(
     plan: &ExecutionPlan,
     environment: &BlockEnvironment,
-    source: &crate::plan::execution::CustomLocal,
+    source: &crate::plan::execution::graph::CustomLocal,
     index: usize,
     expected: &ValueType,
     project: impl FnOnce(&EvaluatedValue) -> Option<Value>,
@@ -713,7 +714,7 @@ fn inputs_with_captures(
 mod tests {
     use super::super::super::environment::{BlockEnvironment, RetainedValues};
     use super::{ensure_list_index, list_element, tuple_projection};
-    use crate::plan::execution::TupleLocalId;
+    use crate::plan::execution::graph::TupleLocalId;
     use crate::plan::{
         CustomConstructor, CustomConstructorDefinition, CustomConstructorField, CustomExpr,
         CustomFieldAccess, CustomFieldDefinition, CustomType, CustomTypeDefinition, CustomTypeName,

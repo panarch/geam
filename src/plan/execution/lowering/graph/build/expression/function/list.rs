@@ -29,7 +29,7 @@ pub(in crate::plan::execution::lowering) fn list_function_expr(
             let value = graph.function_instruction(
                 &mut cursor,
                 shape.clone(),
-                I::Constant(execution::ConstantId::new(id.index())),
+                I::Constant(execution::constant::ConstantId::new(id.index())),
             );
             DraftFlow::value(cursor, DraftListFunction::new(value))
         }),
@@ -71,7 +71,7 @@ pub(in crate::plan::execution::lowering) fn list_function_expr(
             } => context
                 .list_function_function_id(function, &shape, &item_shape)
                 .map(|function| {
-                    let function = execution::FunctionFunctionId::List(function);
+                    let function = execution::function::FunctionFunctionId::List(function);
                     let value = graph.function_instruction(
                         &mut cursor,
                         shape.clone(),
@@ -275,7 +275,7 @@ fn generic_list_function_expr_kind(
             |function, context| {
                 context
                     .list_function_function_id(function, shape, item_shape)
-                    .map(execution::FunctionFunctionId::List)
+                    .map(execution::function::FunctionFunctionId::List)
             },
             |branch, cursor, graph, context| {
                 generic_list_function_expr_kind(branch, item_shape, shape, cursor, graph, context)

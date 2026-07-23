@@ -1,8 +1,10 @@
 use super::environment::{BlockEnvironment, RetainedValues};
 use super::pattern;
-use crate::plan::execution::{
-    BlockGraphExitId, BlockId, Edge, ExecutionPlan, MatchEdge, MatchEdgeArgument, NeverCallTarget,
-    NeverFunctionId, SourceStopKind, Terminator,
+use crate::plan::execution::ExecutionPlan;
+use crate::plan::execution::function::NeverFunctionId;
+use crate::plan::execution::graph::{
+    BlockGraphExitId, BlockId, Edge, MatchEdge, MatchEdgeArgument, NeverCallTarget, SourceStopKind,
+    Terminator,
 };
 use crate::runtime::ExecutionError;
 use crate::runtime::error::{ExecutionResult, PanicKind};

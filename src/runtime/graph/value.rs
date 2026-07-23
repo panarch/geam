@@ -18,7 +18,7 @@ impl GraphValue for Infallible {
     }
 }
 
-impl GraphValue for crate::plan::execution::IntLocalId {
+impl GraphValue for crate::plan::execution::graph::IntLocalId {
     type Evaluated = BigInt;
 
     fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
@@ -26,7 +26,7 @@ impl GraphValue for crate::plan::execution::IntLocalId {
     }
 }
 
-impl GraphValue for crate::plan::execution::FloatLocalId {
+impl GraphValue for crate::plan::execution::graph::FloatLocalId {
     type Evaluated = f64;
 
     fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
@@ -34,7 +34,7 @@ impl GraphValue for crate::plan::execution::FloatLocalId {
     }
 }
 
-impl GraphValue for crate::plan::execution::StringLocalId {
+impl GraphValue for crate::plan::execution::graph::StringLocalId {
     type Evaluated = EcoString;
 
     fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
@@ -42,7 +42,7 @@ impl GraphValue for crate::plan::execution::StringLocalId {
     }
 }
 
-impl GraphValue for crate::plan::execution::BitArrayLocalId {
+impl GraphValue for crate::plan::execution::graph::BitArrayLocalId {
     type Evaluated = crate::runtime::EvaluatedBitArray;
 
     fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
@@ -50,7 +50,7 @@ impl GraphValue for crate::plan::execution::BitArrayLocalId {
     }
 }
 
-impl GraphValue for crate::plan::execution::UtfCodepointLocalId {
+impl GraphValue for crate::plan::execution::graph::UtfCodepointLocalId {
     type Evaluated = char;
 
     fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
@@ -58,7 +58,7 @@ impl GraphValue for crate::plan::execution::UtfCodepointLocalId {
     }
 }
 
-impl GraphValue for crate::plan::execution::CustomLocal {
+impl GraphValue for crate::plan::execution::graph::CustomLocal {
     type Evaluated = crate::runtime::EvaluatedCustomValue;
 
     fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
@@ -66,7 +66,7 @@ impl GraphValue for crate::plan::execution::CustomLocal {
     }
 }
 
-impl GraphValue for crate::plan::execution::BoolLocalId {
+impl GraphValue for crate::plan::execution::graph::BoolLocalId {
     type Evaluated = bool;
 
     fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
@@ -74,7 +74,7 @@ impl GraphValue for crate::plan::execution::BoolLocalId {
     }
 }
 
-impl GraphValue for crate::plan::execution::NilLocalId {
+impl GraphValue for crate::plan::execution::graph::NilLocalId {
     type Evaluated = ();
 
     fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
@@ -82,7 +82,7 @@ impl GraphValue for crate::plan::execution::NilLocalId {
     }
 }
 
-impl GraphValue for crate::plan::execution::TupleLocalId {
+impl GraphValue for crate::plan::execution::graph::TupleLocalId {
     type Evaluated = Vec<EvaluatedValue>;
 
     fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
@@ -103,67 +103,67 @@ macro_rules! list_graph_value {
 }
 
 list_graph_value!(
-    crate::plan::execution::ParameterListLocalId,
+    crate::plan::execution::graph::ParameterListLocalId,
     crate::runtime::state::ParameterListValueId,
     parameter_list
 );
 list_graph_value!(
-    crate::plan::execution::IntListLocalId,
+    crate::plan::execution::graph::IntListLocalId,
     crate::runtime::state::IntListValueId,
     int_list
 );
 list_graph_value!(
-    crate::plan::execution::StringListLocalId,
+    crate::plan::execution::graph::StringListLocalId,
     crate::runtime::state::StringListValueId,
     string_list
 );
 list_graph_value!(
-    crate::plan::execution::BitArrayListLocalId,
+    crate::plan::execution::graph::BitArrayListLocalId,
     crate::runtime::state::BitArrayListValueId,
     bit_array_list
 );
 list_graph_value!(
-    crate::plan::execution::UtfCodepointListLocalId,
+    crate::plan::execution::graph::UtfCodepointListLocalId,
     crate::runtime::state::UtfCodepointListValueId,
     utf_codepoint_list
 );
 list_graph_value!(
-    crate::plan::execution::CustomListLocalId,
+    crate::plan::execution::graph::CustomListLocalId,
     crate::runtime::state::CustomListValueId,
     custom_list
 );
 list_graph_value!(
-    crate::plan::execution::FloatListLocalId,
+    crate::plan::execution::graph::FloatListLocalId,
     crate::runtime::state::FloatListValueId,
     float_list
 );
 list_graph_value!(
-    crate::plan::execution::BoolListLocalId,
+    crate::plan::execution::graph::BoolListLocalId,
     crate::runtime::state::BoolListValueId,
     bool_list
 );
 list_graph_value!(
-    crate::plan::execution::NilListLocalId,
+    crate::plan::execution::graph::NilListLocalId,
     crate::runtime::state::NilListValueId,
     nil_list
 );
 list_graph_value!(
-    crate::plan::execution::TupleListLocalId,
+    crate::plan::execution::graph::TupleListLocalId,
     crate::runtime::state::TupleListValueId,
     tuple_list
 );
 list_graph_value!(
-    crate::plan::execution::ParameterListListLocalId,
+    crate::plan::execution::graph::ParameterListListLocalId,
     crate::runtime::state::ParameterListListValueId,
     parameter_list_list
 );
 list_graph_value!(
-    crate::plan::execution::ListListLocalId,
+    crate::plan::execution::graph::ListListLocalId,
     crate::runtime::state::ListListValueId,
     list_list
 );
 list_graph_value!(
-    crate::plan::execution::FunctionListLocalId,
+    crate::plan::execution::graph::FunctionListLocalId,
     crate::runtime::state::FunctionListValueId,
     function_list
 );
@@ -181,47 +181,47 @@ macro_rules! function_graph_value {
 }
 
 function_graph_value!(
-    crate::plan::execution::IntFunctionLocalId,
+    crate::plan::execution::graph::IntFunctionLocalId,
     crate::runtime::EvaluatedIntFunction,
     int_function
 );
 function_graph_value!(
-    crate::plan::execution::FloatFunctionLocalId,
+    crate::plan::execution::graph::FloatFunctionLocalId,
     crate::runtime::EvaluatedFloatFunction,
     float_function
 );
 function_graph_value!(
-    crate::plan::execution::StringFunctionLocalId,
+    crate::plan::execution::graph::StringFunctionLocalId,
     crate::runtime::EvaluatedStringFunction,
     string_function
 );
 function_graph_value!(
-    crate::plan::execution::BitArrayFunctionLocalId,
+    crate::plan::execution::graph::BitArrayFunctionLocalId,
     crate::runtime::EvaluatedBitArrayFunction,
     bit_array_function
 );
 function_graph_value!(
-    crate::plan::execution::UtfCodepointFunctionLocalId,
+    crate::plan::execution::graph::UtfCodepointFunctionLocalId,
     crate::runtime::EvaluatedUtfCodepointFunction,
     utf_codepoint_function
 );
 function_graph_value!(
-    crate::plan::execution::BoolFunctionLocalId,
+    crate::plan::execution::graph::BoolFunctionLocalId,
     crate::runtime::EvaluatedBoolFunction,
     bool_function
 );
 function_graph_value!(
-    crate::plan::execution::NilFunctionLocalId,
+    crate::plan::execution::graph::NilFunctionLocalId,
     crate::runtime::EvaluatedNilFunction,
     nil_function
 );
 function_graph_value!(
-    crate::plan::execution::TupleFunctionLocalId,
+    crate::plan::execution::graph::TupleFunctionLocalId,
     crate::runtime::EvaluatedTupleFunction,
     tuple_function
 );
 
-impl GraphValue for crate::plan::execution::GenericFunctionLocal {
+impl GraphValue for crate::plan::execution::graph::GenericFunctionLocal {
     type Evaluated = crate::runtime::EvaluatedGenericFunction;
 
     fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
@@ -229,7 +229,7 @@ impl GraphValue for crate::plan::execution::GenericFunctionLocal {
     }
 }
 
-impl GraphValue for crate::plan::execution::NeverFunctionLocal {
+impl GraphValue for crate::plan::execution::graph::NeverFunctionLocal {
     type Evaluated = crate::runtime::EvaluatedNeverFunction;
 
     fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
@@ -237,7 +237,7 @@ impl GraphValue for crate::plan::execution::NeverFunctionLocal {
     }
 }
 
-impl GraphValue for crate::plan::execution::CustomFunctionLocal {
+impl GraphValue for crate::plan::execution::graph::CustomFunctionLocal {
     type Evaluated = crate::runtime::EvaluatedCustomFunction;
 
     fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
@@ -245,7 +245,7 @@ impl GraphValue for crate::plan::execution::CustomFunctionLocal {
     }
 }
 
-impl GraphValue for crate::plan::execution::ListFunctionLocal {
+impl GraphValue for crate::plan::execution::graph::ListFunctionLocal {
     type Evaluated = crate::runtime::EvaluatedListFunction;
 
     fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
@@ -253,7 +253,7 @@ impl GraphValue for crate::plan::execution::ListFunctionLocal {
     }
 }
 
-impl GraphValue for crate::plan::execution::FunctionFunctionLocal {
+impl GraphValue for crate::plan::execution::graph::FunctionFunctionLocal {
     type Evaluated = crate::runtime::EvaluatedFunctionFunction;
 
     fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
@@ -261,7 +261,7 @@ impl GraphValue for crate::plan::execution::FunctionFunctionLocal {
     }
 }
 
-impl GraphValue for crate::plan::execution::FunctionLocal {
+impl GraphValue for crate::plan::execution::graph::FunctionLocal {
     type Evaluated = EvaluatedFunctionValue;
 
     fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {

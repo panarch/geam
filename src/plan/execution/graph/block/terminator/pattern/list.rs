@@ -55,7 +55,9 @@ impl Explain for MatchPatternList {
 #[cfg(test)]
 mod explain_tests {
     use super::{MatchPattern, MatchPatternList};
-    use crate::plan::execution::{IntFunctionId, Terminator, explain};
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::IntFunctionId;
+    use crate::plan::execution::graph::Terminator;
 
     #[test]
     fn writes_bound_list_tail() {

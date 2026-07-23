@@ -1,10 +1,12 @@
 use super::super::super::value::write_locals;
 use super::{write_call, write_constant, write_function_call, write_projection};
+use crate::plan::execution::constant::ConstantId;
 use crate::plan::execution::explain::{Explain, ExplainContext};
-use crate::plan::execution::{
-    ConstantId, CustomConstructorId, CustomFunctionId, CustomFunctionLocal, CustomListLocalId,
-    CustomLocal, ParamLocal, TupleLocalId,
+use crate::plan::execution::function::CustomFunctionId;
+use crate::plan::execution::graph::{
+    CustomFunctionLocal, CustomListLocalId, CustomLocal, ParamLocal, TupleLocalId,
 };
+use crate::plan::execution::type_::CustomConstructorId;
 
 pub(crate) enum CustomInstruction {
     Construct {
@@ -71,7 +73,8 @@ impl Explain for CustomInstruction {
 
 #[cfg(test)]
 mod explain_tests {
-    use crate::plan::execution::{InstructionKind, explain};
+    use crate::plan::execution::explain;
+    use crate::plan::execution::graph::InstructionKind;
 
     #[test]
     fn writes_custom_construction() {

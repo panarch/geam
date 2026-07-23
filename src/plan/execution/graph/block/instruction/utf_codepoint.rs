@@ -1,8 +1,8 @@
 use super::{write_call, write_function_call, write_projection};
 use crate::plan::execution::explain::{Explain, ExplainContext};
-use crate::plan::execution::{
-    CustomLocal, ParamLocal, TupleLocalId, UtfCodepointFunctionId, UtfCodepointFunctionLocalId,
-    UtfCodepointListLocalId,
+use crate::plan::execution::function::UtfCodepointFunctionId;
+use crate::plan::execution::graph::{
+    CustomLocal, ParamLocal, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
 };
 
 pub(crate) enum UtfCodepointInstruction {
@@ -53,7 +53,9 @@ impl Explain for UtfCodepointInstruction {
 
 #[cfg(test)]
 mod explain_tests {
-    use crate::plan::execution::{InstructionKind, TupleFunctionId, explain};
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::TupleFunctionId;
+    use crate::plan::execution::graph::InstructionKind;
 
     #[test]
     fn writes_utf_codepoint_calls_and_projections() {

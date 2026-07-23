@@ -5,77 +5,43 @@ pub(crate) mod graph;
 mod lowering;
 pub(crate) mod type_;
 
-pub use explain::ExecutionPlanExplanation;
-pub(crate) use graph::{
-    BitArrayBindingPattern, BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayFunctionLocalId,
-    BitArrayInstruction, BitArrayListFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
-    BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize, BitArrayPatternSizeExpr,
-    BitArrayPatternValue, BitArraySegment, BitArrayStringPattern, BlockGraph, BlockGraphExitId,
-    BlockId, BoolFunctionLocalId, BoolInstruction, BoolListFunctionLocalId, BoolListLocalId,
-    BoolLocalId, CustomFunctionLocal, CustomFunctionLocalId, CustomInstruction,
-    CustomListFunctionLocalId, CustomListLocalId, CustomLocal, CustomLocalId, Edge, Endianness,
-    FloatBitSize, FloatFunctionLocalId, FloatInstruction, FloatListFunctionLocalId,
-    FloatListLocalId, FloatLocalId, FunctionCapture, FunctionFunctionLocal,
-    FunctionFunctionLocalId, FunctionInstruction, FunctionInstructionKind,
-    FunctionListFunctionLocalId, FunctionListLocalId, FunctionLocal, FunctionTarget,
-    GenericFunctionLocal, GenericFunctionLocalId, Instruction, InstructionKind, IntFunctionLocalId,
-    IntInstruction, IntListFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionLocal,
-    ListInstruction, ListListFunctionLocalId, ListListLocalId, ListLocal, MatchEdge,
-    MatchEdgeArgument, MatchIntBindingId, MatchPattern, MatchPatternBinding, MatchPatternListTail,
-    NeverCallTarget, NeverFunctionLocal, NeverFunctionLocalId, NilFunctionLocalId, NilInstruction,
-    NilListFunctionLocalId, NilListLocalId, NilLocalId, ParamLocal, ParamSlot,
-    ParameterListFunctionLocalId, ParameterListInstruction, ParameterListListFunctionLocalId,
-    ParameterListListLocalId, ParameterListLocalId, Signedness, SourceStopKind, StoredListLocal,
-    StringEncoding, StringFunctionLocalId, StringInstruction, StringListFunctionLocalId,
-    StringListLocalId, StringLocalId, Terminator, TupleFunctionLocalId, TupleInstruction,
-    TupleListFunctionLocalId, TupleListLocalId, TupleLocalId, TypedListInstruction,
-    UtfCodepointFunctionLocalId, UtfCodepointInstruction, UtfCodepointListFunctionLocalId,
-    UtfCodepointListLocalId, UtfCodepointLocalId,
+use self::constant::{ConstantId, ConstantProgram, ConstantTable, ConstantValue};
+use self::function::{
+    BitArrayFunctionBody, BitArrayFunctionFunctionBody, BitArrayFunctionFunctionId,
+    BitArrayFunctionId, BitArrayListFunctionBody, BitArrayListFunctionId, BoolFunctionBody,
+    BoolFunctionFunctionBody, BoolFunctionFunctionId, BoolFunctionId, BoolListFunctionBody,
+    BoolListFunctionId, CustomFunctionBody, CustomFunctionFunctionBody, CustomFunctionFunctionId,
+    CustomFunctionId, CustomListFunctionBody, CustomListFunctionId, ExecutableFunction,
+    FloatFunctionBody, FloatFunctionFunctionBody, FloatFunctionFunctionId, FloatFunctionId,
+    FloatListFunctionBody, FloatListFunctionId, FunctionFunctionFunctionBody,
+    FunctionFunctionFunctionId, FunctionListFunctionBody, FunctionListFunctionId, FunctionTables,
+    GenericFunctionFunctionBody, GenericFunctionFunctionId, IntFunctionBody,
+    IntFunctionFunctionBody, IntFunctionFunctionId, IntFunctionId, IntListFunctionBody,
+    IntListFunctionId, ListFunctionFunctionBody, ListFunctionFunctionId, ListListFunctionBody,
+    ListListFunctionId, NeverFunctionBody, NeverFunctionFunctionBody, NeverFunctionFunctionId,
+    NeverFunctionId, NilFunctionBody, NilFunctionFunctionBody, NilFunctionFunctionId,
+    NilFunctionId, NilListFunctionBody, NilListFunctionId, ParameterListFunctionBody,
+    ParameterListFunctionId, ParameterListListFunctionBody, ParameterListListFunctionId,
+    RuntimeFunctionId, StringFunctionBody, StringFunctionFunctionBody, StringFunctionFunctionId,
+    StringFunctionId, StringListFunctionBody, StringListFunctionId, TupleFunctionBody,
+    TupleFunctionFunctionBody, TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionBody,
+    TupleListFunctionId, UtfCodepointFunctionBody, UtfCodepointFunctionFunctionBody,
+    UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, UtfCodepointListFunctionBody,
+    UtfCodepointListFunctionId,
+};
+use self::type_::{
+    CustomConstructorId, CustomTypeId, CustomTypeTable, FunctionListTypeId, FunctionType,
+    ListListTypeId, ListTypeId, ListTypeTable, TupleListTypeId, ValueShapeId, ValueShapeTable,
+    ValueType,
 };
 #[cfg(test)]
-pub(crate) use type_::ValueShapeDescriptor;
-pub(crate) use type_::{
-    BitArrayListTypeId, BoolListTypeId, CustomConstructorId, CustomConstructorRefinement,
-    CustomFunctionType, CustomListTypeId, CustomTypeId, CustomValueShape, CustomValueShapeId,
-    FloatListTypeId, FunctionFunctionType, FunctionListTypeId, FunctionShape, FunctionType,
-    GenericFunctionType, IntListTypeId, ListListTypeId, ListStorageTypeId, ListTypeId,
-    NilListTypeId, ParameterListListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
-    UtfCodepointListTypeId, ValueShapeId, ValueType,
+use self::type_::{
+    CustomConstructorRefinement, CustomValueShape, CustomValueShapeId, ListStorageTypeId,
+    ValueShapeDescriptor,
 };
-
-pub(crate) use self::constant::{ConstantId, ConstantProgram, ConstantTable, ConstantValue};
-use self::function::FunctionTables;
-pub(crate) use self::function::{
-    BitArrayFunctionBody, BitArrayFunctionFunctionBody, BitArrayFunctionFunctionId,
-    BitArrayFunctionId, BitArrayListFunctionBody, BitArrayListFunctionFunctionId,
-    BitArrayListFunctionId, BoolFunctionBody, BoolFunctionFunctionBody, BoolFunctionFunctionId,
-    BoolFunctionId, BoolListFunctionBody, BoolListFunctionFunctionId, BoolListFunctionId,
-    CustomFunctionBody, CustomFunctionFunctionBody, CustomFunctionFunctionId, CustomFunctionId,
-    CustomListFunctionBody, CustomListFunctionFunctionId, CustomListFunctionId, ExecutableFunction,
-    FloatFunctionBody, FloatFunctionFunctionBody, FloatFunctionFunctionId, FloatFunctionId,
-    FloatListFunctionBody, FloatListFunctionFunctionId, FloatListFunctionId, FunctionBody,
-    FunctionEntry, FunctionExit, FunctionFunctionFunctionBody, FunctionFunctionFunctionId,
-    FunctionFunctionId, FunctionListFunctionBody, FunctionListFunctionFunctionId,
-    FunctionListFunctionId, FunctionReturnFamily, GenericCallableId, GenericFunctionFunctionBody,
-    GenericFunctionFunctionId, IntFunctionBody, IntFunctionFunctionBody, IntFunctionFunctionId,
-    IntFunctionId, IntListFunctionBody, IntListFunctionFunctionId, IntListFunctionId,
-    ListFunctionFunctionBody, ListFunctionFunctionId, ListFunctionId, ListListFunctionBody,
-    ListListFunctionFunctionId, ListListFunctionId, NeverFunctionBody, NeverFunctionFunctionBody,
-    NeverFunctionFunctionId, NeverFunctionId, NilFunctionBody, NilFunctionFunctionBody,
-    NilFunctionFunctionId, NilFunctionId, NilListFunctionBody, NilListFunctionFunctionId,
-    NilListFunctionId, ParameterListFunctionBody, ParameterListFunctionFunctionId,
-    ParameterListFunctionId, ParameterListListFunctionBody, ParameterListListFunctionFunctionId,
-    ParameterListListFunctionId, RuntimeFunctionId, StringFunctionBody, StringFunctionFunctionBody,
-    StringFunctionFunctionId, StringFunctionId, StringListFunctionBody,
-    StringListFunctionFunctionId, StringListFunctionId, TupleFunctionBody,
-    TupleFunctionFunctionBody, TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionBody,
-    TupleListFunctionFunctionId, TupleListFunctionId, TypedFunctionBody, UtfCodepointFunctionBody,
-    UtfCodepointFunctionFunctionBody, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
-    UtfCodepointListFunctionBody, UtfCodepointListFunctionFunctionId, UtfCodepointListFunctionId,
-};
-use self::type_::{CustomTypeTable, ListTypeTable, ValueShapeTable};
 use crate::plan::{ModulePlan, SourceContext};
 use ecow::EcoString;
+pub use explain::ExecutionPlanExplanation;
 
 pub struct ExecutionPlan {
     module: EcoString,

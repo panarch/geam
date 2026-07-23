@@ -1,6 +1,6 @@
 use super::Edge;
-use crate::plan::execution::BoolLocalId;
 use crate::plan::execution::explain::{Explain, ExplainContext};
+use crate::plan::execution::graph::BoolLocalId;
 
 pub(crate) struct BoolBranch {
     subject: BoolLocalId,
@@ -45,7 +45,8 @@ impl Explain for BoolBranch {
 mod explain_tests {
     use super::super::Terminator;
     use super::BoolBranch;
-    use crate::plan::execution::{IntFunctionId, explain};
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::IntFunctionId;
 
     #[test]
     fn writes_bool_branch() {
@@ -93,7 +94,7 @@ pub fn main() {
 
     fn terminators(
         plan: &crate::plan::execution::ExecutionPlan,
-    ) -> Vec<&crate::plan::execution::Terminator> {
+    ) -> Vec<&crate::plan::execution::graph::Terminator> {
         plan.int_function(IntFunctionId(0))
             .body()
             .block_graph()
@@ -103,7 +104,9 @@ pub fn main() {
             .collect()
     }
 
-    fn bool_branch<'a>(terminators: &[&'a crate::plan::execution::Terminator]) -> &'a BoolBranch {
+    fn bool_branch<'a>(
+        terminators: &[&'a crate::plan::execution::graph::Terminator],
+    ) -> &'a BoolBranch {
         let branches = terminators
             .iter()
             .copied()

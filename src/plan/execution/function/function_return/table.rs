@@ -5,8 +5,8 @@ use super::{
     NilFunctionFunctionBody, StringFunctionFunctionBody, TupleFunctionFunctionBody,
     UtfCodepointFunctionFunctionBody,
 };
-use crate::plan::execution::ExecutableFunction;
 use crate::plan::execution::explain::{Explain, ExplainContext};
+use crate::plan::execution::function::ExecutableFunction;
 use crate::plan::execution::function::write_table;
 
 pub(in crate::plan::execution) struct FunctionFunctionTables {

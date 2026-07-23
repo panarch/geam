@@ -47,7 +47,7 @@ pub(in crate::plan::execution::lowering) fn tuple_expr(
             let value = graph.tuple_instruction(
                 &mut cursor,
                 elements.clone().into_boxed_slice(),
-                I::Constant(execution::ConstantId::new(id.index())),
+                I::Constant(execution::constant::ConstantId::new(id.index())),
             );
             DraftFlow::value(cursor, value)
         }),

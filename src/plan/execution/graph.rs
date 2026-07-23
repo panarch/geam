@@ -87,7 +87,8 @@ pub(in crate::plan::execution) fn write_graph(
 #[cfg(test)]
 mod explain_tests {
     use super::write_graph;
-    use crate::plan::execution::{IntFunctionId, explain};
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::IntFunctionId;
 
     #[test]
     fn writes_complete_graph_entry_and_block_order() {
@@ -135,10 +136,9 @@ mod tests {
         BlockGraphExitId, BlockId, Edge, Instruction, InstructionKind, IntInstruction, MatchEdge,
         MatchEdgeArgument, MatchPattern, MatchPatternList, Terminator,
     };
-    use crate::plan::execution::{
-        BoolLocalId, ExecutionPlan, FunctionBody, FunctionExit, IntFunctionId, IntLocalId,
-        ListLocal, ParamLocal,
-    };
+    use crate::plan::execution::ExecutionPlan;
+    use crate::plan::execution::function::{FunctionBody, FunctionExit, IntFunctionId};
+    use crate::plan::execution::graph::{BoolLocalId, IntLocalId, ListLocal, ParamLocal};
 
     #[derive(Clone, Copy)]
     enum IntBinaryOperation {
@@ -538,17 +538,20 @@ pub fn main() { loop(1) }
 
     fn let_assert_panic(
         terminator: &Terminator,
-    ) -> (&ParamLocal, Option<crate::plan::execution::StringLocalId>) {
+    ) -> (
+        &ParamLocal,
+        Option<crate::plan::execution::graph::StringLocalId>,
+    ) {
         match terminator {
             Terminator::LetAssertPanic(panic) => (panic.subject(), panic.message()),
             _ => panic!("fixture should contain a let-assert panic"),
         }
     }
 
-    fn assert_int_shape(plan: &ExecutionPlan, shape: crate::plan::execution::ValueShapeId) {
+    fn assert_int_shape(plan: &ExecutionPlan, shape: crate::plan::execution::type_::ValueShapeId) {
         assert_eq!(
             plan.shape_value_type(shape),
-            crate::plan::execution::ValueType::Int
+            crate::plan::execution::type_::ValueType::Int
         );
     }
 

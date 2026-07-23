@@ -68,7 +68,7 @@ pub(in crate::plan::execution::lowering) fn generic_function_expr(
                     let type_ = context.generic_function_type(shape);
                     context
                         .never_function_function_id(function, type_)
-                        .map(execution::FunctionFunctionId::Never)
+                        .map(execution::function::FunctionFunctionId::Never)
                 },
                 |branch, cursor, graph, context| lower(branch, shape, cursor, graph, context),
             ),
@@ -100,7 +100,7 @@ macro_rules! fixed_never_function {
                     let value = graph.function_instruction(
                         &mut cursor,
                         shape.clone(),
-                        I::Constant(execution::ConstantId::new(id.index())),
+                        I::Constant(execution::constant::ConstantId::new(id.index())),
                     );
                     DraftFlow::value(cursor, DraftNeverFunction::new(value))
                 }),
@@ -149,7 +149,8 @@ macro_rules! fixed_never_function {
                             context
                                 .never_function_function_id(function, type_)
                                 .map(|function| {
-                                    let function = execution::FunctionFunctionId::Never(function);
+                                    let function =
+                                        execution::function::FunctionFunctionId::Never(function);
                                     let value = graph.function_instruction(
                                         &mut cursor,
                                         shape.clone(),
@@ -363,7 +364,7 @@ pub(in crate::plan::execution::lowering) fn custom_function_kind(
             let value = graph.function_instruction(
                 &mut cursor,
                 shape.clone(),
-                I::Constant(execution::ConstantId::new(id.index())),
+                I::Constant(execution::constant::ConstantId::new(id.index())),
             );
             DraftFlow::value(cursor, DraftNeverFunction::new(value))
         }),
@@ -408,7 +409,7 @@ pub(in crate::plan::execution::lowering) fn custom_function_kind(
                     context
                         .never_function_function_id(function, type_)
                         .map(|function| {
-                            let function = execution::FunctionFunctionId::Never(function);
+                            let function = execution::function::FunctionFunctionId::Never(function);
                             let value = graph.function_instruction(
                                 &mut cursor,
                                 shape.clone(),

@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 
 use crate::plan;
-use crate::plan::execution::{
+use crate::plan::execution::type_::{
     BitArrayListTypeId, BoolListTypeId, CustomConstructorId, CustomFunctionType, CustomListTypeId,
     CustomTypeId, FloatListTypeId, FunctionFunctionType, FunctionListTypeId, FunctionType,
     GenericFunctionType, IntListTypeId, ListListTypeId, ListStorageTypeId, ListTypeId,
     NilListTypeId, ParameterListListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
     UtfCodepointListTypeId, ValueType,
 };
-use crate::plan::execution::{
+use crate::plan::execution::type_::{
     CustomConstructorRefinement, CustomValueShape, CustomValueShapeId, FunctionShape, ValueShapeId,
 };
 
@@ -515,9 +515,10 @@ impl TypeInterner {
 
 #[cfg(test)]
 mod tests {
-    use crate::plan::execution::{
-        CustomConstructorId, CustomListTypeId, CustomTypeId, ExecutionPlan, ListStorageTypeId,
-        ListTypeId, ValueType as ExecutionValueType,
+    use crate::plan::execution::ExecutionPlan;
+    use crate::plan::execution::type_::{
+        CustomConstructorId, CustomListTypeId, CustomTypeId, ListStorageTypeId, ListTypeId,
+        ValueType as ExecutionValueType,
     };
     use crate::plan::{CustomType, CustomTypeName, FunctionType, ValueType};
 

@@ -22,7 +22,7 @@ pub(in crate::plan::execution::lowering) fn float_expr(
             let mut cursor = cursor;
             let value = graph.float_instruction(
                 &mut cursor,
-                I::Constant(execution::ConstantId::new(id.index())),
+                I::Constant(execution::constant::ConstantId::new(id.index())),
             );
             DraftFlow::value(cursor, value)
         }),

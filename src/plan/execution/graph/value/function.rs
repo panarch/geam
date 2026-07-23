@@ -1,4 +1,4 @@
-use crate::plan::execution::{
+use crate::plan::execution::type_::{
     BitArrayListTypeId, BoolListTypeId, CustomFunctionType, CustomListTypeId, FloatListTypeId,
     FunctionFunctionType, FunctionListTypeId, FunctionType, GenericFunctionType, IntListTypeId,
     ListListTypeId, NilListTypeId, ParameterListListTypeId, ParameterListTypeId, StringListTypeId,
@@ -263,7 +263,7 @@ impl ListFunctionLocal {
     }
 
     #[cfg(test)]
-    pub(crate) fn list_type(&self) -> crate::plan::execution::ListTypeId {
+    pub(crate) fn list_type(&self) -> crate::plan::execution::type_::ListTypeId {
         match self {
             Self::Parameter { list_type, .. } => list_type.list_type(),
             Self::ParameterList { list_type, .. } => list_type.list_type(),
@@ -430,10 +430,10 @@ pub fn main() {
         );
     }
 
-    fn function_type() -> crate::plan::execution::FunctionType {
-        crate::plan::execution::FunctionType::new(
+    fn function_type() -> crate::plan::execution::type_::FunctionType {
+        crate::plan::execution::type_::FunctionType::new(
             Vec::new(),
-            crate::plan::execution::ValueType::Nil,
+            crate::plan::execution::type_::ValueType::Nil,
         )
     }
 

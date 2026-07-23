@@ -140,7 +140,7 @@ fn bool_value_instruction(
             let mut cursor = cursor;
             let value = graph.bool_instruction(
                 &mut cursor,
-                I::Constant(execution::ConstantId::new(id.index())),
+                I::Constant(execution::constant::ConstantId::new(id.index())),
             );
             DraftFlow::value(cursor, value)
         }),

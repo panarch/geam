@@ -1,8 +1,6 @@
 use crate::plan::execution::explain::{ExplainContext, FunctionLabel};
 use crate::plan::execution::function::FunctionEntry;
-use crate::plan::execution::graph::{BlockGraph, BlockGraphExitId};
-use crate::plan::execution::graph::{ExplainLocal, write_graph};
-use crate::plan::execution::{
+use crate::plan::execution::function::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionFunctionId,
     BoolFunctionId, BoolListFunctionId, CustomListFunctionId, FloatFunctionFunctionId,
     FloatFunctionId, FloatListFunctionId, FunctionListFunctionId, GenericFunctionFunctionId,
@@ -13,6 +11,8 @@ use crate::plan::execution::{
     TupleFunctionId, TupleListFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
     UtfCodepointListFunctionId,
 };
+use crate::plan::execution::graph::{BlockGraph, BlockGraphExitId};
+use crate::plan::execution::graph::{ExplainLocal, write_graph};
 
 pub(crate) struct FunctionBody<Return, TailCall> {
     block_graph: BlockGraph,
@@ -23,7 +23,7 @@ pub(crate) enum FunctionExit<Return, TailCall> {
     Return(Return),
     TailCall {
         function: TailCall,
-        args: Box<[crate::plan::execution::ParamLocal]>,
+        args: Box<[crate::plan::execution::graph::ParamLocal]>,
     },
 }
 
@@ -326,7 +326,9 @@ impl TailFunctionIndex for ListFunctionFunctionId {
 #[cfg(test)]
 mod explain_tests {
     use super::{TailFunctionIndex, write_function_exit};
-    use crate::plan::execution::{IntFunctionId, Terminator, explain};
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::IntFunctionId;
+    use crate::plan::execution::graph::Terminator;
 
     #[test]
     fn writes_return_and_tail_call_exits() {
@@ -347,27 +349,29 @@ pub fn main() { loop(2) }
 
     #[test]
     fn extracts_every_tail_function_index_explicitly() {
-        use crate::plan::execution::{
+        use crate::plan::execution::function::{
             BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionFunctionId,
-            BitArrayListFunctionId, BitArrayListTypeId, BoolFunctionFunctionId, BoolFunctionId,
-            BoolListFunctionFunctionId, BoolListFunctionId, BoolListTypeId,
-            CustomListFunctionFunctionId, CustomListFunctionId, CustomListTypeId, CustomTypeId,
-            FloatFunctionFunctionId, FloatFunctionId, FloatListFunctionFunctionId,
-            FloatListFunctionId, FloatListTypeId, FunctionListFunctionFunctionId,
-            FunctionListFunctionId, FunctionListTypeId, FunctionShape, FunctionType,
-            GenericFunctionFunctionId, GenericFunctionType, IntFunctionFunctionId,
-            IntListFunctionFunctionId, IntListFunctionId, IntListTypeId, ListFunctionFunctionId,
-            ListListFunctionFunctionId, ListListFunctionId, ListListTypeId, ListTypeId,
-            NeverFunctionFunctionId, NeverFunctionId, NilFunctionFunctionId, NilFunctionId,
-            NilListFunctionFunctionId, NilListFunctionId, NilListTypeId,
-            ParameterListFunctionFunctionId, ParameterListFunctionId,
+            BitArrayListFunctionId, BoolFunctionFunctionId, BoolFunctionId,
+            BoolListFunctionFunctionId, BoolListFunctionId, CustomListFunctionFunctionId,
+            CustomListFunctionId, FloatFunctionFunctionId, FloatFunctionId,
+            FloatListFunctionFunctionId, FloatListFunctionId, FunctionListFunctionFunctionId,
+            FunctionListFunctionId, GenericFunctionFunctionId, IntFunctionFunctionId,
+            IntListFunctionFunctionId, IntListFunctionId, ListFunctionFunctionId,
+            ListListFunctionFunctionId, ListListFunctionId, NeverFunctionFunctionId,
+            NeverFunctionId, NilFunctionFunctionId, NilFunctionId, NilListFunctionFunctionId,
+            NilListFunctionId, ParameterListFunctionFunctionId, ParameterListFunctionId,
             ParameterListListFunctionFunctionId, ParameterListListFunctionId,
-            ParameterListListTypeId, ParameterListTypeId, StringFunctionFunctionId,
-            StringFunctionId, StringListFunctionFunctionId, StringListFunctionId, StringListTypeId,
-            TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionFunctionId,
-            TupleListFunctionId, TupleListTypeId, UtfCodepointFunctionFunctionId,
+            StringFunctionFunctionId, StringFunctionId, StringListFunctionFunctionId,
+            StringListFunctionId, TupleFunctionFunctionId, TupleFunctionId,
+            TupleListFunctionFunctionId, TupleListFunctionId, UtfCodepointFunctionFunctionId,
             UtfCodepointFunctionId, UtfCodepointListFunctionFunctionId, UtfCodepointListFunctionId,
-            UtfCodepointListTypeId, ValueShapeId, ValueType,
+        };
+        use crate::plan::execution::type_::{
+            BitArrayListTypeId, BoolListTypeId, CustomListTypeId, CustomTypeId, FloatListTypeId,
+            FunctionListTypeId, FunctionShape, FunctionType, GenericFunctionType, IntListTypeId,
+            ListListTypeId, ListTypeId, NilListTypeId, ParameterListListTypeId,
+            ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
+            ValueShapeId, ValueType,
         };
 
         assert_tail_index(&0usize, 0);

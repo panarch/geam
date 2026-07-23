@@ -1,5 +1,5 @@
 use crate::plan::execution::explain::FunctionLabel;
-use crate::plan::execution::{
+use crate::plan::execution::type_::{
     BitArrayListTypeId, BoolListTypeId, CustomListTypeId, FloatListTypeId, FunctionListTypeId,
     FunctionType, IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId,
     ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
@@ -40,19 +40,19 @@ pub struct UtfCodepointFunctionFunctionId(pub(crate) usize);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenericFunctionFunctionId {
     index: usize,
-    type_: crate::plan::execution::GenericFunctionType,
+    type_: crate::plan::execution::type_::GenericFunctionType,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NeverFunctionFunctionId {
     index: usize,
-    type_: crate::plan::execution::GenericFunctionType,
+    type_: crate::plan::execution::type_::GenericFunctionType,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CustomFunctionFunctionId {
     index: usize,
-    type_: crate::plan::execution::CustomFunctionType,
+    type_: crate::plan::execution::type_::CustomFunctionType,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -175,13 +175,13 @@ pub enum ListFunctionFunctionId {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionFunctionFunctionId {
     index: usize,
-    type_: crate::plan::execution::FunctionFunctionType,
+    type_: crate::plan::execution::type_::FunctionFunctionType,
 }
 
 impl CustomFunctionFunctionId {
     pub(in crate::plan::execution) fn new(
         index: usize,
-        type_: crate::plan::execution::CustomFunctionType,
+        type_: crate::plan::execution::type_::CustomFunctionType,
     ) -> Self {
         Self { index, type_ }
     }
@@ -194,7 +194,7 @@ impl CustomFunctionFunctionId {
 impl GenericFunctionFunctionId {
     pub(in crate::plan::execution) fn new(
         index: usize,
-        type_: crate::plan::execution::GenericFunctionType,
+        type_: crate::plan::execution::type_::GenericFunctionType,
     ) -> Self {
         Self { index, type_ }
     }
@@ -207,7 +207,7 @@ impl GenericFunctionFunctionId {
 impl NeverFunctionFunctionId {
     pub(in crate::plan::execution) fn new(
         index: usize,
-        type_: crate::plan::execution::GenericFunctionType,
+        type_: crate::plan::execution::type_::GenericFunctionType,
     ) -> Self {
         Self { index, type_ }
     }
@@ -220,7 +220,7 @@ impl NeverFunctionFunctionId {
 impl FunctionFunctionFunctionId {
     pub(in crate::plan::execution) fn new(
         index: usize,
-        type_: crate::plan::execution::FunctionFunctionType,
+        type_: crate::plan::execution::type_::FunctionFunctionType,
     ) -> Self {
         Self { index, type_ }
     }
@@ -230,7 +230,7 @@ impl FunctionFunctionFunctionId {
     }
 
     #[cfg(test)]
-    pub(crate) fn type_(&self) -> &crate::plan::execution::FunctionFunctionType {
+    pub(crate) fn type_(&self) -> &crate::plan::execution::type_::FunctionFunctionType {
         &self.type_
     }
 }
@@ -349,7 +349,9 @@ fn list_function_function_label(function: &ListFunctionFunctionId) -> FunctionLa
 #[cfg(test)]
 mod explain_tests {
     use super::{FunctionFunctionId, function_function_label};
-    use crate::plan::execution::{ExecutionPlan, RuntimeFunctionId, explain};
+    use crate::plan::execution::ExecutionPlan;
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::RuntimeFunctionId;
 
     #[test]
     fn labels_function_return_families() {
@@ -505,7 +507,7 @@ mod tests {
         ParameterListFunctionFunctionId, ParameterListListFunctionFunctionId,
         StringListFunctionFunctionId, TupleListFunctionFunctionId, UtfCodepointFunctionFunctionId,
     };
-    use crate::plan::execution::RuntimeFunctionId;
+    use crate::plan::execution::function::RuntimeFunctionId;
     use crate::plan::{CustomType, CustomTypeName, ValueType};
 
     fn custom_type() -> CustomType {
@@ -521,9 +523,9 @@ mod tests {
         let parameter = parameter_plan.parameter_list_function_id(0).type_id();
         let nested_plan = execution_plan("pub fn main() -> List(List(value)) { [] }");
         let nested = nested_plan.parameter_list_list_function_id(0).type_id();
-        let function_type = crate::plan::execution::FunctionType::new(
+        let function_type = crate::plan::execution::type_::FunctionType::new(
             Vec::new(),
-            crate::plan::execution::ValueType::Nil,
+            crate::plan::execution::type_::ValueType::Nil,
         );
         let parameter_function = ListFunctionFunctionId::Parameter {
             id: ParameterListFunctionFunctionId(0),
@@ -546,14 +548,14 @@ mod tests {
 
     #[test]
     fn never_function_function_id_projection_is_typed() {
-        let function_type = crate::plan::execution::FunctionType::new(
+        let function_type = crate::plan::execution::type_::FunctionType::new(
             Vec::new(),
-            crate::plan::execution::ValueType::Parameter(crate::plan::TypeParameterId(0)),
+            crate::plan::execution::type_::ValueType::Parameter(crate::plan::TypeParameterId(0)),
         );
-        let type_ = crate::plan::execution::GenericFunctionType::from_shapes(
+        let type_ = crate::plan::execution::type_::GenericFunctionType::from_shapes(
             function_type.clone(),
-            crate::plan::execution::FunctionShape::new(
-                crate::plan::execution::ValueShapeId::new(0),
+            crate::plan::execution::type_::FunctionShape::new(
+                crate::plan::execution::type_::ValueShapeId::new(0),
                 function_type,
             ),
         );
@@ -569,14 +571,14 @@ mod tests {
 
     #[test]
     fn generic_function_function_id_projection_is_typed() {
-        let function_type = crate::plan::execution::FunctionType::new(
+        let function_type = crate::plan::execution::type_::FunctionType::new(
             Vec::new(),
-            crate::plan::execution::ValueType::Parameter(crate::plan::TypeParameterId(0)),
+            crate::plan::execution::type_::ValueType::Parameter(crate::plan::TypeParameterId(0)),
         );
-        let type_ = crate::plan::execution::GenericFunctionType::from_shapes(
+        let type_ = crate::plan::execution::type_::GenericFunctionType::from_shapes(
             function_type.clone(),
-            crate::plan::execution::FunctionShape::new(
-                crate::plan::execution::ValueShapeId::new(0),
+            crate::plan::execution::type_::FunctionShape::new(
+                crate::plan::execution::type_::ValueShapeId::new(0),
                 function_type,
             ),
         );
@@ -614,18 +616,18 @@ mod tests {
 
     #[test]
     fn custom_function_function_id_projection_is_typed() {
-        let return_type = crate::plan::execution::CustomTypeId::new(0);
+        let return_type = crate::plan::execution::type_::CustomTypeId::new(0);
         let function = CustomFunctionFunctionId::new(
             2,
-            crate::plan::execution::CustomFunctionType::from_shapes(
-                crate::plan::execution::FunctionType::new(
+            crate::plan::execution::type_::CustomFunctionType::from_shapes(
+                crate::plan::execution::type_::FunctionType::new(
                     Vec::new(),
-                    crate::plan::execution::ValueType::Custom(return_type),
+                    crate::plan::execution::type_::ValueType::Custom(return_type),
                 ),
                 Vec::new(),
-                crate::plan::execution::CustomValueShape::new(
+                crate::plan::execution::type_::CustomValueShape::new(
                     return_type,
-                    crate::plan::execution::CustomValueShapeId::new(0),
+                    crate::plan::execution::type_::CustomValueShapeId::new(0),
                 ),
             ),
         );
@@ -642,9 +644,9 @@ mod tests {
     fn bit_array_list_function_function_id_preserves_exact_return_type() {
         let plan = execution_plan("pub fn main() -> fn() -> List(BitArray) { fn() { [] } }");
         let list_type = plan.bit_array_list_function_id(0).type_id();
-        let return_type = crate::plan::execution::FunctionType::new(
+        let return_type = crate::plan::execution::type_::FunctionType::new(
             Vec::new(),
-            crate::plan::execution::ValueType::List(list_type.list_type()),
+            crate::plan::execution::type_::ValueType::List(list_type.list_type()),
         );
         let id = ListFunctionFunctionId::BitArray {
             id: super::BitArrayListFunctionFunctionId(0),
@@ -673,9 +675,9 @@ mod tests {
     fn utf_codepoint_list_function_function_id_preserves_exact_return_type() {
         let plan = execution_plan("pub fn main() -> fn() -> List(UtfCodepoint) { fn() { [] } }");
         let list_type = plan.utf_codepoint_list_function_id(0).type_id();
-        let return_type = crate::plan::execution::FunctionType::new(
+        let return_type = crate::plan::execution::type_::FunctionType::new(
             Vec::new(),
-            crate::plan::execution::ValueType::List(list_type.list_type()),
+            crate::plan::execution::type_::ValueType::List(list_type.list_type()),
         );
         let id = ListFunctionFunctionId::UtfCodepoint {
             id: super::UtfCodepointListFunctionFunctionId(0),
@@ -705,9 +707,9 @@ mod tests {
             "pub type Boxed { Boxed(Int) } pub fn main() -> fn() -> List(Boxed) { fn() { [] } }",
         );
         let list_type = plan.custom_list_function_id(0).type_id();
-        let return_type = crate::plan::execution::FunctionType::new(
+        let return_type = crate::plan::execution::type_::FunctionType::new(
             Vec::new(),
-            crate::plan::execution::ValueType::List(list_type.list_type()),
+            crate::plan::execution::type_::ValueType::List(list_type.list_type()),
         );
         let id = ListFunctionFunctionId::Custom {
             id: super::CustomListFunctionFunctionId(0),
@@ -767,9 +769,9 @@ pub fn main() {
 }
 "#,
         );
-        let type_ = crate::plan::execution::FunctionType::new(
+        let type_ = crate::plan::execution::type_::FunctionType::new(
             Vec::new(),
-            crate::plan::execution::ValueType::Nil,
+            crate::plan::execution::type_::ValueType::Nil,
         );
         let ids = [
             ListFunctionFunctionId::Int {

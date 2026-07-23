@@ -33,7 +33,7 @@ trait GraphListItem:
     fn lower_constant(
         constant: &Self::Constant,
         context: &mut super::super::LoweringContext,
-    ) -> Representability<execution::ConstantId<Self::ExecutionLocal>>;
+    ) -> Representability<execution::constant::ConstantId<Self::ExecutionLocal>>;
 
     fn local_key(local: &<Self as module::ListItem>::Local) -> super::super::local::LocalKey;
 
@@ -234,43 +234,43 @@ pub(super) fn generic_direct_call(
 
     context.list_function_id(target, item).map(|function| {
         let kind = match function {
-            execution::ListFunctionId::Parameter(function) => {
+            execution::function::ListFunctionId::Parameter(function) => {
                 I::Parameter(function.type_id(), P::Call { function, args })
             }
-            execution::ListFunctionId::ParameterList(function) => {
+            execution::function::ListFunctionId::ParameterList(function) => {
                 I::ParameterList(function.type_id(), T::Call { function, args })
             }
-            execution::ListFunctionId::Int(function) => {
+            execution::function::ListFunctionId::Int(function) => {
                 I::Int(function.type_id(), T::Call { function, args })
             }
-            execution::ListFunctionId::String(function) => {
+            execution::function::ListFunctionId::String(function) => {
                 I::String(function.type_id(), T::Call { function, args })
             }
-            execution::ListFunctionId::BitArray(function) => {
+            execution::function::ListFunctionId::BitArray(function) => {
                 I::BitArray(function.type_id(), T::Call { function, args })
             }
-            execution::ListFunctionId::UtfCodepoint(function) => {
+            execution::function::ListFunctionId::UtfCodepoint(function) => {
                 I::UtfCodepoint(function.type_id(), T::Call { function, args })
             }
-            execution::ListFunctionId::Custom(function) => {
+            execution::function::ListFunctionId::Custom(function) => {
                 I::Custom(function.type_id(), T::Call { function, args })
             }
-            execution::ListFunctionId::Float(function) => {
+            execution::function::ListFunctionId::Float(function) => {
                 I::Float(function.type_id(), T::Call { function, args })
             }
-            execution::ListFunctionId::Bool(function) => {
+            execution::function::ListFunctionId::Bool(function) => {
                 I::Bool(function.type_id(), T::Call { function, args })
             }
-            execution::ListFunctionId::Nil(function) => {
+            execution::function::ListFunctionId::Nil(function) => {
                 I::Nil(function.type_id(), T::Call { function, args })
             }
-            execution::ListFunctionId::Tuple(function) => {
+            execution::function::ListFunctionId::Tuple(function) => {
                 I::Tuple(function.type_id(), T::Call { function, args })
             }
-            execution::ListFunctionId::List(function) => {
+            execution::function::ListFunctionId::List(function) => {
                 I::List(function.type_id(), T::Call { function, args })
             }
-            execution::ListFunctionId::Function(function) => {
+            execution::function::ListFunctionId::Function(function) => {
                 I::Function(function.type_id(), T::Call { function, args })
             }
         };
@@ -408,7 +408,7 @@ fn parameter_list_kind(
                     item,
                     I::Parameter(
                         list_type,
-                        P::Constant(execution::ConstantId::new(id.index())),
+                        P::Constant(execution::constant::ConstantId::new(id.index())),
                     ),
                 );
                 DraftFlow::value(cursor, value)
@@ -880,59 +880,90 @@ fn stored_generic_list_constant(
     match item {
         StoredValueShape::Int => {
             let type_id = context.int_list_type();
-            context
-                .generic_int_list_constant(constant)
-                .map(|id| I::Int(type_id, T::Constant(execution::ConstantId::new(id.index()))))
+            context.generic_int_list_constant(constant).map(|id| {
+                I::Int(
+                    type_id,
+                    T::Constant(execution::constant::ConstantId::new(id.index())),
+                )
+            })
         }
         StoredValueShape::String => {
             let type_id = context.string_list_type();
-            context
-                .generic_string_list_constant(constant)
-                .map(|id| I::String(type_id, T::Constant(execution::ConstantId::new(id.index()))))
+            context.generic_string_list_constant(constant).map(|id| {
+                I::String(
+                    type_id,
+                    T::Constant(execution::constant::ConstantId::new(id.index())),
+                )
+            })
         }
         StoredValueShape::BitArray => {
             let type_id = context.bit_array_list_type();
-            context
-                .generic_bit_array_list_constant(constant)
-                .map(|id| I::BitArray(type_id, T::Constant(execution::ConstantId::new(id.index()))))
+            context.generic_bit_array_list_constant(constant).map(|id| {
+                I::BitArray(
+                    type_id,
+                    T::Constant(execution::constant::ConstantId::new(id.index())),
+                )
+            })
         }
         StoredValueShape::UtfCodepoint => {
             let type_id = context.utf_codepoint_list_type();
             context
                 .generic_utf_codepoint_list_constant(constant)
                 .map(|id| {
-                    I::UtfCodepoint(type_id, T::Constant(execution::ConstantId::new(id.index())))
+                    I::UtfCodepoint(
+                        type_id,
+                        T::Constant(execution::constant::ConstantId::new(id.index())),
+                    )
                 })
         }
         StoredValueShape::Custom(shape) => {
             let type_id = context.specialized_custom_list_type(shape);
             context
                 .generic_custom_list_constant(constant, shape)
-                .map(|id| I::Custom(type_id, T::Constant(execution::ConstantId::new(id.index()))))
+                .map(|id| {
+                    I::Custom(
+                        type_id,
+                        T::Constant(execution::constant::ConstantId::new(id.index())),
+                    )
+                })
         }
         StoredValueShape::Float => {
             let type_id = context.float_list_type();
-            context
-                .generic_float_list_constant(constant)
-                .map(|id| I::Float(type_id, T::Constant(execution::ConstantId::new(id.index()))))
+            context.generic_float_list_constant(constant).map(|id| {
+                I::Float(
+                    type_id,
+                    T::Constant(execution::constant::ConstantId::new(id.index())),
+                )
+            })
         }
         StoredValueShape::Bool => {
             let type_id = context.bool_list_type();
-            context
-                .generic_bool_list_constant(constant)
-                .map(|id| I::Bool(type_id, T::Constant(execution::ConstantId::new(id.index()))))
+            context.generic_bool_list_constant(constant).map(|id| {
+                I::Bool(
+                    type_id,
+                    T::Constant(execution::constant::ConstantId::new(id.index())),
+                )
+            })
         }
         StoredValueShape::Nil => {
             let type_id = context.nil_list_type();
-            context
-                .generic_nil_list_constant(constant)
-                .map(|id| I::Nil(type_id, T::Constant(execution::ConstantId::new(id.index()))))
+            context.generic_nil_list_constant(constant).map(|id| {
+                I::Nil(
+                    type_id,
+                    T::Constant(execution::constant::ConstantId::new(id.index())),
+                )
+            })
         }
         StoredValueShape::Tuple(elements) => {
             let type_id = context.specialized_tuple_list_type(elements);
             context
                 .generic_tuple_list_constant(constant, elements)
-                .map(|id| I::Tuple(type_id, T::Constant(execution::ConstantId::new(id.index()))))
+                .map(|id| {
+                    I::Tuple(
+                        type_id,
+                        T::Constant(execution::constant::ConstantId::new(id.index())),
+                    )
+                })
         }
         StoredValueShape::List(inner) => match inner.storage_representation() {
             StorageRepresentation::Parameter(parameter) => {
@@ -942,7 +973,7 @@ fn stored_generic_list_constant(
                     .map(|id| {
                         I::ParameterList(
                             type_id,
-                            T::Constant(execution::ConstantId::new(id.index())),
+                            T::Constant(execution::constant::ConstantId::new(id.index())),
                         )
                     })
             }
@@ -950,14 +981,24 @@ fn stored_generic_list_constant(
                 let type_id = context.specialized_stored_list_list_type(&inner);
                 context
                     .generic_list_list_constant(constant, &inner)
-                    .map(|id| I::List(type_id, T::Constant(execution::ConstantId::new(id.index()))))
+                    .map(|id| {
+                        I::List(
+                            type_id,
+                            T::Constant(execution::constant::ConstantId::new(id.index())),
+                        )
+                    })
             }
         },
         StoredValueShape::Function(shape) => {
             let type_id = context.specialized_function_list_type(shape);
             context
                 .generic_function_list_constant(constant, shape)
-                .map(|id| I::Function(type_id, T::Constant(execution::ConstantId::new(id.index()))))
+                .map(|id| {
+                    I::Function(
+                        type_id,
+                        T::Constant(execution::constant::ConstantId::new(id.index())),
+                    )
+                })
         }
     }
 }
@@ -1203,14 +1244,22 @@ fn parameter_list_list_constant(
             context
                 .parameter_list_list_constant(constant, parameter)
                 .map(|id| {
-                    I::ParameterList(type_id, T::Constant(execution::ConstantId::new(id.index())))
+                    I::ParameterList(
+                        type_id,
+                        T::Constant(execution::constant::ConstantId::new(id.index())),
+                    )
                 })
         }
         StorageRepresentation::Stored(inner) => {
             let type_id = context.specialized_stored_list_list_type(&inner);
             context
                 .parameter_list_list_as_stored_constant(constant, &inner)
-                .map(|id| I::List(type_id, T::Constant(execution::ConstantId::new(id.index()))))
+                .map(|id| {
+                    I::List(
+                        type_id,
+                        T::Constant(execution::constant::ConstantId::new(id.index())),
+                    )
+                })
         }
     }
 }
@@ -1826,10 +1875,10 @@ macro_rules! primitive_list_item {
             fn lower_constant(
                 constant: &Self::Constant,
                 context: &mut super::super::LoweringContext,
-            ) -> Representability<execution::ConstantId<Self::ExecutionLocal>> {
+            ) -> Representability<execution::constant::ConstantId<Self::ExecutionLocal>> {
                 context
                     .$constant(constant)
-                    .map(|id| execution::ConstantId::new(id.index()))
+                    .map(|id| execution::constant::ConstantId::new(id.index()))
             }
 
             fn local_key(
@@ -1882,9 +1931,9 @@ primitive_list_item!(
     module::IntListItem,
     DraftInt,
     DraftIntList,
-    execution::IntListLocalId,
-    execution::IntListFunctionId,
-    execution::IntListTypeId,
+    execution::graph::IntListLocalId,
+    execution::function::IntListFunctionId,
+    execution::type_::IntListTypeId,
     IntList,
     int_expr,
     int_list_constant,
@@ -1896,9 +1945,9 @@ primitive_list_item!(
     module::StringListItem,
     DraftString,
     DraftStringList,
-    execution::StringListLocalId,
-    execution::StringListFunctionId,
-    execution::StringListTypeId,
+    execution::graph::StringListLocalId,
+    execution::function::StringListFunctionId,
+    execution::type_::StringListTypeId,
     StringList,
     string_expr,
     string_list_constant,
@@ -1910,9 +1959,9 @@ primitive_list_item!(
     module::BitArrayListItem,
     DraftBitArray,
     DraftBitArrayList,
-    execution::BitArrayListLocalId,
-    execution::BitArrayListFunctionId,
-    execution::BitArrayListTypeId,
+    execution::graph::BitArrayListLocalId,
+    execution::function::BitArrayListFunctionId,
+    execution::type_::BitArrayListTypeId,
     BitArrayList,
     bit_array_expr,
     bit_array_list_constant,
@@ -1924,9 +1973,9 @@ primitive_list_item!(
     module::UtfCodepointListItem,
     DraftUtfCodepoint,
     DraftUtfCodepointList,
-    execution::UtfCodepointListLocalId,
-    execution::UtfCodepointListFunctionId,
-    execution::UtfCodepointListTypeId,
+    execution::graph::UtfCodepointListLocalId,
+    execution::function::UtfCodepointListFunctionId,
+    execution::type_::UtfCodepointListTypeId,
     UtfCodepointList,
     utf_codepoint_expr,
     utf_codepoint_list_constant,
@@ -1938,9 +1987,9 @@ primitive_list_item!(
     module::FloatListItem,
     DraftFloat,
     DraftFloatList,
-    execution::FloatListLocalId,
-    execution::FloatListFunctionId,
-    execution::FloatListTypeId,
+    execution::graph::FloatListLocalId,
+    execution::function::FloatListFunctionId,
+    execution::type_::FloatListTypeId,
     FloatList,
     float_expr,
     float_list_constant,
@@ -1952,9 +2001,9 @@ primitive_list_item!(
     module::BoolListItem,
     DraftBool,
     DraftBoolList,
-    execution::BoolListLocalId,
-    execution::BoolListFunctionId,
-    execution::BoolListTypeId,
+    execution::graph::BoolListLocalId,
+    execution::function::BoolListFunctionId,
+    execution::type_::BoolListTypeId,
     BoolList,
     bool_expr,
     bool_list_constant,
@@ -1966,9 +2015,9 @@ primitive_list_item!(
     module::NilListItem,
     DraftNil,
     DraftNilList,
-    execution::NilListLocalId,
-    execution::NilListFunctionId,
-    execution::NilListTypeId,
+    execution::graph::NilListLocalId,
+    execution::function::NilListFunctionId,
+    execution::type_::NilListTypeId,
     NilList,
     nil_expr,
     nil_list_constant,
@@ -1980,9 +2029,9 @@ primitive_list_item!(
 impl GraphListItem for module::CustomListItem {
     type DraftElement = DraftCustom;
     type DraftList = DraftCustomList;
-    type ExecutionLocal = execution::CustomListLocalId;
-    type ExecutionFunction = execution::CustomListFunctionId;
-    type ExecutionType = execution::CustomListTypeId;
+    type ExecutionLocal = execution::graph::CustomListLocalId;
+    type ExecutionFunction = execution::function::CustomListFunctionId;
+    type ExecutionType = execution::type_::CustomListTypeId;
 
     fn lower_element(
         element: &Self::ElementExpr,
@@ -1996,10 +2045,10 @@ impl GraphListItem for module::CustomListItem {
     fn lower_constant(
         constant: &Self::Constant,
         context: &mut super::super::LoweringContext,
-    ) -> Representability<execution::ConstantId<Self::ExecutionLocal>> {
+    ) -> Representability<execution::constant::ConstantId<Self::ExecutionLocal>> {
         context
             .custom_list_constant(constant)
-            .map(|id| execution::ConstantId::new(id.index()))
+            .map(|id| execution::constant::ConstantId::new(id.index()))
     }
 
     fn local_key(local: &<Self as module::ListItem>::Local) -> super::super::local::LocalKey {
@@ -2042,9 +2091,9 @@ impl GraphListItem for module::CustomListItem {
 impl GraphListItem for module::TupleListItem {
     type DraftElement = DraftTuple;
     type DraftList = DraftTupleList;
-    type ExecutionLocal = execution::TupleListLocalId;
-    type ExecutionFunction = execution::TupleListFunctionId;
-    type ExecutionType = execution::TupleListTypeId;
+    type ExecutionLocal = execution::graph::TupleListLocalId;
+    type ExecutionFunction = execution::function::TupleListFunctionId;
+    type ExecutionType = execution::type_::TupleListTypeId;
 
     fn lower_element(
         element: &Self::ElementExpr,
@@ -2058,10 +2107,10 @@ impl GraphListItem for module::TupleListItem {
     fn lower_constant(
         constant: &Self::Constant,
         context: &mut super::super::LoweringContext,
-    ) -> Representability<execution::ConstantId<Self::ExecutionLocal>> {
+    ) -> Representability<execution::constant::ConstantId<Self::ExecutionLocal>> {
         context
             .tuple_list_constant(constant)
-            .map(|id| execution::ConstantId::new(id.index()))
+            .map(|id| execution::constant::ConstantId::new(id.index()))
     }
 
     fn local_key(local: &<Self as module::ListItem>::Local) -> super::super::local::LocalKey {
@@ -2104,9 +2153,9 @@ impl GraphListItem for module::TupleListItem {
 impl GraphListItem for module::ListListItem {
     type DraftElement = DraftStoredList;
     type DraftList = DraftListList;
-    type ExecutionLocal = execution::ListListLocalId;
-    type ExecutionFunction = execution::ListListFunctionId;
-    type ExecutionType = execution::ListListTypeId;
+    type ExecutionLocal = execution::graph::ListListLocalId;
+    type ExecutionFunction = execution::function::ListListFunctionId;
+    type ExecutionType = execution::type_::ListListTypeId;
 
     fn lower_element(
         element: &Self::ElementExpr,
@@ -2120,10 +2169,10 @@ impl GraphListItem for module::ListListItem {
     fn lower_constant(
         constant: &Self::Constant,
         context: &mut super::super::LoweringContext,
-    ) -> Representability<execution::ConstantId<Self::ExecutionLocal>> {
+    ) -> Representability<execution::constant::ConstantId<Self::ExecutionLocal>> {
         context
             .list_list_constant(constant)
-            .map(|id| execution::ConstantId::new(id.index()))
+            .map(|id| execution::constant::ConstantId::new(id.index()))
     }
 
     fn local_key(local: &<Self as module::ListItem>::Local) -> super::super::local::LocalKey {
@@ -2166,9 +2215,9 @@ impl GraphListItem for module::ListListItem {
 impl GraphListItem for module::FunctionListItem {
     type DraftElement = DraftFunction;
     type DraftList = DraftFunctionList;
-    type ExecutionLocal = execution::FunctionListLocalId;
-    type ExecutionFunction = execution::FunctionListFunctionId;
-    type ExecutionType = execution::FunctionListTypeId;
+    type ExecutionLocal = execution::graph::FunctionListLocalId;
+    type ExecutionFunction = execution::function::FunctionListFunctionId;
+    type ExecutionType = execution::type_::FunctionListTypeId;
 
     fn lower_element(
         element: &Self::ElementExpr,
@@ -2182,10 +2231,10 @@ impl GraphListItem for module::FunctionListItem {
     fn lower_constant(
         constant: &Self::Constant,
         context: &mut super::super::LoweringContext,
-    ) -> Representability<execution::ConstantId<Self::ExecutionLocal>> {
+    ) -> Representability<execution::constant::ConstantId<Self::ExecutionLocal>> {
         context
             .function_list_constant(constant)
-            .map(|id| execution::ConstantId::new(id.index()))
+            .map(|id| execution::constant::ConstantId::new(id.index()))
     }
 
     fn local_key(local: &<Self as module::ListItem>::Local) -> super::super::local::LocalKey {

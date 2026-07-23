@@ -2,39 +2,42 @@ use super::super::super::FunctionLocal;
 use super::{write_args, write_constant, write_function_call, write_projection};
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::{
+    BitArrayFunctionId, CustomFunctionId, FunctionFunctionId, FunctionReturnFamily,
+    GenericCallableId, IntFunctionId, NilFunctionId, StringFunctionId, TupleFunctionId,
+    UtfCodepointFunctionId,
+};
+use crate::plan::execution::function::{
     ExplainFunctionId, function_function_label, list_function_label,
 };
 use crate::plan::execution::graph::ExplainLocal;
-use crate::plan::execution::{
-    BitArrayFunctionId, BitArrayListLocalId, CustomConstructorId, CustomFunctionId,
-    CustomFunctionLocal, CustomListLocalId, CustomLocal, FloatListLocalId, FunctionFunctionId,
-    FunctionFunctionLocal, FunctionListLocalId, FunctionReturnFamily, GenericCallableId,
-    GenericFunctionLocal, IntFunctionId, IntListLocalId, IntLocalId, ListFunctionLocal,
-    ListListLocalId, NeverFunctionLocal, NilFunctionId, NilListLocalId, ParamLocal,
-    ParameterListListLocalId, ParameterListLocalId, StringFunctionId, StringListLocalId,
-    StringLocalId, TupleFunctionId, TupleListLocalId, TupleLocalId, UtfCodepointFunctionId,
-    UtfCodepointListLocalId, UtfCodepointLocalId,
+use crate::plan::execution::graph::{
+    BitArrayListLocalId, CustomFunctionLocal, CustomListLocalId, CustomLocal, FloatListLocalId,
+    FunctionFunctionLocal, FunctionListLocalId, GenericFunctionLocal, IntListLocalId, IntLocalId,
+    ListFunctionLocal, ListListLocalId, NeverFunctionLocal, NilListLocalId, ParamLocal,
+    ParameterListListLocalId, ParameterListLocalId, StringListLocalId, StringLocalId,
+    TupleListLocalId, TupleLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
 };
+use crate::plan::execution::type_::CustomConstructorId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum FunctionTarget {
     Generic(GenericCallableId),
-    Never(crate::plan::execution::NeverFunctionId),
+    Never(crate::plan::execution::function::NeverFunctionId),
     Int(IntFunctionId),
-    Float(crate::plan::execution::FloatFunctionId),
+    Float(crate::plan::execution::function::FloatFunctionId),
     String(StringFunctionId),
     BitArray(BitArrayFunctionId),
     UtfCodepoint(UtfCodepointFunctionId),
     Custom(CustomFunctionId),
-    Bool(crate::plan::execution::BoolFunctionId),
+    Bool(crate::plan::execution::function::BoolFunctionId),
     Nil(NilFunctionId),
     Tuple(TupleFunctionId),
-    List(crate::plan::execution::ListFunctionId),
+    List(crate::plan::execution::function::ListFunctionId),
     Function(FunctionFunctionId),
 }
 
 pub(crate) struct FunctionInstruction {
-    type_: crate::plan::execution::FunctionType,
+    type_: crate::plan::execution::type_::FunctionType,
     family: FunctionReturnFamily,
     kind: FunctionInstructionKind,
 }
@@ -45,16 +48,16 @@ pub(crate) enum FunctionCapture {
         source: IntLocalId,
     },
     Float {
-        target: crate::plan::execution::FloatLocalId,
-        source: crate::plan::execution::FloatLocalId,
+        target: crate::plan::execution::graph::FloatLocalId,
+        source: crate::plan::execution::graph::FloatLocalId,
     },
     String {
         target: StringLocalId,
         source: StringLocalId,
     },
     BitArray {
-        target: crate::plan::execution::BitArrayLocalId,
-        source: crate::plan::execution::BitArrayLocalId,
+        target: crate::plan::execution::graph::BitArrayLocalId,
+        source: crate::plan::execution::graph::BitArrayLocalId,
     },
     UtfCodepoint {
         target: UtfCodepointLocalId,
@@ -65,12 +68,12 @@ pub(crate) enum FunctionCapture {
         source: CustomLocal,
     },
     Bool {
-        target: crate::plan::execution::BoolLocalId,
-        source: crate::plan::execution::BoolLocalId,
+        target: crate::plan::execution::graph::BoolLocalId,
+        source: crate::plan::execution::graph::BoolLocalId,
     },
     Nil {
-        target: crate::plan::execution::NilLocalId,
-        source: crate::plan::execution::NilLocalId,
+        target: crate::plan::execution::graph::NilLocalId,
+        source: crate::plan::execution::graph::NilLocalId,
     },
     Tuple {
         target: TupleLocalId,
@@ -109,8 +112,8 @@ pub(crate) enum FunctionCapture {
         source: FloatListLocalId,
     },
     BoolList {
-        target: crate::plan::execution::BoolListLocalId,
-        source: crate::plan::execution::BoolListLocalId,
+        target: crate::plan::execution::graph::BoolListLocalId,
+        source: crate::plan::execution::graph::BoolListLocalId,
     },
     NilList {
         target: NilListLocalId,
@@ -129,24 +132,24 @@ pub(crate) enum FunctionCapture {
         source: FunctionListLocalId,
     },
     IntFunction {
-        target: crate::plan::execution::IntFunctionLocalId,
-        source: crate::plan::execution::IntFunctionLocalId,
+        target: crate::plan::execution::graph::IntFunctionLocalId,
+        source: crate::plan::execution::graph::IntFunctionLocalId,
     },
     FloatFunction {
-        target: crate::plan::execution::FloatFunctionLocalId,
-        source: crate::plan::execution::FloatFunctionLocalId,
+        target: crate::plan::execution::graph::FloatFunctionLocalId,
+        source: crate::plan::execution::graph::FloatFunctionLocalId,
     },
     StringFunction {
-        target: crate::plan::execution::StringFunctionLocalId,
-        source: crate::plan::execution::StringFunctionLocalId,
+        target: crate::plan::execution::graph::StringFunctionLocalId,
+        source: crate::plan::execution::graph::StringFunctionLocalId,
     },
     BitArrayFunction {
-        target: crate::plan::execution::BitArrayFunctionLocalId,
-        source: crate::plan::execution::BitArrayFunctionLocalId,
+        target: crate::plan::execution::graph::BitArrayFunctionLocalId,
+        source: crate::plan::execution::graph::BitArrayFunctionLocalId,
     },
     UtfCodepointFunction {
-        target: crate::plan::execution::UtfCodepointFunctionLocalId,
-        source: crate::plan::execution::UtfCodepointFunctionLocalId,
+        target: crate::plan::execution::graph::UtfCodepointFunctionLocalId,
+        source: crate::plan::execution::graph::UtfCodepointFunctionLocalId,
     },
     GenericFunction {
         target: GenericFunctionLocal,
@@ -161,16 +164,16 @@ pub(crate) enum FunctionCapture {
         source: CustomFunctionLocal,
     },
     BoolFunction {
-        target: crate::plan::execution::BoolFunctionLocalId,
-        source: crate::plan::execution::BoolFunctionLocalId,
+        target: crate::plan::execution::graph::BoolFunctionLocalId,
+        source: crate::plan::execution::graph::BoolFunctionLocalId,
     },
     NilFunction {
-        target: crate::plan::execution::NilFunctionLocalId,
-        source: crate::plan::execution::NilFunctionLocalId,
+        target: crate::plan::execution::graph::NilFunctionLocalId,
+        source: crate::plan::execution::graph::NilFunctionLocalId,
     },
     TupleFunction {
-        target: crate::plan::execution::TupleFunctionLocalId,
-        source: crate::plan::execution::TupleFunctionLocalId,
+        target: crate::plan::execution::graph::TupleFunctionLocalId,
+        source: crate::plan::execution::graph::TupleFunctionLocalId,
     },
     ListFunction {
         target: ListFunctionLocal,
@@ -361,7 +364,7 @@ where
 }
 
 pub(crate) enum FunctionInstructionKind {
-    Constant(crate::plan::execution::ConstantId<FunctionLocal>),
+    Constant(crate::plan::execution::constant::ConstantId<FunctionLocal>),
     Reference(FunctionTarget),
     Closure {
         target: FunctionTarget,
@@ -392,7 +395,7 @@ pub(crate) enum FunctionInstructionKind {
 
 impl FunctionInstruction {
     pub(in crate::plan::execution) fn new(
-        type_: crate::plan::execution::FunctionType,
+        type_: crate::plan::execution::type_::FunctionType,
         family: FunctionReturnFamily,
         kind: FunctionInstructionKind,
     ) -> Self {
@@ -403,7 +406,7 @@ impl FunctionInstruction {
         }
     }
 
-    pub(crate) fn type_(&self) -> &crate::plan::execution::FunctionType {
+    pub(crate) fn type_(&self) -> &crate::plan::execution::type_::FunctionType {
         &self.type_
     }
 
@@ -418,7 +421,8 @@ impl FunctionInstruction {
 
 #[cfg(test)]
 mod explain_tests {
-    use crate::plan::execution::{TupleFunctionId, explain};
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::TupleFunctionId;
 
     #[test]
     fn writes_function_instruction_targets_calls_and_captures() {

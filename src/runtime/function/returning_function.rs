@@ -1,6 +1,7 @@
 use super::{evaluate, run_tail};
-use crate::plan::execution::{
-    BitArrayFunctionFunctionId, BoolFunctionFunctionId, CustomFunctionFunctionId, ExecutionPlan,
+use crate::plan::execution::ExecutionPlan;
+use crate::plan::execution::function::{
+    BitArrayFunctionFunctionId, BoolFunctionFunctionId, CustomFunctionFunctionId,
     FloatFunctionFunctionId, FunctionFunctionFunctionId, FunctionFunctionId,
     GenericFunctionFunctionId, IntFunctionFunctionId, ListFunctionFunctionId,
     NeverFunctionFunctionId, NilFunctionFunctionId, StringFunctionFunctionId,

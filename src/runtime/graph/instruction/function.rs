@@ -1,9 +1,10 @@
 use super::super::environment::BlockEnvironment;
 use super::value::{constant, custom_projection, list_element, tuple_projection};
 use crate::plan::ValueType;
-use crate::plan::execution::{
-    ExecutionPlan, FunctionBody, FunctionCapture, FunctionEntry, FunctionInstruction,
-    FunctionInstructionKind, FunctionTarget, ListFunctionId, ParamLocal,
+use crate::plan::execution::ExecutionPlan;
+use crate::plan::execution::function::{FunctionBody, FunctionEntry, ListFunctionId};
+use crate::plan::execution::graph::{
+    FunctionCapture, FunctionInstruction, FunctionInstructionKind, FunctionTarget, ParamLocal,
 };
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::evaluated::{
@@ -113,7 +114,7 @@ fn target_value(
     plan: &ExecutionPlan,
     target: &FunctionTarget,
     captures: Vec<EvaluatedCapture>,
-    type_: crate::plan::execution::FunctionType,
+    type_: crate::plan::execution::type_::FunctionType,
     identity: FunctionIdentity,
 ) -> EvaluatedFunctionValue {
     let params = target_params(plan, target);
@@ -165,7 +166,7 @@ fn evaluated_function<Id: Clone + FunctionReferenceId>(
     function: Id,
     params: Vec<ParamLocal>,
     captures: Vec<EvaluatedCapture>,
-    type_: crate::plan::execution::FunctionType,
+    type_: crate::plan::execution::type_::FunctionType,
     identity: FunctionIdentity,
 ) -> EvaluatedFunction<Id> {
     match identity {
@@ -283,9 +284,9 @@ fn list_target_params(plan: &ExecutionPlan, function: &ListFunctionId) -> Vec<Pa
 
 fn function_target_params(
     plan: &ExecutionPlan,
-    function: &crate::plan::execution::FunctionFunctionId,
+    function: &crate::plan::execution::function::FunctionFunctionId,
 ) -> Vec<ParamLocal> {
-    use crate::plan::execution::FunctionFunctionId as F;
+    use crate::plan::execution::function::FunctionFunctionId as F;
 
     match function {
         F::Generic(function) => {
@@ -530,9 +531,11 @@ mod tests {
     use super::super::super::environment::{BlockEnvironment, RetainedValues};
     use super::evaluate;
     use crate::plan::ValueType;
-    use crate::plan::execution::{
-        FunctionInstructionKind, FunctionReturnFamily, FunctionTarget, InstructionKind,
-        ListInstruction, RuntimeFunctionId, TupleFunctionId,
+    use crate::plan::execution::function::{
+        FunctionReturnFamily, RuntimeFunctionId, TupleFunctionId,
+    };
+    use crate::plan::execution::graph::{
+        FunctionInstructionKind, FunctionTarget, InstructionKind, ListInstruction,
     };
     use crate::runtime::evaluated::{EvaluatedCustomValue, EvaluatedValue};
     use crate::runtime::state::{ListValueId, RuntimeState};

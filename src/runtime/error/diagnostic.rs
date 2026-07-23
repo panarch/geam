@@ -214,9 +214,10 @@ fn render_custom_type(type_: &crate::plan::CustomType) -> String {
 #[cfg(test)]
 mod tests {
     use super::{render_value, render_value_type};
-    use crate::plan::execution::{
-        FunctionReturnFamily, IntFunctionId, IntLocalId, ParamLocal, RuntimeFunctionId,
+    use crate::plan::execution::function::{
+        FunctionReturnFamily, IntFunctionId, RuntimeFunctionId,
     };
+    use crate::plan::execution::graph::{IntLocalId, ParamLocal};
     use crate::plan::{
         CustomType, CustomTypeName, FunctionType, PanicSite, SourceContext, SourceSpan, ValueType,
     };

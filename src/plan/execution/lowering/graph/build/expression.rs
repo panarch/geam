@@ -873,7 +873,7 @@ mod tests {
             source_stop_kind(&lowered.body),
             (
                 SourceStopKind::Todo,
-                Some(crate::plan::execution::StringLocalId(0)),
+                Some(crate::plan::execution::graph::StringLocalId(0)),
             ),
         );
     }
@@ -891,10 +891,10 @@ mod tests {
     }
 
     fn source_stop_kind(
-        body: &crate::plan::execution::FunctionBody<std::convert::Infallible, ()>,
+        body: &crate::plan::execution::function::FunctionBody<std::convert::Infallible, ()>,
     ) -> (
         SourceStopKind,
-        Option<crate::plan::execution::StringLocalId>,
+        Option<crate::plan::execution::graph::StringLocalId>,
     ) {
         let block_graph = body.block_graph();
         match block_graph.block(block_graph.entry()).terminator() {
@@ -1304,7 +1304,9 @@ mod tests {
         assert_eq!(captures.len(), 1);
         assert_eq!(
             captures[0].target,
-            crate::plan::execution::ParamLocal::Int(crate::plan::execution::IntLocalId(1)),
+            crate::plan::execution::graph::ParamLocal::Int(
+                crate::plan::execution::graph::IntLocalId(1)
+            ),
         );
         assert_eq!(captures[0].source, source);
     }

@@ -1,7 +1,7 @@
 use super::super::BlockId;
-use crate::plan::execution::ParamLocal;
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::graph::ExplainLocal;
+use crate::plan::execution::graph::ParamLocal;
 
 pub(crate) struct Edge {
     target: BlockId,
@@ -92,7 +92,8 @@ impl Explain for MatchEdge {
 mod edge_explain_tests {
     use super::super::Terminator;
     use super::Edge;
-    use crate::plan::execution::{IntFunctionId, explain};
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::IntFunctionId;
 
     #[test]
     fn writes_regular_edge_argument_packs() {
@@ -154,7 +155,8 @@ pub fn main() {
 mod match_edge_explain_tests {
     use super::super::Terminator;
     use super::MatchEdge;
-    use crate::plan::execution::{IntFunctionId, explain};
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::IntFunctionId;
 
     #[test]
     fn writes_match_edge_argument_packs() {

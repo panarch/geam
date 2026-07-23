@@ -1,8 +1,8 @@
 use super::{evaluate, run_tail};
-use crate::plan::execution::{
-    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, ExecutionPlan, FloatFunctionId,
-    IntFunctionId, NeverFunctionId, NilFunctionId, StringFunctionId, TupleFunctionId,
-    UtfCodepointFunctionId,
+use crate::plan::execution::ExecutionPlan;
+use crate::plan::execution::function::{
+    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, IntFunctionId,
+    NeverFunctionId, NilFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
 };
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::evaluated::{

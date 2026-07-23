@@ -95,6 +95,9 @@ actual callers before assigning a semantic role.
   reads it. Final models must not depend on transformation-only types.
 - Module paths and visibility must match actual production callers. Do not move
   phase-local types across boundaries merely to bypass privacy.
+- Aggregate roots must not flatten unrelated child domains for convenience.
+  Type, module, and field names must distinguish complete owners from
+  contained or open structures.
 - Treat a one-caller type that mirrors a final type and is immediately consumed
   as a design smell. Make it a real final substructure or keep it phase-local
   behind a narrow constructor.

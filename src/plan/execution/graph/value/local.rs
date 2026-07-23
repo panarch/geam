@@ -19,7 +19,7 @@ pub struct CustomLocalId(pub(crate) usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct CustomLocal {
     id: CustomLocalId,
-    shape: crate::plan::execution::CustomValueShape,
+    shape: crate::plan::execution::type_::CustomValueShape,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,7 +34,7 @@ pub struct TupleLocalId(pub(crate) usize);
 impl CustomLocal {
     pub(in crate::plan::execution) fn new(
         id: CustomLocalId,
-        shape: crate::plan::execution::CustomValueShape,
+        shape: crate::plan::execution::type_::CustomValueShape,
     ) -> Self {
         Self { id, shape }
     }

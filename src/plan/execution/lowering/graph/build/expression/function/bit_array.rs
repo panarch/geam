@@ -26,7 +26,7 @@ pub(in crate::plan::execution::lowering) fn bit_array_function_expr(
             let value = graph.function_instruction(
                 &mut cursor,
                 shape.clone(),
-                I::Constant(execution::ConstantId::new(id.index())),
+                I::Constant(execution::constant::ConstantId::new(id.index())),
             );
             DraftFlow::value(cursor, DraftBitArrayFunction::new(value))
         }),
@@ -76,7 +76,7 @@ pub(in crate::plan::execution::lowering) fn bit_array_function_expr(
             } => context
                 .bit_array_function_function_id(function)
                 .map(|function| {
-                    let function = execution::FunctionFunctionId::BitArray(function);
+                    let function = execution::function::FunctionFunctionId::BitArray(function);
                     let value = graph.function_instruction(
                         &mut cursor,
                         shape.clone(),

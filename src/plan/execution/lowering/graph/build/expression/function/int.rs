@@ -26,7 +26,7 @@ pub(in crate::plan::execution::lowering) fn int_function_expr(
             let value = graph.function_instruction(
                 &mut cursor,
                 shape.clone(),
-                I::Constant(execution::ConstantId::new(id.index())),
+                I::Constant(execution::constant::ConstantId::new(id.index())),
             );
             DraftFlow::value(cursor, DraftIntFunction::new(value))
         }),
@@ -67,7 +67,7 @@ pub(in crate::plan::execution::lowering) fn int_function_expr(
                 mut cursor,
                 value: args,
             } => context.int_function_function_id(function).map(|function| {
-                let function = execution::FunctionFunctionId::Int(function);
+                let function = execution::function::FunctionFunctionId::Int(function);
                 let value = graph.function_instruction(
                     &mut cursor,
                     shape.clone(),

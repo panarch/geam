@@ -47,7 +47,9 @@ where
 
 #[cfg(test)]
 mod explain_tests {
-    use crate::plan::execution::{ConstantId, IntLocalId, explain};
+    use crate::plan::execution::constant::ConstantId;
+    use crate::plan::execution::explain;
+    use crate::plan::execution::graph::IntLocalId;
 
     #[test]
     fn writes_reusable_constant_graph_program() {

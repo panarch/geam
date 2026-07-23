@@ -8,43 +8,43 @@ use std::collections::HashMap;
 
 #[derive(Clone)]
 pub(super) enum SpecializedFunctionLocal {
-    Generic(execution::GenericFunctionLocal),
-    Never(execution::NeverFunctionLocal),
+    Generic(execution::graph::GenericFunctionLocal),
+    Never(execution::graph::NeverFunctionLocal),
     Int {
-        local: execution::IntFunctionLocalId,
-        type_: execution::FunctionType,
+        local: execution::graph::IntFunctionLocalId,
+        type_: execution::type_::FunctionType,
     },
     Float {
-        local: execution::FloatFunctionLocalId,
-        type_: execution::FunctionType,
+        local: execution::graph::FloatFunctionLocalId,
+        type_: execution::type_::FunctionType,
     },
     String {
-        local: execution::StringFunctionLocalId,
-        type_: execution::FunctionType,
+        local: execution::graph::StringFunctionLocalId,
+        type_: execution::type_::FunctionType,
     },
     BitArray {
-        local: execution::BitArrayFunctionLocalId,
-        type_: execution::FunctionType,
+        local: execution::graph::BitArrayFunctionLocalId,
+        type_: execution::type_::FunctionType,
     },
     UtfCodepoint {
-        local: execution::UtfCodepointFunctionLocalId,
-        type_: execution::FunctionType,
+        local: execution::graph::UtfCodepointFunctionLocalId,
+        type_: execution::type_::FunctionType,
     },
-    Custom(execution::CustomFunctionLocal),
+    Custom(execution::graph::CustomFunctionLocal),
     Bool {
-        local: execution::BoolFunctionLocalId,
-        type_: execution::FunctionType,
+        local: execution::graph::BoolFunctionLocalId,
+        type_: execution::type_::FunctionType,
     },
     Nil {
-        local: execution::NilFunctionLocalId,
-        type_: execution::FunctionType,
+        local: execution::graph::NilFunctionLocalId,
+        type_: execution::type_::FunctionType,
     },
     Tuple {
-        local: execution::TupleFunctionLocalId,
-        type_: execution::FunctionType,
+        local: execution::graph::TupleFunctionLocalId,
+        type_: execution::type_::FunctionType,
     },
-    List(execution::ListFunctionLocal),
-    Function(execution::FunctionFunctionLocal),
+    List(execution::graph::ListFunctionLocal),
+    Function(execution::graph::FunctionFunctionLocal),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -431,34 +431,44 @@ pub(super) fn stored_value_local_at(
     shape: &StoredValueShape,
     index: usize,
     context: &mut LoweringContext,
-) -> execution::ParamLocal {
+) -> execution::graph::ParamLocal {
     match shape {
-        StoredValueShape::Int => execution::ParamLocal::Int(execution::IntLocalId(index)),
-        StoredValueShape::Float => execution::ParamLocal::Float(execution::FloatLocalId(index)),
-        StoredValueShape::String => execution::ParamLocal::String(execution::StringLocalId(index)),
+        StoredValueShape::Int => {
+            execution::graph::ParamLocal::Int(execution::graph::IntLocalId(index))
+        }
+        StoredValueShape::Float => {
+            execution::graph::ParamLocal::Float(execution::graph::FloatLocalId(index))
+        }
+        StoredValueShape::String => {
+            execution::graph::ParamLocal::String(execution::graph::StringLocalId(index))
+        }
         StoredValueShape::BitArray => {
-            execution::ParamLocal::BitArray(execution::BitArrayLocalId(index))
+            execution::graph::ParamLocal::BitArray(execution::graph::BitArrayLocalId(index))
         }
         StoredValueShape::UtfCodepoint => {
-            execution::ParamLocal::UtfCodepoint(execution::UtfCodepointLocalId(index))
+            execution::graph::ParamLocal::UtfCodepoint(execution::graph::UtfCodepointLocalId(index))
         }
         StoredValueShape::Custom(shape) => {
-            execution::ParamLocal::Custom(execution::CustomLocal::new(
-                execution::CustomLocalId(index),
+            execution::graph::ParamLocal::Custom(execution::graph::CustomLocal::new(
+                execution::graph::CustomLocalId(index),
                 context.lower_concrete_custom_shape(shape),
             ))
         }
-        StoredValueShape::Bool => execution::ParamLocal::Bool(execution::BoolLocalId(index)),
-        StoredValueShape::Nil => execution::ParamLocal::Nil(execution::NilLocalId(index)),
-        StoredValueShape::Tuple(elements) => execution::ParamLocal::Tuple {
-            local: execution::TupleLocalId(index),
+        StoredValueShape::Bool => {
+            execution::graph::ParamLocal::Bool(execution::graph::BoolLocalId(index))
+        }
+        StoredValueShape::Nil => {
+            execution::graph::ParamLocal::Nil(execution::graph::NilLocalId(index))
+        }
+        StoredValueShape::Tuple(elements) => execution::graph::ParamLocal::Tuple {
+            local: execution::graph::TupleLocalId(index),
             type_: elements
                 .iter()
                 .map(|element| context.lower_concrete_value_type(element))
                 .collect(),
         },
         StoredValueShape::List(item) => {
-            execution::ParamLocal::List(list_local_at(item, index, context))
+            execution::graph::ParamLocal::List(list_local_at(item, index, context))
         }
         StoredValueShape::Function(function) => {
             function_local_as_param(function_local_at(function, index, context))
@@ -470,62 +480,64 @@ pub(super) fn list_local_at(
     item: &SpecializedValueShape,
     index: usize,
     context: &mut LoweringContext,
-) -> execution::ListLocal {
+) -> execution::graph::ListLocal {
     match item {
-        SpecializedValueShape::Parameter(parameter) => execution::ListLocal::Parameter {
-            local: execution::ParameterListLocalId(index),
+        SpecializedValueShape::Parameter(parameter) => execution::graph::ListLocal::Parameter {
+            local: execution::graph::ParameterListLocalId(index),
             type_id: context.parameter_list_type(*parameter),
         },
-        SpecializedValueShape::Int => execution::ListLocal::Int {
-            local: execution::IntListLocalId(index),
+        SpecializedValueShape::Int => execution::graph::ListLocal::Int {
+            local: execution::graph::IntListLocalId(index),
             type_id: context.int_list_type(),
         },
-        SpecializedValueShape::String => execution::ListLocal::String {
-            local: execution::StringListLocalId(index),
+        SpecializedValueShape::String => execution::graph::ListLocal::String {
+            local: execution::graph::StringListLocalId(index),
             type_id: context.string_list_type(),
         },
-        SpecializedValueShape::BitArray => execution::ListLocal::BitArray {
-            local: execution::BitArrayListLocalId(index),
+        SpecializedValueShape::BitArray => execution::graph::ListLocal::BitArray {
+            local: execution::graph::BitArrayListLocalId(index),
             type_id: context.bit_array_list_type(),
         },
-        SpecializedValueShape::UtfCodepoint => execution::ListLocal::UtfCodepoint {
-            local: execution::UtfCodepointListLocalId(index),
+        SpecializedValueShape::UtfCodepoint => execution::graph::ListLocal::UtfCodepoint {
+            local: execution::graph::UtfCodepointListLocalId(index),
             type_id: context.utf_codepoint_list_type(),
         },
-        SpecializedValueShape::Custom(custom) => execution::ListLocal::Custom {
-            local: execution::CustomListLocalId(index),
+        SpecializedValueShape::Custom(custom) => execution::graph::ListLocal::Custom {
+            local: execution::graph::CustomListLocalId(index),
             type_id: context.specialized_custom_list_type(custom),
         },
-        SpecializedValueShape::Float => execution::ListLocal::Float {
-            local: execution::FloatListLocalId(index),
+        SpecializedValueShape::Float => execution::graph::ListLocal::Float {
+            local: execution::graph::FloatListLocalId(index),
             type_id: context.float_list_type(),
         },
-        SpecializedValueShape::Bool => execution::ListLocal::Bool {
-            local: execution::BoolListLocalId(index),
+        SpecializedValueShape::Bool => execution::graph::ListLocal::Bool {
+            local: execution::graph::BoolListLocalId(index),
             type_id: context.bool_list_type(),
         },
-        SpecializedValueShape::Nil => execution::ListLocal::Nil {
-            local: execution::NilListLocalId(index),
+        SpecializedValueShape::Nil => execution::graph::ListLocal::Nil {
+            local: execution::graph::NilListLocalId(index),
             type_id: context.nil_list_type(),
         },
-        SpecializedValueShape::Tuple(elements) => execution::ListLocal::Tuple {
-            local: execution::TupleListLocalId(index),
+        SpecializedValueShape::Tuple(elements) => execution::graph::ListLocal::Tuple {
+            local: execution::graph::TupleListLocalId(index),
             type_id: context.specialized_tuple_list_type(elements),
         },
         SpecializedValueShape::List(item) => match context.specialized_list_list_type(item) {
             super::value_type::NestedListTypeId::Parameter(type_id) => {
-                execution::ListLocal::ParameterList {
-                    local: execution::ParameterListListLocalId(index),
+                execution::graph::ListLocal::ParameterList {
+                    local: execution::graph::ParameterListListLocalId(index),
                     type_id,
                 }
             }
-            super::value_type::NestedListTypeId::Stored(type_id) => execution::ListLocal::List {
-                local: execution::ListListLocalId(index),
-                type_id,
-            },
+            super::value_type::NestedListTypeId::Stored(type_id) => {
+                execution::graph::ListLocal::List {
+                    local: execution::graph::ListListLocalId(index),
+                    type_id,
+                }
+            }
         },
-        SpecializedValueShape::Function(function) => execution::ListLocal::Function {
-            local: execution::FunctionListLocalId(index),
+        SpecializedValueShape::Function(function) => execution::graph::ListLocal::Function {
+            local: execution::graph::FunctionListLocalId(index),
             type_id: context.specialized_function_list_type(function),
         },
     }
@@ -539,69 +551,69 @@ pub(super) fn function_local_at(
     let type_ = context.lower_concrete_function_type(shape);
     match context.function_representation(shape) {
         FunctionRepresentation::Symbolic => {
-            SpecializedFunctionLocal::Generic(execution::GenericFunctionLocal::new(
-                execution::GenericFunctionLocalId(index),
+            SpecializedFunctionLocal::Generic(execution::graph::GenericFunctionLocal::new(
+                execution::graph::GenericFunctionLocalId(index),
                 context.generic_function_type(shape),
             ))
         }
         FunctionRepresentation::Never(_) => {
-            SpecializedFunctionLocal::Never(execution::NeverFunctionLocal::new(
-                execution::NeverFunctionLocalId(index),
+            SpecializedFunctionLocal::Never(execution::graph::NeverFunctionLocal::new(
+                execution::graph::NeverFunctionLocalId(index),
                 context.generic_function_type(shape),
             ))
         }
         FunctionRepresentation::Executable(StoredValueShape::Int) => {
             SpecializedFunctionLocal::Int {
-                local: execution::IntFunctionLocalId(index),
+                local: execution::graph::IntFunctionLocalId(index),
                 type_,
             }
         }
         FunctionRepresentation::Executable(StoredValueShape::Float) => {
             SpecializedFunctionLocal::Float {
-                local: execution::FloatFunctionLocalId(index),
+                local: execution::graph::FloatFunctionLocalId(index),
                 type_,
             }
         }
         FunctionRepresentation::Executable(StoredValueShape::String) => {
             SpecializedFunctionLocal::String {
-                local: execution::StringFunctionLocalId(index),
+                local: execution::graph::StringFunctionLocalId(index),
                 type_,
             }
         }
         FunctionRepresentation::Executable(StoredValueShape::BitArray) => {
             SpecializedFunctionLocal::BitArray {
-                local: execution::BitArrayFunctionLocalId(index),
+                local: execution::graph::BitArrayFunctionLocalId(index),
                 type_,
             }
         }
         FunctionRepresentation::Executable(StoredValueShape::UtfCodepoint) => {
             SpecializedFunctionLocal::UtfCodepoint {
-                local: execution::UtfCodepointFunctionLocalId(index),
+                local: execution::graph::UtfCodepointFunctionLocalId(index),
                 type_,
             }
         }
         FunctionRepresentation::Executable(StoredValueShape::Custom(custom)) => {
             let type_ = context.specialized_custom_function_type(shape.arguments(), &custom);
-            SpecializedFunctionLocal::Custom(execution::CustomFunctionLocal::new(
-                execution::CustomFunctionLocalId(index),
+            SpecializedFunctionLocal::Custom(execution::graph::CustomFunctionLocal::new(
+                execution::graph::CustomFunctionLocalId(index),
                 type_,
             ))
         }
         FunctionRepresentation::Executable(StoredValueShape::Bool) => {
             SpecializedFunctionLocal::Bool {
-                local: execution::BoolFunctionLocalId(index),
+                local: execution::graph::BoolFunctionLocalId(index),
                 type_,
             }
         }
         FunctionRepresentation::Executable(StoredValueShape::Nil) => {
             SpecializedFunctionLocal::Nil {
-                local: execution::NilFunctionLocalId(index),
+                local: execution::graph::NilFunctionLocalId(index),
                 type_,
             }
         }
         FunctionRepresentation::Executable(StoredValueShape::Tuple(_)) => {
             SpecializedFunctionLocal::Tuple {
-                local: execution::TupleFunctionLocalId(index),
+                local: execution::graph::TupleFunctionLocalId(index),
                 type_,
             }
         }
@@ -610,8 +622,8 @@ pub(super) fn function_local_at(
         }
         FunctionRepresentation::Executable(StoredValueShape::Function(returned)) => {
             let type_ = context.specialized_function_function_type(shape.arguments(), &returned);
-            SpecializedFunctionLocal::Function(execution::FunctionFunctionLocal::new(
-                execution::FunctionFunctionLocalId(index),
+            SpecializedFunctionLocal::Function(execution::graph::FunctionFunctionLocal::new(
+                execution::graph::FunctionFunctionLocalId(index),
                 type_,
             ))
         }
@@ -620,113 +632,123 @@ pub(super) fn function_local_at(
 
 pub(super) fn list_function_local_at(
     item: &SpecializedValueShape,
-    type_: execution::FunctionType,
+    type_: execution::type_::FunctionType,
     index: usize,
     context: &mut LoweringContext,
-) -> execution::ListFunctionLocal {
-    use execution::ListFunctionLocal as L;
+) -> execution::graph::ListFunctionLocal {
+    use execution::graph::ListFunctionLocal as L;
 
     match item {
         SpecializedValueShape::Parameter(parameter) => L::Parameter {
-            local: execution::ParameterListFunctionLocalId(index),
+            local: execution::graph::ParameterListFunctionLocalId(index),
             type_,
             list_type: context.parameter_list_type(*parameter),
         },
         SpecializedValueShape::Int => L::Int {
-            local: execution::IntListFunctionLocalId(index),
+            local: execution::graph::IntListFunctionLocalId(index),
             type_,
             list_type: context.int_list_type(),
         },
         SpecializedValueShape::String => L::String {
-            local: execution::StringListFunctionLocalId(index),
+            local: execution::graph::StringListFunctionLocalId(index),
             type_,
             list_type: context.string_list_type(),
         },
         SpecializedValueShape::BitArray => L::BitArray {
-            local: execution::BitArrayListFunctionLocalId(index),
+            local: execution::graph::BitArrayListFunctionLocalId(index),
             type_,
             list_type: context.bit_array_list_type(),
         },
         SpecializedValueShape::UtfCodepoint => L::UtfCodepoint {
-            local: execution::UtfCodepointListFunctionLocalId(index),
+            local: execution::graph::UtfCodepointListFunctionLocalId(index),
             type_,
             list_type: context.utf_codepoint_list_type(),
         },
         SpecializedValueShape::Custom(custom) => L::Custom {
-            local: execution::CustomListFunctionLocalId(index),
+            local: execution::graph::CustomListFunctionLocalId(index),
             type_,
             list_type: context.specialized_custom_list_type(custom),
         },
         SpecializedValueShape::Float => L::Float {
-            local: execution::FloatListFunctionLocalId(index),
+            local: execution::graph::FloatListFunctionLocalId(index),
             type_,
             list_type: context.float_list_type(),
         },
         SpecializedValueShape::Bool => L::Bool {
-            local: execution::BoolListFunctionLocalId(index),
+            local: execution::graph::BoolListFunctionLocalId(index),
             type_,
             list_type: context.bool_list_type(),
         },
         SpecializedValueShape::Nil => L::Nil {
-            local: execution::NilListFunctionLocalId(index),
+            local: execution::graph::NilListFunctionLocalId(index),
             type_,
             list_type: context.nil_list_type(),
         },
         SpecializedValueShape::Tuple(elements) => L::Tuple {
-            local: execution::TupleListFunctionLocalId(index),
+            local: execution::graph::TupleListFunctionLocalId(index),
             type_,
             list_type: context.specialized_tuple_list_type(elements),
         },
         SpecializedValueShape::List(item) => match context.specialized_list_list_type(item) {
             super::value_type::NestedListTypeId::Parameter(list_type) => L::ParameterList {
-                local: execution::ParameterListListFunctionLocalId(index),
+                local: execution::graph::ParameterListListFunctionLocalId(index),
                 type_,
                 list_type,
             },
             super::value_type::NestedListTypeId::Stored(list_type) => L::List {
-                local: execution::ListListFunctionLocalId(index),
+                local: execution::graph::ListListFunctionLocalId(index),
                 type_,
                 list_type,
             },
         },
         SpecializedValueShape::Function(function) => L::Function {
-            local: execution::FunctionListFunctionLocalId(index),
+            local: execution::graph::FunctionListFunctionLocalId(index),
             type_,
             list_type: context.specialized_function_list_type(function),
         },
     }
 }
 
-pub(super) fn function_local_as_param(local: SpecializedFunctionLocal) -> execution::ParamLocal {
+pub(super) fn function_local_as_param(
+    local: SpecializedFunctionLocal,
+) -> execution::graph::ParamLocal {
     match local {
-        SpecializedFunctionLocal::Generic(local) => execution::ParamLocal::GenericFunction(local),
-        SpecializedFunctionLocal::Never(local) => execution::ParamLocal::NeverFunction(local),
+        SpecializedFunctionLocal::Generic(local) => {
+            execution::graph::ParamLocal::GenericFunction(local)
+        }
+        SpecializedFunctionLocal::Never(local) => {
+            execution::graph::ParamLocal::NeverFunction(local)
+        }
         SpecializedFunctionLocal::Int { local, type_ } => {
-            execution::ParamLocal::IntFunction { local, type_ }
+            execution::graph::ParamLocal::IntFunction { local, type_ }
         }
         SpecializedFunctionLocal::Float { local, type_ } => {
-            execution::ParamLocal::FloatFunction { local, type_ }
+            execution::graph::ParamLocal::FloatFunction { local, type_ }
         }
         SpecializedFunctionLocal::String { local, type_ } => {
-            execution::ParamLocal::StringFunction { local, type_ }
+            execution::graph::ParamLocal::StringFunction { local, type_ }
         }
         SpecializedFunctionLocal::BitArray { local, type_ } => {
-            execution::ParamLocal::BitArrayFunction { local, type_ }
+            execution::graph::ParamLocal::BitArrayFunction { local, type_ }
         }
         SpecializedFunctionLocal::UtfCodepoint { local, type_ } => {
-            execution::ParamLocal::UtfCodepointFunction { local, type_ }
+            execution::graph::ParamLocal::UtfCodepointFunction { local, type_ }
         }
-        SpecializedFunctionLocal::Custom(local) => execution::ParamLocal::CustomFunction(local),
+        SpecializedFunctionLocal::Custom(local) => {
+            execution::graph::ParamLocal::CustomFunction(local)
+        }
         SpecializedFunctionLocal::Bool { local, type_ } => {
-            execution::ParamLocal::BoolFunction { local, type_ }
+            execution::graph::ParamLocal::BoolFunction { local, type_ }
         }
         SpecializedFunctionLocal::Nil { local, type_ } => {
-            execution::ParamLocal::NilFunction { local, type_ }
+            execution::graph::ParamLocal::NilFunction { local, type_ }
         }
         SpecializedFunctionLocal::Tuple { local, type_ } => {
-            execution::ParamLocal::TupleFunction { local, type_ }
+            execution::graph::ParamLocal::TupleFunction { local, type_ }
         }
-        SpecializedFunctionLocal::List(local) => execution::ParamLocal::ListFunction(local),
-        SpecializedFunctionLocal::Function(local) => execution::ParamLocal::FunctionFunction(local),
+        SpecializedFunctionLocal::List(local) => execution::graph::ParamLocal::ListFunction(local),
+        SpecializedFunctionLocal::Function(local) => {
+            execution::graph::ParamLocal::FunctionFunction(local)
+        }
     }
 }

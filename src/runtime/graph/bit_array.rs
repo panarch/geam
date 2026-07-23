@@ -5,9 +5,10 @@ use bitvec::view::BitView;
 use num_bigint::BigInt;
 
 use super::environment::BlockEnvironment;
-use crate::plan::execution::{
-    BitArrayBitsSize, BitArrayEvaluatedSize, BitArraySegment, Endianness, ExecutionPlan,
-    FloatBitSize, Signedness, StringEncoding,
+use crate::plan::execution::ExecutionPlan;
+use crate::plan::execution::graph::{
+    BitArrayBitsSize, BitArrayEvaluatedSize, BitArraySegment, Endianness, FloatBitSize, Signedness,
+    StringEncoding,
 };
 use crate::runtime::evaluated::EvaluatedBitArray;
 use crate::runtime::{BitArraySegmentPanicReason, ExecutionError};
@@ -405,7 +406,7 @@ fn byte(bits: &BitSlice<u8, Msb0>) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::{decode_float, decode_integer, decode_utf8, decode_utf16, decode_utf32, take_bits};
-    use crate::plan::execution::{Endianness, FloatBitSize, Signedness};
+    use crate::plan::execution::graph::{Endianness, FloatBitSize, Signedness};
     use crate::plan::{PanicSite, SourceSpan};
     use crate::runtime::{BitArraySegmentPanicReason, BitArrayValue, ExecutionError, Value};
     use bitvec::order::Msb0;

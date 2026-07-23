@@ -7,12 +7,13 @@ use super::{
 };
 use crate::plan::execution::explain::ExplainContext;
 use crate::plan::execution::function::{ExplainFunctionBody, FunctionEntry};
-use crate::plan::execution::{
-    BitArrayFunctionLocalId, BoolFunctionLocalId, CustomFunctionLocal, CustomFunctionType,
-    FloatFunctionLocalId, FunctionFunctionLocal, FunctionFunctionType, FunctionShape,
-    GenericFunctionLocal, IntFunctionLocalId, ListFunctionLocal, NeverFunctionLocal,
-    NilFunctionLocalId, StringFunctionLocalId, TupleFunctionLocalId, UtfCodepointFunctionLocalId,
+use crate::plan::execution::graph::{
+    BitArrayFunctionLocalId, BoolFunctionLocalId, CustomFunctionLocal, FloatFunctionLocalId,
+    FunctionFunctionLocal, GenericFunctionLocal, IntFunctionLocalId, ListFunctionLocal,
+    NeverFunctionLocal, NilFunctionLocalId, StringFunctionLocalId, TupleFunctionLocalId,
+    UtfCodepointFunctionLocalId,
 };
+use crate::plan::execution::type_::{CustomFunctionType, FunctionFunctionType, FunctionShape};
 
 pub(crate) type IntFunctionFunctionBody =
     TypedFunctionBody<FunctionBody<IntFunctionLocalId, IntFunctionFunctionId>>;

@@ -26,9 +26,9 @@ pub(crate) use string::StringInstruction;
 pub(crate) use tuple::TupleInstruction;
 pub(crate) use utf_codepoint::UtfCodepointInstruction;
 
-use crate::plan::execution::ParamSlot;
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::ExplainFunctionId;
+use crate::plan::execution::graph::ParamSlot;
 use crate::plan::execution::graph::{ExplainLocal, ParamLocal, write_locals};
 
 pub(crate) struct Instruction {
@@ -137,7 +137,7 @@ pub(super) fn write_args(output: &mut String, args: &[ParamLocal]) {
 pub(super) fn write_constant<Value>(
     output: &mut String,
     family: &str,
-    id: crate::plan::execution::ConstantId<Value>,
+    id: crate::plan::execution::constant::ConstantId<Value>,
 ) {
     output.push_str("constant.");
     output.push_str(family);

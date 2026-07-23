@@ -22,7 +22,7 @@ pub(in crate::plan::execution::lowering) fn nil_expr(
             let mut cursor = cursor;
             let value = graph.nil_instruction(
                 &mut cursor,
-                I::Constant(execution::ConstantId::new(id.index())),
+                I::Constant(execution::constant::ConstantId::new(id.index())),
             );
             DraftFlow::value(cursor, value)
         }),

@@ -96,9 +96,9 @@ mod tests {
             ValueType::List(Box::new(ValueType::Int)),
         );
         let function = super::FunctionValue::new(
-            crate::plan::execution::RuntimeFunctionId::Int(crate::plan::execution::IntFunctionId(
-                0,
-            )),
+            crate::plan::execution::function::RuntimeFunctionId::Int(
+                crate::plan::execution::function::IntFunctionId(0),
+            ),
             Vec::new(),
             crate::plan::FunctionType::new(Vec::new(), ValueType::Int),
         );
