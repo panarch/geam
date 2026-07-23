@@ -8,6 +8,7 @@ pub(crate) use bit_array::{
 pub(crate) use list::{MatchPatternList, MatchPatternListTail};
 
 use crate::plan::execution::CustomConstructorId;
+use crate::plan::execution::explain::{Explain, ExplainContext};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -67,8 +68,6 @@ impl MatchIntBindingId {
         self.0
     }
 }
-
-use crate::plan::execution::explain::{Explain, ExplainContext};
 
 impl Explain for MatchPattern {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {

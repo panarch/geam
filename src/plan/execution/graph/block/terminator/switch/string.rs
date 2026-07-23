@@ -1,5 +1,6 @@
 use super::super::Edge;
 use crate::plan::execution::StringLocalId;
+use crate::plan::execution::explain::{Explain, ExplainContext};
 use ecow::EcoString;
 
 pub(crate) struct StringSwitch {
@@ -33,8 +34,6 @@ impl StringSwitch {
         &self.fallback
     }
 }
-
-use crate::plan::execution::explain::{Explain, ExplainContext};
 
 impl Explain for StringSwitch {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {

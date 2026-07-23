@@ -1,3 +1,4 @@
+use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::{ParamLocal, StringLocalId};
 use crate::plan::{PanicSite, SourceSpan};
 
@@ -39,8 +40,6 @@ impl LetAssertPanic {
         &self.pattern_span
     }
 }
-
-use crate::plan::execution::explain::{Explain, ExplainContext};
 
 impl Explain for LetAssertPanic {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {

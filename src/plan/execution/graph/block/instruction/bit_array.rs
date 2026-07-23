@@ -1,5 +1,8 @@
 use super::super::super::{Endianness, FloatBitSize, StringEncoding};
+use super::{write_call, write_constant, write_function_call, write_projection};
 use crate::plan::PanicSite;
+use crate::plan::execution::explain::{Explain, ExplainContext};
+use crate::plan::execution::graph::{ExplainLocal, endianness, float_size, string_encoding};
 use crate::plan::execution::{
     BitArrayFunctionId, BitArrayListLocalId, ConstantId, CustomLocal, FloatLocalId, IntLocalId,
     ParamLocal, StringLocalId, TupleLocalId, UtfCodepointLocalId,
@@ -92,10 +95,6 @@ impl BitArrayEvaluatedSize {
         self.unit
     }
 }
-
-use super::{write_call, write_constant, write_function_call, write_projection};
-use crate::plan::execution::explain::{Explain, ExplainContext};
-use crate::plan::execution::graph::{ExplainLocal, endianness, float_size, string_encoding};
 
 impl Explain for BitArrayInstruction {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {

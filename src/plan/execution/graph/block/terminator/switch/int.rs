@@ -1,5 +1,6 @@
 use super::super::Edge;
 use crate::plan::execution::IntLocalId;
+use crate::plan::execution::explain::{Explain, ExplainContext};
 use num_bigint::BigInt;
 
 pub(crate) struct IntSwitch {
@@ -33,8 +34,6 @@ impl IntSwitch {
         &self.fallback
     }
 }
-
-use crate::plan::execution::explain::{Explain, ExplainContext};
 
 impl Explain for IntSwitch {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {

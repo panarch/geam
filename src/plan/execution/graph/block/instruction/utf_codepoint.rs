@@ -1,3 +1,5 @@
+use super::{write_call, write_function_call, write_projection};
+use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::{
     CustomLocal, ParamLocal, TupleLocalId, UtfCodepointFunctionId, UtfCodepointFunctionLocalId,
     UtfCodepointListLocalId,
@@ -25,9 +27,6 @@ pub(crate) enum UtfCodepointInstruction {
         index: usize,
     },
 }
-
-use super::{write_call, write_function_call, write_projection};
-use crate::plan::execution::explain::{Explain, ExplainContext};
 
 impl Explain for UtfCodepointInstruction {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {

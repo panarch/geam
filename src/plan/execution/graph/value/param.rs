@@ -5,6 +5,8 @@ use super::{
     NeverFunctionLocal, NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId,
     TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
+use crate::plan::execution::explain::{Explain, ExplainContext};
+use crate::plan::execution::graph::ExplainLocal;
 use crate::plan::execution::{FunctionType, ValueShapeId, ValueType};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,9 +82,6 @@ impl ParamSlot {
         self.shape
     }
 }
-
-use crate::plan::execution::explain::{Explain, ExplainContext};
-use crate::plan::execution::graph::ExplainLocal;
 
 impl Explain for ParamSlot {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {

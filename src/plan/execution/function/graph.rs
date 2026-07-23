@@ -1,4 +1,18 @@
+use crate::plan::execution::explain::{ExplainContext, FunctionLabel};
+use crate::plan::execution::function::FunctionEntry;
 use crate::plan::execution::graph::{Block, BlockId, Graph, GraphExitId};
+use crate::plan::execution::graph::{ExplainLocal, write_graph};
+use crate::plan::execution::{
+    BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionFunctionId,
+    BoolFunctionId, BoolListFunctionId, CustomListFunctionId, FloatFunctionFunctionId,
+    FloatFunctionId, FloatListFunctionId, FunctionListFunctionId, GenericFunctionFunctionId,
+    IntFunctionFunctionId, IntFunctionId, IntListFunctionId, ListFunctionFunctionId,
+    ListListFunctionId, NeverFunctionFunctionId, NeverFunctionId, NilFunctionFunctionId,
+    NilFunctionId, NilListFunctionId, ParameterListFunctionId, ParameterListListFunctionId,
+    StringFunctionFunctionId, StringFunctionId, StringListFunctionId, TupleFunctionFunctionId,
+    TupleFunctionId, TupleListFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+    UtfCodepointListFunctionId,
+};
 
 pub(crate) struct FunctionGraph<Return, TailCall> {
     graph: Graph,
@@ -45,10 +59,6 @@ impl<Return, TailCall> FunctionGraph<Return, TailCall> {
         &self.exits[id.index()]
     }
 }
-
-use crate::plan::execution::explain::{ExplainContext, FunctionLabel};
-use crate::plan::execution::function::FunctionEntry;
-use crate::plan::execution::graph::{ExplainLocal, write_graph};
 
 pub(in crate::plan::execution::function) trait ExplainFunctionBody {
     fn write_function_body(
@@ -103,18 +113,6 @@ fn write_function_exit<Return, TailCall>(
         }
     }
 }
-
-use crate::plan::execution::{
-    BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionFunctionId,
-    BoolFunctionId, BoolListFunctionId, CustomListFunctionId, FloatFunctionFunctionId,
-    FloatFunctionId, FloatListFunctionId, FunctionListFunctionId, GenericFunctionFunctionId,
-    IntFunctionFunctionId, IntFunctionId, IntListFunctionId, ListFunctionFunctionId,
-    ListListFunctionId, NeverFunctionFunctionId, NeverFunctionId, NilFunctionFunctionId,
-    NilFunctionId, NilListFunctionId, ParameterListFunctionId, ParameterListListFunctionId,
-    StringFunctionFunctionId, StringFunctionId, StringListFunctionId, TupleFunctionFunctionId,
-    TupleFunctionId, TupleListFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
-    UtfCodepointListFunctionId,
-};
 
 pub(in crate::plan::execution::function) trait TailFunctionIndex {
     fn tail_function_index(&self) -> usize;

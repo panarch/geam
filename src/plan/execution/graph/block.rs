@@ -17,6 +17,8 @@ pub(crate) use terminator::{
 };
 
 use crate::plan::execution::ParamSlot;
+use crate::plan::execution::explain::ExplainContext;
+use crate::plan::execution::graph::GraphExitId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct BlockId(usize);
@@ -62,9 +64,6 @@ impl Block {
         &self.terminator
     }
 }
-
-use crate::plan::execution::explain::ExplainContext;
-use crate::plan::execution::graph::GraphExitId;
 
 pub(super) fn write_block(
     context: &mut ExplainContext<'_, '_>,

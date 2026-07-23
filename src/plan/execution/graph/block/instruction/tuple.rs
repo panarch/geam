@@ -1,3 +1,6 @@
+use super::super::super::value::write_locals;
+use super::{write_call, write_constant, write_function_call, write_projection};
+use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::{
     ConstantId, CustomLocal, ParamLocal, TupleFunctionId, TupleFunctionLocalId, TupleListLocalId,
     TupleLocalId,
@@ -27,10 +30,6 @@ pub(crate) enum TupleInstruction {
         index: usize,
     },
 }
-
-use super::super::super::value::write_locals;
-use super::{write_call, write_constant, write_function_call, write_projection};
-use crate::plan::execution::explain::{Explain, ExplainContext};
 
 impl Explain for TupleInstruction {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {

@@ -1,4 +1,10 @@
 use super::super::super::FunctionLocal;
+use super::{write_args, write_constant, write_function_call, write_projection};
+use crate::plan::execution::explain::{Explain, ExplainContext};
+use crate::plan::execution::function::{
+    ExplainFunctionId, function_function_label, list_function_label,
+};
+use crate::plan::execution::graph::ExplainLocal;
 use crate::plan::execution::{
     BitArrayFunctionId, BitArrayListLocalId, CustomConstructorId, CustomFunctionId,
     CustomFunctionLocal, CustomListLocalId, CustomLocal, FloatListLocalId, FunctionFunctionId,
@@ -175,13 +181,6 @@ pub(crate) enum FunctionCapture {
         source: FunctionFunctionLocal,
     },
 }
-
-use super::{write_args, write_constant, write_function_call, write_projection};
-use crate::plan::execution::explain::{Explain, ExplainContext};
-use crate::plan::execution::function::{
-    ExplainFunctionId, function_function_label, list_function_label,
-};
-use crate::plan::execution::graph::ExplainLocal;
 
 impl Explain for FunctionInstruction {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {

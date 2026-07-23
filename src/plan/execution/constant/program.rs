@@ -1,4 +1,6 @@
 use super::super::graph::{Graph, GraphExitId};
+use crate::plan::execution::explain::{Explain, ExplainContext};
+use crate::plan::execution::graph::{ExplainLocal, write_graph};
 
 pub(crate) struct ConstantProgram<Value> {
     graph: Graph,
@@ -21,9 +23,6 @@ impl<Value> ConstantProgram<Value> {
         &self.returns[id.index()]
     }
 }
-
-use crate::plan::execution::explain::{Explain, ExplainContext};
-use crate::plan::execution::graph::{ExplainLocal, write_graph};
 
 impl<Value> Explain for ConstantProgram<Value>
 where

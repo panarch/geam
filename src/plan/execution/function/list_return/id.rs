@@ -1,3 +1,5 @@
+use crate::plan::execution::explain::FunctionLabel;
+use crate::plan::execution::function::ExplainFunctionId;
 use crate::plan::execution::{
     BitArrayListTypeId, BoolListTypeId, CustomListTypeId, FloatListTypeId, FunctionListTypeId,
     IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId, ParameterListTypeId,
@@ -280,9 +282,6 @@ impl FunctionListFunctionId {
         self.type_id
     }
 }
-
-use crate::plan::execution::explain::FunctionLabel;
-use crate::plan::execution::function::ExplainFunctionId;
 
 impl ExplainFunctionId for ParameterListFunctionId {
     fn label(&self) -> FunctionLabel {

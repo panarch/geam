@@ -1,5 +1,6 @@
 use super::{Edge, MatchEdge, MatchPattern};
 use crate::plan::execution::ParamLocal;
+use crate::plan::execution::explain::{Explain, ExplainContext};
 
 pub(crate) struct Match {
     subject: ParamLocal,
@@ -39,8 +40,6 @@ impl Match {
         &self.failure
     }
 }
-
-use crate::plan::execution::explain::{Explain, ExplainContext};
 
 impl Explain for Match {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {

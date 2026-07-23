@@ -1,5 +1,6 @@
 use super::Edge;
 use crate::plan::execution::BoolLocalId;
+use crate::plan::execution::explain::{Explain, ExplainContext};
 
 pub(crate) struct BoolBranch {
     subject: BoolLocalId,
@@ -28,8 +29,6 @@ impl BoolBranch {
         &self.false_
     }
 }
-
-use crate::plan::execution::explain::{Explain, ExplainContext};
 
 impl Explain for BoolBranch {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {

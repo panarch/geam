@@ -1,5 +1,6 @@
 use super::super::Edge;
 use crate::plan::execution::FloatLocalId;
+use crate::plan::execution::explain::{Explain, ExplainContext};
 
 pub(crate) struct FloatSwitch {
     subject: FloatLocalId,
@@ -32,8 +33,6 @@ impl FloatSwitch {
         &self.fallback
     }
 }
-
-use crate::plan::execution::explain::{Explain, ExplainContext};
 
 impl Explain for FloatSwitch {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {

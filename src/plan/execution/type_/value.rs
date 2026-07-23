@@ -1,5 +1,6 @@
 use super::{CustomTypeId, FunctionType, ListTypeId};
 use crate::plan;
+use crate::plan::execution::explain::{Explain, ExplainContext};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum ValueType {
@@ -16,8 +17,6 @@ pub(crate) enum ValueType {
     Function(Box<FunctionType>),
     Custom(CustomTypeId),
 }
-
-use crate::plan::execution::explain::{Explain, ExplainContext};
 
 impl Explain for ValueType {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {

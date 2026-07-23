@@ -5,6 +5,8 @@ use super::{
     IntFunctionFunctionId, ListFunctionFunctionId, NeverFunctionFunctionId, NilFunctionFunctionId,
     StringFunctionFunctionId, TupleFunctionFunctionId, UtfCodepointFunctionFunctionId,
 };
+use crate::plan::execution::explain::ExplainContext;
+use crate::plan::execution::function::{ExplainFunctionBody, FunctionEntry};
 use crate::plan::execution::{
     BitArrayFunctionLocalId, BoolFunctionLocalId, CustomFunctionLocal, CustomFunctionType,
     FloatFunctionLocalId, FunctionFunctionLocal, FunctionFunctionType, FunctionShape,
@@ -113,9 +115,6 @@ impl<Body> TypedFunctionReturn<Body> {
         &self.body
     }
 }
-
-use crate::plan::execution::explain::ExplainContext;
-use crate::plan::execution::function::{ExplainFunctionBody, FunctionEntry};
 
 impl<Body> ExplainFunctionBody for TypedFunctionReturn<Body>
 where
