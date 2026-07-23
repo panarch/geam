@@ -1,6 +1,6 @@
 use super::{Edge, MatchEdge, MatchPattern};
-use crate::plan::execution::ParamLocal;
 use crate::plan::execution::explain::{Explain, ExplainContext};
+use crate::plan::execution::graph::ParamLocal;
 
 pub(crate) struct Match {
     subject: ParamLocal,
@@ -58,7 +58,8 @@ impl Explain for Match {
 mod explain_tests {
     use super::super::Terminator;
     use super::Match;
-    use crate::plan::execution::{IntFunctionId, explain};
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::IntFunctionId;
 
     #[test]
     fn writes_refutable_match() {
@@ -100,7 +101,7 @@ pub fn main() {
 
     fn terminators(
         plan: &crate::plan::execution::ExecutionPlan,
-    ) -> Vec<&crate::plan::execution::Terminator> {
+    ) -> Vec<&crate::plan::execution::graph::Terminator> {
         plan.int_function(IntFunctionId(0))
             .body()
             .block_graph()

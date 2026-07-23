@@ -32,7 +32,7 @@ pub(in crate::plan::execution::lowering) fn bit_array_expr(
             let mut cursor = cursor;
             let value = graph.bit_array_instruction(
                 &mut cursor,
-                I::Constant(execution::ConstantId::new(id.index())),
+                I::Constant(execution::constant::ConstantId::new(id.index())),
             );
             DraftFlow::value(cursor, value)
         }),
@@ -357,30 +357,30 @@ fn lower_evaluated_size(
     })
 }
 
-fn lower_string_encoding(value: module::StringEncoding) -> execution::StringEncoding {
+fn lower_string_encoding(value: module::StringEncoding) -> execution::graph::StringEncoding {
     match value {
-        module::StringEncoding::Utf8 => execution::StringEncoding::Utf8,
+        module::StringEncoding::Utf8 => execution::graph::StringEncoding::Utf8,
         module::StringEncoding::Utf16(endianness) => {
-            execution::StringEncoding::Utf16(lower_endianness(endianness))
+            execution::graph::StringEncoding::Utf16(lower_endianness(endianness))
         }
         module::StringEncoding::Utf32(endianness) => {
-            execution::StringEncoding::Utf32(lower_endianness(endianness))
+            execution::graph::StringEncoding::Utf32(lower_endianness(endianness))
         }
     }
 }
 
-fn lower_float_bit_size(value: module::FloatBitSize) -> execution::FloatBitSize {
+fn lower_float_bit_size(value: module::FloatBitSize) -> execution::graph::FloatBitSize {
     match value {
-        module::FloatBitSize::Sixteen => execution::FloatBitSize::Sixteen,
-        module::FloatBitSize::ThirtyTwo => execution::FloatBitSize::ThirtyTwo,
-        module::FloatBitSize::SixtyFour => execution::FloatBitSize::SixtyFour,
+        module::FloatBitSize::Sixteen => execution::graph::FloatBitSize::Sixteen,
+        module::FloatBitSize::ThirtyTwo => execution::graph::FloatBitSize::ThirtyTwo,
+        module::FloatBitSize::SixtyFour => execution::graph::FloatBitSize::SixtyFour,
     }
 }
 
-fn lower_endianness(value: module::Endianness) -> execution::Endianness {
+fn lower_endianness(value: module::Endianness) -> execution::graph::Endianness {
     match value {
-        module::Endianness::Big => execution::Endianness::Big,
-        module::Endianness::Little => execution::Endianness::Little,
+        module::Endianness::Big => execution::graph::Endianness::Big,
+        module::Endianness::Little => execution::graph::Endianness::Little,
     }
 }
 

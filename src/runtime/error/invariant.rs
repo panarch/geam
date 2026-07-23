@@ -1,4 +1,4 @@
-use crate::plan::execution::FunctionReturnFamily;
+use crate::plan::execution::function::FunctionReturnFamily;
 use crate::plan::{CustomType, ValueType};
 use ecow::EcoString;
 
@@ -35,7 +35,7 @@ pub enum InvariantError {
 #[cfg(test)]
 mod tests {
     use super::InvariantError;
-    use crate::plan::execution::FunctionReturnFamily;
+    use crate::plan::execution::function::FunctionReturnFamily;
     use crate::plan::{CustomType, CustomTypeName, ValueType};
 
     #[test]

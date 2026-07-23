@@ -1,6 +1,7 @@
 use crate::plan::execution::explain::FunctionLabel;
 use crate::plan::execution::explain::{Explain, ExplainContext};
-use crate::plan::execution::{NeverFunctionId, NeverFunctionLocal, ParamLocal};
+use crate::plan::execution::function::NeverFunctionId;
+use crate::plan::execution::graph::{NeverFunctionLocal, ParamLocal};
 
 pub(crate) enum NeverCallTarget {
     Direct(NeverFunctionId),
@@ -47,7 +48,8 @@ impl Explain for NeverCall {
 mod explain_tests {
     use super::super::Terminator;
     use super::NeverCall;
-    use crate::plan::execution::{IntFunctionId, explain};
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::IntFunctionId;
 
     #[test]
     fn writes_direct_never_call() {
@@ -107,7 +109,7 @@ pub fn main() -> Int {
 
     fn terminators(
         plan: &crate::plan::execution::ExecutionPlan,
-    ) -> Vec<&crate::plan::execution::Terminator> {
+    ) -> Vec<&crate::plan::execution::graph::Terminator> {
         plan.int_function(IntFunctionId(0))
             .body()
             .block_graph()

@@ -59,7 +59,7 @@ pub(in crate::plan::execution::lowering) fn custom_expr_kind(
             let value = graph.custom_instruction(
                 &mut cursor,
                 shape.clone(),
-                I::Constant(execution::ConstantId::new(id.index())),
+                I::Constant(execution::constant::ConstantId::new(id.index())),
             );
             DraftFlow::value(cursor, value)
         }),

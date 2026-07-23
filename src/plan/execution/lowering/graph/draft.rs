@@ -302,7 +302,7 @@ pub(in crate::plan::execution::lowering) enum DraftTerminator {
 }
 
 pub(in crate::plan::execution::lowering) enum DraftNeverCallTarget {
-    Direct(execution::NeverFunctionId),
+    Direct(execution::function::NeverFunctionId),
     Value(DraftFunction),
 }
 
@@ -1114,7 +1114,7 @@ impl DraftGraph {
     pub(in crate::plan::execution::lowering) fn finish_never_call(
         &mut self,
         cursor: DraftCursor,
-        function: execution::NeverFunctionId,
+        function: execution::function::NeverFunctionId,
         args: Vec<DraftValueRef>,
     ) {
         self.finish(

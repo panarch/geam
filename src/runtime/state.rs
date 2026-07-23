@@ -8,7 +8,7 @@ use num_bigint::BigInt;
 use super::evaluated::{
     EvaluatedBitArray, EvaluatedCustomValue, EvaluatedFunctionValue, EvaluatedValue,
 };
-use crate::plan::execution::{
+use crate::plan::execution::type_::{
     BitArrayListTypeId, BoolListTypeId, CustomListTypeId, FloatListTypeId, FunctionListTypeId,
     IntListTypeId, ListListTypeId, ListTypeId, NilListTypeId, ParameterListListTypeId,
     ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
@@ -712,14 +712,15 @@ mod tests {
         CustomListAllocation, ListListTypeId, ListValueId, ParameterListValueId, RuntimeState,
         StoredListValueId,
     };
-    use crate::plan::execution::{ListFunctionId, ListStorageTypeId, RuntimeFunctionId};
+    use crate::plan::execution::function::{ListFunctionId, RuntimeFunctionId};
+    use crate::plan::execution::type_::ListStorageTypeId;
     use crate::runtime::graph::RetainedValues;
     use crate::runtime::{
         EvaluatedBitArray, EvaluatedCapture, EvaluatedCustomValue, EvaluatedFunctionValue,
         EvaluatedIntFunction, EvaluatedValue,
     };
 
-    fn int_main(plan: &crate::ExecutionPlan) -> crate::plan::execution::IntFunctionId {
+    fn int_main(plan: &crate::ExecutionPlan) -> crate::plan::execution::function::IntFunctionId {
         match plan.main_runtime() {
             RuntimeFunctionId::Int(main) => main,
             _ => panic!("main should lower into the Int function table"),
@@ -976,12 +977,12 @@ pub fn main() -> Int {
         let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
         let mut state = RuntimeState::new();
         let int_function = EvaluatedIntFunction::reference(
-            crate::plan::execution::IntFunctionId(0),
+            crate::plan::execution::function::IntFunctionId(0),
             Vec::new(),
             Vec::new(),
-            crate::plan::execution::FunctionType::new(
+            crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
-                crate::plan::execution::ValueType::Int,
+                crate::plan::execution::type_::ValueType::Int,
             ),
         );
         let int = state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
@@ -1195,17 +1196,17 @@ pub fn main() -> Int {
         let value = state.int(type_id, vec![1.into()]);
         let slot = value.core.slot();
         let closure = EvaluatedIntFunction::reference(
-            crate::plan::execution::IntFunctionId(0),
+            crate::plan::execution::function::IntFunctionId(0),
             Vec::new(),
             vec![EvaluatedCapture::list(
                 crate::runtime::EvaluatedListCapture::Int {
-                    local: crate::plan::execution::IntListLocalId(0),
+                    local: crate::plan::execution::graph::IntListLocalId(0),
                     value: value.clone(),
                 },
             )],
-            crate::plan::execution::FunctionType::new(
+            crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
-                crate::plan::execution::ValueType::Int,
+                crate::plan::execution::type_::ValueType::Int,
             ),
         );
 

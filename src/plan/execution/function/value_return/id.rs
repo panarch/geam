@@ -1,6 +1,6 @@
-use crate::plan::execution::CustomValueShape;
 use crate::plan::execution::explain::FunctionLabel;
 use crate::plan::execution::function::ExplainFunctionId;
+use crate::plan::execution::type_::CustomValueShape;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct NeverFunctionId(pub(crate) usize);
@@ -114,16 +114,19 @@ mod explain_tests {
         BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, IntFunctionId,
         NeverFunctionId, NilFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
     };
+    use crate::plan::execution::explain;
     use crate::plan::execution::function::ExplainFunctionId;
-    use crate::plan::execution::{
-        BitArrayListFunctionId, BitArrayListTypeId, BoolListFunctionId, BoolListTypeId,
-        CustomListFunctionId, CustomListTypeId, CustomTypeId, CustomValueShape, CustomValueShapeId,
-        FloatListFunctionId, FloatListTypeId, FunctionListFunctionId, FunctionListTypeId,
-        IntListFunctionId, IntListTypeId, ListListFunctionId, ListListTypeId, ListTypeId,
-        NilListFunctionId, NilListTypeId, ParameterListFunctionId, ParameterListListFunctionId,
-        ParameterListListTypeId, ParameterListTypeId, StringListFunctionId, StringListTypeId,
-        TupleListFunctionId, TupleListTypeId, UtfCodepointListFunctionId, UtfCodepointListTypeId,
-        explain,
+    use crate::plan::execution::function::{
+        BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId, FloatListFunctionId,
+        FunctionListFunctionId, IntListFunctionId, ListListFunctionId, NilListFunctionId,
+        ParameterListFunctionId, ParameterListListFunctionId, StringListFunctionId,
+        TupleListFunctionId, UtfCodepointListFunctionId,
+    };
+    use crate::plan::execution::type_::{
+        BitArrayListTypeId, BoolListTypeId, CustomListTypeId, CustomTypeId, CustomValueShape,
+        CustomValueShapeId, FloatListTypeId, FunctionListTypeId, IntListTypeId, ListListTypeId,
+        ListTypeId, NilListTypeId, ParameterListListTypeId, ParameterListTypeId, StringListTypeId,
+        TupleListTypeId, UtfCodepointListTypeId,
     };
 
     #[test]

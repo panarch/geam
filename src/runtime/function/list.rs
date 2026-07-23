@@ -1,9 +1,10 @@
 use super::{evaluate, run_tail};
-use crate::plan::execution::{
-    BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId, ExecutionPlan,
-    FloatListFunctionId, FunctionListFunctionId, IntListFunctionId, ListFunctionId,
-    ListListFunctionId, NilListFunctionId, ParameterListFunctionId, ParameterListListFunctionId,
-    StringListFunctionId, TupleListFunctionId, UtfCodepointListFunctionId,
+use crate::plan::execution::ExecutionPlan;
+use crate::plan::execution::function::{
+    BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId, FloatListFunctionId,
+    FunctionListFunctionId, IntListFunctionId, ListFunctionId, ListListFunctionId,
+    NilListFunctionId, ParameterListFunctionId, ParameterListListFunctionId, StringListFunctionId,
+    TupleListFunctionId, UtfCodepointListFunctionId,
 };
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::graph::RetainedValues;

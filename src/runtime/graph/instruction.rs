@@ -3,7 +3,8 @@ mod list;
 mod value;
 
 use super::environment::BlockEnvironment;
-use crate::plan::execution::{ExecutionPlan, Instruction, InstructionKind};
+use crate::plan::execution::ExecutionPlan;
+use crate::plan::execution::graph::{Instruction, InstructionKind};
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::state::RuntimeState;
 

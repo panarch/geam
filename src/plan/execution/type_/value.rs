@@ -68,7 +68,7 @@ impl Explain for ValueType {
 #[cfg(test)]
 mod explain_tests {
     use crate::plan::execution::explain;
-    use crate::plan::execution::{CustomTypeId, FunctionType, ListTypeId, ValueType};
+    use crate::plan::execution::type_::{CustomTypeId, FunctionType, ListTypeId, ValueType};
 
     #[test]
     fn writes_primitive_and_recursive_value_types() {

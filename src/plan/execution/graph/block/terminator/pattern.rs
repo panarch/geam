@@ -7,8 +7,8 @@ pub(crate) use bit_array::{
 };
 pub(crate) use list::{MatchPatternList, MatchPatternListTail};
 
-use crate::plan::execution::CustomConstructorId;
 use crate::plan::execution::explain::{Explain, ExplainContext};
+use crate::plan::execution::type_::CustomConstructorId;
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -152,7 +152,8 @@ fn write_optional_binding(
 mod explain_tests {
     use super::super::Terminator;
     use super::MatchPattern;
-    use crate::plan::execution::{IntFunctionId, explain};
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::IntFunctionId;
 
     #[test]
     fn writes_nested_patterns_from_a_lowered_match() {
@@ -198,7 +199,7 @@ pub fn main() {
 
     fn terminators(
         plan: &crate::plan::execution::ExecutionPlan,
-    ) -> Vec<&crate::plan::execution::Terminator> {
+    ) -> Vec<&crate::plan::execution::graph::Terminator> {
         plan.int_function(IntFunctionId(0))
             .body()
             .block_graph()

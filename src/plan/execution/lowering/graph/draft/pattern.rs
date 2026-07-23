@@ -1,5 +1,6 @@
 use super::{DraftInt, DraftValueRef};
-use crate::plan::execution::{CustomConstructorId, Endianness, Signedness, StringEncoding};
+use crate::plan::execution::graph::{Endianness, Signedness, StringEncoding};
+use crate::plan::execution::type_::CustomConstructorId;
 
 pub(in crate::plan::execution::lowering) enum DraftMatchPattern {
     Bind(DraftMatchPatternBinding),

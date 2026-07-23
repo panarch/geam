@@ -1,6 +1,6 @@
 use crate::plan::execution::explain::FunctionLabel;
 use crate::plan::execution::function::ExplainFunctionId;
-use crate::plan::execution::{
+use crate::plan::execution::type_::{
     BitArrayListTypeId, BoolListTypeId, CustomListTypeId, FloatListTypeId, FunctionListTypeId,
     IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId, ParameterListTypeId,
     StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
@@ -382,7 +382,9 @@ pub(in crate::plan::execution) fn list_function_label(function: &ListFunctionId)
 #[cfg(test)]
 mod explain_tests {
     use super::{ListFunctionId, list_function_label};
-    use crate::plan::execution::{ExecutionPlan, RuntimeFunctionId, explain};
+    use crate::plan::execution::ExecutionPlan;
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::RuntimeFunctionId;
 
     #[test]
     fn labels_list_function_families() {

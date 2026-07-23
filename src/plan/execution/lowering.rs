@@ -28,7 +28,7 @@ struct SpecializationState {
 
 struct LoweredExecution {
     constants: super::constant::ConstantTable,
-    functions: super::FunctionTables,
+    functions: super::function::FunctionTables,
     list_types: ListTypeTable,
     custom_types: CustomTypeTable,
     value_shapes: ValueShapeTable,
@@ -180,7 +180,7 @@ impl LoweringContext {
         SpecializedValueShape::instantiate(&ValueShape::Parameter(parameter), &self.substitution)
     }
 
-    fn function_shape(&mut self, shape: crate::plan::FunctionShape) -> super::FunctionShape {
+    fn function_shape(&mut self, shape: crate::plan::FunctionShape) -> super::type_::FunctionShape {
         self.types
             .function_shape(&SpecializedFunctionShape::instantiate(
                 &shape,
@@ -191,7 +191,7 @@ impl LoweringContext {
     fn custom_function_type(
         &mut self,
         type_: crate::plan::CustomFunctionType,
-    ) -> super::CustomFunctionType {
+    ) -> super::type_::CustomFunctionType {
         let substitution = self.substitution.clone();
         self.custom_function_type_with_substitution(&type_, &substitution)
     }
@@ -199,7 +199,7 @@ impl LoweringContext {
     fn generic_function_type(
         &mut self,
         shape: &SpecializedFunctionShape,
-    ) -> super::GenericFunctionType {
+    ) -> super::type_::GenericFunctionType {
         self.types.generic_function_type(shape)
     }
 
@@ -207,7 +207,7 @@ impl LoweringContext {
         &mut self,
         arguments: &[SpecializedValueShape],
         return_: &SpecializedCustomValueShape,
-    ) -> super::CustomFunctionType {
+    ) -> super::type_::CustomFunctionType {
         self.types.custom_function_type(arguments, return_)
     }
 
@@ -215,7 +215,7 @@ impl LoweringContext {
         &mut self,
         arguments: &[SpecializedValueShape],
         return_: &SpecializedFunctionShape,
-    ) -> super::FunctionFunctionType {
+    ) -> super::type_::FunctionFunctionType {
         self.types.function_function_type(arguments, return_)
     }
 
@@ -236,9 +236,9 @@ impl LoweringContext {
     fn generic_callable_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-    ) -> super::GenericCallableId {
+    ) -> super::function::GenericCallableId {
         let (key, _) = SpecializationKey::from_instantiation(function, &self.substitution);
-        super::GenericCallableId::function(
+        super::function::GenericCallableId::function(
             key.template().index(),
             key.substitution()
                 .arguments()
@@ -251,15 +251,15 @@ impl LoweringContext {
     fn generic_constructor_callable_id(
         &mut self,
         constructor: crate::plan::CustomConstructor,
-    ) -> super::GenericCallableId {
-        super::GenericCallableId::constructor(self.custom_constructor(constructor))
+    ) -> super::function::GenericCallableId {
+        super::function::GenericCallableId::constructor(self.custom_constructor(constructor))
     }
 
     fn custom_function_type_with_substitution(
         &mut self,
         type_: &crate::plan::CustomFunctionType,
         substitution: &SpecializedTypeSubstitution,
-    ) -> super::CustomFunctionType {
+    ) -> super::type_::CustomFunctionType {
         let arguments = type_
             .argument_shapes()
             .iter()
@@ -269,26 +269,26 @@ impl LoweringContext {
         self.types.custom_function_type(&arguments, &return_)
     }
 
-    fn int_list_type(&mut self) -> super::IntListTypeId {
+    fn int_list_type(&mut self) -> super::type_::IntListTypeId {
         self.types.int_list_type()
     }
 
-    fn string_list_type(&mut self) -> super::StringListTypeId {
+    fn string_list_type(&mut self) -> super::type_::StringListTypeId {
         self.types.string_list_type()
     }
 
-    fn bit_array_list_type(&mut self) -> super::BitArrayListTypeId {
+    fn bit_array_list_type(&mut self) -> super::type_::BitArrayListTypeId {
         self.types.bit_array_list_type()
     }
 
-    fn utf_codepoint_list_type(&mut self) -> super::UtfCodepointListTypeId {
+    fn utf_codepoint_list_type(&mut self) -> super::type_::UtfCodepointListTypeId {
         self.types.utf_codepoint_list_type()
     }
 
     fn custom_constructor(
         &mut self,
         constructor: crate::plan::CustomConstructor,
-    ) -> super::CustomConstructorId {
+    ) -> super::type_::CustomConstructorId {
         self.types
             .custom_constructor(SpecializedCustomConstructor::instantiate(
                 constructor,
@@ -296,7 +296,10 @@ impl LoweringContext {
             ))
     }
 
-    fn custom_list_type(&mut self, item: crate::plan::CustomType) -> super::CustomListTypeId {
+    fn custom_list_type(
+        &mut self,
+        item: crate::plan::CustomType,
+    ) -> super::type_::CustomListTypeId {
         let shape = SpecializedCustomValueShape::instantiate(
             &crate::plan::CustomValueShape::any(item),
             &self.substitution,
@@ -307,23 +310,26 @@ impl LoweringContext {
     fn specialized_custom_list_type(
         &mut self,
         item: &SpecializedCustomValueShape,
-    ) -> super::CustomListTypeId {
+    ) -> super::type_::CustomListTypeId {
         self.types.custom_list_type(item)
     }
 
-    fn float_list_type(&mut self) -> super::FloatListTypeId {
+    fn float_list_type(&mut self) -> super::type_::FloatListTypeId {
         self.types.float_list_type()
     }
 
-    fn bool_list_type(&mut self) -> super::BoolListTypeId {
+    fn bool_list_type(&mut self) -> super::type_::BoolListTypeId {
         self.types.bool_list_type()
     }
 
-    fn nil_list_type(&mut self) -> super::NilListTypeId {
+    fn nil_list_type(&mut self) -> super::type_::NilListTypeId {
         self.types.nil_list_type()
     }
 
-    fn tuple_list_type(&mut self, item: Vec<crate::plan::ValueType>) -> super::TupleListTypeId {
+    fn tuple_list_type(
+        &mut self,
+        item: Vec<crate::plan::ValueType>,
+    ) -> super::type_::TupleListTypeId {
         let item = item
             .into_iter()
             .map(|type_| {
@@ -339,7 +345,7 @@ impl LoweringContext {
     fn specialized_tuple_list_type(
         &mut self,
         item: &[SpecializedValueShape],
-    ) -> super::TupleListTypeId {
+    ) -> super::type_::TupleListTypeId {
         self.types.tuple_list_type(item)
     }
 
@@ -353,21 +359,21 @@ impl LoweringContext {
     fn parameter_list_type(
         &mut self,
         parameter: crate::plan::TypeParameterId,
-    ) -> super::ParameterListTypeId {
+    ) -> super::type_::ParameterListTypeId {
         self.types.parameter_list_type(parameter)
     }
 
     fn parameter_list_list_type(
         &mut self,
         parameter: crate::plan::TypeParameterId,
-    ) -> super::ParameterListListTypeId {
+    ) -> super::type_::ParameterListListTypeId {
         self.types.parameter_list_list_type(parameter)
     }
 
     fn stored_list_list_type(
         &mut self,
         item: &crate::plan::ValueStorageShape,
-    ) -> super::ListListTypeId {
+    ) -> super::type_::ListListTypeId {
         let item = specialization::StoredValueShape::instantiate(item, &self.substitution);
         self.types.stored_list_list_type(&item)
     }
@@ -375,11 +381,14 @@ impl LoweringContext {
     fn specialized_stored_list_list_type(
         &mut self,
         item: &specialization::StoredValueShape,
-    ) -> super::ListListTypeId {
+    ) -> super::type_::ListListTypeId {
         self.types.stored_list_list_type(item)
     }
 
-    fn function_list_type(&mut self, item: crate::plan::FunctionType) -> super::FunctionListTypeId {
+    fn function_list_type(
+        &mut self,
+        item: crate::plan::FunctionType,
+    ) -> super::type_::FunctionListTypeId {
         let shape = SpecializedFunctionShape::instantiate(
             &crate::plan::FunctionShape::from_function_type(item),
             &self.substitution,
@@ -390,7 +399,7 @@ impl LoweringContext {
     fn specialized_function_list_type(
         &mut self,
         item: &SpecializedFunctionShape,
-    ) -> super::FunctionListTypeId {
+    ) -> super::type_::FunctionListTypeId {
         self.types.function_list_type(item)
     }
 
@@ -398,12 +407,14 @@ impl LoweringContext {
         &mut self,
         key: SpecializationKey,
         return_: specialization::ValueInhabitation,
-    ) -> super::RuntimeFunctionId {
+    ) -> super::function::RuntimeFunctionId {
         match return_ {
             specialization::ValueInhabitation::Uninhabited(_) => {
                 let specialization = self
                     .reserve_provisional_specialization(key, function::FunctionTableFamily::Never);
-                super::RuntimeFunctionId::Never(super::NeverFunctionId(specialization.index))
+                super::function::RuntimeFunctionId::Never(super::function::NeverFunctionId(
+                    specialization.index,
+                ))
             }
             specialization::ValueInhabitation::Inhabited(return_shape) => {
                 let family =
@@ -464,10 +475,10 @@ impl LoweringContext {
     fn never_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-    ) -> specialization::Representability<super::NeverFunctionId> {
+    ) -> specialization::Representability<super::function::NeverFunctionId> {
         let (key, _) = SpecializationKey::from_instantiation(function, &self.substitution);
         self.provisional_specialization(key, function::FunctionTableFamily::Never)
-            .map(|specialization| super::NeverFunctionId(specialization.index))
+            .map(|specialization| super::function::NeverFunctionId(specialization.index))
     }
 
     fn next_function_index(&mut self, family: function::FunctionTableFamily) -> usize {
@@ -490,53 +501,53 @@ impl LoweringContext {
     fn int_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-    ) -> specialization::Representability<super::IntFunctionId> {
+    ) -> specialization::Representability<super::function::IntFunctionId> {
         self.reserve_function_id(function, function::FunctionTableFamily::Int, |index, _| {
-            super::IntFunctionId(index)
+            super::function::IntFunctionId(index)
         })
     }
 
     fn float_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-    ) -> specialization::Representability<super::FloatFunctionId> {
+    ) -> specialization::Representability<super::function::FloatFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::Float,
-            |index, _| super::FloatFunctionId(index),
+            |index, _| super::function::FloatFunctionId(index),
         )
     }
 
     fn string_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-    ) -> specialization::Representability<super::StringFunctionId> {
+    ) -> specialization::Representability<super::function::StringFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::String,
-            |index, _| super::StringFunctionId(index),
+            |index, _| super::function::StringFunctionId(index),
         )
     }
 
     fn bit_array_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-    ) -> specialization::Representability<super::BitArrayFunctionId> {
+    ) -> specialization::Representability<super::function::BitArrayFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::BitArray,
-            |index, _| super::BitArrayFunctionId(index),
+            |index, _| super::function::BitArrayFunctionId(index),
         )
     }
 
     fn utf_codepoint_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-    ) -> specialization::Representability<super::UtfCodepointFunctionId> {
+    ) -> specialization::Representability<super::function::UtfCodepointFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::UtfCodepoint,
-            |index, _| super::UtfCodepointFunctionId(index),
+            |index, _| super::function::UtfCodepointFunctionId(index),
         )
     }
 
@@ -544,12 +555,15 @@ impl LoweringContext {
         &mut self,
         function: &crate::plan::FunctionInstantiation,
         shape: &SpecializedCustomValueShape,
-    ) -> specialization::Representability<super::CustomFunctionId> {
+    ) -> specialization::Representability<super::function::CustomFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::Custom,
             |index, context| {
-                super::CustomFunctionId::new(index, context.types.custom_value_shape(shape))
+                super::function::CustomFunctionId::new(
+                    index,
+                    context.types.custom_value_shape(shape),
+                )
             },
         )
     }
@@ -557,29 +571,29 @@ impl LoweringContext {
     fn bool_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-    ) -> specialization::Representability<super::BoolFunctionId> {
+    ) -> specialization::Representability<super::function::BoolFunctionId> {
         self.reserve_function_id(function, function::FunctionTableFamily::Bool, |index, _| {
-            super::BoolFunctionId(index)
+            super::function::BoolFunctionId(index)
         })
     }
 
     fn nil_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-    ) -> specialization::Representability<super::NilFunctionId> {
+    ) -> specialization::Representability<super::function::NilFunctionId> {
         self.reserve_function_id(function, function::FunctionTableFamily::Nil, |index, _| {
-            super::NilFunctionId(index)
+            super::function::NilFunctionId(index)
         })
     }
 
     fn tuple_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-    ) -> specialization::Representability<super::TupleFunctionId> {
+    ) -> specialization::Representability<super::function::TupleFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::Tuple,
-            |index, _| super::TupleFunctionId(index),
+            |index, _| super::function::TupleFunctionId(index),
         )
     }
 
@@ -587,7 +601,7 @@ impl LoweringContext {
         &mut self,
         function: &crate::plan::FunctionInstantiation,
         item: &SpecializedValueShape,
-    ) -> specialization::Representability<super::ListFunctionId> {
+    ) -> specialization::Representability<super::function::ListFunctionId> {
         self.reserve_function_id(
             function,
             function::list_function_table_family(item),
@@ -598,11 +612,13 @@ impl LoweringContext {
     fn int_list_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-    ) -> specialization::Representability<super::IntListFunctionId> {
+    ) -> specialization::Representability<super::function::IntListFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::IntList,
-            |index, context| super::IntListFunctionId::new(index, context.types.int_list_type()),
+            |index, context| {
+                super::function::IntListFunctionId::new(index, context.types.int_list_type())
+            },
         )
     }
 
@@ -610,12 +626,12 @@ impl LoweringContext {
         &mut self,
         function: &crate::plan::FunctionInstantiation,
         parameter: crate::plan::TypeParameterId,
-    ) -> specialization::Representability<super::ParameterListFunctionId> {
+    ) -> specialization::Representability<super::function::ParameterListFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::ParameterList,
             |index, context| {
-                super::ParameterListFunctionId::new(
+                super::function::ParameterListFunctionId::new(
                     index,
                     context.types.parameter_list_type(parameter),
                 )
@@ -626,12 +642,12 @@ impl LoweringContext {
     fn string_list_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-    ) -> specialization::Representability<super::StringListFunctionId> {
+    ) -> specialization::Representability<super::function::StringListFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::StringList,
             |index, context| {
-                super::StringListFunctionId::new(index, context.types.string_list_type())
+                super::function::StringListFunctionId::new(index, context.types.string_list_type())
             },
         )
     }
@@ -639,12 +655,15 @@ impl LoweringContext {
     fn bit_array_list_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-    ) -> specialization::Representability<super::BitArrayListFunctionId> {
+    ) -> specialization::Representability<super::function::BitArrayListFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::BitArrayList,
             |index, context| {
-                super::BitArrayListFunctionId::new(index, context.types.bit_array_list_type())
+                super::function::BitArrayListFunctionId::new(
+                    index,
+                    context.types.bit_array_list_type(),
+                )
             },
         )
     }
@@ -652,12 +671,12 @@ impl LoweringContext {
     fn utf_codepoint_list_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-    ) -> specialization::Representability<super::UtfCodepointListFunctionId> {
+    ) -> specialization::Representability<super::function::UtfCodepointListFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::UtfCodepointList,
             |index, context| {
-                super::UtfCodepointListFunctionId::new(
+                super::function::UtfCodepointListFunctionId::new(
                     index,
                     context.types.utf_codepoint_list_type(),
                 )
@@ -668,24 +687,24 @@ impl LoweringContext {
     fn custom_list_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-        type_id: super::CustomListTypeId,
-    ) -> specialization::Representability<super::CustomListFunctionId> {
+        type_id: super::type_::CustomListTypeId,
+    ) -> specialization::Representability<super::function::CustomListFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::CustomList,
-            |index, _| super::CustomListFunctionId::new(index, type_id),
+            |index, _| super::function::CustomListFunctionId::new(index, type_id),
         )
     }
 
     fn float_list_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-    ) -> specialization::Representability<super::FloatListFunctionId> {
+    ) -> specialization::Representability<super::function::FloatListFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::FloatList,
             |index, context| {
-                super::FloatListFunctionId::new(index, context.types.float_list_type())
+                super::function::FloatListFunctionId::new(index, context.types.float_list_type())
             },
         )
     }
@@ -693,70 +712,74 @@ impl LoweringContext {
     fn bool_list_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-    ) -> specialization::Representability<super::BoolListFunctionId> {
+    ) -> specialization::Representability<super::function::BoolListFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::BoolList,
-            |index, context| super::BoolListFunctionId::new(index, context.types.bool_list_type()),
+            |index, context| {
+                super::function::BoolListFunctionId::new(index, context.types.bool_list_type())
+            },
         )
     }
 
     fn nil_list_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-    ) -> specialization::Representability<super::NilListFunctionId> {
+    ) -> specialization::Representability<super::function::NilListFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::NilList,
-            |index, context| super::NilListFunctionId::new(index, context.types.nil_list_type()),
+            |index, context| {
+                super::function::NilListFunctionId::new(index, context.types.nil_list_type())
+            },
         )
     }
 
     fn tuple_list_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-        type_id: super::TupleListTypeId,
-    ) -> specialization::Representability<super::TupleListFunctionId> {
+        type_id: super::type_::TupleListTypeId,
+    ) -> specialization::Representability<super::function::TupleListFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::TupleList,
-            |index, _| super::TupleListFunctionId::new(index, type_id),
+            |index, _| super::function::TupleListFunctionId::new(index, type_id),
         )
     }
 
     fn list_list_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-        type_id: super::ListListTypeId,
-    ) -> specialization::Representability<super::ListListFunctionId> {
+        type_id: super::type_::ListListTypeId,
+    ) -> specialization::Representability<super::function::ListListFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::ListList,
-            |index, _| super::ListListFunctionId::new(index, type_id),
+            |index, _| super::function::ListListFunctionId::new(index, type_id),
         )
     }
 
     fn parameter_list_list_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-        type_id: super::ParameterListListTypeId,
-    ) -> specialization::Representability<super::ParameterListListFunctionId> {
+        type_id: super::type_::ParameterListListTypeId,
+    ) -> specialization::Representability<super::function::ParameterListListFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::ParameterListList,
-            |index, _| super::ParameterListListFunctionId::new(index, type_id),
+            |index, _| super::function::ParameterListListFunctionId::new(index, type_id),
         )
     }
 
     fn function_list_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-        type_id: super::FunctionListTypeId,
-    ) -> specialization::Representability<super::FunctionListFunctionId> {
+        type_id: super::type_::FunctionListTypeId,
+    ) -> specialization::Representability<super::function::FunctionListFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::FunctionList,
-            |index, _| super::FunctionListFunctionId::new(index, type_id),
+            |index, _| super::function::FunctionListFunctionId::new(index, type_id),
         )
     }
 
@@ -764,7 +787,7 @@ impl LoweringContext {
         &mut self,
         function: &crate::plan::FunctionInstantiation,
         return_: &SpecializedFunctionShape,
-    ) -> specialization::Representability<super::FunctionFunctionId> {
+    ) -> specialization::Representability<super::function::FunctionFunctionId> {
         self.reserve_function_id(
             function,
             function::function_function_table_family(return_, &self.representations),
@@ -782,100 +805,100 @@ impl LoweringContext {
     fn int_function_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-    ) -> specialization::Representability<super::IntFunctionFunctionId> {
+    ) -> specialization::Representability<super::function::IntFunctionFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::IntFunction,
-            |index, _| super::IntFunctionFunctionId(index),
+            |index, _| super::function::IntFunctionFunctionId(index),
         )
     }
 
     fn float_function_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-    ) -> specialization::Representability<super::FloatFunctionFunctionId> {
+    ) -> specialization::Representability<super::function::FloatFunctionFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::FloatFunction,
-            |index, _| super::FloatFunctionFunctionId(index),
+            |index, _| super::function::FloatFunctionFunctionId(index),
         )
     }
 
     fn string_function_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-    ) -> specialization::Representability<super::StringFunctionFunctionId> {
+    ) -> specialization::Representability<super::function::StringFunctionFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::StringFunction,
-            |index, _| super::StringFunctionFunctionId(index),
+            |index, _| super::function::StringFunctionFunctionId(index),
         )
     }
 
     fn bit_array_function_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-    ) -> specialization::Representability<super::BitArrayFunctionFunctionId> {
+    ) -> specialization::Representability<super::function::BitArrayFunctionFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::BitArrayFunction,
-            |index, _| super::BitArrayFunctionFunctionId(index),
+            |index, _| super::function::BitArrayFunctionFunctionId(index),
         )
     }
 
     fn utf_codepoint_function_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-    ) -> specialization::Representability<super::UtfCodepointFunctionFunctionId> {
+    ) -> specialization::Representability<super::function::UtfCodepointFunctionFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::UtfCodepointFunction,
-            |index, _| super::UtfCodepointFunctionFunctionId(index),
+            |index, _| super::function::UtfCodepointFunctionFunctionId(index),
         )
     }
 
     fn custom_function_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-        type_: super::CustomFunctionType,
-    ) -> specialization::Representability<super::CustomFunctionFunctionId> {
+        type_: super::type_::CustomFunctionType,
+    ) -> specialization::Representability<super::function::CustomFunctionFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::CustomFunction,
-            |index, _| super::CustomFunctionFunctionId::new(index, type_),
+            |index, _| super::function::CustomFunctionFunctionId::new(index, type_),
         )
     }
 
     fn bool_function_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-    ) -> specialization::Representability<super::BoolFunctionFunctionId> {
+    ) -> specialization::Representability<super::function::BoolFunctionFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::BoolFunction,
-            |index, _| super::BoolFunctionFunctionId(index),
+            |index, _| super::function::BoolFunctionFunctionId(index),
         )
     }
 
     fn nil_function_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-    ) -> specialization::Representability<super::NilFunctionFunctionId> {
+    ) -> specialization::Representability<super::function::NilFunctionFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::NilFunction,
-            |index, _| super::NilFunctionFunctionId(index),
+            |index, _| super::function::NilFunctionFunctionId(index),
         )
     }
 
     fn tuple_function_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-    ) -> specialization::Representability<super::TupleFunctionFunctionId> {
+    ) -> specialization::Representability<super::function::TupleFunctionFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::TupleFunction,
-            |index, _| super::TupleFunctionFunctionId(index),
+            |index, _| super::function::TupleFunctionFunctionId(index),
         )
     }
 
@@ -884,7 +907,7 @@ impl LoweringContext {
         function: &crate::plan::FunctionInstantiation,
         type_: &SpecializedFunctionShape,
         item: &SpecializedValueShape,
-    ) -> specialization::Representability<super::ListFunctionFunctionId> {
+    ) -> specialization::Representability<super::function::ListFunctionFunctionId> {
         self.reserve_function_id(
             function,
             function::list_function_function_table_family(item),
@@ -897,36 +920,36 @@ impl LoweringContext {
     fn function_function_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-        type_: super::FunctionFunctionType,
-    ) -> specialization::Representability<super::FunctionFunctionFunctionId> {
+        type_: super::type_::FunctionFunctionType,
+    ) -> specialization::Representability<super::function::FunctionFunctionFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::FunctionFunction,
-            |index, _| super::FunctionFunctionFunctionId::new(index, type_),
+            |index, _| super::function::FunctionFunctionFunctionId::new(index, type_),
         )
     }
 
     fn generic_function_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-        type_: super::GenericFunctionType,
-    ) -> specialization::Representability<super::GenericFunctionFunctionId> {
+        type_: super::type_::GenericFunctionType,
+    ) -> specialization::Representability<super::function::GenericFunctionFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::GenericFunction,
-            |index, _| super::GenericFunctionFunctionId::new(index, type_),
+            |index, _| super::function::GenericFunctionFunctionId::new(index, type_),
         )
     }
 
     fn never_function_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
-        type_: super::GenericFunctionType,
-    ) -> specialization::Representability<super::NeverFunctionFunctionId> {
+        type_: super::type_::GenericFunctionType,
+    ) -> specialization::Representability<super::function::NeverFunctionFunctionId> {
         self.reserve_function_id(
             function,
             function::FunctionTableFamily::NeverFunction,
-            |index, _| super::NeverFunctionFunctionId::new(index, type_),
+            |index, _| super::function::NeverFunctionFunctionId::new(index, type_),
         )
     }
 
@@ -934,28 +957,31 @@ impl LoweringContext {
         SpecializedValueShape::instantiate(shape, &self.substitution)
     }
 
-    fn lower_concrete_value_type(&mut self, shape: &SpecializedValueShape) -> super::ValueType {
+    fn lower_concrete_value_type(
+        &mut self,
+        shape: &SpecializedValueShape,
+    ) -> super::type_::ValueType {
         self.types.value_type(shape)
     }
 
     fn lower_concrete_custom_shape(
         &mut self,
         shape: &SpecializedCustomValueShape,
-    ) -> super::CustomValueShape {
+    ) -> super::type_::CustomValueShape {
         self.types.custom_value_shape(shape)
     }
 
     fn lower_concrete_function_type(
         &mut self,
         shape: &SpecializedFunctionShape,
-    ) -> super::FunctionType {
+    ) -> super::type_::FunctionType {
         self.types.function_type(shape)
     }
 
     fn lower_concrete_function_shape(
         &mut self,
         shape: &SpecializedFunctionShape,
-    ) -> super::FunctionShape {
+    ) -> super::type_::FunctionShape {
         self.types.function_shape(shape)
     }
 

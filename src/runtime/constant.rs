@@ -1,4 +1,5 @@
-use crate::plan::execution::{ConstantProgram, ExecutionPlan};
+use crate::plan::execution::ExecutionPlan;
+use crate::plan::execution::constant::ConstantProgram;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::graph::{self, GraphValue, RetainedValues};
 use crate::runtime::state::RuntimeState;

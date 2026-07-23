@@ -6,17 +6,19 @@ use std::rc::Rc;
 
 use super::state::{ListValueId, RuntimeState};
 use crate::plan::ValueType;
-use crate::plan::execution::{
-    BitArrayFunctionId, BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionId,
-    BoolFunctionLocalId, BoolLocalId, CustomConstructorId, CustomFunctionId, CustomFunctionLocal,
-    CustomLocal, CustomTypeId, FloatFunctionId, FloatFunctionLocalId, FloatLocalId,
-    FunctionFunctionId, FunctionFunctionLocal, FunctionReturnFamily, FunctionType,
-    GenericCallableId, GenericFunctionLocal, IntFunctionId, IntFunctionLocalId, IntLocalId,
-    ListFunctionId, ListFunctionLocal, NeverFunctionId, NeverFunctionLocal, NilFunctionId,
-    NilFunctionLocalId, NilLocalId, ParamLocal, StringFunctionId, StringFunctionLocalId,
-    StringLocalId, TupleFunctionId, TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionId,
-    UtfCodepointFunctionLocalId, UtfCodepointLocalId,
+use crate::plan::execution::function::{
+    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, FunctionFunctionId,
+    FunctionReturnFamily, GenericCallableId, IntFunctionId, ListFunctionId, NeverFunctionId,
+    NilFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
 };
+use crate::plan::execution::graph::{
+    BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
+    CustomFunctionLocal, CustomLocal, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocal,
+    GenericFunctionLocal, IntFunctionLocalId, IntLocalId, ListFunctionLocal, NeverFunctionLocal,
+    NilFunctionLocalId, NilLocalId, ParamLocal, StringFunctionLocalId, StringLocalId,
+    TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
+};
+use crate::plan::execution::type_::{CustomConstructorId, CustomTypeId, FunctionType};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::runtime) struct EvaluatedBitArray {
@@ -342,84 +344,86 @@ impl FunctionReferenceId for FunctionFunctionId {
                 FunctionReferenceIdentity::function(FunctionReturnFamily::Tuple, id.0)
             }
             Self::List(id) => match id {
-                crate::plan::execution::ListFunctionFunctionId::Parameter { id, .. } => {
-                    FunctionReferenceIdentity::returning_list_function(
-                        ListFunctionReturnFamily::Parameter,
-                        id.0,
-                    )
-                }
-                crate::plan::execution::ListFunctionFunctionId::ParameterList { id, .. } => {
-                    FunctionReferenceIdentity::returning_list_function(
-                        ListFunctionReturnFamily::ParameterList,
-                        id.0,
-                    )
-                }
-                crate::plan::execution::ListFunctionFunctionId::Int { id, .. } => {
+                crate::plan::execution::function::ListFunctionFunctionId::Parameter {
+                    id, ..
+                } => FunctionReferenceIdentity::returning_list_function(
+                    ListFunctionReturnFamily::Parameter,
+                    id.0,
+                ),
+                crate::plan::execution::function::ListFunctionFunctionId::ParameterList {
+                    id,
+                    ..
+                } => FunctionReferenceIdentity::returning_list_function(
+                    ListFunctionReturnFamily::ParameterList,
+                    id.0,
+                ),
+                crate::plan::execution::function::ListFunctionFunctionId::Int { id, .. } => {
                     FunctionReferenceIdentity::returning_list_function(
                         ListFunctionReturnFamily::Int,
                         id.0,
                     )
                 }
-                crate::plan::execution::ListFunctionFunctionId::String { id, .. } => {
+                crate::plan::execution::function::ListFunctionFunctionId::String { id, .. } => {
                     FunctionReferenceIdentity::returning_list_function(
                         ListFunctionReturnFamily::String,
                         id.0,
                     )
                 }
-                crate::plan::execution::ListFunctionFunctionId::BitArray { id, .. } => {
-                    FunctionReferenceIdentity::returning_list_function(
-                        ListFunctionReturnFamily::BitArray,
-                        id.0,
-                    )
-                }
-                crate::plan::execution::ListFunctionFunctionId::UtfCodepoint { id, .. } => {
-                    FunctionReferenceIdentity::returning_list_function(
-                        ListFunctionReturnFamily::UtfCodepoint,
-                        id.0,
-                    )
-                }
-                crate::plan::execution::ListFunctionFunctionId::Custom { id, .. } => {
+                crate::plan::execution::function::ListFunctionFunctionId::BitArray {
+                    id, ..
+                } => FunctionReferenceIdentity::returning_list_function(
+                    ListFunctionReturnFamily::BitArray,
+                    id.0,
+                ),
+                crate::plan::execution::function::ListFunctionFunctionId::UtfCodepoint {
+                    id,
+                    ..
+                } => FunctionReferenceIdentity::returning_list_function(
+                    ListFunctionReturnFamily::UtfCodepoint,
+                    id.0,
+                ),
+                crate::plan::execution::function::ListFunctionFunctionId::Custom { id, .. } => {
                     FunctionReferenceIdentity::returning_list_function(
                         ListFunctionReturnFamily::Custom,
                         id.0,
                     )
                 }
-                crate::plan::execution::ListFunctionFunctionId::Float { id, .. } => {
+                crate::plan::execution::function::ListFunctionFunctionId::Float { id, .. } => {
                     FunctionReferenceIdentity::returning_list_function(
                         ListFunctionReturnFamily::Float,
                         id.0,
                     )
                 }
-                crate::plan::execution::ListFunctionFunctionId::Bool { id, .. } => {
+                crate::plan::execution::function::ListFunctionFunctionId::Bool { id, .. } => {
                     FunctionReferenceIdentity::returning_list_function(
                         ListFunctionReturnFamily::Bool,
                         id.0,
                     )
                 }
-                crate::plan::execution::ListFunctionFunctionId::Nil { id, .. } => {
+                crate::plan::execution::function::ListFunctionFunctionId::Nil { id, .. } => {
                     FunctionReferenceIdentity::returning_list_function(
                         ListFunctionReturnFamily::Nil,
                         id.0,
                     )
                 }
-                crate::plan::execution::ListFunctionFunctionId::Tuple { id, .. } => {
+                crate::plan::execution::function::ListFunctionFunctionId::Tuple { id, .. } => {
                     FunctionReferenceIdentity::returning_list_function(
                         ListFunctionReturnFamily::Tuple,
                         id.0,
                     )
                 }
-                crate::plan::execution::ListFunctionFunctionId::List { id, .. } => {
+                crate::plan::execution::function::ListFunctionFunctionId::List { id, .. } => {
                     FunctionReferenceIdentity::returning_list_function(
                         ListFunctionReturnFamily::List,
                         id.0,
                     )
                 }
-                crate::plan::execution::ListFunctionFunctionId::Function { id, .. } => {
-                    FunctionReferenceIdentity::returning_list_function(
-                        ListFunctionReturnFamily::Function,
-                        id.0,
-                    )
-                }
+                crate::plan::execution::function::ListFunctionFunctionId::Function {
+                    id, ..
+                } => FunctionReferenceIdentity::returning_list_function(
+                    ListFunctionReturnFamily::Function,
+                    id.0,
+                ),
             },
             Self::Function(id) => {
                 FunctionReferenceIdentity::function(FunctionReturnFamily::Function, id.index())
@@ -550,55 +554,55 @@ pub(in crate::runtime) enum EvaluatedCaptureKind {
 #[derive(Debug, Clone, PartialEq)]
 pub(in crate::runtime) enum EvaluatedListCapture {
     Parameter {
-        local: crate::plan::execution::ParameterListLocalId,
+        local: crate::plan::execution::graph::ParameterListLocalId,
         value: super::state::ParameterListValueId,
     },
     ParameterList {
-        local: crate::plan::execution::ParameterListListLocalId,
+        local: crate::plan::execution::graph::ParameterListListLocalId,
         value: super::state::ParameterListListValueId,
     },
     Int {
-        local: crate::plan::execution::IntListLocalId,
+        local: crate::plan::execution::graph::IntListLocalId,
         value: super::state::IntListValueId,
     },
     String {
-        local: crate::plan::execution::StringListLocalId,
+        local: crate::plan::execution::graph::StringListLocalId,
         value: super::state::StringListValueId,
     },
     BitArray {
-        local: crate::plan::execution::BitArrayListLocalId,
+        local: crate::plan::execution::graph::BitArrayListLocalId,
         value: super::state::BitArrayListValueId,
     },
     UtfCodepoint {
-        local: crate::plan::execution::UtfCodepointListLocalId,
+        local: crate::plan::execution::graph::UtfCodepointListLocalId,
         value: super::state::UtfCodepointListValueId,
     },
     Custom {
-        local: crate::plan::execution::CustomListLocalId,
+        local: crate::plan::execution::graph::CustomListLocalId,
         value: super::state::CustomListValueId,
     },
     Float {
-        local: crate::plan::execution::FloatListLocalId,
+        local: crate::plan::execution::graph::FloatListLocalId,
         value: super::state::FloatListValueId,
     },
     Bool {
-        local: crate::plan::execution::BoolListLocalId,
+        local: crate::plan::execution::graph::BoolListLocalId,
         value: super::state::BoolListValueId,
     },
     Nil {
-        local: crate::plan::execution::NilListLocalId,
+        local: crate::plan::execution::graph::NilListLocalId,
         value: super::state::NilListValueId,
     },
     Tuple {
-        local: crate::plan::execution::TupleListLocalId,
+        local: crate::plan::execution::graph::TupleListLocalId,
         value: super::state::TupleListValueId,
     },
     List {
-        local: crate::plan::execution::ListListLocalId,
+        local: crate::plan::execution::graph::ListListLocalId,
         value: super::state::ListListValueId,
     },
     Function {
-        local: crate::plan::execution::FunctionListLocalId,
+        local: crate::plan::execution::graph::FunctionListLocalId,
         value: super::state::FunctionListValueId,
     },
 }
@@ -1131,17 +1135,18 @@ mod tests {
         FunctionReferenceIdentity, ListFunctionReturnFamily, values_equal,
     };
     use crate::plan::ValueType;
-    use crate::plan::execution::{
+    use crate::plan::execution::function::{
         BitArrayFunctionId, BitArrayListFunctionFunctionId, BoolFunctionId,
         BoolListFunctionFunctionId, CustomListFunctionFunctionId, FloatFunctionId,
         FloatListFunctionFunctionId, FunctionFunctionId, FunctionListFunctionFunctionId,
-        IntFunctionFunctionId, IntFunctionId, IntListFunctionFunctionId, IntLocalId,
-        ListFunctionFunctionId, ListFunctionId, ListListFunctionFunctionId, NeverFunctionId,
-        NilFunctionId, NilListFunctionFunctionId, ParamLocal, ParameterListFunctionFunctionId,
+        IntFunctionFunctionId, IntFunctionId, IntListFunctionFunctionId, ListFunctionFunctionId,
+        ListFunctionId, ListListFunctionFunctionId, NeverFunctionId, NilFunctionId,
+        NilListFunctionFunctionId, ParameterListFunctionFunctionId,
         ParameterListListFunctionFunctionId, StringFunctionId, StringListFunctionFunctionId,
         TupleFunctionId, TupleListFunctionFunctionId, UtfCodepointFunctionId,
         UtfCodepointListFunctionFunctionId,
     };
+    use crate::plan::execution::graph::{IntLocalId, ParamLocal};
     use crate::runtime::state::{ListValueId, RuntimeState};
     use bitvec::order::Msb0;
     use bitvec::view::BitView;
@@ -1203,9 +1208,9 @@ pub fn main() {
             IntFunctionId(0),
             Vec::new(),
             Vec::new(),
-            crate::plan::execution::FunctionType::new(
+            crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
-                crate::plan::execution::ValueType::Int,
+                crate::plan::execution::type_::ValueType::Int,
             ),
         );
         let values = [
@@ -1245,9 +1250,9 @@ pub fn main() {
     fn semantic_value_equality_covers_every_list_and_function_family() {
         let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
         let mut state = RuntimeState::new();
-        let execution_int_type = crate::plan::execution::FunctionType::new(
+        let execution_int_type = crate::plan::execution::type_::FunctionType::new(
             Vec::new(),
-            crate::plan::execution::ValueType::Int,
+            crate::plan::execution::type_::ValueType::Int,
         );
         let int_function = EvaluatedIntFunction::reference(
             IntFunctionId(0),
@@ -1260,31 +1265,33 @@ pub fn main() {
             plan.custom_function_id(0),
             Vec::new(),
             Vec::new(),
-            crate::plan::execution::FunctionType::new(
+            crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
-                crate::plan::execution::ValueType::Custom(custom_type),
+                crate::plan::execution::type_::ValueType::Custom(custom_type),
             ),
         );
         let constructor_id = plan.custom_constructor_id(0, 0);
         let constructor = plan.custom_constructor(constructor_id);
         let constructor_function = EvaluatedCustomFunction::constructor(
             constructor_id,
-            crate::plan::execution::FunctionType::new(
+            crate::plan::execution::type_::FunctionType::new(
                 constructor
                     .fields()
                     .iter()
                     .map(|field| field.type_().clone())
                     .collect(),
-                crate::plan::execution::ValueType::Custom(constructor_id.type_id()),
+                crate::plan::execution::type_::ValueType::Custom(constructor_id.type_id()),
             ),
         );
         let never_function = EvaluatedNeverFunction::reference(
             NeverFunctionId(0),
             Vec::new(),
             Vec::new(),
-            crate::plan::execution::FunctionType::new(
+            crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
-                crate::plan::execution::ValueType::Parameter(crate::plan::TypeParameterId(0)),
+                crate::plan::execution::type_::ValueType::Parameter(crate::plan::TypeParameterId(
+                    0,
+                )),
             ),
         );
         let function_pairs = [
@@ -1301,18 +1308,18 @@ pub fn main() {
                     FloatFunctionId(0),
                     Vec::new(),
                     Vec::new(),
-                    crate::plan::execution::FunctionType::new(
+                    crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
-                        crate::plan::execution::ValueType::Float,
+                        crate::plan::execution::type_::ValueType::Float,
                     ),
                 )),
                 EvaluatedFunctionValue::from(EvaluatedFloatFunction::reference(
                     FloatFunctionId(0),
                     Vec::new(),
                     Vec::new(),
-                    crate::plan::execution::FunctionType::new(
+                    crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
-                        crate::plan::execution::ValueType::Float,
+                        crate::plan::execution::type_::ValueType::Float,
                     ),
                 )),
             ),
@@ -1321,18 +1328,18 @@ pub fn main() {
                     StringFunctionId(0),
                     Vec::new(),
                     Vec::new(),
-                    crate::plan::execution::FunctionType::new(
+                    crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
-                        crate::plan::execution::ValueType::String,
+                        crate::plan::execution::type_::ValueType::String,
                     ),
                 )),
                 EvaluatedFunctionValue::from(EvaluatedStringFunction::reference(
                     StringFunctionId(0),
                     Vec::new(),
                     Vec::new(),
-                    crate::plan::execution::FunctionType::new(
+                    crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
-                        crate::plan::execution::ValueType::String,
+                        crate::plan::execution::type_::ValueType::String,
                     ),
                 )),
             ),
@@ -1341,18 +1348,18 @@ pub fn main() {
                     BitArrayFunctionId(0),
                     Vec::new(),
                     Vec::new(),
-                    crate::plan::execution::FunctionType::new(
+                    crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
-                        crate::plan::execution::ValueType::BitArray,
+                        crate::plan::execution::type_::ValueType::BitArray,
                     ),
                 )),
                 EvaluatedFunctionValue::from(EvaluatedBitArrayFunction::reference(
                     BitArrayFunctionId(0),
                     Vec::new(),
                     Vec::new(),
-                    crate::plan::execution::FunctionType::new(
+                    crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
-                        crate::plan::execution::ValueType::BitArray,
+                        crate::plan::execution::type_::ValueType::BitArray,
                     ),
                 )),
             ),
@@ -1361,18 +1368,18 @@ pub fn main() {
                     UtfCodepointFunctionId(0),
                     Vec::new(),
                     Vec::new(),
-                    crate::plan::execution::FunctionType::new(
+                    crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
-                        crate::plan::execution::ValueType::UtfCodepoint,
+                        crate::plan::execution::type_::ValueType::UtfCodepoint,
                     ),
                 )),
                 EvaluatedFunctionValue::from(EvaluatedUtfCodepointFunction::reference(
                     UtfCodepointFunctionId(0),
                     Vec::new(),
                     Vec::new(),
-                    crate::plan::execution::FunctionType::new(
+                    crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
-                        crate::plan::execution::ValueType::UtfCodepoint,
+                        crate::plan::execution::type_::ValueType::UtfCodepoint,
                     ),
                 )),
             ),
@@ -1389,18 +1396,18 @@ pub fn main() {
                     BoolFunctionId(0),
                     Vec::new(),
                     Vec::new(),
-                    crate::plan::execution::FunctionType::new(
+                    crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
-                        crate::plan::execution::ValueType::Bool,
+                        crate::plan::execution::type_::ValueType::Bool,
                     ),
                 )),
                 EvaluatedFunctionValue::from(EvaluatedBoolFunction::reference(
                     BoolFunctionId(0),
                     Vec::new(),
                     Vec::new(),
-                    crate::plan::execution::FunctionType::new(
+                    crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
-                        crate::plan::execution::ValueType::Bool,
+                        crate::plan::execution::type_::ValueType::Bool,
                     ),
                 )),
             ),
@@ -1409,18 +1416,18 @@ pub fn main() {
                     NilFunctionId(0),
                     Vec::new(),
                     Vec::new(),
-                    crate::plan::execution::FunctionType::new(
+                    crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
-                        crate::plan::execution::ValueType::Nil,
+                        crate::plan::execution::type_::ValueType::Nil,
                     ),
                 )),
                 EvaluatedFunctionValue::from(EvaluatedNilFunction::reference(
                     NilFunctionId(0),
                     Vec::new(),
                     Vec::new(),
-                    crate::plan::execution::FunctionType::new(
+                    crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
-                        crate::plan::execution::ValueType::Nil,
+                        crate::plan::execution::type_::ValueType::Nil,
                     ),
                 )),
             ),
@@ -1429,10 +1436,10 @@ pub fn main() {
                     TupleFunctionId(0),
                     Vec::new(),
                     Vec::new(),
-                    crate::plan::execution::FunctionType::new(
+                    crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
-                        crate::plan::execution::ValueType::Tuple(vec![
-                            crate::plan::execution::ValueType::Int,
+                        crate::plan::execution::type_::ValueType::Tuple(vec![
+                            crate::plan::execution::type_::ValueType::Int,
                         ]),
                     ),
                 )),
@@ -1440,10 +1447,10 @@ pub fn main() {
                     TupleFunctionId(0),
                     Vec::new(),
                     Vec::new(),
-                    crate::plan::execution::FunctionType::new(
+                    crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
-                        crate::plan::execution::ValueType::Tuple(vec![
-                            crate::plan::execution::ValueType::Int,
+                        crate::plan::execution::type_::ValueType::Tuple(vec![
+                            crate::plan::execution::type_::ValueType::Int,
                         ]),
                     ),
                 )),
@@ -1453,9 +1460,9 @@ pub fn main() {
                     ListFunctionId::Int(plan.int_list_function_id(0)),
                     Vec::new(),
                     Vec::new(),
-                    crate::plan::execution::FunctionType::new(
+                    crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
-                        crate::plan::execution::ValueType::List(
+                        crate::plan::execution::type_::ValueType::List(
                             plan.int_list_function_id(0).type_id().list_type(),
                         ),
                     ),
@@ -1464,9 +1471,9 @@ pub fn main() {
                     ListFunctionId::Int(plan.int_list_function_id(0)),
                     Vec::new(),
                     Vec::new(),
-                    crate::plan::execution::FunctionType::new(
+                    crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
-                        crate::plan::execution::ValueType::List(
+                        crate::plan::execution::type_::ValueType::List(
                             plan.int_list_function_id(0).type_id().list_type(),
                         ),
                     ),
@@ -1477,9 +1484,9 @@ pub fn main() {
                     FunctionFunctionId::Int(IntFunctionFunctionId(0)),
                     Vec::new(),
                     Vec::new(),
-                    crate::plan::execution::FunctionType::new(
+                    crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
-                        crate::plan::execution::ValueType::Function(Box::new(
+                        crate::plan::execution::type_::ValueType::Function(Box::new(
                             execution_int_type.clone(),
                         )),
                     ),
@@ -1488,9 +1495,9 @@ pub fn main() {
                     FunctionFunctionId::Int(IntFunctionFunctionId(0)),
                     Vec::new(),
                     Vec::new(),
-                    crate::plan::execution::FunctionType::new(
+                    crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
-                        crate::plan::execution::ValueType::Function(Box::new(
+                        crate::plan::execution::type_::ValueType::Function(Box::new(
                             execution_int_type.clone(),
                         )),
                     ),
@@ -1523,9 +1530,9 @@ pub fn main() {
                     FloatFunctionId(0),
                     Vec::new(),
                     Vec::new(),
-                    crate::plan::execution::FunctionType::new(
+                    crate::plan::execution::type_::FunctionType::new(
                         Vec::new(),
-                        crate::plan::execution::ValueType::Float,
+                        crate::plan::execution::type_::ValueType::Float,
                     ),
                 ),
             )),
@@ -1670,9 +1677,9 @@ pub fn main() {
     fn function_identity_distinguishes_references_and_instances() {
         let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
         let state = RuntimeState::new();
-        let int_type = crate::plan::execution::FunctionType::new(
+        let int_type = crate::plan::execution::type_::FunctionType::new(
             Vec::new(),
-            crate::plan::execution::ValueType::Int,
+            crate::plan::execution::type_::ValueType::Int,
         );
         let reference = EvaluatedIntFunction::reference(
             IntFunctionId(0),
@@ -1684,9 +1691,9 @@ pub fn main() {
             IntFunctionId(0),
             vec![ParamLocal::Int(IntLocalId(0))],
             Vec::new(),
-            crate::plan::execution::FunctionType::new(
-                vec![crate::plan::execution::ValueType::Int],
-                crate::plan::execution::ValueType::Int,
+            crate::plan::execution::type_::FunctionType::new(
+                vec![crate::plan::execution::type_::ValueType::Int],
+                crate::plan::execution::type_::ValueType::Int,
             ),
         );
         let different_target = EvaluatedIntFunction::reference(
@@ -1788,9 +1795,9 @@ pub fn main() {
     #[test]
     fn function_returning_list_reference_identity_uses_table_target() {
         let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
-        let type_ = crate::plan::execution::FunctionType::new(
+        let type_ = crate::plan::execution::type_::FunctionType::new(
             Vec::new(),
-            crate::plan::execution::ValueType::Int,
+            crate::plan::execution::type_::ValueType::Int,
         );
         let ids = [
             ListFunctionFunctionId::Parameter {
@@ -1925,13 +1932,13 @@ pub fn main() {
         let state = RuntimeState::new();
         let constructor_id = plan.custom_constructor_id(0, 0);
         let constructor = plan.custom_constructor(constructor_id);
-        let type_ = crate::plan::execution::FunctionType::new(
+        let type_ = crate::plan::execution::type_::FunctionType::new(
             constructor
                 .fields()
                 .iter()
                 .map(|field| field.type_().clone())
                 .collect(),
-            crate::plan::execution::ValueType::Custom(constructor_id.type_id()),
+            crate::plan::execution::type_::ValueType::Custom(constructor_id.type_id()),
         );
         let first = EvaluatedCustomFunction::constructor(constructor_id, type_.clone());
         let same = first.clone();

@@ -1,6 +1,6 @@
 use super::super::Edge;
-use crate::plan::execution::FloatLocalId;
 use crate::plan::execution::explain::{Explain, ExplainContext};
+use crate::plan::execution::graph::FloatLocalId;
 
 pub(crate) struct FloatSwitch {
     subject: FloatLocalId,
@@ -50,7 +50,8 @@ impl Explain for FloatSwitch {
 mod explain_tests {
     use super::super::super::Terminator;
     use super::FloatSwitch;
-    use crate::plan::execution::{IntFunctionId, explain};
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::IntFunctionId;
 
     #[test]
     fn writes_float_switch() {
@@ -86,7 +87,7 @@ pub fn main() { case identity(1.0) { 1.0 -> 1 _ -> 0 } }
 
     fn terminators(
         plan: &crate::plan::execution::ExecutionPlan,
-    ) -> Vec<&crate::plan::execution::Terminator> {
+    ) -> Vec<&crate::plan::execution::graph::Terminator> {
         plan.int_function(IntFunctionId(0))
             .body()
             .block_graph()

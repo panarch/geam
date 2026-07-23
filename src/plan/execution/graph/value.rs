@@ -401,7 +401,7 @@ fn write_indexed(output: &mut String, family: &str, index: usize) {
 mod explain_tests {
     use super::ExplainLocal;
     use crate::plan::execution::explain;
-    use crate::plan::execution::{
+    use crate::plan::execution::graph::{
         BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
         BoolListLocalId, BoolLocalId, CustomListLocalId, FloatFunctionLocalId, FloatListLocalId,
         FloatLocalId, FunctionListLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId,
@@ -452,27 +452,32 @@ mod explain_tests {
         explain::assert_written("[%int#2]", |output| {
             super::write_locals(
                 output,
-                &[ParamLocal::Int(crate::plan::execution::IntLocalId(2))],
+                &[ParamLocal::Int(crate::plan::execution::graph::IntLocalId(
+                    2,
+                ))],
             );
         });
     }
 
     #[test]
     fn writes_rich_and_list_function_local_families_explicitly() {
-        use crate::plan::execution::{
-            BitArrayListFunctionLocalId, BitArrayListTypeId, BoolListFunctionLocalId,
-            BoolListTypeId, CustomFunctionLocal, CustomFunctionLocalId, CustomFunctionType,
-            CustomListFunctionLocalId, CustomListTypeId, CustomLocal, CustomLocalId, CustomTypeId,
-            CustomValueShape, CustomValueShapeId, FloatListFunctionLocalId, FloatListTypeId,
-            FunctionFunctionLocal, FunctionFunctionLocalId, FunctionFunctionType,
-            FunctionListFunctionLocalId, FunctionListTypeId, FunctionShape, FunctionType,
-            GenericFunctionLocal, GenericFunctionLocalId, GenericFunctionType,
-            IntListFunctionLocalId, IntListTypeId, ListFunctionLocal, ListListFunctionLocalId,
-            ListListTypeId, ListTypeId, NeverFunctionLocal, NeverFunctionLocalId,
-            NilListFunctionLocalId, NilListTypeId, ParameterListFunctionLocalId,
-            ParameterListListFunctionLocalId, ParameterListListTypeId, ParameterListTypeId,
-            StringListFunctionLocalId, StringListTypeId, TupleListFunctionLocalId, TupleListTypeId,
-            UtfCodepointListFunctionLocalId, UtfCodepointListTypeId, ValueShapeId, ValueType,
+        use crate::plan::execution::graph::{
+            BitArrayListFunctionLocalId, BoolListFunctionLocalId, CustomFunctionLocal,
+            CustomFunctionLocalId, CustomListFunctionLocalId, CustomLocal, CustomLocalId,
+            FloatListFunctionLocalId, FunctionFunctionLocal, FunctionFunctionLocalId,
+            FunctionListFunctionLocalId, GenericFunctionLocal, GenericFunctionLocalId,
+            IntListFunctionLocalId, ListFunctionLocal, ListListFunctionLocalId, NeverFunctionLocal,
+            NeverFunctionLocalId, NilListFunctionLocalId, ParameterListFunctionLocalId,
+            ParameterListListFunctionLocalId, StringListFunctionLocalId, TupleListFunctionLocalId,
+            UtfCodepointListFunctionLocalId,
+        };
+        use crate::plan::execution::type_::{
+            BitArrayListTypeId, BoolListTypeId, CustomFunctionType, CustomListTypeId, CustomTypeId,
+            CustomValueShape, CustomValueShapeId, FloatListTypeId, FunctionFunctionType,
+            FunctionListTypeId, FunctionShape, FunctionType, GenericFunctionType, IntListTypeId,
+            ListListTypeId, ListTypeId, NilListTypeId, ParameterListListTypeId,
+            ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
+            ValueShapeId, ValueType,
         };
 
         let custom_type = CustomTypeId::new(0);

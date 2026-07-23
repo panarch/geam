@@ -10,7 +10,8 @@ pub(super) use value::GraphValue;
 
 use self::environment::BlockEnvironment;
 use self::terminator::{GraphAction, NeverCall, terminator_action};
-use crate::plan::execution::{BlockGraph, BlockGraphExitId, ExecutionPlan, ParamLocal};
+use crate::plan::execution::ExecutionPlan;
+use crate::plan::execution::graph::{BlockGraph, BlockGraphExitId, ParamLocal};
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::state::RuntimeState;
 
@@ -95,7 +96,7 @@ pub(super) fn execute(
 mod tests {
     use super::RetainedValues;
     use crate::ValueType;
-    use crate::plan::execution::IntFunctionId;
+    use crate::plan::execution::function::IntFunctionId;
     use crate::runtime::error::InvariantError;
     use crate::runtime::evaluated::{EvaluatedCustomValue, EvaluatedValue};
     use crate::runtime::state::RuntimeState;

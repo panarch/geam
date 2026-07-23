@@ -26,7 +26,7 @@ pub(in crate::plan::execution::lowering) fn utf_codepoint_function_expr(
             let value = graph.function_instruction(
                 &mut cursor,
                 shape.clone(),
-                I::Constant(execution::ConstantId::new(id.index())),
+                I::Constant(execution::constant::ConstantId::new(id.index())),
             );
             DraftFlow::value(cursor, DraftUtfCodepointFunction::new(value))
         }),
@@ -81,7 +81,7 @@ pub(in crate::plan::execution::lowering) fn utf_codepoint_function_expr(
             } => context
                 .utf_codepoint_function_function_id(function)
                 .map(|function| {
-                    let function = execution::FunctionFunctionId::UtfCodepoint(function);
+                    let function = execution::function::FunctionFunctionId::UtfCodepoint(function);
                     let value = graph.function_instruction(
                         &mut cursor,
                         shape.clone(),

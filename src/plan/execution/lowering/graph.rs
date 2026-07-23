@@ -59,7 +59,9 @@ pub(super) fn lower_function_graph<ModuleExpression, DraftReturn, FrozenReturn, 
         &module::FunctionInstantiation,
         &mut LoweringContext,
     ) -> Representability<TailCall>,
-) -> Representability<draft::LoweredFunctionGraph<execution::FunctionBody<FrozenReturn, TailCall>>>
+) -> Representability<
+    draft::LoweredFunctionGraph<execution::function::FunctionBody<FrozenReturn, TailCall>>,
+>
 where
     DraftReturn: draft::DraftGraphValue + freeze::FreezeGraphValue<Frozen = FrozenReturn>,
     TailCall: Clone,
@@ -80,7 +82,9 @@ pub(super) fn lower_never_function_graph<ModuleExpression>(
         &mut LoweringContext,
     ) -> Representability<()>,
 ) -> Representability<
-    draft::LoweredFunctionGraph<execution::FunctionBody<Infallible, execution::NeverFunctionId>>,
+    draft::LoweredFunctionGraph<
+        execution::function::FunctionBody<Infallible, execution::function::NeverFunctionId>,
+    >,
 > {
     build::build_never_function_graph(template, body, context, lower_expression)
         .map(|graph| freeze::freeze(graph, context))
@@ -96,7 +100,7 @@ pub(super) fn lower_constant_graph<ModuleExpression, DraftReturn, FrozenReturn>(
         &mut draft::DraftGraph,
         &mut LoweringContext,
     ) -> Representability<draft::DraftFlow<DraftReturn>>,
-) -> Representability<execution::ConstantProgram<FrozenReturn>>
+) -> Representability<execution::constant::ConstantProgram<FrozenReturn>>
 where
     DraftReturn: draft::DraftGraphValue + freeze::FreezeGraphValue<Frozen = FrozenReturn>,
 {

@@ -5,7 +5,7 @@ use super::{
 };
 use crate::plan::execution::explain::FunctionLabel;
 use crate::plan::execution::function::{function_function_label, list_function_label};
-use crate::plan::execution::{CustomConstructorId, FunctionType, ValueShapeId, ValueType};
+use crate::plan::execution::type_::{CustomConstructorId, FunctionType, ValueShapeId, ValueType};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum GenericCallableId {

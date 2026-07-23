@@ -1,6 +1,6 @@
 use super::super::Edge;
-use crate::plan::execution::IntLocalId;
 use crate::plan::execution::explain::{Explain, ExplainContext};
+use crate::plan::execution::graph::IntLocalId;
 use num_bigint::BigInt;
 
 pub(crate) struct IntSwitch {
@@ -51,7 +51,8 @@ impl Explain for IntSwitch {
 mod explain_tests {
     use super::super::super::Terminator;
     use super::IntSwitch;
-    use crate::plan::execution::{IntFunctionId, explain};
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::IntFunctionId;
 
     #[test]
     fn writes_int_switch() {
@@ -87,7 +88,7 @@ pub fn main() { case identity(1) { 1 -> 1 _ -> 0 } }
 
     fn terminators(
         plan: &crate::plan::execution::ExecutionPlan,
-    ) -> Vec<&crate::plan::execution::Terminator> {
+    ) -> Vec<&crate::plan::execution::graph::Terminator> {
         plan.int_function(IntFunctionId(0))
             .body()
             .block_graph()

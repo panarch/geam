@@ -134,7 +134,7 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
             lower_parameter_list_list(template, key, index, body, &item, &mut functions, context);
         }
         R::IntList { body } => {
-            let id = execution::IntListFunctionId::new(index, context.int_list_type());
+            let id = execution::function::IntListFunctionId::new(index, context.int_list_type());
             let lowered = graph::lower_function_graph(
                 template,
                 body,
@@ -147,7 +147,8 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 .push((id, lowered_function(key, lowered)));
         }
         R::StringList { body } => {
-            let id = execution::StringListFunctionId::new(index, context.string_list_type());
+            let id =
+                execution::function::StringListFunctionId::new(index, context.string_list_type());
             let lowered = graph::lower_function_graph(
                 template,
                 body,
@@ -160,7 +161,10 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 .push((id, lowered_function(key, lowered)));
         }
         R::BitArrayList { body } => {
-            let id = execution::BitArrayListFunctionId::new(index, context.bit_array_list_type());
+            let id = execution::function::BitArrayListFunctionId::new(
+                index,
+                context.bit_array_list_type(),
+            );
             let lowered = graph::lower_function_graph(
                 template,
                 body,
@@ -173,7 +177,7 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 .push((id, lowered_function(key, lowered)));
         }
         R::UtfCodepointList { body } => {
-            let id = execution::UtfCodepointListFunctionId::new(
+            let id = execution::function::UtfCodepointListFunctionId::new(
                 index,
                 context.utf_codepoint_list_type(),
             );
@@ -190,7 +194,7 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
         }
         R::CustomList { item_type, body } => {
             let type_id = context.custom_list_type(item_type.clone());
-            let id = execution::CustomListFunctionId::new(index, type_id);
+            let id = execution::function::CustomListFunctionId::new(index, type_id);
             let lowered = graph::lower_function_graph(
                 template,
                 body,
@@ -203,7 +207,8 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 .push((id, lowered_function(key, lowered)));
         }
         R::FloatList { body } => {
-            let id = execution::FloatListFunctionId::new(index, context.float_list_type());
+            let id =
+                execution::function::FloatListFunctionId::new(index, context.float_list_type());
             let lowered = graph::lower_function_graph(
                 template,
                 body,
@@ -216,7 +221,7 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 .push((id, lowered_function(key, lowered)));
         }
         R::BoolList { body } => {
-            let id = execution::BoolListFunctionId::new(index, context.bool_list_type());
+            let id = execution::function::BoolListFunctionId::new(index, context.bool_list_type());
             let lowered = graph::lower_function_graph(
                 template,
                 body,
@@ -229,7 +234,7 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 .push((id, lowered_function(key, lowered)));
         }
         R::NilList { body } => {
-            let id = execution::NilListFunctionId::new(index, context.nil_list_type());
+            let id = execution::function::NilListFunctionId::new(index, context.nil_list_type());
             let lowered = graph::lower_function_graph(
                 template,
                 body,
@@ -243,7 +248,7 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
         }
         R::TupleList { item_type, body } => {
             let type_id = context.tuple_list_type(item_type.clone());
-            let id = execution::TupleListFunctionId::new(index, type_id);
+            let id = execution::function::TupleListFunctionId::new(index, type_id);
             let lowered = graph::lower_function_graph(
                 template,
                 body,
@@ -257,7 +262,7 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
         }
         R::ListList { item_shape, body } => {
             let type_id = context.stored_list_list_type(item_shape);
-            let id = execution::ListListFunctionId::new(index, type_id);
+            let id = execution::function::ListListFunctionId::new(index, type_id);
             let lowered = graph::lower_function_graph(
                 template,
                 body,
@@ -271,7 +276,7 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
         }
         R::FunctionList { item_type, body } => {
             let type_id = context.function_list_type(item_type.clone());
-            let id = execution::FunctionListFunctionId::new(index, type_id);
+            let id = execution::function::FunctionListFunctionId::new(index, type_id);
             let lowered = graph::lower_function_graph(
                 template,
                 body,
@@ -378,7 +383,11 @@ fn lower_custom_return(
             )
             .map(|graph| {
                 graph.map(|body| {
-                    execution::CustomFunctionBody::from_parts(lowered_signature, lowered_body, body)
+                    execution::function::CustomFunctionBody::from_parts(
+                        lowered_signature,
+                        lowered_body,
+                        body,
+                    )
                 })
             });
             functions
@@ -579,7 +588,11 @@ fn lower_generic_value(
             )
             .map(|graph| {
                 graph.map(|body| {
-                    execution::CustomFunctionBody::from_parts(lowered_shape, lowered_shape, body)
+                    execution::function::CustomFunctionBody::from_parts(
+                        lowered_shape,
+                        lowered_shape,
+                        body,
+                    )
                 })
             });
             functions
@@ -677,7 +690,7 @@ fn lower_generic_list(
     match item.storage_representation() {
         StorageRepresentation::Parameter(parameter) => {
             let type_id = context.parameter_list_type(parameter);
-            let id = execution::ParameterListFunctionId::new(index, type_id);
+            let id = execution::function::ParameterListFunctionId::new(index, type_id);
             let graph = graph::lower_function_graph(
                 template,
                 body,
@@ -710,7 +723,7 @@ fn lower_parameter_list_list(
     match item.storage_representation() {
         StorageRepresentation::Parameter(parameter) => {
             let type_id = context.parameter_list_list_type(parameter);
-            let id = execution::ParameterListListFunctionId::new(index, type_id);
+            let id = execution::function::ParameterListListFunctionId::new(index, type_id);
             let graph = graph::lower_function_graph(
                 template,
                 body,
@@ -730,7 +743,7 @@ fn lower_parameter_list_list(
         }
         StorageRepresentation::Stored(item) => {
             let type_id = context.specialized_stored_list_list_type(&item);
-            let id = execution::ListListFunctionId::new(index, type_id);
+            let id = execution::function::ListListFunctionId::new(index, type_id);
             let graph = graph::lower_function_graph(
                 template,
                 body,
@@ -760,7 +773,7 @@ fn lower_generic_item_list(
     use StoredValueShape as S;
     match item {
         S::Int => {
-            let id = execution::IntListFunctionId::new(index, context.int_list_type());
+            let id = execution::function::IntListFunctionId::new(index, context.int_list_type());
             let graph = generic_item_list_graph(
                 template,
                 body,
@@ -773,7 +786,8 @@ fn lower_generic_item_list(
                 .push((id, lowered_function(key, graph)));
         }
         S::String => {
-            let id = execution::StringListFunctionId::new(index, context.string_list_type());
+            let id =
+                execution::function::StringListFunctionId::new(index, context.string_list_type());
             let graph = generic_item_list_graph(
                 template,
                 body,
@@ -786,7 +800,10 @@ fn lower_generic_item_list(
                 .push((id, lowered_function(key, graph)));
         }
         S::BitArray => {
-            let id = execution::BitArrayListFunctionId::new(index, context.bit_array_list_type());
+            let id = execution::function::BitArrayListFunctionId::new(
+                index,
+                context.bit_array_list_type(),
+            );
             let graph = generic_item_list_graph(
                 template,
                 body,
@@ -799,7 +816,7 @@ fn lower_generic_item_list(
                 .push((id, lowered_function(key, graph)));
         }
         S::UtfCodepoint => {
-            let id = execution::UtfCodepointListFunctionId::new(
+            let id = execution::function::UtfCodepointListFunctionId::new(
                 index,
                 context.utf_codepoint_list_type(),
             );
@@ -816,7 +833,7 @@ fn lower_generic_item_list(
         }
         S::Custom(shape) => {
             let type_id = context.specialized_custom_list_type(shape);
-            let id = execution::CustomListFunctionId::new(index, type_id);
+            let id = execution::function::CustomListFunctionId::new(index, type_id);
             let graph = generic_item_list_graph(
                 template,
                 body,
@@ -829,7 +846,8 @@ fn lower_generic_item_list(
                 .push((id, lowered_function(key, graph)));
         }
         S::Float => {
-            let id = execution::FloatListFunctionId::new(index, context.float_list_type());
+            let id =
+                execution::function::FloatListFunctionId::new(index, context.float_list_type());
             let graph = generic_item_list_graph(
                 template,
                 body,
@@ -842,7 +860,7 @@ fn lower_generic_item_list(
                 .push((id, lowered_function(key, graph)));
         }
         S::Bool => {
-            let id = execution::BoolListFunctionId::new(index, context.bool_list_type());
+            let id = execution::function::BoolListFunctionId::new(index, context.bool_list_type());
             let graph = generic_item_list_graph(
                 template,
                 body,
@@ -855,7 +873,7 @@ fn lower_generic_item_list(
                 .push((id, lowered_function(key, graph)));
         }
         S::Nil => {
-            let id = execution::NilListFunctionId::new(index, context.nil_list_type());
+            let id = execution::function::NilListFunctionId::new(index, context.nil_list_type());
             let graph = generic_item_list_graph(
                 template,
                 body,
@@ -869,7 +887,7 @@ fn lower_generic_item_list(
         }
         S::Tuple(shape) => {
             let type_id = context.specialized_tuple_list_type(shape);
-            let id = execution::TupleListFunctionId::new(index, type_id);
+            let id = execution::function::TupleListFunctionId::new(index, type_id);
             let graph = generic_item_list_graph(
                 template,
                 body,
@@ -884,7 +902,7 @@ fn lower_generic_item_list(
         S::List(item) => match item.storage_representation() {
             StorageRepresentation::Parameter(parameter) => {
                 let type_id = context.parameter_list_list_type(parameter);
-                let id = execution::ParameterListListFunctionId::new(index, type_id);
+                let id = execution::function::ParameterListListFunctionId::new(index, type_id);
                 let graph = generic_item_list_graph(
                     template,
                     body,
@@ -900,7 +918,7 @@ fn lower_generic_item_list(
             }
             StorageRepresentation::Stored(stored) => {
                 let type_id = context.specialized_stored_list_list_type(&stored);
-                let id = execution::ListListFunctionId::new(index, type_id);
+                let id = execution::function::ListListFunctionId::new(index, type_id);
                 let graph = generic_item_list_graph(
                     template,
                     body,
@@ -915,7 +933,7 @@ fn lower_generic_item_list(
         },
         S::Function(shape) => {
             let type_id = context.specialized_function_list_type(shape);
-            let id = execution::FunctionListFunctionId::new(index, type_id);
+            let id = execution::function::FunctionListFunctionId::new(index, type_id);
             let graph = generic_item_list_graph(
                 template,
                 body,
@@ -940,7 +958,9 @@ fn generic_item_list_graph<DraftList, FrozenList, TailCall>(
         &module::FunctionInstantiation,
         &mut LoweringContext,
     ) -> Representability<TailCall>,
-) -> Representability<graph::LoweredFunctionGraph<execution::FunctionBody<FrozenList, TailCall>>>
+) -> Representability<
+    graph::LoweredFunctionGraph<execution::function::FunctionBody<FrozenList, TailCall>>,
+>
 where
     DraftList: graph::DraftGraphValue + graph::FreezeGraphValue<Frozen = FrozenList>,
     TailCall: Clone,
@@ -968,7 +988,7 @@ fn lower_generic_value_list(
     match item {
         SpecializedValueShape::Parameter(parameter) => {
             let type_id = context.parameter_list_type(*parameter);
-            let id = execution::ParameterListFunctionId::new(index, type_id);
+            let id = execution::function::ParameterListFunctionId::new(index, type_id);
             let graph = generic_value_list_graph(
                 template,
                 body,
@@ -981,7 +1001,7 @@ fn lower_generic_value_list(
                 .push((id, lowered_function(key, graph)));
         }
         SpecializedValueShape::Int => {
-            let id = execution::IntListFunctionId::new(index, context.int_list_type());
+            let id = execution::function::IntListFunctionId::new(index, context.int_list_type());
             let graph = generic_value_list_graph(
                 template,
                 body,
@@ -994,7 +1014,8 @@ fn lower_generic_value_list(
                 .push((id, lowered_function(key, graph)));
         }
         SpecializedValueShape::String => {
-            let id = execution::StringListFunctionId::new(index, context.string_list_type());
+            let id =
+                execution::function::StringListFunctionId::new(index, context.string_list_type());
             let graph = generic_value_list_graph(
                 template,
                 body,
@@ -1007,7 +1028,10 @@ fn lower_generic_value_list(
                 .push((id, lowered_function(key, graph)));
         }
         SpecializedValueShape::BitArray => {
-            let id = execution::BitArrayListFunctionId::new(index, context.bit_array_list_type());
+            let id = execution::function::BitArrayListFunctionId::new(
+                index,
+                context.bit_array_list_type(),
+            );
             let graph = generic_value_list_graph(
                 template,
                 body,
@@ -1020,7 +1044,7 @@ fn lower_generic_value_list(
                 .push((id, lowered_function(key, graph)));
         }
         SpecializedValueShape::UtfCodepoint => {
-            let id = execution::UtfCodepointListFunctionId::new(
+            let id = execution::function::UtfCodepointListFunctionId::new(
                 index,
                 context.utf_codepoint_list_type(),
             );
@@ -1037,7 +1061,7 @@ fn lower_generic_value_list(
         }
         SpecializedValueShape::Custom(item) => {
             let type_id = context.specialized_custom_list_type(item);
-            let id = execution::CustomListFunctionId::new(index, type_id);
+            let id = execution::function::CustomListFunctionId::new(index, type_id);
             let graph = generic_value_list_graph(
                 template,
                 body,
@@ -1050,7 +1074,8 @@ fn lower_generic_value_list(
                 .push((id, lowered_function(key, graph)));
         }
         SpecializedValueShape::Float => {
-            let id = execution::FloatListFunctionId::new(index, context.float_list_type());
+            let id =
+                execution::function::FloatListFunctionId::new(index, context.float_list_type());
             let graph = generic_value_list_graph(
                 template,
                 body,
@@ -1063,7 +1088,7 @@ fn lower_generic_value_list(
                 .push((id, lowered_function(key, graph)));
         }
         SpecializedValueShape::Bool => {
-            let id = execution::BoolListFunctionId::new(index, context.bool_list_type());
+            let id = execution::function::BoolListFunctionId::new(index, context.bool_list_type());
             let graph = generic_value_list_graph(
                 template,
                 body,
@@ -1076,7 +1101,7 @@ fn lower_generic_value_list(
                 .push((id, lowered_function(key, graph)));
         }
         SpecializedValueShape::Nil => {
-            let id = execution::NilListFunctionId::new(index, context.nil_list_type());
+            let id = execution::function::NilListFunctionId::new(index, context.nil_list_type());
             let graph = generic_value_list_graph(
                 template,
                 body,
@@ -1090,7 +1115,7 @@ fn lower_generic_value_list(
         }
         SpecializedValueShape::Tuple(item) => {
             let type_id = context.specialized_tuple_list_type(item);
-            let id = execution::TupleListFunctionId::new(index, type_id);
+            let id = execution::function::TupleListFunctionId::new(index, type_id);
             let graph = generic_value_list_graph(
                 template,
                 body,
@@ -1105,7 +1130,7 @@ fn lower_generic_value_list(
         SpecializedValueShape::List(item) => match item.storage_representation() {
             StorageRepresentation::Parameter(parameter) => {
                 let type_id = context.parameter_list_list_type(parameter);
-                let id = execution::ParameterListListFunctionId::new(index, type_id);
+                let id = execution::function::ParameterListListFunctionId::new(index, type_id);
                 let graph = generic_value_list_graph(
                     template,
                     body,
@@ -1121,7 +1146,7 @@ fn lower_generic_value_list(
             }
             StorageRepresentation::Stored(stored) => {
                 let type_id = context.specialized_stored_list_list_type(&stored);
-                let id = execution::ListListFunctionId::new(index, type_id);
+                let id = execution::function::ListListFunctionId::new(index, type_id);
                 let graph = generic_value_list_graph(
                     template,
                     body,
@@ -1136,7 +1161,7 @@ fn lower_generic_value_list(
         },
         SpecializedValueShape::Function(item) => {
             let type_id = context.specialized_function_list_type(item);
-            let id = execution::FunctionListFunctionId::new(index, type_id);
+            let id = execution::function::FunctionListFunctionId::new(index, type_id);
             let graph = generic_value_list_graph(
                 template,
                 body,
@@ -1161,7 +1186,9 @@ fn generic_value_list_graph<DraftList, FrozenList, TailCall>(
         &module::FunctionInstantiation,
         &mut LoweringContext,
     ) -> Representability<TailCall>,
-) -> Representability<graph::LoweredFunctionGraph<execution::FunctionBody<FrozenList, TailCall>>>
+) -> Representability<
+    graph::LoweredFunctionGraph<execution::function::FunctionBody<FrozenList, TailCall>>,
+>
 where
     DraftList: graph::DraftGraphValue + graph::FreezeGraphValue<Frozen = FrozenList>,
     TailCall: Clone,
@@ -1493,9 +1520,9 @@ fn typed_function_return<Body>(
     shape: &SpecializedFunctionShape,
     body: Representability<graph::LoweredFunctionGraph<Body>>,
     context: &mut LoweringContext,
-) -> Representability<graph::LoweredFunctionGraph<execution::TypedFunctionBody<Body>>> {
+) -> Representability<graph::LoweredFunctionGraph<execution::function::TypedFunctionBody<Body>>> {
     let shape = context.lower_concrete_function_shape(shape);
-    body.map(|graph| graph.map(|body| execution::TypedFunctionBody::new(shape, body)))
+    body.map(|graph| graph.map(|body| execution::function::TypedFunctionBody::new(shape, body)))
 }
 
 fn lower_tuple_function(
@@ -1631,7 +1658,7 @@ fn lower_custom_function(
             let shape = context.function_shape(shape.clone());
             let graph = graph.map(|graph| {
                 graph.map(|body| {
-                    execution::CustomFunctionFunctionBody::from_parts(shape, type_, body)
+                    execution::function::CustomFunctionFunctionBody::from_parts(shape, type_, body)
                 })
             });
             functions
@@ -1755,7 +1782,9 @@ fn lower_function_function(
             let shape = context.function_shape(shape.clone());
             let graph = graph.map(|graph| {
                 graph.map(|body| {
-                    execution::FunctionFunctionFunctionBody::from_parts(shape, type_, body)
+                    execution::function::FunctionFunctionFunctionBody::from_parts(
+                        shape, type_, body,
+                    )
                 })
             });
             functions
@@ -1976,7 +2005,9 @@ fn lower_polymorphic_function<Expression, Lower>(
                 let shape = context.lower_concrete_function_shape(function);
                 let graph = graph.map(|graph| {
                     graph.map(|body| {
-                        execution::CustomFunctionFunctionBody::from_parts(shape, type_, body)
+                        execution::function::CustomFunctionFunctionBody::from_parts(
+                            shape, type_, body,
+                        )
                     })
                 });
                 functions
@@ -2065,7 +2096,9 @@ fn lower_polymorphic_function<Expression, Lower>(
                 let shape = context.lower_concrete_function_shape(function);
                 let graph = graph.map(|graph| {
                     graph.map(|body| {
-                        execution::FunctionFunctionFunctionBody::from_parts(shape, type_, body)
+                        execution::function::FunctionFunctionFunctionBody::from_parts(
+                            shape, type_, body,
+                        )
                     })
                 });
                 functions

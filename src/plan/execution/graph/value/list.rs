@@ -1,6 +1,6 @@
 #[cfg(test)]
-use crate::plan::execution::ListTypeId;
-use crate::plan::execution::{
+use crate::plan::execution::type_::ListTypeId;
+use crate::plan::execution::type_::{
     BitArrayListTypeId, BoolListTypeId, CustomListTypeId, FloatListTypeId, FunctionListTypeId,
     IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId, ParameterListTypeId,
     StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
@@ -139,7 +139,7 @@ impl ListLocal {
 
 #[cfg(test)]
 mod tests {
-    use crate::plan::execution::{
+    use crate::plan::execution::graph::{
         BitArrayListLocalId, BoolListLocalId, CustomListLocalId, FloatListLocalId,
         FunctionListLocalId, IntListLocalId, ListListLocalId, ListLocal, NilListLocalId,
         ParameterListListLocalId, ParameterListLocalId, StringListLocalId, TupleListLocalId,

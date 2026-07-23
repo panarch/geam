@@ -1,9 +1,10 @@
 use super::super::super::value::write_locals;
 use super::{write_call, write_constant, write_function_call, write_projection};
+use crate::plan::execution::constant::ConstantId;
 use crate::plan::execution::explain::{Explain, ExplainContext};
-use crate::plan::execution::{
-    ConstantId, CustomLocal, ParamLocal, TupleFunctionId, TupleFunctionLocalId, TupleListLocalId,
-    TupleLocalId,
+use crate::plan::execution::function::TupleFunctionId;
+use crate::plan::execution::graph::{
+    CustomLocal, ParamLocal, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
 };
 
 pub(crate) enum TupleInstruction {
@@ -61,7 +62,9 @@ impl Explain for TupleInstruction {
 
 #[cfg(test)]
 mod explain_tests {
-    use crate::plan::execution::{InstructionKind, TupleFunctionId, explain};
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::TupleFunctionId;
+    use crate::plan::execution::graph::InstructionKind;
 
     #[test]
     fn writes_tuple_construction() {

@@ -557,9 +557,9 @@ mod tests {
 
     fn sample_function() -> FunctionValue {
         FunctionValue::new(
-            crate::plan::execution::RuntimeFunctionId::Int(crate::plan::execution::IntFunctionId(
-                0,
-            )),
+            crate::plan::execution::function::RuntimeFunctionId::Int(
+                crate::plan::execution::function::IntFunctionId(0),
+            ),
             Vec::new(),
             FunctionType::new(Vec::new(), ValueType::Int),
         )

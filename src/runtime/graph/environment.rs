@@ -1,4 +1,4 @@
-use crate::plan::execution::{
+use crate::plan::execution::graph::{
     BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
     BoolListLocalId, BoolLocalId, CustomFunctionLocal, CustomListLocalId, CustomLocal,
     FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionFunctionLocal,
@@ -364,9 +364,9 @@ impl BlockEnvironment {
 
     pub(super) fn stored_list(
         &self,
-        local: &crate::plan::execution::StoredListLocal,
+        local: &crate::plan::execution::graph::StoredListLocal,
     ) -> StoredListValueId {
-        use crate::plan::execution::StoredListLocal as L;
+        use crate::plan::execution::graph::StoredListLocal as L;
 
         match local {
             L::ParameterList(local) => self.parameter_list_list(*local).into(),
@@ -554,9 +554,9 @@ impl BlockEnvironment {
 
     pub(super) fn function_value(
         &self,
-        local: &crate::plan::execution::FunctionLocal,
+        local: &crate::plan::execution::graph::FunctionLocal,
     ) -> EvaluatedFunctionValue {
-        use crate::plan::execution::FunctionLocal as L;
+        use crate::plan::execution::graph::FunctionLocal as L;
 
         match local {
             L::Generic(local) => self.generic_function(local).into(),
@@ -744,7 +744,7 @@ impl RetainedValues {
 
 impl BlockValues {
     fn push_list_function(&mut self, value: EvaluatedListFunction) {
-        use crate::plan::execution::ListFunctionId as F;
+        use crate::plan::execution::function::ListFunctionId as F;
 
         match value.runtime_id() {
             F::Parameter(_) => self.parameter_list_functions.push(value),
@@ -767,7 +767,7 @@ impl BlockValues {
 #[cfg(test)]
 mod tests {
     use super::{BlockEnvironment, RetainedValues};
-    use crate::plan::execution::{IntLocalId, ParamLocal};
+    use crate::plan::execution::graph::{IntLocalId, ParamLocal};
     use crate::runtime::{EvaluatedValue, ListValue, Value};
 
     #[test]

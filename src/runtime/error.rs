@@ -72,7 +72,7 @@ impl ExecutionError {
 #[cfg(test)]
 mod tests {
     use super::{ExecutionError, InvariantError};
-    use crate::plan::execution::FunctionReturnFamily;
+    use crate::plan::execution::function::FunctionReturnFamily;
 
     #[test]
     fn invariant_display_delegates_to_invariant_error() {

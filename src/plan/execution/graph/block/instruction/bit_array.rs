@@ -1,12 +1,14 @@
 use super::super::super::{Endianness, FloatBitSize, StringEncoding};
 use super::{write_call, write_constant, write_function_call, write_projection};
 use crate::plan::PanicSite;
+use crate::plan::execution::constant::ConstantId;
 use crate::plan::execution::explain::{Explain, ExplainContext};
-use crate::plan::execution::graph::{ExplainLocal, endianness, float_size, string_encoding};
-use crate::plan::execution::{
-    BitArrayFunctionId, BitArrayListLocalId, ConstantId, CustomLocal, FloatLocalId, IntLocalId,
-    ParamLocal, StringLocalId, TupleLocalId, UtfCodepointLocalId,
+use crate::plan::execution::function::BitArrayFunctionId;
+use crate::plan::execution::graph::{
+    BitArrayListLocalId, CustomLocal, FloatLocalId, IntLocalId, ParamLocal, StringLocalId,
+    TupleLocalId, UtfCodepointLocalId,
 };
+use crate::plan::execution::graph::{ExplainLocal, endianness, float_size, string_encoding};
 
 pub(crate) struct BitArrayEvaluatedSize {
     value: IntLocalId,
@@ -49,9 +51,9 @@ pub(crate) enum BitArraySegment {
         value: UtfCodepointLocalId,
         encoding: StringEncoding,
     },
-    Bits(crate::plan::execution::BitArrayLocalId),
+    Bits(crate::plan::execution::graph::BitArrayLocalId),
     SizedBits {
-        value: crate::plan::execution::BitArrayLocalId,
+        value: crate::plan::execution::graph::BitArrayLocalId,
         size: BitArrayBitsSize,
         site: PanicSite,
     },
@@ -59,13 +61,13 @@ pub(crate) enum BitArraySegment {
 
 pub(crate) enum BitArrayInstruction {
     Value(Box<[BitArraySegment]>),
-    Constant(ConstantId<crate::plan::execution::BitArrayLocalId>),
+    Constant(ConstantId<crate::plan::execution::graph::BitArrayLocalId>),
     Call {
         function: BitArrayFunctionId,
         args: Box<[ParamLocal]>,
     },
     FunctionCall {
-        function: crate::plan::execution::BitArrayFunctionLocalId,
+        function: crate::plan::execution::graph::BitArrayFunctionLocalId,
         args: Box<[ParamLocal]>,
     },
     TupleIndex {
@@ -229,7 +231,8 @@ impl Explain for BitArraySegment {
 
 #[cfg(test)]
 mod explain_tests {
-    use crate::plan::execution::{BitArrayFunctionId, explain};
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::BitArrayFunctionId;
 
     #[test]
     fn writes_bit_array_instruction_and_segment_grammar() {

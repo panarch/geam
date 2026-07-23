@@ -31,7 +31,8 @@ pub use value::{
     ListValue, ListValueItemTypeMismatch, Value,
 };
 
-use crate::plan::execution::{ExecutionPlan, RuntimeFunctionId};
+use crate::plan::execution::ExecutionPlan;
+use crate::plan::execution::function::RuntimeFunctionId;
 use crate::runtime::graph::RetainedValues;
 use crate::runtime::state::RuntimeState;
 

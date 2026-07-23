@@ -67,7 +67,7 @@ pub(in crate::plan::execution::lowering) fn custom_function_expr_kind(
             let value = graph.function_instruction(
                 &mut cursor,
                 shape.clone(),
-                I::Constant(execution::ConstantId::new(id.index())),
+                I::Constant(execution::constant::ConstantId::new(id.index())),
             );
             DraftFlow::value(cursor, DraftCustomFunction::new(value))
         }),
@@ -116,7 +116,7 @@ pub(in crate::plan::execution::lowering) fn custom_function_expr_kind(
                 } => context
                     .custom_function_function_id(function, type_.clone())
                     .map(|function| {
-                        let function = execution::FunctionFunctionId::Custom(function);
+                        let function = execution::function::FunctionFunctionId::Custom(function);
                         let value = graph.function_instruction(
                             &mut cursor,
                             shape.clone(),
@@ -322,7 +322,7 @@ pub(super) fn generic_custom_function_expr_kind(
                     context.specialized_custom_function_type(shape.arguments(), return_shape);
                 context
                     .custom_function_function_id(function, type_)
-                    .map(execution::FunctionFunctionId::Custom)
+                    .map(execution::function::FunctionFunctionId::Custom)
             },
             |branch, cursor, graph, context| {
                 generic_custom_function_expr_kind(

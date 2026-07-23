@@ -71,9 +71,9 @@ pub(super) fn freeze(
 fn function_return_family(
     shape: &super::super::super::specialization::SpecializedFunctionShape,
     representations: &super::super::super::specialization::RepresentationContext,
-) -> execution::FunctionReturnFamily {
+) -> execution::function::FunctionReturnFamily {
     use super::super::super::specialization::{FunctionRepresentation, StoredValueShape};
-    use execution::FunctionReturnFamily as F;
+    use execution::function::FunctionReturnFamily as F;
 
     match shape.representation(representations) {
         FunctionRepresentation::Symbolic => F::Generic,

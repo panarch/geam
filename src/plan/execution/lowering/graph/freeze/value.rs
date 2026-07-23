@@ -36,45 +36,45 @@ pub(in crate::plan::execution::lowering) trait FreezeFunctionFamily {
 #[derive(Default)]
 pub(in crate::plan::execution::lowering) struct BlockValues {
     prefix: super::super::super::local::ParameterPrefix,
-    slots: HashMap<DraftValueKey, execution::ParamSlot>,
-    all: HashMap<DraftValueKey, execution::ParamLocal>,
-    ints: HashMap<DraftValueKey, execution::IntLocalId>,
-    floats: HashMap<DraftValueKey, execution::FloatLocalId>,
-    strings: HashMap<DraftValueKey, execution::StringLocalId>,
-    bit_arrays: HashMap<DraftValueKey, execution::BitArrayLocalId>,
-    utf_codepoints: HashMap<DraftValueKey, execution::UtfCodepointLocalId>,
-    customs: HashMap<DraftValueKey, execution::CustomLocal>,
-    bools: HashMap<DraftValueKey, execution::BoolLocalId>,
-    nils: HashMap<DraftValueKey, execution::NilLocalId>,
-    tuples: HashMap<DraftValueKey, execution::TupleLocalId>,
-    lists: HashMap<DraftValueKey, execution::ListLocal>,
-    parameter_lists: HashMap<DraftValueKey, execution::ParameterListLocalId>,
-    parameter_list_lists: HashMap<DraftValueKey, execution::ParameterListListLocalId>,
-    int_lists: HashMap<DraftValueKey, execution::IntListLocalId>,
-    string_lists: HashMap<DraftValueKey, execution::StringListLocalId>,
-    bit_array_lists: HashMap<DraftValueKey, execution::BitArrayListLocalId>,
-    utf_codepoint_lists: HashMap<DraftValueKey, execution::UtfCodepointListLocalId>,
-    custom_lists: HashMap<DraftValueKey, execution::CustomListLocalId>,
-    float_lists: HashMap<DraftValueKey, execution::FloatListLocalId>,
-    bool_lists: HashMap<DraftValueKey, execution::BoolListLocalId>,
-    nil_lists: HashMap<DraftValueKey, execution::NilListLocalId>,
-    tuple_lists: HashMap<DraftValueKey, execution::TupleListLocalId>,
-    list_lists: HashMap<DraftValueKey, execution::ListListLocalId>,
-    function_lists: HashMap<DraftValueKey, execution::FunctionListLocalId>,
+    slots: HashMap<DraftValueKey, execution::graph::ParamSlot>,
+    all: HashMap<DraftValueKey, execution::graph::ParamLocal>,
+    ints: HashMap<DraftValueKey, execution::graph::IntLocalId>,
+    floats: HashMap<DraftValueKey, execution::graph::FloatLocalId>,
+    strings: HashMap<DraftValueKey, execution::graph::StringLocalId>,
+    bit_arrays: HashMap<DraftValueKey, execution::graph::BitArrayLocalId>,
+    utf_codepoints: HashMap<DraftValueKey, execution::graph::UtfCodepointLocalId>,
+    customs: HashMap<DraftValueKey, execution::graph::CustomLocal>,
+    bools: HashMap<DraftValueKey, execution::graph::BoolLocalId>,
+    nils: HashMap<DraftValueKey, execution::graph::NilLocalId>,
+    tuples: HashMap<DraftValueKey, execution::graph::TupleLocalId>,
+    lists: HashMap<DraftValueKey, execution::graph::ListLocal>,
+    parameter_lists: HashMap<DraftValueKey, execution::graph::ParameterListLocalId>,
+    parameter_list_lists: HashMap<DraftValueKey, execution::graph::ParameterListListLocalId>,
+    int_lists: HashMap<DraftValueKey, execution::graph::IntListLocalId>,
+    string_lists: HashMap<DraftValueKey, execution::graph::StringListLocalId>,
+    bit_array_lists: HashMap<DraftValueKey, execution::graph::BitArrayListLocalId>,
+    utf_codepoint_lists: HashMap<DraftValueKey, execution::graph::UtfCodepointListLocalId>,
+    custom_lists: HashMap<DraftValueKey, execution::graph::CustomListLocalId>,
+    float_lists: HashMap<DraftValueKey, execution::graph::FloatListLocalId>,
+    bool_lists: HashMap<DraftValueKey, execution::graph::BoolListLocalId>,
+    nil_lists: HashMap<DraftValueKey, execution::graph::NilListLocalId>,
+    tuple_lists: HashMap<DraftValueKey, execution::graph::TupleListLocalId>,
+    list_lists: HashMap<DraftValueKey, execution::graph::ListListLocalId>,
+    function_lists: HashMap<DraftValueKey, execution::graph::FunctionListLocalId>,
     functions: HashMap<DraftValueKey, execution::graph::FunctionLocal>,
-    int_functions: HashMap<DraftValueKey, execution::IntFunctionLocalId>,
-    float_functions: HashMap<DraftValueKey, execution::FloatFunctionLocalId>,
-    string_functions: HashMap<DraftValueKey, execution::StringFunctionLocalId>,
-    bit_array_functions: HashMap<DraftValueKey, execution::BitArrayFunctionLocalId>,
-    utf_codepoint_functions: HashMap<DraftValueKey, execution::UtfCodepointFunctionLocalId>,
-    generic_functions: HashMap<DraftValueKey, execution::GenericFunctionLocal>,
-    never_functions: HashMap<DraftValueKey, execution::NeverFunctionLocal>,
-    custom_functions: HashMap<DraftValueKey, execution::CustomFunctionLocal>,
-    bool_functions: HashMap<DraftValueKey, execution::BoolFunctionLocalId>,
-    nil_functions: HashMap<DraftValueKey, execution::NilFunctionLocalId>,
-    tuple_functions: HashMap<DraftValueKey, execution::TupleFunctionLocalId>,
-    list_functions: HashMap<DraftValueKey, execution::ListFunctionLocal>,
-    function_functions: HashMap<DraftValueKey, execution::FunctionFunctionLocal>,
+    int_functions: HashMap<DraftValueKey, execution::graph::IntFunctionLocalId>,
+    float_functions: HashMap<DraftValueKey, execution::graph::FloatFunctionLocalId>,
+    string_functions: HashMap<DraftValueKey, execution::graph::StringFunctionLocalId>,
+    bit_array_functions: HashMap<DraftValueKey, execution::graph::BitArrayFunctionLocalId>,
+    utf_codepoint_functions: HashMap<DraftValueKey, execution::graph::UtfCodepointFunctionLocalId>,
+    generic_functions: HashMap<DraftValueKey, execution::graph::GenericFunctionLocal>,
+    never_functions: HashMap<DraftValueKey, execution::graph::NeverFunctionLocal>,
+    custom_functions: HashMap<DraftValueKey, execution::graph::CustomFunctionLocal>,
+    bool_functions: HashMap<DraftValueKey, execution::graph::BoolFunctionLocalId>,
+    nil_functions: HashMap<DraftValueKey, execution::graph::NilFunctionLocalId>,
+    tuple_functions: HashMap<DraftValueKey, execution::graph::TupleFunctionLocalId>,
+    list_functions: HashMap<DraftValueKey, execution::graph::ListFunctionLocal>,
+    function_functions: HashMap<DraftValueKey, execution::graph::FunctionFunctionLocal>,
 }
 
 impl BlockValues {
@@ -82,20 +82,20 @@ impl BlockValues {
         &mut self,
         value: &DraftValueRef,
         context: &mut super::super::super::LoweringContext,
-    ) -> execution::ParamSlot {
+    ) -> execution::graph::ParamSlot {
         let (index, shape) = self
             .prefix
             .allocate_stored(value.shape().clone(), &context.representations);
         let local = super::super::super::local::stored_value_local_at(&shape, index, context);
         let shape_id = context.types.value_shape(&shape.to_specialized());
-        let slot = execution::ParamSlot::new(local.clone(), shape_id);
+        let slot = execution::graph::ParamSlot::new(local.clone(), shape_id);
         self.slots.insert(value.key, slot.clone());
         self.insert(value.key, local);
         slot
     }
 
-    fn insert(&mut self, key: DraftValueKey, local: execution::ParamLocal) {
-        use execution::ParamLocal as L;
+    fn insert(&mut self, key: DraftValueKey, local: execution::graph::ParamLocal) {
+        use execution::graph::ParamLocal as L;
 
         self.all.insert(key, local.clone());
         match local {
@@ -197,8 +197,8 @@ impl BlockValues {
         }
     }
 
-    fn insert_list(&mut self, key: DraftValueKey, local: execution::ListLocal) {
-        use execution::ListLocal as L;
+    fn insert_list(&mut self, key: DraftValueKey, local: execution::graph::ListLocal) {
+        use execution::graph::ListLocal as L;
 
         self.lists.insert(key, local.clone());
         match local {
@@ -244,15 +244,18 @@ impl BlockValues {
         }
     }
 
-    pub(super) fn any(&self, value: &DraftValueRef) -> execution::ParamLocal {
+    pub(super) fn any(&self, value: &DraftValueRef) -> execution::graph::ParamLocal {
         self.all[&value.key].clone()
     }
 
-    pub(super) fn slot(&self, value: &DraftValueRef) -> execution::ParamSlot {
+    pub(super) fn slot(&self, value: &DraftValueRef) -> execution::graph::ParamSlot {
         self.slots[&value.key].clone()
     }
 
-    pub(super) fn any_slice(&self, values: &[DraftValueRef]) -> Box<[execution::ParamLocal]> {
+    pub(super) fn any_slice(
+        &self,
+        values: &[DraftValueRef],
+    ) -> Box<[execution::graph::ParamLocal]> {
         values
             .iter()
             .map(|value| self.any(value))
@@ -262,12 +265,12 @@ impl BlockValues {
 
     pub(super) fn capture(
         &self,
-        target: &execution::ParamLocal,
+        target: &execution::graph::ParamLocal,
         source: &DraftValueRef,
     ) -> execution::graph::FunctionCapture {
-        use execution::ListLocal as L;
-        use execution::ParamLocal as P;
         use execution::graph::FunctionCapture as C;
+        use execution::graph::ListLocal as L;
+        use execution::graph::ParamLocal as P;
 
         match target {
             P::Int(target) => C::Int {
@@ -415,46 +418,46 @@ impl BlockValues {
         }
     }
 
-    pub(super) fn int(&self, value: &DraftInt) -> execution::IntLocalId {
+    pub(super) fn int(&self, value: &DraftInt) -> execution::graph::IntLocalId {
         self.ints[&value.key]
     }
 
-    pub(super) fn float(&self, value: &DraftFloat) -> execution::FloatLocalId {
+    pub(super) fn float(&self, value: &DraftFloat) -> execution::graph::FloatLocalId {
         self.floats[&value.key]
     }
 
-    pub(super) fn string(&self, value: &DraftString) -> execution::StringLocalId {
+    pub(super) fn string(&self, value: &DraftString) -> execution::graph::StringLocalId {
         self.strings[&value.key]
     }
 
-    pub(super) fn bit_array(&self, value: &DraftBitArray) -> execution::BitArrayLocalId {
+    pub(super) fn bit_array(&self, value: &DraftBitArray) -> execution::graph::BitArrayLocalId {
         self.bit_arrays[&value.key]
     }
 
     pub(super) fn utf_codepoint(
         &self,
         value: &DraftUtfCodepoint,
-    ) -> execution::UtfCodepointLocalId {
+    ) -> execution::graph::UtfCodepointLocalId {
         self.utf_codepoints[&value.key]
     }
 
-    pub(super) fn custom(&self, value: &DraftCustom) -> execution::CustomLocal {
+    pub(super) fn custom(&self, value: &DraftCustom) -> execution::graph::CustomLocal {
         self.customs[&value.key]
     }
 
-    pub(super) fn bool(&self, value: &DraftBool) -> execution::BoolLocalId {
+    pub(super) fn bool(&self, value: &DraftBool) -> execution::graph::BoolLocalId {
         self.bools[&value.key]
     }
 
-    pub(super) fn nil(&self, value: &DraftNil) -> execution::NilLocalId {
+    pub(super) fn nil(&self, value: &DraftNil) -> execution::graph::NilLocalId {
         self.nils[&value.key]
     }
 
-    pub(super) fn tuple(&self, value: &DraftTuple) -> execution::TupleLocalId {
+    pub(super) fn tuple(&self, value: &DraftTuple) -> execution::graph::TupleLocalId {
         self.tuples[&value.key]
     }
 
-    pub(super) fn list(&self, value: &DraftList) -> execution::ListLocal {
+    pub(super) fn list(&self, value: &DraftList) -> execution::graph::ListLocal {
         self.lists[&value.key].clone()
     }
 
@@ -462,61 +465,67 @@ impl BlockValues {
         self.functions[&value.key].clone()
     }
 
-    pub(super) fn parameter_list(&self, value: &DraftList) -> execution::ParameterListLocalId {
+    pub(super) fn parameter_list(
+        &self,
+        value: &DraftList,
+    ) -> execution::graph::ParameterListLocalId {
         self.parameter_lists[&value.key]
     }
 
     pub(super) fn parameter_list_list(
         &self,
         value: &DraftList,
-    ) -> execution::ParameterListListLocalId {
+    ) -> execution::graph::ParameterListListLocalId {
         self.parameter_list_lists[&value.key]
     }
 
-    pub(super) fn int_list(&self, value: &DraftList) -> execution::IntListLocalId {
+    pub(super) fn int_list(&self, value: &DraftList) -> execution::graph::IntListLocalId {
         self.int_lists[&value.key]
     }
 
-    pub(super) fn string_list(&self, value: &DraftList) -> execution::StringListLocalId {
+    pub(super) fn string_list(&self, value: &DraftList) -> execution::graph::StringListLocalId {
         self.string_lists[&value.key]
     }
 
-    pub(super) fn bit_array_list(&self, value: &DraftList) -> execution::BitArrayListLocalId {
+    pub(super) fn bit_array_list(
+        &self,
+        value: &DraftList,
+    ) -> execution::graph::BitArrayListLocalId {
         self.bit_array_lists[&value.key]
     }
 
     pub(super) fn utf_codepoint_list(
         &self,
         value: &DraftList,
-    ) -> execution::UtfCodepointListLocalId {
+    ) -> execution::graph::UtfCodepointListLocalId {
         self.utf_codepoint_lists[&value.key]
     }
 
-    pub(super) fn custom_list(&self, value: &DraftList) -> execution::CustomListLocalId {
+    pub(super) fn custom_list(&self, value: &DraftList) -> execution::graph::CustomListLocalId {
         self.custom_lists[&value.key]
     }
 
-    pub(super) fn float_list(&self, value: &DraftList) -> execution::FloatListLocalId {
+    pub(super) fn float_list(&self, value: &DraftList) -> execution::graph::FloatListLocalId {
         self.float_lists[&value.key]
     }
 
-    pub(super) fn bool_list(&self, value: &DraftList) -> execution::BoolListLocalId {
+    pub(super) fn bool_list(&self, value: &DraftList) -> execution::graph::BoolListLocalId {
         self.bool_lists[&value.key]
     }
 
-    pub(super) fn nil_list(&self, value: &DraftList) -> execution::NilListLocalId {
+    pub(super) fn nil_list(&self, value: &DraftList) -> execution::graph::NilListLocalId {
         self.nil_lists[&value.key]
     }
 
-    pub(super) fn tuple_list(&self, value: &DraftList) -> execution::TupleListLocalId {
+    pub(super) fn tuple_list(&self, value: &DraftList) -> execution::graph::TupleListLocalId {
         self.tuple_lists[&value.key]
     }
 
-    pub(super) fn list_list(&self, value: &DraftList) -> execution::ListListLocalId {
+    pub(super) fn list_list(&self, value: &DraftList) -> execution::graph::ListListLocalId {
         self.list_lists[&value.key]
     }
 
-    pub(super) fn function_list(&self, value: &DraftList) -> execution::FunctionListLocalId {
+    pub(super) fn function_list(&self, value: &DraftList) -> execution::graph::FunctionListLocalId {
         self.function_lists[&value.key]
     }
 
@@ -543,76 +552,100 @@ impl BlockValues {
         }
     }
 
-    pub(super) fn int_function(&self, value: &DraftFunction) -> execution::IntFunctionLocalId {
+    pub(super) fn int_function(
+        &self,
+        value: &DraftFunction,
+    ) -> execution::graph::IntFunctionLocalId {
         self.int_functions[&value.key]
     }
 
-    pub(super) fn float_function(&self, value: &DraftFunction) -> execution::FloatFunctionLocalId {
+    pub(super) fn float_function(
+        &self,
+        value: &DraftFunction,
+    ) -> execution::graph::FloatFunctionLocalId {
         self.float_functions[&value.key]
     }
 
     pub(super) fn string_function(
         &self,
         value: &DraftFunction,
-    ) -> execution::StringFunctionLocalId {
+    ) -> execution::graph::StringFunctionLocalId {
         self.string_functions[&value.key]
     }
 
     pub(super) fn bit_array_function(
         &self,
         value: &DraftFunction,
-    ) -> execution::BitArrayFunctionLocalId {
+    ) -> execution::graph::BitArrayFunctionLocalId {
         self.bit_array_functions[&value.key]
     }
 
     pub(super) fn utf_codepoint_function(
         &self,
         value: &DraftFunction,
-    ) -> execution::UtfCodepointFunctionLocalId {
+    ) -> execution::graph::UtfCodepointFunctionLocalId {
         self.utf_codepoint_functions[&value.key]
     }
 
     pub(super) fn generic_function(
         &self,
         value: &DraftFunction,
-    ) -> execution::GenericFunctionLocal {
+    ) -> execution::graph::GenericFunctionLocal {
         self.generic_functions[&value.key].clone()
     }
 
-    pub(super) fn never_function(&self, value: &DraftFunction) -> execution::NeverFunctionLocal {
+    pub(super) fn never_function(
+        &self,
+        value: &DraftFunction,
+    ) -> execution::graph::NeverFunctionLocal {
         self.never_functions[&value.key].clone()
     }
 
-    pub(super) fn custom_function(&self, value: &DraftFunction) -> execution::CustomFunctionLocal {
+    pub(super) fn custom_function(
+        &self,
+        value: &DraftFunction,
+    ) -> execution::graph::CustomFunctionLocal {
         self.custom_functions[&value.key].clone()
     }
 
-    pub(super) fn bool_function(&self, value: &DraftFunction) -> execution::BoolFunctionLocalId {
+    pub(super) fn bool_function(
+        &self,
+        value: &DraftFunction,
+    ) -> execution::graph::BoolFunctionLocalId {
         self.bool_functions[&value.key]
     }
 
-    pub(super) fn nil_function(&self, value: &DraftFunction) -> execution::NilFunctionLocalId {
+    pub(super) fn nil_function(
+        &self,
+        value: &DraftFunction,
+    ) -> execution::graph::NilFunctionLocalId {
         self.nil_functions[&value.key]
     }
 
-    pub(super) fn tuple_function(&self, value: &DraftFunction) -> execution::TupleFunctionLocalId {
+    pub(super) fn tuple_function(
+        &self,
+        value: &DraftFunction,
+    ) -> execution::graph::TupleFunctionLocalId {
         self.tuple_functions[&value.key]
     }
 
-    pub(super) fn list_function(&self, value: &DraftFunction) -> execution::ListFunctionLocal {
+    pub(super) fn list_function(
+        &self,
+        value: &DraftFunction,
+    ) -> execution::graph::ListFunctionLocal {
         self.list_functions[&value.key].clone()
     }
 
     pub(super) fn function_function(
         &self,
         value: &DraftFunction,
-    ) -> execution::FunctionFunctionLocal {
+    ) -> execution::graph::FunctionFunctionLocal {
         self.function_functions[&value.key].clone()
     }
 }
 
 impl FreezeGraphValue for DraftInt {
-    type Frozen = execution::IntLocalId;
+    type Frozen = execution::graph::IntLocalId;
 
     fn freeze(&self, values: &BlockValues) -> Self::Frozen {
         values.int(self)
@@ -620,7 +653,7 @@ impl FreezeGraphValue for DraftInt {
 }
 
 impl FreezeGraphValue for DraftFloat {
-    type Frozen = execution::FloatLocalId;
+    type Frozen = execution::graph::FloatLocalId;
 
     fn freeze(&self, values: &BlockValues) -> Self::Frozen {
         values.float(self)
@@ -628,7 +661,7 @@ impl FreezeGraphValue for DraftFloat {
 }
 
 impl FreezeGraphValue for DraftString {
-    type Frozen = execution::StringLocalId;
+    type Frozen = execution::graph::StringLocalId;
 
     fn freeze(&self, values: &BlockValues) -> Self::Frozen {
         values.string(self)
@@ -636,7 +669,7 @@ impl FreezeGraphValue for DraftString {
 }
 
 impl FreezeGraphValue for DraftBitArray {
-    type Frozen = execution::BitArrayLocalId;
+    type Frozen = execution::graph::BitArrayLocalId;
 
     fn freeze(&self, values: &BlockValues) -> Self::Frozen {
         values.bit_array(self)
@@ -644,7 +677,7 @@ impl FreezeGraphValue for DraftBitArray {
 }
 
 impl FreezeGraphValue for DraftUtfCodepoint {
-    type Frozen = execution::UtfCodepointLocalId;
+    type Frozen = execution::graph::UtfCodepointLocalId;
 
     fn freeze(&self, values: &BlockValues) -> Self::Frozen {
         values.utf_codepoint(self)
@@ -652,7 +685,7 @@ impl FreezeGraphValue for DraftUtfCodepoint {
 }
 
 impl FreezeGraphValue for DraftCustom {
-    type Frozen = execution::CustomLocal;
+    type Frozen = execution::graph::CustomLocal;
 
     fn freeze(&self, values: &BlockValues) -> Self::Frozen {
         values.custom(self)
@@ -660,7 +693,7 @@ impl FreezeGraphValue for DraftCustom {
 }
 
 impl FreezeGraphValue for DraftBool {
-    type Frozen = execution::BoolLocalId;
+    type Frozen = execution::graph::BoolLocalId;
 
     fn freeze(&self, values: &BlockValues) -> Self::Frozen {
         values.bool(self)
@@ -668,7 +701,7 @@ impl FreezeGraphValue for DraftBool {
 }
 
 impl FreezeGraphValue for DraftNil {
-    type Frozen = execution::NilLocalId;
+    type Frozen = execution::graph::NilLocalId;
 
     fn freeze(&self, values: &BlockValues) -> Self::Frozen {
         values.nil(self)
@@ -676,7 +709,7 @@ impl FreezeGraphValue for DraftNil {
 }
 
 impl FreezeGraphValue for DraftTuple {
-    type Frozen = execution::TupleLocalId;
+    type Frozen = execution::graph::TupleLocalId;
 
     fn freeze(&self, values: &BlockValues) -> Self::Frozen {
         values.tuple(self)
@@ -708,7 +741,7 @@ impl<Family: FreezeFunctionFamily> FreezeGraphValue for DraftTypedFunction<Famil
 }
 
 impl FreezeListFamily for ParameterListFamily {
-    type Frozen = execution::ParameterListLocalId;
+    type Frozen = execution::graph::ParameterListLocalId;
 
     fn freeze(values: &BlockValues, value: &DraftList) -> Self::Frozen {
         values.parameter_list(value)
@@ -716,7 +749,7 @@ impl FreezeListFamily for ParameterListFamily {
 }
 
 impl FreezeListFamily for ParameterListListFamily {
-    type Frozen = execution::ParameterListListLocalId;
+    type Frozen = execution::graph::ParameterListListLocalId;
 
     fn freeze(values: &BlockValues, value: &DraftList) -> Self::Frozen {
         values.parameter_list_list(value)
@@ -724,7 +757,7 @@ impl FreezeListFamily for ParameterListListFamily {
 }
 
 impl FreezeListFamily for IntListFamily {
-    type Frozen = execution::IntListLocalId;
+    type Frozen = execution::graph::IntListLocalId;
 
     fn freeze(values: &BlockValues, value: &DraftList) -> Self::Frozen {
         values.int_list(value)
@@ -732,7 +765,7 @@ impl FreezeListFamily for IntListFamily {
 }
 
 impl FreezeListFamily for StringListFamily {
-    type Frozen = execution::StringListLocalId;
+    type Frozen = execution::graph::StringListLocalId;
 
     fn freeze(values: &BlockValues, value: &DraftList) -> Self::Frozen {
         values.string_list(value)
@@ -740,7 +773,7 @@ impl FreezeListFamily for StringListFamily {
 }
 
 impl FreezeListFamily for BitArrayListFamily {
-    type Frozen = execution::BitArrayListLocalId;
+    type Frozen = execution::graph::BitArrayListLocalId;
 
     fn freeze(values: &BlockValues, value: &DraftList) -> Self::Frozen {
         values.bit_array_list(value)
@@ -748,7 +781,7 @@ impl FreezeListFamily for BitArrayListFamily {
 }
 
 impl FreezeListFamily for UtfCodepointListFamily {
-    type Frozen = execution::UtfCodepointListLocalId;
+    type Frozen = execution::graph::UtfCodepointListLocalId;
 
     fn freeze(values: &BlockValues, value: &DraftList) -> Self::Frozen {
         values.utf_codepoint_list(value)
@@ -756,7 +789,7 @@ impl FreezeListFamily for UtfCodepointListFamily {
 }
 
 impl FreezeListFamily for CustomListFamily {
-    type Frozen = execution::CustomListLocalId;
+    type Frozen = execution::graph::CustomListLocalId;
 
     fn freeze(values: &BlockValues, value: &DraftList) -> Self::Frozen {
         values.custom_list(value)
@@ -764,7 +797,7 @@ impl FreezeListFamily for CustomListFamily {
 }
 
 impl FreezeListFamily for FloatListFamily {
-    type Frozen = execution::FloatListLocalId;
+    type Frozen = execution::graph::FloatListLocalId;
 
     fn freeze(values: &BlockValues, value: &DraftList) -> Self::Frozen {
         values.float_list(value)
@@ -772,7 +805,7 @@ impl FreezeListFamily for FloatListFamily {
 }
 
 impl FreezeListFamily for BoolListFamily {
-    type Frozen = execution::BoolListLocalId;
+    type Frozen = execution::graph::BoolListLocalId;
 
     fn freeze(values: &BlockValues, value: &DraftList) -> Self::Frozen {
         values.bool_list(value)
@@ -780,7 +813,7 @@ impl FreezeListFamily for BoolListFamily {
 }
 
 impl FreezeListFamily for NilListFamily {
-    type Frozen = execution::NilListLocalId;
+    type Frozen = execution::graph::NilListLocalId;
 
     fn freeze(values: &BlockValues, value: &DraftList) -> Self::Frozen {
         values.nil_list(value)
@@ -788,7 +821,7 @@ impl FreezeListFamily for NilListFamily {
 }
 
 impl FreezeListFamily for TupleListFamily {
-    type Frozen = execution::TupleListLocalId;
+    type Frozen = execution::graph::TupleListLocalId;
 
     fn freeze(values: &BlockValues, value: &DraftList) -> Self::Frozen {
         values.tuple_list(value)
@@ -796,7 +829,7 @@ impl FreezeListFamily for TupleListFamily {
 }
 
 impl FreezeListFamily for ListListFamily {
-    type Frozen = execution::ListListLocalId;
+    type Frozen = execution::graph::ListListLocalId;
 
     fn freeze(values: &BlockValues, value: &DraftList) -> Self::Frozen {
         values.list_list(value)
@@ -804,7 +837,7 @@ impl FreezeListFamily for ListListFamily {
 }
 
 impl FreezeListFamily for FunctionListFamily {
-    type Frozen = execution::FunctionListLocalId;
+    type Frozen = execution::graph::FunctionListLocalId;
 
     fn freeze(values: &BlockValues, value: &DraftList) -> Self::Frozen {
         values.function_list(value)
@@ -812,7 +845,7 @@ impl FreezeListFamily for FunctionListFamily {
 }
 
 impl FreezeFunctionFamily for GenericFunctionFamily {
-    type Frozen = execution::GenericFunctionLocal;
+    type Frozen = execution::graph::GenericFunctionLocal;
 
     fn freeze(values: &BlockValues, value: &DraftFunction) -> Self::Frozen {
         values.generic_function(value)
@@ -820,7 +853,7 @@ impl FreezeFunctionFamily for GenericFunctionFamily {
 }
 
 impl FreezeFunctionFamily for NeverFunctionFamily {
-    type Frozen = execution::NeverFunctionLocal;
+    type Frozen = execution::graph::NeverFunctionLocal;
 
     fn freeze(values: &BlockValues, value: &DraftFunction) -> Self::Frozen {
         values.never_function(value)
@@ -828,7 +861,7 @@ impl FreezeFunctionFamily for NeverFunctionFamily {
 }
 
 impl FreezeFunctionFamily for IntFunctionFamily {
-    type Frozen = execution::IntFunctionLocalId;
+    type Frozen = execution::graph::IntFunctionLocalId;
 
     fn freeze(values: &BlockValues, value: &DraftFunction) -> Self::Frozen {
         values.int_function(value)
@@ -836,7 +869,7 @@ impl FreezeFunctionFamily for IntFunctionFamily {
 }
 
 impl FreezeFunctionFamily for FloatFunctionFamily {
-    type Frozen = execution::FloatFunctionLocalId;
+    type Frozen = execution::graph::FloatFunctionLocalId;
 
     fn freeze(values: &BlockValues, value: &DraftFunction) -> Self::Frozen {
         values.float_function(value)
@@ -844,7 +877,7 @@ impl FreezeFunctionFamily for FloatFunctionFamily {
 }
 
 impl FreezeFunctionFamily for StringFunctionFamily {
-    type Frozen = execution::StringFunctionLocalId;
+    type Frozen = execution::graph::StringFunctionLocalId;
 
     fn freeze(values: &BlockValues, value: &DraftFunction) -> Self::Frozen {
         values.string_function(value)
@@ -852,7 +885,7 @@ impl FreezeFunctionFamily for StringFunctionFamily {
 }
 
 impl FreezeFunctionFamily for BitArrayFunctionFamily {
-    type Frozen = execution::BitArrayFunctionLocalId;
+    type Frozen = execution::graph::BitArrayFunctionLocalId;
 
     fn freeze(values: &BlockValues, value: &DraftFunction) -> Self::Frozen {
         values.bit_array_function(value)
@@ -860,7 +893,7 @@ impl FreezeFunctionFamily for BitArrayFunctionFamily {
 }
 
 impl FreezeFunctionFamily for UtfCodepointFunctionFamily {
-    type Frozen = execution::UtfCodepointFunctionLocalId;
+    type Frozen = execution::graph::UtfCodepointFunctionLocalId;
 
     fn freeze(values: &BlockValues, value: &DraftFunction) -> Self::Frozen {
         values.utf_codepoint_function(value)
@@ -868,7 +901,7 @@ impl FreezeFunctionFamily for UtfCodepointFunctionFamily {
 }
 
 impl FreezeFunctionFamily for CustomFunctionFamily {
-    type Frozen = execution::CustomFunctionLocal;
+    type Frozen = execution::graph::CustomFunctionLocal;
 
     fn freeze(values: &BlockValues, value: &DraftFunction) -> Self::Frozen {
         values.custom_function(value)
@@ -876,7 +909,7 @@ impl FreezeFunctionFamily for CustomFunctionFamily {
 }
 
 impl FreezeFunctionFamily for BoolFunctionFamily {
-    type Frozen = execution::BoolFunctionLocalId;
+    type Frozen = execution::graph::BoolFunctionLocalId;
 
     fn freeze(values: &BlockValues, value: &DraftFunction) -> Self::Frozen {
         values.bool_function(value)
@@ -884,7 +917,7 @@ impl FreezeFunctionFamily for BoolFunctionFamily {
 }
 
 impl FreezeFunctionFamily for NilFunctionFamily {
-    type Frozen = execution::NilFunctionLocalId;
+    type Frozen = execution::graph::NilFunctionLocalId;
 
     fn freeze(values: &BlockValues, value: &DraftFunction) -> Self::Frozen {
         values.nil_function(value)
@@ -892,7 +925,7 @@ impl FreezeFunctionFamily for NilFunctionFamily {
 }
 
 impl FreezeFunctionFamily for TupleFunctionFamily {
-    type Frozen = execution::TupleFunctionLocalId;
+    type Frozen = execution::graph::TupleFunctionLocalId;
 
     fn freeze(values: &BlockValues, value: &DraftFunction) -> Self::Frozen {
         values.tuple_function(value)
@@ -900,7 +933,7 @@ impl FreezeFunctionFamily for TupleFunctionFamily {
 }
 
 impl FreezeFunctionFamily for ListFunctionFamily {
-    type Frozen = execution::ListFunctionLocal;
+    type Frozen = execution::graph::ListFunctionLocal;
 
     fn freeze(values: &BlockValues, value: &DraftFunction) -> Self::Frozen {
         values.list_function(value)
@@ -908,7 +941,7 @@ impl FreezeFunctionFamily for ListFunctionFamily {
 }
 
 impl FreezeFunctionFamily for FunctionFunctionFamily {
-    type Frozen = execution::FunctionFunctionLocal;
+    type Frozen = execution::graph::FunctionFunctionLocal;
 
     fn freeze(values: &BlockValues, value: &DraftFunction) -> Self::Frozen {
         values.function_function(value)

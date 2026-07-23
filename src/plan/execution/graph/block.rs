@@ -16,9 +16,9 @@ pub(crate) use terminator::{
     NeverCall, NeverCallTarget, Signedness, SourceStop, SourceStopKind, StringSwitch, Terminator,
 };
 
-use crate::plan::execution::ParamSlot;
 use crate::plan::execution::explain::ExplainContext;
 use crate::plan::execution::graph::BlockGraphExitId;
+use crate::plan::execution::graph::ParamSlot;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct BlockId(usize);
@@ -87,7 +87,8 @@ pub(super) fn write_block(
 #[cfg(test)]
 mod explain_tests {
     use super::write_block;
-    use crate::plan::execution::{IntFunctionId, explain};
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::IntFunctionId;
 
     #[test]
     fn writes_block_parameters_instructions_and_terminator() {

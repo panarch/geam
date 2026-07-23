@@ -87,7 +87,7 @@ where
         + Fn(
             &module::FunctionInstantiation,
             &mut super::super::super::LoweringContext,
-        ) -> Representability<execution::FunctionFunctionId>,
+        ) -> Representability<execution::function::FunctionFunctionId>,
     Branch: Copy
         + Fn(
             &module::GenericFunctionExprKind,
@@ -130,7 +130,7 @@ where
         + Fn(
             &module::FunctionInstantiation,
             &mut super::super::super::LoweringContext,
-        ) -> Representability<execution::FunctionFunctionId>,
+        ) -> Representability<execution::function::FunctionFunctionId>,
     Branch: Copy
         + Fn(
             &module::GenericFunctionExprKind,
@@ -156,7 +156,7 @@ where
             let value = graph.function_instruction(
                 &mut cursor,
                 shape.clone(),
-                I::Constant(execution::ConstantId::new(index)),
+                I::Constant(execution::constant::ConstantId::new(index)),
             );
             DraftFlow::value(cursor, make(value))
         }),
@@ -368,7 +368,7 @@ macro_rules! generic_primitive_function {
                         |function, context| {
                             context
                                 .$function_function_id(function)
-                                .map(execution::FunctionFunctionId::$target)
+                                .map(execution::function::FunctionFunctionId::$target)
                         },
                         |branch, cursor, graph, context| {
                             lower_kind(branch, shape, cursor, graph, context)
@@ -474,7 +474,7 @@ macro_rules! define_symbolic_fixed_function {
                     let value = graph.function_instruction(
                         &mut cursor,
                         shape.clone(),
-                        I::Constant(execution::ConstantId::new(id.index())),
+                        I::Constant(execution::constant::ConstantId::new(id.index())),
                     );
                     DraftFlow::value(cursor, DraftGenericFunction::new(value))
                 }),
@@ -524,7 +524,8 @@ macro_rules! define_symbolic_fixed_function {
                             context
                                 .generic_function_function_id(function, type_)
                                 .map(|function| {
-                                    let function = execution::FunctionFunctionId::Generic(function);
+                                    let function =
+                                        execution::function::FunctionFunctionId::Generic(function);
                                     let value = graph.function_instruction(
                                         &mut cursor,
                                         shape.clone(),
@@ -752,7 +753,7 @@ fn symbolic_custom_kind(
                 let value = graph.function_instruction(
                     &mut cursor,
                     shape.clone(),
-                    I::Constant(execution::ConstantId::new(id.index())),
+                    I::Constant(execution::constant::ConstantId::new(id.index())),
                 );
                 DraftFlow::value(cursor, DraftGenericFunction::new(value))
             }),
@@ -814,7 +815,9 @@ fn symbolic_custom_kind(
                                 &mut cursor,
                                 shape.clone(),
                                 I::Call {
-                                    function: execution::FunctionFunctionId::Generic(function),
+                                    function: execution::function::FunctionFunctionId::Generic(
+                                        function,
+                                    ),
                                     args,
                                 },
                             );
@@ -994,7 +997,7 @@ fn symbolic_list_kind(
                 let value = graph.function_instruction(
                     &mut cursor,
                     shape.clone(),
-                    I::Constant(execution::ConstantId::new(id.index())),
+                    I::Constant(execution::constant::ConstantId::new(id.index())),
                 );
                 DraftFlow::value(cursor, DraftGenericFunction::new(value))
             }),
@@ -1039,7 +1042,9 @@ fn symbolic_list_kind(
                                 &mut cursor,
                                 shape.clone(),
                                 I::Call {
-                                    function: execution::FunctionFunctionId::Generic(function),
+                                    function: execution::function::FunctionFunctionId::Generic(
+                                        function,
+                                    ),
                                     args,
                                 },
                             );
@@ -1225,7 +1230,7 @@ fn symbolic_returning_function_kind(
                 let value = graph.function_instruction(
                     &mut cursor,
                     shape.clone(),
-                    I::Constant(execution::ConstantId::new(id.index())),
+                    I::Constant(execution::constant::ConstantId::new(id.index())),
                 );
                 DraftFlow::value(cursor, DraftGenericFunction::new(value))
             }),
@@ -1273,7 +1278,9 @@ fn symbolic_returning_function_kind(
                                 &mut cursor,
                                 shape.clone(),
                                 I::Call {
-                                    function: execution::FunctionFunctionId::Generic(function),
+                                    function: execution::function::FunctionFunctionId::Generic(
+                                        function,
+                                    ),
                                     args,
                                 },
                             );
@@ -1646,7 +1653,7 @@ fn symbolic_generic_kind(
                 let type_ = context.generic_function_type(shape);
                 context
                     .generic_function_function_id(function, type_)
-                    .map(execution::FunctionFunctionId::Generic)
+                    .map(execution::function::FunctionFunctionId::Generic)
             },
             |branch, cursor, graph, context| {
                 symbolic_generic_kind(branch, shape, cursor, graph, context)

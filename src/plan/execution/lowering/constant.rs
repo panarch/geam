@@ -2,7 +2,8 @@ use super::specialization::{
     SpecializedCustomValueShape, SpecializedFunctionShape, SpecializedValueShape,
 };
 use super::{LoweringContext, graph, specialization};
-use crate::plan::execution::{self, ConstantId, ConstantProgram, ConstantTable, ConstantValue};
+use crate::plan::execution;
+use crate::plan::execution::constant::{ConstantId, ConstantProgram, ConstantTable, ConstantValue};
 use crate::plan::module::ConstantInstantiation;
 use std::collections::HashMap;
 
@@ -44,10 +45,10 @@ impl LoweringContext {
             &mut graph::DraftGraph,
             &mut Self,
         ) -> specialization::Representability<graph::DraftFlow<DraftValue>>,
-    ) -> specialization::Representability<execution::ConstantId<Value>>
+    ) -> specialization::Representability<execution::constant::ConstantId<Value>>
     where
         DraftValue: graph::DraftGraphValue + graph::FreezeGraphValue<Frozen = Value>,
-        Value: execution::ConstantValue,
+        Value: execution::constant::ConstantValue,
     {
         let outer = self.substitution.to_module_substitution();
         let key = instantiation.substitute(&outer);
@@ -63,7 +64,9 @@ impl LoweringContext {
     pub(super) fn int_constant(
         &mut self,
         reference: &crate::plan::ConstantIntReference,
-    ) -> specialization::Representability<execution::ConstantId<execution::IntLocalId>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::IntLocalId>,
+    > {
         let instantiation = reference.instantiation().clone();
         self.lower_constant(
             crate::plan::ConstantInstantiation::from_int(instantiation.clone()),
@@ -75,7 +78,9 @@ impl LoweringContext {
     pub(super) fn string_constant(
         &mut self,
         reference: &crate::plan::ConstantStringReference,
-    ) -> specialization::Representability<execution::ConstantId<execution::StringLocalId>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::StringLocalId>,
+    > {
         let instantiation = reference.instantiation().clone();
         self.lower_constant(
             crate::plan::ConstantInstantiation::from_string(instantiation.clone()),
@@ -87,7 +92,9 @@ impl LoweringContext {
     pub(super) fn bit_array_constant(
         &mut self,
         reference: &crate::plan::ConstantBitArrayReference,
-    ) -> specialization::Representability<execution::ConstantId<execution::BitArrayLocalId>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::BitArrayLocalId>,
+    > {
         let instantiation = reference.instantiation().clone();
         self.lower_constant(
             crate::plan::ConstantInstantiation::from_bit_array(instantiation.clone()),
@@ -99,7 +106,9 @@ impl LoweringContext {
     pub(super) fn custom_constant(
         &mut self,
         reference: &crate::plan::ConstantCustomReference,
-    ) -> specialization::Representability<execution::ConstantId<execution::CustomLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::CustomLocal>,
+    > {
         let instantiation = reference.instantiation().clone();
         self.lower_constant(
             crate::plan::ConstantInstantiation::from_custom(instantiation.clone()),
@@ -111,7 +120,9 @@ impl LoweringContext {
     pub(super) fn float_constant(
         &mut self,
         reference: &crate::plan::ConstantFloatReference,
-    ) -> specialization::Representability<execution::ConstantId<execution::FloatLocalId>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FloatLocalId>,
+    > {
         let instantiation = reference.instantiation().clone();
         self.lower_constant(
             crate::plan::ConstantInstantiation::from_float(instantiation.clone()),
@@ -123,7 +134,9 @@ impl LoweringContext {
     pub(super) fn bool_constant(
         &mut self,
         reference: &crate::plan::ConstantBoolReference,
-    ) -> specialization::Representability<execution::ConstantId<execution::BoolLocalId>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::BoolLocalId>,
+    > {
         let instantiation = reference.instantiation().clone();
         self.lower_constant(
             crate::plan::ConstantInstantiation::from_bool(instantiation.clone()),
@@ -135,7 +148,9 @@ impl LoweringContext {
     pub(super) fn nil_constant(
         &mut self,
         reference: &crate::plan::ConstantNilReference,
-    ) -> specialization::Representability<execution::ConstantId<execution::NilLocalId>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::NilLocalId>,
+    > {
         let instantiation = reference.instantiation().clone();
         self.lower_constant(
             crate::plan::ConstantInstantiation::from_nil(instantiation.clone()),
@@ -147,7 +162,9 @@ impl LoweringContext {
     pub(super) fn tuple_constant(
         &mut self,
         reference: &crate::plan::ConstantTupleReference,
-    ) -> specialization::Representability<execution::ConstantId<execution::TupleLocalId>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::TupleLocalId>,
+    > {
         let instantiation = reference.instantiation().clone();
         self.lower_constant(
             crate::plan::ConstantInstantiation::from_tuple(instantiation.clone()),
@@ -159,7 +176,9 @@ impl LoweringContext {
     pub(super) fn int_list_constant(
         &mut self,
         reference: &crate::plan::ConstantIntListInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::IntListLocalId>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::IntListLocalId>,
+    > {
         let instantiation = reference.clone();
         self.lower_constant(
             crate::plan::ConstantInstantiation::from_list(
@@ -173,7 +192,9 @@ impl LoweringContext {
     pub(super) fn string_list_constant(
         &mut self,
         reference: &crate::plan::ConstantStringListInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::StringListLocalId>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::StringListLocalId>,
+    > {
         let instantiation = reference.clone();
         self.lower_constant(
             crate::plan::ConstantInstantiation::from_list(
@@ -187,8 +208,9 @@ impl LoweringContext {
     pub(super) fn bit_array_list_constant(
         &mut self,
         reference: &crate::plan::ConstantBitArrayListInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::BitArrayListLocalId>>
-    {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::BitArrayListLocalId>,
+    > {
         let instantiation = reference.clone();
         self.lower_constant(
             crate::plan::ConstantInstantiation::from_list(
@@ -202,8 +224,9 @@ impl LoweringContext {
     pub(super) fn utf_codepoint_list_constant(
         &mut self,
         reference: &crate::plan::ConstantUtfCodepointListInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::UtfCodepointListLocalId>>
-    {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::UtfCodepointListLocalId>,
+    > {
         let instantiation = reference.clone();
         self.lower_constant(
             crate::plan::ConstantInstantiation::from_list(
@@ -217,7 +240,9 @@ impl LoweringContext {
     pub(super) fn custom_list_constant(
         &mut self,
         reference: &crate::plan::ConstantCustomListInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::CustomListLocalId>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::CustomListLocalId>,
+    > {
         let instantiation = reference.clone();
         self.lower_constant(
             crate::plan::ConstantInstantiation::from_list(
@@ -231,7 +256,9 @@ impl LoweringContext {
     pub(super) fn float_list_constant(
         &mut self,
         reference: &crate::plan::ConstantFloatListInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::FloatListLocalId>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FloatListLocalId>,
+    > {
         let instantiation = reference.clone();
         self.lower_constant(
             crate::plan::ConstantInstantiation::from_list(
@@ -245,7 +272,9 @@ impl LoweringContext {
     pub(super) fn bool_list_constant(
         &mut self,
         reference: &crate::plan::ConstantBoolListInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::BoolListLocalId>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::BoolListLocalId>,
+    > {
         let instantiation = reference.clone();
         self.lower_constant(
             crate::plan::ConstantInstantiation::from_list(
@@ -259,7 +288,9 @@ impl LoweringContext {
     pub(super) fn nil_list_constant(
         &mut self,
         reference: &crate::plan::ConstantNilListInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::NilListLocalId>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::NilListLocalId>,
+    > {
         let instantiation = reference.clone();
         self.lower_constant(
             crate::plan::ConstantInstantiation::from_list(
@@ -273,7 +304,9 @@ impl LoweringContext {
     pub(super) fn tuple_list_constant(
         &mut self,
         reference: &crate::plan::ConstantTupleListInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::TupleListLocalId>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::TupleListLocalId>,
+    > {
         let instantiation = reference.clone();
         self.lower_constant(
             crate::plan::ConstantInstantiation::from_list(
@@ -288,8 +321,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantParameterListListInstantiation,
         _parameter: crate::plan::TypeParameterId,
-    ) -> specialization::Representability<execution::ConstantId<execution::ParameterListListLocalId>>
-    {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::ParameterListListLocalId>,
+    > {
         let instantiation = reference.clone();
         self.lower_constant(
             crate::plan::ConstantInstantiation::from_list(
@@ -307,7 +341,9 @@ impl LoweringContext {
     pub(super) fn list_list_constant(
         &mut self,
         reference: &crate::plan::ConstantListListInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::ListListLocalId>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::ListListLocalId>,
+    > {
         let instantiation = reference.clone();
         self.lower_constant(
             crate::plan::ConstantInstantiation::from_list(
@@ -321,8 +357,9 @@ impl LoweringContext {
     pub(super) fn function_list_constant(
         &mut self,
         reference: &crate::plan::ConstantFunctionListInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionListLocalId>>
-    {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionListLocalId>,
+    > {
         let instantiation = reference.clone();
         self.lower_constant(
             crate::plan::ConstantInstantiation::from_list(
@@ -337,10 +374,10 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantGenericListInstantiation,
         wrap: impl Copy + Fn(graph::DraftList) -> DraftValue,
-    ) -> specialization::Representability<execution::ConstantId<Value>>
+    ) -> specialization::Representability<execution::constant::ConstantId<Value>>
     where
         DraftValue: graph::DraftGraphValue + graph::FreezeGraphValue<Frozen = Value>,
-        Value: execution::ConstantValue,
+        Value: execution::constant::ConstantValue,
     {
         let instantiation = reference.clone();
         self.lower_constant(
@@ -359,38 +396,45 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantGenericListInstantiation,
         _parameter: crate::plan::TypeParameterId,
-    ) -> specialization::Representability<execution::ConstantId<execution::ParameterListLocalId>>
-    {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::ParameterListLocalId>,
+    > {
         self.lower_generic_list_constant(reference, graph::DraftParameterList::new)
     }
 
     pub(super) fn generic_int_list_constant(
         &mut self,
         reference: &crate::plan::ConstantGenericListInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::IntListLocalId>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::IntListLocalId>,
+    > {
         self.lower_generic_list_constant(reference, graph::DraftIntList::new)
     }
 
     pub(super) fn generic_string_list_constant(
         &mut self,
         reference: &crate::plan::ConstantGenericListInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::StringListLocalId>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::StringListLocalId>,
+    > {
         self.lower_generic_list_constant(reference, graph::DraftStringList::new)
     }
 
     pub(super) fn generic_bit_array_list_constant(
         &mut self,
         reference: &crate::plan::ConstantGenericListInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::BitArrayListLocalId>>
-    {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::BitArrayListLocalId>,
+    > {
         self.lower_generic_list_constant(reference, graph::DraftBitArrayList::new)
     }
 
     pub(super) fn generic_utf_codepoint_list_constant(
         &mut self,
         reference: &crate::plan::ConstantGenericListInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::UtfCodepointListLocalId>>
-    {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::UtfCodepointListLocalId>,
+    > {
         self.lower_generic_list_constant(reference, graph::DraftUtfCodepointList::new)
     }
 
@@ -398,28 +442,36 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantGenericListInstantiation,
         _shape: &SpecializedCustomValueShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::CustomListLocalId>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::CustomListLocalId>,
+    > {
         self.lower_generic_list_constant(reference, graph::DraftCustomList::new)
     }
 
     pub(super) fn generic_float_list_constant(
         &mut self,
         reference: &crate::plan::ConstantGenericListInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::FloatListLocalId>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FloatListLocalId>,
+    > {
         self.lower_generic_list_constant(reference, graph::DraftFloatList::new)
     }
 
     pub(super) fn generic_bool_list_constant(
         &mut self,
         reference: &crate::plan::ConstantGenericListInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::BoolListLocalId>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::BoolListLocalId>,
+    > {
         self.lower_generic_list_constant(reference, graph::DraftBoolList::new)
     }
 
     pub(super) fn generic_nil_list_constant(
         &mut self,
         reference: &crate::plan::ConstantGenericListInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::NilListLocalId>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::NilListLocalId>,
+    > {
         self.lower_generic_list_constant(reference, graph::DraftNilList::new)
     }
 
@@ -427,7 +479,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantGenericListInstantiation,
         _elements: &[SpecializedValueShape],
-    ) -> specialization::Representability<execution::ConstantId<execution::TupleListLocalId>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::TupleListLocalId>,
+    > {
         self.lower_generic_list_constant(reference, graph::DraftTupleList::new)
     }
 
@@ -435,8 +489,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantGenericListInstantiation,
         _parameter: crate::plan::TypeParameterId,
-    ) -> specialization::Representability<execution::ConstantId<execution::ParameterListListLocalId>>
-    {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::ParameterListListLocalId>,
+    > {
         self.lower_generic_list_constant(reference, graph::DraftParameterListList::new)
     }
 
@@ -444,7 +499,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantGenericListInstantiation,
         _item_shape: &specialization::StoredValueShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::ListListLocalId>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::ListListLocalId>,
+    > {
         self.lower_generic_list_constant(reference, graph::DraftListList::new)
     }
 
@@ -452,8 +509,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantGenericListInstantiation,
         _shape: &SpecializedFunctionShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionListLocalId>>
-    {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionListLocalId>,
+    > {
         self.lower_generic_list_constant(reference, graph::DraftFunctionList::new)
     }
 
@@ -461,7 +519,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantParameterListListInstantiation,
         _item_shape: &specialization::StoredValueShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::ListListLocalId>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::ListListLocalId>,
+    > {
         let instantiation = reference.clone();
         self.lower_constant(
             crate::plan::ConstantInstantiation::from_list(
@@ -486,7 +546,9 @@ impl LoweringContext {
             &mut graph::DraftGraph,
             &mut Self,
         ) -> specialization::Representability<graph::DraftFlow<DraftValue>>,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>>
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    >
     where
         DraftValue: graph::DraftFunctionValue,
     {
@@ -508,7 +570,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantGenericFunctionInstantiation,
         shape: &SpecializedFunctionShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -525,7 +589,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantGenericFunctionInstantiation,
         shape: &SpecializedFunctionShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -541,7 +607,9 @@ impl LoweringContext {
     pub(super) fn custom_never_function_constant(
         &mut self,
         reference: &crate::plan::ConstantCustomFunctionInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -555,7 +623,9 @@ impl LoweringContext {
     pub(super) fn tuple_never_function_constant(
         &mut self,
         reference: &crate::plan::ConstantTupleFunctionInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -570,7 +640,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantGenericFunctionInstantiation,
         shape: &SpecializedFunctionShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         self.generic_typed_function_constant(reference, shape, graph::generic_int_function_expr)
     }
 
@@ -578,7 +650,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantGenericFunctionInstantiation,
         shape: &SpecializedFunctionShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         self.generic_typed_function_constant(reference, shape, graph::generic_float_function_expr)
     }
 
@@ -586,7 +660,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantGenericFunctionInstantiation,
         shape: &SpecializedFunctionShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         self.generic_typed_function_constant(reference, shape, graph::generic_string_function_expr)
     }
 
@@ -594,7 +670,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantGenericFunctionInstantiation,
         shape: &SpecializedFunctionShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         self.generic_typed_function_constant(
             reference,
             shape,
@@ -606,7 +684,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantGenericFunctionInstantiation,
         shape: &SpecializedFunctionShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         self.generic_typed_function_constant(
             reference,
             shape,
@@ -618,7 +698,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantGenericFunctionInstantiation,
         shape: &SpecializedFunctionShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         self.generic_typed_function_constant(reference, shape, graph::generic_bool_function_expr)
     }
 
@@ -626,7 +708,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantGenericFunctionInstantiation,
         shape: &SpecializedFunctionShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         self.generic_typed_function_constant(reference, shape, graph::generic_nil_function_expr)
     }
 
@@ -634,7 +718,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantGenericFunctionInstantiation,
         shape: &SpecializedFunctionShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         self.generic_typed_function_constant(reference, shape, graph::generic_tuple_function_expr)
     }
 
@@ -650,7 +736,9 @@ impl LoweringContext {
             &mut graph::DraftGraph,
             &mut Self,
         ) -> specialization::Representability<graph::DraftFlow<DraftValue>>,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>>
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    >
     where
         DraftValue: graph::DraftFunctionValue,
     {
@@ -669,7 +757,9 @@ impl LoweringContext {
         reference: &crate::plan::ConstantGenericFunctionInstantiation,
         return_shape: &SpecializedCustomValueShape,
         shape: &SpecializedFunctionShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -694,7 +784,9 @@ impl LoweringContext {
         reference: &crate::plan::ConstantGenericFunctionInstantiation,
         item_shape: &SpecializedValueShape,
         shape: &SpecializedFunctionShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -714,7 +806,9 @@ impl LoweringContext {
         reference: &crate::plan::ConstantGenericFunctionInstantiation,
         return_shape: &SpecializedFunctionShape,
         shape: &SpecializedFunctionShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -738,7 +832,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantCustomFunctionInstantiation,
         shape: &SpecializedFunctionShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -761,7 +857,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantListFunctionInstantiation,
         shape: &SpecializedFunctionShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -778,7 +876,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantFunctionFunctionInstantiation,
         shape: &SpecializedFunctionShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -801,7 +901,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantIntFunctionInstantiation,
         shape: &SpecializedFunctionShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -818,7 +920,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantFloatFunctionInstantiation,
         shape: &SpecializedFunctionShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -835,7 +939,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantStringFunctionInstantiation,
         shape: &SpecializedFunctionShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -852,7 +958,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantBitArrayFunctionInstantiation,
         shape: &SpecializedFunctionShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -869,7 +977,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantUtfCodepointFunctionInstantiation,
         shape: &SpecializedFunctionShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -888,7 +998,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantBoolFunctionInstantiation,
         shape: &SpecializedFunctionShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -905,7 +1017,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantNilFunctionInstantiation,
         shape: &SpecializedFunctionShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -922,7 +1036,9 @@ impl LoweringContext {
         &mut self,
         reference: &crate::plan::ConstantTupleFunctionInstantiation,
         shape: &SpecializedFunctionShape,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -938,7 +1054,9 @@ impl LoweringContext {
     pub(super) fn int_function_constant(
         &mut self,
         reference: &crate::plan::ConstantIntFunctionInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -952,7 +1070,9 @@ impl LoweringContext {
     pub(super) fn float_function_constant(
         &mut self,
         reference: &crate::plan::ConstantFloatFunctionInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -966,7 +1086,9 @@ impl LoweringContext {
     pub(super) fn string_function_constant(
         &mut self,
         reference: &crate::plan::ConstantStringFunctionInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -980,7 +1102,9 @@ impl LoweringContext {
     pub(super) fn bit_array_function_constant(
         &mut self,
         reference: &crate::plan::ConstantBitArrayFunctionInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -994,7 +1118,9 @@ impl LoweringContext {
     pub(super) fn utf_codepoint_function_constant(
         &mut self,
         reference: &crate::plan::ConstantUtfCodepointFunctionInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -1008,7 +1134,9 @@ impl LoweringContext {
     pub(super) fn custom_function_constant(
         &mut self,
         reference: &crate::plan::ConstantCustomFunctionInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -1022,7 +1150,9 @@ impl LoweringContext {
     pub(super) fn bool_function_constant(
         &mut self,
         reference: &crate::plan::ConstantBoolFunctionInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -1036,7 +1166,9 @@ impl LoweringContext {
     pub(super) fn nil_function_constant(
         &mut self,
         reference: &crate::plan::ConstantNilFunctionInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -1050,7 +1182,9 @@ impl LoweringContext {
     pub(super) fn tuple_function_constant(
         &mut self,
         reference: &crate::plan::ConstantTupleFunctionInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -1064,7 +1198,9 @@ impl LoweringContext {
     pub(super) fn list_function_constant(
         &mut self,
         reference: &crate::plan::ConstantListFunctionInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(
@@ -1078,7 +1214,9 @@ impl LoweringContext {
     pub(super) fn function_function_constant(
         &mut self,
         reference: &crate::plan::ConstantFunctionFunctionInstantiation,
-    ) -> specialization::Representability<execution::ConstantId<execution::FunctionLocal>> {
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
         let instantiation = reference.clone();
         self.lower_function_constant(
             crate::plan::ConstantInstantiation::from_function(

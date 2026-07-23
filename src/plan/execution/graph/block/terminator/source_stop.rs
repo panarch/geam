@@ -1,6 +1,6 @@
 use crate::plan::PanicSite;
-use crate::plan::execution::StringLocalId;
 use crate::plan::execution::explain::{Explain, ExplainContext};
+use crate::plan::execution::graph::StringLocalId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SourceStopKind {
@@ -71,7 +71,8 @@ fn source_stop_kind(kind: SourceStopKind) -> &'static str {
 mod explain_tests {
     use super::super::Terminator;
     use super::{SourceStop, SourceStopKind};
-    use crate::plan::execution::{IntFunctionId, explain};
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::IntFunctionId;
 
     #[test]
     fn writes_source_stop() {
@@ -122,7 +123,7 @@ pub fn main() -> Int {
 
     fn terminators(
         plan: &crate::plan::execution::ExecutionPlan,
-    ) -> Vec<&crate::plan::execution::Terminator> {
+    ) -> Vec<&crate::plan::execution::graph::Terminator> {
         plan.int_function(IntFunctionId(0))
             .body()
             .block_graph()

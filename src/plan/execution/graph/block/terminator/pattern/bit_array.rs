@@ -1,7 +1,7 @@
 use super::{MatchIntBindingId, MatchPatternBinding};
 use crate::plan::execution::explain::{Explain, ExplainContext};
+use crate::plan::execution::graph::{Endianness, IntLocalId, StringEncoding};
 use crate::plan::execution::graph::{ExplainLocal, endianness, string_encoding};
-use crate::plan::execution::{Endianness, IntLocalId, StringEncoding};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -279,7 +279,9 @@ fn write_value<Value>(
 mod explain_tests {
     use super::super::super::Terminator;
     use super::BitArrayPattern;
-    use crate::plan::execution::{IntFunctionId, MatchPattern, explain};
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::IntFunctionId;
+    use crate::plan::execution::graph::MatchPattern;
 
     #[test]
     fn writes_dynamic_and_remainder_bit_array_segments() {
@@ -342,14 +344,14 @@ pub fn main() {
 
     fn terminators(
         plan: &crate::plan::execution::ExecutionPlan,
-    ) -> Vec<&crate::plan::execution::Terminator> {
+    ) -> Vec<&crate::plan::execution::graph::Terminator> {
         terminators_for(plan, IntFunctionId(0))
     }
 
     fn terminators_for(
         plan: &crate::plan::execution::ExecutionPlan,
         function: IntFunctionId,
-    ) -> Vec<&crate::plan::execution::Terminator> {
+    ) -> Vec<&crate::plan::execution::graph::Terminator> {
         plan.int_function(function)
             .body()
             .block_graph()

@@ -13,7 +13,8 @@ pub(in crate::runtime) use value::{
     run_string, run_tuple, run_utf_codepoint,
 };
 
-use crate::plan::execution::{ExecutionPlan, FunctionBody, FunctionExit};
+use crate::plan::execution::ExecutionPlan;
+use crate::plan::execution::function::{FunctionBody, FunctionExit};
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::graph::{self, GraphValue, RetainedValues};
 use crate::runtime::state::RuntimeState;

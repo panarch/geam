@@ -3,8 +3,8 @@ use super::{
     NeverFunctionBody, NilFunctionBody, StringFunctionBody, TupleFunctionBody,
     UtfCodepointFunctionBody,
 };
-use crate::plan::execution::ExecutableFunction;
 use crate::plan::execution::explain::{Explain, ExplainContext};
+use crate::plan::execution::function::ExecutableFunction;
 use crate::plan::execution::function::write_table;
 
 pub(in crate::plan::execution) struct ValueFunctionTables {

@@ -1,18 +1,23 @@
 use super::super::environment::{BlockEnvironment, RetainedValues};
 use super::value::{constant, custom_projection, ensure_list_index, tuple_projection};
 use crate::plan::ValueType;
-use crate::plan::execution::{
-    BitArrayListFunctionId, BitArrayListLocalId, BitArrayListTypeId, BoolListFunctionId,
-    BoolListLocalId, BoolListTypeId, CustomListFunctionId, CustomListLocalId, CustomListTypeId,
-    ExecutionPlan, FloatListFunctionId, FloatListLocalId, FloatListTypeId, FunctionListFunctionId,
-    FunctionListLocalId, FunctionListTypeId, IntListFunctionId, IntListLocalId, IntListTypeId,
-    ListFunctionId, ListInstruction, ListListFunctionId, ListListLocalId, ListListTypeId,
-    NilListFunctionId, NilListLocalId, NilListTypeId, ParameterListInstruction,
-    ParameterListListFunctionId, ParameterListListLocalId, ParameterListListTypeId,
-    ParameterListLocalId, ParameterListTypeId, StoredListLocal, StringListFunctionId,
-    StringListLocalId, StringListTypeId, TupleListFunctionId, TupleListLocalId, TupleListTypeId,
-    TypedListInstruction, UtfCodepointListFunctionId, UtfCodepointListLocalId,
-    UtfCodepointListTypeId,
+use crate::plan::execution::ExecutionPlan;
+use crate::plan::execution::function::{
+    BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId, FloatListFunctionId,
+    FunctionListFunctionId, IntListFunctionId, ListFunctionId, ListListFunctionId,
+    NilListFunctionId, ParameterListListFunctionId, StringListFunctionId, TupleListFunctionId,
+    UtfCodepointListFunctionId,
+};
+use crate::plan::execution::graph::{
+    BitArrayListLocalId, BoolListLocalId, CustomListLocalId, FloatListLocalId, FunctionListLocalId,
+    IntListLocalId, ListInstruction, ListListLocalId, NilListLocalId, ParameterListInstruction,
+    ParameterListListLocalId, ParameterListLocalId, StoredListLocal, StringListLocalId,
+    TupleListLocalId, TypedListInstruction, UtfCodepointListLocalId,
+};
+use crate::plan::execution::type_::{
+    BitArrayListTypeId, BoolListTypeId, CustomListTypeId, FloatListTypeId, FunctionListTypeId,
+    IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId, ParameterListTypeId,
+    StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
 };
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::evaluated::{
@@ -181,7 +186,7 @@ trait RuntimeTypedList {
     type ElementLocal;
     type Element: Clone;
     type Local: Copy
-        + crate::plan::execution::ConstantValue
+        + crate::plan::execution::constant::ConstantValue
         + super::super::GraphValue<Evaluated = Self::Handle>;
     type Function: Clone;
     type Handle: Clone;
@@ -293,8 +298,8 @@ fn typed<Family: RuntimeTypedList>(
 
 fn list_function_mismatch() -> ExecutionError {
     ExecutionError::Invariant(InvariantError::FunctionReturnFamilyMismatch {
-        expected: crate::plan::execution::FunctionReturnFamily::List,
-        actual: crate::plan::execution::FunctionReturnFamily::List,
+        expected: crate::plan::execution::function::FunctionReturnFamily::List,
+        actual: crate::plan::execution::function::FunctionReturnFamily::List,
     })
 }
 
@@ -388,7 +393,7 @@ macro_rules! vector_family {
 vector_family!(
     IntFamily,
     IntListTypeId,
-    crate::plan::execution::IntLocalId,
+    crate::plan::execution::graph::IntLocalId,
     BigInt,
     IntListLocalId,
     IntListFunctionId,
@@ -404,7 +409,7 @@ vector_family!(
 vector_family!(
     StringFamily,
     StringListTypeId,
-    crate::plan::execution::StringLocalId,
+    crate::plan::execution::graph::StringLocalId,
     EcoString,
     StringListLocalId,
     StringListFunctionId,
@@ -420,7 +425,7 @@ vector_family!(
 vector_family!(
     BitArrayFamily,
     BitArrayListTypeId,
-    crate::plan::execution::BitArrayLocalId,
+    crate::plan::execution::graph::BitArrayLocalId,
     EvaluatedBitArray,
     BitArrayListLocalId,
     BitArrayListFunctionId,
@@ -436,7 +441,7 @@ vector_family!(
 vector_family!(
     UtfCodepointFamily,
     UtfCodepointListTypeId,
-    crate::plan::execution::UtfCodepointLocalId,
+    crate::plan::execution::graph::UtfCodepointLocalId,
     char,
     UtfCodepointListLocalId,
     UtfCodepointListFunctionId,
@@ -452,7 +457,7 @@ vector_family!(
 vector_family!(
     FloatFamily,
     FloatListTypeId,
-    crate::plan::execution::FloatLocalId,
+    crate::plan::execution::graph::FloatLocalId,
     f64,
     FloatListLocalId,
     FloatListFunctionId,
@@ -468,7 +473,7 @@ vector_family!(
 vector_family!(
     BoolFamily,
     BoolListTypeId,
-    crate::plan::execution::BoolLocalId,
+    crate::plan::execution::graph::BoolLocalId,
     bool,
     BoolListLocalId,
     BoolListFunctionId,
@@ -484,7 +489,7 @@ vector_family!(
 vector_family!(
     TupleFamily,
     TupleListTypeId,
-    crate::plan::execution::TupleLocalId,
+    crate::plan::execution::graph::TupleLocalId,
     Vec<EvaluatedValue>,
     TupleListLocalId,
     TupleListFunctionId,
@@ -502,7 +507,7 @@ struct CustomFamily;
 
 impl RuntimeTypedList for CustomFamily {
     type TypeId = CustomListTypeId;
-    type ElementLocal = crate::plan::execution::CustomLocal;
+    type ElementLocal = crate::plan::execution::graph::CustomLocal;
     type Element = EvaluatedCustomValue;
     type Local = CustomListLocalId;
     type Function = CustomListFunctionId;
@@ -567,7 +572,7 @@ struct NilFamily;
 
 impl RuntimeTypedList for NilFamily {
     type TypeId = NilListTypeId;
-    type ElementLocal = crate::plan::execution::NilLocalId;
+    type ElementLocal = crate::plan::execution::graph::NilLocalId;
     type Element = ();
     type Local = NilListLocalId;
     type Function = NilListFunctionId;
@@ -765,7 +770,7 @@ struct FunctionFamily;
 
 impl RuntimeTypedList for FunctionFamily {
     type TypeId = FunctionListTypeId;
-    type ElementLocal = crate::plan::execution::FunctionLocal;
+    type ElementLocal = crate::plan::execution::graph::FunctionLocal;
     type Element = EvaluatedFunctionValue;
     type Local = FunctionListLocalId;
     type Function = FunctionListFunctionId;
@@ -834,12 +839,13 @@ mod tests {
         ListFamily, NilFamily, ParameterListFamily, RuntimeTypedList, StringFamily, TupleFamily,
         UtfCodepointFamily, execute, list_function_mismatch, parameter, typed,
     };
-    use crate::plan::execution::{
-        CustomFunctionId, CustomLocal, IntListFunctionLocalId, IntListTypeId, ListFunctionId,
-        ListFunctionLocal, ListInstruction, ListListLocalId, ListListTypeId,
-        ParameterListInstruction, ParameterListListLocalId, StringListTypeId, Terminator,
-        TupleLocalId, TypedListInstruction,
+    use crate::plan::execution::function::{CustomFunctionId, ListFunctionId};
+    use crate::plan::execution::graph::{
+        CustomLocal, IntListFunctionLocalId, ListFunctionLocal, ListInstruction, ListListLocalId,
+        ParameterListInstruction, ParameterListListLocalId, Terminator, TupleLocalId,
+        TypedListInstruction,
     };
+    use crate::plan::execution::type_::{IntListTypeId, ListListTypeId, StringListTypeId};
     use crate::plan::{CustomType, CustomTypeName, FunctionType, TypeParameterId, ValueType};
     use crate::runtime::state::{ListValueId, RuntimeState};
     use crate::runtime::{
@@ -870,9 +876,9 @@ pub fn main() {
             ListFunctionId::Int(function),
             Vec::new(),
             Vec::new(),
-            crate::plan::execution::FunctionType::new(
+            crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
-                crate::plan::execution::ValueType::List(function.type_id().list_type()),
+                crate::plan::execution::type_::ValueType::List(function.type_id().list_type()),
             ),
         )
     }
@@ -883,9 +889,9 @@ pub fn main() {
             ListFunctionId::Nil(function),
             Vec::new(),
             Vec::new(),
-            crate::plan::execution::FunctionType::new(
+            crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
-                crate::plan::execution::ValueType::List(function.type_id().list_type()),
+                crate::plan::execution::type_::ValueType::List(function.type_id().list_type()),
             ),
         )
     }
@@ -934,9 +940,11 @@ pub fn main() {
         let instruction = ParameterListInstruction::FunctionCall {
             function: ListFunctionLocal::Int {
                 local: IntListFunctionLocalId(0),
-                type_: crate::plan::execution::FunctionType::new(
+                type_: crate::plan::execution::type_::FunctionType::new(
                     Vec::new(),
-                    crate::plan::execution::ValueType::List(int_function_id.type_id().list_type()),
+                    crate::plan::execution::type_::ValueType::List(
+                        int_function_id.type_id().list_type(),
+                    ),
                 ),
                 list_type: int_function_id.type_id(),
             },
@@ -1302,7 +1310,7 @@ pub fn main() {
         int_type: IntListTypeId,
         string_type: StringListTypeId,
         custom_local: CustomLocal,
-        constructor: crate::plan::execution::CustomConstructorId,
+        constructor: crate::plan::execution::type_::CustomConstructorId,
         custom_type: CustomType,
     }
 
@@ -1553,7 +1561,7 @@ pub fn main() {
         let Terminator::Exit(exit) = block_graph.block(block_graph.entry()).terminator() else {
             panic!("custom main should return its constructed value directly");
         };
-        let crate::plan::execution::FunctionExit::Return(local) = body.exit(*exit) else {
+        let crate::plan::execution::function::FunctionExit::Return(local) = body.exit(*exit) else {
             panic!("custom main should return its constructed value directly");
         };
         *local

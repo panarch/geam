@@ -2,11 +2,13 @@ use super::{
     write_binary, write_call, write_constant, write_function_call, write_length, write_literal,
     write_projection, write_unary,
 };
+use crate::plan::execution::constant::ConstantId;
 use crate::plan::execution::explain::{Explain, ExplainContext};
+use crate::plan::execution::function::BoolFunctionId;
 use crate::plan::execution::graph::ExplainLocal;
-use crate::plan::execution::{
-    BoolFunctionId, BoolFunctionLocalId, BoolListLocalId, BoolLocalId, ConstantId, CustomLocal,
-    FloatLocalId, IntLocalId, ListLocal, ParamLocal, StringLocalId, TupleLocalId,
+use crate::plan::execution::graph::{
+    BoolFunctionLocalId, BoolListLocalId, BoolLocalId, CustomLocal, FloatLocalId, IntLocalId,
+    ListLocal, ParamLocal, StringLocalId, TupleLocalId,
 };
 use ecow::EcoString;
 
@@ -160,7 +162,9 @@ impl Explain for BoolInstruction {
 
 #[cfg(test)]
 mod explain_tests {
-    use crate::plan::execution::{BoolFunctionId, InstructionKind, explain};
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::BoolFunctionId;
+    use crate::plan::execution::graph::InstructionKind;
 
     #[test]
     fn writes_bool_instruction_grammar() {

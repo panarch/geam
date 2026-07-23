@@ -1,8 +1,9 @@
 use super::{write_call, write_constant, write_function_call, write_projection};
+use crate::plan::execution::constant::ConstantId;
 use crate::plan::execution::explain::{Explain, ExplainContext};
-use crate::plan::execution::{
-    ConstantId, CustomLocal, NilFunctionId, NilFunctionLocalId, NilListLocalId, NilLocalId,
-    ParamLocal, TupleLocalId,
+use crate::plan::execution::function::NilFunctionId;
+use crate::plan::execution::graph::{
+    CustomLocal, NilFunctionLocalId, NilListLocalId, NilLocalId, ParamLocal, TupleLocalId,
 };
 
 pub(crate) enum NilInstruction {
@@ -57,7 +58,9 @@ impl Explain for NilInstruction {
 
 #[cfg(test)]
 mod explain_tests {
-    use crate::plan::execution::{InstructionKind, NilFunctionId, explain};
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::NilFunctionId;
+    use crate::plan::execution::graph::InstructionKind;
 
     #[test]
     fn writes_nil_value() {

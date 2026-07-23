@@ -1297,28 +1297,30 @@ fn bind_total_pattern(
     }
 }
 
-fn lower_endianness(value: module::Endianness) -> crate::plan::execution::Endianness {
+fn lower_endianness(value: module::Endianness) -> crate::plan::execution::graph::Endianness {
     match value {
-        module::Endianness::Big => crate::plan::execution::Endianness::Big,
-        module::Endianness::Little => crate::plan::execution::Endianness::Little,
+        module::Endianness::Big => crate::plan::execution::graph::Endianness::Big,
+        module::Endianness::Little => crate::plan::execution::graph::Endianness::Little,
     }
 }
 
-fn lower_signedness(value: module::Signedness) -> crate::plan::execution::Signedness {
+fn lower_signedness(value: module::Signedness) -> crate::plan::execution::graph::Signedness {
     match value {
-        module::Signedness::Signed => crate::plan::execution::Signedness::Signed,
-        module::Signedness::Unsigned => crate::plan::execution::Signedness::Unsigned,
+        module::Signedness::Signed => crate::plan::execution::graph::Signedness::Signed,
+        module::Signedness::Unsigned => crate::plan::execution::graph::Signedness::Unsigned,
     }
 }
 
-fn lower_string_encoding(value: module::StringEncoding) -> crate::plan::execution::StringEncoding {
+fn lower_string_encoding(
+    value: module::StringEncoding,
+) -> crate::plan::execution::graph::StringEncoding {
     match value {
-        module::StringEncoding::Utf8 => crate::plan::execution::StringEncoding::Utf8,
+        module::StringEncoding::Utf8 => crate::plan::execution::graph::StringEncoding::Utf8,
         module::StringEncoding::Utf16(endianness) => {
-            crate::plan::execution::StringEncoding::Utf16(lower_endianness(endianness))
+            crate::plan::execution::graph::StringEncoding::Utf16(lower_endianness(endianness))
         }
         module::StringEncoding::Utf32(endianness) => {
-            crate::plan::execution::StringEncoding::Utf32(lower_endianness(endianness))
+            crate::plan::execution::graph::StringEncoding::Utf32(lower_endianness(endianness))
         }
     }
 }
