@@ -10,7 +10,7 @@ Gleam remains the source language. Geam starts after Gleam has produced a typed
 AST:
 
 ```text
-Gleam source -> Gleam TypedModule -> Geam ModulePlan -> Geam ExecutionPlan -> Geam runtime Value
+Gleam module sources -> Gleam TypedProgram -> Geam ModulePlan -> Geam ExecutionPlan -> Geam runtime Value
 ```
 
 The planner is the Geam profile validation boundary. Unsupported Gleam semantics
@@ -30,6 +30,12 @@ Use these categories consistently:
 lowering, not another validation boundary. Runtime code assumes it receives a
 valid `ExecutionPlan`. Structural execution failures belong in ModulePlan
 planning as `PlanError`, not in execution lowering or a runtime error enum.
+
+For a linked program, `ModulePlan` owns the root entry and all supplied module
+definitions. Planning must validate every supplied function and constant body,
+not only definitions reachable from the entry. Cross-module references retain
+module-qualified identities through specialization; raw import declarations
+and source aliases do not become plan or runtime state.
 
 The two plan layers own independent executable node families. `ModulePlan`
 owns canonical expressions, steps, returns, arguments, captures, and ids for

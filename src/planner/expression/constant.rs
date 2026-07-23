@@ -36,9 +36,9 @@ pub(in crate::planner::expression) fn plan(
             type_,
             ..
         } => plan_list(elements, tail.map(|tail| *tail), type_, context),
-        Constant::Var { constructor, .. } => {
-            plan_var(constructor.map(|constructor| *constructor), context)
-        }
+        Constant::Var {
+            name, constructor, ..
+        } => plan_var(name, constructor.map(|constructor| *constructor), context),
         Constant::Record {
             arguments,
             record_constructor,
@@ -217,6 +217,7 @@ fn plan_list(
 }
 
 fn plan_var(
+    name: ecow::EcoString,
     constructor: Option<ValueConstructor>,
     context: &PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
@@ -225,20 +226,27 @@ fn plan_var(
     };
 
     match constructor.variant {
-        ValueConstructorVariant::ModuleConstant {
-            module, literal, ..
-        } if module == *context.module_name => plan(literal, context),
+        ValueConstructorVariant::ModuleConstant { module, .. }
+            if context.module_is_linked(&module) =>
+        {
+            let shape = context.value_shape_in_scope(constructor.type_.as_ref());
+            context
+                .module_constant_expr(&module, &name, &shape)
+                .ok_or_else(|| PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::UnknownLocal { name },
+                })
+        }
         ValueConstructorVariant::ModuleFn {
             module,
             name,
             external_erlang,
             external_javascript,
             ..
-        } if module == *context.module_name
+        } if context.module_is_linked(&module)
             && external_erlang.is_none()
             && external_javascript.is_none() =>
         {
-            let Some(function) = context.lookup_function(&name) else {
+            let Some(function) = context.lookup_module_function(&module, &name) else {
                 return Err(PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::UnknownLocal { name },
                 });
@@ -349,9 +357,10 @@ fn plan_record_constructor(
             }
         }
     }
-    if module != context.module_name
-        && !(module == PRELUDE_MODULE_NAME && matches!(name.as_str(), "Ok" | "Error"))
-    {
+    if module == PRELUDE_MODULE_NAME && !matches!(name.as_str(), "Ok" | "Error") {
+        return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
+    }
+    if module != PRELUDE_MODULE_NAME && !context.module_is_linked(module) {
         return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
     }
     let Some(shape) = crate::plan::ValueShape::from_gleam(constructor.type_.as_ref()) else {
@@ -729,24 +738,6 @@ pub fn main() {
             ))),
         );
 
-        let mut constant_module = compile(
-            r#"
-const answer = 1
-pub fn main() { answer }
-"#,
-        );
-        let constant = main_var_constructor_mut(&mut constant_module).clone();
-        assert_eq!(
-            plan_constant_literal(Constant::Var {
-                location: dummy_span(),
-                module: None,
-                name: "answer".into(),
-                constructor: Some(Box::new(constant)),
-                type_: type_::int(),
-            }),
-            Ok(Expr::from(int(1))),
-        );
-
         let function_shape = FunctionShape::new(vec![ValueShape::Int], ValueShape::Int);
         let mut function_module = function_constant_module();
         let constructor = constant_definition_alias_constructor_mut(&mut function_module).clone();
@@ -772,7 +763,7 @@ pub fn main() { answer }
         let mut anonymous_functions = AnonymousFunctions::default();
         let context = PlanContext::new(&module_name, &functions, &mut anonymous_functions);
         assert_eq!(
-            plan_var(Some(constructor), &context),
+            plan_var("add_one".into(), Some(constructor), &context),
             Ok(Expr::function(crate::plan::FunctionExpr::reference(
                 FunctionReference::new(monomorphic_function_instantiation(0, function_shape)),
             ))),
@@ -835,10 +826,29 @@ pub fn main() { answer }
         let constructor = constant_definition_alias_constructor_mut(&mut function_module).clone();
 
         assert_eq!(
-            plan_var(Some(constructor.clone()), &context),
+            plan_var("add_one".into(), Some(constructor.clone()), &context),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::UnknownLocal {
                     name: "add_one".into(),
+                },
+            }),
+        );
+
+        let mut current_constant_module = compile(
+            r#"
+const answer = 1
+
+pub fn main() {
+  answer
+}
+"#,
+        );
+        let current_constant = main_var_constructor_mut(&mut current_constant_module).clone();
+        assert_eq!(
+            plan_var("answer".into(), Some(current_constant), &context),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::UnknownLocal {
+                    name: "answer".into(),
                 },
             }),
         );
@@ -847,7 +857,7 @@ pub fn main() { answer }
         *module_fn_constant_alias_module_mut(&mut external_module) = "other".into();
         let external = constant_definition_alias_constructor_mut(&mut external_module).clone();
         assert_eq!(
-            plan_var(Some(external), &context),
+            plan_var("add_one".into(), Some(external), &context),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
                     kind: InvalidExpressionShapeKind::ModuleSelect,

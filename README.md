@@ -20,19 +20,20 @@ Gleam source -> Geam execution plan -> Rust-embedded runtime
 ```
 
 Geam keeps Gleam as the source language. It uses Gleam's parser and
-analyse/infer pass, then lowers the supported executable surface of the
-resulting typed module into a Rust-owned plan.
+analyse/infer pass, then lowers the supported executable surface of an
+in-memory module graph into a Rust-owned plan.
 
 ```text
-Gleam source
--> Gleam typed module
+Gleam module sources
+-> Gleam typed program
 -> Geam module plan
 -> Geam execution plan
 -> Geam runtime value
 ```
 
 Unsupported execution semantics are rejected while planning from Gleam's typed
-AST, before runtime evaluation. The resulting `ModulePlan` is the canonical
+AST, before runtime evaluation. The resulting `ModulePlan` owns the root entry
+and every supplied module's validated definitions, and is the canonical
 inspectable planner output. Consuming it produces an opaque `ExecutionPlan` for
 runtime use rather than public raw AST data assembled by runtime callers. Its
 lowered control flow, typed values, instructions, and edge arguments remain
@@ -41,14 +42,18 @@ human-readable output rather than a stable serialization format.
 
 ## Status
 
-Geam is in an early runtime milestone. The current execution profile supports a
-small function-only surface for integers, strings, booleans, nil, local
-bindings, local calls, and basic operators.
+Geam is in an early runtime milestone. The current execution profile includes
+the core Gleam value families, local custom types, generics, patterns, records,
+functions, constants, and in-memory imports. Package loading, the Gleam
+standard library, and backend external functions or types are not runtime
+linkage surfaces.
 
 The main public entry points are:
 
 - `compile_typed_module`
+- `compile_typed_program`
 - `plan_module`
+- `plan_program`
 - `ExecutionPlan::explain`
 - `run_main`
 

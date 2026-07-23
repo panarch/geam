@@ -81,6 +81,7 @@ pub struct ConstantTemplate {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ConstantTemplates {
+    module: crate::plan::ModuleId,
     headers: Vec<ConstantTemplate>,
     generic_lists: Vec<ConstantGenericListValue>,
     ints: Vec<ConstantIntValue>,
@@ -582,8 +583,12 @@ impl ConstantTemplate {
 }
 
 impl ConstantTemplates {
-    pub(crate) fn from_entries(entries: Vec<(ConstantTemplate, ConstantValue)>) -> Self {
+    pub(crate) fn from_module_entries(
+        module: crate::plan::ModuleId,
+        entries: Vec<(ConstantTemplate, ConstantValue)>,
+    ) -> Self {
         let mut templates = Self {
+            module,
             headers: Vec::with_capacity(entries.len()),
             generic_lists: Vec::new(),
             ints: Vec::new(),
@@ -627,8 +632,17 @@ impl ConstantTemplates {
     }
 
     #[cfg(test)]
+    pub(crate) fn from_entries(entries: Vec<(ConstantTemplate, ConstantValue)>) -> Self {
+        Self::from_module_entries(crate::plan::ModuleId::root(), entries)
+    }
+
+    #[cfg(test)]
     pub(crate) fn empty() -> Self {
         Self::from_entries(Vec::new())
+    }
+
+    fn owns(&self, module: crate::plan::ModuleId) -> bool {
+        self.module == module
     }
 
     pub(crate) fn headers(&self) -> &[ConstantTemplate] {
@@ -909,6 +923,9 @@ impl ConstantTemplates {
     }
 
     pub(crate) fn materialize_int(&self, value: &ConstantIntInstantiation) -> IntExpr {
+        if !self.owns(value.module()) {
+            return IntExpr::constant(ConstantIntReference(value.clone()));
+        }
         self.materialize_int_value(self.int(value.template()), value.substitution())
     }
 
@@ -926,6 +943,9 @@ impl ConstantTemplates {
     }
 
     pub(crate) fn materialize_float(&self, value: &ConstantFloatInstantiation) -> FloatExpr {
+        if !self.owns(value.module()) {
+            return FloatExpr::constant(ConstantFloatReference(value.clone()));
+        }
         self.materialize_float_value(self.float(value.template()), value.substitution())
     }
 
@@ -943,6 +963,9 @@ impl ConstantTemplates {
     }
 
     pub(crate) fn materialize_string(&self, value: &ConstantStringInstantiation) -> StringExpr {
+        if !self.owns(value.module()) {
+            return StringExpr::constant(ConstantStringReference(value.clone()));
+        }
         self.materialize_string_value(self.string(value.template()), value.substitution())
     }
 
@@ -964,6 +987,9 @@ impl ConstantTemplates {
     }
 
     pub(crate) fn materialize_bool(&self, value: &ConstantBoolInstantiation) -> BoolExpr {
+        if !self.owns(value.module()) {
+            return BoolExpr::constant(ConstantBoolReference(value.clone()));
+        }
         self.materialize_bool_value(self.bool(value.template()), value.substitution())
     }
 
@@ -981,6 +1007,9 @@ impl ConstantTemplates {
     }
 
     pub(crate) fn materialize_nil(&self, value: &ConstantNilInstantiation) -> NilExpr {
+        if !self.owns(value.module()) {
+            return NilExpr::constant(ConstantNilReference(value.clone()));
+        }
         self.materialize_nil_value(self.nil(value.template()), value.substitution())
     }
 
@@ -998,6 +1027,9 @@ impl ConstantTemplates {
     }
 
     pub(crate) fn materialize_tuple(&self, value: &ConstantTupleInstantiation) -> TupleExpr {
+        if !self.owns(value.module()) {
+            return TupleExpr::constant(ConstantTupleReference(value.clone()));
+        }
         self.materialize_tuple_value(self.tuple(value.template()), value.substitution())
     }
 
@@ -1033,6 +1065,9 @@ impl ConstantTemplates {
         &self,
         value: &ConstantBitArrayInstantiation,
     ) -> BitArrayExpr {
+        if !self.owns(value.module()) {
+            return BitArrayExpr::constant(ConstantBitArrayReference(value.clone()));
+        }
         self.materialize_bit_array_value(self.bit_array(value.template()), value.substitution())
     }
 
@@ -1098,6 +1133,9 @@ impl ConstantTemplates {
     }
 
     pub(crate) fn materialize_custom(&self, value: &ConstantCustomInstantiation) -> CustomExpr {
+        if !self.owns(value.module()) {
+            return CustomExpr::constant(ConstantCustomReference(value.clone()));
+        }
         self.materialize_custom_value(self.custom(value.template()), value.substitution())
     }
 
@@ -1729,6 +1767,14 @@ impl ConstantTemplates {
         &self,
         value: &ConstantGenericListInstantiation,
     ) -> GenericListExpr {
+        if !self.owns(value.module()) {
+            let parameter = *value.item_shape();
+            return GenericListExpr::constant(
+                ValueShape::Parameter(parameter),
+                GenericListItem::new(parameter),
+                value.clone(),
+            );
+        }
         self.materialize_generic_parameter_list(
             self.generic_list(*value.source()),
             value.substitution(),
@@ -1922,12 +1968,7 @@ impl ConstantTemplates {
                     .with_item_shape(ValueShape::Parameter(parameter))
             }
             ConstantGenericListValueKind::Reference(value) => {
-                let substitution = value.substitution().substitute(substitution);
-                self.materialize_generic_parameter_list(
-                    self.generic_list(*value.source()),
-                    &substitution,
-                    parameter,
-                )
+                self.materialize_generic_list(&value.retarget_generic(substitution, parameter))
             }
         }
     }
@@ -1942,8 +1983,7 @@ impl ConstantTemplates {
                 IntListExpr::value(IntListItem, Vec::new()).with_item_shape(ValueShape::Int)
             }
             ConstantGenericListValueKind::Reference(value) => {
-                let substitution = value.substitution().substitute(substitution);
-                self.materialize_generic_int_list(self.generic_list(*value.source()), &substitution)
+                self.materialize_int_list(&value.retarget(substitution, ()))
             }
         }
     }
@@ -1959,11 +1999,7 @@ impl ConstantTemplates {
                     .with_item_shape(ValueShape::String)
             }
             ConstantGenericListValueKind::Reference(value) => {
-                let substitution = value.substitution().substitute(substitution);
-                self.materialize_generic_string_list(
-                    self.generic_list(*value.source()),
-                    &substitution,
-                )
+                self.materialize_string_list(&value.retarget(substitution, ()))
             }
         }
     }
@@ -1979,11 +2015,7 @@ impl ConstantTemplates {
                     .with_item_shape(ValueShape::BitArray)
             }
             ConstantGenericListValueKind::Reference(value) => {
-                let substitution = value.substitution().substitute(substitution);
-                self.materialize_generic_bit_array_list(
-                    self.generic_list(*value.source()),
-                    &substitution,
-                )
+                self.materialize_bit_array_list(&value.retarget(substitution, ()))
             }
         }
     }
@@ -1999,11 +2031,7 @@ impl ConstantTemplates {
                     .with_item_shape(ValueShape::UtfCodepoint)
             }
             ConstantGenericListValueKind::Reference(value) => {
-                let substitution = value.substitution().substitute(substitution);
-                self.materialize_generic_utf_codepoint_list(
-                    self.generic_list(*value.source()),
-                    &substitution,
-                )
+                self.materialize_utf_codepoint_list(&value.retarget(substitution, ()))
             }
         }
     }
@@ -2020,12 +2048,7 @@ impl ConstantTemplates {
                     .with_item_shape(ValueShape::Custom(shape.clone()))
             }
             ConstantGenericListValueKind::Reference(value) => {
-                let substitution = value.substitution().substitute(substitution);
-                self.materialize_generic_custom_list(
-                    self.generic_list(*value.source()),
-                    &substitution,
-                    shape,
-                )
+                self.materialize_custom_list(&value.retarget(substitution, shape.clone()))
             }
         }
     }
@@ -2040,11 +2063,7 @@ impl ConstantTemplates {
                 FloatListExpr::value(FloatListItem, Vec::new()).with_item_shape(ValueShape::Float)
             }
             ConstantGenericListValueKind::Reference(value) => {
-                let substitution = value.substitution().substitute(substitution);
-                self.materialize_generic_float_list(
-                    self.generic_list(*value.source()),
-                    &substitution,
-                )
+                self.materialize_float_list(&value.retarget(substitution, ()))
             }
         }
     }
@@ -2059,11 +2078,7 @@ impl ConstantTemplates {
                 BoolListExpr::value(BoolListItem, Vec::new()).with_item_shape(ValueShape::Bool)
             }
             ConstantGenericListValueKind::Reference(value) => {
-                let substitution = value.substitution().substitute(substitution);
-                self.materialize_generic_bool_list(
-                    self.generic_list(*value.source()),
-                    &substitution,
-                )
+                self.materialize_bool_list(&value.retarget(substitution, ()))
             }
         }
     }
@@ -2078,8 +2093,7 @@ impl ConstantTemplates {
                 NilListExpr::value(NilListItem, Vec::new()).with_item_shape(ValueShape::Nil)
             }
             ConstantGenericListValueKind::Reference(value) => {
-                let substitution = value.substitution().substitute(substitution);
-                self.materialize_generic_nil_list(self.generic_list(*value.source()), &substitution)
+                self.materialize_nil_list(&value.retarget(substitution, ()))
             }
         }
     }
@@ -2096,14 +2110,9 @@ impl ConstantTemplates {
                 Vec::new(),
             )
             .with_item_shape(ValueShape::Tuple(shape.to_vec().into_boxed_slice())),
-            ConstantGenericListValueKind::Reference(value) => {
-                let substitution = value.substitution().substitute(substitution);
-                self.materialize_generic_tuple_list(
-                    self.generic_list(*value.source()),
-                    &substitution,
-                    shape,
-                )
-            }
+            ConstantGenericListValueKind::Reference(value) => self.materialize_tuple_list(
+                &value.retarget(substitution, shape.to_vec().into_boxed_slice()),
+            ),
         }
     }
 
@@ -2119,12 +2128,7 @@ impl ConstantTemplates {
                     .with_item_shape(ValueShape::List(Box::new(shape.to_value_shape())))
             }
             ConstantGenericListValueKind::Reference(value) => {
-                let substitution = value.substitution().substitute(substitution);
-                self.materialize_generic_list_list(
-                    self.generic_list(*value.source()),
-                    &substitution,
-                    shape,
-                )
+                self.materialize_list_list(&value.retarget_nested(substitution, shape.clone()))
             }
         }
     }
@@ -2142,12 +2146,7 @@ impl ConstantTemplates {
             )
             .with_item_shape(ValueShape::List(Box::new(ValueShape::Parameter(parameter)))),
             ConstantGenericListValueKind::Reference(value) => {
-                let substitution = value.substitution().substitute(substitution);
-                self.materialize_generic_parameter_list_list(
-                    self.generic_list(*value.source()),
-                    &substitution,
-                    parameter,
-                )
+                self.materialize_parameter_list_list(&value.retarget(substitution, parameter))
             }
         }
     }
@@ -2164,17 +2163,15 @@ impl ConstantTemplates {
                     .with_item_shape(ValueShape::Function(Box::new(shape.clone())))
             }
             ConstantGenericListValueKind::Reference(value) => {
-                let substitution = value.substitution().substitute(substitution);
-                self.materialize_generic_function_list(
-                    self.generic_list(*value.source()),
-                    &substitution,
-                    shape,
-                )
+                self.materialize_function_list(&value.retarget(substitution, shape.clone()))
             }
         }
     }
 
     pub(crate) fn materialize_int_list(&self, value: &ConstantIntListInstantiation) -> IntListExpr {
+        if !self.owns(value.module()) {
+            return IntListExpr::constant(ValueShape::Int, IntListItem, value.clone());
+        }
         match value.source() {
             ConstantListTemplateSource::Generic(source) => {
                 self.materialize_generic_int_list(self.generic_list(*source), value.substitution())
@@ -2212,6 +2209,9 @@ impl ConstantTemplates {
         &self,
         value: &ConstantStringListInstantiation,
     ) -> StringListExpr {
+        if !self.owns(value.module()) {
+            return StringListExpr::constant(ValueShape::String, StringListItem, value.clone());
+        }
         match value.source() {
             ConstantListTemplateSource::Generic(source) => self
                 .materialize_generic_string_list(self.generic_list(*source), value.substitution()),
@@ -2248,6 +2248,13 @@ impl ConstantTemplates {
         &self,
         value: &ConstantBitArrayListInstantiation,
     ) -> BitArrayListExpr {
+        if !self.owns(value.module()) {
+            return BitArrayListExpr::constant(
+                ValueShape::BitArray,
+                BitArrayListItem,
+                value.clone(),
+            );
+        }
         match value.source() {
             ConstantListTemplateSource::Generic(source) => self.materialize_generic_bit_array_list(
                 self.generic_list(*source),
@@ -2287,6 +2294,13 @@ impl ConstantTemplates {
         &self,
         value: &ConstantUtfCodepointListInstantiation,
     ) -> UtfCodepointListExpr {
+        if !self.owns(value.module()) {
+            return UtfCodepointListExpr::constant(
+                ValueShape::UtfCodepoint,
+                UtfCodepointListItem,
+                value.clone(),
+            );
+        }
         match value.source() {
             ConstantListTemplateSource::Generic(source) => self
                 .materialize_generic_utf_codepoint_list(
@@ -2319,6 +2333,14 @@ impl ConstantTemplates {
         &self,
         value: &ConstantCustomListInstantiation,
     ) -> CustomListExpr {
+        if !self.owns(value.module()) {
+            let shape = value.item_shape().clone();
+            return CustomListExpr::constant(
+                ValueShape::Custom(shape.clone()),
+                CustomListItem::new(shape.type_().clone()),
+                value.clone(),
+            );
+        }
         match value.source() {
             ConstantListTemplateSource::Generic(source) => self.materialize_generic_custom_list(
                 self.generic_list(*source),
@@ -2361,6 +2383,9 @@ impl ConstantTemplates {
         &self,
         value: &ConstantFloatListInstantiation,
     ) -> FloatListExpr {
+        if !self.owns(value.module()) {
+            return FloatListExpr::constant(ValueShape::Float, FloatListItem, value.clone());
+        }
         match value.source() {
             ConstantListTemplateSource::Generic(source) => self
                 .materialize_generic_float_list(self.generic_list(*source), value.substitution()),
@@ -2397,6 +2422,9 @@ impl ConstantTemplates {
         &self,
         value: &ConstantBoolListInstantiation,
     ) -> BoolListExpr {
+        if !self.owns(value.module()) {
+            return BoolListExpr::constant(ValueShape::Bool, BoolListItem, value.clone());
+        }
         match value.source() {
             ConstantListTemplateSource::Generic(source) => {
                 self.materialize_generic_bool_list(self.generic_list(*source), value.substitution())
@@ -2431,6 +2459,9 @@ impl ConstantTemplates {
     }
 
     pub(crate) fn materialize_nil_list(&self, value: &ConstantNilListInstantiation) -> NilListExpr {
+        if !self.owns(value.module()) {
+            return NilListExpr::constant(ValueShape::Nil, NilListItem, value.clone());
+        }
         match value.source() {
             ConstantListTemplateSource::Generic(source) => {
                 self.materialize_generic_nil_list(self.generic_list(*source), value.substitution())
@@ -2468,6 +2499,14 @@ impl ConstantTemplates {
         &self,
         value: &ConstantTupleListInstantiation,
     ) -> TupleListExpr {
+        if !self.owns(value.module()) {
+            let shape = value.item_shape().clone();
+            return TupleListExpr::constant(
+                ValueShape::Tuple(shape.clone()),
+                TupleListItem::new(shape.iter().map(ValueShape::value_type).collect()),
+                value.clone(),
+            );
+        }
         match value.source() {
             ConstantListTemplateSource::Generic(source) => self.materialize_generic_tuple_list(
                 self.generic_list(*source),
@@ -2516,6 +2555,14 @@ impl ConstantTemplates {
         &self,
         value: &ConstantParameterListListInstantiation,
     ) -> ParameterListListExpr {
+        if !self.owns(value.module()) {
+            let parameter = *value.item_shape();
+            return ParameterListListExpr::constant(
+                ValueShape::List(Box::new(ValueShape::Parameter(parameter))),
+                ParameterListListItem::new(parameter),
+                value.clone(),
+            );
+        }
         match value.source() {
             ConstantListTemplateSource::Generic(source) => self
                 .materialize_generic_parameter_list_list(
@@ -2659,6 +2706,14 @@ impl ConstantTemplates {
         &self,
         value: &ConstantListListInstantiation,
     ) -> ListListExpr {
+        if !self.owns(value.module()) {
+            let shape = value.item_shape().clone();
+            return ListListExpr::constant(
+                ValueShape::List(Box::new(shape.to_value_shape())),
+                ListListItem::new(shape),
+                value.clone(),
+            );
+        }
         match value.source() {
             ConstantNestedListTemplateSource::Generic(source) => self
                 .materialize_generic_list_list(
@@ -2709,6 +2764,14 @@ impl ConstantTemplates {
         &self,
         value: &ConstantFunctionListInstantiation,
     ) -> FunctionListExpr {
+        if !self.owns(value.module()) {
+            let shape = value.item_shape().clone();
+            return FunctionListExpr::constant(
+                ValueShape::Function(Box::new(shape.clone())),
+                FunctionListItem::new(shape.type_()),
+                value.clone(),
+            );
+        }
         match value.source() {
             ConstantListTemplateSource::Generic(source) => self.materialize_generic_function_list(
                 self.generic_list(*source),
@@ -3705,12 +3768,46 @@ mod tests {
         CustomConstructorRefinement, CustomExpr, CustomTypeName, CustomValueShape, Endianness,
         Expr, FloatBitSize, FloatExpr, FloatListExpr, FloatListItem, FunctionExpr,
         FunctionListExpr, FunctionListItem, FunctionReference, FunctionShape, IntExpr, ListExpr,
-        ListListExpr, ListListItem, NilExpr, NilListExpr, NilListItem, PanicSite,
+        ListListExpr, ListListItem, ModuleId, NilExpr, NilListExpr, NilListItem, PanicSite,
         ParameterListListExpr, ParameterListListItem, StoredListExpr, StringEncoding, StringExpr,
         StringListExpr, StringListItem, TupleExpr, TupleListExpr, TupleListItem, TypeParameterId,
         TypeScheme, TypeSubstitution, UtfCodepointListExpr, UtfCodepointListItem, ValueShape,
         ValueStorageShape, ValueType, monomorphic_function_instantiation,
     };
+
+    #[test]
+    fn local_constant_alias_materialization_preserves_foreign_owner() {
+        let scheme = TypeScheme::new(0);
+        let root_signature = ConstantTemplateSignature::int(
+            ConstantTemplateId::in_module(ModuleId::root(), 0),
+            0,
+            scheme,
+        );
+        let foreign = TypedConstantInstantiation::in_module(
+            ModuleId::new(1),
+            ConstantIntTemplateId(0),
+            TypeSubstitution::from_arguments(Vec::new()),
+            (),
+        );
+        let local = TypedConstantInstantiation::in_module(
+            ModuleId::root(),
+            ConstantIntTemplateId(0),
+            TypeSubstitution::from_arguments(Vec::new()),
+            (),
+        );
+        let templates = ConstantTemplates::from_module_entries(
+            ModuleId::root(),
+            vec![(
+                ConstantTemplate::new(root_signature, "alias".into()),
+                ConstantValue::reference(ConstantInstantiation::from_int(foreign.clone())),
+            )],
+        );
+
+        assert_eq!(
+            templates.materialize_int(&local),
+            IntExpr::constant(super::ConstantIntReference(foreign)),
+        );
+    }
 
     #[test]
     fn constant_references_materialize_every_top_level_family() {

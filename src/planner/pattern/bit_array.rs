@@ -290,8 +290,16 @@ fn plan_size_variable(
             }),
         },
         ValueConstructorVariant::ModuleConstant {
-            module, literal, ..
-        } if module == *context.module_name => plan_size_constant(literal, context),
+            module,
+            name: constant_name,
+            literal,
+            ..
+        } if context
+            .module_constant_instantiation(&module, &constant_name, &crate::plan::ValueShape::Int)
+            .is_some() =>
+        {
+            plan_size_constant(literal, context)
+        }
         _ => Err(invalid_pattern()),
     }
 }
@@ -1373,66 +1381,6 @@ pub fn main() {
     }
 
     #[test]
-    fn plan_bit_array_pattern_size_module_constant_aliases() {
-        let module = compile(
-            r#"
-const size = 8
-const alias = size
-pub fn main() { 0 }
-"#,
-        );
-        let module_constant = |name: &str, module_name: &str, literal| {
-            let constant = module
-                .definitions
-                .constants
-                .iter()
-                .find(|constant| constant.name == name)
-                .expect("module constant should exist");
-
-            ValueConstructor {
-                publicity: constant.publicity,
-                deprecation: constant.deprecation.clone(),
-                type_: constant.type_.clone(),
-                variant: ValueConstructorVariant::ModuleConstant {
-                    documentation: None,
-                    location: constant.location,
-                    module: module_name.into(),
-                    name: name.into(),
-                    literal,
-                    implementations: constant.implementations,
-                },
-            }
-        };
-        let constant_value = |name: &str| {
-            module
-                .definitions
-                .constants
-                .iter()
-                .find(|constant| constant.name == name)
-                .expect("module constant should exist")
-                .value
-                .as_ref()
-                .clone()
-        };
-        let direct = module_constant("size", "main", constant_value("size"));
-        let alias = module_constant("alias", "main", constant_value("alias"));
-
-        let module_name = "main".into();
-        let functions = std::collections::HashMap::new();
-        let mut anonymous = AnonymousFunctions::default();
-        let context = PlanContext::new(&module_name, &functions, &mut anonymous);
-
-        assert_eq!(
-            super::plan_size_variable("size".into(), direct, &context),
-            Ok(BitArrayPatternSizeExpr::value(8.into())),
-        );
-        assert_eq!(
-            super::plan_size_variable("alias".into(), alias, &context),
-            Ok(BitArrayPatternSizeExpr::value(8.into())),
-        );
-    }
-
-    #[test]
     fn reject_margin_bit_array_pattern_size_invalid_constant_constructors() {
         let module = compile(
             r#"
@@ -1509,6 +1457,29 @@ pub fn main() { 0 }
         );
         assert_eq!(
             super::plan_size_variable("external".into(), external, &context),
+            Err(super::invalid_pattern()),
+        );
+        assert_eq!(
+            super::plan_size_constant(
+                Constant::String {
+                    location: dummy_span(),
+                    value: "wrong".into(),
+                },
+                &context,
+            ),
+            Err(super::invalid_pattern()),
+        );
+        assert_eq!(
+            super::plan_size_constant(
+                Constant::Var {
+                    location: dummy_span(),
+                    module: None,
+                    name: "missing".into(),
+                    constructor: None,
+                    type_: type_::int(),
+                },
+                &context,
+            ),
             Err(super::invalid_pattern()),
         );
     }

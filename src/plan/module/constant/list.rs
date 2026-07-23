@@ -690,6 +690,47 @@ impl<Source, Shape> TypedConstantListInstantiation<Source, Shape> {
     }
 }
 
+impl TypedConstantListInstantiation<ConstantGenericListTemplateId, TypeParameterId> {
+    pub(super) fn retarget<Id, Shape>(
+        &self,
+        outer: &TypeSubstitution,
+        item_shape: Shape,
+    ) -> TypedConstantListInstantiation<ConstantListTemplateSource<Id>, Shape> {
+        TypedConstantListInstantiation::in_module(
+            self.module,
+            ConstantListTemplateSource::Generic(self.source),
+            self.substitution.substitute(outer),
+            item_shape,
+        )
+    }
+
+    pub(super) fn retarget_generic(
+        &self,
+        outer: &TypeSubstitution,
+        parameter: TypeParameterId,
+    ) -> Self {
+        TypedConstantListInstantiation::in_module(
+            self.module,
+            self.source,
+            self.substitution.substitute(outer),
+            parameter,
+        )
+    }
+
+    pub(super) fn retarget_nested(
+        &self,
+        outer: &TypeSubstitution,
+        item_shape: ValueStorageShape,
+    ) -> ConstantListListInstantiation {
+        TypedConstantListInstantiation::in_module(
+            self.module,
+            ConstantNestedListTemplateSource::Generic(self.source),
+            self.substitution.substitute(outer),
+            item_shape,
+        )
+    }
+}
+
 impl<Id: Copy> TypedConstantListInstantiation<ConstantListTemplateSource<Id>, ()> {
     pub(super) fn substitute_leaf(&self, outer: &TypeSubstitution) -> Self {
         Self::in_module(

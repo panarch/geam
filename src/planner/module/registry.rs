@@ -8,6 +8,7 @@ use ecow::EcoString;
 use std::collections::HashMap;
 
 pub(in crate::planner) struct ProgramRegistry {
+    by_name: HashMap<EcoString, ModuleId>,
     modules: Vec<ModuleRegistry>,
 }
 
@@ -20,35 +21,51 @@ pub(in crate::planner) struct ModuleRegistry {
 
 impl ProgramRegistry {
     pub(in crate::planner) fn new(modules: Vec<ModuleRegistry>) -> Self {
-        Self { modules }
+        let by_name = modules
+            .iter()
+            .enumerate()
+            .map(|(index, module)| (module.name.clone(), ModuleId::new(index)))
+            .collect();
+        Self { by_name, modules }
     }
 
     pub(in crate::planner) fn module_name(&self, module: ModuleId) -> &EcoString {
         &self.modules[module.index()].name
     }
 
+    pub(in crate::planner) fn module_id(&self, module: &EcoString) -> Option<ModuleId> {
+        self.by_name.get(module).copied()
+    }
+
     pub(in crate::planner) fn function(
         &self,
-        module: ModuleId,
+        module: &EcoString,
         name: &EcoString,
     ) -> Option<FunctionInfo> {
+        let module = self.module_id(module)?;
         self.modules[module.index()].functions.get(name).cloned()
     }
 
     pub(in crate::planner) fn constant_expr(
         &self,
-        module: ModuleId,
+        module: &EcoString,
         name: &EcoString,
         shape: &ValueShape,
     ) -> Option<crate::plan::Expr> {
-        self.modules[module.index()]
-            .constants
-            .instantiate(name, shape)
+        self.constant_instantiation(module, name, shape)
             .map(ConstantTemplates::reference)
     }
 
-    pub(in crate::planner) fn constant_signatures(&self, module: ModuleId) -> &ConstantSignatures {
-        &self.modules[module.index()].constants
+    pub(in crate::planner) fn constant_instantiation(
+        &self,
+        module: &EcoString,
+        name: &EcoString,
+        shape: &ValueShape,
+    ) -> Option<crate::plan::ConstantInstantiation> {
+        let module = self.module_id(module)?;
+        self.modules[module.index()]
+            .constants
+            .instantiate(name, shape)
     }
 
     pub(in crate::planner) fn constant_signature(
@@ -124,24 +141,55 @@ mod tests {
 
         assert_eq!(registry.module_name(alpha), "alpha");
         assert_eq!(registry.module_name(root), "root");
+        assert_eq!(registry.module_id(&"alpha".into()), Some(alpha));
+        assert_eq!(registry.module_id(&"root".into()), Some(root));
+        assert_eq!(registry.module_id(&"missing".into()), None);
         assert_eq!(
             registry
-                .function(alpha, &"same".into())
-                .map(|info| info.signature.id()),
+                .function(&"alpha".into(), &"same".into())
+                .map(function_template_id),
             Some(FunctionTemplateId::in_module(alpha, 0)),
         );
         assert_eq!(
             registry
-                .function(root, &"same".into())
-                .map(|info| info.signature.id()),
+                .function(&"root".into(), &"same".into())
+                .map(function_template_id),
             Some(FunctionTemplateId::in_module(root, 0)),
+        );
+        assert_eq!(
+            registry
+                .function(&"missing".into(), &"same".into())
+                .map(function_template_id),
+            None,
+        );
+        assert_eq!(
+            registry
+                .function(&"root".into(), &"missing".into())
+                .map(function_template_id),
+            None,
         );
         assert_eq!(registry.custom_type(alpha_type.name()), Some(&alpha_type),);
         assert_eq!(registry.custom_type(root_type.name()), Some(&root_type));
         assert_eq!(
-            registry.constant_expr(root, &"missing".into(), &ValueShape::Int),
+            registry.custom_type(&CustomTypeName::new(
+                "geam".into(),
+                "missing".into(),
+                "Box".into(),
+            )),
             None,
         );
+        assert_eq!(
+            registry.constant_expr(&"root".into(), &"missing".into(), &ValueShape::Int),
+            None,
+        );
+        assert_eq!(
+            registry.constant_expr(&"missing".into(), &"value".into(), &ValueShape::Int),
+            None,
+        );
+    }
+
+    fn function_template_id(info: FunctionInfo) -> FunctionTemplateId {
+        info.signature.id()
     }
 
     fn function_info(module: ModuleId) -> FunctionInfo {

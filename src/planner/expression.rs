@@ -99,11 +99,12 @@ pub(super) fn plan_expr(
                 kind: InvalidExpressionShapeKind::PositionalAccess,
             },
         }),
-        TypedExpr::ModuleSelect { .. } => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::ModuleSelect,
-            },
-        }),
+        TypedExpr::ModuleSelect {
+            module_name,
+            label,
+            constructor,
+            ..
+        } => var::plan_module_select(module_name, label, constructor, shape.clone(), context),
         TypedExpr::Todo {
             location,
             type_,

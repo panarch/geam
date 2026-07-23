@@ -6,7 +6,6 @@ use crate::plan::{
 use crate::planner::context::{AnonymousFunctions, FunctionInfo, FunctionParam};
 use crate::planner::error::{
     InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedFunctionReason,
-    UnsupportedTopLevelKind,
 };
 use crate::planner::function::{function_name, plan_function};
 use crate::planner::type_parameter::TypeParameterScope;
@@ -104,11 +103,6 @@ fn plan_modules(root_index: usize, modules: Vec<ModuleInput>) -> Result<ModulePl
         let id = ModuleId::new(index);
         let package = module.module.type_info.package.clone();
         let definitions = module.module.definitions;
-        if !definitions.imports.is_empty() {
-            return Err(PlanError::UnsupportedTopLevel {
-                kind: UnsupportedTopLevelKind::Import,
-            });
-        }
         let module_name = module.module.name;
         let custom_types =
             custom_type::plan_custom_types(&package, &module_name, definitions.custom_types)?;
@@ -705,26 +699,28 @@ impl FunctionParamLocalCounters {
 mod tests {
     use super::{plan_module, plan_program};
     use crate::frontend::{ModuleSource, compile_typed_program};
+    use crate::plan::module::{ReturnBodyKind, ReturnExprKind};
     use crate::plan::{
         BitArrayListLocalId, BoolListLocalId, ConstantTemplate, ConstantTemplateId,
         ConstantTemplateSignature, ConstantTemplates, ConstantValue, CustomConstructorDefinition,
         CustomFieldDefinition, CustomLocalId, CustomType, CustomTypeDefinition, CustomTypeName,
-        CustomTypePublicity, CustomTypeTemplate, FloatListLocalId, FunctionFunctionId,
-        FunctionListLocalId, FunctionType, GenericExpr, GenericFunctionLocal,
-        GenericFunctionLocalId, GenericFunctionType, GenericListLocalId, GenericLocal,
-        GenericLocalId, IntFunctionFunctionId, IntFunctionId, IntListLocalId, IntLocalId,
-        ListListLocalId, ListLocal, LocalId, NilListLocalId, PanicExpr, PanicSite, Param,
+        CustomTypePublicity, CustomTypeTemplate, Expr, ExprKind, FloatListLocalId,
+        FunctionExprKind, FunctionFunctionId, FunctionListLocalId, FunctionTemplateId,
+        FunctionType, GenericExpr, GenericFunctionLocal, GenericFunctionLocalId,
+        GenericFunctionType, GenericListLocalId, GenericLocal, GenericLocalId, IntExprKind,
+        IntFunctionExprKind, IntFunctionFunctionId, IntFunctionId, IntListLocalId, IntLocalId,
+        ListListLocalId, ListLocal, LocalId, ModuleId, NilListLocalId, PanicExpr, PanicSite, Param,
         ParamLocal, ReturnBody, ReturnExpr, RuntimeFunctionId, SourceSpan, StringListLocalId,
-        TupleListLocalId, TypeParameterId, TypeScheme, ValueShape, ValueType,
+        TupleExprKind, TupleListLocalId, TypeParameterId, TypeScheme, ValueShape, ValueType,
     };
     use crate::planner::dsl::{
         call_int, call_int_returning_function, function, function_ref, int, int_arg,
-        int_return_tail_call, local_int, module,
+        int_function_closure, int_return_tail_call, local_int, module, string, string_function_ref,
     };
     use crate::planner::support::{compile, expect_plan_error};
     use crate::planner::{
         InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
-        UnsupportedFunctionReason, UnsupportedTopLevelKind,
+        UnsupportedFunctionReason,
     };
     use gleam_core::type_;
 
@@ -898,6 +894,156 @@ pub fn main() {
         );
         assert_eq!(alpha.functions()[0].id().module(), alpha.id());
         assert_eq!(root.functions()[1].id().module(), root.id());
+    }
+
+    #[test]
+    fn plan_program_resolves_qualified_and_unqualified_imports_to_dependency_ids() {
+        let dependency_source = r#"
+pub const answer = 42
+
+pub fn identity(value: Int) {
+  value
+}
+"#;
+        let main_sources = [
+            r#"
+import support
+
+pub fn main() {
+  #(
+    support.answer,
+    support.identity(1),
+    support.identity,
+  )
+}
+"#,
+            r#"
+import support.{answer, identity}
+
+pub fn main() {
+  #(
+    answer,
+    identity(1),
+    identity,
+  )
+}
+"#,
+        ];
+
+        for main_source in main_sources {
+            let typed = compile_typed_program(
+                "main",
+                [
+                    ModuleSource::new("support", "support.gleam", dependency_source),
+                    ModuleSource::new("main", "main.gleam", main_source),
+                ],
+            )
+            .expect("imported references should compile");
+            let plan = plan_program(typed).expect("imported references should plan");
+            let dependency = ModuleId::new(0);
+            let elements = imported_tuple_elements(&plan);
+
+            assert_eq!(imported_constant_module(&elements[0]), dependency);
+            assert_eq!(
+                imported_call_template(&elements[1]),
+                FunctionTemplateId::in_module(dependency, 0),
+            );
+            assert_eq!(
+                imported_function_template(&elements[2]),
+                FunctionTemplateId::in_module(dependency, 0),
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "main should return a tuple")]
+    fn imported_tuple_elements_rejects_non_tuple_returns() {
+        let plan = plan_module(compile("pub fn main() { 1 }")).expect("source should plan");
+
+        imported_tuple_elements(&plan);
+    }
+
+    #[test]
+    #[should_panic(expected = "main should directly return its tuple")]
+    fn imported_tuple_elements_rejects_control_flow_bodies() {
+        let plan = plan_module(compile(
+            r#"
+pub fn main() {
+  case True {
+    True -> #(1)
+    False -> #(2)
+  }
+}
+"#,
+        ))
+        .expect("source should plan");
+
+        imported_tuple_elements(&plan);
+    }
+
+    #[test]
+    #[should_panic(expected = "main should construct its tuple")]
+    fn imported_tuple_elements_rejects_tuple_locals() {
+        let plan = plan_module(compile(
+            r#"
+pub fn main() {
+  let value = #(1)
+  value
+}
+"#,
+        ))
+        .expect("source should plan");
+
+        imported_tuple_elements(&plan);
+    }
+
+    #[test]
+    #[should_panic(expected = "imported constant should be an Int expression")]
+    fn imported_constant_module_rejects_other_families() {
+        imported_constant_module(&Expr::from(string("wrong")));
+    }
+
+    #[test]
+    #[should_panic(expected = "imported constant should retain a constant reference")]
+    fn imported_constant_module_rejects_int_literals() {
+        imported_constant_module(&Expr::from(int(1)));
+    }
+
+    #[test]
+    #[should_panic(expected = "imported call should be an Int expression")]
+    fn imported_call_template_rejects_other_families() {
+        imported_call_template(&Expr::from(string("wrong")));
+    }
+
+    #[test]
+    #[should_panic(expected = "imported function call should remain direct")]
+    fn imported_call_template_rejects_int_literals() {
+        imported_call_template(&Expr::from(int(1)));
+    }
+
+    #[test]
+    #[should_panic(expected = "imported function value should be a function expression")]
+    fn imported_function_template_rejects_non_functions() {
+        imported_function_template(&Expr::from(int(1)));
+    }
+
+    #[test]
+    #[should_panic(expected = "imported function should return Int")]
+    fn imported_function_template_rejects_other_return_families() {
+        imported_function_template(&Expr::from(string_function_ref(
+            0,
+            Vec::<ParamLocal>::new(),
+        )));
+    }
+
+    #[test]
+    #[should_panic(expected = "imported function value should remain a reference")]
+    fn imported_function_template_rejects_closures() {
+        imported_function_template(&Expr::from(int_function_closure(
+            0,
+            Vec::<ParamLocal>::new(),
+            Vec::<crate::plan::CaptureArg>::new(),
+        )));
     }
 
     #[test]
@@ -1791,27 +1937,55 @@ pub fn main() { 1 }
         assert_eq!(
             plan_module(module),
             Err(PlanError::UnsupportedTopLevel {
-                kind: UnsupportedTopLevelKind::ExternalCustomType,
+                kind: crate::planner::UnsupportedTopLevelKind::ExternalCustomType,
             }),
         );
     }
 
-    #[test]
-    fn reject_profile_import_definition() {
-        assert_eq!(
-            expect_plan_error(
-                r#"
-import gleam
+    fn imported_tuple_elements(plan: &crate::plan::ModulePlan) -> &[Expr] {
+        let ReturnExprKind::Tuple { body, .. } = plan.main_function().return_().kind() else {
+            panic!("main should return a tuple");
+        };
+        let ReturnBodyKind::Expr(tuple) = body.kind() else {
+            panic!("main should directly return its tuple");
+        };
+        let TupleExprKind::Value(elements) = tuple.kind() else {
+            panic!("main should construct its tuple");
+        };
+        elements
+    }
 
-pub fn main() {
-  1
-}
-"#,
-            ),
-            PlanError::UnsupportedTopLevel {
-                kind: UnsupportedTopLevelKind::Import,
-            },
-        );
+    fn imported_constant_module(expression: &Expr) -> ModuleId {
+        let ExprKind::Int(value) = expression.kind() else {
+            panic!("imported constant should be an Int expression");
+        };
+        let IntExprKind::Constant(reference) = value.kind() else {
+            panic!("imported constant should retain a constant reference");
+        };
+        reference.instantiation().module()
+    }
+
+    fn imported_call_template(expression: &Expr) -> FunctionTemplateId {
+        let ExprKind::Int(value) = expression.kind() else {
+            panic!("imported call should be an Int expression");
+        };
+        let IntExprKind::Call { function, .. } = value.kind() else {
+            panic!("imported function call should remain direct");
+        };
+        function.template()
+    }
+
+    fn imported_function_template(expression: &Expr) -> FunctionTemplateId {
+        let ExprKind::Function(function) = expression.kind() else {
+            panic!("imported function value should be a function expression");
+        };
+        let FunctionExprKind::Int(function) = function.kind() else {
+            panic!("imported function should return Int");
+        };
+        let IntFunctionExprKind::Reference(reference) = function.kind() else {
+            panic!("imported function value should remain a reference");
+        };
+        reference.instantiation().template()
     }
 
     fn result_type() -> ValueType {

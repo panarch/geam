@@ -124,7 +124,6 @@ pub(super) struct PlanContext<'a> {
 #[derive(Clone, Copy)]
 enum RegistryAccess<'a> {
     Program {
-        module: crate::plan::ModuleId,
         registry: &'a crate::planner::module::registry::ProgramRegistry,
     },
     #[cfg(test)]
@@ -473,7 +472,7 @@ impl<'a> PlanContext<'a> {
     ) -> Self {
         Self::new_with_registry(
             registry.module_name(module),
-            RegistryAccess::Program { module, registry },
+            RegistryAccess::Program { registry },
             anonymous_functions,
         )
     }
@@ -1897,22 +1896,52 @@ impl<'a> PlanContext<'a> {
         }
     }
 
-    pub(super) fn lookup_function(&self, name: &EcoString) -> Option<FunctionInfo> {
+    pub(super) fn lookup_module_function(
+        &self,
+        module: &EcoString,
+        name: &EcoString,
+    ) -> Option<FunctionInfo> {
         match self.registry {
-            RegistryAccess::Program { module, registry } => registry.function(module, name),
+            RegistryAccess::Program { registry } => registry.function(module, name),
             #[cfg(test)]
-            RegistryAccess::Local { functions, .. } => functions.get(name).cloned(),
+            RegistryAccess::Local { functions, .. } if module == self.module_name => {
+                functions.get(name).cloned()
+            }
+            #[cfg(test)]
+            RegistryAccess::Local { .. } => None,
         }
     }
 
-    pub(super) fn constant_expr(
+    pub(super) fn module_is_linked(&self, module: &EcoString) -> bool {
+        match self.registry {
+            RegistryAccess::Program { registry } => registry.module_id(module).is_some(),
+            #[cfg(test)]
+            RegistryAccess::Local { .. } => module == self.module_name,
+        }
+    }
+
+    pub(super) fn module_constant_expr(
         &self,
+        module: &EcoString,
         name: &EcoString,
         shape: &ValueShape,
     ) -> Option<crate::plan::Expr> {
         match self.registry {
-            RegistryAccess::Program { module, registry } => {
-                registry.constant_expr(module, name, shape)
+            RegistryAccess::Program { registry } => registry.constant_expr(module, name, shape),
+            #[cfg(test)]
+            RegistryAccess::Local { .. } => None,
+        }
+    }
+
+    pub(super) fn module_constant_instantiation(
+        &self,
+        module: &EcoString,
+        name: &EcoString,
+        shape: &ValueShape,
+    ) -> Option<crate::plan::ConstantInstantiation> {
+        match self.registry {
+            RegistryAccess::Program { registry } => {
+                registry.constant_instantiation(module, name, shape)
             }
             #[cfg(test)]
             RegistryAccess::Local { .. } => None,
@@ -1924,7 +1953,7 @@ impl<'a> PlanContext<'a> {
         name: &crate::plan::CustomTypeName,
     ) -> Option<&CustomTypeDefinition> {
         match self.registry {
-            RegistryAccess::Program { registry, .. } => registry.custom_type(name),
+            RegistryAccess::Program { registry } => registry.custom_type(name),
             #[cfg(test)]
             RegistryAccess::Local { custom_types, .. } => custom_types
                 .iter()
@@ -1950,21 +1979,53 @@ impl<'a> PlanContext<'a> {
             });
         };
 
-        let (field_types, return_type) = match constructor.type_.fn_types() {
-            Some(signature) => signature,
-            None => (Vec::new(), constructor.type_.clone()),
+        self.custom_constructor_from_type(
+            constructor.type_.as_ref(),
+            name.clone(),
+            module,
+            usize::from(*variant_index),
+        )
+        .map(ResolvedCustomConstructor::into_constructor)
+    }
+
+    pub(super) fn module_custom_constructor(
+        &self,
+        type_: &Type,
+        name: EcoString,
+        module: &EcoString,
+        variant_index: usize,
+    ) -> Result<CustomConstructor, PlanError> {
+        self.custom_constructor_from_type(type_, name, module, variant_index)
+            .map(ResolvedCustomConstructor::into_constructor)
+    }
+
+    fn custom_constructor_from_type(
+        &self,
+        constructor_type: &Type,
+        name: EcoString,
+        module: &EcoString,
+        variant_index: usize,
+    ) -> Result<ResolvedCustomConstructor, PlanError> {
+        let signature = constructor_type.fn_types();
+        let return_type = match &signature {
+            Some((_, return_type)) => return_type.as_ref(),
+            None => constructor_type,
         };
         let mut type_parameters = self.type_parameters.clone();
-        let type_ = match ValueShape::from_gleam_in(return_type.as_ref(), &mut type_parameters) {
+        let type_ = match ValueShape::from_gleam_in(return_type, &mut type_parameters) {
             ValueShape::Custom(shape) => shape.type_().clone(),
             _ => {
                 return Err(PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::CustomType {
-                        name: name.clone(),
+                        name,
                         reason: crate::planner::error::InvalidCustomTypeReason::ConstructorType,
                     },
                 });
             }
+        };
+        let field_types = match signature {
+            Some((field_types, _)) => field_types,
+            None => Vec::new(),
         };
         let field_types = field_types
             .into_iter()
@@ -1973,14 +2034,7 @@ impl<'a> PlanContext<'a> {
             })
             .collect();
 
-        self.custom_constructor_from_parts(
-            type_,
-            name.clone(),
-            module,
-            usize::from(*variant_index),
-            field_types,
-        )
-        .map(ResolvedCustomConstructor::into_constructor)
+        self.custom_constructor_from_parts(type_, name, module, variant_index, field_types)
     }
 
     pub(super) fn custom_construction_shape(
@@ -2788,14 +2842,37 @@ mod tests {
     #[test]
     fn constant_lookup_without_a_registry_returns_none() {
         let module = EcoString::from("main");
-        let functions = HashMap::<EcoString, FunctionInfo>::new();
         let mut anonymous = AnonymousFunctions::default();
+        let (function_name, function) = anonymous.allocate(
+            "present".into(),
+            ValueShape::Int,
+            Vec::new(),
+            Default::default(),
+        );
+        let function_id = function.signature.id();
+        let functions = HashMap::from([(function_name, function)]);
         let context = PlanContext::new(&module, &functions, &mut anonymous);
 
         assert_eq!(
-            context.constant_expr(&EcoString::from("missing"), &ValueShape::Int),
+            context.module_constant_expr(&module, &EcoString::from("missing"), &ValueShape::Int,),
             None,
         );
+        assert_eq!(
+            context
+                .lookup_module_function(&module, &EcoString::from("present"))
+                .map(function_template_id),
+            Some(function_id),
+        );
+        assert_eq!(
+            context
+                .lookup_module_function(&EcoString::from("other"), &EcoString::from("present"))
+                .map(function_template_id),
+            None,
+        );
+    }
+
+    fn function_template_id(function: FunctionInfo) -> crate::plan::FunctionTemplateId {
+        function.signature.id()
     }
 
     #[test]

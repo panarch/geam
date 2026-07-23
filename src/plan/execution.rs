@@ -647,4 +647,48 @@ mod tests {
             ),
         );
     }
+
+    #[test]
+    fn lowering_deduplicates_cross_module_generic_specializations() {
+        let typed = crate::compile_typed_program(
+            "main",
+            [
+                crate::ModuleSource::new(
+                    "generic",
+                    "generic.gleam",
+                    "pub fn identity(value: value) { value }",
+                ),
+                crate::ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    r#"
+import generic
+
+pub fn main() {
+  #(
+    generic.identity(1),
+    generic.identity(2),
+    generic.identity("three"),
+  )
+}
+"#,
+                ),
+            ],
+        )
+        .expect("generic module program should compile");
+        let module = crate::plan_program(typed).expect("generic module program should plan");
+        let execution = super::ExecutionPlan::from_module_plan(module);
+
+        assert_eq!(execution.functions.value_returns.int_functions.len(), 1);
+        assert_eq!(execution.functions.value_returns.string_functions.len(), 1);
+        assert_eq!(execution.functions.value_returns.tuple_functions.len(), 1);
+        assert_eq!(
+            crate::run_main(&execution),
+            Ok(crate::Value::Tuple(vec![
+                crate::Value::Int(1.into()),
+                crate::Value::Int(2.into()),
+                crate::Value::String("three".into()),
+            ])),
+        );
+    }
 }

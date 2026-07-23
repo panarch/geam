@@ -57,6 +57,11 @@ The public Rust `FunctionValue` representation is an owned materialized value;
 its `PartialEq` implementation is not the identity used by Gleam source-level
 function equality.
 
+After module linkage, a top-level reference identity includes its
+module-qualified function template target. Equal local indices in different
+modules are distinct references, while qualified and unqualified imports of
+the same target share one identity.
+
 ## Generic Values
 
 A bare type parameter has no successful runtime value representation. A
@@ -107,6 +112,13 @@ typed entry values, block parameters, instructions, operands, edge arguments,
 terminators, and reusable constant programs in deterministic order. The output
 is intended for human inspection and does not define a stable serialization or
 an additional execution model.
+
+## Linked Source Diagnostics
+
+An execution plan retains one source context per planned module. A source-level
+panic site carries its owning module ID, so diagnostics select the dependency
+source and path when execution stops inside an imported function. Linking does
+not rewrite dependency sites to the root source.
 
 ## Numeric Division By Zero
 

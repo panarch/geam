@@ -22,6 +22,13 @@ pub fn main() {
 The integration runner reads those fixtures through the public Geam API:
 `compile_typed_module -> plan_module -> ExecutionPlan::from_module_plan -> run_main`.
 
+Multi-module execution cases live under
+`tests/fixtures/execution/modules/<case>/`. The runner derives canonical module
+names from paths relative to the case directory (`main.gleam` becomes `main`,
+and `support/math.gleam` becomes `support/math`) and uses the public
+`compile_typed_program -> plan_program` pipeline. It does not perform package or
+filesystem module resolution beyond loading the fixture case.
+
 Source-level rejection fixtures live under categorized
 `tests/fixtures/rejection/**/*.gleam` paths. They are reserved for public
 boundary cases that are clearer as complete Gleam modules than as planner unit

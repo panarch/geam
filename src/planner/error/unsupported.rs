@@ -2,8 +2,6 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedTopLevelKind {
-    #[error("import")]
-    Import,
     #[error("backend external custom type")]
     ExternalCustomType,
 }

@@ -152,7 +152,7 @@ impl<Item: ListItem> TypedListExpr<Item> {
         }
     }
 
-    pub(super) fn constant(
+    pub(in crate::plan::module) fn constant(
         item_shape: crate::plan::ValueShape,
         item: Item,
         reference: Item::Constant,

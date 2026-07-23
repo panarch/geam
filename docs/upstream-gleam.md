@@ -45,9 +45,12 @@ compiler-core/src/uid.rs
 compiler-core/src/warning.rs
 ```
 
-The Geam wrapper parses source text, inserts Gleam's prelude interface, assigns
-the caller-provided module name, and runs `ModuleAnalyzerConstructor::infer_module`
-to produce a Gleam `TypedModule`.
+The Geam wrapper parses all supplied source text, derives a deterministic
+dependency-first order, inserts Gleam's prelude and previously analysed module
+interfaces, and runs `ModuleAnalyzerConstructor::infer_module` with one shared
+ID generator. The result is a `TypedProgram` containing the complete typed
+module graph. `compile_typed_module` is the one-module convenience view of this
+same implementation.
 
 Runtime behavior decisions that start after this compiler boundary are recorded
 in [runtime-semantics.md](runtime-semantics.md).
@@ -58,13 +61,15 @@ Geam intentionally does not define a source AST or source-language compiler. Its
 current boundary is:
 
 ```text
-source text -> Gleam TypedModule -> Geam ModulePlan -> Geam ExecutionPlan -> Geam runtime Value
+module sources -> Gleam TypedProgram -> Geam ModulePlan -> Geam ExecutionPlan -> Geam runtime Value
 ```
 
 Geam-specific profile validation belongs in planning from Gleam's typed AST
-into `ModulePlan`. The following consuming lowering into `ExecutionPlan` is
-total and does not add another validation boundary. Unsupported execution
-semantics are therefore rejected before executable lowering and evaluation.
+into `ModulePlan`. Every supplied module body is validated, including
+dependency definitions that are unreachable from the root entry. The following
+consuming lowering into `ExecutionPlan` is total and does not add another
+validation boundary. Unsupported execution semantics are therefore rejected
+before executable lowering and evaluation.
 
 The earlier Geam-owned parser and analyse prototype has been removed. The active
 direction is to rely on Gleam's typed AST and build Geam profile validation,
@@ -82,6 +87,11 @@ pub fn compile_typed_module(
     path: impl Into<camino::Utf8PathBuf>,
     src: &str,
 ) -> Result<gleam_core::ast::TypedModule, geam::frontend::FrontendError>
+
+pub fn compile_typed_program(
+    root_module: impl Into<ecow::EcoString>,
+    modules: impl IntoIterator<Item = geam::ModuleSource>,
+) -> Result<geam::TypedProgram, geam::frontend::FrontendError>
 ```
 
 The current public execution APIs are:
@@ -94,6 +104,10 @@ pub fn plan_module(
 pub fn plan_module_with_source(
     module: gleam_core::ast::TypedModule,
     source_context: geam::SourceContext,
+) -> Result<geam::ModulePlan, geam::PlanError>
+
+pub fn plan_program(
+    program: geam::TypedProgram,
 ) -> Result<geam::ModulePlan, geam::PlanError>
 
 pub fn run_main(
@@ -120,9 +134,10 @@ milestone:
 - LSP node lookup helpers.
 - Erlang and JavaScript target metadata.
 - Code generation metadata.
-- Project compilation, package resolution, module loading, dependency graph
-  analysis, and artifact writing.
-- Imports, host bindings, broader Gleam profile support, and CLI behavior.
+- Filesystem project compilation, package resolution, package dependency
+  loading, and artifact writing.
+- Backend external modules, host bindings, broader Gleam profile support, and
+  CLI behavior.
 
 ## Current Source Boundary
 

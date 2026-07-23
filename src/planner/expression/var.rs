@@ -8,7 +8,9 @@ use crate::plan::{
 use crate::planner::context::{FunctionLocalBinding, PlanContext};
 use crate::planner::error::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
-use gleam_core::type_::{PRELUDE_MODULE_NAME, ValueConstructor, ValueConstructorVariant};
+use gleam_core::type_::{
+    ModuleValueConstructor, PRELUDE_MODULE_NAME, ValueConstructor, ValueConstructorVariant,
+};
 
 pub(super) fn plan_var(
     name: EcoString,
@@ -54,37 +56,37 @@ pub(super) fn plan_var(
                     _ => {}
                 }
             }
-
-            if module == context.module_name
-                || (module == PRELUDE_MODULE_NAME && matches!(name.as_str(), "Ok" | "Error"))
-            {
-                let shape = constructor_shape;
-                let constructor = context.custom_constructor(&constructor)?;
-                if usize::from(arity) != constructor.fields().len() {
-                    return Err(PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::ExpressionShape {
-                            kind: InvalidExpressionShapeKind::RecordConstructor,
-                        },
-                    });
-                }
-                return crate::plan::module::custom_constructor_expr(constructor)
-                    .with_shape(shape)
-                    .ok_or(PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::ExpressionShape {
-                            kind: InvalidExpressionShapeKind::RecordConstructor,
-                        },
-                    });
+            if module == PRELUDE_MODULE_NAME && !matches!(name.as_str(), "Ok" | "Error") {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::PreludeConstructor,
+                    },
+                });
+            }
+            if module != PRELUDE_MODULE_NAME && !context.module_is_linked(module) {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::ModuleSelect,
+                    },
+                });
             }
 
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: if module == PRELUDE_MODULE_NAME {
-                        InvalidExpressionShapeKind::PreludeConstructor
-                    } else {
-                        InvalidExpressionShapeKind::ModuleSelect
+            let shape = constructor_shape;
+            let constructor = context.custom_constructor(&constructor)?;
+            if usize::from(arity) != constructor.fields().len() {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::RecordConstructor,
                     },
-                },
-            })
+                });
+            }
+            crate::plan::module::custom_constructor_expr(constructor)
+                .with_shape(shape)
+                .ok_or(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::RecordConstructor,
+                    },
+                })
         }
         ValueConstructorVariant::ModuleFn {
             module,
@@ -92,42 +94,11 @@ pub(super) fn plan_var(
             external_erlang,
             external_javascript,
             ..
-        } if module == *context.module_name
+        } if context.module_is_linked(&module)
             && external_erlang.is_none()
             && external_javascript.is_none() =>
         {
-            let function =
-                context
-                    .lookup_function(&name)
-                    .ok_or_else(|| PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::UnknownLocal { name: name.clone() },
-                    })?;
-
-            let crate::plan::ValueShape::Function(shape) = constructor_shape else {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionShape {
-                        kind: InvalidExpressionShapeKind::Invalid,
-                    },
-                });
-            };
-            let instantiation =
-                function
-                    .instantiate(&shape)
-                    .map_err(|_| PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::ExpressionShape {
-                            kind: InvalidExpressionShapeKind::Invalid,
-                        },
-                    })?;
-            let reference = function.reference(instantiation);
-
-            FunctionExpr::reference(reference)
-                .with_shape(*shape)
-                .map(Expr::function)
-                .ok_or(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionShape {
-                        kind: InvalidExpressionShapeKind::Invalid,
-                    },
-                })
+            plan_function_reference(&module, name, constructor_shape, context)
         }
         ValueConstructorVariant::ModuleFn { .. } => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
@@ -135,10 +106,10 @@ pub(super) fn plan_var(
             },
         }),
         ValueConstructorVariant::ModuleConstant { module, name, .. }
-            if module == *context.module_name =>
+            if context.module_is_linked(&module) =>
         {
             Ok(context
-                .constant_expr(&name, &constructor_shape)
+                .module_constant_expr(&module, &name, &constructor_shape)
                 .ok_or_else(|| PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::UnknownLocal { name },
                 })?)
@@ -149,6 +120,115 @@ pub(super) fn plan_var(
             },
         }),
     }
+}
+
+pub(super) fn plan_module_select(
+    module_name: EcoString,
+    label: EcoString,
+    constructor: ModuleValueConstructor,
+    shape: crate::plan::ValueShape,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    if !context.module_is_linked(&module_name) {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ModuleSelect,
+            },
+        });
+    }
+    match constructor {
+        ModuleValueConstructor::Fn {
+            module,
+            name,
+            external_erlang,
+            external_javascript,
+            ..
+        } if module == module_name
+            && name == label
+            && external_erlang.is_none()
+            && external_javascript.is_none() =>
+        {
+            plan_function_reference(&module, name, shape, context)
+        }
+        ModuleValueConstructor::Constant { .. } => context
+            .module_constant_expr(&module_name, &label, &shape)
+            .ok_or(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::UnknownLocal { name: label },
+            }),
+        ModuleValueConstructor::Record {
+            name,
+            variant_index,
+            arity,
+            type_,
+            ..
+        } if name == label => {
+            let constructor = context.module_custom_constructor(
+                type_.as_ref(),
+                name,
+                &module_name,
+                usize::from(variant_index),
+            )?;
+            if usize::from(arity) != constructor.fields().len() {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::RecordConstructor,
+                    },
+                });
+            }
+            crate::plan::module::custom_constructor_expr(constructor)
+                .with_shape(shape)
+                .ok_or(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::RecordConstructor,
+                    },
+                })
+        }
+        ModuleValueConstructor::Fn { .. } | ModuleValueConstructor::Record { .. } => {
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleSelect,
+                },
+            })
+        }
+    }
+}
+
+fn plan_function_reference(
+    module: &EcoString,
+    name: EcoString,
+    constructor_shape: crate::plan::ValueShape,
+    context: &PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    let function = context
+        .lookup_module_function(module, &name)
+        .ok_or_else(|| PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::UnknownLocal { name: name.clone() },
+        })?;
+
+    let crate::plan::ValueShape::Function(shape) = constructor_shape else {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::Invalid,
+            },
+        });
+    };
+    let instantiation = function
+        .instantiate(&shape)
+        .map_err(|_| PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::Invalid,
+            },
+        })?;
+    let reference = function.reference(instantiation);
+
+    FunctionExpr::reference(reference)
+        .with_shape(*shape)
+        .map(Expr::function)
+        .ok_or(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::Invalid,
+            },
+        })
 }
 
 fn function_local_get(
@@ -238,7 +318,9 @@ mod tests {
     };
     use ecow::EcoString;
     use gleam_core::ast::{Publicity, Statement, TypedExpr, TypedStatement};
-    use gleam_core::type_::{self, Deprecation, ValueConstructor, ValueConstructorVariant};
+    use gleam_core::type_::{
+        self, Deprecation, ModuleValueConstructor, ValueConstructor, ValueConstructorVariant,
+    };
     use std::collections::HashMap;
 
     #[test]
@@ -627,6 +709,245 @@ pub fn main() { Boxed }
     }
 
     #[test]
+    fn module_select_values_preserve_constructor_and_function_ownership() {
+        let constructor_source = r#"
+pub type Boxed {
+  Boxed(Int)
+}
+
+pub fn main() {
+  Boxed
+}
+"#;
+        let expected_constructor = plan_module(compile(constructor_source));
+        let mut module_constructor = compile(constructor_source);
+        replace_main_value_with_module_select(&mut module_constructor);
+        assert_eq!(plan_module(module_constructor), expected_constructor);
+
+        let mut arity_mismatch = compile(constructor_source);
+        let (_, _, _, constructor) = replace_main_value_with_module_select(&mut arity_mismatch);
+        let (arity, _) = module_record_fields(constructor);
+        *arity = 0;
+        assert_eq!(
+            plan_module(arity_mismatch),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                },
+            }),
+        );
+
+        let mut constructor_type_mismatch = compile(constructor_source);
+        let (_, _, _, constructor) =
+            replace_main_value_with_module_select(&mut constructor_type_mismatch);
+        let (_, type_) = module_record_fields(constructor);
+        *type_ = type_::int();
+        assert_eq!(
+            plan_module(constructor_type_mismatch),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Boxed".into(),
+                    reason: InvalidCustomTypeReason::ConstructorType,
+                },
+            }),
+        );
+
+        let mut outer_shape_mismatch = compile(constructor_source);
+        let (type_, _, _, _) = replace_main_value_with_module_select(&mut outer_shape_mismatch);
+        *type_ = type_::int();
+        assert_eq!(
+            plan_module(outer_shape_mismatch),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                },
+            }),
+        );
+
+        let mut constructor_label_mismatch = compile(constructor_source);
+        let (_, _, label, _) =
+            replace_main_value_with_module_select(&mut constructor_label_mismatch);
+        *label = "Other".into();
+        assert_eq!(
+            plan_module(constructor_label_mismatch),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleSelect,
+                },
+            }),
+        );
+
+        let function_source = r#"
+fn identity(value: Int) {
+  value
+}
+
+pub fn main() {
+  identity
+}
+"#;
+        let expected_function = plan_module(compile(function_source));
+        let mut module_function = compile(function_source);
+        replace_main_value_with_module_select(&mut module_function);
+        assert_eq!(plan_module(module_function), expected_function);
+
+        let mut outer_module_mismatch = compile(function_source);
+        let (_, module_name, _, _) =
+            replace_main_value_with_module_select(&mut outer_module_mismatch);
+        *module_name = "other".into();
+        assert_eq!(
+            plan_module(outer_module_mismatch),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleSelect,
+                },
+            }),
+        );
+
+        let mut target_module_mismatch = compile(function_source);
+        let (_, _, _, constructor) =
+            replace_main_value_with_module_select(&mut target_module_mismatch);
+        *module_function_module(constructor) = "other".into();
+        assert_eq!(
+            plan_module(target_module_mismatch),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleSelect,
+                },
+            }),
+        );
+
+        let mut function_label_mismatch = compile(function_source);
+        let (_, _, label, _) = replace_main_value_with_module_select(&mut function_label_mismatch);
+        *label = "other".into();
+        assert_eq!(
+            plan_module(function_label_mismatch),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleSelect,
+                },
+            }),
+        );
+
+        let mut external_function = compile(function_source);
+        let (_, _, _, constructor) = replace_main_value_with_module_select(&mut external_function);
+        let external_erlang = module_function_external_erlang(constructor);
+        *external_erlang = Some(("external".into(), "identity".into()));
+        assert_eq!(
+            plan_module(external_function),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleSelect,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "expected variable expression")]
+    fn module_select_value_helper_rejects_literals() {
+        let mut module = compile("pub fn main() { 1 }");
+
+        replace_main_value_with_module_select(&mut module);
+    }
+
+    #[test]
+    #[should_panic(expected = "expected module value constructor")]
+    fn module_select_value_helper_rejects_locals() {
+        let mut module = compile(
+            r#"
+pub fn main() {
+  let value = 1
+  value
+}
+"#,
+        );
+        module.definitions.functions[0].body.remove(0);
+
+        replace_main_value_with_module_select(&mut module);
+    }
+
+    #[test]
+    #[should_panic(expected = "expected expression statement")]
+    fn module_select_value_helper_rejects_assignments() {
+        let mut module = compile(
+            r#"
+pub fn main() {
+  let value = 1
+  value
+}
+"#,
+        );
+
+        replace_main_value_with_module_select(&mut module);
+    }
+
+    #[test]
+    #[should_panic(expected = "expected module record constructor")]
+    fn module_record_fields_rejects_function_constructor() {
+        let mut module = compile(
+            r#"
+fn identity(value: Int) {
+  value
+}
+
+pub fn main() {
+  identity
+}
+"#,
+        );
+        let (_, _, _, constructor) = replace_main_value_with_module_select(&mut module);
+
+        module_record_fields(constructor);
+    }
+
+    #[test]
+    #[should_panic(expected = "expected module function constructor")]
+    fn module_function_external_rejects_record_constructor() {
+        let mut module = compile(
+            r#"
+pub type Boxed {
+  Boxed(Int)
+}
+
+pub fn main() {
+  Boxed
+}
+"#,
+        );
+        let (_, _, _, constructor) = replace_main_value_with_module_select(&mut module);
+
+        module_function_external_erlang(constructor);
+    }
+
+    #[test]
+    #[should_panic(expected = "expected module function constructor")]
+    fn module_function_module_rejects_record_constructor() {
+        let mut module = compile(
+            r#"
+pub type Boxed {
+  Boxed(Int)
+}
+
+pub fn main() {
+  Boxed
+}
+"#,
+        );
+        let (_, _, _, constructor) = replace_main_value_with_module_select(&mut module);
+
+        module_function_module(constructor);
+    }
+
+    #[test]
+    #[should_panic(expected = "expected module select expression")]
+    fn module_select_parts_rejects_literals() {
+        let mut expression = typed_int_expr(1);
+
+        module_select_parts(&mut expression);
+    }
+
+    #[test]
     fn prelude_record_constructor_values_preserve_concrete_function_type() {
         let function_type = type_::fn_(
             vec![type_::int()],
@@ -686,6 +1007,178 @@ pub fn main() { Boxed }
         );
     }
 
+    #[test]
+    #[should_panic(expected = "expected expression statement")]
+    fn expect_expression_statement_mut_panics_on_assignment() {
+        let mut module = compile(
+            r#"
+pub fn main() {
+  let x = 1
+  x
+}
+"#,
+        );
+
+        expect_expression_statement_mut(&mut module.definitions.functions[0].body[0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "expected variable expression")]
+    fn expect_module_fn_module_mut_panics_on_int() {
+        let mut expression = typed_int_expr(1);
+
+        expect_module_fn_module_mut(&mut expression);
+    }
+
+    #[test]
+    #[should_panic(expected = "expected module function constructor")]
+    fn expect_module_fn_module_mut_panics_on_prelude_constructor() {
+        let mut expression = typed_prelude_constructor("True", type_::bool());
+
+        expect_module_fn_module_mut(&mut expression);
+    }
+
+    fn replace_main_value_with_module_select(
+        module: &mut gleam_core::ast::TypedModule,
+    ) -> (
+        &mut std::sync::Arc<type_::Type>,
+        &mut EcoString,
+        &mut EcoString,
+        &mut ModuleValueConstructor,
+    ) {
+        let main = module
+            .definitions
+            .functions
+            .iter_mut()
+            .find(|function| {
+                function
+                    .name
+                    .as_ref()
+                    .is_some_and(|(_, name)| name == "main")
+            })
+            .expect("main function should exist");
+        let Statement::Expression(expression) = &mut main.body[0] else {
+            panic!("expected expression statement");
+        };
+        let TypedExpr::Var {
+            location,
+            name,
+            constructor,
+        } = std::mem::replace(expression, typed_int_expr(0))
+        else {
+            panic!("expected variable expression");
+        };
+        let type_ = constructor.type_.clone();
+        let module_constructor = match constructor.variant {
+            ValueConstructorVariant::Record {
+                name,
+                module,
+                variant_index,
+                arity,
+                field_map,
+                location,
+                documentation,
+                ..
+            } => (
+                module,
+                ModuleValueConstructor::Record {
+                    name,
+                    variant_index,
+                    arity,
+                    type_: type_.clone(),
+                    field_map,
+                    location,
+                    documentation,
+                },
+            ),
+            ValueConstructorVariant::ModuleFn {
+                location,
+                module,
+                name,
+                external_erlang,
+                external_javascript,
+                field_map,
+                documentation,
+                purity,
+                ..
+            } => (
+                module.clone(),
+                ModuleValueConstructor::Fn {
+                    location,
+                    module,
+                    name,
+                    external_erlang,
+                    external_javascript,
+                    field_map,
+                    documentation,
+                    purity,
+                },
+            ),
+            ValueConstructorVariant::ModuleConstant { .. }
+            | ValueConstructorVariant::LocalVariable { .. } => {
+                panic!("expected module value constructor");
+            }
+        };
+        let (module_name, module_constructor) = module_constructor;
+        *expression = TypedExpr::ModuleSelect {
+            location,
+            field_start: 0,
+            type_,
+            label: name,
+            module_name: module_name.clone(),
+            module_alias: module_name,
+            constructor: module_constructor,
+        };
+        module_select_parts(expression)
+    }
+
+    fn module_select_parts(
+        expression: &mut TypedExpr,
+    ) -> (
+        &mut std::sync::Arc<type_::Type>,
+        &mut EcoString,
+        &mut EcoString,
+        &mut ModuleValueConstructor,
+    ) {
+        match expression {
+            TypedExpr::ModuleSelect {
+                type_,
+                module_name,
+                label,
+                constructor,
+                ..
+            } => (type_, module_name, label, constructor),
+            _ => panic!("expected module select expression"),
+        }
+    }
+
+    fn module_record_fields(
+        constructor: &mut ModuleValueConstructor,
+    ) -> (&mut u16, &mut std::sync::Arc<type_::Type>) {
+        match constructor {
+            ModuleValueConstructor::Record { arity, type_, .. } => (arity, type_),
+            _ => panic!("expected module record constructor"),
+        }
+    }
+
+    fn module_function_external_erlang(
+        constructor: &mut ModuleValueConstructor,
+    ) -> &mut Option<(EcoString, EcoString)> {
+        match constructor {
+            ModuleValueConstructor::Fn {
+                external_erlang, ..
+            } => external_erlang,
+            _ => panic!("expected module function constructor"),
+        }
+    }
+
+    fn module_function_module(constructor: &mut ModuleValueConstructor) -> &mut EcoString {
+        match constructor {
+            ModuleValueConstructor::Fn { module, .. } => module,
+            _ => panic!("expected module function constructor"),
+        }
+    }
+
     fn expect_expression_statement_mut(statement: &mut TypedStatement) -> &mut TypedExpr {
         let Statement::Expression(expression) = statement else {
             panic!("expected expression statement");
@@ -739,36 +1232,5 @@ pub fn main() { Boxed }
                 },
             },
         }
-    }
-
-    #[test]
-    #[should_panic(expected = "expected expression statement")]
-    fn expect_expression_statement_mut_panics_on_assignment() {
-        let mut module = compile(
-            r#"
-pub fn main() {
-  let x = 1
-  x
-}
-"#,
-        );
-
-        expect_expression_statement_mut(&mut module.definitions.functions[0].body[0]);
-    }
-
-    #[test]
-    #[should_panic(expected = "expected variable expression")]
-    fn expect_module_fn_module_mut_panics_on_int() {
-        let mut expression = typed_int_expr(1);
-
-        expect_module_fn_module_mut(&mut expression);
-    }
-
-    #[test]
-    #[should_panic(expected = "expected module function constructor")]
-    fn expect_module_fn_module_mut_panics_on_prelude_constructor() {
-        let mut expression = typed_prelude_constructor("True", type_::bool());
-
-        expect_module_fn_module_mut(&mut expression);
     }
 }

@@ -190,14 +190,14 @@ pub enum InvalidCallShapeReason {
     LocalFunctionCallArityMismatch,
     #[error("local function call return type does not match function table")]
     LocalFunctionCallReturnTypeMismatch,
-    #[error("calling module constants is not supported")]
-    ModuleConstant,
-    #[error("non-current module function")]
-    NonCurrentModuleFunction,
-    #[error("current-module function is missing from function table")]
-    MissingCurrentModuleFunction,
-    #[error("calling record constructors is not supported")]
-    RecordConstructor,
+    #[error("module constant is not callable")]
+    NonCallableModuleConstant,
+    #[error("invalid module function")]
+    InvalidModuleFunction,
+    #[error("module function is missing from the linked registry")]
+    MissingModuleFunction,
+    #[error("invalid record constructor")]
+    InvalidRecordConstructor,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]

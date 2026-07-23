@@ -1,7 +1,8 @@
 use geam::planner::{InvalidExpressionType, InvalidTypedAstReason};
 use geam::{
-    ExecutionError, FunctionType, ListValue, PlanError, SourceContext, Value, ValueType,
-    compile_typed_module, plan_module, plan_module_with_source, run_main,
+    ExecutionError, FunctionType, ListValue, ModuleSource, PlanError, SourceContext, Value,
+    ValueType, compile_typed_module, compile_typed_program, plan_module, plan_module_with_source,
+    plan_program, run_main,
 };
 use gleam_core::ast::Constant;
 use miette::{GraphicalReportHandler, GraphicalTheme};
@@ -38,6 +39,39 @@ macro_rules! execution_error_cases {
 macro_rules! explain_cases {
     ($($name:ident),+ $(,)?) => {
         fixture_cases!(crate::run_explain_fixture, "explain"; $($name),+);
+    };
+}
+
+macro_rules! module_execution_cases {
+    ($($name:ident),+ $(,)?) => {
+        $(
+            #[test]
+            fn $name() {
+                crate::run_module_fixture(stringify!($name));
+            }
+        )+
+    };
+}
+
+macro_rules! module_execution_error_cases {
+    ($($name:ident),+ $(,)?) => {
+        $(
+            #[test]
+            fn $name() {
+                crate::run_module_error_fixture(stringify!($name));
+            }
+        )+
+    };
+}
+
+macro_rules! module_rejection_cases {
+    ($($name:ident),+ $(,)?) => {
+        $(
+            #[test]
+            fn $name() {
+                crate::reject_module_fixture(stringify!($name));
+            }
+        )+
     };
 }
 
@@ -123,6 +157,7 @@ mod expressions {
 
 mod module_items {
     execution_cases!("module_items";
+        import,
         constant,
         constant_bit_array,
         constant_bit_array_segments,
@@ -148,6 +183,22 @@ mod module_items {
         type_alias_function_signature,
         type_alias_compound_signature,
         type_alias_generic_signature,
+    );
+}
+
+mod modules {
+    module_execution_cases!(
+        qualified_function,
+        unqualified_imports,
+        nested_module_alias,
+        transitive_import,
+        imported_constant,
+        imported_custom_type,
+        imported_generic_specialization,
+        imported_opaque_type,
+        imported_function_identity,
+        module_identity,
+        root_entry_contract,
     );
 }
 
@@ -563,6 +614,10 @@ mod functions {
 }
 
 mod execution_errors {
+    mod modules {
+        module_execution_error_cases!(dependency_panic);
+    }
+
     mod expressions {
         execution_error_cases!("expressions";
             panic,
@@ -762,10 +817,13 @@ mod execution_errors {
 mod rejection {
     mod module_items {
         rejection_cases!("module_items";
-            import,
             external_function,
             external_custom_type,
         );
+    }
+
+    mod modules {
+        module_rejection_cases!(unsupported_dependency_body);
     }
 
     mod entrypoint {
@@ -1035,6 +1093,20 @@ fn run_fixture(file_name: &str) {
     assert_eq!(render_value(&actual), expected);
 }
 
+fn run_module_fixture(case: &str) {
+    let directory = format!("tests/fixtures/execution/modules/{case}");
+    let main = std::fs::read_to_string(format!("{directory}/main.gleam"))
+        .expect("module fixture should contain main.gleam");
+    let expected = expected_text_with_prefix(&main, "// geam:expect ");
+    let program = compile_typed_program("main", module_sources(&directory))
+        .expect("module fixture should compile");
+    let module_plan = plan_program(program).expect("module fixture should plan");
+    let plan = geam::ExecutionPlan::from_module_plan(module_plan);
+    let actual = run_main(&plan).expect("module fixture should run");
+
+    assert_eq!(render_value(&actual), expected);
+}
+
 fn run_error_fixture(file_name: &str) {
     let path = format!("tests/fixtures/execution_errors/{file_name}");
     let src = std::fs::read_to_string(&path).expect("fixture should be readable");
@@ -1055,12 +1127,77 @@ fn run_error_fixture(file_name: &str) {
     assert_eq!(render_execution_error(&error), expected);
 }
 
+fn run_module_error_fixture(case: &str) {
+    let directory = format!("tests/fixtures/execution_errors/modules/{case}");
+    let main = std::fs::read_to_string(format!("{directory}/main.gleam"))
+        .expect("module error fixture should contain main.gleam");
+    let expected = expected_error_text(&main);
+    let program = compile_typed_program("main", module_sources(&directory))
+        .expect("module error fixture should compile");
+    let module_plan = plan_program(program).expect("module error fixture should plan");
+    let plan = geam::ExecutionPlan::from_module_plan(module_plan);
+    let error = run_main(&plan).expect_err("module error fixture should fail during execution");
+
+    assert_eq!(render_execution_error(&error), expected);
+}
+
 fn reject_fixture(file_name: &str) {
     let path = format!("tests/fixtures/rejection/{file_name}");
     let src = std::fs::read_to_string(&path).expect("fixture should be readable");
     let module = compile_typed_module("main", path, &src).expect("fixture should compile");
 
     assert!(plan_module(module).is_err());
+}
+
+fn reject_module_fixture(case: &str) {
+    let directory = format!("tests/fixtures/rejection/modules/{case}");
+    let main = std::fs::read_to_string(format!("{directory}/main.gleam"))
+        .expect("module rejection fixture should contain main.gleam");
+    let expected = expected_text_with_prefix(&main, "// geam:reject ");
+    let program = compile_typed_program("main", module_sources(&directory))
+        .expect("module rejection fixture should compile");
+    let error = plan_program(program).expect_err("module rejection fixture should fail planning");
+
+    assert_eq!(error.to_string(), expected);
+}
+
+fn module_sources(directory: &str) -> Vec<ModuleSource> {
+    let root = std::path::Path::new(directory);
+    let mut paths = Vec::new();
+    collect_gleam_sources(root, &mut paths);
+    paths.sort();
+    paths
+        .into_iter()
+        .map(|path| {
+            let relative = path
+                .strip_prefix(root)
+                .expect("collected module source should be inside its fixture directory");
+            let module = relative
+                .with_extension("")
+                .to_string_lossy()
+                .replace(std::path::MAIN_SEPARATOR, "/");
+            let source =
+                std::fs::read_to_string(&path).expect("module fixture source should be readable");
+            ModuleSource::new(module, path.to_string_lossy().into_owned(), source)
+        })
+        .collect()
+}
+
+fn collect_gleam_sources(directory: &std::path::Path, paths: &mut Vec<std::path::PathBuf>) {
+    for entry in std::fs::read_dir(directory).expect("module fixture directory should be readable")
+    {
+        let path = entry
+            .expect("module fixture directory entry should be readable")
+            .path();
+        if path.is_dir() {
+            collect_gleam_sources(&path, paths);
+        } else if path
+            .extension()
+            .is_some_and(|extension| extension == "gleam")
+        {
+            paths.push(path);
+        }
+    }
 }
 
 fn expected_text_with_prefix<'a>(src: &'a str, prefix: &str) -> &'a str {

@@ -50,11 +50,19 @@ fn plan_expr(
         } => plan_binary_operator(operator, *left, *right, context),
         ClauseGuard::ModuleSelect {
             module_name,
-            literal,
+            label,
+            type_,
             ..
-        } if module_name == *context.module_name => super::super::constant::plan(literal, context),
-        ClauseGuard::ModuleSelect { .. } => {
-            invalid_expression_shape(InvalidExpressionShapeKind::ModuleSelect)
+        } => {
+            if !context.module_is_linked(&module_name) {
+                return invalid_expression_shape(InvalidExpressionShapeKind::ModuleSelect);
+            }
+            let shape = context.value_shape_in_scope(type_.as_ref());
+            context
+                .module_constant_expr(&module_name, &label, &shape)
+                .ok_or_else(|| PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::UnknownLocal { name: label },
+                })
         }
         ClauseGuard::FieldAccess {
             index: Some(index),
@@ -495,10 +503,6 @@ mod tests {
             ))),
         );
         assert_eq!(
-            plan_expr(module_select("main", int_constant_literal(3)), &mut context),
-            Ok(Expr::int(IntExpr::value(3.into()))),
-        );
-        assert_eq!(
             plan_expr(
                 var(
                     "holder",
@@ -529,6 +533,14 @@ mod tests {
             Err(invalid_expression_shape(
                 InvalidExpressionShapeKind::ModuleSelect
             )),
+        );
+        assert_eq!(
+            plan_expr(module_select("main", int_constant_literal(1)), &mut context),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::UnknownLocal {
+                    name: "answer".into(),
+                },
+            }),
         );
         assert_eq!(
             plan_expr(

@@ -142,7 +142,6 @@ pub(in crate::planner) fn plan_constant_bodies(
     anonymous_functions: &mut AnonymousFunctions,
 ) -> Result<ConstantTemplates, PlanError> {
     let module = bodies.module;
-    let signatures = registry.constant_signatures(module);
     let mut entries = Vec::with_capacity(bodies.seeds.len());
 
     for seed in bodies.seeds {
@@ -150,7 +149,7 @@ pub(in crate::planner) fn plan_constant_bodies(
         let mut context = PlanContext::new_in_program(module, registry, anonymous_functions);
         context.set_current_function(seed.name.clone());
         context.set_type_parameters(seed.type_parameters);
-        let value = plan_value(seed.value, &mut context, signatures)?;
+        let value = plan_value(seed.value, &mut context)?;
         if !value.shape().can_flow_to(signature.shape()) {
             return Err(invalid_expression_type_for_value(
                 signature.shape().value_type(),
@@ -160,7 +159,7 @@ pub(in crate::planner) fn plan_constant_bodies(
         entries.push((ConstantTemplate::new(signature.clone(), seed.name), value));
     }
 
-    Ok(ConstantTemplates::from_entries(entries))
+    Ok(ConstantTemplates::from_module_entries(module, entries))
 }
 
 impl ConstantDeclarations {
@@ -292,7 +291,6 @@ impl ConstantStorageIndices {
 fn plan_value(
     value: Constant<Arc<Type>>,
     context: &mut PlanContext<'_>,
-    constants: &ConstantSignatures,
 ) -> Result<ConstantValue, PlanError> {
     let shape = context.value_shape(value.type_().as_ref());
     match value {
@@ -300,8 +298,8 @@ fn plan_value(
         Constant::Float { float_value, .. } => Ok(ConstantValue::float(float_value.value())),
         Constant::String { value, .. } => Ok(ConstantValue::string(value)),
         Constant::StringConcatenation { left, right, .. } => {
-            let left = into_string(plan_value(*left, context, constants)?)?;
-            let right = into_string(plan_value(*right, context, constants)?)?;
+            let left = into_string(plan_value(*left, context)?)?;
+            let right = into_string(plan_value(*right, context)?)?;
             Ok(ConstantValue::string_concatenation(left, right))
         }
         Constant::Tuple { elements, .. } => {
@@ -316,7 +314,7 @@ fn plan_value(
             }
             let mut planned_elements = Vec::with_capacity(elements.len());
             for (element, expected) in elements.into_iter().zip(&element_shapes) {
-                let element = plan_value(element, context, constants)?;
+                let element = plan_value(element, context)?;
                 require_shape(&element, expected)?;
                 planned_elements.push(element);
             }
@@ -334,11 +332,9 @@ fn plan_value(
             };
             let elements = elements
                 .into_iter()
-                .map(|element| plan_value(element, context, constants))
+                .map(|element| plan_value(element, context))
                 .collect::<Result<Vec<_>, _>>()?;
-            let tail = tail
-                .map(|tail| plan_value(*tail, context, constants))
-                .transpose()?;
+            let tail = tail.map(|tail| plan_value(*tail, context)).transpose()?;
             match ConstantValue::try_list(*item_shape, elements, tail) {
                 Ok(value) => Ok(value),
                 Err(ConstantListConstructionError::TypeMismatch { expected, actual }) => {
@@ -352,7 +348,7 @@ fn plan_value(
         Constant::BitArray { segments, .. } => {
             let segments = segments
                 .into_iter()
-                .map(|segment| plan_bit_array_segment(segment, context, constants))
+                .map(|segment| plan_bit_array_segment(segment, context))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(ConstantValue::bit_array(segments.into_boxed_slice()))
         }
@@ -363,7 +359,6 @@ fn plan_value(
             constructor.map(|constructor| *constructor),
             shape,
             context,
-            constants,
         ),
         Constant::Record {
             arguments,
@@ -374,7 +369,6 @@ fn plan_value(
             record_constructor.map(|constructor| *constructor),
             shape,
             context,
-            constants,
         ),
         Constant::RecordUpdate { .. } => Err(invalid_expression_shape_error(
             InvalidExpressionShapeKind::RecordUpdate,
@@ -388,15 +382,17 @@ fn plan_var(
     constructor: Option<ValueConstructor>,
     shape: ValueShape,
     context: &mut PlanContext<'_>,
-    constants: &ConstantSignatures,
 ) -> Result<ConstantValue, PlanError> {
     let Some(constructor) = constructor else {
         return Err(invalid_constant_shape_error());
     };
 
     match &constructor.variant {
-        ValueConstructorVariant::ModuleConstant { module, .. } if module == context.module_name => {
-            let Some(instantiation) = constants.instantiate(&name, &shape) else {
+        ValueConstructorVariant::ModuleConstant { module, .. }
+            if context.module_is_linked(module) =>
+        {
+            let Some(instantiation) = context.module_constant_instantiation(module, &name, &shape)
+            else {
                 return Err(invalid_constant_shape_error());
             };
             Ok(ConstantValue::reference(instantiation))
@@ -407,14 +403,14 @@ fn plan_var(
             external_erlang,
             external_javascript,
             ..
-        } if module == context.module_name
+        } if context.module_is_linked(module)
             && external_erlang.is_none()
             && external_javascript.is_none() =>
         {
             let ValueShape::Function(actual) = &shape else {
                 return Err(invalid_constant_shape_error());
             };
-            let Some(function) = context.lookup_function(name) else {
+            let Some(function) = context.lookup_module_function(module, name) else {
                 return Err(PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::UnknownLocal { name: name.clone() },
                 });
@@ -429,7 +425,7 @@ fn plan_var(
             ))
         }
         ValueConstructorVariant::Record { .. } => {
-            plan_record(None, Some(constructor), shape, context, constants)
+            plan_record(None, Some(constructor), shape, context)
         }
         ValueConstructorVariant::ModuleConstant { .. }
         | ValueConstructorVariant::ModuleFn { .. } => Err(invalid_expression_shape_error(
@@ -444,7 +440,6 @@ fn plan_record(
     constructor: Option<ValueConstructor>,
     shape: ValueShape,
     context: &mut PlanContext<'_>,
-    constants: &ConstantSignatures,
 ) -> Result<ConstantValue, PlanError> {
     let Some(constructor) = constructor else {
         return Err(invalid_expression_shape_error(
@@ -471,9 +466,12 @@ fn plan_record(
             )),
         };
     }
-    if module != context.module_name
-        && !(module == PRELUDE_MODULE_NAME && matches!(name.as_str(), "Ok" | "Error"))
-    {
+    if module == PRELUDE_MODULE_NAME && !matches!(name.as_str(), "Ok" | "Error") {
+        return Err(invalid_expression_shape_error(
+            InvalidExpressionShapeKind::RecordConstructor,
+        ));
+    }
+    if module != PRELUDE_MODULE_NAME && !context.module_is_linked(module) {
         return Err(invalid_expression_shape_error(
             InvalidExpressionShapeKind::RecordConstructor,
         ));
@@ -527,7 +525,7 @@ fn plan_record(
                 InvalidExpressionShapeKind::RecordConstructor,
             ));
         }
-        let value = plan_value(argument.value, context, constants)?;
+        let value = plan_value(argument.value, context)?;
         if value.shape().value_type() != *field.type_() {
             return Err(invalid_expression_type_for_value(
                 field.type_().clone(),
@@ -559,9 +557,8 @@ fn exact_constructor_shape(shape: CustomValueShape, index: usize) -> CustomValue
 fn plan_bit_array_segment(
     segment: GleamBitArraySegment<Constant<Arc<Type>>, Arc<Type>>,
     context: &mut PlanContext<'_>,
-    constants: &ConstantSignatures,
 ) -> Result<ConstantBitArraySegment, PlanError> {
-    let value = plan_value(*segment.value, context, constants)?;
+    let value = plan_value(*segment.value, context)?;
     let options = static_segment_options(segment.options)?;
     let site = context.panic_site(segment.location);
     let kind = match options.kind {
@@ -1241,7 +1238,6 @@ mod tests {
                     ValueShape::String,
                 ))),
                 &mut context,
-                &ConstantSignatures::empty(),
             ),
             Err(invalid_shape.clone()),
         );
@@ -1862,7 +1858,6 @@ mod tests {
         let functions = HashMap::new();
         let mut anonymous_functions = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module_name, &functions, &mut anonymous_functions);
-        let constants = ConstantSignatures::empty();
 
         assert_eq!(
             plan_bit_array_segment(
@@ -1881,7 +1876,6 @@ mod tests {
                     ],
                 },
                 &mut context,
-                &constants,
             ),
             Ok(ConstantBitArraySegment::SizedBits {
                 value: empty_bits,
@@ -1898,8 +1892,7 @@ mod tests {
         let functions = HashMap::new();
         let mut anonymous_functions = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module_name, &functions, &mut anonymous_functions);
-        let constants = ConstantSignatures::empty();
-        plan_value(value, &mut context, &constants)
+        plan_value(value, &mut context)
     }
 
     fn int(value: i64) -> Constant<Arc<type_::Type>> {
