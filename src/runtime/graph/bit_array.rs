@@ -4,11 +4,11 @@ use bitvec::vec::BitVec;
 use bitvec::view::BitView;
 use num_bigint::BigInt;
 
+use super::environment::BlockEnvironment;
 use crate::plan::execution::{
     Endianness, ExecutionPlan, FloatBitSize, GraphBitArrayBitsSize, GraphBitArrayEvaluatedSize,
     GraphBitArraySegment, Signedness, StringEncoding,
 };
-use crate::runtime::environment::BlockEnvironment;
 use crate::runtime::evaluated::EvaluatedBitArray;
 use crate::runtime::{BitArraySegmentPanicReason, ExecutionError};
 

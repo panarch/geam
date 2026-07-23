@@ -713,7 +713,7 @@ mod tests {
         StoredListValueId,
     };
     use crate::plan::execution::{ListFunctionId, ListStorageTypeId, RuntimeFunctionId};
-    use crate::runtime::environment::RetainedValues;
+    use crate::runtime::graph::RetainedValues;
     use crate::runtime::{
         EvaluatedBitArray, EvaluatedCapture, EvaluatedCustomValue, EvaluatedFunctionValue,
         EvaluatedIntFunction, EvaluatedValue,
@@ -852,9 +852,13 @@ pub fn main() {
         );
         let mut state = RuntimeState::new();
 
-        let value =
-            crate::runtime::graph::run_int_list(&plan, &mut state, main, RetainedValues::empty())
-                .expect("tail-recursive list graph should return");
+        let value = crate::runtime::function::run_int_list(
+            &plan,
+            &mut state,
+            main,
+            RetainedValues::empty(),
+        )
+        .expect("tail-recursive list graph should return");
 
         assert_eq!(state.int_values(&value), &[1.into()]);
         assert_eq!(state.ints.slots.len(), 1);
@@ -881,7 +885,7 @@ pub fn main() -> Int {
         let main = int_main(&plan);
         let mut state = RuntimeState::new();
 
-        let panic = source_panic(crate::runtime::graph::run_int(
+        let panic = source_panic(crate::runtime::function::run_int(
             &plan,
             &mut state,
             main,
@@ -913,7 +917,7 @@ pub fn main() -> Int {
         let main = int_main(&plan);
         let mut state = RuntimeState::new();
 
-        let panic = source_panic(crate::runtime::graph::run_int(
+        let panic = source_panic(crate::runtime::function::run_int(
             &plan,
             &mut state,
             main,
