@@ -14,15 +14,15 @@ pub(super) struct ConstantLowering {
 }
 
 impl ConstantLowering {
-    fn get<Value>(&self, key: &ConstantInstantiation) -> Option<ConstantId<Value>> {
+    fn get<Return>(&self, key: &ConstantInstantiation) -> Option<ConstantId<Return>> {
         self.indices.get(key).copied().map(ConstantId::new)
     }
 
-    fn insert<Value: ConstantValue>(
+    fn insert<Return: ConstantValue>(
         &mut self,
         key: ConstantInstantiation,
-        program: ConstantProgram<Value>,
-    ) -> ConstantId<Value> {
+        program: ConstantProgram<Return>,
+    ) -> ConstantId<Return> {
         let id = self.table.push(program);
         self.indices.insert(key, id.index());
         id
@@ -34,7 +34,7 @@ impl ConstantLowering {
 }
 
 impl LoweringContext {
-    fn lower_constant<ModuleValue, DraftValue, Value>(
+    fn lower_constant<ModuleValue, DraftValue, Return>(
         &mut self,
         instantiation: crate::plan::ConstantInstantiation,
         materialize: impl FnOnce(&crate::plan::ConstantTemplates) -> ModuleValue,
@@ -45,10 +45,10 @@ impl LoweringContext {
             &mut graph::DraftGraph,
             &mut Self,
         ) -> specialization::Representability<graph::DraftFlow<DraftValue>>,
-    ) -> specialization::Representability<execution::constant::ConstantId<Value>>
+    ) -> specialization::Representability<execution::constant::ConstantId<Return>>
     where
-        DraftValue: graph::DraftGraphValue + graph::FreezeGraphValue<Frozen = Value>,
-        Value: execution::constant::ConstantValue,
+        DraftValue: graph::DraftGraphValue + graph::FreezeGraphValue<Frozen = Return>,
+        Return: execution::constant::ConstantValue,
     {
         let outer = self.substitution.to_module_substitution();
         let key = instantiation.substitute(&outer);

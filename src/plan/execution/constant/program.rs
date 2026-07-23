@@ -2,15 +2,15 @@ use super::super::graph::{BlockGraph, BlockGraphExitId};
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::graph::{ExplainLocal, write_graph};
 
-pub(crate) struct ConstantProgram<Value> {
+pub(crate) struct ConstantProgram<Return> {
     block_graph: BlockGraph,
-    returns: Box<[Value]>,
+    returns: Box<[Return]>,
 }
 
-impl<Value> ConstantProgram<Value> {
+impl<Return> ConstantProgram<Return> {
     pub(in crate::plan::execution) fn from_parts(
         block_graph: BlockGraph,
-        returns: Vec<Value>,
+        returns: Vec<Return>,
     ) -> Self {
         Self {
             block_graph,
@@ -22,14 +22,14 @@ impl<Value> ConstantProgram<Value> {
         &self.block_graph
     }
 
-    pub(crate) fn return_(&self, id: BlockGraphExitId) -> &Value {
+    pub(crate) fn return_(&self, id: BlockGraphExitId) -> &Return {
         &self.returns[id.index()]
     }
 }
 
-impl<Value> Explain for ConstantProgram<Value>
+impl<Return> Explain for ConstantProgram<Return>
 where
-    Value: ExplainLocal,
+    Return: ExplainLocal,
 {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
         write_graph(
