@@ -7,6 +7,7 @@ pub(crate) use body::{
     IntListReturn, ListListReturn, NilListReturn, ParameterListListReturn, ParameterListReturn,
     StringListReturn, TupleListReturn, UtfCodepointListReturn,
 };
+pub(in crate::plan::execution) use id::list_function_label;
 pub(crate) use id::{
     BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId, FloatListFunctionId,
     FunctionListFunctionId, IntListFunctionId, ListFunctionId, ListListFunctionId,

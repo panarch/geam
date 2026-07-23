@@ -18,11 +18,96 @@ use super::{
     UtfCodepointListFunctionId, UtfCodepointListReturn, UtfCodepointReturn,
 };
 use super::{ExecutableFunction, FunctionFunctionTables, ListFunctionTables, ValueFunctionTables};
+use crate::plan::execution::explain::{Explain, ExplainContext, FunctionLabel};
+use crate::plan::execution::function::ExplainFunctionBody;
 
 pub(in crate::plan::execution) struct FunctionTables {
     pub(in crate::plan::execution) value_returns: ValueFunctionTables,
     pub(in crate::plan::execution) list_returns: ListFunctionTables,
     pub(in crate::plan::execution) function_returns: FunctionFunctionTables,
+}
+
+impl Explain for FunctionTables {
+    fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
+        context.write(&self.value_returns);
+        context.write(&self.list_returns);
+        context.write(&self.function_returns);
+    }
+}
+
+pub(in crate::plan::execution::function) fn write_table<'a, Body, Functions>(
+    context: &mut ExplainContext<'_, '_>,
+    family: &'static str,
+    functions: Functions,
+) where
+    Body: ExplainFunctionBody + 'a,
+    Functions: IntoIterator<Item = &'a ExecutableFunction<Body>>,
+{
+    for (index, function) in functions.into_iter().enumerate() {
+        context.push_str("\nfunction ");
+        FunctionLabel::new(family, index).write(context.output());
+        context.push('\n');
+        function
+            .graph()
+            .write_function_body(context, family, function.entry());
+    }
+}
+
+#[cfg(test)]
+mod explain_tests {
+    use crate::plan::execution::explain;
+
+    #[test]
+    fn writes_value_list_and_function_return_groups_in_order() {
+        let source = r#"
+fn ints() -> List(Int) { [] }
+fn callable() -> fn() -> Int { fn() { 1 } }
+
+pub fn main() {
+  let _ = #(ints(), callable())
+  0
+}
+"#;
+        let expected = concat!(
+            "\nfunction int#0\n",
+            "  entry b0 params=[] captures=[]\n",
+            "  block b0 params=[]\n",
+            "    %list.int#0:shape#1(list_type#0) = list.int[type#0] call ",
+            "list.int#0 args=[]\n",
+            "    %function.int#0:shape#2(fn() -> Int) = function[Int] call ",
+            "function.int#0 args=[]\n",
+            "    %tuple#0:shape#3(#(list_type#0, fn() -> Int)) = tuple.value ",
+            "elements=[%list.int#0, %function.int#0]\n",
+            "    %int#0:shape#0(Int) = int.value 0\n",
+            "    return %int#0\n",
+            "\nfunction int#1\n",
+            "  entry b0 params=[] captures=[]\n",
+            "  block b0 params=[]\n",
+            "    %int#0:shape#0(Int) = int.value 1\n",
+            "    return %int#0\n",
+            "\nfunction list.int#0\n",
+            "  entry b0 params=[] captures=[]\n",
+            "  block b0 params=[]\n",
+            "    %list.int#0:shape#1(list_type#0) = list.int[type#0] value ",
+            "elements=[]\n",
+            "    return %list.int#0\n",
+            "\nfunction function.int#0\n",
+            "  entry b0 params=[] captures=[]\n",
+            "  block b0 params=[]\n",
+            "    %function.int#0:shape#2(fn() -> Int) = function[Int] closure ",
+            "target=int#1 captures=[]\n",
+            "    return %function.int#0\n",
+        );
+
+        assert_explanation(source, expected);
+    }
+
+    fn assert_explanation(source: &str, expected: &str) {
+        explain::assert_rendered(source, expected, |plan, output| {
+            let mut context = explain::ExplainContext::new(plan, output);
+            context.write(&plan.functions);
+        });
+    }
 }
 
 impl FunctionTables {

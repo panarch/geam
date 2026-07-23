@@ -1,17 +1,79 @@
-mod bit_array;
-mod constant;
-mod function;
-mod graph;
-mod instruction;
-mod label;
-mod pattern;
-mod value;
-
-use self::constant::write_constant_tables;
-use self::function::write_function_tables;
-use self::label::runtime_function_label;
 use super::ExecutionPlan;
 use std::fmt;
+
+pub(in crate::plan::execution) trait Explain {
+    fn write_explanation(&self, context: &mut ExplainContext<'_, '_>);
+}
+
+#[derive(Clone, Copy)]
+pub(in crate::plan::execution) struct FunctionLabel {
+    family: &'static str,
+    index: usize,
+}
+
+impl FunctionLabel {
+    pub(in crate::plan::execution) fn new(family: &'static str, index: usize) -> Self {
+        Self { family, index }
+    }
+
+    pub(in crate::plan::execution) fn write(self, output: &mut String) {
+        output.push_str(self.family);
+        output.push('#');
+        output.push_str(&self.index.to_string());
+    }
+}
+
+pub(in crate::plan::execution) struct ExplainContext<'plan, 'output> {
+    plan: &'plan ExecutionPlan,
+    output: &'output mut String,
+}
+
+impl<'plan, 'output> ExplainContext<'plan, 'output> {
+    pub(in crate::plan::execution) fn new(
+        plan: &'plan ExecutionPlan,
+        output: &'output mut String,
+    ) -> Self {
+        Self { plan, output }
+    }
+
+    pub(in crate::plan::execution) fn plan(&self) -> &'plan ExecutionPlan {
+        self.plan
+    }
+
+    pub(in crate::plan::execution) fn output(&mut self) -> &mut String {
+        self.output
+    }
+
+    pub(in crate::plan::execution) fn push(&mut self, character: char) {
+        self.output.push(character);
+    }
+
+    pub(in crate::plan::execution) fn push_str(&mut self, text: &str) {
+        self.output.push_str(text);
+    }
+
+    pub(in crate::plan::execution) fn write<Value>(&mut self, value: &Value)
+    where
+        Value: Explain + ?Sized,
+    {
+        value.write_explanation(self);
+    }
+
+    pub(in crate::plan::execution) fn write_list<Value>(
+        &mut self,
+        values: &[Value],
+        mut write_value: impl FnMut(&mut Self, &Value),
+    ) {
+        self.output.push('[');
+        for (index, value) in values.iter().enumerate() {
+            if index > 0 {
+                self.output.push_str(", ");
+            }
+            write_value(self, value);
+        }
+        self.output.push(']');
+    }
+}
 
 pub struct ExecutionPlanExplanation<'a> {
     plan: &'a ExecutionPlan,
@@ -25,24 +87,15 @@ impl<'a> ExecutionPlanExplanation<'a> {
 
 impl fmt::Display for ExecutionPlanExplanation<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&render(self.plan))
+        let mut output = String::new();
+        let mut context = ExplainContext::new(self.plan, &mut output);
+        context.write(self.plan);
+        formatter.write_str(&output)
     }
 }
 
-fn render(plan: &ExecutionPlan) -> String {
-    let mut output = String::new();
-    output.push_str("module ");
-    output.push_str(&plan.module);
-    output.push_str("\nmain ");
-    runtime_function_label(&plan.main).push_to(&mut output);
-    output.push('\n');
-    write_function_tables(&mut output, plan, &plan.functions);
-    write_constant_tables(&mut output, plan, &plan.constants);
-    output
-}
-
 #[cfg(test)]
-fn with_execution_plan<Result>(
+pub(in crate::plan::execution) fn with_execution_plan<Result>(
     source: &str,
     inspect: impl FnOnce(&ExecutionPlan) -> Result,
 ) -> Result {
@@ -54,7 +107,11 @@ fn with_execution_plan<Result>(
 }
 
 #[cfg(test)]
-fn assert_rendered(source: &str, expected: &str, render: impl FnOnce(&ExecutionPlan, &mut String)) {
+pub(in crate::plan::execution) fn assert_rendered(
+    source: &str,
+    expected: &str,
+    render: impl FnOnce(&ExecutionPlan, &mut String),
+) {
     with_execution_plan(source, |plan| {
         let mut actual = String::new();
         render(plan, &mut actual);
@@ -63,7 +120,7 @@ fn assert_rendered(source: &str, expected: &str, render: impl FnOnce(&ExecutionP
 }
 
 #[cfg(test)]
-fn assert_written(expected: &str, write: impl FnOnce(&mut String)) {
+pub(in crate::plan::execution) fn assert_written(expected: &str, write: impl FnOnce(&mut String)) {
     let mut actual = String::new();
     write(&mut actual);
     assert_eq!(actual, expected);

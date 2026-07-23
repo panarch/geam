@@ -113,3 +113,42 @@ impl<Body> TypedFunctionReturn<Body> {
         &self.body
     }
 }
+
+use crate::plan::execution::explain::ExplainContext;
+use crate::plan::execution::function::{ExplainFunctionBody, FunctionEntry};
+
+impl<Body> ExplainFunctionBody for TypedFunctionReturn<Body>
+where
+    Body: ExplainFunctionBody,
+{
+    fn write_function_body(
+        &self,
+        context: &mut ExplainContext<'_, '_>,
+        family: &'static str,
+        entry: &FunctionEntry,
+    ) {
+        self.body().write_function_body(context, family, entry);
+    }
+}
+
+impl ExplainFunctionBody for CustomFunctionReturn {
+    fn write_function_body(
+        &self,
+        context: &mut ExplainContext<'_, '_>,
+        family: &'static str,
+        entry: &FunctionEntry,
+    ) {
+        self.body().write_function_body(context, family, entry);
+    }
+}
+
+impl ExplainFunctionBody for FunctionFunctionReturn {
+    fn write_function_body(
+        &self,
+        context: &mut ExplainContext<'_, '_>,
+        family: &'static str,
+        entry: &FunctionEntry,
+    ) {
+        self.body().write_function_body(context, family, entry);
+    }
+}

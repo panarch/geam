@@ -293,6 +293,209 @@ impl ListFunctionFunctionId {
     }
 }
 
+use crate::plan::execution::explain::FunctionLabel;
+
+pub(in crate::plan::execution) fn function_function_label(
+    function: &FunctionFunctionId,
+) -> FunctionLabel {
+    match function {
+        FunctionFunctionId::Generic(id) => FunctionLabel::new("function.generic", id.index()),
+        FunctionFunctionId::Never(id) => FunctionLabel::new("function.never", id.index()),
+        FunctionFunctionId::Int(id) => FunctionLabel::new("function.int", id.0),
+        FunctionFunctionId::Float(id) => FunctionLabel::new("function.float", id.0),
+        FunctionFunctionId::String(id) => FunctionLabel::new("function.string", id.0),
+        FunctionFunctionId::BitArray(id) => FunctionLabel::new("function.bit_array", id.0),
+        FunctionFunctionId::UtfCodepoint(id) => FunctionLabel::new("function.utf_codepoint", id.0),
+        FunctionFunctionId::Custom(id) => FunctionLabel::new("function.custom", id.index()),
+        FunctionFunctionId::Bool(id) => FunctionLabel::new("function.bool", id.0),
+        FunctionFunctionId::Nil(id) => FunctionLabel::new("function.nil", id.0),
+        FunctionFunctionId::Tuple(id) => FunctionLabel::new("function.tuple", id.0),
+        FunctionFunctionId::List(id) => list_function_function_label(id),
+        FunctionFunctionId::Function(id) => FunctionLabel::new("function.function", id.index()),
+    }
+}
+
+fn list_function_function_label(function: &ListFunctionFunctionId) -> FunctionLabel {
+    match function {
+        ListFunctionFunctionId::Parameter { id, .. } => {
+            FunctionLabel::new("function.list.parameter", id.0)
+        }
+        ListFunctionFunctionId::ParameterList { id, .. } => {
+            FunctionLabel::new("function.list.parameter_list", id.0)
+        }
+        ListFunctionFunctionId::Int { id, .. } => FunctionLabel::new("function.list.int", id.0),
+        ListFunctionFunctionId::String { id, .. } => {
+            FunctionLabel::new("function.list.string", id.0)
+        }
+        ListFunctionFunctionId::BitArray { id, .. } => {
+            FunctionLabel::new("function.list.bit_array", id.0)
+        }
+        ListFunctionFunctionId::UtfCodepoint { id, .. } => {
+            FunctionLabel::new("function.list.utf_codepoint", id.0)
+        }
+        ListFunctionFunctionId::Custom { id, .. } => {
+            FunctionLabel::new("function.list.custom", id.0)
+        }
+        ListFunctionFunctionId::Float { id, .. } => FunctionLabel::new("function.list.float", id.0),
+        ListFunctionFunctionId::Bool { id, .. } => FunctionLabel::new("function.list.bool", id.0),
+        ListFunctionFunctionId::Nil { id, .. } => FunctionLabel::new("function.list.nil", id.0),
+        ListFunctionFunctionId::Tuple { id, .. } => FunctionLabel::new("function.list.tuple", id.0),
+        ListFunctionFunctionId::List { id, .. } => FunctionLabel::new("function.list.list", id.0),
+        ListFunctionFunctionId::Function { id, .. } => {
+            FunctionLabel::new("function.list.function", id.0)
+        }
+    }
+}
+
+#[cfg(test)]
+mod explain_tests {
+    use super::{FunctionFunctionId, function_function_label};
+    use crate::plan::execution::{ExecutionPlan, RuntimeFunctionId, explain};
+
+    #[test]
+    fn labels_function_return_families() {
+        let cases = [
+            (
+                "pub fn main() -> fn(value) -> value { fn(value) { value } }",
+                "function.generic#0",
+            ),
+            (
+                "pub fn main() -> fn() -> value { fn() { panic } }",
+                "function.never#0",
+            ),
+            (
+                "pub fn main() -> fn() -> Int { fn() { 1 } }",
+                "function.int#0",
+            ),
+            (
+                "pub fn main() -> fn() -> Float { fn() { 1.0 } }",
+                "function.float#0",
+            ),
+            (
+                "pub fn main() -> fn() -> String { fn() { \"one\" } }",
+                "function.string#0",
+            ),
+            (
+                "pub fn main() -> fn() -> BitArray { fn() { <<1>> } }",
+                "function.bit_array#0",
+            ),
+            (
+                "pub fn main() -> fn() -> UtfCodepoint { fn() { panic } }",
+                "function.utf_codepoint#0",
+            ),
+            (
+                "pub type Boxed { Boxed(Int) } pub fn main() -> fn() -> Boxed { fn() { Boxed(1) } }",
+                "function.custom#0",
+            ),
+            (
+                "pub fn main() -> fn() -> Bool { fn() { True } }",
+                "function.bool#0",
+            ),
+            (
+                "pub fn main() -> fn() -> Nil { fn() { Nil } }",
+                "function.nil#0",
+            ),
+            (
+                "pub fn main() -> fn() -> #(Int) { fn() { #(1) } }",
+                "function.tuple#0",
+            ),
+            (
+                "pub fn main() -> fn() -> List(Int) { fn() { [] } }",
+                "function.list.int#0",
+            ),
+            (
+                "pub fn main() -> fn() -> fn() -> Int { fn() { fn() { 1 } } }",
+                "function.function#0",
+            ),
+        ];
+
+        for (source, expected) in cases {
+            assert_explanation(source, expected);
+        }
+    }
+
+    #[test]
+    fn labels_list_returning_function_families() {
+        let cases = [
+            (
+                "pub fn main() -> fn() -> List(value) { fn() { [] } }",
+                "function.list.parameter#0",
+            ),
+            (
+                "pub fn main() -> fn() -> List(List(value)) { fn() { [[]] } }",
+                "function.list.parameter_list#0",
+            ),
+            (
+                "pub fn main() -> fn() -> List(Int) { fn() { [] } }",
+                "function.list.int#0",
+            ),
+            (
+                "pub fn main() -> fn() -> List(String) { fn() { [] } }",
+                "function.list.string#0",
+            ),
+            (
+                "pub fn main() -> fn() -> List(BitArray) { fn() { [] } }",
+                "function.list.bit_array#0",
+            ),
+            (
+                "pub fn main() -> fn() -> List(UtfCodepoint) { fn() { [] } }",
+                "function.list.utf_codepoint#0",
+            ),
+            (
+                "pub type Boxed { Boxed(Int) } pub fn main() -> fn() -> List(Boxed) { fn() { [] } }",
+                "function.list.custom#0",
+            ),
+            (
+                "pub fn main() -> fn() -> List(Float) { fn() { [] } }",
+                "function.list.float#0",
+            ),
+            (
+                "pub fn main() -> fn() -> List(Bool) { fn() { [] } }",
+                "function.list.bool#0",
+            ),
+            (
+                "pub fn main() -> fn() -> List(Nil) { fn() { [] } }",
+                "function.list.nil#0",
+            ),
+            (
+                "pub fn main() -> fn() -> List(#(Int)) { fn() { [] } }",
+                "function.list.tuple#0",
+            ),
+            (
+                "pub fn main() -> fn() -> List(List(Int)) { fn() { [] } }",
+                "function.list.list#0",
+            ),
+            (
+                "pub fn main() -> fn() -> List(fn() -> Int) { fn() { [] } }",
+                "function.list.function#0",
+            ),
+        ];
+
+        for (source, expected) in cases {
+            assert_explanation(source, expected);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "source should lower a function-returning main function")]
+    fn function_return_shape_guard_is_visible() {
+        explain::with_execution_plan("pub fn main() { 1 }", main_function_id);
+    }
+
+    fn main_function_id(plan: &ExecutionPlan) -> FunctionFunctionId {
+        let RuntimeFunctionId::Function { id, .. } = plan.main_runtime() else {
+            panic!("source should lower a function-returning main function");
+        };
+        id
+    }
+
+    fn assert_explanation(source: &str, expected: &str) {
+        explain::assert_rendered(source, expected, |plan, output| {
+            function_function_label(&main_function_id(plan)).write(output);
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

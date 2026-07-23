@@ -1,4 +1,6 @@
 use super::{ConstantId, ConstantProgram};
+use crate::plan::execution::explain::{Explain, ExplainContext};
+use crate::plan::execution::graph::ExplainLocal;
 use crate::plan::execution::graph::FunctionLocal;
 use crate::plan::execution::{
     BitArrayListLocalId, BitArrayLocalId, BoolListLocalId, BoolLocalId, CustomListLocalId,
@@ -274,6 +276,85 @@ impl ConstantTable {
         id: ConstantId<Value>,
     ) -> &ConstantProgram<Value> {
         &Value::programs(self)[id.index()]
+    }
+}
+
+impl Explain for ConstantTable {
+    fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
+        write_table::<IntLocalId>(context, self, "int");
+        write_table::<FloatLocalId>(context, self, "float");
+        write_table::<StringLocalId>(context, self, "string");
+        write_table::<BitArrayLocalId>(context, self, "bit_array");
+        write_table::<CustomLocal>(context, self, "custom");
+        write_table::<BoolLocalId>(context, self, "bool");
+        write_table::<NilLocalId>(context, self, "nil");
+        write_table::<TupleLocalId>(context, self, "tuple");
+        write_table::<ParameterListLocalId>(context, self, "list.parameter");
+        write_table::<ParameterListListLocalId>(context, self, "list.parameter_list");
+        write_table::<IntListLocalId>(context, self, "list.int");
+        write_table::<StringListLocalId>(context, self, "list.string");
+        write_table::<BitArrayListLocalId>(context, self, "list.bit_array");
+        write_table::<UtfCodepointListLocalId>(context, self, "list.utf_codepoint");
+        write_table::<CustomListLocalId>(context, self, "list.custom");
+        write_table::<FloatListLocalId>(context, self, "list.float");
+        write_table::<BoolListLocalId>(context, self, "list.bool");
+        write_table::<NilListLocalId>(context, self, "list.nil");
+        write_table::<TupleListLocalId>(context, self, "list.tuple");
+        write_table::<ListListLocalId>(context, self, "list.list");
+        write_table::<FunctionListLocalId>(context, self, "list.function");
+        write_table::<FunctionLocal>(context, self, "function");
+    }
+}
+
+fn write_table<Value>(
+    context: &mut ExplainContext<'_, '_>,
+    constants: &ConstantTable,
+    family: &'static str,
+) where
+    Value: ConstantValue + ExplainLocal,
+{
+    for (index, program) in Value::programs(constants).iter().enumerate() {
+        context.push_str("\nconstant.");
+        context.push_str(family);
+        context.push('#');
+        context.push_str(&index.to_string());
+        context.push('\n');
+        context.write(program);
+    }
+}
+
+#[cfg(test)]
+mod explain_tests {
+    use crate::plan::execution::explain;
+
+    #[test]
+    fn writes_constant_programs_in_family_order() {
+        let source = r#"
+const enabled = True
+const one = 1
+pub fn main() { #(one, enabled) }
+"#;
+        let expected = concat!(
+            "\nconstant.int#0\n",
+            "  entry b0 params=[] captures=[]\n",
+            "  block b0 params=[]\n",
+            "    %int#0:shape#0(Int) = int.value 1\n",
+            "    return %int#0\n",
+            "\nconstant.bool#0\n",
+            "  entry b0 params=[] captures=[]\n",
+            "  block b0 params=[]\n",
+            "    %bool#0:shape#1(Bool) = bool.value True\n",
+            "    return %bool#0\n",
+        );
+
+        assert_explanation(source, expected);
+    }
+
+    fn assert_explanation(source: &str, expected: &str) {
+        explain::assert_rendered(source, expected, |plan, output| {
+            let mut context = explain::ExplainContext::new(plan, output);
+            context.write(&plan.constants);
+        });
     }
 }
 
