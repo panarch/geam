@@ -42,20 +42,41 @@ fn render(plan: &ExecutionPlan) -> String {
 }
 
 #[cfg(test)]
+fn with_execution_plan<Result>(
+    source: &str,
+    inspect: impl FnOnce(&ExecutionPlan) -> Result,
+) -> Result {
+    let typed =
+        crate::compile_typed_module("main", "main.gleam", source).expect("source should compile");
+    let module_plan = crate::plan_module(typed).expect("source should plan");
+    let plan = ExecutionPlan::from_module_plan(module_plan);
+    inspect(&plan)
+}
+
+#[cfg(test)]
+fn assert_rendered(source: &str, expected: &str, render: impl FnOnce(&ExecutionPlan, &mut String)) {
+    with_execution_plan(source, |plan| {
+        let mut actual = String::new();
+        render(plan, &mut actual);
+        assert_eq!(actual, expected, "source:\n{source}");
+    });
+}
+
+#[cfg(test)]
+fn assert_written(expected: &str, write: impl FnOnce(&mut String)) {
+    let mut actual = String::new();
+    write(&mut actual);
+    assert_eq!(actual, expected);
+}
+
+#[cfg(test)]
 mod tests {
     use crate::ExecutionPlanExplanation;
 
     #[test]
     fn formats_the_public_execution_plan_facade() {
-        let source = "pub fn main() { 1 }";
-        let typed = crate::compile_typed_module("main", "main.gleam", source)
-            .expect("source should compile");
-        let module_plan = crate::plan_module(typed).expect("source should plan");
-        let plan = crate::ExecutionPlan::from_module_plan(module_plan);
-        let explanation: ExecutionPlanExplanation<'_> = plan.explain();
-
-        assert_eq!(
-            explanation.to_string(),
+        super::assert_rendered(
+            "pub fn main() { 1 }",
             concat!(
                 "module main\n",
                 "main int#0\n",
@@ -66,6 +87,10 @@ mod tests {
                 "    %int#0:shape#0(Int) = int.value 1\n",
                 "    return %int#0\n",
             ),
+            |plan, output| {
+                let explanation: ExecutionPlanExplanation<'_> = plan.explain();
+                output.push_str(&explanation.to_string());
+            },
         );
     }
 }

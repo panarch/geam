@@ -2,8 +2,8 @@ mod local;
 mod slot;
 mod type_;
 
-pub(super) use local::ExplainLocal;
-pub(super) use slot::{write_locals, write_slot, write_slots};
+pub(super) use local::{ExplainLocal, write_locals};
+pub(super) use slot::{write_slot, write_slots};
 pub(super) use type_::write_type;
 
 pub(super) fn write_list<Value>(
@@ -29,12 +29,11 @@ mod tests {
             output.push_str(&value.to_string());
         }
 
-        let mut output = String::new();
-        super::write_list(&mut output, &[] as &[usize], write_usize);
-        assert_eq!(output, "[]");
-
-        output.clear();
-        super::write_list(&mut output, &[1, 2, 3], write_usize);
-        assert_eq!(output, "[1, 2, 3]");
+        super::super::assert_written("[]", |output| {
+            super::write_list(output, &[] as &[usize], write_usize);
+        });
+        super::super::assert_written("[1, 2, 3]", |output| {
+            super::write_list(output, &[1, 2, 3], write_usize);
+        });
     }
 }

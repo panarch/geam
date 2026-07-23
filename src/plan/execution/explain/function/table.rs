@@ -31,17 +31,8 @@ pub(super) fn write_table<'a, Return, Functions>(
 mod tests {
     #[test]
     fn writes_one_function_table_with_its_exact_graph() {
-        let source = "pub fn main() { 1 }";
-        let typed = crate::compile_typed_module("main", "main.gleam", source)
-            .expect("source should compile");
-        let module_plan = crate::plan_module(typed).expect("source should plan");
-        let plan = crate::ExecutionPlan::from_module_plan(module_plan);
-        let mut output = String::new();
-
-        super::write_table(&mut output, &plan, "int", &plan.functions.int_functions);
-
-        assert_eq!(
-            output,
+        assert_explanation(
+            "pub fn main() { 1 }",
             concat!(
                 "\nfunction int#0\n",
                 "  entry b0 params=[] captures=[]\n",
@@ -50,5 +41,11 @@ mod tests {
                 "    return %int#0\n",
             ),
         );
+    }
+
+    fn assert_explanation(source: &str, expected: &str) {
+        super::super::super::assert_rendered(source, expected, |plan, output| {
+            super::write_table(output, plan, "int", &plan.functions.int_functions);
+        });
     }
 }

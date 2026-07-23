@@ -263,7 +263,8 @@ mod tests {
 
     #[test]
     fn writes_return_and_tail_call_exits() {
-        let source = r#"
+        assert_explanation(
+            r#"
 fn loop(value: Int) {
   case value {
     0 -> 0
@@ -272,24 +273,9 @@ fn loop(value: Int) {
 }
 
 pub fn main() { loop(2) }
-"#;
-        let typed = crate::compile_typed_module("main", "main.gleam", source)
-            .expect("source should compile");
-        let module_plan = crate::plan_module(typed).expect("source should plan");
-        let plan = crate::ExecutionPlan::from_module_plan(module_plan);
-        let graph = plan.int_function(IntFunctionId(1)).graph();
-        let mut output = String::new();
-
-        for block in graph.blocks() {
-            if let Terminator::Exit(exit) = block.terminator() {
-                if !output.is_empty() {
-                    output.push_str(" | ");
-                }
-                super::write_function_exit(&mut output, graph.exit(*exit), "int");
-            }
-        }
-
-        assert_eq!(output, "return %int#0 | tail int#1 args=[%int#2]");
+"#,
+            "return %int#0 | tail int#1 args=[%int#2]",
+        );
     }
 
     #[test]
@@ -476,5 +462,19 @@ pub fn main() { loop(2) }
 
     fn assert_tail_index(function: &impl TailFunctionIndex, expected: usize) {
         assert_eq!(function.tail_function_index(), expected);
+    }
+
+    fn assert_explanation(source: &str, expected: &str) {
+        super::super::super::assert_rendered(source, expected, |plan, output| {
+            let graph = plan.int_function(IntFunctionId(1)).graph();
+            for block in graph.blocks() {
+                if let Terminator::Exit(exit) = block.terminator() {
+                    if !output.is_empty() {
+                        output.push_str(" | ");
+                    }
+                    super::write_function_exit(output, graph.exit(*exit), "int");
+                }
+            }
+        });
     }
 }

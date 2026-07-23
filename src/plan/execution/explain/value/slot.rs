@@ -1,4 +1,4 @@
-use super::super::super::{ExecutionPlan, ParamLocal, ParamSlot};
+use super::super::super::{ExecutionPlan, ParamSlot};
 use super::local::ExplainLocal;
 use super::{write_list, write_type};
 
@@ -24,36 +24,20 @@ pub(in crate::plan::execution::explain) fn write_slots(
     write_list(output, slots, |output, slot| write_slot(output, plan, slot));
 }
 
-pub(in crate::plan::execution::explain) fn write_locals(
-    output: &mut String,
-    locals: &[ParamLocal],
-) {
-    write_list(output, locals, |output, local| local.write_local(output));
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::plan::execution::{IntFunctionId, ParamLocal};
+    use crate::plan::execution::IntFunctionId;
 
     #[test]
-    fn writes_slots_and_local_argument_packs() {
-        let source = "pub fn main() { 1 }";
-        let typed = crate::compile_typed_module("main", "main.gleam", source)
-            .expect("source should compile");
-        let module_plan = crate::plan_module(typed).expect("source should plan");
-        let plan = crate::ExecutionPlan::from_module_plan(module_plan);
-        let instruction =
-            &plan.int_function(IntFunctionId(0)).graph().blocks()[0].instructions()[0];
-        let mut output = String::new();
+    fn writes_slot_from_a_lowered_instruction() {
+        assert_explanation("pub fn main() { 1 }", "%int#0:shape#0(Int)");
+    }
 
-        super::write_slot(&mut output, &plan, instruction.output());
-        assert_eq!(output, "%int#0:shape#0(Int)");
-
-        output.clear();
-        super::write_locals(
-            &mut output,
-            &[ParamLocal::Int(crate::plan::execution::IntLocalId(2))],
-        );
-        assert_eq!(output, "[%int#2]");
+    fn assert_explanation(source: &str, expected: &str) {
+        super::super::super::assert_rendered(source, expected, |plan, output| {
+            let instruction =
+                &plan.int_function(IntFunctionId(0)).graph().blocks()[0].instructions()[0];
+            super::write_slot(output, plan, instruction.output());
+        });
     }
 }

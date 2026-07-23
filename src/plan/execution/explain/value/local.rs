@@ -10,10 +10,18 @@ use super::super::super::{
     TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
     UtfCodepointLocalId,
 };
+use super::write_list;
 use std::convert::Infallible;
 
 pub(in crate::plan::execution::explain) trait ExplainLocal {
     fn write_local(&self, output: &mut String);
+}
+
+pub(in crate::plan::execution::explain) fn write_locals(
+    output: &mut String,
+    locals: &[ParamLocal],
+) {
+    write_list(output, locals, |output, local| local.write_local(output));
 }
 
 impl ExplainLocal for IntLocalId {
@@ -359,10 +367,10 @@ mod tests {
         BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
         BoolListLocalId, BoolLocalId, CustomListLocalId, FloatFunctionLocalId, FloatListLocalId,
         FloatLocalId, FunctionListLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId,
-        ListListLocalId, NilFunctionLocalId, NilListLocalId, NilLocalId, ParameterListListLocalId,
-        ParameterListLocalId, StringFunctionLocalId, StringListLocalId, StringLocalId,
-        TupleFunctionLocalId, TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId,
-        UtfCodepointListLocalId, UtfCodepointLocalId,
+        ListListLocalId, NilFunctionLocalId, NilListLocalId, NilLocalId, ParamLocal,
+        ParameterListListLocalId, ParameterListLocalId, StringFunctionLocalId, StringListLocalId,
+        StringLocalId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
+        UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
     };
 
     #[test]
@@ -399,6 +407,16 @@ mod tests {
         assert_local(&BoolFunctionLocalId(27), "%function.bool#27");
         assert_local(&NilFunctionLocalId(28), "%function.nil#28");
         assert_local(&TupleFunctionLocalId(29), "%function.tuple#29");
+    }
+
+    #[test]
+    fn writes_local_argument_packs() {
+        super::super::super::assert_written("[%int#2]", |output| {
+            super::write_locals(
+                output,
+                &[ParamLocal::Int(crate::plan::execution::IntLocalId(2))],
+            );
+        });
     }
 
     #[test]
@@ -589,8 +607,8 @@ mod tests {
     }
 
     fn assert_local(local: &impl ExplainLocal, expected: &str) {
-        let mut output = String::new();
-        local.write_local(&mut output);
-        assert_eq!(output, expected);
+        super::super::super::assert_written(expected, |output| {
+            local.write_local(output);
+        });
     }
 }

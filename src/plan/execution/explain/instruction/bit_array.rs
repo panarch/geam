@@ -1,8 +1,8 @@
-use super::super::super::graph::{
-    BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayInstruction, BitArraySegment,
-};
-use super::super::bit_array::{endianness, float_size, string_encoding};
-use super::super::value::{ExplainLocal, write_list};
+mod segment;
+
+use self::segment::write_segment;
+use super::super::super::graph::BitArrayInstruction;
+use super::super::value::write_list;
 use super::operand::{write_call, write_constant, write_function_call, write_projection};
 
 pub(super) fn write_bit_array(output: &mut String, instruction: &BitArrayInstruction) {
@@ -30,107 +30,14 @@ pub(super) fn write_bit_array(output: &mut String, instruction: &BitArrayInstruc
     }
 }
 
-fn write_segment(output: &mut String, segment: &BitArraySegment) {
-    match segment {
-        BitArraySegment::Int {
-            value,
-            bit_size,
-            endianness: order,
-        } => {
-            output.push_str("int(");
-            value.write_local(output);
-            output.push_str(", bits=");
-            output.push_str(&bit_size.to_string());
-            output.push_str(", ");
-            output.push_str(endianness(*order));
-            output.push(')');
-        }
-        BitArraySegment::EvaluatedInt {
-            value,
-            size,
-            endianness: order,
-            ..
-        } => {
-            output.push_str("int(");
-            value.write_local(output);
-            output.push_str(", bits=");
-            write_evaluated_size(output, size);
-            output.push_str(", ");
-            output.push_str(endianness(*order));
-            output.push(')');
-        }
-        BitArraySegment::Float {
-            value,
-            bit_size,
-            endianness: order,
-        } => {
-            output.push_str("float(");
-            value.write_local(output);
-            output.push_str(", bits=");
-            output.push_str(&float_size(*bit_size).to_string());
-            output.push_str(", ");
-            output.push_str(endianness(*order));
-            output.push(')');
-        }
-        BitArraySegment::EvaluatedFloat {
-            value,
-            size,
-            endianness: order,
-            ..
-        } => {
-            output.push_str("float(");
-            value.write_local(output);
-            output.push_str(", bits=");
-            write_evaluated_size(output, size);
-            output.push_str(", ");
-            output.push_str(endianness(*order));
-            output.push(')');
-        }
-        BitArraySegment::String { value, encoding } => {
-            output.push_str("string(");
-            value.write_local(output);
-            output.push_str(", ");
-            output.push_str(string_encoding(*encoding));
-            output.push(')');
-        }
-        BitArraySegment::UtfCodepoint { value, encoding } => {
-            output.push_str("utf_codepoint(");
-            value.write_local(output);
-            output.push_str(", ");
-            output.push_str(string_encoding(*encoding));
-            output.push(')');
-        }
-        BitArraySegment::Bits(value) => {
-            output.push_str("bits(");
-            value.write_local(output);
-            output.push(')');
-        }
-        BitArraySegment::SizedBits { value, size, .. } => {
-            output.push_str("bits(");
-            value.write_local(output);
-            output.push_str(", bits=");
-            match size {
-                BitArrayBitsSize::Fixed(size) => output.push_str(&size.to_string()),
-                BitArrayBitsSize::Evaluated(size) => write_evaluated_size(output, size),
-            }
-            output.push(')');
-        }
-    }
-}
-
-fn write_evaluated_size(output: &mut String, size: &BitArrayEvaluatedSize) {
-    size.value().write_local(output);
-    output.push('*');
-    output.push_str(&size.unit().to_string());
-}
-
 #[cfg(test)]
 mod tests {
     use crate::plan::execution::BitArrayFunctionId;
 
     #[test]
     fn writes_bit_array_instruction_and_segment_grammar() {
-        let source = r#"
+        assert_explanation(
+            r#"
 pub fn main() {
   let size = 8
   let bits = <<1, 2>>
@@ -143,20 +50,7 @@ pub fn main() {
     bits:bits-size(size),
   >>
 }
-"#;
-        let typed = crate::compile_typed_module("main", "main.gleam", source)
-            .expect("source should compile");
-        let module_plan = crate::plan_module(typed).expect("source should plan");
-        let plan = crate::ExecutionPlan::from_module_plan(module_plan);
-        let graph = plan.bit_array_function(BitArrayFunctionId(0)).graph();
-        let mut output = String::new();
-
-        for instruction in graph.blocks()[0].instructions() {
-            super::super::write_instruction(&mut output, &plan, instruction);
-        }
-
-        assert_eq!(
-            output,
+"#,
             concat!(
                 "    %int#0:shape#0(Int) = int.value 8\n",
                 "    %int#1:shape#0(Int) = int.value 1\n",
@@ -176,5 +70,14 @@ pub fn main() {
                 "string(%string#0, utf8), bits(%bit_array#0, bits=%int#0*1)]\n",
             ),
         );
+    }
+
+    fn assert_explanation(source: &str, expected: &str) {
+        super::super::super::assert_rendered(source, expected, |plan, output| {
+            let graph = plan.bit_array_function(BitArrayFunctionId(0)).graph();
+            for instruction in graph.blocks()[0].instructions() {
+                super::super::write_instruction(output, plan, instruction);
+            }
+        });
     }
 }

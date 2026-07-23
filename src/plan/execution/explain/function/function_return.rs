@@ -162,7 +162,8 @@ pub(super) fn write_function_return_tables(
 mod tests {
     #[test]
     fn writes_function_return_families_in_storage_order() {
-        let source = r#"
+        assert_explanation(
+            r#"
 fn int_function() -> fn() -> Int { fn() { 1 } }
 fn first_float() -> Float { 1.0 }
 fn second_float() -> Float { 2.0 }
@@ -211,17 +212,7 @@ pub fn main() -> fn() -> Bool {
   )
   fn() { True }
 }
-"#;
-        let typed = crate::compile_typed_module("main", "main.gleam", source)
-            .expect("source should compile");
-        let module_plan = crate::plan_module(typed).expect("source should plan");
-        let plan = crate::ExecutionPlan::from_module_plan(module_plan);
-        let mut output = String::new();
-
-        super::write_function_return_tables(&mut output, &plan, &plan.functions);
-
-        assert_eq!(
-            output,
+"#,
             concat!(
                 "\nfunction function.int#0\n",
                 "  entry b0 params=[] captures=[]\n",
@@ -300,7 +291,8 @@ pub fn main() -> fn() -> Bool {
 
     #[test]
     fn writes_function_return_call_and_block_control_flow() {
-        let source = r#"
+        assert_explanation(
+            r#"
 fn bit_array_value() -> BitArray { <<>> }
 fn bit_array_block() -> fn() -> BitArray {
   {
@@ -347,17 +339,7 @@ pub fn main() -> fn() -> Nil {
     selected
   }
 }
-"#;
-        let typed = crate::compile_typed_module("main", "main.gleam", source)
-            .expect("source should compile");
-        let module_plan = crate::plan_module(typed).expect("source should plan");
-        let plan = crate::ExecutionPlan::from_module_plan(module_plan);
-        let mut output = String::new();
-
-        super::write_function_return_tables(&mut output, &plan, &plan.functions);
-
-        assert_eq!(
-            output,
+"#,
             concat!(
                 "\nfunction function.float#0\n",
                 "  entry b0 params=[] captures=[]\n",
@@ -413,5 +395,11 @@ pub fn main() -> fn() -> Nil {
                 "    return %function.nil#0\n",
             ),
         );
+    }
+
+    fn assert_explanation(source: &str, expected: &str) {
+        super::super::super::assert_rendered(source, expected, |plan, output| {
+            super::write_function_return_tables(output, plan, &plan.functions);
+        });
     }
 }
