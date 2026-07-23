@@ -4,7 +4,7 @@ use crate::plan::{
     ConstantValue, CustomConstructorRefinement, CustomValueShape, Endianness, FloatBitSize,
     FunctionShape, StringEncoding, TypeScheme, ValueShape, ValueType,
 };
-use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
+use crate::planner::context::{AnonymousFunctions, PlanContext};
 use crate::planner::error::{
     InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
     UnsupportedBitArraySegmentReason,
@@ -19,19 +19,26 @@ use num_bigint::BigInt;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub(in crate::planner) struct ConstantRegistry {
-    by_name: HashMap<EcoString, ConstantTemplateId>,
-    templates: ConstantTemplates,
+#[derive(Default)]
+pub(in crate::planner) struct ConstantSignatures {
+    by_name: HashMap<EcoString, usize>,
+    entries: Vec<ConstantTemplateSignature>,
 }
 
-struct ConstantSignatures {
-    by_name: HashMap<EcoString, ConstantTemplateSignature>,
+pub(in crate::planner) struct ConstantDeclarations {
+    signatures: ConstantSignatures,
+    bodies: ConstantBodies,
+}
+
+pub(in crate::planner) struct ConstantBodies {
+    module: crate::plan::ModuleId,
+    seeds: Vec<ConstantSeed>,
 }
 
 struct ConstantSeed {
+    id: ConstantTemplateId,
     name: EcoString,
     value: Constant<Arc<Type>>,
-    signature: ConstantTemplateSignature,
     type_parameters: TypeParameterScope,
 }
 
@@ -91,34 +98,13 @@ struct ConstantStorageIndices {
     next: HashMap<ConstantStorageFamily, usize>,
 }
 
-#[cfg(test)]
-pub(in crate::planner) fn plan_constants(
-    constants: Vec<TypedModuleConstant>,
-    module_name: &EcoString,
-    functions: &HashMap<EcoString, FunctionInfo>,
-    custom_types: &[crate::plan::CustomTypeDefinition],
-    anonymous_functions: &mut AnonymousFunctions,
-) -> Result<ConstantRegistry, PlanError> {
-    plan_constants_in(
-        crate::plan::ModuleId::root(),
-        constants,
-        module_name,
-        functions,
-        custom_types,
-        anonymous_functions,
-    )
-}
-
-pub(in crate::planner) fn plan_constants_in(
+pub(in crate::planner) fn reserve_constants(
     module: crate::plan::ModuleId,
     constants: Vec<TypedModuleConstant>,
-    module_name: &EcoString,
-    functions: &HashMap<EcoString, FunctionInfo>,
-    custom_types: &[crate::plan::CustomTypeDefinition],
-    anonymous_functions: &mut AnonymousFunctions,
-) -> Result<ConstantRegistry, PlanError> {
+) -> Result<ConstantDeclarations, PlanError> {
     let mut seeds = Vec::with_capacity(constants.len());
-    let mut signatures = HashMap::with_capacity(constants.len());
+    let mut names = HashMap::with_capacity(constants.len());
+    let mut signatures = Vec::with_capacity(constants.len());
     let mut storage_indices = ConstantStorageIndices::default();
 
     for (index, constant) in constants.into_iter().enumerate() {
@@ -129,80 +115,76 @@ pub(in crate::planner) fn plan_constants_in(
         ))
         .ok_or_else(invalid_constant_shape_error)?;
         let storage_index = storage_indices.reserve(storage_shape.family());
-        let signature = storage_shape.into_signature(
-            ConstantTemplateId::in_module(module, index),
-            storage_index,
-            type_parameters.scheme(),
-        );
-        signatures.insert(constant.name.clone(), signature.clone());
+        let id = ConstantTemplateId::in_module(module, index);
+        let signature = storage_shape.into_signature(id, storage_index, type_parameters.scheme());
+        names.insert(constant.name.clone(), index);
+        signatures.push(signature);
         seeds.push(ConstantSeed {
+            id,
             name: constant.name,
             value: *constant.value,
-            signature,
             type_parameters,
         });
     }
 
-    let signatures = ConstantSignatures {
-        by_name: signatures,
-    };
-    let mut entries = Vec::with_capacity(seeds.len());
-
-    for seed in seeds {
-        let mut context = PlanContext::new_with_custom_types(
-            module_name,
-            functions,
-            custom_types,
-            anonymous_functions,
-        );
-        context.set_current_function(seed.name.clone());
-        context.set_type_parameters(seed.type_parameters);
-        let value = plan_value(seed.value, &mut context, &signatures)?;
-        if !value.shape().can_flow_to(seed.signature.shape()) {
-            return Err(invalid_expression_type_for_value(
-                seed.signature.shape().value_type(),
-                value.shape().value_type(),
-            ));
-        }
-        entries.push((ConstantTemplate::new(seed.signature, seed.name), value));
-    }
-
-    let mut by_name = HashMap::with_capacity(entries.len());
-    for (template, _) in &entries {
-        by_name.insert(template.name().clone(), template.id());
-    }
-
-    Ok(ConstantRegistry {
-        by_name,
-        templates: ConstantTemplates::from_entries(entries),
+    Ok(ConstantDeclarations {
+        signatures: ConstantSignatures {
+            by_name: names,
+            entries: signatures,
+        },
+        bodies: ConstantBodies { module, seeds },
     })
 }
 
-impl ConstantRegistry {
+pub(in crate::planner) fn plan_constant_bodies(
+    bodies: ConstantBodies,
+    registry: &super::registry::ProgramRegistry,
+    anonymous_functions: &mut AnonymousFunctions,
+) -> Result<ConstantTemplates, PlanError> {
+    let module = bodies.module;
+    let signatures = registry.constant_signatures(module);
+    let mut entries = Vec::with_capacity(bodies.seeds.len());
+
+    for seed in bodies.seeds {
+        let signature = registry.constant_signature(seed.id);
+        let mut context = PlanContext::new_in_program(module, registry, anonymous_functions);
+        context.set_current_function(seed.name.clone());
+        context.set_type_parameters(seed.type_parameters);
+        let value = plan_value(seed.value, &mut context, signatures)?;
+        if !value.shape().can_flow_to(signature.shape()) {
+            return Err(invalid_expression_type_for_value(
+                signature.shape().value_type(),
+                value.shape().value_type(),
+            ));
+        }
+        entries.push((ConstantTemplate::new(signature.clone(), seed.name), value));
+    }
+
+    Ok(ConstantTemplates::from_entries(entries))
+}
+
+impl ConstantDeclarations {
+    pub(in crate::planner) fn into_parts(self) -> (ConstantSignatures, ConstantBodies) {
+        (self.signatures, self.bodies)
+    }
+}
+
+impl ConstantSignatures {
     pub(in crate::planner) fn instantiate(
         &self,
         name: &EcoString,
         actual: &ValueShape,
     ) -> Option<ConstantInstantiation> {
-        let template = self.templates.header(*self.by_name.get(name)?);
-        instantiate_constant(template.signature(), actual)
+        instantiate_constant(&self.entries[*self.by_name.get(name)?], actual)
     }
 
-    pub(in crate::planner) fn reference(
-        &self,
-        instantiation: ConstantInstantiation,
-    ) -> crate::plan::Expr {
-        ConstantTemplates::reference(instantiation)
+    pub(in crate::planner) fn get(&self, id: ConstantTemplateId) -> &ConstantTemplateSignature {
+        &self.entries[id.index()]
     }
 
-    pub(in crate::planner) fn into_templates(self) -> ConstantTemplates {
-        self.templates
-    }
-}
-
-impl ConstantSignatures {
-    fn instantiate(&self, name: &EcoString, actual: &ValueShape) -> Option<ConstantInstantiation> {
-        instantiate_constant(self.by_name.get(name)?, actual)
+    #[cfg(test)]
+    fn empty() -> Self {
+        Self::default()
     }
 }
 
@@ -825,15 +807,15 @@ fn invalid_expression_type_for_value(expected: ValueType, actual: ValueType) -> 
 #[allow(clippy::arc_with_non_send_sync)]
 mod tests {
     use super::{
-        ConstantRegistry, ConstantSignatures, ConstantStorageFamily, ConstantStorageIndices,
-        ConstantStorageShape, StaticSegmentKind, StaticSegmentOptions, plan_bit_array_segment,
-        plan_value, static_segment_options,
+        ConstantSignatures, ConstantStorageFamily, ConstantStorageIndices, ConstantStorageShape,
+        StaticSegmentKind, StaticSegmentOptions, plan_bit_array_segment, plan_value,
+        static_segment_options,
     };
     use crate::plan::{
-        ConstantBitArraySegment, ConstantTemplates, CustomType, CustomTypeName, CustomValueShape,
-        Endianness, FunctionShape, FunctionTemplateId, FunctionTemplateSignature, IntLocalId,
-        PanicSite, ParamBinding, ParamLocal, SourceSpan, StringEncoding, TypeParameterId,
-        TypeScheme, ValueShape,
+        ConstantBitArraySegment, CustomType, CustomTypeName, CustomValueShape, Endianness,
+        FunctionShape, FunctionTemplateId, FunctionTemplateSignature, IntLocalId, PanicSite,
+        ParamBinding, ParamLocal, SourceSpan, StringEncoding, TypeParameterId, TypeScheme,
+        ValueShape,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, FunctionParam, PlanContext};
     use crate::planner::error::{
@@ -868,17 +850,7 @@ mod tests {
             None,
         );
 
-        let registry = ConstantRegistry {
-            by_name: HashMap::new(),
-            templates: ConstantTemplates::empty(),
-        };
-        assert_eq!(
-            registry.instantiate(&"missing".into(), &ValueShape::Int),
-            None
-        );
-        let signatures = ConstantSignatures {
-            by_name: HashMap::new(),
-        };
+        let signatures = ConstantSignatures::empty();
         assert_eq!(
             signatures.instantiate(&"missing".into(), &ValueShape::Int),
             None
@@ -1269,9 +1241,7 @@ mod tests {
                     ValueShape::String,
                 ))),
                 &mut context,
-                &ConstantSignatures {
-                    by_name: HashMap::new(),
-                },
+                &ConstantSignatures::empty(),
             ),
             Err(invalid_shape.clone()),
         );
@@ -1892,9 +1862,7 @@ mod tests {
         let functions = HashMap::new();
         let mut anonymous_functions = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module_name, &functions, &mut anonymous_functions);
-        let constants = ConstantSignatures {
-            by_name: HashMap::new(),
-        };
+        let constants = ConstantSignatures::empty();
 
         assert_eq!(
             plan_bit_array_segment(
@@ -1930,9 +1898,7 @@ mod tests {
         let functions = HashMap::new();
         let mut anonymous_functions = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module_name, &functions, &mut anonymous_functions);
-        let constants = ConstantSignatures {
-            by_name: HashMap::new(),
-        };
+        let constants = ConstantSignatures::empty();
         plan_value(value, &mut context, &constants)
     }
 

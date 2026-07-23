@@ -575,6 +575,7 @@ impl ConstantTemplate {
         self.signature.scheme()
     }
 
+    #[cfg(test)]
     pub(crate) fn signature(&self) -> &ConstantTemplateSignature {
         &self.signature
     }
@@ -634,6 +635,7 @@ impl ConstantTemplates {
         &self.headers
     }
 
+    #[cfg(test)]
     pub(crate) fn header(&self, id: ConstantTemplateId) -> &ConstantTemplate {
         &self.headers[id.index()]
     }

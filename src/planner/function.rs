@@ -2,19 +2,15 @@ mod return_body;
 
 use self::return_body::function_return_expr;
 use crate::plan::{
-    CaptureArg, CustomTypeDefinition, FunctionTemplate, Param, ParamBinding, ReturnExpr, Step,
-    ValueShape,
+    CaptureArg, FunctionTemplate, Param, ParamBinding, ReturnExpr, Step, ValueShape,
 };
-use crate::planner::context::{
-    AnonymousFunctions, FunctionInfo, FunctionParam, PlanContext, PlannedCaptures,
-};
+use crate::planner::context::{FunctionInfo, FunctionParam, PlanContext, PlannedCaptures};
 use crate::planner::error::{
     InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedFunctionReason,
 };
 use crate::planner::statement::plan_steps_and_return;
 use ecow::EcoString;
 use gleam_core::ast::{TypedFunction, TypedStatement};
-use std::collections::HashMap;
 use vec1::Vec1;
 
 pub(super) struct PlannedFunctionBody {
@@ -26,12 +22,8 @@ pub(super) struct PlannedFunctionBody {
 
 pub(super) fn plan_function(
     info: FunctionInfo,
-    module_name: &EcoString,
-    functions: &HashMap<EcoString, FunctionInfo>,
-    custom_types: &[CustomTypeDefinition],
-    constants: &crate::planner::module::ConstantRegistry,
     function: TypedFunction,
-    anonymous_functions: &mut AnonymousFunctions,
+    mut context: PlanContext<'_>,
 ) -> Result<FunctionTemplate, PlanError> {
     let name = function_name(&function)?;
 
@@ -42,13 +34,6 @@ pub(super) fn plan_function(
         });
     }
 
-    let mut context = PlanContext::new_with_module_items(
-        module_name,
-        functions,
-        custom_types,
-        constants,
-        anonymous_functions,
-    );
     context.set_current_function(name.clone());
     context.set_type_parameters(info.type_parameters.clone());
     let params = define_params(&info.params, &mut context)?;
@@ -166,7 +151,7 @@ mod tests {
         FunctionTemplateSignature, FunctionType, IntFunctionFunctionId, IntLocalId, LocalId,
         NilLocalId, StringLocalId, TypeScheme, ValueType,
     };
-    use crate::planner::context::FunctionInfo;
+    use crate::planner::context::{FunctionInfo, PlanContext};
     use crate::planner::dsl::{
         bool_, bool_arg, bool_function_ref, bool_function_return_block,
         bool_function_return_bool_case, bool_function_return_expr, bool_function_return_int_case,
@@ -1459,25 +1444,10 @@ pub fn main() -> Int
         let mut anonymous = crate::planner::context::AnonymousFunctions::default();
         let module_name = "main".into();
         let functions = Default::default();
-        let constants = crate::planner::module::plan_constants(
-            Vec::new(),
-            &module_name,
-            &functions,
-            &[],
-            &mut anonymous,
-        )
-        .expect("empty constant table should plan");
+        let context = PlanContext::new(&module_name, &functions, &mut anonymous);
 
         assert_eq!(
-            super::plan_function(
-                info,
-                &module_name,
-                &functions,
-                &[],
-                &constants,
-                function,
-                &mut anonymous,
-            ),
+            super::plan_function(info, function, context),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::FunctionShape {
                     name: "<anonymous>".into(),
@@ -1519,24 +1489,9 @@ pub fn main() -> Int
         let mut anonymous = crate::planner::context::AnonymousFunctions::default();
         let module_name = "main".into();
         let functions = Default::default();
-        let constants = crate::planner::module::plan_constants(
-            Vec::new(),
-            &module_name,
-            &functions,
-            &[],
-            &mut anonymous,
-        )
-        .expect("empty constant table should plan");
+        let context = PlanContext::new(&module_name, &functions, &mut anonymous);
         assert_eq!(
-            super::plan_function(
-                info,
-                &module_name,
-                &functions,
-                &[],
-                &constants,
-                named_function,
-                &mut anonymous,
-            ),
+            super::plan_function(info, named_function, context),
             Err(expected.clone()),
         );
 

@@ -81,9 +81,7 @@ impl ResolvedCustomConstructor {
 pub(super) struct PlanContext<'a> {
     pub(super) module_name: &'a EcoString,
     current_function: EcoString,
-    functions: &'a HashMap<EcoString, FunctionInfo>,
-    custom_types: &'a [CustomTypeDefinition],
-    constants: Option<&'a crate::planner::module::ConstantRegistry>,
+    registry: RegistryAccess<'a>,
     anonymous_functions: &'a mut AnonymousFunctions,
     bindings: HashMap<EcoString, LocalBinding>,
     next_generic_local: usize,
@@ -121,6 +119,19 @@ pub(super) struct PlanContext<'a> {
     next_function_function_local: usize,
     next_generic_function_local: usize,
     type_parameters: super::type_parameter::TypeParameterScope,
+}
+
+#[derive(Clone, Copy)]
+enum RegistryAccess<'a> {
+    Program {
+        module: crate::plan::ModuleId,
+        registry: &'a crate::planner::module::registry::ProgramRegistry,
+    },
+    #[cfg(test)]
+    Local {
+        functions: &'a HashMap<EcoString, FunctionInfo>,
+        custom_types: &'a [CustomTypeDefinition],
+    },
 }
 
 #[derive(Clone)]
@@ -438,18 +449,44 @@ impl<'a> PlanContext<'a> {
         Self::new_with_custom_types(module_name, functions, &[], anonymous_functions)
     }
 
+    #[cfg(test)]
     pub(super) fn new_with_custom_types(
         module_name: &'a EcoString,
         functions: &'a HashMap<EcoString, FunctionInfo>,
         custom_types: &'a [CustomTypeDefinition],
         anonymous_functions: &'a mut AnonymousFunctions,
     ) -> Self {
+        Self::new_with_registry(
+            module_name,
+            RegistryAccess::Local {
+                functions,
+                custom_types,
+            },
+            anonymous_functions,
+        )
+    }
+
+    pub(super) fn new_in_program(
+        module: crate::plan::ModuleId,
+        registry: &'a crate::planner::module::registry::ProgramRegistry,
+        anonymous_functions: &'a mut AnonymousFunctions,
+    ) -> Self {
+        Self::new_with_registry(
+            registry.module_name(module),
+            RegistryAccess::Program { module, registry },
+            anonymous_functions,
+        )
+    }
+
+    fn new_with_registry(
+        module_name: &'a EcoString,
+        registry: RegistryAccess<'a>,
+        anonymous_functions: &'a mut AnonymousFunctions,
+    ) -> Self {
         Self {
             module_name,
             current_function: "main".into(),
-            functions,
-            custom_types,
-            constants: None,
+            registry,
             anonymous_functions,
             bindings: HashMap::new(),
             next_generic_local: 0,
@@ -488,19 +525,6 @@ impl<'a> PlanContext<'a> {
             next_generic_function_local: 0,
             type_parameters: super::type_parameter::TypeParameterScope::default(),
         }
-    }
-
-    pub(super) fn new_with_module_items(
-        module_name: &'a EcoString,
-        functions: &'a HashMap<EcoString, FunctionInfo>,
-        custom_types: &'a [CustomTypeDefinition],
-        constants: &'a crate::planner::module::ConstantRegistry,
-        anonymous_functions: &'a mut AnonymousFunctions,
-    ) -> Self {
-        let mut context =
-            Self::new_with_custom_types(module_name, functions, custom_types, anonymous_functions);
-        context.constants = Some(constants);
-        context
     }
 
     pub(super) fn set_current_function(&mut self, name: EcoString) {
@@ -1874,7 +1898,11 @@ impl<'a> PlanContext<'a> {
     }
 
     pub(super) fn lookup_function(&self, name: &EcoString) -> Option<FunctionInfo> {
-        self.functions.get(name).cloned()
+        match self.registry {
+            RegistryAccess::Program { module, registry } => registry.function(module, name),
+            #[cfg(test)]
+            RegistryAccess::Local { functions, .. } => functions.get(name).cloned(),
+        }
     }
 
     pub(super) fn constant_expr(
@@ -1882,10 +1910,26 @@ impl<'a> PlanContext<'a> {
         name: &EcoString,
         shape: &ValueShape,
     ) -> Option<crate::plan::Expr> {
-        let constants = self.constants?;
-        constants
-            .instantiate(name, shape)
-            .map(|instantiation| constants.reference(instantiation))
+        match self.registry {
+            RegistryAccess::Program { module, registry } => {
+                registry.constant_expr(module, name, shape)
+            }
+            #[cfg(test)]
+            RegistryAccess::Local { .. } => None,
+        }
+    }
+
+    fn custom_type_definition(
+        &self,
+        name: &crate::plan::CustomTypeName,
+    ) -> Option<&CustomTypeDefinition> {
+        match self.registry {
+            RegistryAccess::Program { registry, .. } => registry.custom_type(name),
+            #[cfg(test)]
+            RegistryAccess::Local { custom_types, .. } => custom_types
+                .iter()
+                .find(|definition| definition.name() == name),
+        }
     }
 
     pub(super) fn custom_constructor(
@@ -1966,9 +2010,7 @@ impl<'a> PlanContext<'a> {
             }
         } else {
             let definition = self
-                .custom_types
-                .iter()
-                .find(|definition| definition.name() == type_.type_name())
+                .custom_type_definition(type_.type_name())
                 .ok_or_else(|| {
                     invalid_custom_type(type_, InvalidCustomTypeReason::UnknownDefinition)
                 })?;
@@ -2054,11 +2096,7 @@ impl<'a> PlanContext<'a> {
     ) -> Result<(CustomFieldAccess, ValueShape), PlanError> {
         let custom_type = source.type_();
         let custom_shape = source.shape();
-        let Some(type_definition) = self
-            .custom_types
-            .iter()
-            .find(|definition| definition.name() == custom_type.type_name())
-        else {
+        let Some(type_definition) = self.custom_type_definition(custom_type.type_name()) else {
             return Err(invalid_custom_type(
                 custom_type,
                 InvalidCustomTypeReason::UnknownDefinition,
@@ -2162,11 +2200,7 @@ impl<'a> PlanContext<'a> {
                 }
             }
         } else {
-            let Some(type_definition) = self
-                .custom_types
-                .iter()
-                .find(|definition| definition.name() == type_.type_name())
-            else {
+            let Some(type_definition) = self.custom_type_definition(type_.type_name()) else {
                 return Err(invalid_custom_type(
                     &type_,
                     InvalidCustomTypeReason::UnknownDefinition,
@@ -2270,9 +2304,7 @@ impl<'a> PlanContext<'a> {
         PlanContext {
             module_name: self.module_name,
             current_function: function_name,
-            functions: self.functions,
-            custom_types: self.custom_types,
-            constants: self.constants,
+            registry: self.registry,
             anonymous_functions: self.anonymous_functions,
             bindings: HashMap::new(),
             next_generic_local: 0,

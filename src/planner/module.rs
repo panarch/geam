@@ -15,40 +15,192 @@ use gleam_core::ast::{ArgNames, TypedFunction, TypedModule};
 use gleam_core::type_::Type;
 use std::collections::HashMap;
 
-pub(in crate::planner) use constant::ConstantRegistry;
-#[cfg(test)]
-pub(in crate::planner) use constant::plan_constants;
-use constant::plan_constants_in;
+use constant::{ConstantBodies, plan_constant_bodies, reserve_constants};
+use registry::{ModuleRegistry, ProgramRegistry};
 
 pub fn plan_module(module: TypedModule) -> Result<ModulePlan, PlanError> {
-    plan_module_inner(module, None)
+    plan_modules(
+        0,
+        vec![ModuleInput {
+            module,
+            source_context: None,
+        }],
+    )
 }
 
 pub fn plan_module_with_source(
     module: TypedModule,
     source_context: SourceContext,
 ) -> Result<ModulePlan, PlanError> {
-    plan_module_inner(module, Some(source_context))
+    plan_modules(
+        0,
+        vec![ModuleInput {
+            module,
+            source_context: Some(source_context),
+        }],
+    )
 }
 
 pub fn plan_program(program: TypedProgram) -> Result<ModulePlan, PlanError> {
     let (root_index, modules) = program.into_parts();
+    plan_modules(
+        root_index,
+        modules
+            .into_iter()
+            .map(|module| ModuleInput {
+                module: module.module,
+                source_context: Some(SourceContext::new(module.path, module.source)),
+            })
+            .collect(),
+    )
+}
+
+struct ModuleInput {
+    module: TypedModule,
+    source_context: Option<SourceContext>,
+}
+
+struct ModuleDeclarations {
+    id: ModuleId,
+    module_name: EcoString,
+    source_context: Option<SourceContext>,
+    custom_types: Vec<crate::plan::CustomTypeDefinition>,
+    functions: Vec<gleam_core::ast::TypedFunction>,
+    constants: Vec<gleam_core::ast::TypedModuleConstant>,
+}
+
+struct ModuleBodies {
+    id: ModuleId,
+    source_context: Option<SourceContext>,
+    functions: Vec<FunctionToPlan>,
+    constants: ConstantBodies,
+    anonymous_functions: AnonymousFunctions,
+}
+
+struct ModuleFunctionDeclarations {
+    id: ModuleId,
+    module_name: EcoString,
+    source_context: Option<SourceContext>,
+    custom_types: Vec<crate::plan::CustomTypeDefinition>,
+    functions_by_name: HashMap<EcoString, FunctionInfo>,
+    functions: Vec<FunctionToPlan>,
+    constants: Vec<gleam_core::ast::TypedModuleConstant>,
+    anonymous_functions: AnonymousFunctions,
+}
+
+struct ModuleFunctions {
+    id: ModuleId,
+    source_context: Option<SourceContext>,
+    functions: Vec<FunctionToPlan>,
+    constants: crate::plan::ConstantTemplates,
+    anonymous_functions: AnonymousFunctions,
+}
+
+fn plan_modules(root_index: usize, modules: Vec<ModuleInput>) -> Result<ModulePlan, PlanError> {
     let root = ModuleId::new(root_index);
-    let mut planned_modules = Vec::with_capacity(modules.len());
+    let mut declarations = Vec::with_capacity(modules.len());
 
     for (index, module) in modules.into_iter().enumerate() {
         let id = ModuleId::new(index);
-        let role = if id == root {
+        let package = module.module.type_info.package.clone();
+        let definitions = module.module.definitions;
+        if !definitions.imports.is_empty() {
+            return Err(PlanError::UnsupportedTopLevel {
+                kind: UnsupportedTopLevelKind::Import,
+            });
+        }
+        let module_name = module.module.name;
+        let custom_types =
+            custom_type::plan_custom_types(&package, &module_name, definitions.custom_types)?;
+        declarations.push(ModuleDeclarations {
+            id,
+            module_name,
+            source_context: module.source_context,
+            custom_types,
+            functions: definitions.functions,
+            constants: definitions.constants,
+        });
+    }
+
+    let mut function_declarations = Vec::with_capacity(declarations.len());
+    for declaration in declarations {
+        let role = if declaration.id == root {
             ModuleRole::Root
         } else {
             ModuleRole::Dependency
         };
-        planned_modules.push(plan_typed_module(
-            id,
-            module.module,
-            Some(SourceContext::new(module.path, module.source)),
-            role,
-        )?);
+        let FunctionTable {
+            by_name,
+            functions,
+            anonymous_functions,
+        } = function_table(declaration.id, &declaration.functions, role)?;
+        function_declarations.push(ModuleFunctionDeclarations {
+            id: declaration.id,
+            module_name: declaration.module_name,
+            source_context: declaration.source_context,
+            custom_types: declaration.custom_types,
+            functions_by_name: by_name,
+            functions,
+            constants: declaration.constants,
+            anonymous_functions,
+        });
+    }
+
+    let mut registry_modules = Vec::with_capacity(function_declarations.len());
+    let mut bodies = Vec::with_capacity(function_declarations.len());
+    for declaration in function_declarations {
+        let constants = reserve_constants(declaration.id, declaration.constants)?;
+        let (constant_signatures, constant_bodies) = constants.into_parts();
+        registry_modules.push(ModuleRegistry::new(
+            declaration.module_name,
+            declaration.custom_types,
+            declaration.functions_by_name,
+            constant_signatures,
+        ));
+        bodies.push(ModuleBodies {
+            id: declaration.id,
+            source_context: declaration.source_context,
+            functions: declaration.functions,
+            constants: constant_bodies,
+            anonymous_functions: declaration.anonymous_functions,
+        });
+    }
+
+    let registry = ProgramRegistry::new(registry_modules);
+    let mut functions_to_plan = Vec::with_capacity(bodies.len());
+    for mut module in bodies {
+        let constants =
+            plan_constant_bodies(module.constants, &registry, &mut module.anonymous_functions)?;
+        functions_to_plan.push(ModuleFunctions {
+            id: module.id,
+            source_context: module.source_context,
+            functions: module.functions,
+            constants,
+            anonymous_functions: module.anonymous_functions,
+        });
+    }
+
+    let mut planned_modules = Vec::with_capacity(functions_to_plan.len());
+    for mut module in functions_to_plan {
+        let mut planned_functions = Vec::with_capacity(module.functions.len());
+        for function in module.functions {
+            let context = crate::planner::context::PlanContext::new_in_program(
+                module.id,
+                &registry,
+                &mut module.anonymous_functions,
+            );
+            planned_functions.push(plan_function(function.info, function.function, context)?);
+        }
+        planned_functions.sort_by_key(|function| function.id().index());
+        planned_modules.push(PlannedModule::new(
+            module.id,
+            registry.module_name(module.id).clone(),
+            module.source_context,
+            registry.custom_types(module.id).to_vec(),
+            module.constants,
+            planned_functions,
+            module.anonymous_functions.into_functions(),
+        ));
     }
 
     Ok(ModulePlan::from_modules(
@@ -58,84 +210,10 @@ pub fn plan_program(program: TypedProgram) -> Result<ModulePlan, PlanError> {
     ))
 }
 
-fn plan_module_inner(
-    module: TypedModule,
-    source_context: Option<SourceContext>,
-) -> Result<ModulePlan, PlanError> {
-    let module = plan_typed_module(ModuleId::root(), module, source_context, ModuleRole::Root)?;
-    Ok(ModulePlan::from_modules(
-        ModuleId::root(),
-        FunctionTemplateId::in_module(ModuleId::root(), 0),
-        vec![module],
-    ))
-}
-
 #[derive(Clone, Copy)]
 enum ModuleRole {
     Root,
     Dependency,
-}
-
-fn plan_typed_module(
-    module_id: ModuleId,
-    module: TypedModule,
-    source_context: Option<SourceContext>,
-    role: ModuleRole,
-) -> Result<PlannedModule, PlanError> {
-    let package = module.type_info.package.clone();
-    let definitions = module.definitions;
-
-    let imports = definitions.imports.len();
-
-    if imports != 0 {
-        return Err(PlanError::UnsupportedTopLevel {
-            kind: UnsupportedTopLevelKind::Import,
-        });
-    }
-    let module_name = module.name;
-    let custom_types =
-        custom_type::plan_custom_types(&package, &module_name, definitions.custom_types)?;
-    let FunctionTable {
-        by_name,
-        functions,
-        mut anonymous_functions,
-    } = function_table(module_id, &definitions.functions, role)?;
-    let constants = plan_constants_in(
-        module_id,
-        definitions.constants,
-        &module_name,
-        &by_name,
-        &custom_types,
-        &mut anonymous_functions,
-    )?;
-    let mut planned_functions = Vec::with_capacity(functions.len());
-
-    for function in functions {
-        let planned = plan_function(
-            function.info,
-            &module_name,
-            &by_name,
-            &custom_types,
-            &constants,
-            function.function,
-            &mut anonymous_functions,
-        )?;
-        planned_functions.push(planned);
-    }
-    planned_functions.sort_by_key(|function| function.id().index());
-    let anonymous_functions = anonymous_functions.into_functions();
-    let constants = constants.into_templates();
-    let module = PlannedModule::new(
-        module_id,
-        module_name,
-        source_context,
-        custom_types,
-        constants,
-        planned_functions,
-        anonymous_functions,
-    );
-
-    Ok(module)
 }
 
 struct FunctionTable {
@@ -736,6 +814,102 @@ pub fn main() {
                     "support",
                     "support.gleam",
                     "pub fn unsupported() { <<1:native>> }",
+                ),
+            ],
+        )
+        .expect("program should compile");
+
+        assert_eq!(
+            plan_program(typed),
+            Err(PlanError::UnsupportedBitArraySegment {
+                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
+            }),
+        );
+    }
+
+    #[test]
+    fn plan_program_registries_keep_same_named_module_items_distinct() {
+        let typed = compile_typed_program(
+            "root",
+            [
+                ModuleSource::new(
+                    "alpha",
+                    "alpha.gleam",
+                    r#"
+pub type Box {
+  Box(Int)
+}
+
+pub const answer = 1
+
+fn identity(value: Int) {
+  value
+}
+
+pub fn make() {
+  Box(identity(answer))
+}
+"#,
+                ),
+                ModuleSource::new(
+                    "root",
+                    "root.gleam",
+                    r#"
+pub type Box {
+  Box(Int)
+}
+
+pub const answer = 2
+
+fn identity(value: Int) {
+  value
+}
+
+pub fn main() {
+  Box(identity(answer))
+}
+"#,
+                ),
+            ],
+        )
+        .expect("program should compile");
+        let plan = plan_program(typed).expect("same-named declarations should plan");
+
+        let alpha = &plan.modules()[0];
+        let root = &plan.modules()[1];
+        assert_eq!(alpha.custom_types()[0].name().module(), "alpha");
+        assert_eq!(root.custom_types()[0].name().module(), "root");
+        assert_eq!(alpha.constants()[0].id().module(), alpha.id());
+        assert_eq!(root.constants()[0].id().module(), root.id());
+        assert_eq!(
+            alpha
+                .functions()
+                .iter()
+                .map(|function| function.name().as_str())
+                .collect::<Vec<_>>(),
+            ["identity", "make"],
+        );
+        assert_eq!(
+            root.functions()
+                .iter()
+                .map(|function| function.name().as_str())
+                .collect::<Vec<_>>(),
+            ["main", "identity"],
+        );
+        assert_eq!(alpha.functions()[0].id().module(), alpha.id());
+        assert_eq!(root.functions()[1].id().module(), root.id());
+    }
+
+    #[test]
+    fn plan_program_validates_every_dependency_constant_body() {
+        let typed = compile_typed_program(
+            "main",
+            [
+                ModuleSource::new("main", "main.gleam", "pub fn main() { 1 }"),
+                ModuleSource::new(
+                    "support",
+                    "support.gleam",
+                    "const unsupported = <<1:native>>",
                 ),
             ],
         )
@@ -1653,3 +1827,4 @@ pub fn main() {
 }
 mod constant;
 mod custom_type;
+pub(in crate::planner) mod registry;
