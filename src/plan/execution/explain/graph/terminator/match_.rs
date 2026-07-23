@@ -64,12 +64,12 @@ pub fn main() {
             .iter()
             .copied()
             .filter_map(|terminator| match terminator {
-                Terminator::Match {
-                    subject,
-                    pattern,
-                    success,
-                    failure,
-                } => Some((subject, pattern, success, failure)),
+                Terminator::Match(matcher) => Some((
+                    matcher.subject(),
+                    matcher.pattern(),
+                    matcher.success(),
+                    matcher.failure(),
+                )),
                 _ => None,
             });
         let Some(match_) = matches.next() else {
@@ -113,7 +113,7 @@ pub fn main() {
                 .blocks()
                 .iter()
                 .map(|block| block.terminator())
-                .find(|terminator| matches!(terminator, Terminator::Match { .. }))
+                .find(|terminator| matches!(terminator, Terminator::Match(_)))
                 .expect("source should lower a match terminator");
             match_terminator(&[terminator, terminator]);
         });

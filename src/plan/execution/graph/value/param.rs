@@ -1,4 +1,4 @@
-use super::id::{
+use super::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
     CustomFunctionLocal, CustomLocal, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocal,
     GenericFunctionLocal, IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal,

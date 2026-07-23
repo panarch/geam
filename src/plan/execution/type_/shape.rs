@@ -50,7 +50,7 @@ pub(crate) enum ValueShapeDescriptor {
     Custom(CustomValueShapeId),
 }
 
-pub(super) struct ValueShapeTable {
+pub(crate) struct ValueShapeTable {
     // The runtime trusts lowered refinements, but the execution IR keeps their canonical graph.
     #[cfg_attr(not(test), allow(dead_code))]
     shapes: Vec<ValueShapeDescriptor>,
@@ -60,7 +60,7 @@ pub(super) struct ValueShapeTable {
 }
 
 impl ValueShapeId {
-    pub(super) fn new(index: usize) -> Self {
+    pub(in crate::plan::execution) fn new(index: usize) -> Self {
         Self(index)
     }
 
@@ -70,7 +70,7 @@ impl ValueShapeId {
 }
 
 impl CustomValueShapeId {
-    pub(super) fn new(index: usize) -> Self {
+    pub(in crate::plan::execution) fn new(index: usize) -> Self {
         Self(index)
     }
 
@@ -81,18 +81,21 @@ impl CustomValueShapeId {
 }
 
 impl CustomValueShape {
-    pub(super) fn new(type_id: CustomTypeId, shape_id: CustomValueShapeId) -> Self {
+    pub(in crate::plan::execution) fn new(
+        type_id: CustomTypeId,
+        shape_id: CustomValueShapeId,
+    ) -> Self {
         Self { type_id, shape_id }
     }
 
     #[cfg(test)]
-    pub(super) fn shape_id(self) -> CustomValueShapeId {
+    pub(in crate::plan::execution) fn shape_id(self) -> CustomValueShapeId {
         self.shape_id
     }
 }
 
 impl FunctionShape {
-    pub(super) fn new(shape_id: ValueShapeId, type_: FunctionType) -> Self {
+    pub(in crate::plan::execution) fn new(shape_id: ValueShapeId, type_: FunctionType) -> Self {
         Self { shape_id, type_ }
     }
 
@@ -103,7 +106,7 @@ impl FunctionShape {
 }
 
 impl ValueShapeTable {
-    pub(super) fn new(
+    pub(in crate::plan::execution) fn new(
         shapes: Vec<ValueShapeDescriptor>,
         shape_types: Vec<super::ValueType>,
         custom_shapes: Vec<CustomValueShapeDescriptor>,
@@ -131,7 +134,7 @@ impl ValueShapeTable {
 }
 
 impl CustomValueShapeDescriptor {
-    pub(super) fn new(
+    pub(in crate::plan::execution) fn new(
         type_id: CustomTypeId,
         arguments: Box<[ValueShapeId]>,
         constructor: CustomConstructorRefinement,

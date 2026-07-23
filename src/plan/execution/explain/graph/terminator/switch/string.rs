@@ -43,12 +43,12 @@ pub fn main() { case identity("one") { "one" -> 1 _ -> 0 } }
                 .map(|block| block.terminator())
                 .collect::<Vec<_>>();
             let (subject, clauses, fallback) = string_switch(&terminators);
-            super::write_string_switch(output, subject, clauses, fallback);
+            super::write_string_switch(output, &subject, clauses, fallback);
         });
     }
 
     type StringSwitch<'a> = (
-        &'a crate::plan::execution::StringLocalId,
+        crate::plan::execution::StringLocalId,
         &'a [(ecow::EcoString, crate::plan::execution::Edge)],
         &'a crate::plan::execution::Edge,
     );
@@ -58,11 +58,9 @@ pub fn main() { case identity("one") { "one" -> 1 _ -> 0 } }
             .iter()
             .copied()
             .filter_map(|terminator| match terminator {
-                Terminator::StringSwitch {
-                    subject,
-                    clauses,
-                    fallback,
-                } => Some((subject, clauses.as_ref(), fallback)),
+                Terminator::StringSwitch(switch) => {
+                    Some((switch.subject(), switch.clauses(), switch.fallback()))
+                }
                 _ => None,
             });
         let Some(switch) = switches.next() else {
@@ -103,7 +101,7 @@ pub fn main() { case identity("one") { "one" -> 1 _ -> 0 } }
                 .blocks()
                 .iter()
                 .map(|block| block.terminator())
-                .find(|terminator| matches!(terminator, Terminator::StringSwitch { .. }))
+                .find(|terminator| matches!(terminator, Terminator::StringSwitch(_)))
                 .expect("source should lower a String switch");
             string_switch(&[terminator, terminator]);
         });

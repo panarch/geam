@@ -5,14 +5,14 @@ use crate::plan::execution::{
     BitArrayListFunctionId, BitArrayListLocalId, BitArrayListTypeId, BoolListFunctionId,
     BoolListLocalId, BoolListTypeId, CustomListFunctionId, CustomListLocalId, CustomListTypeId,
     ExecutionPlan, FloatListFunctionId, FloatListLocalId, FloatListTypeId, FunctionListFunctionId,
-    FunctionListLocalId, FunctionListTypeId, GraphListInstruction as ListInstruction,
-    GraphParameterListInstruction as ParameterListInstruction, GraphTypedListInstruction,
-    IntListFunctionId, IntListLocalId, IntListTypeId, ListFunctionId, ListListFunctionId,
-    ListListLocalId, ListListTypeId, NilListFunctionId, NilListLocalId, NilListTypeId,
+    FunctionListLocalId, FunctionListTypeId, IntListFunctionId, IntListLocalId, IntListTypeId,
+    ListFunctionId, ListInstruction, ListListFunctionId, ListListLocalId, ListListTypeId,
+    NilListFunctionId, NilListLocalId, NilListTypeId, ParameterListInstruction,
     ParameterListListFunctionId, ParameterListListLocalId, ParameterListListTypeId,
     ParameterListLocalId, ParameterListTypeId, StoredListLocal, StringListFunctionId,
     StringListLocalId, StringListTypeId, TupleListFunctionId, TupleListLocalId, TupleListTypeId,
-    UtfCodepointListFunctionId, UtfCodepointListLocalId, UtfCodepointListTypeId,
+    TypedListInstruction, UtfCodepointListFunctionId, UtfCodepointListLocalId,
+    UtfCodepointListTypeId,
 };
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::evaluated::{
@@ -215,10 +215,10 @@ fn typed<Family: RuntimeTypedList>(
     state: &mut RuntimeState,
     environment: &BlockEnvironment,
     type_id: Family::TypeId,
-    instruction: &GraphTypedListInstruction<Family::ElementLocal, Family::Local, Family::Function>,
+    instruction: &TypedListInstruction<Family::ElementLocal, Family::Local, Family::Function>,
     expected: &ValueType,
 ) -> ExecutionResult<Family::Handle> {
-    use GraphTypedListInstruction as I;
+    use TypedListInstruction as I;
 
     match instruction {
         I::Value(elements) => Ok(Family::allocate(
@@ -835,10 +835,10 @@ mod tests {
         UtfCodepointFamily, execute, list_function_mismatch, parameter, typed,
     };
     use crate::plan::execution::{
-        CustomFunctionId, CustomLocal, GraphListInstruction, GraphParameterListInstruction,
-        GraphTypedListInstruction, IntListFunctionLocalId, IntListTypeId, ListFunctionId,
-        ListFunctionLocal, ListListLocalId, ListListTypeId, ParameterListListLocalId,
-        StringListTypeId, Terminator, TupleLocalId,
+        CustomFunctionId, CustomLocal, IntListFunctionLocalId, IntListTypeId, ListFunctionId,
+        ListFunctionLocal, ListInstruction, ListListLocalId, ListListTypeId,
+        ParameterListInstruction, ParameterListListLocalId, StringListTypeId, Terminator,
+        TupleLocalId, TypedListInstruction,
     };
     use crate::plan::{CustomType, CustomTypeName, FunctionType, TypeParameterId, ValueType};
     use crate::runtime::state::{ListValueId, RuntimeState};
@@ -931,7 +931,7 @@ pub fn main() {
             int_function,
         )));
         let environment = BlockEnvironment::from_retained(retained);
-        let instruction = GraphParameterListInstruction::FunctionCall {
+        let instruction = ParameterListInstruction::FunctionCall {
             function: ListFunctionLocal::Int {
                 local: IntListFunctionLocalId(0),
                 type_: crate::plan::execution::FunctionType::new(
@@ -973,9 +973,9 @@ pub fn main() {
         let mut retained = RetainedValues::empty();
         retained.push_evaluated(EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]));
         let mut environment = BlockEnvironment::from_retained(retained);
-        let instruction = GraphListInstruction::ParameterList(
+        let instruction = ListInstruction::ParameterList(
             type_id,
-            GraphTypedListInstruction::TupleIndex {
+            TypedListInstruction::TupleIndex {
                 tuple: TupleLocalId(0),
                 index: 0,
             },
@@ -1008,9 +1008,9 @@ pub fn main() {
         let mut retained = RetainedValues::empty();
         retained.push_evaluated(EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]));
         let mut environment = BlockEnvironment::from_retained(retained);
-        let instruction = GraphListInstruction::Parameter(
+        let instruction = ListInstruction::Parameter(
             type_id,
-            GraphParameterListInstruction::TupleIndex {
+            ParameterListInstruction::TupleIndex {
                 tuple: TupleLocalId(0),
                 index: 0,
             },
@@ -1377,7 +1377,7 @@ pub fn main() {
                 &mut state,
                 &tuple_environment,
                 context.plan.parameter_list_function_id(0).type_id(),
-                &GraphParameterListInstruction::TupleIndex {
+                &ParameterListInstruction::TupleIndex {
                     tuple: TupleLocalId(0),
                     index: 0,
                 },
@@ -1404,7 +1404,7 @@ pub fn main() {
                 &mut state,
                 &custom_environment,
                 context.plan.parameter_list_function_id(0).type_id(),
-                &GraphParameterListInstruction::CustomField {
+                &ParameterListInstruction::CustomField {
                     source: context.custom_local,
                     index: 0,
                 },
@@ -1432,7 +1432,7 @@ pub fn main() {
                 &mut state,
                 &list_environment,
                 context.plan.parameter_list_function_id(0).type_id(),
-                &GraphParameterListInstruction::ListIndex {
+                &ParameterListInstruction::ListIndex {
                     list: ParameterListListLocalId(0),
                     index: 0,
                 },
@@ -1461,7 +1461,7 @@ pub fn main() {
         let mut values = RetainedValues::empty();
         values.push_evaluated(EvaluatedValue::Tuple(vec![value]));
         let environment = BlockEnvironment::from_retained(values);
-        let instruction = GraphTypedListInstruction::<
+        let instruction = TypedListInstruction::<
             Family::ElementLocal,
             Family::Local,
             Family::Function,
@@ -1499,7 +1499,7 @@ pub fn main() {
         let mut values = RetainedValues::empty();
         values.push_evaluated(EvaluatedValue::Custom(custom));
         let environment = BlockEnvironment::from_retained(values);
-        let instruction = GraphTypedListInstruction::<
+        let instruction = TypedListInstruction::<
             Family::ElementLocal,
             Family::Local,
             Family::Function,
@@ -1530,11 +1530,7 @@ pub fn main() {
         state: &mut RuntimeState,
         environment: &BlockEnvironment,
         type_id: Family::TypeId,
-        instruction: &GraphTypedListInstruction<
-            Family::ElementLocal,
-            Family::Local,
-            Family::Function,
-        >,
+        instruction: &TypedListInstruction<Family::ElementLocal, Family::Local, Family::Function>,
         expected: &ValueType,
         expected_error: ExecutionError,
     ) where
@@ -1575,7 +1571,7 @@ pub fn main() {
         let mut values = RetainedValues::empty();
         values.push_evaluated(EvaluatedValue::List(parent.into()));
         let environment = BlockEnvironment::from_retained(values);
-        let instruction = GraphTypedListInstruction::<
+        let instruction = TypedListInstruction::<
             Family::ElementLocal,
             Family::Local,
             Family::Function,

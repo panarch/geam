@@ -7,12 +7,13 @@ pub(crate) use bit_array::{Endianness, FloatBitSize, StringEncoding};
 pub(crate) use block::{
     BitArrayBindingPattern, BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayInstruction,
     BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize, BitArrayPatternSizeExpr,
-    BitArrayPatternValue, BitArraySegment, BitArrayStringPattern, Block, BlockId, BoolInstruction,
-    CustomInstruction, Edge, FloatInstruction, FunctionCapture, FunctionInstruction,
-    FunctionInstructionKind, FunctionTarget, Instruction, InstructionKind, IntInstruction,
-    ListInstruction, MatchEdge, MatchEdgeArgument, MatchIntBindingId, MatchPattern,
-    MatchPatternBinding, MatchPatternList, MatchPatternListTail, NeverCallTarget, NilInstruction,
-    ParameterListInstruction, Signedness, SourceStopKind, StringInstruction, Terminator,
+    BitArrayPatternValue, BitArraySegment, BitArrayStringPattern, Block, BlockId, BoolBranch,
+    BoolInstruction, CustomInstruction, Edge, FloatInstruction, FloatSwitch, FunctionCapture,
+    FunctionInstruction, FunctionInstructionKind, FunctionTarget, Instruction, InstructionKind,
+    IntInstruction, IntSwitch, Jump, LetAssertPanic, ListInstruction, Match, MatchEdge,
+    MatchEdgeArgument, MatchIntBindingId, MatchPattern, MatchPatternBinding, MatchPatternList,
+    MatchPatternListTail, NeverCall, NeverCallTarget, NilInstruction, ParameterListInstruction,
+    Signedness, SourceStop, SourceStopKind, StringInstruction, StringSwitch, Terminator,
     TupleInstruction, TypedListInstruction, UtfCodepointInstruction,
 };
 pub(crate) use exit::GraphExitId;
@@ -198,7 +199,7 @@ pub fn main() {
         );
         let (panic_subject, message) = let_assert_panic(failure_block.terminator());
         assert_eq!(panic_subject, failure_block.params()[0].local());
-        assert_eq!(message, &None);
+        assert_eq!(message, None);
     }
 
     #[test]
@@ -295,11 +296,11 @@ pub fn main() {
         let graph = plan.int_function(IntFunctionId(0)).graph();
         returned_int(
             graph,
-            &Terminator::SourceStop {
-                kind: super::SourceStopKind::Panic,
-                message: None,
-                site: crate::plan::PanicSite::unknown(),
-            },
+            &Terminator::SourceStop(super::SourceStop::new(
+                super::SourceStopKind::Panic,
+                None,
+                crate::plan::PanicSite::unknown(),
+            )),
         );
     }
 
@@ -374,23 +375,14 @@ pub fn main() { loop(1) }
 
     fn bool_branch(terminator: &Terminator) -> (BoolLocalId, &Edge, &Edge) {
         match terminator {
-            Terminator::BoolBranch {
-                subject,
-                true_,
-                false_,
-            } => (*subject, true_, false_),
+            Terminator::BoolBranch(branch) => (branch.subject(), branch.true_(), branch.false_()),
             _ => panic!("fixture should contain a Bool branch"),
         }
     }
 
     fn match_terminator(terminator: &Terminator) -> (&MatchPattern, &MatchEdge, &Edge) {
         match terminator {
-            Terminator::Match {
-                pattern,
-                success,
-                failure,
-                ..
-            } => (pattern, success, failure),
+            Terminator::Match(matcher) => (matcher.pattern(), matcher.success(), matcher.failure()),
             _ => panic!("fixture should contain a match terminator"),
         }
     }
@@ -466,18 +458,16 @@ pub fn main() { loop(1) }
 
     fn jump(terminator: &Terminator) -> &Edge {
         match terminator {
-            Terminator::Jump(edge) => edge,
+            Terminator::Jump(jump) => jump.edge(),
             _ => panic!("fixture should contain a jump terminator"),
         }
     }
 
     fn let_assert_panic(
         terminator: &Terminator,
-    ) -> (&ParamLocal, &Option<crate::plan::execution::StringLocalId>) {
+    ) -> (&ParamLocal, Option<crate::plan::execution::StringLocalId>) {
         match terminator {
-            Terminator::LetAssertPanic {
-                subject, message, ..
-            } => (subject, message),
+            Terminator::LetAssertPanic(panic) => (panic.subject(), panic.message()),
             _ => panic!("fixture should contain a let-assert panic"),
         }
     }

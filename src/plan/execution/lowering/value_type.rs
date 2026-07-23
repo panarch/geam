@@ -12,13 +12,10 @@ use crate::plan::execution::{
     CustomConstructorRefinement, CustomValueShape, CustomValueShapeId, FunctionShape, ValueShapeId,
 };
 
-use super::super::custom_type::{
+use super::super::type_::{
     CustomConstructorDescriptor, CustomFieldDescriptor, CustomTypeDescriptor, CustomTypeTable,
+    CustomValueShapeDescriptor, ListTypeTable, ValueShapeDescriptor, ValueShapeTable,
 };
-use super::super::value_shape::{
-    CustomValueShapeDescriptor, ValueShapeDescriptor, ValueShapeTable,
-};
-use super::super::value_type::ListTypeTable;
 use super::specialization::{
     SpecializedCustomConstructor, SpecializedCustomValueShape, SpecializedFunctionShape,
     SpecializedValueShape, StoredValueShape,

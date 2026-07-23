@@ -6,9 +6,7 @@ mod specialization;
 mod value_type;
 
 use super::ExecutionPlan;
-use super::custom_type::CustomTypeTable;
-use super::value_shape::ValueShapeTable;
-use super::value_type::ListTypeTable;
+use super::type_::{CustomTypeTable, ListTypeTable, ValueShapeTable};
 use crate::plan::{ModulePlan, ValueShape};
 use specialization::{
     RepresentationContext, SpecializationKey, SpecializedCustomConstructor,

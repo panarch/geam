@@ -10,9 +10,10 @@ pub(crate) use instruction::{
 };
 pub(crate) use terminator::{
     BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
-    BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, Edge, MatchEdge,
-    MatchEdgeArgument, MatchIntBindingId, MatchPattern, MatchPatternBinding, MatchPatternList,
-    MatchPatternListTail, NeverCallTarget, Signedness, SourceStopKind, Terminator,
+    BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, BoolBranch, Edge,
+    FloatSwitch, IntSwitch, Jump, LetAssertPanic, Match, MatchEdge, MatchEdgeArgument,
+    MatchIntBindingId, MatchPattern, MatchPatternBinding, MatchPatternList, MatchPatternListTail,
+    NeverCall, NeverCallTarget, Signedness, SourceStop, SourceStopKind, StringSwitch, Terminator,
 };
 
 use crate::plan::execution::ParamSlot;

@@ -46,10 +46,10 @@ pub fn main() {
     }
 
     fn match_success_edge(terminator: &Terminator) -> &MatchEdge {
-        let Terminator::Match { success, .. } = terminator else {
+        let Terminator::Match(matcher) = terminator else {
             panic!("let assert should lower to a match terminator");
         };
-        success
+        matcher.success()
     }
 
     #[test]

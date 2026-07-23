@@ -531,8 +531,8 @@ mod tests {
     use super::evaluate;
     use crate::plan::ValueType;
     use crate::plan::execution::{
-        FunctionInstructionKind, FunctionReturnFamily, FunctionTarget, GraphListInstruction,
-        InstructionKind, RuntimeFunctionId, TupleFunctionId,
+        FunctionInstructionKind, FunctionReturnFamily, FunctionTarget, InstructionKind,
+        ListInstruction, RuntimeFunctionId, TupleFunctionId,
     };
     use crate::runtime::evaluated::{EvaluatedCustomValue, EvaluatedValue};
     use crate::runtime::state::{ListValueId, RuntimeState};
@@ -564,7 +564,7 @@ pub fn main() {
             .iter()
             .flat_map(|block| block.instructions())
             .find_map(|instruction| match instruction.kind() {
-                InstructionKind::List(GraphListInstruction::Function(type_id, _)) => Some(*type_id),
+                InstructionKind::List(ListInstruction::Function(type_id, _)) => Some(*type_id),
                 _ => None,
             })
             .expect("tuple main should allocate its function list");

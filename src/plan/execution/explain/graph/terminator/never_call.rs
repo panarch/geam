@@ -77,7 +77,7 @@ pub fn main() -> Int {
             .iter()
             .copied()
             .filter_map(|terminator| match terminator {
-                Terminator::NeverCall { function, args } => Some((function, args.as_ref())),
+                Terminator::NeverCall(call) => Some((call.function(), call.args())),
                 _ => None,
             });
         let Some(call) = calls.next() else {
@@ -122,7 +122,7 @@ pub fn main() -> Int {
                 .blocks()
                 .iter()
                 .map(|block| block.terminator())
-                .find(|terminator| matches!(terminator, Terminator::NeverCall { .. }))
+                .find(|terminator| matches!(terminator, Terminator::NeverCall(_)))
                 .expect("source should lower a Never call");
             never_call(&[terminator, terminator]);
         });

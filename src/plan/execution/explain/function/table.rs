@@ -45,7 +45,12 @@ mod tests {
 
     fn assert_explanation(source: &str, expected: &str) {
         super::super::super::assert_rendered(source, expected, |plan, output| {
-            super::write_table(output, plan, "int", &plan.functions.int_functions);
+            super::write_table(
+                output,
+                plan,
+                "int",
+                &plan.functions.value_returns.int_functions,
+            );
         });
     }
 }

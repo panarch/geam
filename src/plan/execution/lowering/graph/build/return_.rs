@@ -646,39 +646,24 @@ mod tests {
 
     fn bool_branch_targets(terminator: &Terminator) -> (BlockId, BlockId) {
         match terminator {
-            Terminator::BoolBranch { true_, false_, .. } => (true_.target(), false_.target()),
+            Terminator::BoolBranch(branch) => (branch.true_().target(), branch.false_().target()),
             _ => panic!("fixture should contain a Bool branch"),
         }
     }
 
     fn switch_targets(expected: ExpectedSwitch, terminator: &Terminator) -> (BlockId, BlockId) {
         match (expected, terminator) {
-            (
-                ExpectedSwitch::Int,
-                Terminator::IntSwitch {
-                    clauses, fallback, ..
-                },
-            ) => {
-                assert_eq!(clauses[0].0, 1.into());
-                (clauses[0].1.target(), fallback.target())
+            (ExpectedSwitch::Int, Terminator::IntSwitch(switch)) => {
+                assert_eq!(switch.clauses()[0].0, 1.into());
+                (switch.clauses()[0].1.target(), switch.fallback().target())
             }
-            (
-                ExpectedSwitch::Float,
-                Terminator::FloatSwitch {
-                    clauses, fallback, ..
-                },
-            ) => {
-                assert_eq!(clauses[0].0, 1.0);
-                (clauses[0].1.target(), fallback.target())
+            (ExpectedSwitch::Float, Terminator::FloatSwitch(switch)) => {
+                assert_eq!(switch.clauses()[0].0, 1.0);
+                (switch.clauses()[0].1.target(), switch.fallback().target())
             }
-            (
-                ExpectedSwitch::String,
-                Terminator::StringSwitch {
-                    clauses, fallback, ..
-                },
-            ) => {
-                assert_eq!(clauses[0].0, "one");
-                (clauses[0].1.target(), fallback.target())
+            (ExpectedSwitch::String, Terminator::StringSwitch(switch)) => {
+                assert_eq!(switch.clauses()[0].0, "one");
+                (switch.clauses()[0].1.target(), switch.fallback().target())
             }
             _ => panic!("unexpected switch terminator"),
         }
@@ -1117,7 +1102,7 @@ mod tests {
 
     fn source_stop_kind(terminator: &Terminator) -> SourceStopKind {
         match terminator {
-            Terminator::SourceStop { kind, .. } => *kind,
+            Terminator::SourceStop(stop) => stop.kind(),
             _ => panic!("fixture should contain a source stop"),
         }
     }

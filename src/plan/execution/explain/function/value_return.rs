@@ -6,21 +6,56 @@ pub(super) fn write_value_return_tables(
     plan: &ExecutionPlan,
     functions: &FunctionTables,
 ) {
-    write_table(output, plan, "never", &functions.never_functions);
-    write_table(output, plan, "int", &functions.int_functions);
-    write_table(output, plan, "float", &functions.float_functions);
-    write_table(output, plan, "string", &functions.string_functions);
-    write_table(output, plan, "bit_array", &functions.bit_array_functions);
+    write_table(
+        output,
+        plan,
+        "never",
+        &functions.value_returns.never_functions,
+    );
+    write_table(output, plan, "int", &functions.value_returns.int_functions);
+    write_table(
+        output,
+        plan,
+        "float",
+        &functions.value_returns.float_functions,
+    );
+    write_table(
+        output,
+        plan,
+        "string",
+        &functions.value_returns.string_functions,
+    );
+    write_table(
+        output,
+        plan,
+        "bit_array",
+        &functions.value_returns.bit_array_functions,
+    );
     write_table(
         output,
         plan,
         "utf_codepoint",
-        &functions.utf_codepoint_functions,
+        &functions.value_returns.utf_codepoint_functions,
     );
-    write_table(output, plan, "custom", &functions.custom_functions);
-    write_table(output, plan, "bool", &functions.bool_functions);
-    write_table(output, plan, "nil", &functions.nil_functions);
-    write_table(output, plan, "tuple", &functions.tuple_functions);
+    write_table(
+        output,
+        plan,
+        "custom",
+        &functions.value_returns.custom_functions,
+    );
+    write_table(
+        output,
+        plan,
+        "bool",
+        &functions.value_returns.bool_functions,
+    );
+    write_table(output, plan, "nil", &functions.value_returns.nil_functions);
+    write_table(
+        output,
+        plan,
+        "tuple",
+        &functions.value_returns.tuple_functions,
+    );
 }
 
 #[cfg(test)]

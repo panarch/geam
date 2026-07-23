@@ -33,112 +33,86 @@ pub(super) fn terminator_action(
     terminator: &Terminator,
 ) -> ExecutionResult<GraphAction> {
     match terminator {
-        Terminator::Jump(edge) => Ok(transition(environment, edge)),
-        Terminator::BoolBranch {
-            subject,
-            true_,
-            false_,
-        } => {
-            let edge = if environment.bool(*subject) {
-                true_
+        Terminator::Jump(jump) => Ok(transition(environment, jump.edge())),
+        Terminator::BoolBranch(branch) => {
+            let edge = if environment.bool(branch.subject()) {
+                branch.true_()
             } else {
-                false_
+                branch.false_()
             };
             Ok(transition(environment, edge))
         }
-        Terminator::IntSwitch {
-            subject,
-            clauses,
-            fallback,
-        } => {
-            let subject = environment.int(*subject);
-            let selected = clauses
+        Terminator::IntSwitch(switch) => {
+            let subject = environment.int(switch.subject());
+            let selected = switch
+                .clauses()
                 .iter()
                 .find_map(|(pattern, edge)| (pattern == &subject).then_some(edge));
             let edge = match selected {
                 Some(edge) => edge,
-                None => fallback,
+                None => switch.fallback(),
             };
             Ok(transition(environment, edge))
         }
-        Terminator::FloatSwitch {
-            subject,
-            clauses,
-            fallback,
-        } => {
-            let subject = environment.float(*subject);
-            let selected = clauses
+        Terminator::FloatSwitch(switch) => {
+            let subject = environment.float(switch.subject());
+            let selected = switch
+                .clauses()
                 .iter()
                 .find_map(|(pattern, edge)| (pattern == &subject).then_some(edge));
             let edge = match selected {
                 Some(edge) => edge,
-                None => fallback,
+                None => switch.fallback(),
             };
             Ok(transition(environment, edge))
         }
-        Terminator::StringSwitch {
-            subject,
-            clauses,
-            fallback,
-        } => {
-            let subject = environment.string(*subject);
-            let selected = clauses
+        Terminator::StringSwitch(switch) => {
+            let subject = environment.string(switch.subject());
+            let selected = switch
+                .clauses()
                 .iter()
                 .find_map(|(pattern, edge)| (pattern == &subject).then_some(edge));
             let edge = match selected {
                 Some(edge) => edge,
-                None => fallback,
+                None => switch.fallback(),
             };
             Ok(transition(environment, edge))
         }
-        Terminator::Match {
-            subject,
-            pattern: matcher,
-            success,
-            failure,
-        } => {
-            let subject = environment.value(subject);
-            let matched = pattern::match_pattern(plan, state, environment, matcher, &subject);
+        Terminator::Match(matcher) => {
+            let subject = environment.value(matcher.subject());
+            let matched =
+                pattern::match_pattern(plan, state, environment, matcher.pattern(), &subject);
             drop(subject);
             matched.map(|matched| match matched {
-                Some(bindings) => transition_match(environment, success, bindings),
-                None => transition(environment, failure),
+                Some(bindings) => transition_match(environment, matcher.success(), bindings),
+                None => transition(environment, matcher.failure()),
             })
         }
         Terminator::Exit(exit) => Ok(GraphAction::Exit(*exit)),
-        Terminator::SourceStop {
-            kind,
-            message,
-            site,
-        } => {
-            let message = message.map(|message| environment.string(message));
+        Terminator::SourceStop(stop) => {
+            let message = stop.message().map(|message| environment.string(message));
             Err(ExecutionError::source_panic(
                 plan.source_context(),
-                panic_kind(*kind),
+                panic_kind(stop.kind()),
                 message,
-                site.clone(),
+                stop.site().clone(),
             ))
         }
-        Terminator::LetAssertPanic {
-            subject,
-            message,
-            site,
-            pattern_span,
-        } => {
-            let subject = environment.value(subject);
-            let message = message.map(|message| environment.string(message));
+        Terminator::LetAssertPanic(panic) => {
+            let subject = environment.value(panic.subject());
+            let message = panic.message().map(|message| environment.string(message));
             let subject = crate::runtime::materialize::value(plan, state, subject);
             Err(ExecutionError::let_assert_panic(
                 plan.source_context(),
                 message,
-                site.clone(),
+                panic.site().clone(),
                 subject,
-                *pattern_span,
+                *panic.pattern_span(),
             ))
         }
-        Terminator::NeverCall { function, args } => {
-            let inputs = environment.retain(args);
-            let function = match function {
+        Terminator::NeverCall(call) => {
+            let inputs = environment.retain(call.args());
+            let function = match call.function() {
                 NeverCallTarget::Direct(function) => NeverCall::Direct(*function),
                 NeverCallTarget::Value(function) => {
                     NeverCall::Value(environment.never_function(function))

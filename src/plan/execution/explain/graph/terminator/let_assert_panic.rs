@@ -43,7 +43,7 @@ pub fn main() {
                 .map(|block| block.terminator())
                 .collect::<Vec<_>>();
             let (subject, message) = let_assert_panic(&terminators);
-            super::write_let_assert_panic(output, subject, message);
+            super::write_let_assert_panic(output, subject, message.as_ref());
         });
     }
 
@@ -51,15 +51,13 @@ pub fn main() {
         terminators: &[&'a Terminator],
     ) -> (
         &'a crate::plan::execution::ParamLocal,
-        Option<&'a crate::plan::execution::StringLocalId>,
+        Option<crate::plan::execution::StringLocalId>,
     ) {
         let mut panics = terminators
             .iter()
             .copied()
             .filter_map(|terminator| match terminator {
-                Terminator::LetAssertPanic {
-                    subject, message, ..
-                } => Some((subject, message.as_ref())),
+                Terminator::LetAssertPanic(panic) => Some((panic.subject(), panic.message())),
                 _ => None,
             });
         let Some(panic) = panics.next() else {
@@ -103,7 +101,7 @@ pub fn main() {
                 .blocks()
                 .iter()
                 .map(|block| block.terminator())
-                .find(|terminator| matches!(terminator, Terminator::LetAssertPanic { .. }))
+                .find(|terminator| matches!(terminator, Terminator::LetAssertPanic(_)))
                 .expect("source should lower a let-assert panic");
             let_assert_panic(&[terminator, terminator]);
         });

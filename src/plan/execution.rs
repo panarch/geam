@@ -1,62 +1,48 @@
-mod constant;
-mod custom_type;
+pub(crate) mod constant;
 mod explain;
-mod function;
-mod graph;
+pub(crate) mod function;
+pub(crate) mod graph;
 mod lowering;
-mod value_shape;
-mod value_type;
+pub(crate) mod type_;
 
-pub(crate) use constant::{ConstantId, ConstantProgram, ConstantTable, ConstantValue};
 pub use explain::ExecutionPlanExplanation;
 pub(crate) use graph::{
-    BitArrayBindingPattern as GraphBitArrayBindingPattern,
-    BitArrayBitsSize as GraphBitArrayBitsSize, BitArrayEvaluatedSize as GraphBitArrayEvaluatedSize,
-    BitArrayFunctionLocalId, BitArrayInstruction as GraphBitArrayInstruction,
-    BitArrayListFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
-    BitArrayPattern as GraphBitArrayPattern, BitArrayPatternSegment as GraphBitArrayPatternSegment,
-    BitArrayPatternSize as GraphBitArrayPatternSize,
-    BitArrayPatternSizeExpr as GraphBitArrayPatternSizeExpr,
-    BitArrayPatternValue as GraphBitArrayPatternValue, BitArraySegment as GraphBitArraySegment,
-    BitArrayStringPattern as GraphBitArrayStringPattern, BlockId, BoolFunctionLocalId,
-    BoolInstruction as GraphBoolInstruction, BoolListFunctionLocalId, BoolListLocalId, BoolLocalId,
-    CustomFunctionLocal, CustomFunctionLocalId, CustomInstruction as GraphCustomInstruction,
-    CustomListFunctionLocalId, CustomListLocalId, CustomLocal, CustomLocalId, Edge, Endianness,
-    FloatBitSize, FloatFunctionLocalId, FloatInstruction as GraphFloatInstruction,
-    FloatListFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionCapture,
+    BitArrayBindingPattern, BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayFunctionLocalId,
+    BitArrayInstruction, BitArrayListFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
+    BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize, BitArrayPatternSizeExpr,
+    BitArrayPatternValue, BitArraySegment, BitArrayStringPattern, BlockId, BoolFunctionLocalId,
+    BoolInstruction, BoolListFunctionLocalId, BoolListLocalId, BoolLocalId, CustomFunctionLocal,
+    CustomFunctionLocalId, CustomInstruction, CustomListFunctionLocalId, CustomListLocalId,
+    CustomLocal, CustomLocalId, Edge, Endianness, FloatBitSize, FloatFunctionLocalId,
+    FloatInstruction, FloatListFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionCapture,
     FunctionFunctionLocal, FunctionFunctionLocalId, FunctionInstruction, FunctionInstructionKind,
     FunctionListFunctionLocalId, FunctionListLocalId, FunctionLocal, FunctionTarget,
     GenericFunctionLocal, GenericFunctionLocalId, Graph, GraphExitId, Instruction, InstructionKind,
-    IntFunctionLocalId, IntInstruction as GraphIntInstruction, IntListFunctionLocalId,
-    IntListLocalId, IntLocalId, ListFunctionLocal, ListInstruction as GraphListInstruction,
-    ListListFunctionLocalId, ListListLocalId, ListLocal, MatchEdge, MatchEdgeArgument,
-    MatchIntBindingId, MatchPattern, MatchPatternBinding, MatchPatternListTail, NeverCallTarget,
-    NeverFunctionLocal, NeverFunctionLocalId, NilFunctionLocalId,
-    NilInstruction as GraphNilInstruction, NilListFunctionLocalId, NilListLocalId, NilLocalId,
-    ParamLocal, ParamSlot, ParameterListFunctionLocalId,
-    ParameterListInstruction as GraphParameterListInstruction, ParameterListListFunctionLocalId,
-    ParameterListListLocalId, ParameterListLocalId, Signedness, SourceStopKind, StoredListLocal,
-    StringEncoding, StringFunctionLocalId, StringInstruction as GraphStringInstruction,
+    IntFunctionLocalId, IntInstruction, IntListFunctionLocalId, IntListLocalId, IntLocalId,
+    ListFunctionLocal, ListInstruction, ListListFunctionLocalId, ListListLocalId, ListLocal,
+    MatchEdge, MatchEdgeArgument, MatchIntBindingId, MatchPattern, MatchPatternBinding,
+    MatchPatternListTail, NeverCallTarget, NeverFunctionLocal, NeverFunctionLocalId,
+    NilFunctionLocalId, NilInstruction, NilListFunctionLocalId, NilListLocalId, NilLocalId,
+    ParamLocal, ParamSlot, ParameterListFunctionLocalId, ParameterListInstruction,
+    ParameterListListFunctionLocalId, ParameterListListLocalId, ParameterListLocalId, Signedness,
+    SourceStopKind, StoredListLocal, StringEncoding, StringFunctionLocalId, StringInstruction,
     StringListFunctionLocalId, StringListLocalId, StringLocalId, Terminator, TupleFunctionLocalId,
-    TupleInstruction as GraphTupleInstruction, TupleListFunctionLocalId, TupleListLocalId,
-    TupleLocalId, TypedListInstruction as GraphTypedListInstruction, UtfCodepointFunctionLocalId,
-    UtfCodepointInstruction as GraphUtfCodepointInstruction, UtfCodepointListFunctionLocalId,
-    UtfCodepointListLocalId, UtfCodepointLocalId,
+    TupleInstruction, TupleListFunctionLocalId, TupleListLocalId, TupleLocalId,
+    TypedListInstruction, UtfCodepointFunctionLocalId, UtfCodepointInstruction,
+    UtfCodepointListFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
 };
 #[cfg(test)]
-pub(crate) use value_shape::ValueShapeDescriptor;
-pub(crate) use value_shape::{
-    CustomConstructorRefinement, CustomValueShape, CustomValueShapeId, FunctionShape, ValueShapeId,
-};
-pub(crate) use value_type::{
-    BitArrayListTypeId, BoolListTypeId, CustomConstructorId, CustomFunctionType, CustomListTypeId,
-    CustomTypeId, FloatListTypeId, FunctionFunctionType, FunctionListTypeId, FunctionType,
+pub(crate) use type_::ValueShapeDescriptor;
+pub(crate) use type_::{
+    BitArrayListTypeId, BoolListTypeId, CustomConstructorId, CustomConstructorRefinement,
+    CustomFunctionType, CustomListTypeId, CustomTypeId, CustomValueShape, CustomValueShapeId,
+    FloatListTypeId, FunctionFunctionType, FunctionListTypeId, FunctionShape, FunctionType,
     GenericFunctionType, IntListTypeId, ListListTypeId, ListStorageTypeId, ListTypeId,
     NilListTypeId, ParameterListListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
-    UtfCodepointListTypeId, ValueType,
+    UtfCodepointListTypeId, ValueShapeId, ValueType,
 };
 
-use self::custom_type::CustomTypeTable;
+pub(crate) use self::constant::{ConstantId, ConstantProgram, ConstantTable, ConstantValue};
 use self::function::FunctionTables;
 pub(crate) use self::function::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionReturn,
@@ -84,8 +70,7 @@ pub(crate) use self::function::{
     UtfCodepointFunctionReturn, UtfCodepointListFunctionFunctionId, UtfCodepointListFunctionId,
     UtfCodepointListReturn, UtfCodepointReturn,
 };
-use self::value_shape::ValueShapeTable;
-use self::value_type::ListTypeTable;
+use self::type_::{CustomTypeTable, ListTypeTable, ValueShapeTable};
 use crate::plan::{ModulePlan, SourceContext};
 use ecow::EcoString;
 
@@ -239,7 +224,7 @@ impl ExecutionPlan {
     pub(crate) fn custom_constructor(
         &self,
         id: CustomConstructorId,
-    ) -> &custom_type::CustomConstructorDescriptor {
+    ) -> &type_::CustomConstructorDescriptor {
         self.custom_types.constructor(id)
     }
 

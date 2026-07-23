@@ -1,19 +1,28 @@
-use super::{CustomTypeId, ValueType};
+use super::ValueType;
 use crate::plan;
 use ecow::EcoString;
 use std::collections::BTreeMap;
 
-pub(super) struct CustomTypeTable {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct CustomTypeId(usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct CustomConstructorId {
+    type_id: CustomTypeId,
+    index: usize,
+}
+
+pub(crate) struct CustomTypeTable {
     types: Vec<CustomTypeDescriptor>,
 }
 
-pub(super) struct CustomTypeDescriptor {
+pub(crate) struct CustomTypeDescriptor {
     type_: plan::CustomType,
     constructors: BTreeMap<usize, CustomConstructorDescriptor>,
 }
 
 pub(crate) struct CustomConstructorDescriptor {
-    id: super::CustomConstructorId,
+    id: CustomConstructorId,
     name: EcoString,
     fields: Vec<CustomFieldDescriptor>,
 }
@@ -23,8 +32,32 @@ pub(crate) struct CustomFieldDescriptor {
     type_: ValueType,
 }
 
+impl CustomTypeId {
+    pub(in crate::plan::execution) fn new(index: usize) -> Self {
+        Self(index)
+    }
+
+    pub(crate) fn index(self) -> usize {
+        self.0
+    }
+}
+
+impl CustomConstructorId {
+    pub(in crate::plan::execution) fn new(type_id: CustomTypeId, index: usize) -> Self {
+        Self { type_id, index }
+    }
+
+    pub(crate) fn type_id(self) -> CustomTypeId {
+        self.type_id
+    }
+
+    pub(crate) fn index(self) -> usize {
+        self.index
+    }
+}
+
 impl CustomTypeTable {
-    pub(super) fn new(types: Vec<CustomTypeDescriptor>) -> Self {
+    pub(in crate::plan::execution) fn new(types: Vec<CustomTypeDescriptor>) -> Self {
         Self { types }
     }
 
@@ -32,10 +65,7 @@ impl CustomTypeTable {
         self.types[id.index()].type_.clone()
     }
 
-    pub(crate) fn constructor(
-        &self,
-        id: super::CustomConstructorId,
-    ) -> &CustomConstructorDescriptor {
+    pub(crate) fn constructor(&self, id: CustomConstructorId) -> &CustomConstructorDescriptor {
         &self.types[id.type_id().index()].constructors[&id.index()]
     }
 
@@ -49,39 +79,42 @@ impl CustomTypeTable {
         &self,
         type_index: usize,
         constructor_index: usize,
-    ) -> super::CustomConstructorId {
+    ) -> CustomConstructorId {
         self.types[type_index].constructors[&constructor_index].id()
     }
 }
 
 impl CustomTypeDescriptor {
-    pub(super) fn new(type_: plan::CustomType) -> Self {
+    pub(in crate::plan::execution) fn new(type_: plan::CustomType) -> Self {
         Self {
             type_,
             constructors: BTreeMap::new(),
         }
     }
 
-    pub(super) fn insert_constructor(&mut self, constructor: CustomConstructorDescriptor) {
+    pub(in crate::plan::execution) fn insert_constructor(
+        &mut self,
+        constructor: CustomConstructorDescriptor,
+    ) {
         self.constructors
             .insert(constructor.id.index(), constructor);
     }
 
-    pub(super) fn has_constructor(&self, index: usize) -> bool {
+    pub(in crate::plan::execution) fn has_constructor(&self, index: usize) -> bool {
         self.constructors.contains_key(&index)
     }
 }
 
 impl CustomConstructorDescriptor {
-    pub(super) fn new(
-        id: super::CustomConstructorId,
+    pub(in crate::plan::execution) fn new(
+        id: CustomConstructorId,
         name: EcoString,
         fields: Vec<CustomFieldDescriptor>,
     ) -> Self {
         Self { id, name, fields }
     }
 
-    pub(crate) fn id(&self) -> super::CustomConstructorId {
+    pub(crate) fn id(&self) -> CustomConstructorId {
         self.id
     }
 
@@ -95,7 +128,7 @@ impl CustomConstructorDescriptor {
 }
 
 impl CustomFieldDescriptor {
-    pub(super) fn new(label: Option<EcoString>, type_: ValueType) -> Self {
+    pub(in crate::plan::execution) fn new(label: Option<EcoString>, type_: ValueType) -> Self {
         Self { label, type_ }
     }
 

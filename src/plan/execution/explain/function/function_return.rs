@@ -10,151 +10,155 @@ pub(super) fn write_function_return_tables(
         output,
         plan,
         "function.int",
-        &functions.int_function_functions,
+        &functions.function_returns.int_function_functions,
     );
     write_table(
         output,
         plan,
         "function.float",
-        &functions.float_function_functions,
+        &functions.function_returns.float_function_functions,
     );
     write_table(
         output,
         plan,
         "function.string",
-        &functions.string_function_functions,
+        &functions.function_returns.string_function_functions,
     );
     write_table(
         output,
         plan,
         "function.bit_array",
-        &functions.bit_array_function_functions,
+        &functions.function_returns.bit_array_function_functions,
     );
     write_table(
         output,
         plan,
         "function.utf_codepoint",
-        &functions.utf_codepoint_function_functions,
+        &functions.function_returns.utf_codepoint_function_functions,
     );
     write_table(
         output,
         plan,
         "function.custom",
-        &functions.custom_function_functions,
+        &functions.function_returns.custom_function_functions,
     );
     write_table(
         output,
         plan,
         "function.bool",
-        &functions.bool_function_functions,
+        &functions.function_returns.bool_function_functions,
     );
     write_table(
         output,
         plan,
         "function.nil",
-        &functions.nil_function_functions,
+        &functions.function_returns.nil_function_functions,
     );
     write_table(
         output,
         plan,
         "function.tuple",
-        &functions.tuple_function_functions,
+        &functions.function_returns.tuple_function_functions,
     );
     write_table(
         output,
         plan,
         "function.generic",
-        &functions.generic_function_functions,
+        &functions.function_returns.generic_function_functions,
     );
     write_table(
         output,
         plan,
         "function.never",
-        &functions.never_function_functions,
+        &functions.function_returns.never_function_functions,
     );
     write_table(
         output,
         plan,
         "function.list.parameter",
-        &functions.parameter_list_function_functions,
+        &functions.function_returns.parameter_list_function_functions,
     );
     write_table(
         output,
         plan,
         "function.list.parameter_list",
-        &functions.parameter_list_list_function_functions,
+        &functions
+            .function_returns
+            .parameter_list_list_function_functions,
     );
     write_table(
         output,
         plan,
         "function.list.int",
-        &functions.int_list_function_functions,
+        &functions.function_returns.int_list_function_functions,
     );
     write_table(
         output,
         plan,
         "function.list.string",
-        &functions.string_list_function_functions,
+        &functions.function_returns.string_list_function_functions,
     );
     write_table(
         output,
         plan,
         "function.list.bit_array",
-        &functions.bit_array_list_function_functions,
+        &functions.function_returns.bit_array_list_function_functions,
     );
     write_table(
         output,
         plan,
         "function.list.utf_codepoint",
-        &functions.utf_codepoint_list_function_functions,
+        &functions
+            .function_returns
+            .utf_codepoint_list_function_functions,
     );
     write_table(
         output,
         plan,
         "function.list.custom",
-        &functions.custom_list_function_functions,
+        &functions.function_returns.custom_list_function_functions,
     );
     write_table(
         output,
         plan,
         "function.list.float",
-        &functions.float_list_function_functions,
+        &functions.function_returns.float_list_function_functions,
     );
     write_table(
         output,
         plan,
         "function.list.bool",
-        &functions.bool_list_function_functions,
+        &functions.function_returns.bool_list_function_functions,
     );
     write_table(
         output,
         plan,
         "function.list.nil",
-        &functions.nil_list_function_functions,
+        &functions.function_returns.nil_list_function_functions,
     );
     write_table(
         output,
         plan,
         "function.list.tuple",
-        &functions.tuple_list_function_functions,
+        &functions.function_returns.tuple_list_function_functions,
     );
     write_table(
         output,
         plan,
         "function.list.list",
-        &functions.list_list_function_functions,
+        &functions.function_returns.list_list_function_functions,
     );
     write_table(
         output,
         plan,
         "function.list.function",
-        &functions.function_list_function_functions,
+        &functions.function_returns.function_list_function_functions,
     );
     write_table(
         output,
         plan,
         "function.function",
-        &functions.function_function_functions,
+        &functions.function_returns.function_function_functions,
     );
 }
 

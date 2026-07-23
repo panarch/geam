@@ -198,66 +198,68 @@ where
     use execution::graph::Terminator as E;
 
     match terminator {
-        DraftTerminator::Jump(edge) => E::Jump(freeze_edge(&edge, layout, liveness, block_ids)),
+        DraftTerminator::Jump(edge) => E::Jump(execution::graph::Jump::new(freeze_edge(
+            &edge, layout, liveness, block_ids,
+        ))),
         DraftTerminator::BoolBranch {
             subject,
             true_,
             false_,
-        } => E::BoolBranch {
-            subject: layout.values.bool(&subject),
-            true_: freeze_edge(&true_, layout, liveness, block_ids),
-            false_: freeze_edge(&false_, layout, liveness, block_ids),
-        },
+        } => E::BoolBranch(execution::graph::BoolBranch::new(
+            layout.values.bool(&subject),
+            freeze_edge(&true_, layout, liveness, block_ids),
+            freeze_edge(&false_, layout, liveness, block_ids),
+        )),
         DraftTerminator::IntSwitch {
             subject,
             clauses,
             fallback,
-        } => E::IntSwitch {
-            subject: layout.values.int(&subject),
-            clauses: clauses
+        } => E::IntSwitch(execution::graph::IntSwitch::new(
+            layout.values.int(&subject),
+            clauses
                 .into_iter()
                 .map(|(pattern, edge)| (pattern, freeze_edge(&edge, layout, liveness, block_ids)))
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
-            fallback: freeze_edge(&fallback, layout, liveness, block_ids),
-        },
+            freeze_edge(&fallback, layout, liveness, block_ids),
+        )),
         DraftTerminator::FloatSwitch {
             subject,
             clauses,
             fallback,
-        } => E::FloatSwitch {
-            subject: layout.values.float(&subject),
-            clauses: clauses
+        } => E::FloatSwitch(execution::graph::FloatSwitch::new(
+            layout.values.float(&subject),
+            clauses
                 .into_iter()
                 .map(|(pattern, edge)| (pattern, freeze_edge(&edge, layout, liveness, block_ids)))
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
-            fallback: freeze_edge(&fallback, layout, liveness, block_ids),
-        },
+            freeze_edge(&fallback, layout, liveness, block_ids),
+        )),
         DraftTerminator::StringSwitch {
             subject,
             clauses,
             fallback,
-        } => E::StringSwitch {
-            subject: layout.values.string(&subject),
-            clauses: clauses
+        } => E::StringSwitch(execution::graph::StringSwitch::new(
+            layout.values.string(&subject),
+            clauses
                 .into_iter()
                 .map(|(pattern, edge)| (pattern, freeze_edge(&edge, layout, liveness, block_ids)))
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
-            fallback: freeze_edge(&fallback, layout, liveness, block_ids),
-        },
+            freeze_edge(&fallback, layout, liveness, block_ids),
+        )),
         DraftTerminator::Match {
             subject,
             pattern: draft_pattern,
             success,
             failure,
-        } => E::Match {
-            subject: layout.values.any(&subject),
-            pattern: pattern::freeze(draft_pattern, &layout.values),
-            success: freeze_match_edge(&success, layout, liveness, block_ids),
-            failure: freeze_edge(&failure, layout, liveness, block_ids),
-        },
+        } => E::Match(execution::graph::Match::new(
+            layout.values.any(&subject),
+            pattern::freeze(draft_pattern, &layout.values),
+            freeze_match_edge(&success, layout, liveness, block_ids),
+            freeze_edge(&failure, layout, liveness, block_ids),
+        )),
         DraftTerminator::Return { value: _, index } => {
             let id = execution::graph::GraphExitId::new(exits.len());
             exits.push(FrozenGraphExit::Return(
@@ -277,37 +279,41 @@ where
             kind,
             message,
             site,
-        } => E::SourceStop {
+        } => E::SourceStop(execution::graph::SourceStop::new(
             kind,
-            message: message
+            message
                 .as_ref()
                 .map(|message| layout.values.string(message)),
             site,
-        },
+        )),
         DraftTerminator::LetAssertPanic {
             subject,
             message,
             site,
             pattern_span,
-        } => E::LetAssertPanic {
-            subject: layout.values.any(&subject),
-            message: message
+        } => E::LetAssertPanic(execution::graph::LetAssertPanic::new(
+            layout.values.any(&subject),
+            message
                 .as_ref()
                 .map(|message| layout.values.string(message)),
             site,
             pattern_span,
-        },
-        DraftTerminator::NeverCall { function, args } => E::NeverCall {
-            function: match function {
-                DraftNeverCallTarget::Direct(function) => {
-                    execution::graph::NeverCallTarget::Direct(function)
-                }
-                DraftNeverCallTarget::Value(function) => execution::graph::NeverCallTarget::Value(
-                    layout.values.never_function(&function),
-                ),
-            },
-            args: layout.values.any_slice(&args),
-        },
+        )),
+        DraftTerminator::NeverCall { function, args } => {
+            E::NeverCall(execution::graph::NeverCall::new(
+                match function {
+                    DraftNeverCallTarget::Direct(function) => {
+                        execution::graph::NeverCallTarget::Direct(function)
+                    }
+                    DraftNeverCallTarget::Value(function) => {
+                        execution::graph::NeverCallTarget::Value(
+                            layout.values.never_function(&function),
+                        )
+                    }
+                },
+                layout.values.any_slice(&args),
+            ))
+        }
     }
 }
 
