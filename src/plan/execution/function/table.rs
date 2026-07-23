@@ -22,7 +22,8 @@ use super::{
 };
 use super::{ExecutableFunction, FunctionFunctionTables, ListFunctionTables, ValueFunctionTables};
 use crate::plan::execution::explain::{Explain, ExplainContext, FunctionLabel};
-use crate::plan::execution::function::ExplainFunctionBody;
+use crate::plan::execution::function::{FunctionBodyOwner, TailCallLabelIndex};
+use crate::plan::execution::graph::LocalLabel;
 
 pub(in crate::plan::execution) struct FunctionTables {
     pub(in crate::plan::execution) value_returns: ValueFunctionTables,
@@ -43,16 +44,22 @@ pub(in crate::plan::execution::function) fn write_table<'a, Body, Functions>(
     family: &'static str,
     functions: Functions,
 ) where
-    Body: ExplainFunctionBody + 'a,
+    Body: FunctionBodyOwner + 'a,
+    Body::Return: LocalLabel,
+    Body::TailCall: TailCallLabelIndex,
     Functions: IntoIterator<Item = &'a ExecutableFunction<Body>>,
 {
     for (index, function) in functions.into_iter().enumerate() {
         context.push_str("\nfunction ");
         FunctionLabel::new(family, index).write(context.output());
         context.push('\n');
-        function
-            .body()
-            .write_function_body(context, family, function.entry());
+        let body = function.body().function_body();
+        body.write_explanation(
+            context,
+            family,
+            function.entry().params(body),
+            function.entry().captures(body),
+        );
     }
 }
 

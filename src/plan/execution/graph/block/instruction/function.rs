@@ -1,15 +1,13 @@
 use super::super::super::FunctionLocal;
 use super::{write_args, write_constant, write_function_call, write_projection};
 use crate::plan::execution::explain::{Explain, ExplainContext};
+use crate::plan::execution::function::FunctionLabelSource;
 use crate::plan::execution::function::{
     BitArrayFunctionId, CustomFunctionId, FunctionFunctionId, FunctionReturnFamily,
     GenericCallableId, IntFunctionId, NilFunctionId, StringFunctionId, TupleFunctionId,
     UtfCodepointFunctionId,
 };
-use crate::plan::execution::function::{
-    ExplainFunctionId, function_function_label, list_function_label,
-};
-use crate::plan::execution::graph::ExplainLocal;
+use crate::plan::execution::graph::LocalLabel;
 use crate::plan::execution::graph::{
     BitArrayListLocalId, CustomFunctionLocal, CustomListLocalId, CustomLocal, FloatListLocalId,
     FunctionFunctionLocal, FunctionListLocalId, GenericFunctionLocal, IntListLocalId, IntLocalId,
@@ -212,7 +210,7 @@ impl Explain for FunctionInstruction {
             }
             FunctionInstructionKind::Call { function, args } => {
                 context.push_str("call ");
-                function_function_label(function).write(context.output());
+                function.function_label().write(context.output());
                 write_args(context.output(), args);
             }
             FunctionInstructionKind::FunctionCall { function, args } => {
@@ -252,20 +250,20 @@ impl Explain for FunctionTarget {
                 context.push_str(".constructor#");
                 context.push_str(&constructor.index().to_string());
             }
-            FunctionTarget::Never(function) => function.label().write(context.output()),
-            FunctionTarget::Int(function) => function.label().write(context.output()),
-            FunctionTarget::Float(function) => function.label().write(context.output()),
-            FunctionTarget::String(function) => function.label().write(context.output()),
-            FunctionTarget::BitArray(function) => function.label().write(context.output()),
-            FunctionTarget::UtfCodepoint(function) => function.label().write(context.output()),
-            FunctionTarget::Custom(function) => function.label().write(context.output()),
-            FunctionTarget::Bool(function) => function.label().write(context.output()),
-            FunctionTarget::Nil(function) => function.label().write(context.output()),
-            FunctionTarget::Tuple(function) => function.label().write(context.output()),
-            FunctionTarget::List(function) => list_function_label(function).write(context.output()),
-            FunctionTarget::Function(function) => {
-                function_function_label(function).write(context.output());
+            FunctionTarget::Never(function) => function.function_label().write(context.output()),
+            FunctionTarget::Int(function) => function.function_label().write(context.output()),
+            FunctionTarget::Float(function) => function.function_label().write(context.output()),
+            FunctionTarget::String(function) => function.function_label().write(context.output()),
+            FunctionTarget::BitArray(function) => function.function_label().write(context.output()),
+            FunctionTarget::UtfCodepoint(function) => {
+                function.function_label().write(context.output())
             }
+            FunctionTarget::Custom(function) => function.function_label().write(context.output()),
+            FunctionTarget::Bool(function) => function.function_label().write(context.output()),
+            FunctionTarget::Nil(function) => function.function_label().write(context.output()),
+            FunctionTarget::Tuple(function) => function.function_label().write(context.output()),
+            FunctionTarget::List(function) => function.function_label().write(context.output()),
+            FunctionTarget::Function(function) => function.function_label().write(context.output()),
         }
     }
 }
@@ -355,12 +353,12 @@ impl Explain for FunctionCapture {
 
 fn write_capture<Target, Source>(output: &mut String, target: &Target, source: &Source)
 where
-    Target: ExplainLocal,
-    Source: ExplainLocal,
+    Target: LocalLabel,
+    Source: LocalLabel,
 {
-    target.write_local(output);
+    target.write_local_label(output);
     output.push_str("<-");
-    source.write_local(output);
+    source.write_local_label(output);
 }
 
 pub(crate) enum FunctionInstructionKind {
@@ -420,12 +418,12 @@ impl FunctionInstruction {
 }
 
 #[cfg(test)]
-mod explain_tests {
+mod function_instruction_explain_tests {
     use crate::plan::execution::explain;
     use crate::plan::execution::function::TupleFunctionId;
 
     #[test]
-    fn writes_function_instruction_targets_calls_and_captures() {
+    fn writes_function_instruction_variants() {
         let source = r#"
 fn identity(value: Int) { value }
 fn returner(function: fn(Int) -> Int) { function }
@@ -469,6 +467,59 @@ pub fn main() {
                     context.write(instruction);
                 }
             }
+        });
+    }
+}
+
+#[cfg(test)]
+mod function_target_explain_tests {
+    use super::FunctionTarget;
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::{GenericCallableId, IntFunctionId};
+    use crate::plan::execution::type_::ValueShapeId;
+
+    #[test]
+    fn writes_function_targets() {
+        let source = "pub fn main() { 1 }";
+        let expected = "int#2 | template#3 shapes=[shape#4]";
+
+        assert_explanation(source, expected);
+    }
+
+    fn assert_explanation(source: &str, expected: &str) {
+        explain::assert_rendered(source, expected, |plan, output| {
+            let mut context = explain::ExplainContext::new(plan, output);
+            context.write(&FunctionTarget::Int(IntFunctionId(2)));
+            context.push_str(" | ");
+            context.write(&FunctionTarget::Generic(GenericCallableId::function(
+                3,
+                vec![ValueShapeId::new(4)],
+            )));
+        });
+    }
+}
+
+#[cfg(test)]
+mod function_capture_explain_tests {
+    use super::FunctionCapture;
+    use crate::plan::execution::explain;
+    use crate::plan::execution::graph::IntLocalId;
+
+    #[test]
+    fn writes_function_captures() {
+        let source = "pub fn main() { 1 }";
+        let expected = "%int#1<-%int#0";
+
+        assert_explanation(source, expected);
+    }
+
+    fn assert_explanation(source: &str, expected: &str) {
+        explain::assert_rendered(source, expected, |plan, output| {
+            let mut context = explain::ExplainContext::new(plan, output);
+            context.write(&FunctionCapture::Int {
+                target: IntLocalId(1),
+                source: IntLocalId(0),
+            });
         });
     }
 }

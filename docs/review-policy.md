@@ -264,6 +264,10 @@ the owning test module. Do not use external fixtures or snapshots as owner unit
 test inputs. Formatter, serializer, and diagnostic tests must assert exact
 rendered output locally.
 
+Each formatter or protocol trait implementation must have an owner-local exact
+test. Generic or delegating implementations must explicitly cover every
+distinct concrete family; integration fixtures do not replace these tests.
+
 Planner rejection coverage belongs in the owning planner unit test unless it is
 represented by a dedicated fixture-based integration case.
 

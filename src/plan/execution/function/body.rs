@@ -1,5 +1,4 @@
 use crate::plan::execution::explain::{ExplainContext, FunctionLabel};
-use crate::plan::execution::function::FunctionEntry;
 use crate::plan::execution::function::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionFunctionId,
     BoolFunctionId, BoolListFunctionId, CustomListFunctionId, FloatFunctionFunctionId,
@@ -11,8 +10,9 @@ use crate::plan::execution::function::{
     TupleFunctionId, TupleListFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
     UtfCodepointListFunctionId,
 };
-use crate::plan::execution::graph::{BlockGraph, BlockGraphExitId};
-use crate::plan::execution::graph::{ExplainLocal, write_graph};
+use crate::plan::execution::graph::{
+    BlockGraph, BlockGraphExitExplanation, BlockGraphExitId, LocalLabel, ParamSlot,
+};
 
 pub(crate) struct FunctionBody<Return, TailCall> {
     block_graph: BlockGraph,
@@ -25,6 +25,18 @@ pub(crate) enum FunctionExit<Return, TailCall> {
         function: TailCall,
         args: Box<[crate::plan::execution::graph::ParamLocal]>,
     },
+}
+
+pub(in crate::plan::execution::function) trait FunctionBodyOwner {
+    type Return;
+    type TailCall;
+
+    fn function_body(&self) -> &FunctionBody<Self::Return, Self::TailCall>;
+}
+
+struct FunctionExitExplanation<'a, Return, TailCall> {
+    body: &'a FunctionBody<Return, TailCall>,
+    family: &'static str,
 }
 
 impl<Return, TailCall> FunctionBody<Return, TailCall> {
@@ -45,266 +57,258 @@ impl<Return, TailCall> FunctionBody<Return, TailCall> {
     pub(crate) fn exit(&self, id: BlockGraphExitId) -> &FunctionExit<Return, TailCall> {
         &self.exits[id.index()]
     }
-}
 
-pub(in crate::plan::execution::function) trait ExplainFunctionBody {
-    fn write_function_body(
+    pub(in crate::plan::execution) fn write_explanation(
         &self,
         context: &mut ExplainContext<'_, '_>,
         family: &'static str,
-        entry: &FunctionEntry,
-    );
+        entry_params: &[ParamSlot],
+        entry_captures: &[ParamSlot],
+    ) where
+        Return: LocalLabel,
+        TailCall: TailCallLabelIndex,
+    {
+        let exits = FunctionExitExplanation { body: self, family };
+        self.block_graph()
+            .write_explanation(context, entry_params, entry_captures, &exits);
+    }
 }
 
-impl<Return, TailCall> ExplainFunctionBody for FunctionBody<Return, TailCall>
+impl<Return, TailCall> FunctionBodyOwner for FunctionBody<Return, TailCall> {
+    type Return = Return;
+    type TailCall = TailCall;
+
+    fn function_body(&self) -> &FunctionBody<Self::Return, Self::TailCall> {
+        self
+    }
+}
+
+impl<Return, TailCall> BlockGraphExitExplanation for FunctionExitExplanation<'_, Return, TailCall>
 where
-    Return: ExplainLocal,
-    TailCall: TailFunctionIndex,
+    Return: LocalLabel,
+    TailCall: TailCallLabelIndex,
 {
-    fn write_function_body(
-        &self,
-        context: &mut ExplainContext<'_, '_>,
-        family: &'static str,
-        entry: &FunctionEntry,
-    ) {
-        write_graph(
-            context,
-            self.block_graph(),
-            entry.params(self),
-            entry.captures(self),
-            &mut |context, exit| {
-                write_function_exit(context, self.exit(exit), family);
-            },
-        );
-    }
-}
-
-fn write_function_exit<Return, TailCall>(
-    context: &mut ExplainContext<'_, '_>,
-    exit: &FunctionExit<Return, TailCall>,
-    family: &'static str,
-) where
-    Return: ExplainLocal,
-    TailCall: TailFunctionIndex,
-{
-    match exit {
-        FunctionExit::Return(value) => {
-            context.push_str("return ");
-            context.write(value);
-        }
-        FunctionExit::TailCall { function, args } => {
-            context.push_str("tail ");
-            FunctionLabel::new(family, function.tail_function_index()).write(context.output());
-            context.push_str(" args=");
-            context.write_list(args, |context, argument| context.write(argument));
+    fn write_exit(&self, context: &mut ExplainContext<'_, '_>, exit: BlockGraphExitId) {
+        match self.body.exit(exit) {
+            FunctionExit::Return(value) => {
+                context.push_str("return ");
+                context.write(value);
+            }
+            FunctionExit::TailCall { function, args } => {
+                context.push_str("tail ");
+                FunctionLabel::new(self.family, function.tail_call_label_index())
+                    .write(context.output());
+                context.push_str(" args=");
+                context.write_list(args, |context, argument| context.write(argument));
+            }
         }
     }
 }
 
-pub(in crate::plan::execution::function) trait TailFunctionIndex {
-    fn tail_function_index(&self) -> usize;
+pub(in crate::plan::execution) trait TailCallLabelIndex {
+    fn tail_call_label_index(&self) -> usize;
 }
 
-impl TailFunctionIndex for usize {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for usize {
+    fn tail_call_label_index(&self) -> usize {
         *self
     }
 }
 
-impl TailFunctionIndex for NeverFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for NeverFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.0
     }
 }
 
-impl TailFunctionIndex for IntFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for IntFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.0
     }
 }
 
-impl TailFunctionIndex for FloatFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for FloatFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.0
     }
 }
 
-impl TailFunctionIndex for StringFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for StringFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.0
     }
 }
 
-impl TailFunctionIndex for BitArrayFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for BitArrayFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.0
     }
 }
 
-impl TailFunctionIndex for UtfCodepointFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for UtfCodepointFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.0
     }
 }
 
-impl TailFunctionIndex for BoolFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for BoolFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.0
     }
 }
 
-impl TailFunctionIndex for NilFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for NilFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.0
     }
 }
 
-impl TailFunctionIndex for TupleFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for TupleFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.0
     }
 }
 
-impl TailFunctionIndex for IntFunctionFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for IntFunctionFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.0
     }
 }
 
-impl TailFunctionIndex for FloatFunctionFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for FloatFunctionFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.0
     }
 }
 
-impl TailFunctionIndex for StringFunctionFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for StringFunctionFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.0
     }
 }
 
-impl TailFunctionIndex for BitArrayFunctionFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for BitArrayFunctionFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.0
     }
 }
 
-impl TailFunctionIndex for UtfCodepointFunctionFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for UtfCodepointFunctionFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.0
     }
 }
 
-impl TailFunctionIndex for BoolFunctionFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for BoolFunctionFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.0
     }
 }
 
-impl TailFunctionIndex for NilFunctionFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for NilFunctionFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.0
     }
 }
 
-impl TailFunctionIndex for TupleFunctionFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for TupleFunctionFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.0
     }
 }
 
-impl TailFunctionIndex for ParameterListFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for ParameterListFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.index()
     }
 }
 
-impl TailFunctionIndex for IntListFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for IntListFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.index()
     }
 }
 
-impl TailFunctionIndex for StringListFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for StringListFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.index()
     }
 }
 
-impl TailFunctionIndex for BitArrayListFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for BitArrayListFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.index()
     }
 }
 
-impl TailFunctionIndex for UtfCodepointListFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for UtfCodepointListFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.index()
     }
 }
 
-impl TailFunctionIndex for CustomListFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for CustomListFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.index()
     }
 }
 
-impl TailFunctionIndex for FloatListFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for FloatListFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.index()
     }
 }
 
-impl TailFunctionIndex for BoolListFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for BoolListFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.index()
     }
 }
 
-impl TailFunctionIndex for NilListFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for NilListFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.index()
     }
 }
 
-impl TailFunctionIndex for TupleListFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for TupleListFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.index()
     }
 }
 
-impl TailFunctionIndex for ParameterListListFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for ParameterListListFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.index()
     }
 }
 
-impl TailFunctionIndex for ListListFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for ListListFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.index()
     }
 }
 
-impl TailFunctionIndex for FunctionListFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for FunctionListFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.index()
     }
 }
 
-impl TailFunctionIndex for GenericFunctionFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for GenericFunctionFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.index()
     }
 }
 
-impl TailFunctionIndex for NeverFunctionFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for NeverFunctionFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         self.index()
     }
 }
 
-impl TailFunctionIndex for ListFunctionFunctionId {
-    fn tail_function_index(&self) -> usize {
+impl TailCallLabelIndex for ListFunctionFunctionId {
+    fn tail_call_label_index(&self) -> usize {
         match self {
             Self::Parameter { id, .. } => id.0,
             Self::ParameterList { id, .. } => id.0,
@@ -325,10 +329,10 @@ impl TailFunctionIndex for ListFunctionFunctionId {
 
 #[cfg(test)]
 mod explain_tests {
-    use super::{TailFunctionIndex, write_function_exit};
+    use super::{FunctionBodyOwner, FunctionExitExplanation, TailCallLabelIndex};
     use crate::plan::execution::explain;
     use crate::plan::execution::function::IntFunctionId;
-    use crate::plan::execution::graph::Terminator;
+    use crate::plan::execution::graph::{BlockGraphExitExplanation, Terminator};
 
     #[test]
     fn writes_return_and_tail_call_exits() {
@@ -348,7 +352,17 @@ pub fn main() { loop(2) }
     }
 
     #[test]
-    fn extracts_every_tail_function_index_explicitly() {
+    fn exposes_the_base_function_body_without_adaptation() {
+        let source = "pub fn main() { 1 }";
+
+        explain::with_execution_plan(source, |plan| {
+            let body = plan.int_function(IntFunctionId(0)).body();
+            assert!(std::ptr::eq(body, FunctionBodyOwner::function_body(body)));
+        });
+    }
+
+    #[test]
+    fn extracts_every_tail_call_label_index_explicitly() {
         use crate::plan::execution::function::{
             BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionFunctionId,
             BitArrayListFunctionId, BoolFunctionFunctionId, BoolFunctionId,
@@ -374,69 +388,69 @@ pub fn main() { loop(2) }
             ValueShapeId, ValueType,
         };
 
-        assert_tail_index(&0usize, 0);
-        assert_tail_index(&NeverFunctionId(1), 1);
-        assert_tail_index(&IntFunctionId(2), 2);
-        assert_tail_index(&FloatFunctionId(3), 3);
-        assert_tail_index(&StringFunctionId(4), 4);
-        assert_tail_index(&BitArrayFunctionId(5), 5);
-        assert_tail_index(&UtfCodepointFunctionId(6), 6);
-        assert_tail_index(&BoolFunctionId(7), 7);
-        assert_tail_index(&NilFunctionId(8), 8);
-        assert_tail_index(&TupleFunctionId(9), 9);
+        assert_tail_call_label_index(&0usize, 0);
+        assert_tail_call_label_index(&NeverFunctionId(1), 1);
+        assert_tail_call_label_index(&IntFunctionId(2), 2);
+        assert_tail_call_label_index(&FloatFunctionId(3), 3);
+        assert_tail_call_label_index(&StringFunctionId(4), 4);
+        assert_tail_call_label_index(&BitArrayFunctionId(5), 5);
+        assert_tail_call_label_index(&UtfCodepointFunctionId(6), 6);
+        assert_tail_call_label_index(&BoolFunctionId(7), 7);
+        assert_tail_call_label_index(&NilFunctionId(8), 8);
+        assert_tail_call_label_index(&TupleFunctionId(9), 9);
 
         let list_type = ListTypeId::new(0);
         let parameter_type = ParameterListTypeId::new(list_type, crate::plan::TypeParameterId(0));
         let custom_type = CustomTypeId::new(0);
-        assert_tail_index(&ParameterListFunctionId::new(10, parameter_type), 10);
-        assert_tail_index(
+        assert_tail_call_label_index(&ParameterListFunctionId::new(10, parameter_type), 10);
+        assert_tail_call_label_index(
             &ParameterListListFunctionId::new(
                 11,
                 ParameterListListTypeId::new(list_type, parameter_type),
             ),
             11,
         );
-        assert_tail_index(
+        assert_tail_call_label_index(
             &IntListFunctionId::new(12, IntListTypeId::new(list_type)),
             12,
         );
-        assert_tail_index(
+        assert_tail_call_label_index(
             &StringListFunctionId::new(13, StringListTypeId::new(list_type)),
             13,
         );
-        assert_tail_index(
+        assert_tail_call_label_index(
             &BitArrayListFunctionId::new(14, BitArrayListTypeId::new(list_type)),
             14,
         );
-        assert_tail_index(
+        assert_tail_call_label_index(
             &UtfCodepointListFunctionId::new(15, UtfCodepointListTypeId::new(list_type)),
             15,
         );
-        assert_tail_index(
+        assert_tail_call_label_index(
             &CustomListFunctionId::new(16, CustomListTypeId::new(list_type, custom_type)),
             16,
         );
-        assert_tail_index(
+        assert_tail_call_label_index(
             &FloatListFunctionId::new(17, FloatListTypeId::new(list_type)),
             17,
         );
-        assert_tail_index(
+        assert_tail_call_label_index(
             &BoolListFunctionId::new(18, BoolListTypeId::new(list_type)),
             18,
         );
-        assert_tail_index(
+        assert_tail_call_label_index(
             &NilListFunctionId::new(19, NilListTypeId::new(list_type)),
             19,
         );
-        assert_tail_index(
+        assert_tail_call_label_index(
             &TupleListFunctionId::new(20, TupleListTypeId::new(list_type, 0)),
             20,
         );
-        assert_tail_index(
+        assert_tail_call_label_index(
             &ListListFunctionId::new(21, ListListTypeId::new(list_type, list_type)),
             21,
         );
-        assert_tail_index(
+        assert_tail_call_label_index(
             &FunctionListFunctionId::new(22, FunctionListTypeId::new(list_type, 0)),
             22,
         );
@@ -444,19 +458,19 @@ pub fn main() { loop(2) }
         let function_type = FunctionType::new(Vec::new(), ValueType::Int);
         let function_shape = FunctionShape::new(ValueShapeId::new(0), function_type.clone());
         let generic_type = GenericFunctionType::from_shapes(function_type.clone(), function_shape);
-        assert_tail_index(
+        assert_tail_call_label_index(
             &GenericFunctionFunctionId::new(23, generic_type.clone()),
             23,
         );
-        assert_tail_index(&NeverFunctionFunctionId::new(24, generic_type), 24);
-        assert_tail_index(&IntFunctionFunctionId(25), 25);
-        assert_tail_index(&FloatFunctionFunctionId(26), 26);
-        assert_tail_index(&StringFunctionFunctionId(27), 27);
-        assert_tail_index(&BitArrayFunctionFunctionId(28), 28);
-        assert_tail_index(&UtfCodepointFunctionFunctionId(29), 29);
-        assert_tail_index(&BoolFunctionFunctionId(30), 30);
-        assert_tail_index(&NilFunctionFunctionId(31), 31);
-        assert_tail_index(&TupleFunctionFunctionId(32), 32);
+        assert_tail_call_label_index(&NeverFunctionFunctionId::new(24, generic_type), 24);
+        assert_tail_call_label_index(&IntFunctionFunctionId(25), 25);
+        assert_tail_call_label_index(&FloatFunctionFunctionId(26), 26);
+        assert_tail_call_label_index(&StringFunctionFunctionId(27), 27);
+        assert_tail_call_label_index(&BitArrayFunctionFunctionId(28), 28);
+        assert_tail_call_label_index(&UtfCodepointFunctionFunctionId(29), 29);
+        assert_tail_call_label_index(&BoolFunctionFunctionId(30), 30);
+        assert_tail_call_label_index(&NilFunctionFunctionId(31), 31);
+        assert_tail_call_label_index(&TupleFunctionFunctionId(32), 32);
 
         let list_function_functions = [
             ListFunctionFunctionId::Parameter {
@@ -527,12 +541,12 @@ pub fn main() { loop(2) }
         ];
 
         for (expected, function) in (33..).zip(list_function_functions) {
-            assert_tail_index(&function, expected);
+            assert_tail_call_label_index(&function, expected);
         }
     }
 
-    fn assert_tail_index(function: &impl TailFunctionIndex, expected: usize) {
-        assert_eq!(function.tail_function_index(), expected);
+    fn assert_tail_call_label_index(function: &impl TailCallLabelIndex, expected: usize) {
+        assert_eq!(function.tail_call_label_index(), expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {
@@ -544,7 +558,11 @@ pub fn main() { loop(2) }
                     if !context.output().is_empty() {
                         context.push_str(" | ");
                     }
-                    write_function_exit(&mut context, body.exit(*exit), "int");
+                    FunctionExitExplanation {
+                        body,
+                        family: "int",
+                    }
+                    .write_exit(&mut context, *exit);
                 }
             }
         });

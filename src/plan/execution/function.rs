@@ -8,15 +8,15 @@ mod value_return;
 
 use crate::plan::execution::explain::FunctionLabel;
 
-pub(in crate::plan::execution) trait ExplainFunctionId {
-    fn label(&self) -> FunctionLabel;
+pub(in crate::plan::execution) trait FunctionLabelSource {
+    fn function_label(&self) -> FunctionLabel;
 }
 
-pub(in crate::plan::execution::function) use body::ExplainFunctionBody;
+pub(in crate::plan::execution::function) use body::FunctionBodyOwner;
+pub(in crate::plan::execution) use body::TailCallLabelIndex;
 pub(crate) use body::{FunctionBody, FunctionExit};
 pub(crate) use entry::FunctionEntry;
 pub(in crate::plan::execution) use function_return::FunctionFunctionTables;
-pub(in crate::plan::execution) use function_return::function_function_label;
 pub(crate) use function_return::{
     BitArrayFunctionFunctionBody, BitArrayFunctionFunctionId, BitArrayListFunctionFunctionId,
     BoolFunctionFunctionBody, BoolFunctionFunctionId, BoolListFunctionFunctionId,
@@ -34,7 +34,6 @@ pub(crate) use function_return::{
     UtfCodepointFunctionFunctionId, UtfCodepointListFunctionFunctionId,
 };
 pub(in crate::plan::execution) use list_return::ListFunctionTables;
-pub(in crate::plan::execution) use list_return::list_function_label;
 pub(crate) use list_return::{
     BitArrayListFunctionBody, BitArrayListFunctionId, BoolListFunctionBody, BoolListFunctionId,
     CustomListFunctionBody, CustomListFunctionId, FloatListFunctionBody, FloatListFunctionId,
@@ -45,7 +44,6 @@ pub(crate) use list_return::{
     StringListFunctionId, TupleListFunctionBody, TupleListFunctionId, UtfCodepointListFunctionBody,
     UtfCodepointListFunctionId,
 };
-pub(in crate::plan::execution) use runtime::runtime_function_label;
 pub(crate) use runtime::{FunctionReturnFamily, GenericCallableId, RuntimeFunctionId};
 pub(super) use table::FunctionTables;
 pub(in crate::plan::execution::function) use table::write_table;

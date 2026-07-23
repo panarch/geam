@@ -3,8 +3,7 @@ use super::{
     BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, IntFunctionId,
     NeverFunctionId, NilFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
 };
-use crate::plan::execution::explain::ExplainContext;
-use crate::plan::execution::function::{ExplainFunctionBody, FunctionEntry};
+use crate::plan::execution::function::FunctionBodyOwner;
 use crate::plan::execution::graph::{
     BitArrayLocalId, BoolLocalId, CustomLocal, FloatLocalId, IntLocalId, NilLocalId, StringLocalId,
     TupleLocalId, UtfCodepointLocalId,
@@ -61,14 +60,48 @@ impl CustomFunctionBody {
     }
 }
 
-impl ExplainFunctionBody for CustomFunctionBody {
-    fn write_function_body(
-        &self,
-        context: &mut ExplainContext<'_, '_>,
-        family: &'static str,
-        entry: &FunctionEntry,
-    ) {
-        self.function_body()
-            .write_function_body(context, family, entry);
+impl FunctionBodyOwner for CustomFunctionBody {
+    type Return = CustomLocal;
+    type TailCall = usize;
+
+    fn function_body(&self) -> &FunctionBody<Self::Return, Self::TailCall> {
+        &self.body
+    }
+}
+
+#[cfg(test)]
+mod explain_tests {
+    use super::{CustomFunctionBody, FunctionBodyOwner};
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::RuntimeFunctionId;
+
+    #[test]
+    fn exposes_the_custom_function_body() {
+        let source = r#"
+pub type Boxed { Boxed(Int) }
+pub fn main() { Boxed(1) }
+"#;
+
+        explain::with_execution_plan(source, |plan| {
+            let owner = custom_function_body(plan);
+            let body = <CustomFunctionBody as FunctionBodyOwner>::function_body(owner);
+
+            assert!(std::ptr::eq(body, owner.function_body()));
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "source should lower a custom-returning main function")]
+    fn custom_function_body_shape_guard_is_visible() {
+        explain::with_execution_plan("pub fn main() { 1 }", |plan| {
+            custom_function_body(plan);
+        });
+    }
+
+    fn custom_function_body(plan: &crate::plan::execution::ExecutionPlan) -> &CustomFunctionBody {
+        let RuntimeFunctionId::Custom(function) = plan.main_runtime() else {
+            panic!("source should lower a custom-returning main function");
+        };
+        plan.custom_function(function).body()
     }
 }

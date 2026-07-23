@@ -34,13 +34,22 @@ pub(crate) use value::{
     TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointListFunctionLocalId,
     UtfCodepointListLocalId, UtfCodepointLocalId,
 };
-pub(in crate::plan::execution) use value::{ExplainLocal, write_locals};
+pub(in crate::plan::execution) use value::{LocalLabel, write_local_labels};
 
-use crate::plan::execution::explain::ExplainContext;
+use crate::plan::execution::explain::{Explain, ExplainContext};
 
 pub(crate) struct BlockGraph {
     entry: BlockId,
     blocks: Box<[Block]>,
+}
+
+pub(in crate::plan::execution) trait BlockGraphExitExplanation {
+    fn write_exit(&self, context: &mut ExplainContext<'_, '_>, exit: BlockGraphExitId);
+}
+
+pub(in crate::plan::execution::graph) struct BlockGraphExplainContext<'a, 'plan, 'output> {
+    context: &'a mut ExplainContext<'plan, 'output>,
+    exits: &'a dyn BlockGraphExitExplanation,
 }
 
 impl BlockGraph {
@@ -62,31 +71,67 @@ impl BlockGraph {
     pub(crate) fn block(&self, id: BlockId) -> &Block {
         &self.blocks[id.index()]
     }
+
+    pub(in crate::plan::execution) fn write_explanation(
+        &self,
+        context: &mut ExplainContext<'_, '_>,
+        entry_params: &[ParamSlot],
+        entry_captures: &[ParamSlot],
+        exits: &dyn BlockGraphExitExplanation,
+    ) {
+        context.push_str("  entry b");
+        context.push_str(&self.entry().index().to_string());
+        context.push_str(" params=");
+        context.write_list(entry_params, |context, slot| context.write(slot));
+        context.push_str(" captures=");
+        context.write_list(entry_captures, |context, slot| context.write(slot));
+        context.push('\n');
+
+        let mut graph_context = BlockGraphExplainContext { context, exits };
+        for (index, block) in self.blocks().iter().enumerate() {
+            block.write_explanation(&mut graph_context, index);
+        }
+    }
 }
 
-pub(in crate::plan::execution) fn write_graph(
-    context: &mut ExplainContext<'_, '_>,
-    graph: &BlockGraph,
-    entry_params: &[ParamSlot],
-    entry_captures: &[ParamSlot],
-    write_exit: &mut dyn FnMut(&mut ExplainContext<'_, '_>, BlockGraphExitId),
-) {
-    context.push_str("  entry b");
-    context.push_str(&graph.entry().index().to_string());
-    context.push_str(" params=");
-    context.write_list(entry_params, |context, slot| context.write(slot));
-    context.push_str(" captures=");
-    context.write_list(entry_captures, |context, slot| context.write(slot));
-    context.push('\n');
+impl BlockGraphExplainContext<'_, '_, '_> {
+    pub(in crate::plan::execution::graph) fn push(&mut self, character: char) {
+        self.context.push(character);
+    }
 
-    for (index, block) in graph.blocks().iter().enumerate() {
-        block::write_block(context, index, block, write_exit);
+    pub(in crate::plan::execution::graph) fn push_str(&mut self, text: &str) {
+        self.context.push_str(text);
+    }
+
+    pub(in crate::plan::execution::graph) fn write<Value>(&mut self, value: &Value)
+    where
+        Value: Explain + ?Sized,
+    {
+        self.context.write(value);
+    }
+
+    pub(in crate::plan::execution::graph) fn write_list<Value>(
+        &mut self,
+        values: &[Value],
+        mut write_value: impl FnMut(&mut Self, &Value),
+    ) {
+        self.push('[');
+        for (index, value) in values.iter().enumerate() {
+            if index > 0 {
+                self.push_str(", ");
+            }
+            write_value(self, value);
+        }
+        self.push(']');
+    }
+
+    pub(in crate::plan::execution::graph) fn write_exit(&mut self, exit: BlockGraphExitId) {
+        self.exits.write_exit(self.context, exit);
     }
 }
 
 #[cfg(test)]
 mod explain_tests {
-    use super::write_graph;
     use crate::plan::execution::explain;
     use crate::plan::execution::function::IntFunctionId;
 
@@ -102,10 +147,10 @@ pub fn main() { choose(True) }
             "    branch %bool#0 true=b1() false=b2()\n",
             "  block b1 params=[]\n",
             "    %int#0:shape#1(Int) = int.value 1\n",
-            "    exit#0\n",
+            "    return %int#0\n",
             "  block b2 params=[]\n",
             "    %int#0:shape#1(Int) = int.value 0\n",
-            "    exit#1\n",
+            "    return %int#0\n",
         );
 
         assert_explanation(source, expected);
@@ -116,15 +161,11 @@ pub fn main() { choose(True) }
             let function = plan.int_function(IntFunctionId(1));
             let body = function.body();
             let mut context = explain::ExplainContext::new(plan, output);
-            write_graph(
+            body.write_explanation(
                 &mut context,
-                body.block_graph(),
+                "int",
                 function.entry().params(body),
                 function.entry().captures(body),
-                &mut |context, exit| {
-                    context.push_str("exit#");
-                    context.push_str(&exit.index().to_string());
-                },
             );
         });
     }

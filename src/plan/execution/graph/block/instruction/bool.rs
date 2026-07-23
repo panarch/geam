@@ -5,7 +5,7 @@ use super::{
 use crate::plan::execution::constant::ConstantId;
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::BoolFunctionId;
-use crate::plan::execution::graph::ExplainLocal;
+use crate::plan::execution::graph::LocalLabel;
 use crate::plan::execution::graph::{
     BoolFunctionLocalId, BoolListLocalId, BoolLocalId, CustomLocal, FloatLocalId, IntLocalId,
     ListLocal, ParamLocal, StringLocalId, TupleLocalId,
@@ -146,7 +146,7 @@ impl Explain for BoolInstruction {
             }
             BoolInstruction::StringStartsWith { value, prefix } => {
                 output.push_str("bool.string_starts_with ");
-                value.write_local(output);
+                value.write_local_label(output);
                 output.push_str(" prefix=");
                 output.push_str(&format!("{prefix:?}"));
             }

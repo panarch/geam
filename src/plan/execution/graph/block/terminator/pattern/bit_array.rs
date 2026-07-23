@@ -1,7 +1,7 @@
 use super::{MatchIntBindingId, MatchPatternBinding};
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::graph::{Endianness, IntLocalId, StringEncoding};
-use crate::plan::execution::graph::{ExplainLocal, endianness, string_encoding};
+use crate::plan::execution::graph::{LocalLabel, endianness, string_encoding};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -227,7 +227,7 @@ impl Explain for BitArrayPatternSizeExpr {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
         match self {
             Self::Value(value) => context.push_str(&value.to_string()),
-            Self::Local(local) => local.write_local(context.output()),
+            Self::Local(local) => local.write_local_label(context.output()),
             Self::Binding(binding) => {
                 context.push_str("binding#");
                 context.push_str(&binding.index().to_string());
@@ -278,10 +278,16 @@ fn write_value<Value>(
 #[cfg(test)]
 mod explain_tests {
     use super::super::super::Terminator;
-    use super::BitArrayPattern;
+    use super::{
+        BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
+        BitArrayPatternSizeExpr, BitArrayPatternValue, Signedness,
+    };
     use crate::plan::execution::explain;
     use crate::plan::execution::function::IntFunctionId;
-    use crate::plan::execution::graph::MatchPattern;
+    use crate::plan::execution::graph::{
+        Endianness, IntLocalId, MatchPattern, MatchPatternBinding,
+    };
+    use num_bigint::BigInt;
 
     #[test]
     fn writes_dynamic_and_remainder_bit_array_segments() {
@@ -299,6 +305,67 @@ pub fn main() {
             "<<int(binding#0, size=%int#2*1, big, unsigned), bits(binding#1, size=rest, unit=1)>>";
 
         assert_explanation(source, expected);
+    }
+
+    #[test]
+    fn writes_bit_array_pattern_segment() {
+        let source = "pub fn main() { 1 }";
+        let expected = "int(1, size=8*1, big, unsigned)";
+
+        explain::assert_rendered(source, expected, |plan, output| {
+            let segment = BitArrayPatternSegment::Int {
+                pattern: BitArrayPatternValue::Literal(BigInt::from(1)),
+                size: BitArrayPatternSize::new(BitArrayPatternSizeExpr::Value(BigInt::from(8)), 1),
+                endianness: Endianness::Big,
+                signedness: Signedness::Unsigned,
+            };
+            let mut context = explain::ExplainContext::new(plan, output);
+            context.write(&segment);
+        });
+    }
+
+    #[test]
+    fn writes_bit_array_binding_pattern() {
+        let source = "pub fn main() { 1 }";
+        let expected = "alias(_, binding#2)";
+
+        explain::assert_rendered(source, expected, |plan, output| {
+            let pattern = BitArrayBindingPattern::Alias {
+                pattern: Box::new(BitArrayBindingPattern::Discard),
+                binding: MatchPatternBinding::new(2),
+            };
+            let mut context = explain::ExplainContext::new(plan, output);
+            context.write(&pattern);
+        });
+    }
+
+    #[test]
+    fn writes_bit_array_pattern_size() {
+        let source = "pub fn main() { 1 }";
+        let expected = "%int#2*4";
+
+        explain::assert_rendered(source, expected, |plan, output| {
+            let size = BitArrayPatternSize::new(BitArrayPatternSizeExpr::Local(IntLocalId(2)), 4);
+            let mut context = explain::ExplainContext::new(plan, output);
+            context.write(&size);
+        });
+    }
+
+    #[test]
+    fn writes_bit_array_pattern_size_expression() {
+        let source = "pub fn main() { 1 }";
+        let expected = "(8 + binding#2)";
+
+        explain::assert_rendered(source, expected, |plan, output| {
+            let expression = BitArrayPatternSizeExpr::Add {
+                left: Box::new(BitArrayPatternSizeExpr::Value(BigInt::from(8))),
+                right: Box::new(BitArrayPatternSizeExpr::Binding(
+                    super::MatchIntBindingId::new(2),
+                )),
+            };
+            let mut context = explain::ExplainContext::new(plan, output);
+            context.write(&expression);
+        });
     }
 
     #[test]

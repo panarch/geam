@@ -31,10 +31,10 @@ use std::convert::Infallible;
 
 impl<Value> Explain for Value
 where
-    Value: ExplainLocal,
+    Value: LocalLabel,
 {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
-        self.write_local(context.output());
+        self.write_local_label(context.output());
     }
 }
 
@@ -53,259 +53,261 @@ fn write_list<Value>(
     output.push(']');
 }
 
-pub(in crate::plan::execution) trait ExplainLocal {
-    fn write_local(&self, output: &mut String);
+pub(in crate::plan::execution) trait LocalLabel {
+    fn write_local_label(&self, output: &mut String);
 }
 
-pub(in crate::plan::execution) fn write_locals(output: &mut String, locals: &[ParamLocal]) {
-    write_list(output, locals, |output, local| local.write_local(output));
+pub(in crate::plan::execution) fn write_local_labels(output: &mut String, locals: &[ParamLocal]) {
+    write_list(output, locals, |output, local| {
+        local.write_local_label(output)
+    });
 }
 
-impl ExplainLocal for IntLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for IntLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "int", self.0);
     }
 }
 
-impl ExplainLocal for FloatLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for FloatLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "float", self.0);
     }
 }
 
-impl ExplainLocal for StringLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for StringLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "string", self.0);
     }
 }
 
-impl ExplainLocal for BitArrayLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for BitArrayLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "bit_array", self.0);
     }
 }
 
-impl ExplainLocal for UtfCodepointLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for UtfCodepointLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "utf_codepoint", self.0);
     }
 }
 
-impl ExplainLocal for BoolLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for BoolLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "bool", self.0);
     }
 }
 
-impl ExplainLocal for NilLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for NilLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "nil", self.0);
     }
 }
 
-impl ExplainLocal for TupleLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for TupleLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "tuple", self.0);
     }
 }
 
-impl ExplainLocal for ParameterListLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for ParameterListLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "list.parameter", self.0);
     }
 }
 
-impl ExplainLocal for ParameterListListLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for ParameterListListLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "list.parameter_list", self.0);
     }
 }
 
-impl ExplainLocal for IntListLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for IntListLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "list.int", self.0);
     }
 }
 
-impl ExplainLocal for StringListLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for StringListLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "list.string", self.0);
     }
 }
 
-impl ExplainLocal for BitArrayListLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for BitArrayListLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "list.bit_array", self.0);
     }
 }
 
-impl ExplainLocal for UtfCodepointListLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for UtfCodepointListLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "list.utf_codepoint", self.0);
     }
 }
 
-impl ExplainLocal for CustomListLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for CustomListLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "list.custom", self.0);
     }
 }
 
-impl ExplainLocal for FloatListLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for FloatListLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "list.float", self.0);
     }
 }
 
-impl ExplainLocal for BoolListLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for BoolListLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "list.bool", self.0);
     }
 }
 
-impl ExplainLocal for NilListLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for NilListLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "list.nil", self.0);
     }
 }
 
-impl ExplainLocal for TupleListLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for TupleListLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "list.tuple", self.0);
     }
 }
 
-impl ExplainLocal for ListListLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for ListListLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "list.list", self.0);
     }
 }
 
-impl ExplainLocal for FunctionListLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for FunctionListLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "list.function", self.0);
     }
 }
 
-impl ExplainLocal for IntFunctionLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for IntFunctionLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "function.int", self.0);
     }
 }
 
-impl ExplainLocal for FloatFunctionLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for FloatFunctionLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "function.float", self.0);
     }
 }
 
-impl ExplainLocal for StringFunctionLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for StringFunctionLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "function.string", self.0);
     }
 }
 
-impl ExplainLocal for BitArrayFunctionLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for BitArrayFunctionLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "function.bit_array", self.0);
     }
 }
 
-impl ExplainLocal for UtfCodepointFunctionLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for UtfCodepointFunctionLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "function.utf_codepoint", self.0);
     }
 }
 
-impl ExplainLocal for BoolFunctionLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for BoolFunctionLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "function.bool", self.0);
     }
 }
 
-impl ExplainLocal for NilFunctionLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for NilFunctionLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "function.nil", self.0);
     }
 }
 
-impl ExplainLocal for TupleFunctionLocalId {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for TupleFunctionLocalId {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "function.tuple", self.0);
     }
 }
 
-impl ExplainLocal for CustomLocal {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for CustomLocal {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "custom", self.id().0);
     }
 }
 
-impl ExplainLocal for GenericFunctionLocal {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for GenericFunctionLocal {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "function.generic", self.id().0);
     }
 }
 
-impl ExplainLocal for NeverFunctionLocal {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for NeverFunctionLocal {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "function.never", self.id().0);
     }
 }
 
-impl ExplainLocal for CustomFunctionLocal {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for CustomFunctionLocal {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "function.custom", self.id().0);
     }
 }
 
-impl ExplainLocal for FunctionFunctionLocal {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for FunctionFunctionLocal {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "function.function", self.id().0);
     }
 }
 
-impl ExplainLocal for ListLocal {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for ListLocal {
+    fn write_local_label(&self, output: &mut String) {
         match self {
-            Self::Parameter { local, .. } => local.write_local(output),
-            Self::ParameterList { local, .. } => local.write_local(output),
-            Self::Int { local, .. } => local.write_local(output),
-            Self::String { local, .. } => local.write_local(output),
-            Self::BitArray { local, .. } => local.write_local(output),
-            Self::UtfCodepoint { local, .. } => local.write_local(output),
-            Self::Custom { local, .. } => local.write_local(output),
-            Self::Float { local, .. } => local.write_local(output),
-            Self::Bool { local, .. } => local.write_local(output),
-            Self::Nil { local, .. } => local.write_local(output),
-            Self::Tuple { local, .. } => local.write_local(output),
-            Self::List { local, .. } => local.write_local(output),
-            Self::Function { local, .. } => local.write_local(output),
+            Self::Parameter { local, .. } => local.write_local_label(output),
+            Self::ParameterList { local, .. } => local.write_local_label(output),
+            Self::Int { local, .. } => local.write_local_label(output),
+            Self::String { local, .. } => local.write_local_label(output),
+            Self::BitArray { local, .. } => local.write_local_label(output),
+            Self::UtfCodepoint { local, .. } => local.write_local_label(output),
+            Self::Custom { local, .. } => local.write_local_label(output),
+            Self::Float { local, .. } => local.write_local_label(output),
+            Self::Bool { local, .. } => local.write_local_label(output),
+            Self::Nil { local, .. } => local.write_local_label(output),
+            Self::Tuple { local, .. } => local.write_local_label(output),
+            Self::List { local, .. } => local.write_local_label(output),
+            Self::Function { local, .. } => local.write_local_label(output),
         }
     }
 }
 
-impl ExplainLocal for StoredListLocal {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for StoredListLocal {
+    fn write_local_label(&self, output: &mut String) {
         match self {
-            Self::ParameterList(local) => local.write_local(output),
-            Self::Int(local) => local.write_local(output),
-            Self::String(local) => local.write_local(output),
-            Self::BitArray(local) => local.write_local(output),
-            Self::UtfCodepoint(local) => local.write_local(output),
-            Self::Custom(local) => local.write_local(output),
-            Self::Float(local) => local.write_local(output),
-            Self::Bool(local) => local.write_local(output),
-            Self::Nil(local) => local.write_local(output),
-            Self::Tuple(local) => local.write_local(output),
-            Self::List(local) => local.write_local(output),
-            Self::Function(local) => local.write_local(output),
+            Self::ParameterList(local) => local.write_local_label(output),
+            Self::Int(local) => local.write_local_label(output),
+            Self::String(local) => local.write_local_label(output),
+            Self::BitArray(local) => local.write_local_label(output),
+            Self::UtfCodepoint(local) => local.write_local_label(output),
+            Self::Custom(local) => local.write_local_label(output),
+            Self::Float(local) => local.write_local_label(output),
+            Self::Bool(local) => local.write_local_label(output),
+            Self::Nil(local) => local.write_local_label(output),
+            Self::Tuple(local) => local.write_local_label(output),
+            Self::List(local) => local.write_local_label(output),
+            Self::Function(local) => local.write_local_label(output),
         }
     }
 }
 
-impl ExplainLocal for ListFunctionLocal {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for ListFunctionLocal {
+    fn write_local_label(&self, output: &mut String) {
         match self {
             Self::Parameter { local, .. } => {
                 write_indexed(output, "function.list.parameter", local.0);
@@ -334,58 +336,58 @@ impl ExplainLocal for ListFunctionLocal {
     }
 }
 
-impl ExplainLocal for FunctionLocal {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for FunctionLocal {
+    fn write_local_label(&self, output: &mut String) {
         match self {
-            Self::Generic(local) => local.write_local(output),
-            Self::Never(local) => local.write_local(output),
-            Self::Int(local) => local.write_local(output),
-            Self::Float(local) => local.write_local(output),
-            Self::String(local) => local.write_local(output),
-            Self::BitArray(local) => local.write_local(output),
-            Self::UtfCodepoint(local) => local.write_local(output),
-            Self::Custom(local) => local.write_local(output),
-            Self::Bool(local) => local.write_local(output),
-            Self::Nil(local) => local.write_local(output),
-            Self::Tuple(local) => local.write_local(output),
-            Self::List(local) => local.write_local(output),
-            Self::Function(local) => local.write_local(output),
+            Self::Generic(local) => local.write_local_label(output),
+            Self::Never(local) => local.write_local_label(output),
+            Self::Int(local) => local.write_local_label(output),
+            Self::Float(local) => local.write_local_label(output),
+            Self::String(local) => local.write_local_label(output),
+            Self::BitArray(local) => local.write_local_label(output),
+            Self::UtfCodepoint(local) => local.write_local_label(output),
+            Self::Custom(local) => local.write_local_label(output),
+            Self::Bool(local) => local.write_local_label(output),
+            Self::Nil(local) => local.write_local_label(output),
+            Self::Tuple(local) => local.write_local_label(output),
+            Self::List(local) => local.write_local_label(output),
+            Self::Function(local) => local.write_local_label(output),
         }
     }
 }
 
-impl ExplainLocal for Infallible {
-    fn write_local(&self, _output: &mut String) {
+impl LocalLabel for Infallible {
+    fn write_local_label(&self, _output: &mut String) {
         match *self {}
     }
 }
 
-impl ExplainLocal for ParamLocal {
-    fn write_local(&self, output: &mut String) {
+impl LocalLabel for ParamLocal {
+    fn write_local_label(&self, output: &mut String) {
         match self {
-            Self::Int(local) => local.write_local(output),
-            Self::Float(local) => local.write_local(output),
-            Self::String(local) => local.write_local(output),
-            Self::BitArray(local) => local.write_local(output),
-            Self::UtfCodepoint(local) => local.write_local(output),
-            Self::Custom(local) => local.write_local(output),
-            Self::Bool(local) => local.write_local(output),
-            Self::Nil(local) => local.write_local(output),
-            Self::Tuple { local, .. } => local.write_local(output),
-            Self::List(local) => local.write_local(output),
-            Self::IntFunction { local, .. } => local.write_local(output),
-            Self::FloatFunction { local, .. } => local.write_local(output),
-            Self::StringFunction { local, .. } => local.write_local(output),
-            Self::BitArrayFunction { local, .. } => local.write_local(output),
-            Self::UtfCodepointFunction { local, .. } => local.write_local(output),
-            Self::GenericFunction(local) => local.write_local(output),
-            Self::NeverFunction(local) => local.write_local(output),
-            Self::CustomFunction(local) => local.write_local(output),
-            Self::BoolFunction { local, .. } => local.write_local(output),
-            Self::NilFunction { local, .. } => local.write_local(output),
-            Self::TupleFunction { local, .. } => local.write_local(output),
-            Self::ListFunction(local) => local.write_local(output),
-            Self::FunctionFunction(local) => local.write_local(output),
+            Self::Int(local) => local.write_local_label(output),
+            Self::Float(local) => local.write_local_label(output),
+            Self::String(local) => local.write_local_label(output),
+            Self::BitArray(local) => local.write_local_label(output),
+            Self::UtfCodepoint(local) => local.write_local_label(output),
+            Self::Custom(local) => local.write_local_label(output),
+            Self::Bool(local) => local.write_local_label(output),
+            Self::Nil(local) => local.write_local_label(output),
+            Self::Tuple { local, .. } => local.write_local_label(output),
+            Self::List(local) => local.write_local_label(output),
+            Self::IntFunction { local, .. } => local.write_local_label(output),
+            Self::FloatFunction { local, .. } => local.write_local_label(output),
+            Self::StringFunction { local, .. } => local.write_local_label(output),
+            Self::BitArrayFunction { local, .. } => local.write_local_label(output),
+            Self::UtfCodepointFunction { local, .. } => local.write_local_label(output),
+            Self::GenericFunction(local) => local.write_local_label(output),
+            Self::NeverFunction(local) => local.write_local_label(output),
+            Self::CustomFunction(local) => local.write_local_label(output),
+            Self::BoolFunction { local, .. } => local.write_local_label(output),
+            Self::NilFunction { local, .. } => local.write_local_label(output),
+            Self::TupleFunction { local, .. } => local.write_local_label(output),
+            Self::ListFunction(local) => local.write_local_label(output),
+            Self::FunctionFunction(local) => local.write_local_label(output),
         }
     }
 }
@@ -399,7 +401,7 @@ fn write_indexed(output: &mut String, family: &str, index: usize) {
 
 #[cfg(test)]
 mod explain_tests {
-    use super::ExplainLocal;
+    use super::LocalLabel;
     use crate::plan::execution::explain;
     use crate::plan::execution::graph::{
         BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
@@ -450,7 +452,7 @@ mod explain_tests {
     #[test]
     fn writes_local_argument_packs() {
         explain::assert_written("[%int#2]", |output| {
-            super::write_locals(
+            super::write_local_labels(
                 output,
                 &[ParamLocal::Int(crate::plan::execution::graph::IntLocalId(
                     2,
@@ -460,24 +462,27 @@ mod explain_tests {
     }
 
     #[test]
-    fn writes_rich_and_list_function_local_families_explicitly() {
+    fn writes_a_local_through_the_explain_protocol() {
+        let source = "pub fn main() { 1 }";
+        let expected = "%int#3";
+
+        explain::assert_rendered(source, expected, |plan, output| {
+            let mut context = explain::ExplainContext::new(plan, output);
+            context.write(&IntLocalId(3));
+        });
+    }
+
+    #[test]
+    fn writes_rich_local_label_implementations_explicitly() {
         use crate::plan::execution::graph::{
-            BitArrayListFunctionLocalId, BoolListFunctionLocalId, CustomFunctionLocal,
-            CustomFunctionLocalId, CustomListFunctionLocalId, CustomLocal, CustomLocalId,
-            FloatListFunctionLocalId, FunctionFunctionLocal, FunctionFunctionLocalId,
-            FunctionListFunctionLocalId, GenericFunctionLocal, GenericFunctionLocalId,
-            IntListFunctionLocalId, ListFunctionLocal, ListListFunctionLocalId, NeverFunctionLocal,
-            NeverFunctionLocalId, NilListFunctionLocalId, ParameterListFunctionLocalId,
-            ParameterListListFunctionLocalId, StringListFunctionLocalId, TupleListFunctionLocalId,
-            UtfCodepointListFunctionLocalId,
+            CustomFunctionLocal, CustomFunctionLocalId, CustomLocal, CustomLocalId,
+            FunctionFunctionLocal, FunctionFunctionLocalId, GenericFunctionLocal,
+            GenericFunctionLocalId, NeverFunctionLocal, NeverFunctionLocalId,
         };
         use crate::plan::execution::type_::{
-            BitArrayListTypeId, BoolListTypeId, CustomFunctionType, CustomListTypeId, CustomTypeId,
-            CustomValueShape, CustomValueShapeId, FloatListTypeId, FunctionFunctionType,
-            FunctionListTypeId, FunctionShape, FunctionType, GenericFunctionType, IntListTypeId,
-            ListListTypeId, ListTypeId, NilListTypeId, ParameterListListTypeId,
-            ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
-            ValueShapeId, ValueType,
+            CustomFunctionType, CustomTypeId, CustomValueShape, CustomValueShapeId,
+            FunctionFunctionType, FunctionShape, FunctionType, GenericFunctionType, ValueShapeId,
+            ValueType,
         };
 
         let custom_type = CustomTypeId::new(0);
@@ -534,7 +539,26 @@ mod explain_tests {
             ),
             "%function.function#34",
         );
+    }
 
+    #[test]
+    fn writes_every_list_function_local_family_explicitly() {
+        use crate::plan::execution::graph::{
+            BitArrayListFunctionLocalId, BoolListFunctionLocalId, CustomListFunctionLocalId,
+            FloatListFunctionLocalId, FunctionListFunctionLocalId, IntListFunctionLocalId,
+            ListFunctionLocal, ListListFunctionLocalId, NilListFunctionLocalId,
+            ParameterListFunctionLocalId, ParameterListListFunctionLocalId,
+            StringListFunctionLocalId, TupleListFunctionLocalId, UtfCodepointListFunctionLocalId,
+        };
+        use crate::plan::execution::type_::{
+            BitArrayListTypeId, BoolListTypeId, CustomListTypeId, CustomTypeId, FloatListTypeId,
+            FunctionListTypeId, FunctionType, IntListTypeId, ListListTypeId, ListTypeId,
+            NilListTypeId, ParameterListListTypeId, ParameterListTypeId, StringListTypeId,
+            TupleListTypeId, UtfCodepointListTypeId, ValueType,
+        };
+
+        let custom_type = CustomTypeId::new(0);
+        let value_function_type = FunctionType::new(Vec::new(), ValueType::Int);
         let list_type = ListTypeId::new(0);
         let parameter_type = ParameterListTypeId::new(list_type, crate::plan::TypeParameterId(0));
         let list_function_locals = [
@@ -649,9 +673,423 @@ mod explain_tests {
         }
     }
 
-    fn assert_local(local: &impl ExplainLocal, expected: &str) {
+    #[test]
+    fn writes_every_list_local_family_explicitly() {
+        use crate::plan::TypeParameterId;
+        use crate::plan::execution::graph::{ListLocal, ParameterListListLocalId};
+        use crate::plan::execution::type_::{
+            BitArrayListTypeId, BoolListTypeId, CustomListTypeId, CustomTypeId, FloatListTypeId,
+            FunctionListTypeId, IntListTypeId, ListListTypeId, ListTypeId, NilListTypeId,
+            ParameterListListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
+            UtfCodepointListTypeId,
+        };
+
+        let list_type = ListTypeId::new(0);
+        let parameter_type = ParameterListTypeId::new(list_type, TypeParameterId(0));
+        let cases = [
+            (
+                ListLocal::Parameter {
+                    local: ParameterListLocalId(0),
+                    type_id: parameter_type,
+                },
+                "%list.parameter#0",
+            ),
+            (
+                ListLocal::ParameterList {
+                    local: ParameterListListLocalId(1),
+                    type_id: ParameterListListTypeId::new(list_type, parameter_type),
+                },
+                "%list.parameter_list#1",
+            ),
+            (
+                ListLocal::Int {
+                    local: IntListLocalId(2),
+                    type_id: IntListTypeId::new(list_type),
+                },
+                "%list.int#2",
+            ),
+            (
+                ListLocal::String {
+                    local: StringListLocalId(3),
+                    type_id: StringListTypeId::new(list_type),
+                },
+                "%list.string#3",
+            ),
+            (
+                ListLocal::BitArray {
+                    local: BitArrayListLocalId(4),
+                    type_id: BitArrayListTypeId::new(list_type),
+                },
+                "%list.bit_array#4",
+            ),
+            (
+                ListLocal::UtfCodepoint {
+                    local: UtfCodepointListLocalId(5),
+                    type_id: UtfCodepointListTypeId::new(list_type),
+                },
+                "%list.utf_codepoint#5",
+            ),
+            (
+                ListLocal::Custom {
+                    local: CustomListLocalId(6),
+                    type_id: CustomListTypeId::new(list_type, CustomTypeId::new(0)),
+                },
+                "%list.custom#6",
+            ),
+            (
+                ListLocal::Float {
+                    local: FloatListLocalId(7),
+                    type_id: FloatListTypeId::new(list_type),
+                },
+                "%list.float#7",
+            ),
+            (
+                ListLocal::Bool {
+                    local: BoolListLocalId(8),
+                    type_id: BoolListTypeId::new(list_type),
+                },
+                "%list.bool#8",
+            ),
+            (
+                ListLocal::Nil {
+                    local: NilListLocalId(9),
+                    type_id: NilListTypeId::new(list_type),
+                },
+                "%list.nil#9",
+            ),
+            (
+                ListLocal::Tuple {
+                    local: TupleListLocalId(10),
+                    type_id: TupleListTypeId::new(list_type, 0),
+                },
+                "%list.tuple#10",
+            ),
+            (
+                ListLocal::List {
+                    local: ListListLocalId(11),
+                    type_id: ListListTypeId::new(list_type, list_type),
+                },
+                "%list.list#11",
+            ),
+            (
+                ListLocal::Function {
+                    local: FunctionListLocalId(12),
+                    type_id: FunctionListTypeId::new(list_type, 0),
+                },
+                "%list.function#12",
+            ),
+        ];
+
+        for (local, expected) in cases {
+            assert_local(&local, expected);
+        }
+    }
+
+    #[test]
+    fn writes_every_stored_list_local_family_explicitly() {
+        use crate::plan::execution::graph::{ParameterListListLocalId, StoredListLocal};
+
+        let stored_cases = [
+            (
+                StoredListLocal::ParameterList(ParameterListListLocalId(13)),
+                "%list.parameter_list#13",
+            ),
+            (StoredListLocal::Int(IntListLocalId(14)), "%list.int#14"),
+            (
+                StoredListLocal::String(StringListLocalId(15)),
+                "%list.string#15",
+            ),
+            (
+                StoredListLocal::BitArray(BitArrayListLocalId(16)),
+                "%list.bit_array#16",
+            ),
+            (
+                StoredListLocal::UtfCodepoint(UtfCodepointListLocalId(17)),
+                "%list.utf_codepoint#17",
+            ),
+            (
+                StoredListLocal::Custom(CustomListLocalId(18)),
+                "%list.custom#18",
+            ),
+            (
+                StoredListLocal::Float(FloatListLocalId(19)),
+                "%list.float#19",
+            ),
+            (StoredListLocal::Bool(BoolListLocalId(20)), "%list.bool#20"),
+            (StoredListLocal::Nil(NilListLocalId(21)), "%list.nil#21"),
+            (
+                StoredListLocal::Tuple(TupleListLocalId(22)),
+                "%list.tuple#22",
+            ),
+            (StoredListLocal::List(ListListLocalId(23)), "%list.list#23"),
+            (
+                StoredListLocal::Function(FunctionListLocalId(24)),
+                "%list.function#24",
+            ),
+        ];
+
+        for (local, expected) in stored_cases {
+            assert_local(&local, expected);
+        }
+    }
+
+    #[test]
+    fn writes_every_function_local_family_explicitly() {
+        use crate::plan::execution::graph::{
+            CustomFunctionLocal, CustomFunctionLocalId, FunctionFunctionLocal,
+            FunctionFunctionLocalId, FunctionLocal, GenericFunctionLocal, GenericFunctionLocalId,
+            ListFunctionLocal, NeverFunctionLocal, NeverFunctionLocalId,
+        };
+        use crate::plan::execution::type_::{
+            CustomFunctionType, CustomTypeId, CustomValueShape, CustomValueShapeId,
+            FunctionFunctionType, FunctionShape, FunctionType, GenericFunctionType, IntListTypeId,
+            ListTypeId, ValueShapeId, ValueType,
+        };
+
+        let function_type = FunctionType::new(Vec::new(), ValueType::Int);
+        let function_shape = FunctionShape::new(ValueShapeId::new(0), function_type.clone());
+        let generic_type =
+            GenericFunctionType::from_shapes(function_type.clone(), function_shape.clone());
+        let custom_type = CustomTypeId::new(0);
+        let custom_shape = CustomValueShape::new(custom_type, CustomValueShapeId::new(0));
+        let cases = [
+            (
+                FunctionLocal::Generic(GenericFunctionLocal::new(
+                    GenericFunctionLocalId(0),
+                    generic_type.clone(),
+                )),
+                "%function.generic#0",
+            ),
+            (
+                FunctionLocal::Never(NeverFunctionLocal::new(
+                    NeverFunctionLocalId(1),
+                    generic_type,
+                )),
+                "%function.never#1",
+            ),
+            (FunctionLocal::Int(IntFunctionLocalId(2)), "%function.int#2"),
+            (
+                FunctionLocal::Float(FloatFunctionLocalId(3)),
+                "%function.float#3",
+            ),
+            (
+                FunctionLocal::String(StringFunctionLocalId(4)),
+                "%function.string#4",
+            ),
+            (
+                FunctionLocal::BitArray(BitArrayFunctionLocalId(5)),
+                "%function.bit_array#5",
+            ),
+            (
+                FunctionLocal::UtfCodepoint(UtfCodepointFunctionLocalId(6)),
+                "%function.utf_codepoint#6",
+            ),
+            (
+                FunctionLocal::Custom(CustomFunctionLocal::new(
+                    CustomFunctionLocalId(7),
+                    CustomFunctionType::from_shapes(
+                        FunctionType::new(Vec::new(), ValueType::Custom(custom_type)),
+                        Vec::new(),
+                        custom_shape,
+                    ),
+                )),
+                "%function.custom#7",
+            ),
+            (
+                FunctionLocal::Bool(BoolFunctionLocalId(8)),
+                "%function.bool#8",
+            ),
+            (FunctionLocal::Nil(NilFunctionLocalId(9)), "%function.nil#9"),
+            (
+                FunctionLocal::Tuple(TupleFunctionLocalId(10)),
+                "%function.tuple#10",
+            ),
+            (
+                FunctionLocal::List(ListFunctionLocal::Int {
+                    local: crate::plan::execution::graph::IntListFunctionLocalId(11),
+                    type_: function_type.clone(),
+                    list_type: IntListTypeId::new(ListTypeId::new(0)),
+                }),
+                "%function.list.int#11",
+            ),
+            (
+                FunctionLocal::Function(FunctionFunctionLocal::new(
+                    FunctionFunctionLocalId(12),
+                    FunctionFunctionType::from_shapes(
+                        FunctionType::new(Vec::new(), ValueType::Function(Box::new(function_type))),
+                        Vec::new(),
+                        function_shape,
+                    ),
+                )),
+                "%function.function#12",
+            ),
+        ];
+
+        for (local, expected) in cases {
+            assert_local(&local, expected);
+        }
+    }
+
+    #[test]
+    fn writes_every_parameter_local_family_explicitly() {
+        use crate::plan::execution::graph::{
+            CustomFunctionLocal, CustomFunctionLocalId, CustomLocal, CustomLocalId,
+            FunctionFunctionLocal, FunctionFunctionLocalId, GenericFunctionLocal,
+            GenericFunctionLocalId, IntListFunctionLocalId, ListFunctionLocal, ListLocal,
+            NeverFunctionLocal, NeverFunctionLocalId,
+        };
+        use crate::plan::execution::type_::{
+            CustomFunctionType, CustomTypeId, CustomValueShape, CustomValueShapeId,
+            FunctionFunctionType, FunctionShape, FunctionType, GenericFunctionType, IntListTypeId,
+            ListTypeId, ValueShapeId, ValueType,
+        };
+
+        let function_type = FunctionType::new(Vec::new(), ValueType::Int);
+        let function_shape = FunctionShape::new(ValueShapeId::new(0), function_type.clone());
+        let generic_type =
+            GenericFunctionType::from_shapes(function_type.clone(), function_shape.clone());
+        let custom_type = CustomTypeId::new(0);
+        let custom_shape = CustomValueShape::new(custom_type, CustomValueShapeId::new(0));
+        let list_type = IntListTypeId::new(ListTypeId::new(0));
+        let cases = [
+            (ParamLocal::Int(IntLocalId(0)), "%int#0"),
+            (ParamLocal::Float(FloatLocalId(1)), "%float#1"),
+            (ParamLocal::String(StringLocalId(2)), "%string#2"),
+            (ParamLocal::BitArray(BitArrayLocalId(3)), "%bit_array#3"),
+            (
+                ParamLocal::UtfCodepoint(UtfCodepointLocalId(4)),
+                "%utf_codepoint#4",
+            ),
+            (
+                ParamLocal::Custom(CustomLocal::new(CustomLocalId(5), custom_shape)),
+                "%custom#5",
+            ),
+            (ParamLocal::Bool(BoolLocalId(6)), "%bool#6"),
+            (ParamLocal::Nil(NilLocalId(7)), "%nil#7"),
+            (
+                ParamLocal::Tuple {
+                    local: TupleLocalId(8),
+                    type_: vec![ValueType::Int],
+                },
+                "%tuple#8",
+            ),
+            (
+                ParamLocal::List(ListLocal::Int {
+                    local: IntListLocalId(9),
+                    type_id: list_type,
+                }),
+                "%list.int#9",
+            ),
+            (
+                ParamLocal::IntFunction {
+                    local: IntFunctionLocalId(10),
+                    type_: function_type.clone(),
+                },
+                "%function.int#10",
+            ),
+            (
+                ParamLocal::FloatFunction {
+                    local: FloatFunctionLocalId(11),
+                    type_: function_type.clone(),
+                },
+                "%function.float#11",
+            ),
+            (
+                ParamLocal::StringFunction {
+                    local: StringFunctionLocalId(12),
+                    type_: function_type.clone(),
+                },
+                "%function.string#12",
+            ),
+            (
+                ParamLocal::BitArrayFunction {
+                    local: BitArrayFunctionLocalId(13),
+                    type_: function_type.clone(),
+                },
+                "%function.bit_array#13",
+            ),
+            (
+                ParamLocal::UtfCodepointFunction {
+                    local: UtfCodepointFunctionLocalId(14),
+                    type_: function_type.clone(),
+                },
+                "%function.utf_codepoint#14",
+            ),
+            (
+                ParamLocal::GenericFunction(GenericFunctionLocal::new(
+                    GenericFunctionLocalId(15),
+                    generic_type.clone(),
+                )),
+                "%function.generic#15",
+            ),
+            (
+                ParamLocal::NeverFunction(NeverFunctionLocal::new(
+                    NeverFunctionLocalId(16),
+                    generic_type,
+                )),
+                "%function.never#16",
+            ),
+            (
+                ParamLocal::CustomFunction(CustomFunctionLocal::new(
+                    CustomFunctionLocalId(17),
+                    CustomFunctionType::from_shapes(
+                        FunctionType::new(Vec::new(), ValueType::Custom(custom_type)),
+                        Vec::new(),
+                        custom_shape,
+                    ),
+                )),
+                "%function.custom#17",
+            ),
+            (
+                ParamLocal::BoolFunction {
+                    local: BoolFunctionLocalId(18),
+                    type_: function_type.clone(),
+                },
+                "%function.bool#18",
+            ),
+            (
+                ParamLocal::NilFunction {
+                    local: NilFunctionLocalId(19),
+                    type_: function_type.clone(),
+                },
+                "%function.nil#19",
+            ),
+            (
+                ParamLocal::TupleFunction {
+                    local: TupleFunctionLocalId(20),
+                    type_: function_type.clone(),
+                },
+                "%function.tuple#20",
+            ),
+            (
+                ParamLocal::ListFunction(ListFunctionLocal::Int {
+                    local: IntListFunctionLocalId(21),
+                    type_: function_type.clone(),
+                    list_type,
+                }),
+                "%function.list.int#21",
+            ),
+            (
+                ParamLocal::FunctionFunction(FunctionFunctionLocal::new(
+                    FunctionFunctionLocalId(22),
+                    FunctionFunctionType::from_shapes(
+                        FunctionType::new(Vec::new(), ValueType::Function(Box::new(function_type))),
+                        Vec::new(),
+                        function_shape,
+                    ),
+                )),
+                "%function.function#22",
+            ),
+        ];
+
+        for (local, expected) in cases {
+            assert_local(&local, expected);
+        }
+    }
+
+    fn assert_local(local: &impl LocalLabel, expected: &str) {
         explain::assert_written(expected, |output| {
-            local.write_local(output);
+            local.write_local_label(output);
         });
     }
 }
