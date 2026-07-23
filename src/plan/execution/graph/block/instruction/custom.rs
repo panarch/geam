@@ -141,7 +141,7 @@ pub fn main() {
     fn assert_explanation(source: &str, expected: &str) {
         explain::assert_rendered(source, expected, |plan, output| {
             let function = plan.custom_function(plan.custom_function_id(0));
-            let graph = function.graph().body();
+            let graph = function.body().function_body().block_graph();
             let mut first = true;
             for instruction in graph.blocks().iter().flat_map(|block| block.instructions()) {
                 if let InstructionKind::Custom(instruction) = instruction.kind() {

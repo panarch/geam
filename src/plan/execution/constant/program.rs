@@ -1,25 +1,28 @@
-use super::super::graph::{Graph, GraphExitId};
+use super::super::graph::{BlockGraph, BlockGraphExitId};
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::graph::{ExplainLocal, write_graph};
 
 pub(crate) struct ConstantProgram<Value> {
-    graph: Graph,
+    block_graph: BlockGraph,
     returns: Box<[Value]>,
 }
 
 impl<Value> ConstantProgram<Value> {
-    pub(in crate::plan::execution) fn from_parts(graph: Graph, returns: Vec<Value>) -> Self {
+    pub(in crate::plan::execution) fn from_parts(
+        block_graph: BlockGraph,
+        returns: Vec<Value>,
+    ) -> Self {
         Self {
-            graph,
+            block_graph,
             returns: returns.into_boxed_slice(),
         }
     }
 
-    pub(crate) fn graph(&self) -> &Graph {
-        &self.graph
+    pub(crate) fn block_graph(&self) -> &BlockGraph {
+        &self.block_graph
     }
 
-    pub(crate) fn return_(&self, id: GraphExitId) -> &Value {
+    pub(crate) fn return_(&self, id: BlockGraphExitId) -> &Value {
         &self.returns[id.index()]
     }
 }
@@ -29,10 +32,16 @@ where
     Value: ExplainLocal,
 {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
-        write_graph(context, self.graph(), &[], &[], &mut |context, exit| {
-            context.push_str("return ");
-            context.write(self.return_(exit));
-        });
+        write_graph(
+            context,
+            self.block_graph(),
+            &[],
+            &[],
+            &mut |context, exit| {
+                context.push_str("return ");
+                context.write(self.return_(exit));
+            },
+        );
     }
 }
 

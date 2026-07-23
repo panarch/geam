@@ -8,22 +8,25 @@ use crate::plan::execution::lowering::specialization::{
     SpecializedValueShape, StoredValueShape,
 };
 use crate::plan::execution::{
-    BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionReturn, BitArrayListFunctionId,
-    BitArrayListReturn, BitArrayReturn, BoolFunctionFunctionId, BoolFunctionId, BoolFunctionReturn,
-    BoolListFunctionId, BoolListReturn, BoolReturn, CustomFunctionReturn, CustomListFunctionId,
-    CustomListReturn, CustomReturn, FloatFunctionFunctionId, FloatFunctionId, FloatFunctionReturn,
-    FloatListFunctionId, FloatListReturn, FloatReturn, FunctionFunctionId, FunctionFunctionReturn,
-    FunctionListFunctionId, FunctionListReturn, FunctionTables, GenericFunctionReturn,
-    IntFunctionFunctionId, IntFunctionId, IntFunctionReturn, IntListFunctionId, IntListReturn,
-    IntReturn, ListFunctionFunctionId, ListFunctionId, ListFunctionReturn, ListListFunctionId,
-    ListListReturn, NeverFunctionReturn, NeverReturn, NilFunctionFunctionId, NilFunctionId,
-    NilFunctionReturn, NilListFunctionId, NilListReturn, NilReturn, ParameterListFunctionId,
-    ParameterListListFunctionId, ParameterListListReturn, ParameterListReturn, RuntimeFunctionId,
-    StringFunctionFunctionId, StringFunctionId, StringFunctionReturn, StringListFunctionId,
-    StringListReturn, StringReturn, TupleFunctionFunctionId, TupleFunctionId, TupleFunctionReturn,
-    TupleListFunctionId, TupleListReturn, TupleReturn, UtfCodepointFunctionFunctionId,
-    UtfCodepointFunctionId, UtfCodepointFunctionReturn, UtfCodepointListFunctionId,
-    UtfCodepointListReturn, UtfCodepointReturn,
+    BitArrayFunctionBody, BitArrayFunctionFunctionBody, BitArrayFunctionFunctionId,
+    BitArrayFunctionId, BitArrayListFunctionBody, BitArrayListFunctionId, BoolFunctionBody,
+    BoolFunctionFunctionBody, BoolFunctionFunctionId, BoolFunctionId, BoolListFunctionBody,
+    BoolListFunctionId, CustomFunctionBody, CustomFunctionFunctionBody, CustomListFunctionBody,
+    CustomListFunctionId, FloatFunctionBody, FloatFunctionFunctionBody, FloatFunctionFunctionId,
+    FloatFunctionId, FloatListFunctionBody, FloatListFunctionId, FunctionFunctionFunctionBody,
+    FunctionFunctionId, FunctionListFunctionBody, FunctionListFunctionId, FunctionTables,
+    GenericFunctionFunctionBody, IntFunctionBody, IntFunctionFunctionBody, IntFunctionFunctionId,
+    IntFunctionId, IntListFunctionBody, IntListFunctionId, ListFunctionFunctionBody,
+    ListFunctionFunctionId, ListFunctionId, ListListFunctionBody, ListListFunctionId,
+    NeverFunctionBody, NeverFunctionFunctionBody, NilFunctionBody, NilFunctionFunctionBody,
+    NilFunctionFunctionId, NilFunctionId, NilListFunctionBody, NilListFunctionId,
+    ParameterListFunctionBody, ParameterListFunctionId, ParameterListListFunctionBody,
+    ParameterListListFunctionId, RuntimeFunctionId, StringFunctionBody, StringFunctionFunctionBody,
+    StringFunctionFunctionId, StringFunctionId, StringListFunctionBody, StringListFunctionId,
+    TupleFunctionBody, TupleFunctionFunctionBody, TupleFunctionFunctionId, TupleFunctionId,
+    TupleListFunctionBody, TupleListFunctionId, UtfCodepointFunctionBody,
+    UtfCodepointFunctionFunctionBody, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+    UtfCodepointListFunctionBody, UtfCodepointListFunctionId,
 };
 use std::collections::HashSet;
 
@@ -98,70 +101,94 @@ pub(in crate::plan::execution::lowering) enum FunctionTableFamily {
 
 #[derive(Default)]
 pub(in crate::plan::execution::lowering) struct FunctionTableBuilder {
-    pub(super) never_functions: Vec<(usize, LoweredFunction<NeverReturn>)>,
-    pub(super) int_functions: Vec<(usize, LoweredFunction<IntReturn>)>,
-    pub(super) float_functions: Vec<(usize, LoweredFunction<FloatReturn>)>,
-    pub(super) string_functions: Vec<(usize, LoweredFunction<StringReturn>)>,
-    pub(super) bit_array_functions: Vec<(usize, LoweredFunction<BitArrayReturn>)>,
-    pub(super) utf_codepoint_functions: Vec<(usize, LoweredFunction<UtfCodepointReturn>)>,
-    pub(super) custom_functions: Vec<(usize, LoweredFunction<CustomReturn>)>,
-    pub(super) bool_functions: Vec<(usize, LoweredFunction<BoolReturn>)>,
-    pub(super) nil_functions: Vec<(usize, LoweredFunction<NilReturn>)>,
-    pub(super) tuple_functions: Vec<(usize, LoweredFunction<TupleReturn>)>,
+    pub(super) never_functions: Vec<(usize, LoweredFunction<NeverFunctionBody>)>,
+    pub(super) int_functions: Vec<(usize, LoweredFunction<IntFunctionBody>)>,
+    pub(super) float_functions: Vec<(usize, LoweredFunction<FloatFunctionBody>)>,
+    pub(super) string_functions: Vec<(usize, LoweredFunction<StringFunctionBody>)>,
+    pub(super) bit_array_functions: Vec<(usize, LoweredFunction<BitArrayFunctionBody>)>,
+    pub(super) utf_codepoint_functions: Vec<(usize, LoweredFunction<UtfCodepointFunctionBody>)>,
+    pub(super) custom_functions: Vec<(usize, LoweredFunction<CustomFunctionBody>)>,
+    pub(super) bool_functions: Vec<(usize, LoweredFunction<BoolFunctionBody>)>,
+    pub(super) nil_functions: Vec<(usize, LoweredFunction<NilFunctionBody>)>,
+    pub(super) tuple_functions: Vec<(usize, LoweredFunction<TupleFunctionBody>)>,
     pub(super) parameter_list_functions: Vec<(
         ParameterListFunctionId,
-        LoweredFunction<ParameterListReturn>,
+        LoweredFunction<ParameterListFunctionBody>,
     )>,
-    pub(super) int_list_functions: Vec<(IntListFunctionId, LoweredFunction<IntListReturn>)>,
-    pub(super) string_list_functions:
-        Vec<(StringListFunctionId, LoweredFunction<StringListReturn>)>,
-    pub(super) bit_array_list_functions:
-        Vec<(BitArrayListFunctionId, LoweredFunction<BitArrayListReturn>)>,
+    pub(super) int_list_functions: Vec<(IntListFunctionId, LoweredFunction<IntListFunctionBody>)>,
+    pub(super) string_list_functions: Vec<(
+        StringListFunctionId,
+        LoweredFunction<StringListFunctionBody>,
+    )>,
+    pub(super) bit_array_list_functions: Vec<(
+        BitArrayListFunctionId,
+        LoweredFunction<BitArrayListFunctionBody>,
+    )>,
     pub(super) utf_codepoint_list_functions: Vec<(
         UtfCodepointListFunctionId,
-        LoweredFunction<UtfCodepointListReturn>,
+        LoweredFunction<UtfCodepointListFunctionBody>,
     )>,
-    pub(super) custom_list_functions:
-        Vec<(CustomListFunctionId, LoweredFunction<CustomListReturn>)>,
-    pub(super) float_list_functions: Vec<(FloatListFunctionId, LoweredFunction<FloatListReturn>)>,
-    pub(super) bool_list_functions: Vec<(BoolListFunctionId, LoweredFunction<BoolListReturn>)>,
-    pub(super) nil_list_functions: Vec<(NilListFunctionId, LoweredFunction<NilListReturn>)>,
-    pub(super) tuple_list_functions: Vec<(TupleListFunctionId, LoweredFunction<TupleListReturn>)>,
+    pub(super) custom_list_functions: Vec<(
+        CustomListFunctionId,
+        LoweredFunction<CustomListFunctionBody>,
+    )>,
+    pub(super) float_list_functions:
+        Vec<(FloatListFunctionId, LoweredFunction<FloatListFunctionBody>)>,
+    pub(super) bool_list_functions:
+        Vec<(BoolListFunctionId, LoweredFunction<BoolListFunctionBody>)>,
+    pub(super) nil_list_functions: Vec<(NilListFunctionId, LoweredFunction<NilListFunctionBody>)>,
+    pub(super) tuple_list_functions:
+        Vec<(TupleListFunctionId, LoweredFunction<TupleListFunctionBody>)>,
     pub(super) parameter_list_list_functions: Vec<(
         ParameterListListFunctionId,
-        LoweredFunction<ParameterListListReturn>,
+        LoweredFunction<ParameterListListFunctionBody>,
     )>,
-    pub(super) list_list_functions: Vec<(ListListFunctionId, LoweredFunction<ListListReturn>)>,
-    pub(super) function_list_functions:
-        Vec<(FunctionListFunctionId, LoweredFunction<FunctionListReturn>)>,
-    pub(super) int_function_functions: Vec<(usize, LoweredFunction<IntFunctionReturn>)>,
-    pub(super) float_function_functions: Vec<(usize, LoweredFunction<FloatFunctionReturn>)>,
-    pub(super) string_function_functions: Vec<(usize, LoweredFunction<StringFunctionReturn>)>,
-    pub(super) bit_array_function_functions: Vec<(usize, LoweredFunction<BitArrayFunctionReturn>)>,
+    pub(super) list_list_functions:
+        Vec<(ListListFunctionId, LoweredFunction<ListListFunctionBody>)>,
+    pub(super) function_list_functions: Vec<(
+        FunctionListFunctionId,
+        LoweredFunction<FunctionListFunctionBody>,
+    )>,
+    pub(super) int_function_functions: Vec<(usize, LoweredFunction<IntFunctionFunctionBody>)>,
+    pub(super) float_function_functions: Vec<(usize, LoweredFunction<FloatFunctionFunctionBody>)>,
+    pub(super) string_function_functions: Vec<(usize, LoweredFunction<StringFunctionFunctionBody>)>,
+    pub(super) bit_array_function_functions:
+        Vec<(usize, LoweredFunction<BitArrayFunctionFunctionBody>)>,
     pub(super) utf_codepoint_function_functions:
-        Vec<(usize, LoweredFunction<UtfCodepointFunctionReturn>)>,
-    pub(super) custom_function_functions: Vec<(usize, LoweredFunction<CustomFunctionReturn>)>,
-    pub(super) bool_function_functions: Vec<(usize, LoweredFunction<BoolFunctionReturn>)>,
-    pub(super) nil_function_functions: Vec<(usize, LoweredFunction<NilFunctionReturn>)>,
-    pub(super) tuple_function_functions: Vec<(usize, LoweredFunction<TupleFunctionReturn>)>,
-    pub(super) generic_function_functions: Vec<(usize, LoweredFunction<GenericFunctionReturn>)>,
-    pub(super) never_function_functions: Vec<(usize, LoweredFunction<NeverFunctionReturn>)>,
-    pub(super) parameter_list_function_functions: Vec<(usize, LoweredFunction<ListFunctionReturn>)>,
+        Vec<(usize, LoweredFunction<UtfCodepointFunctionFunctionBody>)>,
+    pub(super) custom_function_functions: Vec<(usize, LoweredFunction<CustomFunctionFunctionBody>)>,
+    pub(super) bool_function_functions: Vec<(usize, LoweredFunction<BoolFunctionFunctionBody>)>,
+    pub(super) nil_function_functions: Vec<(usize, LoweredFunction<NilFunctionFunctionBody>)>,
+    pub(super) tuple_function_functions: Vec<(usize, LoweredFunction<TupleFunctionFunctionBody>)>,
+    pub(super) generic_function_functions:
+        Vec<(usize, LoweredFunction<GenericFunctionFunctionBody>)>,
+    pub(super) never_function_functions: Vec<(usize, LoweredFunction<NeverFunctionFunctionBody>)>,
+    pub(super) parameter_list_function_functions:
+        Vec<(usize, LoweredFunction<ListFunctionFunctionBody>)>,
     pub(super) parameter_list_list_function_functions:
-        Vec<(usize, LoweredFunction<ListFunctionReturn>)>,
-    pub(super) int_list_function_functions: Vec<(usize, LoweredFunction<ListFunctionReturn>)>,
-    pub(super) string_list_function_functions: Vec<(usize, LoweredFunction<ListFunctionReturn>)>,
-    pub(super) bit_array_list_function_functions: Vec<(usize, LoweredFunction<ListFunctionReturn>)>,
+        Vec<(usize, LoweredFunction<ListFunctionFunctionBody>)>,
+    pub(super) int_list_function_functions: Vec<(usize, LoweredFunction<ListFunctionFunctionBody>)>,
+    pub(super) string_list_function_functions:
+        Vec<(usize, LoweredFunction<ListFunctionFunctionBody>)>,
+    pub(super) bit_array_list_function_functions:
+        Vec<(usize, LoweredFunction<ListFunctionFunctionBody>)>,
     pub(super) utf_codepoint_list_function_functions:
-        Vec<(usize, LoweredFunction<ListFunctionReturn>)>,
-    pub(super) custom_list_function_functions: Vec<(usize, LoweredFunction<ListFunctionReturn>)>,
-    pub(super) float_list_function_functions: Vec<(usize, LoweredFunction<ListFunctionReturn>)>,
-    pub(super) bool_list_function_functions: Vec<(usize, LoweredFunction<ListFunctionReturn>)>,
-    pub(super) nil_list_function_functions: Vec<(usize, LoweredFunction<ListFunctionReturn>)>,
-    pub(super) tuple_list_function_functions: Vec<(usize, LoweredFunction<ListFunctionReturn>)>,
-    pub(super) list_list_function_functions: Vec<(usize, LoweredFunction<ListFunctionReturn>)>,
-    pub(super) function_list_function_functions: Vec<(usize, LoweredFunction<ListFunctionReturn>)>,
-    pub(super) function_function_functions: Vec<(usize, LoweredFunction<FunctionFunctionReturn>)>,
+        Vec<(usize, LoweredFunction<ListFunctionFunctionBody>)>,
+    pub(super) custom_list_function_functions:
+        Vec<(usize, LoweredFunction<ListFunctionFunctionBody>)>,
+    pub(super) float_list_function_functions:
+        Vec<(usize, LoweredFunction<ListFunctionFunctionBody>)>,
+    pub(super) bool_list_function_functions:
+        Vec<(usize, LoweredFunction<ListFunctionFunctionBody>)>,
+    pub(super) nil_list_function_functions: Vec<(usize, LoweredFunction<ListFunctionFunctionBody>)>,
+    pub(super) tuple_list_function_functions:
+        Vec<(usize, LoweredFunction<ListFunctionFunctionBody>)>,
+    pub(super) list_list_function_functions:
+        Vec<(usize, LoweredFunction<ListFunctionFunctionBody>)>,
+    pub(super) function_list_function_functions:
+        Vec<(usize, LoweredFunction<ListFunctionFunctionBody>)>,
+    pub(super) function_function_functions:
+        Vec<(usize, LoweredFunction<FunctionFunctionFunctionBody>)>,
 }
 
 impl FunctionTableBuilder {
@@ -351,7 +378,7 @@ pub(super) fn push_list_function_function(
     functions: &mut FunctionTableBuilder,
     index: usize,
     item: &SpecializedValueShape,
-    function: LoweredFunction<ListFunctionReturn>,
+    function: LoweredFunction<ListFunctionFunctionBody>,
 ) {
     match item {
         SpecializedValueShape::Parameter(_) => functions

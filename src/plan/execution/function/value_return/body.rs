@@ -1,4 +1,4 @@
-use super::super::graph::FunctionGraph;
+use super::super::body::FunctionBody;
 use super::{
     BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, IntFunctionId,
     NeverFunctionId, NilFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
@@ -11,27 +11,28 @@ use crate::plan::execution::{
 };
 use std::convert::Infallible;
 
-pub(crate) type IntReturn = FunctionGraph<IntLocalId, IntFunctionId>;
-pub(crate) type NeverReturn = FunctionGraph<Infallible, NeverFunctionId>;
-pub(crate) type FloatReturn = FunctionGraph<FloatLocalId, FloatFunctionId>;
-pub(crate) type StringReturn = FunctionGraph<StringLocalId, StringFunctionId>;
-pub(crate) type BitArrayReturn = FunctionGraph<BitArrayLocalId, BitArrayFunctionId>;
-pub(crate) type UtfCodepointReturn = FunctionGraph<UtfCodepointLocalId, UtfCodepointFunctionId>;
-pub(crate) type BoolReturn = FunctionGraph<BoolLocalId, BoolFunctionId>;
-pub(crate) type NilReturn = FunctionGraph<NilLocalId, NilFunctionId>;
-pub(crate) type TupleReturn = FunctionGraph<TupleLocalId, TupleFunctionId>;
+pub(crate) type IntFunctionBody = FunctionBody<IntLocalId, IntFunctionId>;
+pub(crate) type NeverFunctionBody = FunctionBody<Infallible, NeverFunctionId>;
+pub(crate) type FloatFunctionBody = FunctionBody<FloatLocalId, FloatFunctionId>;
+pub(crate) type StringFunctionBody = FunctionBody<StringLocalId, StringFunctionId>;
+pub(crate) type BitArrayFunctionBody = FunctionBody<BitArrayLocalId, BitArrayFunctionId>;
+pub(crate) type UtfCodepointFunctionBody =
+    FunctionBody<UtfCodepointLocalId, UtfCodepointFunctionId>;
+pub(crate) type BoolFunctionBody = FunctionBody<BoolLocalId, BoolFunctionId>;
+pub(crate) type NilFunctionBody = FunctionBody<NilLocalId, NilFunctionId>;
+pub(crate) type TupleFunctionBody = FunctionBody<TupleLocalId, TupleFunctionId>;
 
-pub(crate) struct CustomReturn {
+pub(crate) struct CustomFunctionBody {
     signature_shape: CustomValueShape,
     _body_shape: CustomValueShape,
-    body: FunctionGraph<CustomLocal, usize>,
+    body: FunctionBody<CustomLocal, usize>,
 }
 
-impl CustomReturn {
+impl CustomFunctionBody {
     pub(in crate::plan::execution) fn from_parts(
         signature_shape: CustomValueShape,
         body_shape: CustomValueShape,
-        body: FunctionGraph<CustomLocal, usize>,
+        body: FunctionBody<CustomLocal, usize>,
     ) -> Self {
         Self {
             signature_shape,
@@ -50,7 +51,7 @@ impl CustomReturn {
         &self.signature_shape
     }
 
-    pub(crate) fn body(&self) -> &FunctionGraph<CustomLocal, usize> {
+    pub(crate) fn function_body(&self) -> &FunctionBody<CustomLocal, usize> {
         &self.body
     }
 
@@ -59,13 +60,14 @@ impl CustomReturn {
     }
 }
 
-impl ExplainFunctionBody for CustomReturn {
+impl ExplainFunctionBody for CustomFunctionBody {
     fn write_function_body(
         &self,
         context: &mut ExplainContext<'_, '_>,
         family: &'static str,
         entry: &FunctionEntry,
     ) {
-        self.body().write_function_body(context, family, entry);
+        self.function_body()
+            .write_function_body(context, family, entry);
     }
 }

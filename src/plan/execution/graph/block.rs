@@ -18,7 +18,7 @@ pub(crate) use terminator::{
 
 use crate::plan::execution::ParamSlot;
 use crate::plan::execution::explain::ExplainContext;
-use crate::plan::execution::graph::GraphExitId;
+use crate::plan::execution::graph::BlockGraphExitId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct BlockId(usize);
@@ -69,7 +69,7 @@ pub(super) fn write_block(
     context: &mut ExplainContext<'_, '_>,
     index: usize,
     block: &Block,
-    write_exit: &mut dyn FnMut(&mut ExplainContext<'_, '_>, GraphExitId),
+    write_exit: &mut dyn FnMut(&mut ExplainContext<'_, '_>, BlockGraphExitId),
 ) {
     context.push_str("  block b");
     context.push_str(&index.to_string());
@@ -103,7 +103,11 @@ mod explain_tests {
 
     fn assert_explanation(source: &str, expected: &str) {
         explain::assert_rendered(source, expected, |plan, output| {
-            let block = &plan.int_function(IntFunctionId(0)).graph().blocks()[0];
+            let block = &plan
+                .int_function(IntFunctionId(0))
+                .body()
+                .block_graph()
+                .blocks()[0];
             let mut context = explain::ExplainContext::new(plan, output);
             write_block(&mut context, 0, block, &mut |context, exit| {
                 context.push_str("exit#");

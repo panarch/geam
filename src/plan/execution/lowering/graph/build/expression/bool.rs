@@ -735,8 +735,11 @@ mod tests {
                 PanicSite::unknown(),
             );
             let lowered = super::super::super::super::freeze::freeze(graph, &mut context);
-            assert_eq!(lowered.body.blocks().len(), 1);
-            assert_eq!(lowered.body.blocks()[0].instructions().len(), 1);
+            assert_eq!(lowered.body.block_graph().blocks().len(), 1);
+            assert_eq!(
+                lowered.body.block_graph().blocks()[0].instructions().len(),
+                1
+            );
         }
     }
 

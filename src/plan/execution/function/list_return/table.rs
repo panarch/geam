@@ -1,11 +1,12 @@
 use super::{
-    BitArrayListFunctionId, BitArrayListReturn, BoolListFunctionId, BoolListReturn,
-    CustomListFunctionId, CustomListReturn, FloatListFunctionId, FloatListReturn,
-    FunctionListFunctionId, FunctionListReturn, IntListFunctionId, IntListReturn,
-    ListListFunctionId, ListListReturn, NilListFunctionId, NilListReturn, ParameterListFunctionId,
-    ParameterListListFunctionId, ParameterListListReturn, ParameterListReturn,
-    StringListFunctionId, StringListReturn, TupleListFunctionId, TupleListReturn,
-    UtfCodepointListFunctionId, UtfCodepointListReturn,
+    BitArrayListFunctionBody, BitArrayListFunctionId, BoolListFunctionBody, BoolListFunctionId,
+    CustomListFunctionBody, CustomListFunctionId, FloatListFunctionBody, FloatListFunctionId,
+    FunctionListFunctionBody, FunctionListFunctionId, IntListFunctionBody, IntListFunctionId,
+    ListListFunctionBody, ListListFunctionId, NilListFunctionBody, NilListFunctionId,
+    ParameterListFunctionBody, ParameterListFunctionId, ParameterListListFunctionBody,
+    ParameterListListFunctionId, StringListFunctionBody, StringListFunctionId,
+    TupleListFunctionBody, TupleListFunctionId, UtfCodepointListFunctionBody,
+    UtfCodepointListFunctionId,
 };
 use crate::plan::execution::ExecutableFunction;
 use crate::plan::execution::explain::{Explain, ExplainContext};
@@ -14,39 +15,47 @@ use crate::plan::execution::function::write_table;
 pub(in crate::plan::execution) struct ListFunctionTables {
     pub(in crate::plan::execution) parameter_list_functions: Vec<(
         ParameterListFunctionId,
-        ExecutableFunction<ParameterListReturn>,
+        ExecutableFunction<ParameterListFunctionBody>,
     )>,
     pub(in crate::plan::execution) int_list_functions:
-        Vec<(IntListFunctionId, ExecutableFunction<IntListReturn>)>,
-    pub(in crate::plan::execution) string_list_functions:
-        Vec<(StringListFunctionId, ExecutableFunction<StringListReturn>)>,
+        Vec<(IntListFunctionId, ExecutableFunction<IntListFunctionBody>)>,
+    pub(in crate::plan::execution) string_list_functions: Vec<(
+        StringListFunctionId,
+        ExecutableFunction<StringListFunctionBody>,
+    )>,
     pub(in crate::plan::execution) bit_array_list_functions: Vec<(
         BitArrayListFunctionId,
-        ExecutableFunction<BitArrayListReturn>,
+        ExecutableFunction<BitArrayListFunctionBody>,
     )>,
     pub(in crate::plan::execution) utf_codepoint_list_functions: Vec<(
         UtfCodepointListFunctionId,
-        ExecutableFunction<UtfCodepointListReturn>,
+        ExecutableFunction<UtfCodepointListFunctionBody>,
     )>,
-    pub(in crate::plan::execution) custom_list_functions:
-        Vec<(CustomListFunctionId, ExecutableFunction<CustomListReturn>)>,
-    pub(in crate::plan::execution) float_list_functions:
-        Vec<(FloatListFunctionId, ExecutableFunction<FloatListReturn>)>,
+    pub(in crate::plan::execution) custom_list_functions: Vec<(
+        CustomListFunctionId,
+        ExecutableFunction<CustomListFunctionBody>,
+    )>,
+    pub(in crate::plan::execution) float_list_functions: Vec<(
+        FloatListFunctionId,
+        ExecutableFunction<FloatListFunctionBody>,
+    )>,
     pub(in crate::plan::execution) bool_list_functions:
-        Vec<(BoolListFunctionId, ExecutableFunction<BoolListReturn>)>,
+        Vec<(BoolListFunctionId, ExecutableFunction<BoolListFunctionBody>)>,
     pub(in crate::plan::execution) nil_list_functions:
-        Vec<(NilListFunctionId, ExecutableFunction<NilListReturn>)>,
-    pub(in crate::plan::execution) tuple_list_functions:
-        Vec<(TupleListFunctionId, ExecutableFunction<TupleListReturn>)>,
+        Vec<(NilListFunctionId, ExecutableFunction<NilListFunctionBody>)>,
+    pub(in crate::plan::execution) tuple_list_functions: Vec<(
+        TupleListFunctionId,
+        ExecutableFunction<TupleListFunctionBody>,
+    )>,
     pub(in crate::plan::execution) parameter_list_list_functions: Vec<(
         ParameterListListFunctionId,
-        ExecutableFunction<ParameterListListReturn>,
+        ExecutableFunction<ParameterListListFunctionBody>,
     )>,
     pub(in crate::plan::execution) list_list_functions:
-        Vec<(ListListFunctionId, ExecutableFunction<ListListReturn>)>,
+        Vec<(ListListFunctionId, ExecutableFunction<ListListFunctionBody>)>,
     pub(in crate::plan::execution) function_list_functions: Vec<(
         FunctionListFunctionId,
-        ExecutableFunction<FunctionListReturn>,
+        ExecutableFunction<FunctionListFunctionBody>,
     )>,
 }
 

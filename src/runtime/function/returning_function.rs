@@ -32,7 +32,7 @@ pub(in crate::runtime) fn run_int_function(
             evaluate(
                 plan,
                 state,
-                plan.int_function_function(*function).graph().body(),
+                plan.int_function_function(*function).body().function_body(),
                 inputs,
             )
         },
@@ -55,7 +55,9 @@ pub(in crate::runtime) fn run_float_function(
             evaluate(
                 plan,
                 state,
-                plan.float_function_function(*function).graph().body(),
+                plan.float_function_function(*function)
+                    .body()
+                    .function_body(),
                 inputs,
             )
         },
@@ -78,7 +80,9 @@ pub(in crate::runtime) fn run_string_function(
             evaluate(
                 plan,
                 state,
-                plan.string_function_function(*function).graph().body(),
+                plan.string_function_function(*function)
+                    .body()
+                    .function_body(),
                 inputs,
             )
         },
@@ -101,7 +105,9 @@ pub(in crate::runtime) fn run_bit_array_function(
             evaluate(
                 plan,
                 state,
-                plan.bit_array_function_function(*function).graph().body(),
+                plan.bit_array_function_function(*function)
+                    .body()
+                    .function_body(),
                 inputs,
             )
         },
@@ -125,8 +131,8 @@ pub(in crate::runtime) fn run_utf_codepoint_function(
                 plan,
                 state,
                 plan.utf_codepoint_function_function(*function)
-                    .graph()
-                    .body(),
+                    .body()
+                    .function_body(),
                 inputs,
             )
         },
@@ -149,7 +155,9 @@ pub(in crate::runtime) fn run_generic_function(
             evaluate(
                 plan,
                 state,
-                plan.generic_function_function(function).graph().body(),
+                plan.generic_function_function(function)
+                    .body()
+                    .function_body(),
                 inputs,
             )
         },
@@ -172,7 +180,9 @@ pub(in crate::runtime) fn run_never_function(
             evaluate(
                 plan,
                 state,
-                plan.never_function_function(function).graph().body(),
+                plan.never_function_function(function)
+                    .body()
+                    .function_body(),
                 inputs,
             )
         },
@@ -195,13 +205,15 @@ pub(in crate::runtime) fn run_custom_function(
             evaluate(
                 plan,
                 state,
-                plan.custom_function_function(function).graph().body(),
+                plan.custom_function_function(function)
+                    .body()
+                    .function_body(),
                 inputs,
             )
         },
         |plan, function, target| {
             plan.custom_function_function(function)
-                .graph()
+                .body()
                 .function_id(target)
         },
     )
@@ -222,7 +234,9 @@ pub(in crate::runtime) fn run_bool_function(
             evaluate(
                 plan,
                 state,
-                plan.bool_function_function(*function).graph().body(),
+                plan.bool_function_function(*function)
+                    .body()
+                    .function_body(),
                 inputs,
             )
         },
@@ -245,7 +259,7 @@ pub(in crate::runtime) fn run_nil_function(
             evaluate(
                 plan,
                 state,
-                plan.nil_function_function(*function).graph().body(),
+                plan.nil_function_function(*function).body().function_body(),
                 inputs,
             )
         },
@@ -268,7 +282,9 @@ pub(in crate::runtime) fn run_tuple_function(
             evaluate(
                 plan,
                 state,
-                plan.tuple_function_function(*function).graph().body(),
+                plan.tuple_function_function(*function)
+                    .body()
+                    .function_body(),
                 inputs,
             )
         },
@@ -291,7 +307,7 @@ pub(in crate::runtime) fn run_list_function(
             evaluate(
                 plan,
                 state,
-                plan.list_function_function(function).graph().body(),
+                plan.list_function_function(function).body().function_body(),
                 inputs,
             )
         },
@@ -314,13 +330,15 @@ pub(in crate::runtime) fn run_function_function(
             evaluate(
                 plan,
                 state,
-                plan.function_function_function(function).graph().body(),
+                plan.function_function_function(function)
+                    .body()
+                    .function_body(),
                 inputs,
             )
         },
         |plan, function, target| {
             plan.function_function_function(function)
-                .graph()
+                .body()
                 .function_id(target)
         },
     )

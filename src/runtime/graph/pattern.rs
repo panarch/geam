@@ -980,7 +980,8 @@ pub fn main() {
             _ => panic!("fixture main should return Int"),
         };
         plan.int_function(main)
-            .graph()
+            .body()
+            .block_graph()
             .blocks()
             .iter()
             .find_map(|block| {

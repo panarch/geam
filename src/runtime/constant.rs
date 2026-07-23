@@ -11,7 +11,7 @@ pub(super) fn evaluate<Value>(
 where
     Value: GraphValue,
 {
-    graph::execute(plan, state, program.graph(), RetainedValues::empty()).map(|completed| {
+    graph::execute(plan, state, program.block_graph(), RetainedValues::empty()).map(|completed| {
         let return_ = program.return_(completed.exit());
         completed.into_value(state, return_)
     })

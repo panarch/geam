@@ -378,7 +378,7 @@ fn lower_custom_return(
             )
             .map(|graph| {
                 graph.map(|body| {
-                    execution::CustomReturn::from_parts(lowered_signature, lowered_body, body)
+                    execution::CustomFunctionBody::from_parts(lowered_signature, lowered_body, body)
                 })
             });
             functions
@@ -579,7 +579,7 @@ fn lower_generic_value(
             )
             .map(|graph| {
                 graph.map(|body| {
-                    execution::CustomReturn::from_parts(lowered_shape, lowered_shape, body)
+                    execution::CustomFunctionBody::from_parts(lowered_shape, lowered_shape, body)
                 })
             });
             functions
@@ -940,7 +940,7 @@ fn generic_item_list_graph<DraftList, FrozenList, TailCall>(
         &module::FunctionInstantiation,
         &mut LoweringContext,
     ) -> Representability<TailCall>,
-) -> Representability<graph::LoweredFunctionGraph<execution::FunctionGraph<FrozenList, TailCall>>>
+) -> Representability<graph::LoweredFunctionGraph<execution::FunctionBody<FrozenList, TailCall>>>
 where
     DraftList: graph::DraftGraphValue + graph::FreezeGraphValue<Frozen = FrozenList>,
     TailCall: Clone,
@@ -1161,7 +1161,7 @@ fn generic_value_list_graph<DraftList, FrozenList, TailCall>(
         &module::FunctionInstantiation,
         &mut LoweringContext,
     ) -> Representability<TailCall>,
-) -> Representability<graph::LoweredFunctionGraph<execution::FunctionGraph<FrozenList, TailCall>>>
+) -> Representability<graph::LoweredFunctionGraph<execution::FunctionBody<FrozenList, TailCall>>>
 where
     DraftList: graph::DraftGraphValue + graph::FreezeGraphValue<Frozen = FrozenList>,
     TailCall: Clone,
@@ -1493,9 +1493,9 @@ fn typed_function_return<Body>(
     shape: &SpecializedFunctionShape,
     body: Representability<graph::LoweredFunctionGraph<Body>>,
     context: &mut LoweringContext,
-) -> Representability<graph::LoweredFunctionGraph<execution::TypedFunctionReturn<Body>>> {
+) -> Representability<graph::LoweredFunctionGraph<execution::TypedFunctionBody<Body>>> {
     let shape = context.lower_concrete_function_shape(shape);
-    body.map(|graph| graph.map(|body| execution::TypedFunctionReturn::new(shape, body)))
+    body.map(|graph| graph.map(|body| execution::TypedFunctionBody::new(shape, body)))
 }
 
 fn lower_tuple_function(
@@ -1630,7 +1630,9 @@ fn lower_custom_function(
             );
             let shape = context.function_shape(shape.clone());
             let graph = graph.map(|graph| {
-                graph.map(|body| execution::CustomFunctionReturn::from_parts(shape, type_, body))
+                graph.map(|body| {
+                    execution::CustomFunctionFunctionBody::from_parts(shape, type_, body)
+                })
             });
             functions
                 .custom_function_functions
@@ -1752,7 +1754,9 @@ fn lower_function_function(
             );
             let shape = context.function_shape(shape.clone());
             let graph = graph.map(|graph| {
-                graph.map(|body| execution::FunctionFunctionReturn::from_parts(shape, type_, body))
+                graph.map(|body| {
+                    execution::FunctionFunctionFunctionBody::from_parts(shape, type_, body)
+                })
             });
             functions
                 .function_function_functions
@@ -1971,8 +1975,9 @@ fn lower_polymorphic_function<Expression, Lower>(
                 );
                 let shape = context.lower_concrete_function_shape(function);
                 let graph = graph.map(|graph| {
-                    graph
-                        .map(|body| execution::CustomFunctionReturn::from_parts(shape, type_, body))
+                    graph.map(|body| {
+                        execution::CustomFunctionFunctionBody::from_parts(shape, type_, body)
+                    })
                 });
                 functions
                     .custom_function_functions
@@ -2060,7 +2065,7 @@ fn lower_polymorphic_function<Expression, Lower>(
                 let shape = context.lower_concrete_function_shape(function);
                 let graph = graph.map(|graph| {
                     graph.map(|body| {
-                        execution::FunctionFunctionReturn::from_parts(shape, type_, body)
+                        execution::FunctionFunctionFunctionBody::from_parts(shape, type_, body)
                     })
                 });
                 functions

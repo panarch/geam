@@ -10,17 +10,17 @@ pub(super) use value::GraphValue;
 
 use self::environment::BlockEnvironment;
 use self::terminator::{GraphAction, NeverCall, terminator_action};
-use crate::plan::execution::{ExecutionPlan, Graph, GraphExitId, ParamLocal};
+use crate::plan::execution::{BlockGraph, BlockGraphExitId, ExecutionPlan, ParamLocal};
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::state::RuntimeState;
 
 pub(super) struct CompletedGraph {
-    exit: GraphExitId,
+    exit: BlockGraphExitId,
     environment: BlockEnvironment,
 }
 
 impl CompletedGraph {
-    pub(super) fn exit(&self) -> GraphExitId {
+    pub(super) fn exit(&self) -> BlockGraphExitId {
         self.exit
     }
 
@@ -53,7 +53,7 @@ impl CompletedGraph {
 pub(super) fn execute(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
-    graph: &Graph,
+    graph: &BlockGraph,
     inputs: RetainedValues,
 ) -> ExecutionResult<CompletedGraph> {
     let mut block_id = graph.entry();
@@ -158,7 +158,7 @@ pub fn main() {
             super::execute(
                 &plan,
                 &mut RuntimeState::new(),
-                plan.int_function(IntFunctionId(1)).graph().graph(),
+                plan.int_function(IntFunctionId(1)).body().block_graph(),
                 inputs,
             )
             .map(|_| ()),

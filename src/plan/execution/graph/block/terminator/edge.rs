@@ -116,7 +116,13 @@ pub fn main() {
     #[should_panic(expected = "case should lower to a Bool branch")]
     fn bool_branch_edge_shape_guard_is_visible() {
         explain::with_execution_plan("pub fn main() { 1 }", |plan| {
-            bool_branch_edges(plan.int_function(IntFunctionId(0)).graph().blocks()[0].terminator());
+            bool_branch_edges(
+                plan.int_function(IntFunctionId(0))
+                    .body()
+                    .block_graph()
+                    .blocks()[0]
+                    .terminator(),
+            );
         });
     }
 
@@ -129,7 +135,12 @@ pub fn main() {
 
     fn assert_explanation(source: &str, expected: &str) {
         explain::assert_rendered(source, expected, |plan, output| {
-            let terminator = plan.int_function(IntFunctionId(0)).graph().blocks()[0].terminator();
+            let terminator = plan
+                .int_function(IntFunctionId(0))
+                .body()
+                .block_graph()
+                .blocks()[0]
+                .terminator();
             let (true_, false_) = bool_branch_edges(terminator);
             let mut context = explain::ExplainContext::new(plan, output);
             context.write(true_);
@@ -164,7 +175,11 @@ pub fn main() {
     fn match_edge_shape_guard_is_visible() {
         explain::with_execution_plan("pub fn main() { 1 }", |plan| {
             match_success_edge(
-                plan.int_function(IntFunctionId(0)).graph().blocks()[0].terminator(),
+                plan.int_function(IntFunctionId(0))
+                    .body()
+                    .block_graph()
+                    .blocks()[0]
+                    .terminator(),
             );
         });
     }
@@ -178,7 +193,12 @@ pub fn main() {
 
     fn assert_explanation(source: &str, expected: &str) {
         explain::assert_rendered(source, expected, |plan, output| {
-            let terminator = plan.int_function(IntFunctionId(0)).graph().blocks()[0].terminator();
+            let terminator = plan
+                .int_function(IntFunctionId(0))
+                .body()
+                .block_graph()
+                .blocks()[0]
+                .terminator();
             let mut context = explain::ExplainContext::new(plan, output);
             context.write(match_success_edge(terminator));
         });

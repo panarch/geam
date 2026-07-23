@@ -271,7 +271,10 @@ pub fn main() {
 
     fn assert_explanation(source: &str, expected: &str) {
         explain::assert_rendered(source, expected, |plan, output| {
-            let graph = plan.bit_array_function(BitArrayFunctionId(0)).graph();
+            let graph = plan
+                .bit_array_function(BitArrayFunctionId(0))
+                .body()
+                .block_graph();
             let mut context = explain::ExplainContext::new(plan, output);
             for instruction in graph.blocks()[0].instructions() {
                 context.write(instruction);

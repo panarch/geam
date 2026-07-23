@@ -1,7 +1,7 @@
 use super::environment::{BlockEnvironment, RetainedValues};
 use super::pattern;
 use crate::plan::execution::{
-    BlockId, Edge, ExecutionPlan, GraphExitId, MatchEdge, MatchEdgeArgument, NeverCallTarget,
+    BlockGraphExitId, BlockId, Edge, ExecutionPlan, MatchEdge, MatchEdgeArgument, NeverCallTarget,
     NeverFunctionId, SourceStopKind, Terminator,
 };
 use crate::runtime::ExecutionError;
@@ -14,7 +14,7 @@ pub(super) enum GraphAction {
         block: BlockId,
         inputs: RetainedValues,
     },
-    Exit(GraphExitId),
+    Exit(BlockGraphExitId),
     NeverCall {
         function: NeverCall,
         inputs: RetainedValues,

@@ -23,7 +23,7 @@ pub(crate) use source_stop::{SourceStop, SourceStopKind};
 pub(crate) use switch::{FloatSwitch, IntSwitch, StringSwitch};
 
 use crate::plan::execution::explain::ExplainContext;
-use crate::plan::execution::graph::GraphExitId;
+use crate::plan::execution::graph::BlockGraphExitId;
 
 pub(crate) enum Terminator {
     Jump(Jump),
@@ -32,7 +32,7 @@ pub(crate) enum Terminator {
     FloatSwitch(FloatSwitch),
     StringSwitch(StringSwitch),
     Match(Match),
-    Exit(GraphExitId),
+    Exit(BlockGraphExitId),
     SourceStop(SourceStop),
     LetAssertPanic(LetAssertPanic),
     NeverCall(NeverCall),
@@ -41,7 +41,7 @@ pub(crate) enum Terminator {
 pub(super) fn write_terminator(
     context: &mut ExplainContext<'_, '_>,
     terminator: &Terminator,
-    write_graph_exit: &mut dyn FnMut(&mut ExplainContext<'_, '_>, GraphExitId),
+    write_graph_exit: &mut dyn FnMut(&mut ExplainContext<'_, '_>, BlockGraphExitId),
 ) {
     match terminator {
         Terminator::Jump(jump) => context.write(jump),

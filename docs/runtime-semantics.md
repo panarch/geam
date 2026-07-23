@@ -79,9 +79,15 @@ above.
 
 ## Execution Graph
 
-Geam lowers each function into immutable typed blocks before runtime. A block
-contains ordered typed parameters, instructions, and one terminator. Branches,
-switches, matches, source stops, returns, and tail calls are explicit graph
+An executable function owns its entry bindings and a `FunctionBody`. The body
+owns a shared `BlockGraph` topology plus function-specific return and tail-call
+exits. A reusable constant program owns the same block-graph topology plus its
+typed return values. In this control-flow graph, only `Block` is a node; values,
+instructions, terminators, edges, IDs, and metadata describe or connect those
+nodes.
+
+Each block contains ordered typed parameters, instructions, and one terminator.
+Branches, switches, matches, source stops, returns, and tail calls are explicit
 edges or terminators rather than recursive runtime expression or return nodes.
 
 The runtime evaluates a block iteratively. On an edge it retains the ordered

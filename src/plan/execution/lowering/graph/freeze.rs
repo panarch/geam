@@ -20,7 +20,7 @@ struct BlockLayout {
 }
 
 struct FrozenGraph<Return, TailCall> {
-    graph: execution::Graph,
+    graph: execution::BlockGraph,
     exits: Vec<FrozenGraphExit<Return, TailCall>>,
 }
 
@@ -35,7 +35,7 @@ enum FrozenGraphExit<Return, TailCall> {
 pub(super) fn freeze<Return, TailCall>(
     graph: DraftGraphBuilder<Return, TailCall>,
     context: &mut super::super::LoweringContext,
-) -> LoweredFunctionGraph<execution::FunctionGraph<Return::Frozen, TailCall>>
+) -> LoweredFunctionGraph<execution::FunctionBody<Return::Frozen, TailCall>>
 where
     Return: DraftGraphValue + FreezeGraphValue,
     TailCall: Clone,
@@ -45,13 +45,13 @@ where
             .exits
             .into_iter()
             .map(|exit| match exit {
-                FrozenGraphExit::Return(value) => execution::FunctionGraphExit::Return(value),
+                FrozenGraphExit::Return(value) => execution::FunctionExit::Return(value),
                 FrozenGraphExit::TailCall { function, args } => {
-                    execution::FunctionGraphExit::TailCall { function, args }
+                    execution::FunctionExit::TailCall { function, args }
                 }
             })
             .collect();
-        execution::FunctionGraph::from_parts(frozen.graph, exits)
+        execution::FunctionBody::from_parts(frozen.graph, exits)
     })
 }
 
@@ -138,7 +138,7 @@ where
     LoweredFunctionGraph {
         parameter_count,
         body: FrozenGraph {
-            graph: execution::Graph::from_parts(block_ids[&entry], blocks),
+            graph: execution::BlockGraph::from_parts(block_ids[&entry], blocks),
             exits,
         },
     }
@@ -261,14 +261,14 @@ where
             freeze_edge(&failure, layout, liveness, block_ids),
         )),
         DraftTerminator::Return { value: _, index } => {
-            let id = execution::graph::GraphExitId::new(exits.len());
+            let id = execution::graph::BlockGraphExitId::new(exits.len());
             exits.push(FrozenGraphExit::Return(
                 returns[index].freeze(&layout.values),
             ));
             E::Exit(id)
         }
         DraftTerminator::TailCall { function, args } => {
-            let id = execution::graph::GraphExitId::new(exits.len());
+            let id = execution::graph::BlockGraphExitId::new(exits.len());
             exits.push(FrozenGraphExit::TailCall {
                 function: tail_calls[function].clone(),
                 args: layout.values.any_slice(&args),

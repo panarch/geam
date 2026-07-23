@@ -1,4 +1,4 @@
-use super::FunctionGraph;
+use super::FunctionBody;
 use crate::plan::execution::graph::ParamSlot;
 
 pub(crate) struct FunctionEntry {
@@ -12,15 +12,17 @@ impl FunctionEntry {
 
     pub(crate) fn params<'a, Return, TailCall>(
         &self,
-        graph: &'a FunctionGraph<Return, TailCall>,
+        body: &'a FunctionBody<Return, TailCall>,
     ) -> &'a [ParamSlot] {
-        &graph.block(graph.entry()).params()[..self.parameter_count]
+        let block_graph = body.block_graph();
+        &block_graph.block(block_graph.entry()).params()[..self.parameter_count]
     }
 
     pub(in crate::plan::execution) fn captures<'a, Return, TailCall>(
         &self,
-        graph: &'a FunctionGraph<Return, TailCall>,
+        body: &'a FunctionBody<Return, TailCall>,
     ) -> &'a [ParamSlot] {
-        &graph.block(graph.entry()).params()[self.parameter_count..]
+        let block_graph = body.block_graph();
+        &block_graph.block(block_graph.entry()).params()[self.parameter_count..]
     }
 }

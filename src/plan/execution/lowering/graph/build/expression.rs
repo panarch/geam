@@ -837,7 +837,7 @@ mod tests {
             );
 
             let lowered = super::super::super::freeze::freeze(graph, &mut context);
-            assert_eq!(lowered.body.blocks().len(), 1);
+            assert_eq!(lowered.body.block_graph().blocks().len(), 1);
             assert_eq!(source_stop_kind(&lowered.body), (expected, None));
         }
 
@@ -863,7 +863,8 @@ mod tests {
         assert_eq!(
             lowered
                 .body
-                .block(lowered.body.entry())
+                .block_graph()
+                .block(lowered.body.block_graph().entry())
                 .instructions()
                 .len(),
             1,
@@ -890,12 +891,13 @@ mod tests {
     }
 
     fn source_stop_kind(
-        graph: &crate::plan::execution::FunctionGraph<std::convert::Infallible, ()>,
+        body: &crate::plan::execution::FunctionBody<std::convert::Infallible, ()>,
     ) -> (
         SourceStopKind,
         Option<crate::plan::execution::StringLocalId>,
     ) {
-        match graph.block(graph.entry()).terminator() {
+        let block_graph = body.block_graph();
+        match block_graph.block(block_graph.entry()).terminator() {
             Terminator::SourceStop(stop) => (stop.kind(), stop.message()),
             _ => panic!("fixture should contain a source stop"),
         }

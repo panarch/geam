@@ -10,26 +10,27 @@ pub(crate) use graph::{
     BitArrayBindingPattern, BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayFunctionLocalId,
     BitArrayInstruction, BitArrayListFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
     BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize, BitArrayPatternSizeExpr,
-    BitArrayPatternValue, BitArraySegment, BitArrayStringPattern, BlockId, BoolFunctionLocalId,
-    BoolInstruction, BoolListFunctionLocalId, BoolListLocalId, BoolLocalId, CustomFunctionLocal,
-    CustomFunctionLocalId, CustomInstruction, CustomListFunctionLocalId, CustomListLocalId,
-    CustomLocal, CustomLocalId, Edge, Endianness, FloatBitSize, FloatFunctionLocalId,
-    FloatInstruction, FloatListFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionCapture,
-    FunctionFunctionLocal, FunctionFunctionLocalId, FunctionInstruction, FunctionInstructionKind,
+    BitArrayPatternValue, BitArraySegment, BitArrayStringPattern, BlockGraph, BlockGraphExitId,
+    BlockId, BoolFunctionLocalId, BoolInstruction, BoolListFunctionLocalId, BoolListLocalId,
+    BoolLocalId, CustomFunctionLocal, CustomFunctionLocalId, CustomInstruction,
+    CustomListFunctionLocalId, CustomListLocalId, CustomLocal, CustomLocalId, Edge, Endianness,
+    FloatBitSize, FloatFunctionLocalId, FloatInstruction, FloatListFunctionLocalId,
+    FloatListLocalId, FloatLocalId, FunctionCapture, FunctionFunctionLocal,
+    FunctionFunctionLocalId, FunctionInstruction, FunctionInstructionKind,
     FunctionListFunctionLocalId, FunctionListLocalId, FunctionLocal, FunctionTarget,
-    GenericFunctionLocal, GenericFunctionLocalId, Graph, GraphExitId, Instruction, InstructionKind,
-    IntFunctionLocalId, IntInstruction, IntListFunctionLocalId, IntListLocalId, IntLocalId,
-    ListFunctionLocal, ListInstruction, ListListFunctionLocalId, ListListLocalId, ListLocal,
-    MatchEdge, MatchEdgeArgument, MatchIntBindingId, MatchPattern, MatchPatternBinding,
-    MatchPatternListTail, NeverCallTarget, NeverFunctionLocal, NeverFunctionLocalId,
-    NilFunctionLocalId, NilInstruction, NilListFunctionLocalId, NilListLocalId, NilLocalId,
-    ParamLocal, ParamSlot, ParameterListFunctionLocalId, ParameterListInstruction,
-    ParameterListListFunctionLocalId, ParameterListListLocalId, ParameterListLocalId, Signedness,
-    SourceStopKind, StoredListLocal, StringEncoding, StringFunctionLocalId, StringInstruction,
-    StringListFunctionLocalId, StringListLocalId, StringLocalId, Terminator, TupleFunctionLocalId,
-    TupleInstruction, TupleListFunctionLocalId, TupleListLocalId, TupleLocalId,
-    TypedListInstruction, UtfCodepointFunctionLocalId, UtfCodepointInstruction,
-    UtfCodepointListFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
+    GenericFunctionLocal, GenericFunctionLocalId, Instruction, InstructionKind, IntFunctionLocalId,
+    IntInstruction, IntListFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionLocal,
+    ListInstruction, ListListFunctionLocalId, ListListLocalId, ListLocal, MatchEdge,
+    MatchEdgeArgument, MatchIntBindingId, MatchPattern, MatchPatternBinding, MatchPatternListTail,
+    NeverCallTarget, NeverFunctionLocal, NeverFunctionLocalId, NilFunctionLocalId, NilInstruction,
+    NilListFunctionLocalId, NilListLocalId, NilLocalId, ParamLocal, ParamSlot,
+    ParameterListFunctionLocalId, ParameterListInstruction, ParameterListListFunctionLocalId,
+    ParameterListListLocalId, ParameterListLocalId, Signedness, SourceStopKind, StoredListLocal,
+    StringEncoding, StringFunctionLocalId, StringInstruction, StringListFunctionLocalId,
+    StringListLocalId, StringLocalId, Terminator, TupleFunctionLocalId, TupleInstruction,
+    TupleListFunctionLocalId, TupleListLocalId, TupleLocalId, TypedListInstruction,
+    UtfCodepointFunctionLocalId, UtfCodepointInstruction, UtfCodepointListFunctionLocalId,
+    UtfCodepointListLocalId, UtfCodepointLocalId,
 };
 #[cfg(test)]
 pub(crate) use type_::ValueShapeDescriptor;
@@ -45,30 +46,32 @@ pub(crate) use type_::{
 pub(crate) use self::constant::{ConstantId, ConstantProgram, ConstantTable, ConstantValue};
 use self::function::FunctionTables;
 pub(crate) use self::function::{
-    BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayFunctionReturn,
-    BitArrayListFunctionFunctionId, BitArrayListFunctionId, BitArrayListReturn, BitArrayReturn,
-    BoolFunctionFunctionId, BoolFunctionId, BoolFunctionReturn, BoolListFunctionFunctionId,
-    BoolListFunctionId, BoolListReturn, BoolReturn, CustomFunctionFunctionId, CustomFunctionId,
-    CustomFunctionReturn, CustomListFunctionFunctionId, CustomListFunctionId, CustomListReturn,
-    CustomReturn, ExecutableFunction, FloatFunctionFunctionId, FloatFunctionId,
-    FloatFunctionReturn, FloatListFunctionFunctionId, FloatListFunctionId, FloatListReturn,
-    FloatReturn, FunctionEntry, FunctionFunctionFunctionId, FunctionFunctionId,
-    FunctionFunctionReturn, FunctionGraph, FunctionGraphExit, FunctionListFunctionFunctionId,
-    FunctionListFunctionId, FunctionListReturn, FunctionReturnFamily, GenericCallableId,
-    GenericFunctionFunctionId, GenericFunctionReturn, IntFunctionFunctionId, IntFunctionId,
-    IntFunctionReturn, IntListFunctionFunctionId, IntListFunctionId, IntListReturn, IntReturn,
-    ListFunctionFunctionId, ListFunctionId, ListFunctionReturn, ListListFunctionFunctionId,
-    ListListFunctionId, ListListReturn, NeverFunctionFunctionId, NeverFunctionId,
-    NeverFunctionReturn, NeverReturn, NilFunctionFunctionId, NilFunctionId, NilFunctionReturn,
-    NilListFunctionFunctionId, NilListFunctionId, NilListReturn, NilReturn,
-    ParameterListFunctionFunctionId, ParameterListFunctionId, ParameterListListFunctionFunctionId,
-    ParameterListListFunctionId, ParameterListListReturn, ParameterListReturn, RuntimeFunctionId,
-    StringFunctionFunctionId, StringFunctionId, StringFunctionReturn, StringListFunctionFunctionId,
-    StringListFunctionId, StringListReturn, StringReturn, TupleFunctionFunctionId, TupleFunctionId,
-    TupleFunctionReturn, TupleListFunctionFunctionId, TupleListFunctionId, TupleListReturn,
-    TupleReturn, TypedFunctionReturn, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
-    UtfCodepointFunctionReturn, UtfCodepointListFunctionFunctionId, UtfCodepointListFunctionId,
-    UtfCodepointListReturn, UtfCodepointReturn,
+    BitArrayFunctionBody, BitArrayFunctionFunctionBody, BitArrayFunctionFunctionId,
+    BitArrayFunctionId, BitArrayListFunctionBody, BitArrayListFunctionFunctionId,
+    BitArrayListFunctionId, BoolFunctionBody, BoolFunctionFunctionBody, BoolFunctionFunctionId,
+    BoolFunctionId, BoolListFunctionBody, BoolListFunctionFunctionId, BoolListFunctionId,
+    CustomFunctionBody, CustomFunctionFunctionBody, CustomFunctionFunctionId, CustomFunctionId,
+    CustomListFunctionBody, CustomListFunctionFunctionId, CustomListFunctionId, ExecutableFunction,
+    FloatFunctionBody, FloatFunctionFunctionBody, FloatFunctionFunctionId, FloatFunctionId,
+    FloatListFunctionBody, FloatListFunctionFunctionId, FloatListFunctionId, FunctionBody,
+    FunctionEntry, FunctionExit, FunctionFunctionFunctionBody, FunctionFunctionFunctionId,
+    FunctionFunctionId, FunctionListFunctionBody, FunctionListFunctionFunctionId,
+    FunctionListFunctionId, FunctionReturnFamily, GenericCallableId, GenericFunctionFunctionBody,
+    GenericFunctionFunctionId, IntFunctionBody, IntFunctionFunctionBody, IntFunctionFunctionId,
+    IntFunctionId, IntListFunctionBody, IntListFunctionFunctionId, IntListFunctionId,
+    ListFunctionFunctionBody, ListFunctionFunctionId, ListFunctionId, ListListFunctionBody,
+    ListListFunctionFunctionId, ListListFunctionId, NeverFunctionBody, NeverFunctionFunctionBody,
+    NeverFunctionFunctionId, NeverFunctionId, NilFunctionBody, NilFunctionFunctionBody,
+    NilFunctionFunctionId, NilFunctionId, NilListFunctionBody, NilListFunctionFunctionId,
+    NilListFunctionId, ParameterListFunctionBody, ParameterListFunctionFunctionId,
+    ParameterListFunctionId, ParameterListListFunctionBody, ParameterListListFunctionFunctionId,
+    ParameterListListFunctionId, RuntimeFunctionId, StringFunctionBody, StringFunctionFunctionBody,
+    StringFunctionFunctionId, StringFunctionId, StringListFunctionBody,
+    StringListFunctionFunctionId, StringListFunctionId, TupleFunctionBody,
+    TupleFunctionFunctionBody, TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionBody,
+    TupleListFunctionFunctionId, TupleListFunctionId, TypedFunctionBody, UtfCodepointFunctionBody,
+    UtfCodepointFunctionFunctionBody, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+    UtfCodepointListFunctionBody, UtfCodepointListFunctionFunctionId, UtfCodepointListFunctionId,
 };
 use self::type_::{CustomTypeTable, ListTypeTable, ValueShapeTable};
 use crate::plan::{ModulePlan, SourceContext};
@@ -250,43 +253,49 @@ impl ExecutionPlan {
             .constructor_id(type_index, constructor_index)
     }
 
-    pub(crate) fn int_function(&self, id: IntFunctionId) -> &ExecutableFunction<IntReturn> {
+    pub(crate) fn int_function(&self, id: IntFunctionId) -> &ExecutableFunction<IntFunctionBody> {
         self.functions.int_function(id)
     }
 
-    pub(crate) fn never_function(&self, id: NeverFunctionId) -> &ExecutableFunction<NeverReturn> {
+    pub(crate) fn never_function(
+        &self,
+        id: NeverFunctionId,
+    ) -> &ExecutableFunction<NeverFunctionBody> {
         self.functions.never_function(id)
     }
 
-    pub(crate) fn float_function(&self, id: FloatFunctionId) -> &ExecutableFunction<FloatReturn> {
+    pub(crate) fn float_function(
+        &self,
+        id: FloatFunctionId,
+    ) -> &ExecutableFunction<FloatFunctionBody> {
         self.functions.float_function(id)
     }
 
     pub(crate) fn string_function(
         &self,
         id: StringFunctionId,
-    ) -> &ExecutableFunction<StringReturn> {
+    ) -> &ExecutableFunction<StringFunctionBody> {
         self.functions.string_function(id)
     }
 
     pub(crate) fn bit_array_function(
         &self,
         id: BitArrayFunctionId,
-    ) -> &ExecutableFunction<BitArrayReturn> {
+    ) -> &ExecutableFunction<BitArrayFunctionBody> {
         self.functions.bit_array_function(id)
     }
 
     pub(crate) fn utf_codepoint_function(
         &self,
         id: UtfCodepointFunctionId,
-    ) -> &ExecutableFunction<UtfCodepointReturn> {
+    ) -> &ExecutableFunction<UtfCodepointFunctionBody> {
         self.functions.utf_codepoint_function(id)
     }
 
     pub(crate) fn custom_function(
         &self,
         id: CustomFunctionId,
-    ) -> &ExecutableFunction<CustomReturn> {
+    ) -> &ExecutableFunction<CustomFunctionBody> {
         self.functions.custom_function(id)
     }
 
@@ -295,36 +304,42 @@ impl ExecutionPlan {
         self.functions.custom_function_id(index)
     }
 
-    pub(crate) fn bool_function(&self, id: BoolFunctionId) -> &ExecutableFunction<BoolReturn> {
+    pub(crate) fn bool_function(
+        &self,
+        id: BoolFunctionId,
+    ) -> &ExecutableFunction<BoolFunctionBody> {
         self.functions.bool_function(id)
     }
 
-    pub(crate) fn nil_function(&self, id: NilFunctionId) -> &ExecutableFunction<NilReturn> {
+    pub(crate) fn nil_function(&self, id: NilFunctionId) -> &ExecutableFunction<NilFunctionBody> {
         self.functions.nil_function(id)
     }
 
-    pub(crate) fn tuple_function(&self, id: TupleFunctionId) -> &ExecutableFunction<TupleReturn> {
+    pub(crate) fn tuple_function(
+        &self,
+        id: TupleFunctionId,
+    ) -> &ExecutableFunction<TupleFunctionBody> {
         self.functions.tuple_function(id)
     }
 
     pub(crate) fn int_list_function(
         &self,
         id: IntListFunctionId,
-    ) -> &ExecutableFunction<IntListReturn> {
+    ) -> &ExecutableFunction<IntListFunctionBody> {
         self.functions.int_list_function(id)
     }
 
     pub(crate) fn parameter_list_function(
         &self,
         id: ParameterListFunctionId,
-    ) -> &ExecutableFunction<ParameterListReturn> {
+    ) -> &ExecutableFunction<ParameterListFunctionBody> {
         self.functions.parameter_list_function(id)
     }
 
     pub(crate) fn parameter_list_list_function(
         &self,
         id: ParameterListListFunctionId,
-    ) -> &ExecutableFunction<ParameterListListReturn> {
+    ) -> &ExecutableFunction<ParameterListListFunctionBody> {
         self.functions.parameter_list_list_function(id)
     }
 
@@ -402,161 +417,161 @@ impl ExecutionPlan {
     pub(crate) fn string_list_function(
         &self,
         id: StringListFunctionId,
-    ) -> &ExecutableFunction<StringListReturn> {
+    ) -> &ExecutableFunction<StringListFunctionBody> {
         self.functions.string_list_function(id)
     }
 
     pub(crate) fn bit_array_list_function(
         &self,
         id: BitArrayListFunctionId,
-    ) -> &ExecutableFunction<BitArrayListReturn> {
+    ) -> &ExecutableFunction<BitArrayListFunctionBody> {
         self.functions.bit_array_list_function(id)
     }
 
     pub(crate) fn utf_codepoint_list_function(
         &self,
         id: UtfCodepointListFunctionId,
-    ) -> &ExecutableFunction<UtfCodepointListReturn> {
+    ) -> &ExecutableFunction<UtfCodepointListFunctionBody> {
         self.functions.utf_codepoint_list_function(id)
     }
 
     pub(crate) fn custom_list_function(
         &self,
         id: CustomListFunctionId,
-    ) -> &ExecutableFunction<CustomListReturn> {
+    ) -> &ExecutableFunction<CustomListFunctionBody> {
         self.functions.custom_list_function(id)
     }
 
     pub(crate) fn float_list_function(
         &self,
         id: FloatListFunctionId,
-    ) -> &ExecutableFunction<FloatListReturn> {
+    ) -> &ExecutableFunction<FloatListFunctionBody> {
         self.functions.float_list_function(id)
     }
 
     pub(crate) fn bool_list_function(
         &self,
         id: BoolListFunctionId,
-    ) -> &ExecutableFunction<BoolListReturn> {
+    ) -> &ExecutableFunction<BoolListFunctionBody> {
         self.functions.bool_list_function(id)
     }
 
     pub(crate) fn nil_list_function(
         &self,
         id: NilListFunctionId,
-    ) -> &ExecutableFunction<NilListReturn> {
+    ) -> &ExecutableFunction<NilListFunctionBody> {
         self.functions.nil_list_function(id)
     }
 
     pub(crate) fn tuple_list_function(
         &self,
         id: TupleListFunctionId,
-    ) -> &ExecutableFunction<TupleListReturn> {
+    ) -> &ExecutableFunction<TupleListFunctionBody> {
         self.functions.tuple_list_function(id)
     }
 
     pub(crate) fn list_list_function(
         &self,
         id: ListListFunctionId,
-    ) -> &ExecutableFunction<ListListReturn> {
+    ) -> &ExecutableFunction<ListListFunctionBody> {
         self.functions.list_list_function(id)
     }
 
     pub(crate) fn function_list_function(
         &self,
         id: FunctionListFunctionId,
-    ) -> &ExecutableFunction<FunctionListReturn> {
+    ) -> &ExecutableFunction<FunctionListFunctionBody> {
         self.functions.function_list_function(id)
     }
 
     pub(crate) fn int_function_function(
         &self,
         id: IntFunctionFunctionId,
-    ) -> &ExecutableFunction<IntFunctionReturn> {
+    ) -> &ExecutableFunction<IntFunctionFunctionBody> {
         self.functions.int_function_function(id)
     }
 
     pub(crate) fn float_function_function(
         &self,
         id: FloatFunctionFunctionId,
-    ) -> &ExecutableFunction<FloatFunctionReturn> {
+    ) -> &ExecutableFunction<FloatFunctionFunctionBody> {
         self.functions.float_function_function(id)
     }
 
     pub(crate) fn string_function_function(
         &self,
         id: StringFunctionFunctionId,
-    ) -> &ExecutableFunction<StringFunctionReturn> {
+    ) -> &ExecutableFunction<StringFunctionFunctionBody> {
         self.functions.string_function_function(id)
     }
 
     pub(crate) fn bit_array_function_function(
         &self,
         id: BitArrayFunctionFunctionId,
-    ) -> &ExecutableFunction<BitArrayFunctionReturn> {
+    ) -> &ExecutableFunction<BitArrayFunctionFunctionBody> {
         self.functions.bit_array_function_function(id)
     }
 
     pub(crate) fn utf_codepoint_function_function(
         &self,
         id: UtfCodepointFunctionFunctionId,
-    ) -> &ExecutableFunction<UtfCodepointFunctionReturn> {
+    ) -> &ExecutableFunction<UtfCodepointFunctionFunctionBody> {
         self.functions.utf_codepoint_function_function(id)
     }
 
     pub(crate) fn custom_function_function(
         &self,
         id: &CustomFunctionFunctionId,
-    ) -> &ExecutableFunction<CustomFunctionReturn> {
+    ) -> &ExecutableFunction<CustomFunctionFunctionBody> {
         self.functions.custom_function_function(id)
     }
 
     pub(crate) fn generic_function_function(
         &self,
         id: &GenericFunctionFunctionId,
-    ) -> &ExecutableFunction<GenericFunctionReturn> {
+    ) -> &ExecutableFunction<GenericFunctionFunctionBody> {
         self.functions.generic_function_function(id)
     }
 
     pub(crate) fn never_function_function(
         &self,
         id: &NeverFunctionFunctionId,
-    ) -> &ExecutableFunction<NeverFunctionReturn> {
+    ) -> &ExecutableFunction<NeverFunctionFunctionBody> {
         self.functions.never_function_function(id)
     }
 
     pub(crate) fn bool_function_function(
         &self,
         id: BoolFunctionFunctionId,
-    ) -> &ExecutableFunction<BoolFunctionReturn> {
+    ) -> &ExecutableFunction<BoolFunctionFunctionBody> {
         self.functions.bool_function_function(id)
     }
 
     pub(crate) fn nil_function_function(
         &self,
         id: NilFunctionFunctionId,
-    ) -> &ExecutableFunction<NilFunctionReturn> {
+    ) -> &ExecutableFunction<NilFunctionFunctionBody> {
         self.functions.nil_function_function(id)
     }
 
     pub(crate) fn tuple_function_function(
         &self,
         id: TupleFunctionFunctionId,
-    ) -> &ExecutableFunction<TupleFunctionReturn> {
+    ) -> &ExecutableFunction<TupleFunctionFunctionBody> {
         self.functions.tuple_function_function(id)
     }
 
     pub(crate) fn list_function_function(
         &self,
         id: &ListFunctionFunctionId,
-    ) -> &ExecutableFunction<ListFunctionReturn> {
+    ) -> &ExecutableFunction<ListFunctionFunctionBody> {
         self.functions.list_function_function(id)
     }
 
     pub(crate) fn function_function_function(
         &self,
         id: &FunctionFunctionFunctionId,
-    ) -> &ExecutableFunction<FunctionFunctionReturn> {
+    ) -> &ExecutableFunction<FunctionFunctionFunctionBody> {
         self.functions.function_function_function(id)
     }
 

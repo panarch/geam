@@ -259,7 +259,7 @@ pub fn main() {
 
     fn assert_explanation(source: &str, expected: &str) {
         explain::assert_rendered(source, expected, |plan, output| {
-            let graph = plan.bool_function(BoolFunctionId(0)).graph();
+            let graph = plan.bool_function(BoolFunctionId(0)).body().block_graph();
             let mut first = true;
             for instruction in graph.blocks().iter().flat_map(|block| block.instructions()) {
                 if let InstructionKind::Bool(instruction) = instruction.kind() {

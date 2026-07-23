@@ -89,7 +89,8 @@ pub fn main() { case identity("one") { "one" -> 1 _ -> 0 } }
         plan: &crate::plan::execution::ExecutionPlan,
     ) -> Vec<&crate::plan::execution::Terminator> {
         plan.int_function(IntFunctionId(0))
-            .graph()
+            .body()
+            .block_graph()
             .blocks()
             .iter()
             .map(|block| block.terminator())
