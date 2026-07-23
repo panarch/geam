@@ -87,10 +87,10 @@ impl ExecutionPlan {
         self.main.clone()
     }
 
-    pub(crate) fn constant<Value: ConstantValue>(
+    pub(crate) fn constant<Return: ConstantValue>(
         &self,
-        id: ConstantId<Value>,
-    ) -> &ConstantProgram<Value> {
+        id: ConstantId<Return>,
+    ) -> &ConstantProgram<Return> {
         self.constants.get(id)
     }
 

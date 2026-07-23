@@ -261,21 +261,21 @@ impl ConstantValue for FunctionLocal {
 }
 
 impl ConstantTable {
-    pub(in crate::plan::execution) fn push<Value: ConstantValue>(
+    pub(in crate::plan::execution) fn push<Return: ConstantValue>(
         &mut self,
-        program: ConstantProgram<Value>,
-    ) -> ConstantId<Value> {
-        let programs = Value::programs_mut(self);
+        program: ConstantProgram<Return>,
+    ) -> ConstantId<Return> {
+        let programs = Return::programs_mut(self);
         let id = ConstantId::new(programs.len());
         programs.push(program);
         id
     }
 
-    pub(crate) fn get<Value: ConstantValue>(
+    pub(crate) fn get<Return: ConstantValue>(
         &self,
-        id: ConstantId<Value>,
-    ) -> &ConstantProgram<Value> {
-        &Value::programs(self)[id.index()]
+        id: ConstantId<Return>,
+    ) -> &ConstantProgram<Return> {
+        &Return::programs(self)[id.index()]
     }
 }
 
