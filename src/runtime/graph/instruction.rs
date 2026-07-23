@@ -2,8 +2,8 @@ mod function;
 mod list;
 mod value;
 
+use super::environment::BlockEnvironment;
 use crate::plan::execution::{ExecutionPlan, Instruction, InstructionKind};
-use crate::runtime::environment::BlockEnvironment;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::state::RuntimeState;
 

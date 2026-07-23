@@ -1,3 +1,4 @@
+use super::super::environment::{BlockEnvironment, RetainedValues};
 use super::value::{constant, custom_projection, ensure_list_index, tuple_projection};
 use crate::plan::ValueType;
 use crate::plan::execution::{
@@ -13,7 +14,6 @@ use crate::plan::execution::{
     StringListLocalId, StringListTypeId, TupleListFunctionId, TupleListLocalId, TupleListTypeId,
     UtfCodepointListFunctionId, UtfCodepointListLocalId, UtfCodepointListTypeId,
 };
-use crate::runtime::environment::{BlockEnvironment, RetainedValues};
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomValue, EvaluatedFunctionValue, EvaluatedListFunction,
@@ -130,7 +130,7 @@ fn parameter(
     match instruction {
         I::Empty => Ok(ParameterListValueId::new(type_id)),
         I::Constant(id) => constant(plan, state, *id),
-        I::Call { function, args } => super::super::function::run_parameter_list(
+        I::Call { function, args } => crate::runtime::function::run_parameter_list(
             plan,
             state,
             *function,
@@ -142,7 +142,7 @@ fn parameter(
             inputs.append_captures(function.captures());
             match function.runtime_id() {
                 ListFunctionId::Parameter(function) => {
-                    super::super::function::run_parameter_list(plan, state, function, inputs)
+                    crate::runtime::function::run_parameter_list(plan, state, function, inputs)
                 }
                 _ => Err(list_function_mismatch()),
             }
@@ -354,7 +354,7 @@ macro_rules! vector_family {
                 function: Self::Function,
                 inputs: RetainedValues,
             ) -> ExecutionResult<Self::Handle> {
-                super::super::function::$run_method(plan, state, function, inputs)
+                crate::runtime::function::$run_method(plan, state, function, inputs)
             }
 
             fn run_value(
@@ -365,7 +365,7 @@ macro_rules! vector_family {
             ) -> ExecutionResult<Self::Handle> {
                 match function.runtime_id() {
                     ListFunctionId::$function_variant(function) => {
-                        super::super::function::$run_method(plan, state, function, inputs)
+                        crate::runtime::function::$run_method(plan, state, function, inputs)
                     }
                     _ => Err(list_function_mismatch()),
                 }
@@ -534,7 +534,7 @@ impl RuntimeTypedList for CustomFamily {
         function: Self::Function,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle> {
-        super::super::function::run_custom_list(plan, state, function, inputs)
+        crate::runtime::function::run_custom_list(plan, state, function, inputs)
     }
 
     fn run_value(
@@ -545,7 +545,7 @@ impl RuntimeTypedList for CustomFamily {
     ) -> ExecutionResult<Self::Handle> {
         match function.runtime_id() {
             ListFunctionId::Custom(function) => {
-                super::super::function::run_custom_list(plan, state, function, inputs)
+                crate::runtime::function::run_custom_list(plan, state, function, inputs)
             }
             _ => Err(list_function_mismatch()),
         }
@@ -599,7 +599,7 @@ impl RuntimeTypedList for NilFamily {
         function: Self::Function,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle> {
-        super::super::function::run_nil_list(plan, state, function, inputs)
+        crate::runtime::function::run_nil_list(plan, state, function, inputs)
     }
 
     fn run_value(
@@ -610,7 +610,7 @@ impl RuntimeTypedList for NilFamily {
     ) -> ExecutionResult<Self::Handle> {
         match function.runtime_id() {
             ListFunctionId::Nil(function) => {
-                super::super::function::run_nil_list(plan, state, function, inputs)
+                crate::runtime::function::run_nil_list(plan, state, function, inputs)
             }
             _ => Err(list_function_mismatch()),
         }
@@ -667,7 +667,7 @@ impl RuntimeTypedList for ParameterListFamily {
         function: Self::Function,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle> {
-        super::super::function::run_parameter_list_list(plan, state, function, inputs)
+        crate::runtime::function::run_parameter_list_list(plan, state, function, inputs)
     }
 
     fn run_value(
@@ -678,7 +678,7 @@ impl RuntimeTypedList for ParameterListFamily {
     ) -> ExecutionResult<Self::Handle> {
         match function.runtime_id() {
             ListFunctionId::ParameterList(function) => {
-                super::super::function::run_parameter_list_list(plan, state, function, inputs)
+                crate::runtime::function::run_parameter_list_list(plan, state, function, inputs)
             }
             _ => Err(list_function_mismatch()),
         }
@@ -732,7 +732,7 @@ impl RuntimeTypedList for ListFamily {
         function: Self::Function,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle> {
-        super::super::function::run_list_list(plan, state, function, inputs)
+        crate::runtime::function::run_list_list(plan, state, function, inputs)
     }
 
     fn run_value(
@@ -743,7 +743,7 @@ impl RuntimeTypedList for ListFamily {
     ) -> ExecutionResult<Self::Handle> {
         match function.runtime_id() {
             ListFunctionId::List(function) => {
-                super::super::function::run_list_list(plan, state, function, inputs)
+                crate::runtime::function::run_list_list(plan, state, function, inputs)
             }
             _ => Err(list_function_mismatch()),
         }
@@ -797,7 +797,7 @@ impl RuntimeTypedList for FunctionFamily {
         function: Self::Function,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle> {
-        super::super::function::run_function_list(plan, state, function, inputs)
+        crate::runtime::function::run_function_list(plan, state, function, inputs)
     }
 
     fn run_value(
@@ -808,7 +808,7 @@ impl RuntimeTypedList for FunctionFamily {
     ) -> ExecutionResult<Self::Handle> {
         match function.runtime_id() {
             ListFunctionId::Function(function) => {
-                super::super::function::run_function_list(plan, state, function, inputs)
+                crate::runtime::function::run_function_list(plan, state, function, inputs)
             }
             _ => Err(list_function_mismatch()),
         }
@@ -828,6 +828,7 @@ impl RuntimeTypedList for FunctionFamily {
 
 #[cfg(test)]
 mod tests {
+    use super::super::super::environment::{BlockEnvironment, RetainedValues};
     use super::{
         BitArrayFamily, BoolFamily, CustomFamily, FloatFamily, FunctionFamily, IntFamily,
         ListFamily, NilFamily, ParameterListFamily, RuntimeTypedList, StringFamily, TupleFamily,
@@ -840,7 +841,6 @@ mod tests {
         StringListTypeId, Terminator, TupleLocalId,
     };
     use crate::plan::{CustomType, CustomTypeName, FunctionType, TypeParameterId, ValueType};
-    use crate::runtime::environment::{BlockEnvironment, RetainedValues};
     use crate::runtime::state::{ListValueId, RuntimeState};
     use crate::runtime::{
         EvaluatedCustomValue, EvaluatedFunctionValue, EvaluatedListFunction, EvaluatedValue,

@@ -1,4 +1,5 @@
-use super::super::{GraphValue, evaluate_constant};
+use super::super::GraphValue;
+use super::super::environment::BlockEnvironment;
 use crate::plan::ValueType;
 use crate::plan::execution::{
     ConstantId, ConstantValue, ExecutionPlan, GraphBitArrayInstruction as BitArrayInstruction,
@@ -8,7 +9,7 @@ use crate::plan::execution::{
     GraphTupleInstruction as TupleInstruction,
     GraphUtfCodepointInstruction as UtfCodepointInstruction, ParamLocal,
 };
-use crate::runtime::environment::BlockEnvironment;
+use crate::runtime::constant::evaluate as evaluate_constant;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedValue, values_equal,
@@ -31,11 +32,11 @@ pub(super) fn int(
         I::Value(value) => Ok(value.clone()),
         I::Constant(id) => constant(plan, state, *id),
         I::Call { function, args } => {
-            super::super::function::run_int(plan, state, *function, environment.retain(args))
+            crate::runtime::function::run_int(plan, state, *function, environment.retain(args))
         }
         I::FunctionCall { function, args } => {
             let function = environment.int_function(*function);
-            super::super::function::run_int(
+            crate::runtime::function::run_int(
                 plan,
                 state,
                 function.runtime_id(),
@@ -106,11 +107,11 @@ pub(super) fn float(
         I::Value(value) => Ok(*value),
         I::Constant(id) => constant(plan, state, *id),
         I::Call { function, args } => {
-            super::super::function::run_float(plan, state, *function, environment.retain(args))
+            crate::runtime::function::run_float(plan, state, *function, environment.retain(args))
         }
         I::FunctionCall { function, args } => {
             let function = environment.float_function(*function);
-            super::super::function::run_float(
+            crate::runtime::function::run_float(
                 plan,
                 state,
                 function.runtime_id(),
@@ -172,11 +173,11 @@ pub(super) fn string(
         I::Value(value) => Ok(value.clone()),
         I::Constant(id) => constant(plan, state, *id),
         I::Call { function, args } => {
-            super::super::function::run_string(plan, state, *function, environment.retain(args))
+            crate::runtime::function::run_string(plan, state, *function, environment.retain(args))
         }
         I::FunctionCall { function, args } => {
             let function = environment.string_function(*function);
-            super::super::function::run_string(
+            crate::runtime::function::run_string(
                 plan,
                 state,
                 function.runtime_id(),
@@ -236,12 +237,15 @@ pub(super) fn bit_array(
     match instruction {
         I::Value(segments) => super::super::bit_array::evaluate(plan, environment, segments),
         I::Constant(id) => constant(plan, state, *id),
-        I::Call { function, args } => {
-            super::super::function::run_bit_array(plan, state, *function, environment.retain(args))
-        }
+        I::Call { function, args } => crate::runtime::function::run_bit_array(
+            plan,
+            state,
+            *function,
+            environment.retain(args),
+        ),
         I::FunctionCall { function, args } => {
             let function = environment.bit_array_function(*function);
-            super::super::function::run_bit_array(
+            crate::runtime::function::run_bit_array(
                 plan,
                 state,
                 function.runtime_id(),
@@ -289,7 +293,7 @@ pub(super) fn utf_codepoint(
     use UtfCodepointInstruction as I;
 
     match instruction {
-        I::Call { function, args } => super::super::function::run_utf_codepoint(
+        I::Call { function, args } => crate::runtime::function::run_utf_codepoint(
             plan,
             state,
             *function,
@@ -297,7 +301,7 @@ pub(super) fn utf_codepoint(
         ),
         I::FunctionCall { function, args } => {
             let function = environment.utf_codepoint_function(*function);
-            super::super::function::run_utf_codepoint(
+            crate::runtime::function::run_utf_codepoint(
                 plan,
                 state,
                 function.runtime_id(),
@@ -354,17 +358,19 @@ pub(super) fn custom(
         )),
         I::Constant(id) => constant(plan, state, *id),
         I::Call { function, args } => {
-            super::super::function::run_custom(plan, state, *function, environment.retain(args))
+            crate::runtime::function::run_custom(plan, state, *function, environment.retain(args))
         }
         I::FunctionCall { function, args } => {
             let function = environment.custom_function(function);
             match function {
-                EvaluatedCustomFunction::Function(function) => super::super::function::run_custom(
-                    plan,
-                    state,
-                    function.runtime_id(),
-                    inputs_with_captures(environment, args, function.captures()),
-                ),
+                EvaluatedCustomFunction::Function(function) => {
+                    crate::runtime::function::run_custom(
+                        plan,
+                        state,
+                        function.runtime_id(),
+                        inputs_with_captures(environment, args, function.captures()),
+                    )
+                }
                 EvaluatedCustomFunction::Constructor(function) => {
                     Ok(EvaluatedCustomValue::from_fields(
                         function.runtime_id(),
@@ -417,11 +423,11 @@ pub(super) fn bool(
         I::Value(value) => Ok(*value),
         I::Constant(id) => constant(plan, state, *id),
         I::Call { function, args } => {
-            super::super::function::run_bool(plan, state, *function, environment.retain(args))
+            crate::runtime::function::run_bool(plan, state, *function, environment.retain(args))
         }
         I::FunctionCall { function, args } => {
             let function = environment.bool_function(*function);
-            super::super::function::run_bool(
+            crate::runtime::function::run_bool(
                 plan,
                 state,
                 function.runtime_id(),
@@ -502,11 +508,11 @@ pub(super) fn nil(
         I::Value => Ok(()),
         I::Constant(id) => constant(plan, state, *id),
         I::Call { function, args } => {
-            super::super::function::run_nil(plan, state, *function, environment.retain(args))
+            crate::runtime::function::run_nil(plan, state, *function, environment.retain(args))
         }
         I::FunctionCall { function, args } => {
             let function = environment.nil_function(*function);
-            super::super::function::run_nil(
+            crate::runtime::function::run_nil(
                 plan,
                 state,
                 function.runtime_id(),
@@ -543,11 +549,11 @@ pub(super) fn tuple(
         I::Value(values) => Ok(environment.values(values).into_vec()),
         I::Constant(id) => constant(plan, state, *id),
         I::Call { function, args } => {
-            super::super::function::run_tuple(plan, state, *function, environment.retain(args))
+            crate::runtime::function::run_tuple(plan, state, *function, environment.retain(args))
         }
         I::FunctionCall { function, args } => {
             let function = environment.tuple_function(*function);
-            super::super::function::run_tuple(
+            crate::runtime::function::run_tuple(
                 plan,
                 state,
                 function.runtime_id(),
@@ -700,7 +706,7 @@ fn inputs_with_captures(
     environment: &BlockEnvironment,
     args: &[ParamLocal],
     captures: &[crate::runtime::EvaluatedCapture],
-) -> crate::runtime::environment::RetainedValues {
+) -> super::super::environment::RetainedValues {
     let mut inputs = environment.retain(args);
     inputs.append_captures(captures);
     inputs
@@ -708,6 +714,7 @@ fn inputs_with_captures(
 
 #[cfg(test)]
 mod tests {
+    use super::super::super::environment::{BlockEnvironment, RetainedValues};
     use super::{ensure_list_index, list_element, tuple_projection};
     use crate::plan::execution::TupleLocalId;
     use crate::plan::{
@@ -718,7 +725,6 @@ mod tests {
         ModulePlan, ReturnBody, ReturnExpr, StringExpr, TupleExpr, ValueType,
         monomorphic_function_instantiation,
     };
-    use crate::runtime::environment::{BlockEnvironment, RetainedValues};
     use crate::runtime::{
         EvaluatedBitArray, EvaluatedCustomValue, EvaluatedFunctionValue, EvaluatedValue,
         ExecutionError, InvariantError, Value,

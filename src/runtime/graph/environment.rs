@@ -80,7 +80,7 @@ pub(super) struct BlockEnvironment {
     values: Box<BlockValues>,
 }
 
-pub(super) struct RetainedValues {
+pub(in crate::runtime) struct RetainedValues {
     values: Box<BlockValues>,
 }
 
@@ -577,13 +577,13 @@ impl BlockEnvironment {
 }
 
 impl RetainedValues {
-    pub(super) fn empty() -> Self {
+    pub(in crate::runtime) fn empty() -> Self {
         Self {
             values: Box::default(),
         }
     }
 
-    pub(super) fn push_evaluated(&mut self, value: EvaluatedValue) {
+    pub(in crate::runtime) fn push_evaluated(&mut self, value: EvaluatedValue) {
         match value {
             EvaluatedValue::Int(value) => self.values.ints.push(value),
             EvaluatedValue::Float(value) => self.values.floats.push(value),
@@ -599,7 +599,7 @@ impl RetainedValues {
         }
     }
 
-    pub(super) fn append_captures(&mut self, captures: &[EvaluatedCapture]) {
+    pub(in crate::runtime) fn append_captures(&mut self, captures: &[EvaluatedCapture]) {
         for capture in captures {
             match capture.kind() {
                 EvaluatedCaptureKind::Int { value, .. } => self.values.ints.push(value.clone()),

@@ -1,10 +1,10 @@
+use super::super::environment::BlockEnvironment;
 use super::value::{constant, custom_projection, list_element, tuple_projection};
 use crate::plan::ValueType;
 use crate::plan::execution::{
     ExecutionPlan, FunctionCapture, FunctionEntry, FunctionGraph, FunctionInstruction,
     FunctionInstructionKind, FunctionTarget, ListFunctionId, ParamLocal,
 };
-use crate::runtime::environment::BlockEnvironment;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::evaluated::{
     EvaluatedCapture, EvaluatedCustomFunction, EvaluatedFunction, EvaluatedFunctionValue,
@@ -49,7 +49,7 @@ pub(super) fn evaluate(
             instruction.type_().clone(),
         )
         .into()),
-        I::Call { function, args } => super::super::function::run_function(
+        I::Call { function, args } => crate::runtime::function::run_function(
             plan,
             state,
             function.clone(),
@@ -59,7 +59,7 @@ pub(super) fn evaluate(
             let function = environment.function_function(function);
             let mut inputs = environment.retain(args);
             inputs.append_captures(function.captures());
-            super::super::function::run_function(plan, state, function.runtime_id(), inputs)
+            crate::runtime::function::run_function(plan, state, function.runtime_id(), inputs)
         }
         I::TupleIndex { tuple, index } => tuple_projection(
             plan,
@@ -527,13 +527,13 @@ fn capture_values(
 
 #[cfg(test)]
 mod tests {
+    use super::super::super::environment::{BlockEnvironment, RetainedValues};
     use super::evaluate;
     use crate::plan::ValueType;
     use crate::plan::execution::{
         FunctionInstructionKind, FunctionReturnFamily, FunctionTarget, GraphListInstruction,
         InstructionKind, RuntimeFunctionId, TupleFunctionId,
     };
-    use crate::runtime::environment::{BlockEnvironment, RetainedValues};
     use crate::runtime::evaluated::{EvaluatedCustomValue, EvaluatedValue};
     use crate::runtime::state::{ListValueId, RuntimeState};
     use crate::runtime::{BitArrayValue, ExecutionError, InvariantError, ListValue, Value};

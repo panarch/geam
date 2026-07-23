@@ -3,13 +3,13 @@ use num_bigint::BigInt;
 use std::collections::HashMap;
 
 use super::bit_array;
+use super::environment::BlockEnvironment;
 use crate::plan::execution::{
     ExecutionPlan, GraphBitArrayBindingPattern, GraphBitArrayPattern, GraphBitArrayPatternSegment,
     GraphBitArrayPatternSize, GraphBitArrayPatternSizeExpr, GraphBitArrayPatternValue,
     GraphBitArrayStringPattern, MatchIntBindingId, MatchPattern, MatchPatternBinding,
     MatchPatternListTail,
 };
-use crate::runtime::environment::BlockEnvironment;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedValue};
 use crate::runtime::state::RuntimeState;
@@ -438,10 +438,10 @@ fn bind_utf_codepoint(
 
 #[cfg(test)]
 mod tests {
+    use super::super::environment::{BlockEnvironment, RetainedValues};
     use super::{MatchPattern, match_pattern};
     use crate::plan::ValueType;
     use crate::plan::execution::{ExecutionPlan, RuntimeFunctionId, Terminator};
-    use crate::runtime::environment::{BlockEnvironment, RetainedValues};
     use crate::runtime::evaluated::{EvaluatedCustomValue, EvaluatedValue};
     use crate::runtime::state::{CustomListAllocation, ListValueId, RuntimeState};
     use crate::runtime::{ExecutionError, InvariantError, Value};

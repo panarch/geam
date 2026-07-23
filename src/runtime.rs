@@ -1,6 +1,7 @@
-mod environment;
+mod constant;
 mod error;
 mod evaluated;
+mod function;
 mod graph;
 mod materialize;
 mod state;
@@ -30,10 +31,56 @@ pub use value::{
     ListValue, ListValueItemTypeMismatch, Value,
 };
 
-use crate::plan::execution::ExecutionPlan;
+use crate::plan::execution::{ExecutionPlan, RuntimeFunctionId};
+use crate::runtime::graph::RetainedValues;
+use crate::runtime::state::RuntimeState;
 
 pub fn run_main(plan: &ExecutionPlan) -> Result<Value, ExecutionError> {
-    graph::run_main(plan)
+    let mut state = RuntimeState::new();
+    let inputs = RetainedValues::empty();
+    let value = match plan.main_runtime() {
+        RuntimeFunctionId::Never(function) => {
+            return function::run_never(plan, &mut state, function, inputs)
+                .map(|never| match never {});
+        }
+        RuntimeFunctionId::Int(function) => {
+            function::run_int(plan, &mut state, function, inputs).map(EvaluatedValue::Int)
+        }
+        RuntimeFunctionId::Float(function) => {
+            function::run_float(plan, &mut state, function, inputs).map(EvaluatedValue::Float)
+        }
+        RuntimeFunctionId::String(function) => {
+            function::run_string(plan, &mut state, function, inputs).map(EvaluatedValue::String)
+        }
+        RuntimeFunctionId::BitArray(function) => {
+            function::run_bit_array(plan, &mut state, function, inputs)
+                .map(EvaluatedValue::BitArray)
+        }
+        RuntimeFunctionId::UtfCodepoint(function) => {
+            function::run_utf_codepoint(plan, &mut state, function, inputs)
+                .map(EvaluatedValue::UtfCodepoint)
+        }
+        RuntimeFunctionId::Custom(function) => {
+            function::run_custom(plan, &mut state, function, inputs).map(EvaluatedValue::Custom)
+        }
+        RuntimeFunctionId::Bool(function) => {
+            function::run_bool(plan, &mut state, function, inputs).map(EvaluatedValue::Bool)
+        }
+        RuntimeFunctionId::Nil(function) => {
+            function::run_nil(plan, &mut state, function, inputs).map(|()| EvaluatedValue::Nil)
+        }
+        RuntimeFunctionId::Tuple { id, .. } => {
+            function::run_tuple(plan, &mut state, id, inputs).map(EvaluatedValue::Tuple)
+        }
+        RuntimeFunctionId::List(function) => {
+            function::run_list(plan, &mut state, function, inputs).map(EvaluatedValue::List)
+        }
+        RuntimeFunctionId::Function { id, .. } => {
+            function::run_function(plan, &mut state, id, inputs).map(EvaluatedValue::Function)
+        }
+    }?;
+    state.drain_releases();
+    Ok(materialize::value(plan, &state, value))
 }
 
 #[cfg(test)]
@@ -83,6 +130,15 @@ pub fn main() {
             ),
             int(1),
         );
+    }
+
+    #[test]
+    fn run_main_materializes_utf_codepoint_and_nil_returns() {
+        assert_eq!(
+            run_src("pub fn main() { let assert <<value:utf8_codepoint>> = <<65>> value }"),
+            Value::UtfCodepoint('A'),
+        );
+        assert_eq!(run_src("pub fn main() { Nil }"), Value::Nil);
     }
 
     #[test]
