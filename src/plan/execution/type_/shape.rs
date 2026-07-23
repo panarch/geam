@@ -495,7 +495,7 @@ pub fn main() -> Wrapper(#(
         );
         let shape = plan
             .custom_function(plan.custom_function_id(1))
-            .graph()
+            .body()
             .signature_shape();
 
         assert_eq!(
@@ -567,7 +567,7 @@ pub fn main() { Phantom }
         let RuntimeFunctionId::Custom(id) = plan.main_runtime() else {
             panic!("expected a custom main function");
         };
-        plan.custom_function(id).graph().body_shape().shape_id()
+        plan.custom_function(id).body().body_shape().shape_id()
     }
 
     fn function_shape(

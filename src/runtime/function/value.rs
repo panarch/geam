@@ -26,7 +26,7 @@ pub(in crate::runtime) fn run_never(
         function,
         inputs,
         |plan, state, function, inputs| {
-            evaluate(plan, state, plan.never_function(*function).graph(), inputs)
+            evaluate(plan, state, plan.never_function(*function).body(), inputs)
         },
         |_, _, target| target,
     )
@@ -44,7 +44,7 @@ pub(in crate::runtime) fn run_int(
         function,
         inputs,
         |plan, state, function, inputs| {
-            evaluate(plan, state, plan.int_function(*function).graph(), inputs)
+            evaluate(plan, state, plan.int_function(*function).body(), inputs)
         },
         |_, _, target| target,
     )
@@ -62,7 +62,7 @@ pub(in crate::runtime) fn run_float(
         function,
         inputs,
         |plan, state, function, inputs| {
-            evaluate(plan, state, plan.float_function(*function).graph(), inputs)
+            evaluate(plan, state, plan.float_function(*function).body(), inputs)
         },
         |_, _, target| target,
     )
@@ -80,7 +80,7 @@ pub(in crate::runtime) fn run_string(
         function,
         inputs,
         |plan, state, function, inputs| {
-            evaluate(plan, state, plan.string_function(*function).graph(), inputs)
+            evaluate(plan, state, plan.string_function(*function).body(), inputs)
         },
         |_, _, target| target,
     )
@@ -101,7 +101,7 @@ pub(in crate::runtime) fn run_bit_array(
             evaluate(
                 plan,
                 state,
-                plan.bit_array_function(*function).graph(),
+                plan.bit_array_function(*function).body(),
                 inputs,
             )
         },
@@ -124,7 +124,7 @@ pub(in crate::runtime) fn run_utf_codepoint(
             evaluate(
                 plan,
                 state,
-                plan.utf_codepoint_function(*function).graph(),
+                plan.utf_codepoint_function(*function).body(),
                 inputs,
             )
         },
@@ -147,11 +147,11 @@ pub(in crate::runtime) fn run_custom(
             evaluate(
                 plan,
                 state,
-                plan.custom_function(*function).graph().body(),
+                plan.custom_function(*function).body().function_body(),
                 inputs,
             )
         },
-        |plan, function, target| plan.custom_function(*function).graph().function_id(target),
+        |plan, function, target| plan.custom_function(*function).body().function_id(target),
     )
 }
 
@@ -167,7 +167,7 @@ pub(in crate::runtime) fn run_bool(
         function,
         inputs,
         |plan, state, function, inputs| {
-            evaluate(plan, state, plan.bool_function(*function).graph(), inputs)
+            evaluate(plan, state, plan.bool_function(*function).body(), inputs)
         },
         |_, _, target| target,
     )
@@ -185,7 +185,7 @@ pub(in crate::runtime) fn run_nil(
         function,
         inputs,
         |plan, state, function, inputs| {
-            evaluate(plan, state, plan.nil_function(*function).graph(), inputs)
+            evaluate(plan, state, plan.nil_function(*function).body(), inputs)
         },
         |_, _, target| target,
     )
@@ -203,7 +203,7 @@ pub(in crate::runtime) fn run_tuple(
         function,
         inputs,
         |plan, state, function, inputs| {
-            evaluate(plan, state, plan.tuple_function(*function).graph(), inputs)
+            evaluate(plan, state, plan.tuple_function(*function).body(), inputs)
         },
         |_, _, target| target,
     )

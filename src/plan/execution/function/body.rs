@@ -1,6 +1,6 @@
 use crate::plan::execution::explain::{ExplainContext, FunctionLabel};
 use crate::plan::execution::function::FunctionEntry;
-use crate::plan::execution::graph::{Block, BlockId, Graph, GraphExitId};
+use crate::plan::execution::graph::{BlockGraph, BlockGraphExitId};
 use crate::plan::execution::graph::{ExplainLocal, write_graph};
 use crate::plan::execution::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionFunctionId,
@@ -14,12 +14,12 @@ use crate::plan::execution::{
     UtfCodepointListFunctionId,
 };
 
-pub(crate) struct FunctionGraph<Return, TailCall> {
-    graph: Graph,
-    exits: Box<[FunctionGraphExit<Return, TailCall>]>,
+pub(crate) struct FunctionBody<Return, TailCall> {
+    block_graph: BlockGraph,
+    exits: Box<[FunctionExit<Return, TailCall>]>,
 }
 
-pub(crate) enum FunctionGraphExit<Return, TailCall> {
+pub(crate) enum FunctionExit<Return, TailCall> {
     Return(Return),
     TailCall {
         function: TailCall,
@@ -27,35 +27,22 @@ pub(crate) enum FunctionGraphExit<Return, TailCall> {
     },
 }
 
-impl<Return, TailCall> FunctionGraph<Return, TailCall> {
+impl<Return, TailCall> FunctionBody<Return, TailCall> {
     pub(in crate::plan::execution) fn from_parts(
-        graph: Graph,
-        exits: Vec<FunctionGraphExit<Return, TailCall>>,
+        block_graph: BlockGraph,
+        exits: Vec<FunctionExit<Return, TailCall>>,
     ) -> Self {
         Self {
-            graph,
+            block_graph,
             exits: exits.into_boxed_slice(),
         }
     }
 
-    pub(crate) fn entry(&self) -> BlockId {
-        self.graph.entry()
+    pub(crate) fn block_graph(&self) -> &BlockGraph {
+        &self.block_graph
     }
 
-    #[cfg(test)]
-    pub(crate) fn blocks(&self) -> &[Block] {
-        self.graph.blocks()
-    }
-
-    pub(crate) fn block(&self, id: BlockId) -> &Block {
-        self.graph.block(id)
-    }
-
-    pub(crate) fn graph(&self) -> &Graph {
-        &self.graph
-    }
-
-    pub(crate) fn exit(&self, id: GraphExitId) -> &FunctionGraphExit<Return, TailCall> {
+    pub(crate) fn exit(&self, id: BlockGraphExitId) -> &FunctionExit<Return, TailCall> {
         &self.exits[id.index()]
     }
 }
@@ -69,7 +56,7 @@ pub(in crate::plan::execution::function) trait ExplainFunctionBody {
     );
 }
 
-impl<Return, TailCall> ExplainFunctionBody for FunctionGraph<Return, TailCall>
+impl<Return, TailCall> ExplainFunctionBody for FunctionBody<Return, TailCall>
 where
     Return: ExplainLocal,
     TailCall: TailFunctionIndex,
@@ -82,7 +69,7 @@ where
     ) {
         write_graph(
             context,
-            self.graph(),
+            self.block_graph(),
             entry.params(self),
             entry.captures(self),
             &mut |context, exit| {
@@ -94,18 +81,18 @@ where
 
 fn write_function_exit<Return, TailCall>(
     context: &mut ExplainContext<'_, '_>,
-    exit: &FunctionGraphExit<Return, TailCall>,
+    exit: &FunctionExit<Return, TailCall>,
     family: &'static str,
 ) where
     Return: ExplainLocal,
     TailCall: TailFunctionIndex,
 {
     match exit {
-        FunctionGraphExit::Return(value) => {
+        FunctionExit::Return(value) => {
             context.push_str("return ");
             context.write(value);
         }
-        FunctionGraphExit::TailCall { function, args } => {
+        FunctionExit::TailCall { function, args } => {
             context.push_str("tail ");
             FunctionLabel::new(family, function.tail_function_index()).write(context.output());
             context.push_str(" args=");
@@ -546,14 +533,14 @@ pub fn main() { loop(2) }
 
     fn assert_explanation(source: &str, expected: &str) {
         explain::assert_rendered(source, expected, |plan, output| {
-            let graph = plan.int_function(IntFunctionId(1)).graph();
+            let body = plan.int_function(IntFunctionId(1)).body();
             let mut context = explain::ExplainContext::new(plan, output);
-            for block in graph.blocks() {
+            for block in body.block_graph().blocks() {
                 if let Terminator::Exit(exit) = block.terminator() {
                     if !context.output().is_empty() {
                         context.push_str(" | ");
                     }
-                    write_function_exit(&mut context, graph.exit(*exit), "int");
+                    write_function_exit(&mut context, body.exit(*exit), "int");
                 }
             }
         });

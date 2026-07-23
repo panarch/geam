@@ -29,7 +29,7 @@ pub(in crate::runtime) fn run_parameter_list(
             evaluate(
                 plan,
                 state,
-                plan.parameter_list_function(*function).graph(),
+                plan.parameter_list_function(*function).body(),
                 inputs,
             )
         },
@@ -52,7 +52,7 @@ pub(in crate::runtime) fn run_parameter_list_list(
             evaluate(
                 plan,
                 state,
-                plan.parameter_list_list_function(*function).graph(),
+                plan.parameter_list_list_function(*function).body(),
                 inputs,
             )
         },
@@ -75,7 +75,7 @@ pub(in crate::runtime) fn run_int_list(
             evaluate(
                 plan,
                 state,
-                plan.int_list_function(*function).graph(),
+                plan.int_list_function(*function).body(),
                 inputs,
             )
         },
@@ -98,7 +98,7 @@ pub(in crate::runtime) fn run_string_list(
             evaluate(
                 plan,
                 state,
-                plan.string_list_function(*function).graph(),
+                plan.string_list_function(*function).body(),
                 inputs,
             )
         },
@@ -121,7 +121,7 @@ pub(in crate::runtime) fn run_bit_array_list(
             evaluate(
                 plan,
                 state,
-                plan.bit_array_list_function(*function).graph(),
+                plan.bit_array_list_function(*function).body(),
                 inputs,
             )
         },
@@ -144,7 +144,7 @@ pub(in crate::runtime) fn run_utf_codepoint_list(
             evaluate(
                 plan,
                 state,
-                plan.utf_codepoint_list_function(*function).graph(),
+                plan.utf_codepoint_list_function(*function).body(),
                 inputs,
             )
         },
@@ -167,7 +167,7 @@ pub(in crate::runtime) fn run_custom_list(
             evaluate(
                 plan,
                 state,
-                plan.custom_list_function(*function).graph(),
+                plan.custom_list_function(*function).body(),
                 inputs,
             )
         },
@@ -190,7 +190,7 @@ pub(in crate::runtime) fn run_float_list(
             evaluate(
                 plan,
                 state,
-                plan.float_list_function(*function).graph(),
+                plan.float_list_function(*function).body(),
                 inputs,
             )
         },
@@ -213,7 +213,7 @@ pub(in crate::runtime) fn run_bool_list(
             evaluate(
                 plan,
                 state,
-                plan.bool_list_function(*function).graph(),
+                plan.bool_list_function(*function).body(),
                 inputs,
             )
         },
@@ -236,7 +236,7 @@ pub(in crate::runtime) fn run_nil_list(
             evaluate(
                 plan,
                 state,
-                plan.nil_list_function(*function).graph(),
+                plan.nil_list_function(*function).body(),
                 inputs,
             )
         },
@@ -259,7 +259,7 @@ pub(in crate::runtime) fn run_tuple_list(
             evaluate(
                 plan,
                 state,
-                plan.tuple_list_function(*function).graph(),
+                plan.tuple_list_function(*function).body(),
                 inputs,
             )
         },
@@ -282,7 +282,7 @@ pub(in crate::runtime) fn run_list_list(
             evaluate(
                 plan,
                 state,
-                plan.list_list_function(*function).graph(),
+                plan.list_list_function(*function).body(),
                 inputs,
             )
         },
@@ -305,7 +305,7 @@ pub(in crate::runtime) fn run_function_list(
             evaluate(
                 plan,
                 state,
-                plan.function_list_function(*function).graph(),
+                plan.function_list_function(*function).body(),
                 inputs,
             )
         },

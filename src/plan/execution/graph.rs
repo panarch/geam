@@ -17,7 +17,7 @@ pub(crate) use block::{
     Signedness, SourceStop, SourceStopKind, StringInstruction, StringSwitch, Terminator,
     TupleInstruction, TypedListInstruction, UtfCodepointInstruction,
 };
-pub(crate) use exit::GraphExitId;
+pub(crate) use exit::BlockGraphExitId;
 pub(crate) use value::{
     BitArrayFunctionLocalId, BitArrayListFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
     BoolFunctionLocalId, BoolListFunctionLocalId, BoolListLocalId, BoolLocalId,
@@ -38,12 +38,12 @@ pub(in crate::plan::execution) use value::{ExplainLocal, write_locals};
 
 use crate::plan::execution::explain::ExplainContext;
 
-pub(crate) struct Graph {
+pub(crate) struct BlockGraph {
     entry: BlockId,
     blocks: Box<[Block]>,
 }
 
-impl Graph {
+impl BlockGraph {
     pub(in crate::plan::execution) fn from_parts(entry: BlockId, blocks: Vec<Block>) -> Self {
         Self {
             entry,
@@ -66,10 +66,10 @@ impl Graph {
 
 pub(in crate::plan::execution) fn write_graph(
     context: &mut ExplainContext<'_, '_>,
-    graph: &Graph,
+    graph: &BlockGraph,
     entry_params: &[ParamSlot],
     entry_captures: &[ParamSlot],
-    write_exit: &mut dyn FnMut(&mut ExplainContext<'_, '_>, GraphExitId),
+    write_exit: &mut dyn FnMut(&mut ExplainContext<'_, '_>, BlockGraphExitId),
 ) {
     context.push_str("  entry b");
     context.push_str(&graph.entry().index().to_string());
@@ -113,11 +113,11 @@ pub fn main() { choose(True) }
     fn assert_explanation(source: &str, expected: &str) {
         explain::assert_rendered(source, expected, |plan, output| {
             let function = plan.int_function(IntFunctionId(1));
-            let body = function.graph();
+            let body = function.body();
             let mut context = explain::ExplainContext::new(plan, output);
             write_graph(
                 &mut context,
-                body.graph(),
+                body.block_graph(),
                 function.entry().params(body),
                 function.entry().captures(body),
                 &mut |context, exit| {
@@ -132,11 +132,11 @@ pub fn main() { choose(True) }
 #[cfg(test)]
 mod tests {
     use super::{
-        BlockId, Edge, GraphExitId, Instruction, InstructionKind, IntInstruction, MatchEdge,
+        BlockGraphExitId, BlockId, Edge, Instruction, InstructionKind, IntInstruction, MatchEdge,
         MatchEdgeArgument, MatchPattern, MatchPatternList, Terminator,
     };
     use crate::plan::execution::{
-        BoolLocalId, ExecutionPlan, FunctionGraph, FunctionGraphExit, IntFunctionId, IntLocalId,
+        BoolLocalId, ExecutionPlan, FunctionBody, FunctionExit, IntFunctionId, IntLocalId,
         ListLocal, ParamLocal,
     };
 
@@ -162,14 +162,15 @@ pub fn main() { choose(True, 10) }
 "#,
         );
         let function = plan.int_function(IntFunctionId(1));
-        let graph = function.graph();
+        let body = function.body();
+        let block_graph = body.block_graph();
 
-        assert_eq!(graph.entry(), BlockId::new(0));
-        assert_eq!(graph.blocks().len(), 4);
+        assert_eq!(block_graph.entry(), BlockId::new(0));
+        assert_eq!(block_graph.blocks().len(), 4);
         assert_eq!(
             function
                 .entry()
-                .params(graph)
+                .params(body)
                 .iter()
                 .map(|slot| slot.local())
                 .collect::<Vec<_>>(),
@@ -179,7 +180,7 @@ pub fn main() { choose(True, 10) }
             ],
         );
 
-        let entry = graph.block(BlockId::new(0));
+        let entry = block_graph.block(BlockId::new(0));
         assert!(entry.instructions().is_empty());
         let (subject, true_, false_) = bool_branch(entry.terminator());
         assert_eq!(subject, BoolLocalId(0));
@@ -188,9 +189,9 @@ pub fn main() { choose(True, 10) }
         assert_eq!(true_.args(), &[ParamLocal::Int(IntLocalId(0))]);
         assert_eq!(false_.args(), &[ParamLocal::Int(IntLocalId(0))]);
 
-        assert_branch_add_and_jump(&plan, graph, BlockId::new(1), 1, BlockId::new(2));
+        assert_branch_add_and_jump(&plan, body, BlockId::new(1), 1, BlockId::new(2));
 
-        let merge = graph.block(BlockId::new(2));
+        let merge = block_graph.block(BlockId::new(2));
         assert_eq!(
             merge
                 .params()
@@ -209,9 +210,9 @@ pub fn main() { choose(True, 10) }
             int_binary_operands(multiply, IntBinaryOperation::Multiply),
             (IntLocalId(0), IntLocalId(1)),
         );
-        assert_eq!(returned_int(graph, merge.terminator()), IntLocalId(2));
+        assert_eq!(returned_int(body, merge.terminator()), IntLocalId(2));
 
-        assert_branch_add_and_jump(&plan, graph, BlockId::new(3), 2, BlockId::new(2));
+        assert_branch_add_and_jump(&plan, body, BlockId::new(3), 2, BlockId::new(2));
     }
 
     #[test]
@@ -224,10 +225,11 @@ pub fn main() {
 }
 "#,
         );
-        let graph = plan.int_function(IntFunctionId(0)).graph();
+        let body = plan.int_function(IntFunctionId(0)).body();
+        let block_graph = body.block_graph();
 
-        assert_eq!(graph.blocks().len(), 3);
-        let entry = graph.block(BlockId::new(0));
+        assert_eq!(block_graph.blocks().len(), 3);
+        let entry = block_graph.block(BlockId::new(0));
         let (pattern, success, failure) = match_terminator(entry.terminator());
         let list = list_pattern(pattern);
         assert_eq!(list.elements().len(), 2);
@@ -242,7 +244,7 @@ pub fn main() {
         assert_eq!(failure.args().len(), 1);
         let failure_subject = list_local(&failure.args()[0]);
 
-        let success_block = graph.block(success.target());
+        let success_block = block_graph.block(success.target());
         assert_eq!(
             success_block
                 .params()
@@ -260,7 +262,7 @@ pub fn main() {
             (IntLocalId(0), IntLocalId(1)),
         );
 
-        let failure_block = graph.block(failure.target());
+        let failure_block = block_graph.block(failure.target());
         assert_eq!(failure_block.params().len(), 1);
         assert_eq!(
             failure_block.params()[0].local(),
@@ -281,8 +283,9 @@ pub fn main() {
 }
 "#,
         );
-        let graph = plan.int_function(IntFunctionId(0)).graph();
-        let entry = graph.block(BlockId::new(0));
+        let body = plan.int_function(IntFunctionId(0)).body();
+        let block_graph = body.block_graph();
+        let entry = block_graph.block(BlockId::new(0));
         let (pattern, success, _) = match_terminator(entry.terminator());
         let list = list_pattern(pattern);
         assert_eq!(list.elements().len(), 2);
@@ -291,14 +294,14 @@ pub fn main() {
         assert_eq!(success.args().len(), 1);
         assert_eq!(binding_edge_argument(&success.args()[0]), 0);
 
-        let success_block = graph.block(success.target());
+        let success_block = block_graph.block(success.target());
         assert_eq!(success_block.params().len(), 1);
         assert_eq!(
             success_block.params()[0].local(),
             &ParamLocal::Int(IntLocalId(0)),
         );
         assert_eq!(
-            returned_int(graph, success_block.terminator()),
+            returned_int(body, success_block.terminator()),
             IntLocalId(0)
         );
     }
@@ -306,13 +309,13 @@ pub fn main() {
     #[test]
     #[should_panic(expected = "fixture should contain a Bool branch")]
     fn bool_branch_rejects_the_wrong_fixture_shape() {
-        bool_branch(&Terminator::Exit(GraphExitId::new(0)));
+        bool_branch(&Terminator::Exit(BlockGraphExitId::new(0)));
     }
 
     #[test]
     #[should_panic(expected = "fixture should contain a match terminator")]
     fn match_terminator_rejects_the_wrong_fixture_shape() {
-        match_terminator(&Terminator::Exit(GraphExitId::new(0)));
+        match_terminator(&Terminator::Exit(BlockGraphExitId::new(0)));
     }
 
     #[test]
@@ -343,9 +346,9 @@ pub fn main() {
     #[should_panic(expected = "fixture should contain the requested Int binary instruction")]
     fn int_binary_operands_rejects_the_wrong_fixture_shape() {
         let plan = execution_plan("pub fn main() { 1 }");
-        let graph = plan.int_function(IntFunctionId(0)).graph();
+        let block_graph = plan.int_function(IntFunctionId(0)).body().block_graph();
         int_binary_operands(
-            &graph.block(graph.entry()).instructions()[0],
+            &block_graph.block(block_graph.entry()).instructions()[0],
             IntBinaryOperation::Add,
         );
     }
@@ -354,17 +357,17 @@ pub fn main() {
     #[should_panic(expected = "fixture should contain an Int value instruction")]
     fn int_value_rejects_the_wrong_fixture_shape() {
         let plan = execution_plan("pub fn main() { 1 + 2 }");
-        let graph = plan.int_function(IntFunctionId(0)).graph();
-        int_value(&graph.block(graph.entry()).instructions()[2]);
+        let block_graph = plan.int_function(IntFunctionId(0)).body().block_graph();
+        int_value(&block_graph.block(block_graph.entry()).instructions()[2]);
     }
 
     #[test]
     #[should_panic(expected = "fixture should return an Int local")]
     fn returned_int_rejects_the_wrong_fixture_shape() {
         let plan = execution_plan("pub fn main() { 1 }");
-        let graph = plan.int_function(IntFunctionId(0)).graph();
+        let body = plan.int_function(IntFunctionId(0)).body();
         returned_int(
-            graph,
+            body,
             &Terminator::SourceStop(super::SourceStop::new(
                 super::SourceStopKind::Panic,
                 None,
@@ -382,30 +385,31 @@ fn loop(value: Int) -> Int { loop(value) }
 pub fn main() { loop(1) }
 "#,
         );
-        let graph = plan.int_function(IntFunctionId(0)).graph();
-        returned_int(graph, graph.block(graph.entry()).terminator());
+        let body = plan.int_function(IntFunctionId(0)).body();
+        let block_graph = body.block_graph();
+        returned_int(body, block_graph.block(block_graph.entry()).terminator());
     }
 
     #[test]
     #[should_panic(expected = "fixture should contain a jump terminator")]
     fn jump_rejects_the_wrong_fixture_shape() {
-        jump(&Terminator::Exit(GraphExitId::new(0)));
+        jump(&Terminator::Exit(BlockGraphExitId::new(0)));
     }
 
     #[test]
     #[should_panic(expected = "fixture should contain a let-assert panic")]
     fn let_assert_panic_rejects_the_wrong_fixture_shape() {
-        let_assert_panic(&Terminator::Exit(GraphExitId::new(0)));
+        let_assert_panic(&Terminator::Exit(BlockGraphExitId::new(0)));
     }
 
     fn assert_branch_add_and_jump(
         plan: &ExecutionPlan,
-        graph: &FunctionGraph<IntLocalId, IntFunctionId>,
+        body: &FunctionBody<IntLocalId, IntFunctionId>,
         block_id: BlockId,
         addend: i64,
         target: BlockId,
     ) {
-        let block = graph.block(block_id);
+        let block = body.block_graph().block(block_id);
         assert_eq!(
             block
                 .params()
@@ -511,13 +515,13 @@ pub fn main() { loop(1) }
     }
 
     fn returned_int(
-        graph: &FunctionGraph<IntLocalId, IntFunctionId>,
+        body: &FunctionBody<IntLocalId, IntFunctionId>,
         terminator: &Terminator,
     ) -> IntLocalId {
         match terminator {
-            Terminator::Exit(exit) => match graph.exit(*exit) {
-                FunctionGraphExit::Return(value) => *value,
-                FunctionGraphExit::TailCall { .. } => {
+            Terminator::Exit(exit) => match body.exit(*exit) {
+                FunctionExit::Return(value) => *value,
+                FunctionExit::TailCall { .. } => {
                     panic!("fixture should return an Int local")
                 }
             },

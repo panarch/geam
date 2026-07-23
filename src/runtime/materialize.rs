@@ -919,14 +919,14 @@ pub fn main() {
         let custom_function_param = only_param(
             custom_function_owner
                 .entry()
-                .params(custom_function_owner.graph()),
+                .params(custom_function_owner.body()),
         );
         let custom_function_local = custom_function_local(custom_function_param.local());
         let function_function_owner = plan.int_function(IntFunctionId(2));
         let function_function_param = only_param(
             function_function_owner
                 .entry()
-                .params(function_function_owner.graph()),
+                .params(function_function_owner.body()),
         );
         let function_function_local = function_function_local(function_function_param.local());
         let int_list = state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
@@ -969,7 +969,11 @@ pub fn main() {
             list_type: plan.int_list_function_id(0).type_id(),
         };
         let custom_owner = plan.custom_function(plan.custom_function_id(1));
-        let custom_param = only_param(custom_owner.entry().params(custom_owner.graph().body()));
+        let custom_param = only_param(
+            custom_owner
+                .entry()
+                .params(custom_owner.body().function_body()),
+        );
         let custom_local = custom_local(custom_param.local());
 
         let captures = [

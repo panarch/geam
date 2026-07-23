@@ -706,14 +706,32 @@ mod tests {
         let lowered = super::super::super::freeze::freeze(graph, &mut context);
 
         assert_eq!(lowered.parameter_count, 1);
-        assert_eq!(lowered.body.blocks().len(), 1);
-        assert_eq!(lowered.body.block(lowered.body.entry()).params().len(), 2,);
+        assert_eq!(lowered.body.block_graph().blocks().len(), 1);
         assert_eq!(
-            lowered.body.block(lowered.body.entry()).params()[0].local(),
+            lowered
+                .body
+                .block_graph()
+                .block(lowered.body.block_graph().entry())
+                .params()
+                .len(),
+            2,
+        );
+        assert_eq!(
+            lowered
+                .body
+                .block_graph()
+                .block(lowered.body.block_graph().entry())
+                .params()[0]
+                .local(),
             &ParamLocal::Int(crate::plan::execution::IntLocalId(0)),
         );
         assert_eq!(
-            lowered.body.block(lowered.body.entry()).params()[1].local(),
+            lowered
+                .body
+                .block_graph()
+                .block(lowered.body.block_graph().entry())
+                .params()[1]
+                .local(),
             &ParamLocal::Int(crate::plan::execution::IntLocalId(1)),
         );
     }
@@ -806,8 +824,12 @@ mod tests {
             Representability::Inhabited(()),
         );
         let lowered = super::super::super::freeze::freeze(graph, &mut context);
-        assert_eq!(lowered.body.blocks().len(), 1);
-        let terminator = lowered.body.block(lowered.body.entry()).terminator();
+        assert_eq!(lowered.body.block_graph().blocks().len(), 1);
+        let terminator = lowered
+            .body
+            .block_graph()
+            .block(lowered.body.block_graph().entry())
+            .terminator();
         assert_eq!(source_stop_kind(terminator), SourceStopKind::Panic);
 
         let false_body = ReturnBody::<IntExpr, FunctionInstantiation>::bool_case(
@@ -830,9 +852,15 @@ mod tests {
             Representability::Inhabited(()),
         );
         let lowered = super::super::super::freeze::freeze(graph, &mut context);
-        assert_eq!(lowered.body.blocks().len(), 1);
+        assert_eq!(lowered.body.block_graph().blocks().len(), 1);
         assert_eq!(
-            source_stop_kind(lowered.body.block(lowered.body.entry()).terminator()),
+            source_stop_kind(
+                lowered
+                    .body
+                    .block_graph()
+                    .block(lowered.body.block_graph().entry())
+                    .terminator()
+            ),
             SourceStopKind::Panic,
         );
 
@@ -859,17 +887,22 @@ mod tests {
             Representability::Inhabited(()),
         );
         let lowered = super::super::super::freeze::freeze(graph, &mut context);
-        assert_eq!(lowered.body.blocks().len(), 3);
-        let (true_, false_) =
-            bool_branch_targets(lowered.body.block(lowered.body.entry()).terminator());
+        assert_eq!(lowered.body.block_graph().blocks().len(), 3);
+        let (true_, false_) = bool_branch_targets(
+            lowered
+                .body
+                .block_graph()
+                .block(lowered.body.block_graph().entry())
+                .terminator(),
+        );
         assert_eq!(true_, BlockId::new(1));
         assert_eq!(false_, BlockId::new(2));
         assert_eq!(
-            source_stop_kind(lowered.body.block(true_).terminator()),
+            source_stop_kind(lowered.body.block_graph().block(true_).terminator()),
             SourceStopKind::Panic,
         );
         assert_eq!(
-            source_stop_kind(lowered.body.block(false_).terminator()),
+            source_stop_kind(lowered.body.block_graph().block(false_).terminator()),
             SourceStopKind::Panic,
         );
 
@@ -967,20 +1000,24 @@ mod tests {
                 Representability::Inhabited(()),
             );
             let lowered = super::super::super::freeze::freeze(graph, &mut context);
-            assert_eq!(lowered.body.blocks().len(), 3);
+            assert_eq!(lowered.body.block_graph().blocks().len(), 3);
 
             let (branch, fallback) = switch_targets(
                 expected,
-                lowered.body.block(lowered.body.entry()).terminator(),
+                lowered
+                    .body
+                    .block_graph()
+                    .block(lowered.body.block_graph().entry())
+                    .terminator(),
             );
             assert_eq!(branch, BlockId::new(1));
             assert_eq!(fallback, BlockId::new(2));
             assert_eq!(
-                source_stop_kind(lowered.body.block(branch).terminator()),
+                source_stop_kind(lowered.body.block_graph().block(branch).terminator()),
                 SourceStopKind::Panic,
             );
             assert_eq!(
-                source_stop_kind(lowered.body.block(fallback).terminator()),
+                source_stop_kind(lowered.body.block_graph().block(fallback).terminator()),
                 SourceStopKind::Panic,
             );
         }
@@ -1009,7 +1046,10 @@ mod tests {
             Representability::Inhabited(()),
         );
         let lowered = super::super::super::freeze::freeze(graph, &mut context);
-        let entry = lowered.body.block(lowered.body.entry());
+        let entry = lowered
+            .body
+            .block_graph()
+            .block(lowered.body.block_graph().entry());
         assert_eq!(entry.instructions().len(), 1);
         assert_eq!(source_stop_kind(entry.terminator()), SourceStopKind::Panic);
 
@@ -1037,7 +1077,10 @@ mod tests {
         );
         assert_eq!(
             lowered.map(|lowered| {
-                let entry = lowered.body.block(lowered.body.entry());
+                let entry = lowered
+                    .body
+                    .block_graph()
+                    .block(lowered.body.block_graph().entry());
                 (
                     entry.instructions().len(),
                     source_stop_kind(entry.terminator()),
@@ -1070,7 +1113,10 @@ mod tests {
             Representability::Inhabited(()),
         );
         let lowered = super::super::super::freeze::freeze(graph, &mut context);
-        let entry = lowered.body.block(lowered.body.entry());
+        let entry = lowered
+            .body
+            .block_graph()
+            .block(lowered.body.block_graph().entry());
         assert_eq!(entry.instructions().len(), 1);
         assert_eq!(source_stop_kind(entry.terminator()), SourceStopKind::Panic);
     }
@@ -1078,9 +1124,9 @@ mod tests {
     #[test]
     #[should_panic(expected = "fixture should contain a Bool branch")]
     fn bool_branch_targets_rejects_the_wrong_fixture_shape() {
-        bool_branch_targets(&Terminator::Exit(crate::plan::execution::GraphExitId::new(
-            0,
-        )));
+        bool_branch_targets(&Terminator::Exit(
+            crate::plan::execution::BlockGraphExitId::new(0),
+        ));
     }
 
     #[test]
@@ -1088,16 +1134,16 @@ mod tests {
     fn switch_targets_rejects_the_wrong_fixture_shape() {
         switch_targets(
             ExpectedSwitch::Int,
-            &Terminator::Exit(crate::plan::execution::GraphExitId::new(0)),
+            &Terminator::Exit(crate::plan::execution::BlockGraphExitId::new(0)),
         );
     }
 
     #[test]
     #[should_panic(expected = "fixture should contain a source stop")]
     fn source_stop_kind_rejects_the_wrong_fixture_shape() {
-        source_stop_kind(&Terminator::Exit(crate::plan::execution::GraphExitId::new(
-            0,
-        )));
+        source_stop_kind(&Terminator::Exit(
+            crate::plan::execution::BlockGraphExitId::new(0),
+        ));
     }
 
     fn source_stop_kind(terminator: &Terminator) -> SourceStopKind {

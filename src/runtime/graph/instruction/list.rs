@@ -1547,12 +1547,13 @@ pub fn main() {
         plan: &crate::ExecutionPlan,
         function: CustomFunctionId,
     ) -> CustomLocal {
-        let return_ = plan.custom_function(function).graph();
-        let graph = return_.body();
-        let Terminator::Exit(exit) = graph.block(graph.entry()).terminator() else {
+        let return_ = plan.custom_function(function).body();
+        let body = return_.function_body();
+        let block_graph = body.block_graph();
+        let Terminator::Exit(exit) = block_graph.block(block_graph.entry()).terminator() else {
             panic!("custom main should return its constructed value directly");
         };
-        let crate::plan::execution::FunctionGraphExit::Return(local) = graph.exit(*exit) else {
+        let crate::plan::execution::FunctionExit::Return(local) = body.exit(*exit) else {
             panic!("custom main should return its constructed value directly");
         };
         *local

@@ -2,7 +2,7 @@ use super::super::environment::BlockEnvironment;
 use super::value::{constant, custom_projection, list_element, tuple_projection};
 use crate::plan::ValueType;
 use crate::plan::execution::{
-    ExecutionPlan, FunctionCapture, FunctionEntry, FunctionGraph, FunctionInstruction,
+    ExecutionPlan, FunctionBody, FunctionCapture, FunctionEntry, FunctionInstruction,
     FunctionInstructionKind, FunctionTarget, ListFunctionId, ParamLocal,
 };
 use crate::runtime::error::ExecutionResult;
@@ -181,43 +181,43 @@ fn target_params(plan: &ExecutionPlan, target: &FunctionTarget) -> Vec<ParamLoca
         FunctionTarget::Generic(_) => Vec::new(),
         FunctionTarget::Never(function) => {
             let function = plan.never_function(*function);
-            graph_params(function.entry(), function.graph())
+            graph_params(function.entry(), function.body())
         }
         FunctionTarget::Int(function) => {
             let function = plan.int_function(*function);
-            graph_params(function.entry(), function.graph())
+            graph_params(function.entry(), function.body())
         }
         FunctionTarget::Float(function) => {
             let function = plan.float_function(*function);
-            graph_params(function.entry(), function.graph())
+            graph_params(function.entry(), function.body())
         }
         FunctionTarget::String(function) => {
             let function = plan.string_function(*function);
-            graph_params(function.entry(), function.graph())
+            graph_params(function.entry(), function.body())
         }
         FunctionTarget::BitArray(function) => {
             let function = plan.bit_array_function(*function);
-            graph_params(function.entry(), function.graph())
+            graph_params(function.entry(), function.body())
         }
         FunctionTarget::UtfCodepoint(function) => {
             let function = plan.utf_codepoint_function(*function);
-            graph_params(function.entry(), function.graph())
+            graph_params(function.entry(), function.body())
         }
         FunctionTarget::Custom(function) => {
             let function = plan.custom_function(*function);
-            graph_params(function.entry(), function.graph().body())
+            graph_params(function.entry(), function.body().function_body())
         }
         FunctionTarget::Bool(function) => {
             let function = plan.bool_function(*function);
-            graph_params(function.entry(), function.graph())
+            graph_params(function.entry(), function.body())
         }
         FunctionTarget::Nil(function) => {
             let function = plan.nil_function(*function);
-            graph_params(function.entry(), function.graph())
+            graph_params(function.entry(), function.body())
         }
         FunctionTarget::Tuple(function) => {
             let function = plan.tuple_function(*function);
-            graph_params(function.entry(), function.graph())
+            graph_params(function.entry(), function.body())
         }
         FunctionTarget::List(function) => list_target_params(plan, function),
         FunctionTarget::Function(function) => function_target_params(plan, function),
@@ -228,55 +228,55 @@ fn list_target_params(plan: &ExecutionPlan, function: &ListFunctionId) -> Vec<Pa
     match function {
         ListFunctionId::Parameter(function) => {
             let function = plan.parameter_list_function(*function);
-            graph_params(function.entry(), function.graph())
+            graph_params(function.entry(), function.body())
         }
         ListFunctionId::ParameterList(function) => {
             let function = plan.parameter_list_list_function(*function);
-            graph_params(function.entry(), function.graph())
+            graph_params(function.entry(), function.body())
         }
         ListFunctionId::Int(function) => {
             let function = plan.int_list_function(*function);
-            graph_params(function.entry(), function.graph())
+            graph_params(function.entry(), function.body())
         }
         ListFunctionId::String(function) => {
             let function = plan.string_list_function(*function);
-            graph_params(function.entry(), function.graph())
+            graph_params(function.entry(), function.body())
         }
         ListFunctionId::BitArray(function) => {
             let function = plan.bit_array_list_function(*function);
-            graph_params(function.entry(), function.graph())
+            graph_params(function.entry(), function.body())
         }
         ListFunctionId::UtfCodepoint(function) => {
             let function = plan.utf_codepoint_list_function(*function);
-            graph_params(function.entry(), function.graph())
+            graph_params(function.entry(), function.body())
         }
         ListFunctionId::Custom(function) => {
             let function = plan.custom_list_function(*function);
-            graph_params(function.entry(), function.graph())
+            graph_params(function.entry(), function.body())
         }
         ListFunctionId::Float(function) => {
             let function = plan.float_list_function(*function);
-            graph_params(function.entry(), function.graph())
+            graph_params(function.entry(), function.body())
         }
         ListFunctionId::Bool(function) => {
             let function = plan.bool_list_function(*function);
-            graph_params(function.entry(), function.graph())
+            graph_params(function.entry(), function.body())
         }
         ListFunctionId::Nil(function) => {
             let function = plan.nil_list_function(*function);
-            graph_params(function.entry(), function.graph())
+            graph_params(function.entry(), function.body())
         }
         ListFunctionId::Tuple(function) => {
             let function = plan.tuple_list_function(*function);
-            graph_params(function.entry(), function.graph())
+            graph_params(function.entry(), function.body())
         }
         ListFunctionId::List(function) => {
             let function = plan.list_list_function(*function);
-            graph_params(function.entry(), function.graph())
+            graph_params(function.entry(), function.body())
         }
         ListFunctionId::Function(function) => {
             let function = plan.function_list_function(*function);
-            graph_params(function.entry(), function.graph())
+            graph_params(function.entry(), function.body())
         }
     }
 }
@@ -290,62 +290,62 @@ fn function_target_params(
     match function {
         F::Generic(function) => {
             let function = plan.generic_function_function(function);
-            graph_params(function.entry(), function.graph().body())
+            graph_params(function.entry(), function.body().function_body())
         }
         F::Never(function) => {
             let function = plan.never_function_function(function);
-            graph_params(function.entry(), function.graph().body())
+            graph_params(function.entry(), function.body().function_body())
         }
         F::Int(function) => {
             let function = plan.int_function_function(*function);
-            graph_params(function.entry(), function.graph().body())
+            graph_params(function.entry(), function.body().function_body())
         }
         F::Float(function) => {
             let function = plan.float_function_function(*function);
-            graph_params(function.entry(), function.graph().body())
+            graph_params(function.entry(), function.body().function_body())
         }
         F::String(function) => {
             let function = plan.string_function_function(*function);
-            graph_params(function.entry(), function.graph().body())
+            graph_params(function.entry(), function.body().function_body())
         }
         F::BitArray(function) => {
             let function = plan.bit_array_function_function(*function);
-            graph_params(function.entry(), function.graph().body())
+            graph_params(function.entry(), function.body().function_body())
         }
         F::UtfCodepoint(function) => {
             let function = plan.utf_codepoint_function_function(*function);
-            graph_params(function.entry(), function.graph().body())
+            graph_params(function.entry(), function.body().function_body())
         }
         F::Custom(function) => {
             let function = plan.custom_function_function(function);
-            graph_params(function.entry(), function.graph().body())
+            graph_params(function.entry(), function.body().function_body())
         }
         F::Bool(function) => {
             let function = plan.bool_function_function(*function);
-            graph_params(function.entry(), function.graph().body())
+            graph_params(function.entry(), function.body().function_body())
         }
         F::Nil(function) => {
             let function = plan.nil_function_function(*function);
-            graph_params(function.entry(), function.graph().body())
+            graph_params(function.entry(), function.body().function_body())
         }
         F::Tuple(function) => {
             let function = plan.tuple_function_function(*function);
-            graph_params(function.entry(), function.graph().body())
+            graph_params(function.entry(), function.body().function_body())
         }
         F::List(function) => {
             let function = plan.list_function_function(function);
-            graph_params(function.entry(), function.graph().body())
+            graph_params(function.entry(), function.body().function_body())
         }
         F::Function(function) => {
             let function = plan.function_function_function(function);
-            graph_params(function.entry(), function.graph().body())
+            graph_params(function.entry(), function.body().function_body())
         }
     }
 }
 
 fn graph_params<Return, TailCall>(
     entry: &FunctionEntry,
-    graph: &FunctionGraph<Return, TailCall>,
+    graph: &FunctionBody<Return, TailCall>,
 ) -> Vec<ParamLocal> {
     entry
         .params(graph)
@@ -558,7 +558,10 @@ pub fn main() {
 }
 "#,
         );
-        let graph = plan.tuple_function(tuple_main_id(&plan)).graph();
+        let graph = plan
+            .tuple_function(tuple_main_id(&plan))
+            .body()
+            .block_graph();
         let function_list_type = graph
             .blocks()
             .iter()

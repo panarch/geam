@@ -370,11 +370,11 @@ mod tests {
     fn constant_entry_is_a_reusable_zero_argument_typed_graph_program() {
         let plan = execution_plan("const one = 1 pub fn main() { one + one }");
         let program = plan.constant(ConstantId::<IntLocalId>::new(0));
-        let graph = program.graph();
+        let block_graph = program.block_graph();
 
-        assert_eq!(graph.entry(), BlockId::new(0));
-        assert_eq!(graph.blocks().len(), 1);
-        let block = graph.block(BlockId::new(0));
+        assert_eq!(block_graph.entry(), BlockId::new(0));
+        assert_eq!(block_graph.blocks().len(), 1);
+        let block = block_graph.block(BlockId::new(0));
         assert!(block.params().is_empty());
         assert_eq!(block.instructions().len(), 1);
         let instruction = &block.instructions()[0];
@@ -386,7 +386,7 @@ mod tests {
         assert_eq!(returned_int(program, block.terminator()), IntLocalId(0));
 
         let main = plan.int_function(crate::plan::execution::IntFunctionId(0));
-        let block = main.graph().block(BlockId::new(0));
+        let block = main.body().block_graph().block(BlockId::new(0));
         assert_eq!(block.instructions().len(), 3);
         for (index, instruction) in block.instructions()[..2].iter().enumerate() {
             let output = IntLocalId(index);
@@ -401,7 +401,8 @@ mod tests {
         let plan = execution_plan("const one = 1 pub fn main() { one }");
         let graph = plan
             .int_function(crate::plan::execution::IntFunctionId(0))
-            .graph();
+            .body()
+            .block_graph();
         int_literal(&graph.block(graph.entry()).instructions()[0]);
     }
 
@@ -424,7 +425,9 @@ mod tests {
     #[should_panic(expected = "constant fixture should reference an Int constant")]
     fn int_constant_guard_rejects_other_instructions() {
         let plan = execution_plan("const one = 1 pub fn main() { one }");
-        let graph = plan.constant(ConstantId::<IntLocalId>::new(0)).graph();
+        let graph = plan
+            .constant(ConstantId::<IntLocalId>::new(0))
+            .block_graph();
         int_constant(&graph.block(graph.entry()).instructions()[0]);
     }
 

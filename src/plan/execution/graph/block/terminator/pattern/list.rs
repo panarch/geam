@@ -93,7 +93,13 @@ pub fn main() {
     #[should_panic(expected = "let assert should lower to a match terminator")]
     fn match_shape_guard_is_visible() {
         explain::with_execution_plan("pub fn main() { 1 }", |plan| {
-            list_pattern(plan.int_function(IntFunctionId(0)).graph().blocks()[0].terminator());
+            list_pattern(
+                plan.int_function(IntFunctionId(0))
+                    .body()
+                    .block_graph()
+                    .blocks()[0]
+                    .terminator(),
+            );
         });
     }
 
@@ -110,7 +116,13 @@ pub fn main() {
 }
 "#;
         explain::with_execution_plan(source, |plan| {
-            list_pattern(plan.int_function(IntFunctionId(0)).graph().blocks()[0].terminator());
+            list_pattern(
+                plan.int_function(IntFunctionId(0))
+                    .body()
+                    .block_graph()
+                    .blocks()[0]
+                    .terminator(),
+            );
         });
     }
 
@@ -126,7 +138,12 @@ pub fn main() {
 
     fn assert_explanation(source: &str, expected: &str) {
         explain::assert_rendered(source, expected, |plan, output| {
-            let terminator = plan.int_function(IntFunctionId(0)).graph().blocks()[0].terminator();
+            let terminator = plan
+                .int_function(IntFunctionId(0))
+                .body()
+                .block_graph()
+                .blocks()[0]
+                .terminator();
             let mut context = explain::ExplainContext::new(plan, output);
             context.write(list_pattern(terminator));
         });

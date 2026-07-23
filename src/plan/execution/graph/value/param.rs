@@ -109,8 +109,12 @@ mod explain_tests {
 
     fn assert_explanation(source: &str, expected: &str) {
         explain::assert_rendered(source, expected, |plan, output| {
-            let instruction =
-                &plan.int_function(IntFunctionId(0)).graph().blocks()[0].instructions()[0];
+            let instruction = &plan
+                .int_function(IntFunctionId(0))
+                .body()
+                .block_graph()
+                .blocks()[0]
+                .instructions()[0];
             let mut context = explain::ExplainContext::new(plan, output);
             context.write(instruction.output());
         });

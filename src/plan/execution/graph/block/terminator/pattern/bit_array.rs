@@ -351,7 +351,8 @@ pub fn main() {
         function: IntFunctionId,
     ) -> Vec<&crate::plan::execution::Terminator> {
         plan.int_function(function)
-            .graph()
+            .body()
+            .block_graph()
             .blocks()
             .iter()
             .map(|block| block.terminator())

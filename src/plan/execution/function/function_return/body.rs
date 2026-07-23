@@ -1,4 +1,4 @@
-use super::super::graph::FunctionGraph;
+use super::super::body::FunctionBody;
 use super::{
     BitArrayFunctionFunctionId, BoolFunctionFunctionId, CustomFunctionFunctionId,
     FloatFunctionFunctionId, FunctionFunctionFunctionId, GenericFunctionFunctionId,
@@ -14,51 +14,51 @@ use crate::plan::execution::{
     NilFunctionLocalId, StringFunctionLocalId, TupleFunctionLocalId, UtfCodepointFunctionLocalId,
 };
 
-pub(crate) type IntFunctionReturn =
-    TypedFunctionReturn<FunctionGraph<IntFunctionLocalId, IntFunctionFunctionId>>;
-pub(crate) type FloatFunctionReturn =
-    TypedFunctionReturn<FunctionGraph<FloatFunctionLocalId, FloatFunctionFunctionId>>;
-pub(crate) type StringFunctionReturn =
-    TypedFunctionReturn<FunctionGraph<StringFunctionLocalId, StringFunctionFunctionId>>;
-pub(crate) type BitArrayFunctionReturn =
-    TypedFunctionReturn<FunctionGraph<BitArrayFunctionLocalId, BitArrayFunctionFunctionId>>;
-pub(crate) type UtfCodepointFunctionReturn =
-    TypedFunctionReturn<FunctionGraph<UtfCodepointFunctionLocalId, UtfCodepointFunctionFunctionId>>;
-pub(crate) type GenericFunctionReturn =
-    TypedFunctionReturn<FunctionGraph<GenericFunctionLocal, GenericFunctionFunctionId>>;
-pub(crate) type NeverFunctionReturn =
-    TypedFunctionReturn<FunctionGraph<NeverFunctionLocal, NeverFunctionFunctionId>>;
-pub(crate) type BoolFunctionReturn =
-    TypedFunctionReturn<FunctionGraph<BoolFunctionLocalId, BoolFunctionFunctionId>>;
-pub(crate) type NilFunctionReturn =
-    TypedFunctionReturn<FunctionGraph<NilFunctionLocalId, NilFunctionFunctionId>>;
-pub(crate) type TupleFunctionReturn =
-    TypedFunctionReturn<FunctionGraph<TupleFunctionLocalId, TupleFunctionFunctionId>>;
-pub(crate) type ListFunctionReturn =
-    TypedFunctionReturn<FunctionGraph<ListFunctionLocal, ListFunctionFunctionId>>;
+pub(crate) type IntFunctionFunctionBody =
+    TypedFunctionBody<FunctionBody<IntFunctionLocalId, IntFunctionFunctionId>>;
+pub(crate) type FloatFunctionFunctionBody =
+    TypedFunctionBody<FunctionBody<FloatFunctionLocalId, FloatFunctionFunctionId>>;
+pub(crate) type StringFunctionFunctionBody =
+    TypedFunctionBody<FunctionBody<StringFunctionLocalId, StringFunctionFunctionId>>;
+pub(crate) type BitArrayFunctionFunctionBody =
+    TypedFunctionBody<FunctionBody<BitArrayFunctionLocalId, BitArrayFunctionFunctionId>>;
+pub(crate) type UtfCodepointFunctionFunctionBody =
+    TypedFunctionBody<FunctionBody<UtfCodepointFunctionLocalId, UtfCodepointFunctionFunctionId>>;
+pub(crate) type GenericFunctionFunctionBody =
+    TypedFunctionBody<FunctionBody<GenericFunctionLocal, GenericFunctionFunctionId>>;
+pub(crate) type NeverFunctionFunctionBody =
+    TypedFunctionBody<FunctionBody<NeverFunctionLocal, NeverFunctionFunctionId>>;
+pub(crate) type BoolFunctionFunctionBody =
+    TypedFunctionBody<FunctionBody<BoolFunctionLocalId, BoolFunctionFunctionId>>;
+pub(crate) type NilFunctionFunctionBody =
+    TypedFunctionBody<FunctionBody<NilFunctionLocalId, NilFunctionFunctionId>>;
+pub(crate) type TupleFunctionFunctionBody =
+    TypedFunctionBody<FunctionBody<TupleFunctionLocalId, TupleFunctionFunctionId>>;
+pub(crate) type ListFunctionFunctionBody =
+    TypedFunctionBody<FunctionBody<ListFunctionLocal, ListFunctionFunctionId>>;
 
-pub(crate) struct CustomFunctionReturn {
+pub(crate) struct CustomFunctionFunctionBody {
     _shape: FunctionShape,
     type_: CustomFunctionType,
-    body: FunctionGraph<CustomFunctionLocal, usize>,
+    body: FunctionBody<CustomFunctionLocal, usize>,
 }
 
-pub(crate) struct FunctionFunctionReturn {
+pub(crate) struct FunctionFunctionFunctionBody {
     _shape: FunctionShape,
     type_: FunctionFunctionType,
-    body: FunctionGraph<FunctionFunctionLocal, usize>,
+    body: FunctionBody<FunctionFunctionLocal, usize>,
 }
 
-pub(crate) struct TypedFunctionReturn<Body> {
+pub(crate) struct TypedFunctionBody<Body> {
     _shape: FunctionShape,
     body: Body,
 }
 
-impl CustomFunctionReturn {
+impl CustomFunctionFunctionBody {
     pub(in crate::plan::execution) fn from_parts(
         shape: FunctionShape,
         type_: CustomFunctionType,
-        body: FunctionGraph<CustomFunctionLocal, usize>,
+        body: FunctionBody<CustomFunctionLocal, usize>,
     ) -> Self {
         Self {
             _shape: shape,
@@ -67,7 +67,7 @@ impl CustomFunctionReturn {
         }
     }
 
-    pub(crate) fn body(&self) -> &FunctionGraph<CustomFunctionLocal, usize> {
+    pub(crate) fn function_body(&self) -> &FunctionBody<CustomFunctionLocal, usize> {
         &self.body
     }
 
@@ -76,11 +76,11 @@ impl CustomFunctionReturn {
     }
 }
 
-impl FunctionFunctionReturn {
+impl FunctionFunctionFunctionBody {
     pub(in crate::plan::execution) fn from_parts(
         shape: FunctionShape,
         type_: FunctionFunctionType,
-        body: FunctionGraph<FunctionFunctionLocal, usize>,
+        body: FunctionBody<FunctionFunctionLocal, usize>,
     ) -> Self {
         Self {
             _shape: shape,
@@ -94,7 +94,7 @@ impl FunctionFunctionReturn {
         &self.type_
     }
 
-    pub(crate) fn body(&self) -> &FunctionGraph<FunctionFunctionLocal, usize> {
+    pub(crate) fn function_body(&self) -> &FunctionBody<FunctionFunctionLocal, usize> {
         &self.body
     }
 
@@ -103,7 +103,7 @@ impl FunctionFunctionReturn {
     }
 }
 
-impl<Body> TypedFunctionReturn<Body> {
+impl<Body> TypedFunctionBody<Body> {
     pub(in crate::plan::execution) fn new(shape: FunctionShape, body: Body) -> Self {
         Self {
             _shape: shape,
@@ -111,12 +111,12 @@ impl<Body> TypedFunctionReturn<Body> {
         }
     }
 
-    pub(crate) fn body(&self) -> &Body {
+    pub(crate) fn function_body(&self) -> &Body {
         &self.body
     }
 }
 
-impl<Body> ExplainFunctionBody for TypedFunctionReturn<Body>
+impl<Body> ExplainFunctionBody for TypedFunctionBody<Body>
 where
     Body: ExplainFunctionBody,
 {
@@ -126,28 +126,31 @@ where
         family: &'static str,
         entry: &FunctionEntry,
     ) {
-        self.body().write_function_body(context, family, entry);
+        self.function_body()
+            .write_function_body(context, family, entry);
     }
 }
 
-impl ExplainFunctionBody for CustomFunctionReturn {
+impl ExplainFunctionBody for CustomFunctionFunctionBody {
     fn write_function_body(
         &self,
         context: &mut ExplainContext<'_, '_>,
         family: &'static str,
         entry: &FunctionEntry,
     ) {
-        self.body().write_function_body(context, family, entry);
+        self.function_body()
+            .write_function_body(context, family, entry);
     }
 }
 
-impl ExplainFunctionBody for FunctionFunctionReturn {
+impl ExplainFunctionBody for FunctionFunctionFunctionBody {
     fn write_function_body(
         &self,
         context: &mut ExplainContext<'_, '_>,
         family: &'static str,
         entry: &FunctionEntry,
     ) {
-        self.body().write_function_body(context, family, entry);
+        self.function_body()
+            .write_function_body(context, family, entry);
     }
 }

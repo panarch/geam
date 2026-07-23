@@ -1,23 +1,25 @@
 use super::{
-    BitArrayReturn, BoolReturn, CustomReturn, FloatReturn, IntReturn, NeverReturn, NilReturn,
-    StringReturn, TupleReturn, UtfCodepointReturn,
+    BitArrayFunctionBody, BoolFunctionBody, CustomFunctionBody, FloatFunctionBody, IntFunctionBody,
+    NeverFunctionBody, NilFunctionBody, StringFunctionBody, TupleFunctionBody,
+    UtfCodepointFunctionBody,
 };
 use crate::plan::execution::ExecutableFunction;
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::write_table;
 
 pub(in crate::plan::execution) struct ValueFunctionTables {
-    pub(in crate::plan::execution) never_functions: Vec<ExecutableFunction<NeverReturn>>,
-    pub(in crate::plan::execution) int_functions: Vec<ExecutableFunction<IntReturn>>,
-    pub(in crate::plan::execution) float_functions: Vec<ExecutableFunction<FloatReturn>>,
-    pub(in crate::plan::execution) string_functions: Vec<ExecutableFunction<StringReturn>>,
-    pub(in crate::plan::execution) bit_array_functions: Vec<ExecutableFunction<BitArrayReturn>>,
+    pub(in crate::plan::execution) never_functions: Vec<ExecutableFunction<NeverFunctionBody>>,
+    pub(in crate::plan::execution) int_functions: Vec<ExecutableFunction<IntFunctionBody>>,
+    pub(in crate::plan::execution) float_functions: Vec<ExecutableFunction<FloatFunctionBody>>,
+    pub(in crate::plan::execution) string_functions: Vec<ExecutableFunction<StringFunctionBody>>,
+    pub(in crate::plan::execution) bit_array_functions:
+        Vec<ExecutableFunction<BitArrayFunctionBody>>,
     pub(in crate::plan::execution) utf_codepoint_functions:
-        Vec<ExecutableFunction<UtfCodepointReturn>>,
-    pub(in crate::plan::execution) custom_functions: Vec<ExecutableFunction<CustomReturn>>,
-    pub(in crate::plan::execution) bool_functions: Vec<ExecutableFunction<BoolReturn>>,
-    pub(in crate::plan::execution) nil_functions: Vec<ExecutableFunction<NilReturn>>,
-    pub(in crate::plan::execution) tuple_functions: Vec<ExecutableFunction<TupleReturn>>,
+        Vec<ExecutableFunction<UtfCodepointFunctionBody>>,
+    pub(in crate::plan::execution) custom_functions: Vec<ExecutableFunction<CustomFunctionBody>>,
+    pub(in crate::plan::execution) bool_functions: Vec<ExecutableFunction<BoolFunctionBody>>,
+    pub(in crate::plan::execution) nil_functions: Vec<ExecutableFunction<NilFunctionBody>>,
+    pub(in crate::plan::execution) tuple_functions: Vec<ExecutableFunction<TupleFunctionBody>>,
 }
 
 impl Explain for ValueFunctionTables {

@@ -124,7 +124,8 @@ pub fn main() -> Int {
         plan: &crate::plan::execution::ExecutionPlan,
     ) -> Vec<&crate::plan::execution::Terminator> {
         plan.int_function(IntFunctionId(0))
-            .graph()
+            .body()
+            .block_graph()
             .blocks()
             .iter()
             .map(|block| block.terminator())

@@ -3,8 +3,9 @@ mod id;
 mod table;
 
 pub(crate) use body::{
-    BitArrayReturn, BoolReturn, CustomReturn, FloatReturn, IntReturn, NeverReturn, NilReturn,
-    StringReturn, TupleReturn, UtfCodepointReturn,
+    BitArrayFunctionBody, BoolFunctionBody, CustomFunctionBody, FloatFunctionBody, IntFunctionBody,
+    NeverFunctionBody, NilFunctionBody, StringFunctionBody, TupleFunctionBody,
+    UtfCodepointFunctionBody,
 };
 pub(crate) use id::{
     BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, IntFunctionId,

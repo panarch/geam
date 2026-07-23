@@ -1,8 +1,9 @@
 use super::{
-    BitArrayFunctionReturn, BoolFunctionReturn, CustomFunctionReturn, FloatFunctionReturn,
-    FunctionFunctionReturn, GenericFunctionReturn, IntFunctionReturn, ListFunctionReturn,
-    NeverFunctionReturn, NilFunctionReturn, StringFunctionReturn, TupleFunctionReturn,
-    UtfCodepointFunctionReturn,
+    BitArrayFunctionFunctionBody, BoolFunctionFunctionBody, CustomFunctionFunctionBody,
+    FloatFunctionFunctionBody, FunctionFunctionFunctionBody, GenericFunctionFunctionBody,
+    IntFunctionFunctionBody, ListFunctionFunctionBody, NeverFunctionFunctionBody,
+    NilFunctionFunctionBody, StringFunctionFunctionBody, TupleFunctionFunctionBody,
+    UtfCodepointFunctionFunctionBody,
 };
 use crate::plan::execution::ExecutableFunction;
 use crate::plan::execution::explain::{Explain, ExplainContext};
@@ -10,55 +11,55 @@ use crate::plan::execution::function::write_table;
 
 pub(in crate::plan::execution) struct FunctionFunctionTables {
     pub(in crate::plan::execution) int_function_functions:
-        Vec<ExecutableFunction<IntFunctionReturn>>,
+        Vec<ExecutableFunction<IntFunctionFunctionBody>>,
     pub(in crate::plan::execution) float_function_functions:
-        Vec<ExecutableFunction<FloatFunctionReturn>>,
+        Vec<ExecutableFunction<FloatFunctionFunctionBody>>,
     pub(in crate::plan::execution) string_function_functions:
-        Vec<ExecutableFunction<StringFunctionReturn>>,
+        Vec<ExecutableFunction<StringFunctionFunctionBody>>,
     pub(in crate::plan::execution) bit_array_function_functions:
-        Vec<ExecutableFunction<BitArrayFunctionReturn>>,
+        Vec<ExecutableFunction<BitArrayFunctionFunctionBody>>,
     pub(in crate::plan::execution) utf_codepoint_function_functions:
-        Vec<ExecutableFunction<UtfCodepointFunctionReturn>>,
+        Vec<ExecutableFunction<UtfCodepointFunctionFunctionBody>>,
     pub(in crate::plan::execution) custom_function_functions:
-        Vec<ExecutableFunction<CustomFunctionReturn>>,
+        Vec<ExecutableFunction<CustomFunctionFunctionBody>>,
     pub(in crate::plan::execution) bool_function_functions:
-        Vec<ExecutableFunction<BoolFunctionReturn>>,
+        Vec<ExecutableFunction<BoolFunctionFunctionBody>>,
     pub(in crate::plan::execution) nil_function_functions:
-        Vec<ExecutableFunction<NilFunctionReturn>>,
+        Vec<ExecutableFunction<NilFunctionFunctionBody>>,
     pub(in crate::plan::execution) tuple_function_functions:
-        Vec<ExecutableFunction<TupleFunctionReturn>>,
+        Vec<ExecutableFunction<TupleFunctionFunctionBody>>,
     pub(in crate::plan::execution) generic_function_functions:
-        Vec<ExecutableFunction<GenericFunctionReturn>>,
+        Vec<ExecutableFunction<GenericFunctionFunctionBody>>,
     pub(in crate::plan::execution) never_function_functions:
-        Vec<ExecutableFunction<NeverFunctionReturn>>,
+        Vec<ExecutableFunction<NeverFunctionFunctionBody>>,
     pub(in crate::plan::execution) parameter_list_function_functions:
-        Vec<ExecutableFunction<ListFunctionReturn>>,
+        Vec<ExecutableFunction<ListFunctionFunctionBody>>,
     pub(in crate::plan::execution) parameter_list_list_function_functions:
-        Vec<ExecutableFunction<ListFunctionReturn>>,
+        Vec<ExecutableFunction<ListFunctionFunctionBody>>,
     pub(in crate::plan::execution) int_list_function_functions:
-        Vec<ExecutableFunction<ListFunctionReturn>>,
+        Vec<ExecutableFunction<ListFunctionFunctionBody>>,
     pub(in crate::plan::execution) string_list_function_functions:
-        Vec<ExecutableFunction<ListFunctionReturn>>,
+        Vec<ExecutableFunction<ListFunctionFunctionBody>>,
     pub(in crate::plan::execution) bit_array_list_function_functions:
-        Vec<ExecutableFunction<ListFunctionReturn>>,
+        Vec<ExecutableFunction<ListFunctionFunctionBody>>,
     pub(in crate::plan::execution) utf_codepoint_list_function_functions:
-        Vec<ExecutableFunction<ListFunctionReturn>>,
+        Vec<ExecutableFunction<ListFunctionFunctionBody>>,
     pub(in crate::plan::execution) custom_list_function_functions:
-        Vec<ExecutableFunction<ListFunctionReturn>>,
+        Vec<ExecutableFunction<ListFunctionFunctionBody>>,
     pub(in crate::plan::execution) float_list_function_functions:
-        Vec<ExecutableFunction<ListFunctionReturn>>,
+        Vec<ExecutableFunction<ListFunctionFunctionBody>>,
     pub(in crate::plan::execution) bool_list_function_functions:
-        Vec<ExecutableFunction<ListFunctionReturn>>,
+        Vec<ExecutableFunction<ListFunctionFunctionBody>>,
     pub(in crate::plan::execution) nil_list_function_functions:
-        Vec<ExecutableFunction<ListFunctionReturn>>,
+        Vec<ExecutableFunction<ListFunctionFunctionBody>>,
     pub(in crate::plan::execution) tuple_list_function_functions:
-        Vec<ExecutableFunction<ListFunctionReturn>>,
+        Vec<ExecutableFunction<ListFunctionFunctionBody>>,
     pub(in crate::plan::execution) list_list_function_functions:
-        Vec<ExecutableFunction<ListFunctionReturn>>,
+        Vec<ExecutableFunction<ListFunctionFunctionBody>>,
     pub(in crate::plan::execution) function_list_function_functions:
-        Vec<ExecutableFunction<ListFunctionReturn>>,
+        Vec<ExecutableFunction<ListFunctionFunctionBody>>,
     pub(in crate::plan::execution) function_function_functions:
-        Vec<ExecutableFunction<FunctionFunctionReturn>>,
+        Vec<ExecutableFunction<FunctionFunctionFunctionBody>>,
 }
 
 impl Explain for FunctionFunctionTables {

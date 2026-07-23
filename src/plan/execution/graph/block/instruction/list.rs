@@ -320,7 +320,7 @@ pub fn main() {
 
     fn assert_explanation(source: &str, expected: &str) {
         explain::assert_rendered(source, expected, |plan, output| {
-            let graph = plan.tuple_function(TupleFunctionId(0)).graph();
+            let graph = plan.tuple_function(TupleFunctionId(0)).body().block_graph();
             let mut context = explain::ExplainContext::new(plan, output);
             for block in graph.blocks() {
                 for instruction in block.instructions() {

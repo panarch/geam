@@ -1,7 +1,7 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct GraphExitId(usize);
+pub(crate) struct BlockGraphExitId(usize);
 
-impl GraphExitId {
+impl BlockGraphExitId {
     pub(in crate::plan::execution) fn new(index: usize) -> Self {
         Self(index)
     }

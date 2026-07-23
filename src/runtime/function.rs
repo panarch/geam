@@ -13,12 +13,12 @@ pub(in crate::runtime) use value::{
     run_string, run_tuple, run_utf_codepoint,
 };
 
-use crate::plan::execution::{ExecutionPlan, FunctionGraph, FunctionGraphExit};
+use crate::plan::execution::{ExecutionPlan, FunctionBody, FunctionExit};
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::graph::{self, GraphValue, RetainedValues};
 use crate::runtime::state::RuntimeState;
 
-pub(super) enum GraphExit<Return, TailCall> {
+pub(super) enum EvaluatedFunctionExit<Return, TailCall> {
     Return(Return),
     TailCall {
         function: TailCall,
@@ -29,23 +29,23 @@ pub(super) enum GraphExit<Return, TailCall> {
 pub(super) fn evaluate<Return, TailCall>(
     plan: &ExecutionPlan,
     state: &mut RuntimeState,
-    function: &FunctionGraph<Return, TailCall>,
+    function: &FunctionBody<Return, TailCall>,
     inputs: RetainedValues,
-) -> ExecutionResult<GraphExit<Return::Evaluated, TailCall>>
+) -> ExecutionResult<EvaluatedFunctionExit<Return::Evaluated, TailCall>>
 where
     Return: GraphValue,
     TailCall: Clone,
 {
-    graph::execute(plan, state, function.graph(), inputs).map(|completed| {
+    graph::execute(plan, state, function.block_graph(), inputs).map(|completed| {
         let exit = function.exit(completed.exit());
         match exit {
-            FunctionGraphExit::Return(value) => {
-                GraphExit::Return(completed.into_value(state, value))
+            FunctionExit::Return(value) => {
+                EvaluatedFunctionExit::Return(completed.into_value(state, value))
             }
-            FunctionGraphExit::TailCall { function, args } => {
+            FunctionExit::TailCall { function, args } => {
                 let function = function.clone();
                 let args = completed.into_retained(state, args);
-                GraphExit::TailCall { function, args }
+                EvaluatedFunctionExit::TailCall { function, args }
             }
         }
     })
@@ -61,13 +61,13 @@ fn run_tail<Id, Return, TailCall>(
         &mut RuntimeState,
         &Id,
         RetainedValues,
-    ) -> ExecutionResult<GraphExit<Return, TailCall>>,
+    ) -> ExecutionResult<EvaluatedFunctionExit<Return, TailCall>>,
     next: impl Fn(&ExecutionPlan, &Id, TailCall) -> Id,
 ) -> ExecutionResult<Return> {
     loop {
         match execute(plan, state, &function, inputs)? {
-            GraphExit::Return(value) => return Ok(value),
-            GraphExit::TailCall {
+            EvaluatedFunctionExit::Return(value) => return Ok(value),
+            EvaluatedFunctionExit::TailCall {
                 function: target,
                 args,
             } => {
