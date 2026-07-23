@@ -60,21 +60,12 @@ fn write_table<Value>(
 mod tests {
     #[test]
     fn writes_constant_programs_in_family_order() {
-        let source = r#"
+        assert_explanation(
+            r#"
 const enabled = True
 const one = 1
 pub fn main() { #(one, enabled) }
-"#;
-        let typed = crate::compile_typed_module("main", "main.gleam", source)
-            .expect("source should compile");
-        let module_plan = crate::plan_module(typed).expect("source should plan");
-        let plan = crate::ExecutionPlan::from_module_plan(module_plan);
-        let mut output = String::new();
-
-        super::write_constant_tables(&mut output, &plan, &plan.constants);
-
-        assert_eq!(
-            output,
+"#,
             concat!(
                 "\nconstant.int#0\n",
                 "  entry b0 params=[] captures=[]\n",
@@ -88,5 +79,11 @@ pub fn main() { #(one, enabled) }
                 "    return %bool#0\n",
             ),
         );
+    }
+
+    fn assert_explanation(source: &str, expected: &str) {
+        super::super::assert_rendered(source, expected, |plan, output| {
+            super::write_constant_tables(output, plan, &plan.constants);
+        });
     }
 }

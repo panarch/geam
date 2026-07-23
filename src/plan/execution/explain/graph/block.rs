@@ -20,22 +20,19 @@ mod tests {
 
     #[test]
     fn writes_block_parameters_and_instructions() {
-        let source = "pub fn main() { 1 }";
-        let typed = crate::compile_typed_module("main", "main.gleam", source)
-            .expect("source should compile");
-        let module_plan = crate::plan_module(typed).expect("source should plan");
-        let plan = crate::ExecutionPlan::from_module_plan(module_plan);
-        let block = &plan.int_function(IntFunctionId(0)).graph().blocks()[0];
-        let mut output = String::new();
-
-        super::write_block(&mut output, &plan, 0, block);
-
-        assert_eq!(
-            output,
+        assert_explanation(
+            "pub fn main() { 1 }",
             concat!(
                 "  block b0 params=[]\n",
                 "    %int#0:shape#0(Int) = int.value 1\n",
             ),
         );
+    }
+
+    fn assert_explanation(source: &str, expected: &str) {
+        super::super::super::assert_rendered(source, expected, |plan, output| {
+            let block = &plan.int_function(IntFunctionId(0)).graph().blocks()[0];
+            super::write_block(output, plan, 0, block);
+        });
     }
 }

@@ -204,28 +204,11 @@ mod tests {
 
     #[test]
     fn writes_complete_graph_entry_and_block_order() {
-        let source = r#"
+        assert_explanation(
+            r#"
 fn choose(flag: Bool) { case flag { True -> 1 False -> 0 } }
 pub fn main() { choose(True) }
-"#;
-        let typed = crate::compile_typed_module("main", "main.gleam", source)
-            .expect("source should compile");
-        let module_plan = crate::plan_module(typed).expect("source should plan");
-        let plan = crate::ExecutionPlan::from_module_plan(module_plan);
-        let function = plan.int_function(IntFunctionId(1));
-        let graph = function.graph();
-        let mut output = String::new();
-
-        graph.write_complete(
-            &mut output,
-            &plan,
-            "int",
-            graph.entry_params(function.entry()),
-            graph.entry_captures(function.entry()),
-        );
-
-        assert_eq!(
-            output,
+"#,
             concat!(
                 "  entry b0 params=[%bool#0:shape#0(Bool)] captures=[]\n",
                 "  block b0 params=[%bool#0:shape#0(Bool)]\n",
@@ -238,5 +221,19 @@ pub fn main() { choose(True) }
                 "    return %int#0\n",
             ),
         );
+    }
+
+    fn assert_explanation(source: &str, expected: &str) {
+        super::super::assert_rendered(source, expected, |plan, output| {
+            let function = plan.int_function(IntFunctionId(1));
+            let graph = function.graph();
+            graph.write_complete(
+                output,
+                plan,
+                "int",
+                graph.entry_params(function.entry()),
+                graph.entry_captures(function.entry()),
+            );
+        });
     }
 }

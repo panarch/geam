@@ -1,9 +1,11 @@
+mod binding;
 mod bit_array;
+mod list;
 
+pub(super) use self::binding::write_binding;
 use self::bit_array::write_bit_array;
-use super::super::graph::{
-    MatchPattern, MatchPatternBinding, MatchPatternList, MatchPatternListTail,
-};
+use self::list::write_list;
+use super::super::graph::{MatchPattern, MatchPatternBinding};
 
 pub(super) fn write_pattern(output: &mut String, pattern: &MatchPattern) {
     match pattern {
@@ -65,35 +67,11 @@ fn write_patterns(output: &mut String, patterns: &[MatchPattern]) {
     }
 }
 
-fn write_list(output: &mut String, list: &MatchPatternList) {
-    output.push('[');
-    let mut separator = "";
-    for pattern in list.elements() {
-        output.push_str(separator);
-        write_pattern(output, pattern);
-        separator = ", ";
-    }
-    if let Some(tail) = list.tail() {
-        output.push_str(separator);
-        output.push_str("..");
-        match tail {
-            MatchPatternListTail::Ignore => output.push('_'),
-            MatchPatternListTail::Bind(binding) => write_binding(output, binding),
-        }
-    }
-    output.push(']');
-}
-
 fn write_optional_binding(output: &mut String, binding: Option<&MatchPatternBinding>) {
     match binding {
         Some(binding) => write_binding(output, binding),
         None => output.push('_'),
     }
-}
-
-pub(super) fn write_binding(output: &mut String, binding: &MatchPatternBinding) {
-    output.push_str("binding#");
-    output.push_str(&binding.index().to_string());
 }
 
 #[cfg(test)]
@@ -103,84 +81,119 @@ mod tests {
 
     #[test]
     fn writes_nested_patterns_from_a_lowered_match() {
-        let source = r#"
+        assert_explanation(
+            r#"
 pub type Payload { Payload(Int) }
 
-fn select(value: #(List(Int), Payload, String)) {
+fn identity(value: #(List(Int), Payload, String)) { value }
+
+pub fn main() {
+  let value = identity(#([1, 2], Payload(3), "prefix"))
   let assert #([1, ..rest], Payload(number), "pre" <> suffix) as whole = value
   number
 }
-
-pub fn main() { select(#([1, 2], Payload(3), "prefix")) }
-"#;
-        let typed = crate::compile_typed_module("main", "main.gleam", source)
-            .expect("source should compile");
-        let module_plan = crate::plan_module(typed).expect("source should plan");
-        let plan = crate::ExecutionPlan::from_module_plan(module_plan);
-        let terminator = plan.int_function(IntFunctionId(1)).graph().blocks()[0].terminator();
-        let pattern = match_pattern(terminator);
-        let mut output = String::new();
-
-        super::write_pattern(&mut output, pattern);
-
-        assert_eq!(
-            output,
+"#,
             "alias(#([1, ..binding#0], custom_type#0.constructor#0(binding#1), string_prefix(\"pre\", left=_, right=binding#2)), binding#3)",
         );
     }
 
     #[test]
-    fn list_pattern_explanation_separates_elements_from_the_tail() {
-        let source = r#"
-fn bind_tail(values: List(Int)) {
+    fn writes_bound_list_tail() {
+        assert_explanation(
+            r#"
+fn identity(values: List(Int)) { values }
+
+pub fn main() {
+  let values = identity([1])
   let assert [head, ..tail] = values
   head
 }
+"#,
+            "[binding#0, ..binding#1]",
+        );
+    }
 
-fn ignore_tail(values: List(Int)) {
+    #[test]
+    fn writes_ignored_list_tail() {
+        assert_explanation(
+            r#"
+fn identity(values: List(Int)) { values }
+
+pub fn main() {
+  let values = identity([1])
   let assert [head, ..] = values
   head
 }
+"#,
+            "[binding#0, .._]",
+        );
+    }
 
-pub fn main() { bind_tail([1]) + ignore_tail([2]) }
-"#;
-        let typed = crate::compile_typed_module("main", "main.gleam", source)
-            .expect("source should compile");
-        let module_plan = crate::plan_module(typed).expect("source should plan");
-        let plan = crate::ExecutionPlan::from_module_plan(module_plan);
-        let mut output = String::new();
+    fn assert_explanation(source: &str, expected: &str) {
+        super::super::assert_rendered(source, expected, |plan, output| {
+            let function = plan.int_function(IntFunctionId(0));
+            let terminators = function
+                .graph()
+                .blocks()
+                .iter()
+                .map(|block| block.terminator())
+                .collect::<Vec<_>>();
+            super::write_pattern(output, match_pattern(&terminators));
+        });
+    }
 
-        let bind_tail = plan.int_function(IntFunctionId(1)).graph();
-        let pattern = match_pattern(bind_tail.blocks()[0].terminator());
-        super::write_pattern(&mut output, pattern);
-
-        assert_eq!(output, "[binding#0, ..binding#1]");
-
-        output.clear();
-        let ignore_tail = plan.int_function(IntFunctionId(2)).graph();
-        let pattern = match_pattern(ignore_tail.blocks()[0].terminator());
-        super::write_pattern(&mut output, pattern);
-
-        assert_eq!(output, "[binding#0, .._]");
+    fn match_pattern<'a>(terminators: &[&'a Terminator]) -> &'a MatchPattern {
+        let mut patterns = terminators
+            .iter()
+            .copied()
+            .filter_map(|terminator| match terminator {
+                Terminator::Match { pattern, .. } => Some(pattern),
+                _ => None,
+            });
+        let Some(pattern) = patterns.next() else {
+            panic!("let assert should lower to a match terminator");
+        };
+        if patterns.next().is_some() {
+            panic!("let assert should lower to one match terminator");
+        }
+        pattern
     }
 
     #[test]
     #[should_panic(expected = "let assert should lower to a match terminator")]
     fn match_pattern_shape_guard_is_visible() {
-        let source = "pub fn main() { 1 }";
-        let typed = crate::compile_typed_module("main", "main.gleam", source)
-            .expect("source should compile");
-        let module_plan = crate::plan_module(typed).expect("source should plan");
-        let plan = crate::ExecutionPlan::from_module_plan(module_plan);
-        let terminator = plan.int_function(IntFunctionId(0)).graph().blocks()[0].terminator();
-
-        match_pattern(terminator);
+        super::super::with_execution_plan("pub fn main() { 1 }", |plan| {
+            let terminators = plan
+                .int_function(IntFunctionId(0))
+                .graph()
+                .blocks()
+                .iter()
+                .map(|block| block.terminator())
+                .collect::<Vec<_>>();
+            match_pattern(&terminators);
+        });
     }
 
-    fn match_pattern(terminator: &Terminator) -> &MatchPattern {
-        let Terminator::Match { pattern, .. } = terminator else {
-            panic!("let assert should lower to a match terminator");
-        };
-        pattern
+    #[test]
+    #[should_panic(expected = "let assert should lower to one match terminator")]
+    fn match_pattern_uniqueness_guard_is_visible() {
+        let source = r#"
+pub fn main() {
+  let values = [1]
+  let assert [head, ..] = values
+  head
+}
+"#;
+        super::super::with_execution_plan(source, |plan| {
+            let function = plan.int_function(IntFunctionId(0));
+            let terminator = function
+                .graph()
+                .blocks()
+                .iter()
+                .map(|block| block.terminator())
+                .find(|terminator| matches!(terminator, Terminator::Match { .. }))
+                .expect("source should lower a match terminator");
+            match_pattern(&[terminator, terminator]);
+        });
     }
 }

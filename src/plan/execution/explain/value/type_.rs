@@ -79,9 +79,9 @@ mod tests {
         ];
 
         for (type_, expected) in cases {
-            let mut output = String::new();
-            super::write_type(&mut output, &type_);
-            assert_eq!(output, expected);
+            super::super::super::assert_written(expected, |output| {
+                super::write_type(output, &type_);
+            });
         }
     }
 }

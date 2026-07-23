@@ -129,23 +129,14 @@ pub(super) fn write_list_return_tables(
 mod tests {
     #[test]
     fn writes_list_return_families_in_storage_order() {
-        let source = r#"
+        assert_explanation(
+            r#"
 fn ints() -> List(Int) { [] }
 pub fn main() -> List(String) {
   let _ = ints()
   []
 }
-"#;
-        let typed = crate::compile_typed_module("main", "main.gleam", source)
-            .expect("source should compile");
-        let module_plan = crate::plan_module(typed).expect("source should plan");
-        let plan = crate::ExecutionPlan::from_module_plan(module_plan);
-        let mut output = String::new();
-
-        super::write_list_return_tables(&mut output, &plan, &plan.functions);
-
-        assert_eq!(
-            output,
+"#,
             concat!(
                 "\nfunction list.int#0\n",
                 "  entry b0 params=[] captures=[]\n",
@@ -160,5 +151,11 @@ pub fn main() -> List(String) {
                 "    return %list.string#0\n",
             ),
         );
+    }
+
+    fn assert_explanation(source: &str, expected: &str) {
+        super::super::super::assert_rendered(source, expected, |plan, output| {
+            super::write_list_return_tables(output, plan, &plan.functions);
+        });
     }
 }

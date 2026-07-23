@@ -22,7 +22,8 @@ pub(super) fn write_function_tables(
 mod tests {
     #[test]
     fn writes_value_list_and_function_return_groups_in_order() {
-        let source = r#"
+        assert_explanation(
+            r#"
 fn value() -> Int { 1 }
 fn values(value: Int) -> List(Int) {
   {
@@ -39,17 +40,7 @@ pub fn main() {
   let _ = #(value(), provider(0), callable())
   0
 }
-"#;
-        let typed = crate::compile_typed_module("main", "main.gleam", source)
-            .expect("source should compile");
-        let module_plan = crate::plan_module(typed).expect("source should plan");
-        let plan = crate::ExecutionPlan::from_module_plan(module_plan);
-        let mut output = String::new();
-
-        super::write_function_tables(&mut output, &plan, &plan.functions);
-
-        assert_eq!(
-            output,
+"#,
             concat!(
                 "\nfunction int#0\n",
                 "  entry b0 params=[] captures=[]\n",
@@ -96,5 +87,11 @@ pub fn main() {
                 "    return %function.int#0\n",
             ),
         );
+    }
+
+    fn assert_explanation(source: &str, expected: &str) {
+        super::super::assert_rendered(source, expected, |plan, output| {
+            super::write_function_tables(output, plan, &plan.functions);
+        });
     }
 }
