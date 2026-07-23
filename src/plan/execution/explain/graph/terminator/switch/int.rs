@@ -24,13 +24,13 @@ mod tests {
 
     #[test]
     fn writes_int_switch() {
-        assert_explanation(
-            r#"
+        let source = r#"
 fn identity(value: Int) { value }
 pub fn main() { case identity(1) { 1 -> 1 _ -> 0 } }
-"#,
-            "switch.int %int#1 clauses=[1->b1()] fallback=b2()",
-        );
+"#;
+        let expected = "switch.int %int#1 clauses=[1->b1()] fallback=b2()";
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

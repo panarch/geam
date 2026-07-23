@@ -12,8 +12,7 @@ mod tests {
 
     #[test]
     fn writes_jump() {
-        assert_explanation(
-            r#"
+        let source = r#"
 fn identity(value: Bool) { value }
 
 pub fn main() {
@@ -23,9 +22,10 @@ pub fn main() {
   }
   selected + 3
 }
-"#,
-            "jump b2(%int#0)",
-        );
+"#;
+        let expected = "jump b2(%int#0)";
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

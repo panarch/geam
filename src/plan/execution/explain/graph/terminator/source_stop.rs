@@ -32,14 +32,14 @@ mod tests {
 
     #[test]
     fn writes_source_stop() {
-        assert_explanation(
-            r#"
+        let source = r#"
 pub fn main() -> Int {
   panic as "stopped"
 }
-"#,
-            "source_stop kind=panic message=%string#0",
-        );
+"#;
+        let expected = "source_stop kind=panic message=%string#0";
+
+        assert_explanation(source, expected);
     }
 
     #[test]

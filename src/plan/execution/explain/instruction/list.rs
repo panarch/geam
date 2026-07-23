@@ -69,28 +69,28 @@ mod tests {
 
     #[test]
     fn writes_list_instruction_grammar() {
-        assert_explanation(
-            r#"
+        let source = r#"
 pub fn main() {
   let tail = [3]
   let values = [1, 2, ..tail]
   let assert [_, ..rest] = values
   #([], values, rest)
 }
-"#,
-            concat!(
-                "    %int#0:shape#0(Int) = int.value 3\n",
-                "    %list.int#0:shape#1(list_type#1) = list.int[type#1] value ",
-                "elements=[%int#0]\n",
-                "    %int#1:shape#0(Int) = int.value 1\n",
-                "    %int#2:shape#0(Int) = int.value 2\n",
-                "    %list.int#1:shape#1(list_type#1) = list.int[type#1] spread ",
-                "elements=[%int#1, %int#2] tail=%list.int#0\n",
-                "    %list.parameter#0:shape#3(list_type#0) = list.parameter[type#0] empty\n",
-                "    %tuple#0:shape#4(#(list_type#0, list_type#1, list_type#1)) = ",
-                "tuple.value elements=[%list.parameter#0, %list.int#1, %list.int#0]\n",
-            ),
+"#;
+        let expected = concat!(
+            "    %int#0:shape#0(Int) = int.value 3\n",
+            "    %list.int#0:shape#1(list_type#1) = list.int[type#1] value ",
+            "elements=[%int#0]\n",
+            "    %int#1:shape#0(Int) = int.value 1\n",
+            "    %int#2:shape#0(Int) = int.value 2\n",
+            "    %list.int#1:shape#1(list_type#1) = list.int[type#1] spread ",
+            "elements=[%int#1, %int#2] tail=%list.int#0\n",
+            "    %list.parameter#0:shape#3(list_type#0) = list.parameter[type#0] empty\n",
+            "    %tuple#0:shape#4(#(list_type#0, list_type#1, list_type#1)) = ",
+            "tuple.value elements=[%list.parameter#0, %list.int#1, %list.int#0]\n",
         );
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

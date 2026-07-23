@@ -24,13 +24,13 @@ mod tests {
 
     #[test]
     fn writes_string_switch() {
-        assert_explanation(
-            r#"
+        let source = r#"
 fn identity(value: String) { value }
 pub fn main() { case identity("one") { "one" -> 1 _ -> 0 } }
-"#,
-            "switch.string %string#1 clauses=[\"one\"->b1()] fallback=b2()",
-        );
+"#;
+        let expected = "switch.string %string#1 clauses=[\"one\"->b1()] fallback=b2()";
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

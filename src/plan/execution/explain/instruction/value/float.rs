@@ -39,8 +39,7 @@ mod tests {
 
     #[test]
     fn writes_float_arithmetic() {
-        assert_explanation(
-            r#"
+        let source = r#"
 pub fn main() {
   let value = 6.0
   #(
@@ -50,20 +49,20 @@ pub fn main() {
     value /. 2.0,
   )
 }
-"#,
-            concat!(
-                "float.value 6.0 | float.value 2.0 | float.add %float#0 %float#1 | ",
-                "float.value 2.0 | float.sub %float#0 %float#3 | ",
-                "float.value 2.0 | float.mult %float#0 %float#5 | ",
-                "float.value 2.0 | float.div %float#0 %float#7",
-            ),
+"#;
+        let expected = concat!(
+            "float.value 6.0 | float.value 2.0 | float.add %float#0 %float#1 | ",
+            "float.value 2.0 | float.sub %float#0 %float#3 | ",
+            "float.value 2.0 | float.mult %float#0 %float#5 | ",
+            "float.value 2.0 | float.div %float#0 %float#7",
         );
+
+        assert_explanation(source, expected);
     }
 
     #[test]
     fn writes_float_constants_calls_and_projections() {
-        assert_explanation(
-            r#"
+        let source = r#"
 const saved = 1.0
 
 pub type Holder {
@@ -91,16 +90,17 @@ pub fn main() {
     selected,
   )
 }
-"#,
-            concat!(
-                "float.value 2.0 | float.list_index %list.float#0 index=0 | ",
-                "float.value 3.0 | float.value 4.0 | constant.float#0 | ",
-                "float.value 5.0 | float.call float#0 args=[%float#4] | ",
-                "float.value 6.0 | float.function_call %function.float#0 args=[%float#6] | ",
-                "float.tuple_index %tuple#0 index=0 | ",
-                "float.custom_field %custom#0 index=0 | float.value 0.0",
-            ),
+"#;
+        let expected = concat!(
+            "float.value 2.0 | float.list_index %list.float#0 index=0 | ",
+            "float.value 3.0 | float.value 4.0 | constant.float#0 | ",
+            "float.value 5.0 | float.call float#0 args=[%float#4] | ",
+            "float.value 6.0 | float.function_call %function.float#0 args=[%float#6] | ",
+            "float.tuple_index %tuple#0 index=0 | ",
+            "float.custom_field %custom#0 index=0 | float.value 0.0",
         );
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

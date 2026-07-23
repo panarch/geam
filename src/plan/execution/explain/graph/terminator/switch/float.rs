@@ -23,13 +23,13 @@ mod tests {
 
     #[test]
     fn writes_float_switch() {
-        assert_explanation(
-            r#"
+        let source = r#"
 fn identity(value: Float) { value }
 pub fn main() { case identity(1.0) { 1.0 -> 1 _ -> 0 } }
-"#,
-            "switch.float %float#1 clauses=[1.0->b1()] fallback=b2()",
-        );
+"#;
+        let expected = "switch.float %float#1 clauses=[1.0->b1()] fallback=b2()";
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

@@ -26,16 +26,16 @@ mod tests {
 
     #[test]
     fn writes_match_edge_argument_packs() {
-        assert_explanation(
-            r#"
+        let source = r#"
 pub fn main() {
   let values = [1]
   let assert [head, ..] = values
   head
 }
-"#,
-            "b1(binding#0)",
-        );
+"#;
+        let expected = "b1(binding#0)";
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

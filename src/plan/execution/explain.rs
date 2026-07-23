@@ -75,22 +75,21 @@ mod tests {
 
     #[test]
     fn formats_the_public_execution_plan_facade() {
-        super::assert_rendered(
-            "pub fn main() { 1 }",
-            concat!(
-                "module main\n",
-                "main int#0\n",
-                "\n",
-                "function int#0\n",
-                "  entry b0 params=[] captures=[]\n",
-                "  block b0 params=[]\n",
-                "    %int#0:shape#0(Int) = int.value 1\n",
-                "    return %int#0\n",
-            ),
-            |plan, output| {
-                let explanation: ExecutionPlanExplanation<'_> = plan.explain();
-                output.push_str(&explanation.to_string());
-            },
+        let source = "pub fn main() { 1 }";
+        let expected = concat!(
+            "module main\n",
+            "main int#0\n",
+            "\n",
+            "function int#0\n",
+            "  entry b0 params=[] captures=[]\n",
+            "  block b0 params=[]\n",
+            "    %int#0:shape#0(Int) = int.value 1\n",
+            "    return %int#0\n",
         );
+
+        super::assert_rendered(source, expected, |plan, output| {
+            let explanation: ExecutionPlanExplanation<'_> = plan.explain();
+            output.push_str(&explanation.to_string());
+        });
     }
 }

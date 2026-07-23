@@ -24,8 +24,7 @@ mod tests {
 
     #[test]
     fn writes_regular_edge_argument_packs() {
-        assert_explanation(
-            r#"
+        let source = r#"
 fn identity(value: Bool) { value }
 
 pub fn main() {
@@ -35,9 +34,10 @@ pub fn main() {
     False -> value + 1
   }
 }
-"#,
-            "b1(%int#0) b2(%int#0)",
-        );
+"#;
+        let expected = "b1(%int#0) b2(%int#0)";
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

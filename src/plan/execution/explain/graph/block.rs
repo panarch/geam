@@ -20,13 +20,13 @@ mod tests {
 
     #[test]
     fn writes_block_parameters_and_instructions() {
-        assert_explanation(
-            "pub fn main() { 1 }",
-            concat!(
-                "  block b0 params=[]\n",
-                "    %int#0:shape#0(Int) = int.value 1\n",
-            ),
+        let source = "pub fn main() { 1 }";
+        let expected = concat!(
+            "  block b0 params=[]\n",
+            "    %int#0:shape#0(Int) = int.value 1\n",
         );
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

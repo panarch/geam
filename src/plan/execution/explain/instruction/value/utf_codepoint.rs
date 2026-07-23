@@ -30,8 +30,7 @@ mod tests {
 
     #[test]
     fn writes_utf_codepoint_calls_and_projections() {
-        assert_explanation(
-            r#"
+        let source = r#"
 pub type Holder {
   Holder(value: UtfCodepoint)
 }
@@ -62,17 +61,18 @@ pub fn main() {
     selected,
   )
 }
-"#,
-            concat!(
-                "utf_codepoint.call utf_codepoint#0 args=[] | ",
-                "utf_codepoint.list_index %list.utf_codepoint#0 index=0 | ",
-                "utf_codepoint.call utf_codepoint#1 args=[%utf_codepoint#1] | ",
-                "utf_codepoint.function_call %function.utf_codepoint#0 ",
-                "args=[%utf_codepoint#1] | ",
-                "utf_codepoint.tuple_index %tuple#0 index=0 | ",
-                "utf_codepoint.custom_field %custom#0 index=0",
-            ),
+"#;
+        let expected = concat!(
+            "utf_codepoint.call utf_codepoint#0 args=[] | ",
+            "utf_codepoint.list_index %list.utf_codepoint#0 index=0 | ",
+            "utf_codepoint.call utf_codepoint#1 args=[%utf_codepoint#1] | ",
+            "utf_codepoint.function_call %function.utf_codepoint#0 ",
+            "args=[%utf_codepoint#1] | ",
+            "utf_codepoint.tuple_index %tuple#0 index=0 | ",
+            "utf_codepoint.custom_field %custom#0 index=0",
         );
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

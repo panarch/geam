@@ -24,23 +24,22 @@ mod tests {
 
     #[test]
     fn writes_direct_never_call() {
-        assert_explanation(
-            r#"
+        let source = r#"
 fn stop() -> value { panic }
 
 pub fn main() -> Int {
   let _ = stop()
   1
 }
-"#,
-            "never_call never#0 args=[]",
-        );
+"#;
+        let expected = "never_call never#0 args=[]";
+
+        assert_explanation(source, expected);
     }
 
     #[test]
     fn writes_function_value_never_call() {
-        assert_explanation(
-            r#"
+        let source = r#"
 fn stop() -> value { panic }
 
 pub fn main() -> Int {
@@ -48,9 +47,10 @@ pub fn main() -> Int {
   let _ = function()
   1
 }
-"#,
-            "never_call %function.never#0 args=[]",
-        );
+"#;
+        let expected = "never_call %function.never#0 args=[]";
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

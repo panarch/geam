@@ -129,28 +129,28 @@ pub(super) fn write_list_return_tables(
 mod tests {
     #[test]
     fn writes_list_return_families_in_storage_order() {
-        assert_explanation(
-            r#"
+        let source = r#"
 fn ints() -> List(Int) { [] }
 pub fn main() -> List(String) {
   let _ = ints()
   []
 }
-"#,
-            concat!(
-                "\nfunction list.int#0\n",
-                "  entry b0 params=[] captures=[]\n",
-                "  block b0 params=[]\n",
-                "    %list.int#0:shape#1(list_type#1) = list.int[type#1] value elements=[]\n",
-                "    return %list.int#0\n",
-                "\nfunction list.string#0\n",
-                "  entry b0 params=[] captures=[]\n",
-                "  block b0 params=[]\n",
-                "    %list.int#0:shape#1(list_type#1) = list.int[type#1] call list.int#0 args=[]\n",
-                "    %list.string#0:shape#3(list_type#0) = list.string[type#0] value elements=[]\n",
-                "    return %list.string#0\n",
-            ),
+"#;
+        let expected = concat!(
+            "\nfunction list.int#0\n",
+            "  entry b0 params=[] captures=[]\n",
+            "  block b0 params=[]\n",
+            "    %list.int#0:shape#1(list_type#1) = list.int[type#1] value elements=[]\n",
+            "    return %list.int#0\n",
+            "\nfunction list.string#0\n",
+            "  entry b0 params=[] captures=[]\n",
+            "  block b0 params=[]\n",
+            "    %list.int#0:shape#1(list_type#1) = list.int[type#1] call list.int#0 args=[]\n",
+            "    %list.string#0:shape#3(list_type#0) = list.string[type#0] value elements=[]\n",
+            "    return %list.string#0\n",
         );
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

@@ -27,13 +27,15 @@ mod tests {
 
     #[test]
     fn writes_nil_value() {
-        assert_explanation("pub fn main() { Nil }", "nil.value");
+        let source = "pub fn main() { Nil }";
+        let expected = "nil.value";
+
+        assert_explanation(source, expected);
     }
 
     #[test]
     fn writes_nil_constants_calls_and_projections() {
-        assert_explanation(
-            r#"
+        let source = r#"
 const saved = Nil
 
 pub type Holder {
@@ -61,15 +63,16 @@ pub fn main() {
   )
   selected
 }
-"#,
-            concat!(
-                "nil.value | nil.list_index %list.nil#0 index=0 | nil.value | nil.value | ",
-                "constant.nil#0 | nil.value | nil.call nil#1 args=[%nil#4] | nil.value | ",
-                "nil.function_call %function.nil#0 args=[%nil#6] | ",
-                "nil.tuple_index %tuple#0 index=0 | nil.custom_field %custom#0 index=0 | ",
-                "nil.value",
-            ),
+"#;
+        let expected = concat!(
+            "nil.value | nil.list_index %list.nil#0 index=0 | nil.value | nil.value | ",
+            "constant.nil#0 | nil.value | nil.call nil#1 args=[%nil#4] | nil.value | ",
+            "nil.function_call %function.nil#0 args=[%nil#6] | ",
+            "nil.tuple_index %tuple#0 index=0 | nil.custom_field %custom#0 index=0 | ",
+            "nil.value",
         );
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

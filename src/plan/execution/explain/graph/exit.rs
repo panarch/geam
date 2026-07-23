@@ -263,8 +263,7 @@ mod tests {
 
     #[test]
     fn writes_return_and_tail_call_exits() {
-        assert_explanation(
-            r#"
+        let source = r#"
 fn loop(value: Int) {
   case value {
     0 -> 0
@@ -273,9 +272,10 @@ fn loop(value: Int) {
 }
 
 pub fn main() { loop(2) }
-"#,
-            "return %int#0 | tail int#1 args=[%int#2]",
-        );
+"#;
+        let expected = "return %int#0 | tail int#1 args=[%int#2]";
+
+        assert_explanation(source, expected);
     }
 
     #[test]

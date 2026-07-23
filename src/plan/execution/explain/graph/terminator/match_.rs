@@ -26,16 +26,16 @@ mod tests {
 
     #[test]
     fn writes_refutable_match() {
-        assert_explanation(
-            r#"
+        let source = r#"
 pub fn main() {
   let values = [1]
   let assert [head, ..] = values
   head
 }
-"#,
-            "match %list.int#0 pattern=[binding#0, .._] success=b1(binding#0) failure=b2(%list.int#0)",
-        );
+"#;
+        let expected = "match %list.int#0 pattern=[binding#0, .._] success=b1(binding#0) failure=b2(%list.int#0)";
+
+        assert_explanation(source, expected);
     }
 
     fn assert_explanation(source: &str, expected: &str) {

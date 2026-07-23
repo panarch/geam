@@ -21,7 +21,7 @@ pub(in super::super) fn list_function_label(function: &ListFunctionId) -> Functi
 
 #[cfg(test)]
 mod tests {
-    use crate::plan::execution::RuntimeFunctionId;
+    use crate::plan::execution::{ExecutionPlan, ListFunctionId, RuntimeFunctionId};
 
     #[test]
     fn labels_list_function_families() {
@@ -60,16 +60,22 @@ mod tests {
 
     fn assert_explanation(source: &str, expected: &str) {
         super::super::super::assert_rendered(source, expected, |plan, output| {
-            let RuntimeFunctionId::List(function) = plan.main_runtime() else {
-                panic!("source should lower a list-returning main function");
-            };
-            super::list_function_label(&function).push_to(output);
+            super::list_function_label(&main_list_function_id(plan)).push_to(output);
         });
+    }
+
+    fn main_list_function_id(plan: &ExecutionPlan) -> ListFunctionId {
+        let RuntimeFunctionId::List(function) = plan.main_runtime() else {
+            panic!("source should lower a list-returning main function");
+        };
+        function
     }
 
     #[test]
     #[should_panic(expected = "source should lower a list-returning main function")]
     fn list_function_shape_guard_is_visible() {
-        assert_explanation("pub fn main() { 1 }", "");
+        let source = "pub fn main() { 1 }";
+
+        super::super::super::with_execution_plan(source, main_list_function_id);
     }
 }
