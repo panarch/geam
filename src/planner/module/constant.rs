@@ -4,10 +4,10 @@ use crate::plan::{
     CustomValueShape, Endianness, FloatBitSize, FunctionShape, StringEncoding, TypeScheme,
     ValueShape, ValueType,
 };
-use crate::planner::context::{AnonymousFunctions, PlanContext};
+use crate::planner::context::{AnonymousFunctions, ModuleFunctionTarget, PlanContext};
 use crate::planner::error::{
-    InvalidExpressionShapeKind, InvalidExpressionType, InvalidModuleReferenceReason,
-    InvalidTypedAstReason, PlanError, UnsupportedBitArraySegmentReason,
+    InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
+    UnsupportedBitArraySegmentReason,
 };
 use crate::planner::type_parameter::TypeParameterScope;
 use ecow::EcoString;
@@ -398,37 +398,17 @@ fn plan_var(
             external_javascript,
             ..
         } => {
-            if external_erlang.is_some() || external_javascript.is_some() {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ModuleReference {
-                        module: module.clone(),
-                        name: name.clone(),
-                        reason: InvalidModuleReferenceReason::ExternalFunction,
-                    },
-                });
-            }
-            let ValueShape::Function(actual) = &shape else {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ModuleReference {
-                        module: module.clone(),
-                        name: name.clone(),
-                        reason: InvalidModuleReferenceReason::FunctionType,
-                    },
-                });
-            };
-            let function = context.module_function(module, name)?;
-            let instantiation =
-                function
-                    .instantiate(actual)
-                    .map_err(|_| PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::ModuleReference {
-                            module: module.clone(),
-                            name: name.clone(),
-                            reason: InvalidModuleReferenceReason::FunctionInstantiation,
-                        },
-                    })?;
+            let target = ModuleFunctionTarget::direct(
+                module.clone(),
+                name.clone(),
+                external_erlang.is_some() || external_javascript.is_some(),
+            )
+            .validate_external()?;
+            let actual = target.function_shape(shape.clone())?;
+            let function = context.module_function(&target)?;
+            let instantiation = target.instantiate_reference(&function, &actual)?;
             Ok(ConstantValue::function(
-                (**actual).clone(),
+                actual,
                 function.reference(instantiation),
             ))
         }

@@ -5,7 +5,7 @@ use crate::plan::{
     StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr, UtfCodepointExpr,
     UtfCodepointFunctionExpr,
 };
-use crate::planner::context::{FunctionLocalBinding, PlanContext};
+use crate::planner::context::{FunctionLocalBinding, ModuleFunctionTarget, PlanContext};
 use crate::planner::error::{
     InvalidExpressionShapeKind, InvalidModuleReferenceReason, InvalidTypedAstReason, PlanError,
 };
@@ -84,16 +84,12 @@ pub(super) fn plan_var(
             external_javascript,
             ..
         } => {
-            if external_erlang.is_some() || external_javascript.is_some() {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ModuleReference {
-                        module,
-                        name,
-                        reason: InvalidModuleReferenceReason::ExternalFunction,
-                    },
-                });
-            }
-            plan_function_reference(&module, name, constructor_shape, context)
+            let target = ModuleFunctionTarget::direct(
+                module,
+                name,
+                external_erlang.is_some() || external_javascript.is_some(),
+            );
+            plan_function_reference(target, constructor_shape, context)
         }
         ValueConstructorVariant::ModuleConstant { module, name, .. } => {
             context.module_constant_expr(&module, &name, &constructor_shape)
@@ -116,35 +112,15 @@ pub(super) fn plan_module_select(
             external_javascript,
             ..
         } => {
-            let _linked_module = context.resolve_module_reference(&module_name, &label)?;
-            if module != module_name {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ModuleReference {
-                        module: module_name,
-                        name: label,
-                        reason: InvalidModuleReferenceReason::FunctionModule { actual: module },
-                    },
-                });
-            }
-            if name != label {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ModuleReference {
-                        module: module_name,
-                        name: label,
-                        reason: InvalidModuleReferenceReason::FunctionName { actual: name },
-                    },
-                });
-            }
-            if external_erlang.is_some() || external_javascript.is_some() {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ModuleReference {
-                        module: module_name,
-                        name: label,
-                        reason: InvalidModuleReferenceReason::ExternalFunction,
-                    },
-                });
-            }
-            plan_function_reference(&module, name, shape, context)
+            let target = ModuleFunctionTarget::selected(
+                context,
+                module_name,
+                label,
+                module,
+                name,
+                external_erlang.is_some() || external_javascript.is_some(),
+            )?;
+            plan_function_reference(target, shape, context)
         }
         ModuleValueConstructor::Constant { .. } => {
             context.module_constant_expr(&module_name, &label, &shape)
@@ -189,40 +165,23 @@ pub(super) fn plan_module_select(
 }
 
 fn plan_function_reference(
-    module: &EcoString,
-    name: EcoString,
+    target: ModuleFunctionTarget,
     constructor_shape: crate::plan::ValueShape,
     context: &PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    let function = context.module_function(module, &name)?;
-
-    let crate::plan::ValueShape::Function(shape) = constructor_shape else {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ModuleReference {
-                module: module.clone(),
-                name,
-                reason: InvalidModuleReferenceReason::FunctionType,
-            },
-        });
-    };
-    let instantiation = function
-        .instantiate(&shape)
-        .map_err(|_| PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ModuleReference {
-                module: module.clone(),
-                name: name.clone(),
-                reason: InvalidModuleReferenceReason::FunctionInstantiation,
-            },
-        })?;
+    let target = target.validate_external()?;
+    let function = context.module_function(&target)?;
+    let shape = target.function_shape(constructor_shape)?;
+    let instantiation = target.instantiate_reference(&function, &shape)?;
     let reference = function.reference(instantiation);
 
     FunctionExpr::reference(reference)
-        .with_shape(*shape)
+        .with_shape(shape)
         .map(Expr::function)
         .ok_or_else(|| PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ModuleReference {
-                module: module.clone(),
-                name,
+                module: target.module().clone(),
+                name: target.name().clone(),
                 reason: InvalidModuleReferenceReason::FunctionReferenceShape,
             },
         })

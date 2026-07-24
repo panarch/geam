@@ -4,7 +4,7 @@ mod function_value;
 mod implicit;
 
 use crate::plan::Expr;
-use crate::planner::context::PlanContext;
+use crate::planner::context::{ModuleFunctionTarget, PlanContext};
 use crate::planner::error::{
     InvalidCallShapeReason, InvalidModuleReferenceReason, InvalidTypedAstReason,
     InvalidUseShapeReason, PlanError,
@@ -99,16 +99,13 @@ fn plan_call_expression(
                 external_javascript,
                 ..
             } => {
-                if external_erlang.is_some() || external_javascript.is_some() {
-                    return Err(PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::ModuleReference {
-                            module: module.clone(),
-                            name: name.clone(),
-                            reason: InvalidModuleReferenceReason::ExternalFunction,
-                        },
-                    });
-                }
-                let function = context.module_function(module, name)?;
+                let target = ModuleFunctionTarget::direct(
+                    module.clone(),
+                    name.clone(),
+                    external_erlang.is_some() || external_javascript.is_some(),
+                )
+                .validate_external()?;
+                let function = context.module_function(&target)?;
                 return direct::plan_direct_function_call(
                     type_, function, arguments, context, capture,
                 );
@@ -152,39 +149,16 @@ fn plan_call_expression(
                 external_javascript,
                 ..
             } => {
-                let _linked_module = context.resolve_module_reference(module_name, label)?;
-                if module != module_name {
-                    return Err(PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::ModuleReference {
-                            module: module_name.clone(),
-                            name: label.clone(),
-                            reason: InvalidModuleReferenceReason::FunctionModule {
-                                actual: module.clone(),
-                            },
-                        },
-                    });
-                }
-                if name != label {
-                    return Err(PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::ModuleReference {
-                            module: module_name.clone(),
-                            name: label.clone(),
-                            reason: InvalidModuleReferenceReason::FunctionName {
-                                actual: name.clone(),
-                            },
-                        },
-                    });
-                }
-                if external_erlang.is_some() || external_javascript.is_some() {
-                    return Err(PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::ModuleReference {
-                            module: module_name.clone(),
-                            name: label.clone(),
-                            reason: InvalidModuleReferenceReason::ExternalFunction,
-                        },
-                    });
-                }
-                let function = context.module_function(module, name)?;
+                let target = ModuleFunctionTarget::selected(
+                    context,
+                    module_name.clone(),
+                    label.clone(),
+                    module.clone(),
+                    name.clone(),
+                    external_erlang.is_some() || external_javascript.is_some(),
+                )?
+                .validate_external()?;
+                let function = context.module_function(&target)?;
                 return direct::plan_direct_function_call(
                     type_, function, arguments, context, capture,
                 );

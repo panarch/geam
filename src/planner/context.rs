@@ -33,6 +33,135 @@ pub(super) struct FunctionInfo {
     pub(super) params: Vec<FunctionParam>,
 }
 
+pub(super) struct ModuleFunctionTarget {
+    module: EcoString,
+    name: EcoString,
+    link: ModuleFunctionLink,
+    external: bool,
+}
+
+pub(super) struct ValidatedModuleFunctionTarget {
+    module: EcoString,
+    name: EcoString,
+    link: ModuleFunctionLink,
+}
+
+#[derive(Clone, Copy)]
+enum ModuleFunctionLink {
+    Unresolved,
+    Resolved(ModuleId),
+}
+
+impl ModuleFunctionTarget {
+    pub(super) fn direct(
+        module: EcoString,
+        name: EcoString,
+        external: bool,
+    ) -> ModuleFunctionTarget {
+        ModuleFunctionTarget {
+            module,
+            name,
+            link: ModuleFunctionLink::Unresolved,
+            external,
+        }
+    }
+
+    pub(super) fn selected(
+        context: &PlanContext<'_>,
+        module: EcoString,
+        name: EcoString,
+        constructor_module: EcoString,
+        constructor_name: EcoString,
+        external: bool,
+    ) -> Result<ModuleFunctionTarget, PlanError> {
+        let linked_module = context.resolve_module_reference(&module, &name)?;
+        if constructor_module != module {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module,
+                    name,
+                    reason: InvalidModuleReferenceReason::FunctionModule {
+                        actual: constructor_module,
+                    },
+                },
+            });
+        }
+        if constructor_name != name {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module,
+                    name,
+                    reason: InvalidModuleReferenceReason::FunctionName {
+                        actual: constructor_name,
+                    },
+                },
+            });
+        }
+        Ok(ModuleFunctionTarget {
+            module,
+            name,
+            link: ModuleFunctionLink::Resolved(linked_module),
+            external,
+        })
+    }
+
+    pub(super) fn validate_external(self) -> Result<ValidatedModuleFunctionTarget, PlanError> {
+        if self.external {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: self.module,
+                    name: self.name,
+                    reason: InvalidModuleReferenceReason::ExternalFunction,
+                },
+            });
+        }
+        Ok(ValidatedModuleFunctionTarget {
+            module: self.module,
+            name: self.name,
+            link: self.link,
+        })
+    }
+}
+
+impl ValidatedModuleFunctionTarget {
+    pub(super) fn module(&self) -> &EcoString {
+        &self.module
+    }
+
+    pub(super) fn name(&self) -> &EcoString {
+        &self.name
+    }
+
+    pub(super) fn function_shape(&self, shape: ValueShape) -> Result<FunctionShape, PlanError> {
+        let ValueShape::Function(shape) = shape else {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: self.module.clone(),
+                    name: self.name.clone(),
+                    reason: InvalidModuleReferenceReason::FunctionType,
+                },
+            });
+        };
+        Ok(*shape)
+    }
+
+    pub(super) fn instantiate_reference(
+        &self,
+        function: &FunctionInfo,
+        shape: &FunctionShape,
+    ) -> Result<crate::plan::FunctionInstantiation, PlanError> {
+        function
+            .instantiate(shape)
+            .map_err(|_| PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: self.module.clone(),
+                    name: self.name.clone(),
+                    reason: InvalidModuleReferenceReason::FunctionInstantiation,
+                },
+            })
+    }
+}
+
 #[derive(Clone)]
 pub(super) struct FunctionParam {
     slot: crate::plan::ParamSlot,
@@ -1920,19 +2049,23 @@ impl<'a> PlanContext<'a> {
 
     pub(super) fn module_function(
         &self,
-        module: &EcoString,
-        name: &EcoString,
+        target: &ValidatedModuleFunctionTarget,
     ) -> Result<FunctionInfo, PlanError> {
-        let module_id = self.resolve_module_reference(module, name)?;
+        let module_id = match target.link {
+            ModuleFunctionLink::Unresolved => {
+                self.resolve_module_reference(&target.module, &target.name)?
+            }
+            ModuleFunctionLink::Resolved(module) => module,
+        };
         let function = match self.registry {
-            RegistryAccess::Program { registry } => registry.function(module_id, name),
+            RegistryAccess::Program { registry } => registry.function(module_id, &target.name),
             #[cfg(test)]
-            RegistryAccess::Local { functions, .. } => functions.get(name).cloned(),
+            RegistryAccess::Local { functions, .. } => functions.get(&target.name).cloned(),
         };
         function.ok_or_else(|| PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ModuleReference {
-                module: module.clone(),
-                name: name.clone(),
+                module: target.module.clone(),
+                name: target.name.clone(),
                 reason: InvalidModuleReferenceReason::MissingFunction,
             },
         })
@@ -2857,8 +2990,8 @@ impl FunctionInfo {
 mod tests {
     use super::FunctionLocalBinding;
     use super::{
-        AnonymousFunctions, FunctionInfo, PlanContext, PlannedCapture, ResolvedCustomConstructor,
-        collect_parameter_shapes, instantiate_custom_shape_template,
+        AnonymousFunctions, FunctionInfo, ModuleFunctionTarget, PlanContext, PlannedCapture,
+        ResolvedCustomConstructor, collect_parameter_shapes, instantiate_custom_shape_template,
         instantiate_custom_type_template,
     };
     use crate::plan::{
@@ -2926,9 +3059,29 @@ mod tests {
         );
         assert_eq!(
             context
-                .module_function(&module, &EcoString::from("present"))
+                .module_function(
+                    &ModuleFunctionTarget::direct(module.clone(), "present".into(), false)
+                        .validate_external()
+                        .expect("local function target should validate"),
+                )
                 .map(function_template_id),
             Ok(function_id),
+        );
+        assert_eq!(
+            context
+                .module_function(
+                    &ModuleFunctionTarget::direct(module.clone(), "missing".into(), false)
+                        .validate_external()
+                        .expect("local function target should validate"),
+                )
+                .map(function_template_id),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "missing".into(),
+                    reason: InvalidModuleReferenceReason::MissingFunction,
+                },
+            }),
         );
         assert_eq!(
             context
@@ -2938,6 +3091,113 @@ mod tests {
                     module: "other".into(),
                     name: "present".into(),
                     reason: InvalidModuleReferenceReason::UnlinkedModule,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn module_function_target_preserves_selected_validation_order() {
+        let module = EcoString::from("main");
+        let mut anonymous = AnonymousFunctions::default();
+        let functions = HashMap::new();
+        let context = PlanContext::new(&module, &functions, &mut anonymous);
+
+        assert_eq!(
+            ModuleFunctionTarget::selected(
+                &context,
+                module.clone(),
+                "run".into(),
+                "other".into(),
+                "wrong".into(),
+                true,
+            )
+            .map(|_| ()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "run".into(),
+                    reason: InvalidModuleReferenceReason::FunctionModule {
+                        actual: "other".into(),
+                    },
+                },
+            }),
+        );
+        assert_eq!(
+            ModuleFunctionTarget::selected(
+                &context,
+                module.clone(),
+                "run".into(),
+                module.clone(),
+                "wrong".into(),
+                true,
+            )
+            .map(|_| ()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "run".into(),
+                    reason: InvalidModuleReferenceReason::FunctionName {
+                        actual: "wrong".into(),
+                    },
+                },
+            }),
+        );
+        assert_eq!(
+            ModuleFunctionTarget::selected(
+                &context,
+                module.clone(),
+                "run".into(),
+                module.clone(),
+                "run".into(),
+                true,
+            )
+            .and_then(ModuleFunctionTarget::validate_external)
+            .map(|_| ()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "run".into(),
+                    reason: InvalidModuleReferenceReason::ExternalFunction,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn module_function_target_owns_reference_shape_and_instantiation_errors() {
+        let module = EcoString::from("main");
+        let mut anonymous = AnonymousFunctions::default();
+        let (_, function) = anonymous.allocate(
+            "run".into(),
+            ValueShape::Int,
+            Vec::new(),
+            Default::default(),
+        );
+        let target = ModuleFunctionTarget::direct(module, "run".into(), false)
+            .validate_external()
+            .expect("local function target should validate");
+
+        assert_eq!(
+            target.function_shape(ValueShape::Int),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "run".into(),
+                    reason: InvalidModuleReferenceReason::FunctionType,
+                },
+            }),
+        );
+        assert_eq!(
+            target.instantiate_reference(
+                &function,
+                &FunctionShape::new(vec![ValueShape::Int], ValueShape::Int),
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "run".into(),
+                    reason: InvalidModuleReferenceReason::FunctionInstantiation,
                 },
             }),
         );

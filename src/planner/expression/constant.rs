@@ -2,7 +2,7 @@ use crate::plan::{
     BoolExpr, Expr, FloatExpr, FunctionExpr, IntExpr, ListExpr, NilExpr, StringExpr, TupleExpr,
     ValueType,
 };
-use crate::planner::context::PlanContext;
+use crate::planner::context::{ModuleFunctionTarget, PlanContext};
 use crate::planner::error::{
     InvalidExpressionShapeKind, InvalidExpressionType, InvalidModuleReferenceReason,
     InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
@@ -237,16 +237,13 @@ fn plan_var(
             external_javascript,
             ..
         } => {
-            if external_erlang.is_some() || external_javascript.is_some() {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ModuleReference {
-                        module,
-                        name,
-                        reason: InvalidModuleReferenceReason::ExternalFunction,
-                    },
-                });
-            }
-            let function = context.module_function(&module, &name)?;
+            let target = ModuleFunctionTarget::direct(
+                module,
+                name,
+                external_erlang.is_some() || external_javascript.is_some(),
+            )
+            .validate_external()?;
+            let function = context.module_function(&target)?;
 
             Ok(Expr::function(FunctionExpr::reference(
                 function.reference(function.signature.identity_instantiation()),
