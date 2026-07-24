@@ -17,5 +17,6 @@ pub use planner::{PlanError, plan_module, plan_module_with_source, plan_program}
 pub use runtime::{
     BitArraySegmentPanicReason, BitArrayValue, BitArrayValueLengthError, CustomFieldValue,
     CustomValue, ExecutionError, FunctionValue, InvariantError, ListValue,
-    ListValueItemTypeMismatch, Panic, PanicDetails, PanicKind, PanicMessage, Value, run_main,
+    ListValueItemTypeMismatch, Panic, PanicDetails, PanicKind, PanicMessage, Value,
+    ValueInspection, run_main,
 };

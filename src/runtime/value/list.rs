@@ -21,7 +21,7 @@ pub struct ListValueItemTypeMismatch {
 // Empty lists still need item type metadata; variants that cannot infer it from
 // their values carry the metadata explicitly.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum ListValueKind {
+pub(super) enum ListValueKind {
     Parameter(TypeParameterId),
     Int(Vec<BigInt>),
     String(Vec<EcoString>),
@@ -49,6 +49,10 @@ pub(crate) enum ListValueKind {
 }
 
 impl ListValue {
+    pub(super) fn kind(&self) -> &ListValueKind {
+        &self.kind
+    }
+
     pub fn int(values: Vec<BigInt>) -> Self {
         Self {
             kind: ListValueKind::Int(values),

@@ -28,7 +28,7 @@ pub(crate) use value::{
 };
 pub use value::{
     BitArrayValue, BitArrayValueLengthError, CustomFieldValue, CustomValue, FunctionValue,
-    ListValue, ListValueItemTypeMismatch, Value,
+    ListValue, ListValueItemTypeMismatch, Value, ValueInspection,
 };
 
 use crate::plan::execution::ExecutionPlan;
