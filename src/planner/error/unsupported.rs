@@ -55,9 +55,3 @@ pub enum UnsupportedCaseReason {
     #[error("case subject type is not supported")]
     UnsupportedSubjectType,
 }
-
-#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
-pub enum UnsupportedPipelineReason {
-    #[error("echo")]
-    Echo,
-}

@@ -406,6 +406,8 @@ mod pipeline {
         anonymous_function_call,
         function_value_hole_call,
         function_returning_function_call,
+        echo,
+        echo_order,
     );
 }
 
@@ -787,6 +789,12 @@ mod execution_errors {
         }
     }
 
+    mod pipeline {
+        execution_error_cases!("pipeline";
+            echo_then_panic,
+        );
+    }
+
     mod patterns {
         execution_error_cases!("patterns";
             let_assert_empty_head,
@@ -858,12 +866,6 @@ mod rejection {
     mod case_patterns {
         rejection_cases!("case_patterns";
             bit_array_pattern_native_endian,
-        );
-    }
-
-    mod pipeline {
-        rejection_cases!("pipeline";
-            echo,
         );
     }
 }

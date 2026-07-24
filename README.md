@@ -59,7 +59,8 @@ The main public entry points are:
 - `run_main`
 
 `run_main` takes a caller-owned `EchoSink`; Geam never selects stdout, stderr,
-or a hidden output destination for the host.
+or a hidden output destination for the host. Ordinary and pipeline Echo both
+emit through that boundary and continue with their original value.
 
 ## Upstream
 

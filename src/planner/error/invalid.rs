@@ -261,6 +261,8 @@ pub enum InvalidCaseShapeReason {
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum InvalidPipelineShapeReason {
+    #[error("invalid echo step")]
+    EchoStep,
     #[error("invalid hole capture")]
     InvalidHoleCapture,
     #[error("missing pipe argument")]

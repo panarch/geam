@@ -596,6 +596,23 @@ pub fn main() {
     }
 
     #[test]
+    fn anonymous_free_variables_include_pipeline_echo_value_then_message() {
+        assert_eq!(
+            anonymous_function_free_variables(
+                r#"
+pub fn main() {
+  let value = 1
+  let message = "selected"
+  fn() { value |> echo as message }
+  1
+}
+"#,
+            ),
+            vec!["value".to_string(), "message".to_string()],
+        );
+    }
+
+    #[test]
     fn anonymous_free_variables_accept_missing_echo_operands() {
         let body = Vec1::new(Statement::Expression(TypedExpr::Echo {
             location: dummy_span(),

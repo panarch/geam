@@ -98,8 +98,11 @@ run_main(&plan, &mut echo_sink)
 
 For an ordinary echo expression, execution evaluates the value, then its
 optional message, emits one owned `EchoOutput`, and continues with the original
-stored value. A failing value or message emits nothing. Output emitted before a
-later source panic remains in the caller-owned sink.
+stored value. Pipeline echo receives the already evaluated pipeline value,
+evaluates its optional message, emits through the same boundary, and passes
+that original value to the next pipeline stage. A failing value or message
+emits nothing. Output emitted before a later source panic remains in the
+caller-owned sink.
 
 `EchoOutput` contains the materialized `Value`, optional message, and a compact
 source location. When the plan owns source context, the location includes its

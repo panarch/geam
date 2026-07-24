@@ -26,6 +26,16 @@ pub(super) fn plan(
         });
     };
     let value = plan_expr(expression, context)?;
+
+    plan_value(location, value, message, context)
+}
+
+pub(super) fn plan_value(
+    location: gleam_core::ast::SrcSpan,
+    value: Expr,
+    message: Option<TypedExpr>,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
     let message = message
         .map(|message| plan_string_expr(message, context))
         .transpose()?;
