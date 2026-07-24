@@ -2,7 +2,7 @@ pub fn main() {
   todo as "later"
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::todo
 //
 //   x todo: later

@@ -39,4 +39,4 @@ pub fn main() {
   )
 }
 
-// geam:expect Tuple([List(Parameter(0))([]), List(List(Parameter(1)))([]), Bool(true), Bool(true), Bool(true), Bool(true), Bool(true), Bool(true), Bool(true), Bool(true), Bool(true), Bool(true), Bool(true)])
+// @geam:expect Tuple([List(Parameter(0))([]), List(List(Parameter(1)))([]), Bool(true), Bool(true), Bool(true), Bool(true), Bool(true), Bool(true), Bool(true), Bool(true), Bool(true), Bool(true), Bool(true)])

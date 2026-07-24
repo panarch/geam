@@ -7,4 +7,4 @@ pub fn main() {
   result
 }
 
-// geam:expect List(BitArray)([BitArray(bytes=[1], bit_len=8)])
+// @geam:expect List(BitArray)([BitArray(bytes=[1], bit_len=8)])

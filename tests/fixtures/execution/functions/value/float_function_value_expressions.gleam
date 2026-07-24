@@ -64,4 +64,4 @@ pub fn main() {
   +. function_call_add(1.0)
 }
 
-// geam:expect Float(18.5)
+// @geam:expect Float(18.5)

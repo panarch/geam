@@ -8,4 +8,4 @@ pub fn main() {
 
   #(mapped, updated.value, updated.label)
 }
-// geam:expect Tuple([Custom(type=geam/model/Boxed(Int), constructor=Boxed#0, fields=[value: Int(21), label: String("initial")]), Int(42), String("initial")])
+// @geam:expect Tuple([Custom(type=geam/model/Boxed(Int), constructor=Boxed#0, fields=[value: Int(21), label: String("initial")]), Int(42), String("initial")])

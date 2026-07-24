@@ -5,4 +5,4 @@ pub fn main() {
   }
 }
 
-// geam:expect BitArray(bytes=[10, 20, 30], bit_len=24)
+// @geam:expect BitArray(bytes=[10, 20, 30], bit_len=24)

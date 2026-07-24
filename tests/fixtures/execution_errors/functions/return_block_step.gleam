@@ -13,7 +13,7 @@ pub fn main() -> Int {
   loop()
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: `panic` expression evaluated.

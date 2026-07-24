@@ -19,4 +19,4 @@ pub fn main() {
   capture_all()
 }
 
-// geam:expect Function(fn() -> #(List(Parameter(0)), List(List(Parameter(1))), List(List(Int)), fn(Parameter(2)) -> Parameter(2), fn(Int) -> Parameter(3)))
+// @geam:expect Function(fn() -> #(List(Parameter(0)), List(List(Parameter(1))), List(List(Int)), fn(Parameter(2)) -> Parameter(2), fn(Int) -> Parameter(3)))

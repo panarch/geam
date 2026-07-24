@@ -138,7 +138,7 @@ pub fn main() {
 }
 
 
-// geam:explain
+// @geam:explain
 // module main
 // main function.tuple#0
 //

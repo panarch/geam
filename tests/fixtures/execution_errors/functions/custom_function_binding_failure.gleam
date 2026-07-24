@@ -11,7 +11,7 @@ pub fn main() {
   function
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: custom function binding failed

@@ -6,4 +6,4 @@ pub fn main() {
   add_one != add_one
 }
 
-// geam:expect Bool(false)
+// @geam:expect Bool(false)

@@ -29,4 +29,4 @@ pub fn main() {
   #(sum(Pair(left: 1, right: 2), Empty), sum(Empty, One(4)), nested)
 }
 
-// geam:expect Tuple([Int(3), Int(4), Int(11)])
+// @geam:expect Tuple([Int(3), Int(4), Int(11)])

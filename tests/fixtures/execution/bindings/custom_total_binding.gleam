@@ -37,4 +37,4 @@ pub fn main() {
   }
 }
 
-// geam:expect Int(28)
+// @geam:expect Int(28)

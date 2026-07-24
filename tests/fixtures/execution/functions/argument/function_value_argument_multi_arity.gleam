@@ -10,4 +10,4 @@ pub fn main() {
   apply_int_pair(add_pair, 20, 22)
 }
 
-// geam:expect Int(42)
+// @geam:expect Int(42)

@@ -25,4 +25,4 @@ pub fn main() {
   outer + inner + primitive_shadow + add(1)
 }
 
-// geam:expect Int(31)
+// @geam:expect Int(31)

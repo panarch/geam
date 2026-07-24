@@ -12,4 +12,4 @@ pub fn main() {
   literal_before_variable + variable_before_literal
 }
 
-// geam:expect Int(3)
+// @geam:expect Int(3)

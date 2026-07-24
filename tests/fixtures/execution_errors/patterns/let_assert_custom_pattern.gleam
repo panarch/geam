@@ -8,7 +8,7 @@ pub fn main() {
   value
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::let_assert
 //
 //   x let_assert: expected full

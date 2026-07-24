@@ -7,4 +7,4 @@ pub fn main() {
   1 |> f
 }
 
-// geam:expect Int(2)
+// @geam:expect Int(2)

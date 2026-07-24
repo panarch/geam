@@ -49,7 +49,7 @@ pub fn main() {
 }
 
 
-// geam:explain
+// @geam:explain
 // module main
 // main tuple#0
 //

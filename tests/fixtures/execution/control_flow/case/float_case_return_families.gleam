@@ -71,4 +71,4 @@ pub fn main() {
   +. int_score
 }
 
-// geam:expect Float(6.0)
+// @geam:expect Float(6.0)

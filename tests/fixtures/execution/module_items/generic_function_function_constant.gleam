@@ -12,4 +12,4 @@ pub fn main() {
   #(provider_constant, provider_constant(Nil)(1))
 }
 
-// geam:expect Tuple([Function(fn(Nil) -> fn(Parameter(0)) -> Parameter(0)), Int(1)])
+// @geam:expect Tuple([Function(fn(Nil) -> fn(Parameter(0)) -> Parameter(0)), Int(1)])

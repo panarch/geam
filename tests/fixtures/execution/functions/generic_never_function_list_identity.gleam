@@ -6,4 +6,4 @@ pub fn main() {
   [diverge] == [diverge]
 }
 
-// geam:expect Bool(true)
+// @geam:expect Bool(true)

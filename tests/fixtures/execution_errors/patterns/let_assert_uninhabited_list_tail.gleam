@@ -7,7 +7,7 @@ pub fn main() {
   tail([])
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::let_assert
 //
 //   x let_assert: Pattern match failed, no pattern matched the value.

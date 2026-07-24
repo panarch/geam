@@ -5,7 +5,7 @@ pub fn main() {
 }
 
 
-// geam:explain
+// @geam:explain
 // module main
 // main list.utf_codepoint#0
 //

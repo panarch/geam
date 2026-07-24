@@ -6,4 +6,4 @@ pub fn main() {
   helper(1)
 }
 
-// geam:expect Int(42)
+// @geam:expect Int(42)

@@ -3,7 +3,7 @@ pub fn main() {
   first + 1
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::let_assert
 //
 //   x let_assert: not empty

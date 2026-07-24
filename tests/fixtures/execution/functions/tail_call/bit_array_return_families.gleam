@@ -21,4 +21,4 @@ pub fn main() {
   #(value, function_tail(2)(<<2>>))
 }
 
-// geam:expect Tuple([BitArray(bytes=[1], bit_len=8), BitArray(bytes=[2], bit_len=8)])
+// @geam:expect Tuple([BitArray(bytes=[1], bit_len=8), BitArray(bytes=[2], bit_len=8)])

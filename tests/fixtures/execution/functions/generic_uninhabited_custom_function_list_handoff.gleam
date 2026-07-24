@@ -21,4 +21,4 @@ pub fn main() {
   function == function
 }
 
-// geam:expect Bool(true)
+// @geam:expect Bool(true)

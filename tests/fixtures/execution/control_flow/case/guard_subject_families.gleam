@@ -37,4 +37,4 @@ pub fn main() {
   bool_ok && bool_literal_ok && bool_true_literal_ok && string_ok && string_literal_ok && float_ok && float_literal_ok
 }
 
-// geam:expect Bool(true)
+// @geam:expect Bool(true)

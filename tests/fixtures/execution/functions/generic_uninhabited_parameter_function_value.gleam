@@ -8,4 +8,4 @@ pub fn main() {
   impossible
 }
 
-// geam:expect Function(fn(geam/main/Never) -> Int)
+// @geam:expect Function(fn(geam/main/Never) -> Int)

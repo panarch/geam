@@ -3,7 +3,7 @@ pub fn main() {
   1
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::assert
 //
 //   x assert: nope

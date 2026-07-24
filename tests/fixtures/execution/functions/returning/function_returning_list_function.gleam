@@ -10,4 +10,4 @@ pub fn main() {
   get()()
 }
 
-// geam:expect List(Int)([Int(1), Int(2), Int(3)])
+// @geam:expect List(Int)([Int(1), Int(2), Int(3)])

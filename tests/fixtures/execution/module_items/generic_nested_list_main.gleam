@@ -39,4 +39,4 @@ pub fn main() {
   )
 }
 
-// geam:expect Tuple([List(List(Parameter(0)))([List(Parameter(0))([])]), List(List(Int))([List(Int)([])]), List(List(List(Int)))([List(List(Int))([List(Int)([])])]), List(List(List(Int)))([List(List(Int))([List(Int)([])])]), List(List(List(Parameter(1))))([List(List(Parameter(1)))([List(Parameter(1))([])])]), List(List(List(Parameter(2))))([List(List(Parameter(2)))([List(Parameter(2))([])]), List(List(Parameter(2)))([List(Parameter(2))([])])]), Tuple([List(List(Parameter(3)))([])]), List(List(List(Parameter(4))))([List(List(Parameter(4)))([])])])
+// @geam:expect Tuple([List(List(Parameter(0)))([List(Parameter(0))([])]), List(List(Int))([List(Int)([])]), List(List(List(Int)))([List(List(Int))([List(Int)([])])]), List(List(List(Int)))([List(List(Int))([List(Int)([])])]), List(List(List(Parameter(1))))([List(List(Parameter(1)))([List(Parameter(1))([])])]), List(List(List(Parameter(2))))([List(List(Parameter(2)))([List(Parameter(2))([])]), List(List(Parameter(2)))([List(Parameter(2))([])])]), Tuple([List(List(Parameter(3)))([])]), List(List(List(Parameter(4))))([List(List(Parameter(4)))([])])])

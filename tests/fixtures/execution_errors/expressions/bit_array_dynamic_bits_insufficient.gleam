@@ -4,7 +4,7 @@ pub fn main() {
   <<bits:bits-size(size)>>
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::bit_array_segment
 //
 //   x bit_array_segment: BitArray segment construction failed.

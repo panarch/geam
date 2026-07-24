@@ -6,4 +6,4 @@ pub fn main() {
   identity(True)
 }
 
-// geam:expect Bool(true)
+// @geam:expect Bool(true)

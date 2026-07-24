@@ -7,7 +7,7 @@ pub fn main() {
   first([])
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::let_assert
 //
 //   x let_assert: expected a generic item

@@ -8,4 +8,4 @@ pub fn main() {
   result
 }
 
-// geam:expect List(Parameter(0))([])
+// @geam:expect List(Parameter(0))([])

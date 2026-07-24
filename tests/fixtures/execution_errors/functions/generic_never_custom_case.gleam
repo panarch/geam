@@ -14,7 +14,7 @@ pub fn main() {
   unwrap(Empty)
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: generic custom case failed

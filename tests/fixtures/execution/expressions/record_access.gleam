@@ -7,4 +7,4 @@ pub fn main() {
   person.name
 }
 
-// geam:expect String("Lucy")
+// @geam:expect String("Lucy")

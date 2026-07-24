@@ -6,4 +6,4 @@ pub fn main() {
   [add_one]
 }
 
-// geam:expect List(fn(Int) -> Int)([Function(fn(Int) -> Int)])
+// @geam:expect List(fn(Int) -> Int)([Function(fn(Int) -> Int)])

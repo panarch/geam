@@ -9,7 +9,7 @@ pub fn main() {
   list_stop() == []
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: generic list subject failed

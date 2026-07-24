@@ -30,4 +30,4 @@ pub fn main() {
   Payload(values, constructor, make_closure(value, values, constructor))
 }
 
-// geam:expect Custom(type=geam/main/Payload, constructor=Payload#0, fields=[List(geam/main/Inner)([Custom(type=geam/main/Inner, constructor=Inner#0, fields=[Int(2)])]), Function(fn(Int) -> geam/main/Inner), Function(fn() -> geam/main/Inner)])
+// @geam:expect Custom(type=geam/main/Payload, constructor=Payload#0, fields=[List(geam/main/Inner)([Custom(type=geam/main/Inner, constructor=Inner#0, fields=[Int(2)])]), Function(fn(Int) -> geam/main/Inner), Function(fn() -> geam/main/Inner)])

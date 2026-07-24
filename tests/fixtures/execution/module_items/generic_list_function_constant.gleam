@@ -8,4 +8,4 @@ pub fn main() {
   #(empty_constant, empty_constant(1))
 }
 
-// geam:expect Tuple([Function(fn(Parameter(0)) -> List(Parameter(0))), List(Int)([])])
+// @geam:expect Tuple([Function(fn(Parameter(0)) -> List(Parameter(0))), List(Int)([])])

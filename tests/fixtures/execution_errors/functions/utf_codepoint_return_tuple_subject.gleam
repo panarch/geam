@@ -6,7 +6,7 @@ pub fn main() -> UtfCodepoint {
   fail().0
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: subject

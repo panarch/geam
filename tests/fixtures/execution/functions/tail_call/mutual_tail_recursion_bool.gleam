@@ -16,4 +16,4 @@ pub fn main() {
   even(10001)
 }
 
-// geam:expect Bool(false)
+// @geam:expect Bool(false)

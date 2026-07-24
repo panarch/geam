@@ -54,4 +54,4 @@ pub fn main() {
   int_hit + int_miss + string_hit + string_miss + bool_hit + bool_miss + nil_hit + nil_miss
 }
 
-// geam:expect Int(55)
+// @geam:expect Int(55)

@@ -2,7 +2,7 @@ pub fn main() {
   {}
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::empty_block
 //
 //   x empty_block: Block is empty.

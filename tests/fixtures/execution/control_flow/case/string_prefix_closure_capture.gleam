@@ -5,4 +5,4 @@ pub fn main() {
   }
 }
 
-// geam:expect String("Geam")
+// @geam:expect String("Geam")

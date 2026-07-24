@@ -3,4 +3,4 @@ pub fn main() {
   value == 2 && values == [1, 2]
 }
 
-// geam:expect Bool(true)
+// @geam:expect Bool(true)

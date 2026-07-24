@@ -16,7 +16,7 @@ pub fn main() {
   provider(invalid_int([]))
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::let_assert
 //
 //   x let_assert: Pattern match failed, no pattern matched the value.

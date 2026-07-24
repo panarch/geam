@@ -35,7 +35,7 @@ pub fn main() -> List(Int) {
 }
 
 
-// geam:explain
+// @geam:explain
 // module main
 // main list.int#0
 //

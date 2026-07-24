@@ -14,4 +14,4 @@ pub fn main() {
   bool_value == True && string_value == "geam" && float_value == 1.5
 }
 
-// geam:expect Bool(true)
+// @geam:expect Bool(true)

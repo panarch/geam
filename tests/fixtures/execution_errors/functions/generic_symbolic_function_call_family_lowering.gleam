@@ -60,7 +60,7 @@ pub fn main() {
   }
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: symbolic function argument failed

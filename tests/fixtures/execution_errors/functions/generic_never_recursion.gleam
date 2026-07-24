@@ -9,7 +9,7 @@ pub fn main() {
   fail(3)
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: generic recursion failed

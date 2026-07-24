@@ -10,4 +10,4 @@ pub fn main() {
   apply(values, 41)
 }
 
-// geam:expect List(Int)([Int(41)])
+// @geam:expect List(Int)([Int(41)])

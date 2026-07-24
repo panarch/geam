@@ -9,4 +9,4 @@ pub fn main() {
   empty(1)
 }
 
-// geam:expect List(Parameter(0))([])
+// @geam:expect List(Parameter(0))([])

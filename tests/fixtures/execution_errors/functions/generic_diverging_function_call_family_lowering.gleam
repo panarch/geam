@@ -138,7 +138,7 @@ pub fn main() {
   call_int()
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: generic function argument failed

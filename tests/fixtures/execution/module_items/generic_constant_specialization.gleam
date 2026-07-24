@@ -76,4 +76,4 @@ pub fn main() {
   )
 }
 
-// geam:expect Tuple([Bool(true), Bool(true), Bool(true), Bool(true), Bool(true), Custom(type=geam/main/Boxed(Int), constructor=Boxed#0, fields=[Int(42)]), BitArray(bytes=[1], bit_len=8), BitArray(bytes=[63, 248, 0, 0, 0, 0, 0, 0], bit_len=64), BitArray(bytes=[1], bit_len=8), BitArray(bytes=[65], bit_len=8), BitArray(bytes=[65, 0], bit_len=16), BitArray(bytes=[65, 0, 0, 0], bit_len=32), BitArray(bytes=[], bit_len=0)])
+// @geam:expect Tuple([Bool(true), Bool(true), Bool(true), Bool(true), Bool(true), Custom(type=geam/main/Boxed(Int), constructor=Boxed#0, fields=[Int(42)]), BitArray(bytes=[1], bit_len=8), BitArray(bytes=[63, 248, 0, 0, 0, 0, 0, 0], bit_len=64), BitArray(bytes=[1], bit_len=8), BitArray(bytes=[65], bit_len=8), BitArray(bytes=[65, 0], bit_len=16), BitArray(bytes=[65, 0, 0, 0], bit_len=32), BitArray(bytes=[], bit_len=0)])

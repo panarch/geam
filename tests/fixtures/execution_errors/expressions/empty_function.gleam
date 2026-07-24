@@ -1,7 +1,7 @@
 pub fn main() {
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::empty_function
 //
 //   x empty_function: Function body is empty.

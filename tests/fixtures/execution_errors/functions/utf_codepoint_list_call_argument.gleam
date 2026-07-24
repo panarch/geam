@@ -6,7 +6,7 @@ pub fn main() {
   values(panic as "argument")
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: argument

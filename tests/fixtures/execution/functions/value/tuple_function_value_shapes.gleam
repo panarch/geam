@@ -57,4 +57,4 @@ pub fn main() {
   + first(get_by_block())
 }
 
-// geam:expect Int(13)
+// @geam:expect Int(13)

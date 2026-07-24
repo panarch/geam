@@ -6,7 +6,7 @@ pub fn main() {
   unfinished()
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::todo
 //
 //   x todo: generic work remains

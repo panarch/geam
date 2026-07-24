@@ -8,16 +8,20 @@ pinned to the upstream baseline recorded in the README. `cargo test` compiles
 that Git dependency as part of the normal suite.
 
 Source-level execution tests live under categorized
-`tests/fixtures/execution/**/*.gleam` paths. Each fixture must end with a
-`// geam:expect ...` line, for example:
+`tests/fixtures/execution/**/*.gleam` paths. Each fixture must end with an
+`// @geam:expect ...` directive, for example:
 
 ```gleam
 pub fn main() {
   1 + 2
 }
 
-// geam:expect Int(3)
+// @geam:expect Int(3)
 ```
+
+The `@geam:` namespace distinguishes fixture-runner directives from ordinary
+source comments and expected output. Its directives are `expect`,
+`expect-error`, `explain`, and `reject`.
 
 The integration runner reads those fixtures through the public Geam API:
 `compile_typed_module -> plan_module -> ExecutionPlan::from_module_plan -> run_main`.

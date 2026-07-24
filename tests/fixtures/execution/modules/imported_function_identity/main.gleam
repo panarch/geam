@@ -13,4 +13,4 @@ pub fn main() {
     returned(41),
   )
 }
-// geam:expect Tuple([Bool(true), Bool(true), Int(42), Bool(true), Int(42)])
+// @geam:expect Tuple([Bool(true), Bool(true), Int(42), Bool(true), Int(42)])

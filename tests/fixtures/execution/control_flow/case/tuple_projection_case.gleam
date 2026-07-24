@@ -17,4 +17,4 @@ pub fn main() {
   }
 }
 
-// geam:expect Tuple([Int(5), Float(2.5)])
+// @geam:expect Tuple([Int(5), Float(2.5)])

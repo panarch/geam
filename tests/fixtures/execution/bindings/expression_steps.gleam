@@ -16,4 +16,4 @@ pub fn main() {
   5
 }
 
-// geam:expect Int(5)
+// @geam:expect Int(5)

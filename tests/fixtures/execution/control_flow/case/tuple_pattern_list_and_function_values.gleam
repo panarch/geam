@@ -10,4 +10,4 @@ pub fn main() {
   }
 }
 
-// geam:expect Bool(true)
+// @geam:expect Bool(true)

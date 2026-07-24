@@ -7,7 +7,7 @@ pub fn main() {
   selected(1) == []
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: nested generic list failed

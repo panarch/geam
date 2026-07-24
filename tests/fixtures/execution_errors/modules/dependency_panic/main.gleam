@@ -3,7 +3,7 @@ import helper
 pub fn main() {
   helper.fail()
 }
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: dependency failed

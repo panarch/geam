@@ -33,7 +33,7 @@ pub fn main() {
   choose(1 == 1)
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: generic tuple block failed

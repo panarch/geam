@@ -12,4 +12,4 @@ pub fn main() {
   Next(Function(value)) == Next(Function(value))
 }
 
-// geam:expect Bool(true)
+// @geam:expect Bool(true)

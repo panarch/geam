@@ -149,4 +149,4 @@ pub fn main() {
   }
 }
 
-// geam:expect Int(108)
+// @geam:expect Int(108)

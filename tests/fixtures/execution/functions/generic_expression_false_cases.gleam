@@ -28,4 +28,4 @@ pub fn main() {
   )
 }
 
-// geam:expect Tuple([Tuple([BitArray(bytes=[2], bit_len=8)]), Tuple([String("second")]), Tuple([Custom(type=geam/main/Boxed(Int), constructor=Boxed#0, fields=[Int(2)])]), Tuple([Nil]), Tuple([Tuple([Int(2)])]), Tuple([List(Int)([Int(2)])]), Tuple([UtfCodepoint('B')])])
+// @geam:expect Tuple([Tuple([BitArray(bytes=[2], bit_len=8)]), Tuple([String("second")]), Tuple([Custom(type=geam/main/Boxed(Int), constructor=Boxed#0, fields=[Int(2)])]), Tuple([Nil]), Tuple([Tuple([Int(2)])]), Tuple([List(Int)([Int(2)])]), Tuple([UtfCodepoint('B')])])

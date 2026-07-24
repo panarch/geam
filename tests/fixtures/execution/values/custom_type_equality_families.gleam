@@ -34,4 +34,4 @@ pub fn main() {
     && nested() == nested()
 }
 
-// geam:expect Bool(true)
+// @geam:expect Bool(true)

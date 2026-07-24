@@ -17,4 +17,4 @@ pub fn main() {
   string_loop(10000, "done")
 }
 
-// geam:expect String("done")
+// @geam:expect String("done")

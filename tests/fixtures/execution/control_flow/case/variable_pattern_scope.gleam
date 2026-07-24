@@ -7,4 +7,4 @@ pub fn main() {
   other + selected
 }
 
-// geam:expect Int(101)
+// @geam:expect Int(101)

@@ -72,4 +72,4 @@ pub fn main() {
   }
 }
 
-// geam:expect String("geam")
+// @geam:expect String("geam")

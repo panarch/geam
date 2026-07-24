@@ -5,4 +5,4 @@ pub fn main() {
   token.increment(value)
   |> token.to_int
 }
-// geam:expect Int(42)
+// @geam:expect Int(42)

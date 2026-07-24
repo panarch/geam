@@ -10,4 +10,4 @@ pub fn main() {
   Holder(identity) == Holder(identity)
 }
 
-// geam:expect Bool(true)
+// @geam:expect Bool(true)

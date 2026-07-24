@@ -16,4 +16,4 @@ pub fn main() {
   fallback(False) + fallback_first(True)
 }
 
-// geam:expect Int(27)
+// @geam:expect Int(27)

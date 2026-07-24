@@ -67,4 +67,4 @@ pub fn main() {
   }
 }
 
-// geam:expect Float(11.5)
+// @geam:expect Float(11.5)

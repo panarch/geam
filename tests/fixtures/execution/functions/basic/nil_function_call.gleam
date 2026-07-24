@@ -6,4 +6,4 @@ pub fn main() {
   identity(Nil)
 }
 
-// geam:expect Nil
+// @geam:expect Nil

@@ -34,4 +34,4 @@ pub fn main() {
   && float_variable == 3.0
 }
 
-// geam:expect Bool(true)
+// @geam:expect Bool(true)

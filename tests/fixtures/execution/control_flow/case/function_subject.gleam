@@ -18,4 +18,4 @@ pub fn main() {
   #(variable, alias, discard)
 }
 
-// geam:expect Tuple([Int(42), Int(42), Int(42)])
+// @geam:expect Tuple([Int(42), Int(42), Int(42)])

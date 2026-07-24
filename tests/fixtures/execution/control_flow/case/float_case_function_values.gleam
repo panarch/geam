@@ -104,4 +104,4 @@ pub fn main() {
   + score_nil(choose_nil(2.0)) + choose_getter(1.0) + choose_getter(2.0)
 }
 
-// geam:expect Int(78)
+// @geam:expect Int(78)

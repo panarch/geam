@@ -26,4 +26,4 @@ pub fn main() {
   #(value_or_zero(Empty), value_or_zero_local(Empty))
 }
 
-// geam:expect Tuple([Int(0), Int(0)])
+// @geam:expect Tuple([Int(0), Int(0)])

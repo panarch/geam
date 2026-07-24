@@ -6,7 +6,7 @@ pub fn main() -> Boxed(value) {
   Boxed(panic as "generic custom field failed")
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: generic custom field failed

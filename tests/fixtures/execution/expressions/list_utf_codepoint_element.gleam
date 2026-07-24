@@ -5,4 +5,4 @@ pub fn main() {
   }
 }
 
-// geam:expect List(UtfCodepoint)([UtfCodepoint('A')])
+// @geam:expect List(UtfCodepoint)([UtfCodepoint('A')])

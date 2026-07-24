@@ -10,4 +10,4 @@ pub fn after_main_unused() {
   1
 }
 
-// geam:expect Int(42)
+// @geam:expect Int(42)

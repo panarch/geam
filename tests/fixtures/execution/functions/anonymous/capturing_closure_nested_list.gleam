@@ -7,4 +7,4 @@ pub fn main() {
   closure()
 }
 
-// geam:expect List(List(Int))([List(Int)([Int(1), Int(2)])])
+// @geam:expect List(List(Int))([List(Int)([Int(1), Int(2)])])

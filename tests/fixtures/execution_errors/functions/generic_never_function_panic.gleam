@@ -6,7 +6,7 @@ pub fn main() {
   fail()
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: generic never function failed

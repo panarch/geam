@@ -4,4 +4,4 @@ pub fn main() {
   rest
 }
 
-// geam:expect String("fix")
+// @geam:expect String("fix")

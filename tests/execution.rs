@@ -1055,7 +1055,7 @@ fn constant_nested_list_rejects_mismatched_typed_ast_elements() {
 
 fn expected_explanation(source: &str) -> String {
     let (_, comments) = source
-        .split_once("\n// geam:explain\n")
+        .split_once("\n// @geam:explain\n")
         .expect("explain fixture should contain an expected output block");
     let mut expected = String::new();
 
@@ -1084,7 +1084,7 @@ fn run_explain_fixture(file_name: &str) {
 fn run_fixture(file_name: &str) {
     let path = format!("tests/fixtures/execution/{file_name}");
     let src = std::fs::read_to_string(&path).expect("fixture should be readable");
-    let expected = expected_text_with_prefix(&src, "// geam:expect ");
+    let expected = expected_text_with_prefix(&src, "// @geam:expect ");
     let module = compile_typed_module("main", path, &src).expect("fixture should compile");
     let module_plan = plan_module(module).expect("fixture should plan");
     let plan = geam::ExecutionPlan::from_module_plan(module_plan);
@@ -1097,7 +1097,7 @@ fn run_module_fixture(case: &str) {
     let directory = format!("tests/fixtures/execution/modules/{case}");
     let main = std::fs::read_to_string(format!("{directory}/main.gleam"))
         .expect("module fixture should contain main.gleam");
-    let expected = expected_text_with_prefix(&main, "// geam:expect ");
+    let expected = expected_text_with_prefix(&main, "// @geam:expect ");
     let program = compile_typed_program("main", module_sources(&directory))
         .expect("module fixture should compile");
     let module_plan = plan_program(program).expect("module fixture should plan");
@@ -1153,7 +1153,7 @@ fn reject_module_fixture(case: &str) {
     let directory = format!("tests/fixtures/rejection/modules/{case}");
     let main = std::fs::read_to_string(format!("{directory}/main.gleam"))
         .expect("module rejection fixture should contain main.gleam");
-    let expected = expected_text_with_prefix(&main, "// geam:reject ");
+    let expected = expected_text_with_prefix(&main, "// @geam:reject ");
     let program = compile_typed_program("main", module_sources(&directory))
         .expect("module rejection fixture should compile");
     let error = plan_program(program).expect_err("module rejection fixture should fail planning");
@@ -1218,7 +1218,7 @@ fn expected_error_text(src: &str) -> String {
     let mut lines = src.lines();
     for line in lines.by_ref() {
         let line = line.trim();
-        if line == "// geam:expect-error" {
+        if line == "// @geam:expect-error" {
             let mut expected = lines
                 .map(|line| {
                     let line = line.trim_start();
@@ -1228,7 +1228,7 @@ fn expected_error_text(src: &str) -> String {
                         line.to_string()
                     } else {
                         panic!(
-                            "error fixture expected block lines must be comments after `// geam:expect-error`"
+                            "error fixture expected block lines must be comments after `// @geam:expect-error`"
                         );
                     }
                 })
@@ -1245,7 +1245,7 @@ fn expected_error_text(src: &str) -> String {
         }
     }
 
-    panic!("fixture should include `// geam:expect-error`");
+    panic!("fixture should include `// @geam:expect-error`");
 }
 
 fn render_execution_error(error: &ExecutionError) -> String {

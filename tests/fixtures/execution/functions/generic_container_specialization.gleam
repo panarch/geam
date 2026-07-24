@@ -45,4 +45,4 @@ pub fn main() {
   )
 }
 
-// geam:expect Tuple([Int(1), String("fallback"), Float(2.5), String("captured"), Custom(type=geam/main/Boxed(Int), constructor=Boxed#0, fields=[value: Int(3), label: String("new")]), List(Int)([Int(4)]), List(String)([String("right")])])
+// @geam:expect Tuple([Int(1), String("fallback"), Float(2.5), String("captured"), Custom(type=geam/main/Boxed(Int), constructor=Boxed#0, fields=[value: Int(3), label: String("new")]), List(Int)([Int(4)]), List(String)([String("right")])])

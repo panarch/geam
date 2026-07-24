@@ -55,4 +55,4 @@ pub fn main() {
   )
 }
 
-// geam:expect Tuple([Int(1), Int(1), Int(1), Int(1), Int(1), Int(1), Int(1), Int(1), Int(1), Int(1), Int(0), Int(0), Int(0)])
+// @geam:expect Tuple([Int(1), Int(1), Int(1), Int(1), Int(1), Int(1), Int(1), Int(1), Int(1), Int(1), Int(0), Int(0), Int(0)])

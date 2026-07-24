@@ -5,4 +5,4 @@ pub fn main() {
   1
 }
 
-// geam:reject unsupported top-level item: external custom type
+// @geam:reject unsupported top-level item: external custom type

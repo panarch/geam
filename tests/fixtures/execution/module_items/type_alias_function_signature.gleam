@@ -9,4 +9,4 @@ pub fn main() {
   identity(41)
 }
 
-// geam:expect Int(41)
+// @geam:expect Int(41)

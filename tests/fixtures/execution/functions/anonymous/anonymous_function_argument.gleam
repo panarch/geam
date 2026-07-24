@@ -6,4 +6,4 @@ pub fn main() {
   apply(fn(value) { value + 1 }, 41)
 }
 
-// geam:expect Int(42)
+// @geam:expect Int(42)

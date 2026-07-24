@@ -6,7 +6,7 @@ pub fn main() -> value {
   tuple_value().0
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: generic tuple projection failed

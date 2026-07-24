@@ -9,4 +9,4 @@ fn value(boxed: Boxed) {
 pub fn main() {
   value(Boxed(double(answer)))
 }
-// geam:expect Int(42)
+// @geam:expect Int(42)

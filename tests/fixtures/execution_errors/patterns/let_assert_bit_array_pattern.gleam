@@ -3,7 +3,7 @@ pub fn main() {
   rest
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::let_assert
 //
 //   x let_assert: wrong bits

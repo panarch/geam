@@ -10,4 +10,4 @@ pub fn main() {
   }
 }
 
-// geam:expect Int(1)
+// @geam:expect Int(1)

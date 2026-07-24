@@ -57,4 +57,4 @@ pub fn main() {
   int_ok && float_ok && string_ok && bool_ok && tuple_ok
 }
 
-// geam:expect Bool(true)
+// @geam:expect Bool(true)

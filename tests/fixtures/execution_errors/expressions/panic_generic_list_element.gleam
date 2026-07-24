@@ -2,7 +2,7 @@ pub fn main() -> List(value) {
   [panic as "generic list element failed"]
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: generic list element failed

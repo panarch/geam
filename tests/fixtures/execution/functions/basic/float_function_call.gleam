@@ -6,4 +6,4 @@ pub fn main() {
   add(1.5, 2.5)
 }
 
-// geam:expect Float(4.0)
+// @geam:expect Float(4.0)

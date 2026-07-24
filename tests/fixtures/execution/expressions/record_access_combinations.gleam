@@ -42,4 +42,4 @@ pub fn main() {
   )
 }
 
-// geam:expect Tuple([String("Lucy"), String("lucy@example.com"), String("Lucy"), String("lucy@example.com"), String("Lucy")])
+// @geam:expect Tuple([String("Lucy"), String("lucy@example.com"), String("Lucy"), String("lucy@example.com"), String("Lucy")])

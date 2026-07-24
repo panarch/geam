@@ -89,4 +89,4 @@ pub fn main() {
   + first(captured)
 }
 
-// geam:expect Int(19)
+// @geam:expect Int(19)

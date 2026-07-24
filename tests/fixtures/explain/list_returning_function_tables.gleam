@@ -39,7 +39,7 @@ pub fn main() -> fn() -> List(Int) {
 }
 
 
-// geam:explain
+// @geam:explain
 // module main
 // main function.list.int#0
 //

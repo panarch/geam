@@ -12,4 +12,4 @@ pub fn main() {
   pair(1, ["one"])
 }
 
-// geam:expect Tuple([Int(1), List(String)([String("one")])])
+// @geam:expect Tuple([Int(1), List(String)([String("one")])])

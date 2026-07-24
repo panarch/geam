@@ -16,4 +16,4 @@ pub fn main() {
   base + x
 }
 
-// geam:expect Int(13)
+// @geam:expect Int(13)

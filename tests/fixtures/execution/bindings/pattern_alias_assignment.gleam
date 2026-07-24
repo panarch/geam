@@ -3,4 +3,4 @@ pub fn main() {
   one == pair.0
 }
 
-// geam:expect Bool(true)
+// @geam:expect Bool(true)

@@ -65,4 +65,4 @@ pub fn main() {
   )
 }
 
-// geam:expect Tuple([Int(1), String("two"), Int(3), String("four"), Int(5), String("six"), Bool(true)])
+// @geam:expect Tuple([Int(1), String("two"), Int(3), String("four"), Int(5), String("six"), Bool(true)])
