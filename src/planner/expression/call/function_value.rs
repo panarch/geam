@@ -279,7 +279,7 @@ mod tests {
     use crate::planner::support::compile;
     use crate::planner::{
         InvalidCallShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-        UnsupportedExpressionKind,
+        UnsupportedBitArraySegmentReason,
     };
     use gleam_core::type_;
 
@@ -390,12 +390,15 @@ fn add_one(value: Int) {
 
 pub fn main() {
   let function = add_one
-  function(echo 1)
+  function({
+    <<1:native>>
+    1
+  })
 }
 "#,
             )),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            Err(PlanError::UnsupportedBitArraySegment {
+                reason: UnsupportedBitArraySegmentReason::NativeEndianness,
             }),
         );
     }

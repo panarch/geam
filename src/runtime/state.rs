@@ -319,7 +319,8 @@ impl<Value: Default> ListPool<Value> {
     }
 }
 
-pub(in crate::runtime) struct RuntimeState {
+pub(in crate::runtime) struct RuntimeState<'echo> {
+    echo: &'echo mut dyn crate::runtime::EchoSink,
     releases: Rc<RefCell<Vec<ListStorageKey>>>,
     ints: ListPool<Vec<BigInt>>,
     strings: ListPool<Vec<EcoString>>,
@@ -335,9 +336,10 @@ pub(in crate::runtime) struct RuntimeState {
     functions: ListPool<Vec<EvaluatedFunctionValue>>,
 }
 
-impl RuntimeState {
-    pub(super) fn new() -> Self {
+impl<'echo> RuntimeState<'echo> {
+    pub(super) fn new(echo: &'echo mut dyn crate::runtime::EchoSink) -> Self {
         Self {
+            echo,
             releases: Rc::new(RefCell::new(Vec::new())),
             ints: ListPool::default(),
             strings: ListPool::default(),
@@ -352,6 +354,10 @@ impl RuntimeState {
             lists: ListPool::default(),
             functions: ListPool::default(),
         }
+    }
+
+    pub(super) fn emit_echo(&mut self, output: crate::runtime::EchoOutput) {
+        self.echo.emit(output);
     }
 
     pub(super) fn drain_releases(&mut self) {
@@ -775,7 +781,8 @@ pub fn main() {
     fn last_owner_enqueues_release_and_reuses_the_exact_slot() {
         let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [1] }");
         let type_id = plan.int_list_function_id(0).type_id();
-        let mut state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
         let value = state.int(type_id, vec![1.into()]);
         let slot = value.core.slot();
         let retained = value.clone();
@@ -796,7 +803,8 @@ pub fn main() {
     fn bit_array_list_pool_preserves_type_and_reuses_released_slots() {
         let plan = crate::runtime::plan_src("pub fn main() -> List(BitArray) { [<<1>>] }");
         let type_id = plan.bit_array_list_function_id(0).type_id();
-        let mut state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
         let first = state.bit_array(
             type_id,
             vec![crate::runtime::EvaluatedBitArray::new(
@@ -828,7 +836,8 @@ pub fn main() {
     fn repeated_release_and_allocation_keeps_one_slot_high_water_mark() {
         let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [1] }");
         let type_id = plan.int_list_function_id(0).type_id();
-        let mut state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
 
         for value in 0..10_000 {
             let list = state.int(type_id, vec![value.into()]);
@@ -851,7 +860,8 @@ pub fn main() {
             plan.main_runtime(),
             RuntimeFunctionId::List(ListFunctionId::Int(main)),
         );
-        let mut state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
 
         let value = crate::runtime::function::run_int_list(
             &plan,
@@ -884,7 +894,8 @@ pub fn main() -> Int {
 "#,
         );
         let main = int_main(&plan);
-        let mut state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
 
         let panic = source_panic(crate::runtime::function::run_int(
             &plan,
@@ -916,7 +927,8 @@ pub fn main() -> Int {
 "#,
         );
         let main = int_main(&plan);
-        let mut state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
 
         let panic = source_panic(crate::runtime::function::run_int(
             &plan,
@@ -952,10 +964,12 @@ pub fn main() -> Int {
     fn list_handles_compare_by_allocation_identity_and_outlive_the_state_queue() {
         let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [1] }");
         let type_id = plan.int_list_function_id(0).type_id();
-        let mut state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
         let value = state.int(type_id, vec![1.into()]);
         let clone = value.clone();
-        let mut other_state = RuntimeState::new();
+        let mut other_echo = Vec::new();
+        let mut other_state = RuntimeState::new(&mut other_echo);
         let other = other_state.int(type_id, vec![1.into()]);
 
         assert_eq!(value, clone);
@@ -975,7 +989,8 @@ pub fn main() -> Int {
     #[test]
     fn list_value_facade_reconstructs_every_exact_storage_family() {
         let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
-        let mut state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
         let int_function = EvaluatedIntFunction::reference(
             crate::plan::execution::function::IntFunctionId(0),
             Vec::new(),
@@ -1133,7 +1148,8 @@ pub fn main() -> Int {
         let parent_type = plan.list_list_function_id(0).type_id();
         let child_type = plan.int_list_function_id(0).type_id();
         assert_eq!(parent_type.item_type(), child_type.list_type());
-        let mut state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
         let child = state.int(child_type, vec![1.into()]);
         let child_slot = child.core.slot();
         let parent = state.list(parent_type, vec![child.clone().into()]);
@@ -1172,7 +1188,8 @@ pub fn main() -> Int {
             None
         );
 
-        let mut state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
         let mut value: StoredListValueId = state.int(child_type, vec![1.into()]).into();
         for parent in parents.into_iter().rev() {
             value = state.list(parent, vec![value]).into();
@@ -1192,7 +1209,8 @@ pub fn main() -> Int {
             "fn keep(values: List(Int)) { fn() { values } } pub fn main() { keep([1]) }",
         );
         let type_id = plan.int_list_function_id(0).type_id();
-        let mut state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
         let value = state.int(type_id, vec![1.into()]);
         let slot = value.core.slot();
         let closure = EvaluatedIntFunction::reference(

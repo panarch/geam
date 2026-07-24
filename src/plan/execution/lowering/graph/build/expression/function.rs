@@ -322,7 +322,7 @@ mod tests {
             for expression in expressions {
                 let source = source(family, &expression);
                 assert_eq!(
-                    crate::run_main(&execution_plan(&source)),
+                    crate::run_main(&execution_plan(&source), &mut Vec::new()),
                     Ok(Value::Bool(true)),
                     "failed callable family {} expression {expression}",
                     family.return_type,
@@ -353,7 +353,7 @@ pub fn main() {{
                 return_type = family.return_type,
                 assertion = family.assertion,
             );
-            let error = crate::run_main(&execution_plan(&source)).unwrap_err();
+            let error = crate::run_main(&execution_plan(&source), &mut Vec::new()).unwrap_err();
             assert_eq!(error.to_string(), "panic: selected");
         }
     }
@@ -375,7 +375,7 @@ pub fn main() {{
 
             for expression in expressions {
                 let source = diverging_source(family, expression);
-                let error = crate::run_main(&execution_plan(&source)).unwrap_err();
+                let error = crate::run_main(&execution_plan(&source), &mut Vec::new()).unwrap_err();
                 assert_eq!(
                     error.to_string(),
                     "panic: source",
@@ -415,7 +415,7 @@ pub fn main() {{
         for target in targets {
             for expression in expressions {
                 let source = symbolic_diverging_source(target, expression);
-                let error = crate::run_main(&execution_plan(&source)).unwrap_err();
+                let error = crate::run_main(&execution_plan(&source), &mut Vec::new()).unwrap_err();
                 assert_eq!(
                     error.to_string(),
                     "panic: source",

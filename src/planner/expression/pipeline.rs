@@ -117,8 +117,9 @@ mod tests {
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span, expect_plan_error};
     use crate::planner::{
-        InvalidCallShapeReason, InvalidExpressionType, InvalidPipelineShapeReason,
-        InvalidTypedAstReason, PlanError, UnsupportedExpressionKind, UnsupportedPipelineReason,
+        InvalidCallShapeReason, InvalidExpressionShapeKind, InvalidExpressionType,
+        InvalidPipelineShapeReason, InvalidTypedAstReason, PlanError,
+        UnsupportedBitArraySegmentReason, UnsupportedPipelineReason,
     };
     use gleam_core::ast::{
         ArgNames, CallArg, FunctionLiteralKind, ImplicitCallArgOrigin, PipelineAssignmentKind,
@@ -604,12 +605,15 @@ fn add(left: Int, right: Int) {
 }
 
 pub fn main() {
-  echo 1 |> add(1)
+  {
+    <<1:native>>
+    1
+  } |> add(1)
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
         assert_eq!(
@@ -620,12 +624,15 @@ fn add(left: Int, right: Int) {
 }
 
 pub fn main() {
-  1 |> add(echo 1)
+  1 |> add({
+    <<1:native>>
+    1
+  })
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
     }
@@ -636,15 +643,17 @@ pub fn main() {
         let (first_value, _, _, _) = expect_pipeline_statement_mut(
             &mut unsupported_first_assignment.definitions.functions[1].body[0],
         );
-        let mut echo_module = compile("pub fn main() { echo 1 }");
-        let echo =
-            expect_expression_statement_mut(&mut echo_module.definitions.functions[0].body[0])
-                .clone();
-        *first_value.value = echo;
+        *first_value.value = TypedExpr::Invalid {
+            location: dummy_span(),
+            type_: type_::int(),
+            extra_information: None,
+        };
         assert_eq!(
             plan_module(unsupported_first_assignment),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::Invalid,
+                },
             }),
         );
 

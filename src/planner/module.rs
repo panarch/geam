@@ -719,8 +719,7 @@ mod tests {
     };
     use crate::planner::support::{compile, expect_plan_error};
     use crate::planner::{
-        InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
-        UnsupportedFunctionReason,
+        InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError, UnsupportedFunctionReason,
     };
     use gleam_core::type_;
 
@@ -1468,7 +1467,8 @@ fn after() -> Result(Int, Nil) {
             expect_plan_error(
                 r#"
 fn helper() -> Int {
-  echo 1
+  <<1:native>>
+  1
 }
 
 pub fn main() {
@@ -1476,8 +1476,8 @@ pub fn main() {
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
     }
@@ -1492,12 +1492,13 @@ pub fn main() {
 }
 
 fn helper() -> Int {
-  echo 1
+  <<1:native>>
+  1
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
     }

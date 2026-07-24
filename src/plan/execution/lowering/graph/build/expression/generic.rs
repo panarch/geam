@@ -1457,7 +1457,10 @@ mod tests {
         let module = crate::plan_module(typed).expect("generic family fixture should plan");
         let execution = crate::ExecutionPlan::from_module_plan(module);
 
-        assert_eq!(crate::run_main(&execution), Ok(crate::Value::Int(0.into())),);
+        assert_eq!(
+            crate::run_main(&execution, &mut Vec::new()),
+            Ok(crate::Value::Int(0.into())),
+        );
     }
 
     #[test]
@@ -1471,7 +1474,7 @@ mod tests {
         let execution = crate::ExecutionPlan::from_module_plan(module);
 
         assert_eq!(
-            crate::run_main(&execution),
+            crate::run_main(&execution, &mut Vec::new()),
             Ok(crate::Value::Tuple(vec![crate::Value::Bool(true); 28])),
         );
     }

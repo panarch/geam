@@ -708,7 +708,8 @@ pub fn main() {
             "pub fn main() { let assert \"pre\" as left <> _ = \"prefix\" let _ = left 1 }",
         );
         let pattern = main_pattern(&plan);
-        let mut state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
         let environment = BlockEnvironment::from_retained(RetainedValues::empty());
 
         let bindings = match_pattern(
@@ -730,7 +731,8 @@ pub fn main() {
             "pub fn main() { let assert True as selected = True let _ = selected 1 }",
         );
         let pattern = main_pattern(&plan);
-        let mut state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
         let environment = BlockEnvironment::from_retained(RetainedValues::empty());
 
         let bindings = match_pattern(
@@ -758,7 +760,8 @@ pub fn main() {
             constructor,
             vec![EvaluatedValue::String("wrong".into())].into_boxed_slice(),
         ));
-        let mut state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
         let environment = BlockEnvironment::from_retained(RetainedValues::empty());
 
         let error = exact_match_error(match_pattern(
@@ -791,7 +794,8 @@ pub fn main() {
             boxed_constructor,
             vec![EvaluatedValue::String("wrong".into())].into_boxed_slice(),
         );
-        let mut tuple_state = RuntimeState::new();
+        let mut tuple_echo = Vec::new();
+        let mut tuple_state = RuntimeState::new(&mut tuple_echo);
         assert_custom_field_corruption(
             &tuple_plan,
             &mut tuple_state,
@@ -804,7 +808,8 @@ pub fn main() {
             "pub type Boxed { Boxed(Int) Empty } fn boxed(flag: Bool) -> Boxed { case flag { True -> Boxed(1) False -> Empty } } fn boxes() -> List(Boxed) { [] } pub fn main() { let _ = boxes() let assert [Boxed(value)] = [boxed(True)] value }",
         );
         let boxed_constructor = list_plan.custom_constructor_id(0, 0);
-        let mut state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
         let values = state.custom(CustomListAllocation::new(
             list_plan.custom_list_function_id(0).type_id(),
             vec![corrupted_boxed],
@@ -830,7 +835,8 @@ pub fn main() {
             ))]
             .into_boxed_slice(),
         );
-        let mut custom_state = RuntimeState::new();
+        let mut custom_echo = Vec::new();
+        let mut custom_state = RuntimeState::new(&mut custom_echo);
         assert_custom_field_corruption(
             &custom_plan,
             &mut custom_state,
@@ -847,7 +853,8 @@ pub fn main() {
 
     fn assert_plan_pattern_miss(plan: &ExecutionPlan, subject: EvaluatedValue) {
         let pattern = main_pattern(plan);
-        let mut state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
         let environment = BlockEnvironment::from_retained(RetainedValues::empty());
 
         let matched = match_pattern(plan, &mut state, &environment, pattern, &subject)
@@ -857,7 +864,8 @@ pub fn main() {
 
     fn assert_int_list_pattern_miss(source: &str, values: Vec<num_bigint::BigInt>) {
         let plan = execution_plan(source);
-        let mut state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
         let list = state.int(plan.int_list_function_id(0).type_id(), values);
         let environment = BlockEnvironment::from_retained(RetainedValues::empty());
 

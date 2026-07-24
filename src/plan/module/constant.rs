@@ -4379,7 +4379,8 @@ pub fn main() {
             .expect("function constant fixture should compile");
         let module = crate::plan_module(typed).expect("function constant fixture should plan");
         let plan = crate::ExecutionPlan::from_module_plan(module);
-        let value = crate::run_main(&plan).expect("function constant fixture should execute");
+        let value = crate::run_main(&plan, &mut Vec::new())
+            .expect("function constant fixture should execute");
 
         assert_eq!(
             value,

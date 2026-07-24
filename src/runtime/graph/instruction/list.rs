@@ -906,7 +906,7 @@ pub fn main() {
         assert_eq!(
             Family::run_value(
                 plan,
-                &mut RuntimeState::new(),
+                &mut RuntimeState::new(&mut Vec::new()),
                 function,
                 RetainedValues::empty()
             ),
@@ -954,7 +954,7 @@ pub fn main() {
         assert_eq!(
             parameter(
                 &plan,
-                &mut RuntimeState::new(),
+                &mut RuntimeState::new(&mut Vec::new()),
                 &environment,
                 plan.parameter_list_function_id(0).type_id(),
                 &instruction,
@@ -995,7 +995,7 @@ pub fn main() {
         assert_eq!(
             execute(
                 &plan,
-                &mut RuntimeState::new(),
+                &mut RuntimeState::new(&mut Vec::new()),
                 &mut environment,
                 &instruction,
                 &expected,
@@ -1028,7 +1028,7 @@ pub fn main() {
         assert_eq!(
             execute(
                 &plan,
-                &mut RuntimeState::new(),
+                &mut RuntimeState::new(&mut Vec::new()),
                 &mut environment,
                 &instruction,
                 &expected,
@@ -1322,7 +1322,8 @@ pub fn main() {
     ) where
         Family::Handle: std::fmt::Debug,
     {
-        let mut state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
         let wrong_list = wrong_list(&mut state, context);
         let actual = context.plan.list_value_type(wrong_list.list_type());
 
@@ -1370,7 +1371,8 @@ pub fn main() {
 
     fn assert_parameter_list_projection_mismatches(context: &ProjectionContext<'_>) {
         let expected = ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(0))));
-        let mut state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
         let wrong: ListValueId = state.int(context.int_type, Vec::new()).into();
         let actual = context.plan.list_value_type(wrong.list_type());
         let mut tuple_values = RetainedValues::empty();
@@ -1575,7 +1577,8 @@ pub fn main() {
     ) where
         Family::Handle: std::fmt::Debug,
     {
-        let mut state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
         let parent = state.list(parent_type, Vec::new());
         let mut values = RetainedValues::empty();
         values.push_evaluated(EvaluatedValue::List(parent.into()));

@@ -38,8 +38,6 @@ pub enum UnsupportedPatternKind {
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedExpressionKind {
-    #[error("echo")]
-    Echo,
     #[error("list element type is not supported")]
     UnsupportedListElementType,
 }

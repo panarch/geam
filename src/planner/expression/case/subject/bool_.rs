@@ -252,7 +252,6 @@ mod tests {
     use crate::planner::support::{dummy_span, expect_plan_error};
     use crate::planner::{
         InvalidCaseShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-        UnsupportedExpressionKind,
     };
     use gleam_core::ast::{BinOp, ClauseGuard, Constant, Pattern};
     use gleam_core::type_::{self, error::VariableOrigin};
@@ -875,15 +874,15 @@ fn duplicate_true(value: Bool) {
             expect_plan_error(
                 r#"
 pub fn main() {
-  case echo True {
+  case { <<1:native>> True } {
     True -> 1
     False -> 0
   }
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
     }

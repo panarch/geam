@@ -13,12 +13,16 @@ impl<'value> ValueInspection<'value> {
     pub(super) fn new(value: &'value Value) -> Self {
         Self { value }
     }
+
+    pub(crate) fn write_to(&self, output: &mut String) {
+        write_value(output, self.value);
+    }
 }
 
 impl Display for ValueInspection<'_> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         let mut output = String::new();
-        write_value(&mut output, self.value);
+        self.write_to(&mut output);
         formatter.write_str(&output)
     }
 }
@@ -371,8 +375,11 @@ pub fn main() {
         )
         .expect("source should compile");
         let plan = crate::plan_module(module).expect("module should plan");
-        let captured = run_main(&crate::ExecutionPlan::from_module_plan(plan))
-            .expect("main should return its closure");
+        let captured = run_main(
+            &crate::ExecutionPlan::from_module_plan(plan),
+            &mut Vec::new(),
+        )
+        .expect("main should return its closure");
 
         assert_eq!(
             Value::Function(function).inspect().to_string(),

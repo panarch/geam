@@ -66,7 +66,7 @@ mod tests {
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
     use crate::planner::{
         InvalidCallShapeReason, InvalidFunctionShapeReason, InvalidTypedAstReason,
-        InvalidUseShapeReason, PlanError, UnsupportedExpressionKind,
+        InvalidUseShapeReason, PlanError,
     };
     use gleam_core::ast::{
         AssignmentKind, CallArg, FunctionLiteralKind, ImplicitCallArgOrigin, Pattern, Statement,
@@ -172,13 +172,13 @@ fn with_value(continue: fn(Int) -> Int) {
 
 pub fn main() {
   use _ <- with_value
-  echo 1
+  <<1:native>>
   42
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
     }

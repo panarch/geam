@@ -770,14 +770,14 @@ fn add_one(value: Int) {
 }
 
 pub fn main() {
-  case echo add_one {
+  case { <<1:native>> add_one } {
     _ -> 0
   }
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: crate::planner::UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
     }
@@ -793,13 +793,13 @@ fn add_one(value: Int) {
 
 pub fn main() {
   case add_one {
-    _ -> echo 0
+    _ -> { <<1:native>> 0 }
   }
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: crate::planner::UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
     }

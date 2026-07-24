@@ -648,7 +648,8 @@ pub fn main() {
     #[test]
     fn materializes_every_runtime_value_and_list_storage_family() {
         let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
-        let mut state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
         let custom_value = EvaluatedCustomValue::from_fields(
             plan.custom_constructor_id(0, 0),
             vec![EvaluatedValue::Int(1.into())].into_boxed_slice(),
@@ -779,7 +780,8 @@ pub fn main() {
     #[test]
     fn materializes_every_function_and_capture_family() {
         let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
-        let mut state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
         let custom_value = EvaluatedCustomValue::from_fields(
             plan.custom_constructor_id(0, 0),
             vec![EvaluatedValue::Int(1.into())].into_boxed_slice(),
@@ -1243,7 +1245,8 @@ pub fn main() {
     fn materializes_function_captures_through_the_function_owner() {
         let plan =
             crate::runtime::plan_src("fn identity(value: Int) { value } pub fn main() { 0 }");
-        let state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let state = RuntimeState::new(&mut echo);
         let function_type = crate::plan::execution::type_::FunctionType::new(
             vec![crate::plan::execution::type_::ValueType::Int],
             crate::plan::execution::type_::ValueType::Int,

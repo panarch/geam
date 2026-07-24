@@ -550,8 +550,9 @@ mod tests {
     #[test]
     fn custom_list_function_function_uses_its_exact_runtime_table() {
         assert_eq!(
-            run_main(&execution_plan(
-                r#"
+            run_main(
+                &execution_plan(
+                    r#"
 pub type Boxed { Boxed(Int) }
 
 fn factory() -> fn() -> List(Boxed) {
@@ -563,7 +564,9 @@ pub fn main() {
   value
 }
 "#,
-            )),
+                ),
+                &mut Vec::new()
+            ),
             Ok(Value::Int(1.into())),
         );
     }
@@ -623,7 +626,9 @@ pub fn main() {
 
         for (source, item_type) in cases {
             let plan = execution_plan(source);
-            let function = expect_function(run_main(&plan).expect("main should return a function"));
+            let function = expect_function(
+                run_main(&plan, &mut Vec::new()).expect("main should return a function"),
+            );
 
             assert_eq!(
                 function.type_(),

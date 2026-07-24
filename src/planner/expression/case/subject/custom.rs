@@ -203,9 +203,7 @@ mod tests {
     use crate::planner::dsl::{int_return_block, int_return_expr, local_int};
     use crate::planner::plan_module;
     use crate::planner::support::dummy_span;
-    use crate::planner::{
-        InvalidCaseShapeReason, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
-    };
+    use crate::planner::{InvalidCaseShapeReason, InvalidTypedAstReason, PlanError};
     use gleam_core::type_::error::VariableOrigin;
     use num_bigint::BigInt;
     use std::collections::HashMap;
@@ -241,22 +239,22 @@ mod tests {
             r#"
 pub type Choice { Choice(Int) }
 fn identity(value: Choice) -> Int {
-  case echo value { Choice(inner) -> inner }
+  case { <<1:native>> value } { Choice(inner) -> inner }
 }
 pub fn main() { 0 }
 "#,
             r#"
 pub type Choice { Choice(Int) }
 fn identity(value: Choice) -> Int {
-  case value { Choice(inner) -> echo inner }
+  case value { Choice(inner) -> { <<1:native>> inner } }
 }
 pub fn main() { 0 }
 "#,
         ] {
             assert_eq!(
                 plan_module(crate::planner::support::compile(source)),
-                Err(PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::Echo,
+                Err(PlanError::UnsupportedBitArraySegment {
+                    reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
                 }),
             );
         }

@@ -55,7 +55,11 @@ The main public entry points are:
 - `plan_module`
 - `plan_program`
 - `ExecutionPlan::explain`
+- `Value::inspect`
 - `run_main`
+
+`run_main` takes a caller-owned `EchoSink`; Geam never selects stdout, stderr,
+or a hidden output destination for the host.
 
 ## Upstream
 

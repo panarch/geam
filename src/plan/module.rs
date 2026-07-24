@@ -44,7 +44,7 @@ pub(crate) use expression::{
     BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayExprKind, BitArrayFunctionExprKind,
     BitArraySegment, BoolCaseBranches, BoolExprKind, BoolFunctionExprKind, CallArgStorage,
     CaptureArg, CustomBoolCaseBranches, CustomCaseBranches, CustomConstruction, CustomExprKind,
-    CustomFieldAccess, CustomFunctionExprKind, Endianness, ExprKind, FloatBitSize,
+    CustomFieldAccess, CustomFunctionExprKind, CustomLocalExpr, Endianness, ExprKind, FloatBitSize,
     FloatCaseBranches, FloatExprKind, FloatFunctionExprKind, FunctionExprKind,
     FunctionFunctionCallMismatch, FunctionFunctionExprKind, GenericExpr, GenericExprKind,
     GenericFunctionExpr, GenericFunctionExprKind, IntCaseBranches, IntExprKind,
@@ -123,8 +123,8 @@ pub(crate) use reference::{
 };
 pub use step::Step;
 pub(crate) use step::{
-    AssertBinding, AssertPattern, AssertSubject, ListAssertPattern, ListAssertTail, StepKind,
-    StringAssertBinding,
+    AssertBinding, AssertPattern, AssertSubject, Echo, EchoSubject, ListAssertPattern,
+    ListAssertTail, StepKind, StringAssertBinding,
 };
 pub use type_scheme::TypeScheme;
 #[cfg(test)]

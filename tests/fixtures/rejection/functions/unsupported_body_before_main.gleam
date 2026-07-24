@@ -1,5 +1,6 @@
 fn helper() -> Int {
-  echo 1
+  <<1:native>>
+  1
 }
 
 pub fn main() {

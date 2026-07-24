@@ -590,7 +590,8 @@ pub fn main() {
                 _ => None,
             })
             .expect("tuple main should contain its Float function reference");
-        let mut state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
         let environment = BlockEnvironment::from_retained(RetainedValues::empty());
         let expected = ValueType::Function(Box::new(plan.function_type(float_reference.type_())));
         let float_function = evaluate(&plan, &mut state, &environment, float_reference, &expected)
@@ -614,7 +615,8 @@ pub fn main() {
                             1.into(),
                         )]));
                         let environment = BlockEnvironment::from_retained(malformed);
-                        let mut state = RuntimeState::new();
+                        let mut echo = Vec::new();
+                        let mut state = RuntimeState::new(&mut echo);
                         assert_eq!(
                             evaluate(&plan, &mut state, &environment, function, &expected,)
                                 .map(|_| ()),
@@ -655,7 +657,8 @@ pub fn main() {
                         let mut malformed = RetainedValues::empty();
                         malformed.push_evaluated(EvaluatedValue::Custom(value));
                         let environment = BlockEnvironment::from_retained(malformed);
-                        let mut state = RuntimeState::new();
+                        let mut echo = Vec::new();
+                        let mut state = RuntimeState::new(&mut echo);
 
                         assert_eq!(
                             evaluate(&plan, &mut state, &environment, function, &expected,)
@@ -673,7 +676,8 @@ pub fn main() {
                         custom_projection_checked = true;
                     }
                     FunctionInstructionKind::ListIndex { index, .. } => {
-                        let mut state = RuntimeState::new();
+                        let mut echo = Vec::new();
+                        let mut state = RuntimeState::new(&mut echo);
                         let empty = state.function(function_list_type, Vec::new());
                         let mut values = RetainedValues::empty();
                         values.push_evaluated(EvaluatedValue::List(ListValueId::Function(empty)));

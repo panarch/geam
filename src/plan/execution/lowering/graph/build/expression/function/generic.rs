@@ -1699,7 +1699,7 @@ mod tests {
         let execution = crate::ExecutionPlan::from_module_plan(module);
 
         assert_eq!(
-            crate::run_main(&execution),
+            crate::run_main(&execution, &mut Vec::new()),
             Ok(crate::Value::Tuple(vec![crate::Value::Bool(true); 48])),
         );
     }

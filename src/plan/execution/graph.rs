@@ -9,7 +9,7 @@ pub(crate) use block::{
     BitArrayBindingPattern, BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayInstruction,
     BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize, BitArrayPatternSizeExpr,
     BitArrayPatternValue, BitArraySegment, BitArrayStringPattern, Block, BlockId, BoolBranch,
-    BoolInstruction, CustomInstruction, Edge, FloatInstruction, FloatSwitch, FunctionCapture,
+    BoolInstruction, CustomInstruction, Echo, Edge, FloatInstruction, FloatSwitch, FunctionCapture,
     FunctionInstruction, FunctionInstructionKind, FunctionTarget, Instruction, InstructionKind,
     IntInstruction, IntSwitch, Jump, LetAssertPanic, ListInstruction, Match, MatchEdge,
     MatchEdgeArgument, MatchIntBindingId, MatchPattern, MatchPatternBinding, MatchPatternList,
@@ -150,6 +150,28 @@ pub fn main() { choose(True) }
             "    return %int#0\n",
             "  block b2 params=[]\n",
             "    %int#0:shape#1(Int) = int.value 0\n",
+            "    return %int#0\n",
+        );
+
+        assert_explanation(source, expected);
+    }
+
+    #[test]
+    fn writes_echo_terminator_through_block_graph() {
+        let source = r#"
+fn emit(value: Int) {
+  echo value
+}
+
+pub fn main() {
+  emit(1)
+}
+"#;
+        let expected = concat!(
+            "  entry b0 params=[%int#0:shape#0(Int)] captures=[]\n",
+            "  block b0 params=[%int#0:shape#0(Int)]\n",
+            "    echo subject=%int#0 message=none site=main::emit@25..35 next=b1(%int#0)\n",
+            "  block b1 params=[%int#0:shape#0(Int)]\n",
             "    return %int#0\n",
         );
 

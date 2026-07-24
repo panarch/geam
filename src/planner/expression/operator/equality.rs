@@ -28,7 +28,7 @@ mod tests {
     use crate::planner::dsl::{bool_, equal, function, int, module, not_equal};
     use crate::planner::plan_module;
     use crate::planner::support::{compile, expect_plan_error};
-    use crate::planner::{PlanError, UnsupportedExpressionKind};
+    use crate::planner::{PlanError, UnsupportedBitArraySegmentReason};
 
     #[test]
     fn plan_equality_operators() {
@@ -61,7 +61,7 @@ pub fn not_equal() {
                 r#"
 pub fn main() {
   {
-    echo 1
+    <<1:native>>
     1
   } == 1
 }
@@ -72,7 +72,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   1 == {
-    echo 1
+    <<1:native>>
     1
   }
 }
@@ -83,7 +83,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    echo 1
+    <<1:native>>
     1
   } != 1
 }
@@ -94,7 +94,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   1 != {
-    echo 1
+    <<1:native>>
     1
   }
 }
@@ -103,8 +103,8 @@ pub fn main() {
         ] {
             assert_eq!(
                 expect_plan_error(src),
-                PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::Echo,
+                PlanError::UnsupportedBitArraySegment {
+                    reason: UnsupportedBitArraySegmentReason::NativeEndianness,
                 },
                 "{name}",
             );

@@ -2502,7 +2502,7 @@ mod tests {
             for expression in expressions {
                 let source = source(family, &expression);
                 assert_eq!(
-                    crate::run_main(&execution_plan(&source)),
+                    crate::run_main(&execution_plan(&source), &mut Vec::new()),
                     Ok(Value::Bool(true)),
                     "failed list item family {} expression {expression}",
                     family.item_type,
@@ -2534,7 +2534,7 @@ pub fn main() {{
                 item_type = family.item_type,
                 item = family.item,
             );
-            let error = crate::run_main(&execution_plan(&source)).unwrap_err();
+            let error = crate::run_main(&execution_plan(&source), &mut Vec::new()).unwrap_err();
             assert_eq!(error.to_string(), "panic: selected");
         }
     }
@@ -2552,7 +2552,7 @@ pub fn main() {
 "#;
 
         assert_eq!(
-            crate::run_main(&execution_plan(source))
+            crate::run_main(&execution_plan(source), &mut Vec::new())
                 .unwrap_err()
                 .to_string(),
             "panic: selected",
@@ -2574,7 +2574,7 @@ pub fn main() {
 "#;
 
         assert_eq!(
-            crate::run_main(&execution_plan(source)),
+            crate::run_main(&execution_plan(source), &mut Vec::new()),
             Ok(Value::Bool(true)),
         );
     }
@@ -2642,7 +2642,7 @@ pub fn main() {
 
             for expression in expressions {
                 let source = diverging_source(family, &expression);
-                let error = crate::run_main(&execution_plan(&source)).unwrap_err();
+                let error = crate::run_main(&execution_plan(&source), &mut Vec::new()).unwrap_err();
                 assert_eq!(
                     error.to_string(),
                     "panic: source",

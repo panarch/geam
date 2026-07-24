@@ -1426,7 +1426,7 @@ mod tests {
             for expression in expressions {
                 let source = source(family, &expression);
                 assert_eq!(
-                    crate::run_main(&execution_plan(&source)),
+                    crate::run_main(&execution_plan(&source), &mut Vec::new()),
                     Ok(Value::Bool(true)),
                     "failed value family {} expression {expression}",
                     family.type_,
@@ -1457,7 +1457,7 @@ pub fn main() {{
                 type_ = family.type_,
                 assertion = family.assertion,
             );
-            let error = crate::run_main(&execution_plan(&source)).unwrap_err();
+            let error = crate::run_main(&execution_plan(&source), &mut Vec::new()).unwrap_err();
             assert_eq!(error.to_string(), "panic: selected");
         }
     }
@@ -1503,7 +1503,7 @@ pub fn main() {{
 
             for expression in expressions {
                 let source = diverging_source(family, &expression);
-                let error = crate::run_main(&execution_plan(&source)).unwrap_err();
+                let error = crate::run_main(&execution_plan(&source), &mut Vec::new()).unwrap_err();
                 assert_eq!(
                     error.to_string(),
                     "panic: source",

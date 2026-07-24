@@ -150,7 +150,7 @@ mod tests {
     use crate::planner::plan_module;
     use crate::planner::support::{compile, expect_plan_error};
     use crate::planner::{
-        InvalidCallShapeReason, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+        InvalidCallShapeReason, InvalidTypedAstReason, PlanError, UnsupportedBitArraySegmentReason,
     };
     use ecow::EcoString;
     use gleam_core::ast::{CallArg as GleamCallArg, Statement, TypedExpr, TypedModule};
@@ -161,9 +161,11 @@ mod tests {
     #[test]
     fn custom_constructor_argument_planning_errors_are_preserved() {
         assert_eq!(
-            expect_plan_error("pub type Boxed { Boxed(Int) } pub fn main() { Boxed(echo 1) }",),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            expect_plan_error(
+                "pub type Boxed { Boxed(Int) } pub fn main() { Boxed({ <<1:native>> 1 }) }",
+            ),
+            PlanError::UnsupportedBitArraySegment {
+                reason: UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
     }

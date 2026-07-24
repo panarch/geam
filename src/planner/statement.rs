@@ -107,9 +107,7 @@ mod tests {
     use crate::planner::dsl::{function, int, module, nil};
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span};
-    use crate::planner::{
-        InvalidExpressionType, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
-    };
+    use crate::planner::{InvalidExpressionType, InvalidTypedAstReason, PlanError};
     use gleam_core::ast::{Statement, TypedExpr};
     use gleam_core::type_;
     use num_bigint::BigInt;
@@ -135,7 +133,7 @@ mod tests {
 
     #[test]
     fn plan_final_expression_without_expected_return_type_propagates_expression_error() {
-        let mut module = compile("pub fn main() { echo 1 }");
+        let mut module = compile("pub fn main() { { <<1:native>> 1 } }");
         let statement = module.definitions.functions[0].body.remove(0);
         let module_name = "main".into();
         let functions = HashMap::new();
@@ -147,8 +145,8 @@ mod tests {
 
         assert_eq!(
             actual,
-            Some(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            Some(PlanError::UnsupportedBitArraySegment {
+                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
             }),
         );
     }

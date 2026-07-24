@@ -809,8 +809,11 @@ pub fn main() {{ {expression} }}
         let typed = crate::compile_typed_module("main", "main.gleam", source.as_str())
             .expect("source should compile");
         let module = crate::plan_module(typed).expect("source should plan");
-        crate::run_main(&crate::ExecutionPlan::from_module_plan(module))
-            .unwrap_err()
-            .to_string()
+        crate::run_main(
+            &crate::ExecutionPlan::from_module_plan(module),
+            &mut Vec::new(),
+        )
+        .unwrap_err()
+        .to_string()
     }
 }

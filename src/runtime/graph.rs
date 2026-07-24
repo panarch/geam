@@ -122,7 +122,10 @@ mod tests {
             .join()
             .expect("deep-plan lowering should complete");
 
-        assert_eq!(crate::run_main(&plan), Ok(Value::Int(1.into())));
+        assert_eq!(
+            crate::run_main(&plan, &mut Vec::new()),
+            Ok(Value::Int(1.into())),
+        );
     }
 
     #[test]
@@ -144,7 +147,10 @@ pub fn main() {
 }
 "#,
         );
-        assert_eq!(crate::run_main(&plan), Ok(Value::Int(1.into())));
+        assert_eq!(
+            crate::run_main(&plan, &mut Vec::new()),
+            Ok(Value::Int(1.into())),
+        );
 
         let constructor = plan.custom_constructor_id(0, 0);
         let descriptor = plan.custom_constructor(constructor);
@@ -158,7 +164,7 @@ pub fn main() {
         assert_eq!(
             super::execute(
                 &plan,
-                &mut RuntimeState::new(),
+                &mut RuntimeState::new(&mut Vec::new()),
                 plan.int_function(IntFunctionId(1)).body().block_graph(),
                 inputs,
             )

@@ -82,6 +82,36 @@ retain their stable reference identity, while each evaluation of a closure or
 constructor-function constant creates a fresh instance identity as described
 above.
 
+## Value Inspection And Echo
+
+`Value::inspect()` is the canonical language-facing rendering of a materialized
+runtime value. It borrows only the `Value`: formatting does not consult an
+execution plan, runtime state, typed AST, or source environment. Functions are
+summarized by arity, without exposing captures, runtime identity, or function
+body metadata.
+
+Echo output crosses an explicit host boundary:
+
+```rust
+run_main(&plan, &mut echo_sink)
+```
+
+For an ordinary echo expression, execution evaluates the value, then its
+optional message, emits one owned `EchoOutput`, and continues with the original
+stored value. A failing value or message emits nothing. Output emitted before a
+later source panic remains in the caller-owned sink.
+
+`EchoOutput` contains the materialized `Value`, optional message, and a compact
+source location. When the plan owns source context, the location includes its
+path and one-based line. Otherwise it retains the module, function, and span as
+a site-only fallback. It does not retain full source text, execution state, or
+runtime handles.
+
+`EchoSink::emit` is infallible. Geam does not provide a hidden no-op sink,
+global output queue, or default stdout/stderr destination, and sink failures
+are not part of `ExecutionError`. A future build profile that omits source
+metadata is a separate design concern.
+
 ## Execution Graph
 
 An executable function owns its entry bindings and a `FunctionBody`. The body

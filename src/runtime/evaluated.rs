@@ -1202,7 +1202,8 @@ pub fn main() {
     #[test]
     fn evaluated_value_type_preserves_every_runtime_family() {
         let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
-        let mut state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
         let list = state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
         let function = EvaluatedIntFunction::reference(
             IntFunctionId(0),
@@ -1249,7 +1250,8 @@ pub fn main() {
     #[test]
     fn semantic_value_equality_covers_every_list_and_function_family() {
         let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
-        let mut state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
         let execution_int_type = crate::plan::execution::type_::FunctionType::new(
             Vec::new(),
             crate::plan::execution::type_::ValueType::Int,
@@ -1676,7 +1678,8 @@ pub fn main() {
     #[test]
     fn function_identity_distinguishes_references_and_instances() {
         let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
-        let state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let state = RuntimeState::new(&mut echo);
         let int_type = crate::plan::execution::type_::FunctionType::new(
             Vec::new(),
             crate::plan::execution::type_::ValueType::Int,
@@ -1929,7 +1932,8 @@ pub fn main() {
     #[test]
     fn constructor_callable_identity_is_fresh_and_clone_preserving() {
         let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
-        let state = RuntimeState::new();
+        let mut echo = Vec::new();
+        let state = RuntimeState::new(&mut echo);
         let constructor_id = plan.custom_constructor_id(0, 0);
         let constructor = plan.custom_constructor(constructor_id);
         let type_ = crate::plan::execution::type_::FunctionType::new(

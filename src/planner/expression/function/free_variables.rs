@@ -206,9 +206,19 @@ fn collect_expr(expression: &TypedExpr, bound: &mut HashSet<EcoString>, free: &m
                 }
             }
         }
-        TypedExpr::PositionalAccess { .. }
-        | TypedExpr::Echo { .. }
-        | TypedExpr::ModuleSelect { .. } => {}
+        TypedExpr::Echo {
+            expression,
+            message,
+            ..
+        } => {
+            if let Some(expression) = expression {
+                collect_expr(expression, bound, free);
+            }
+            if let Some(message) = message {
+                collect_expr(message, bound, free);
+            }
+        }
+        TypedExpr::PositionalAccess { .. } | TypedExpr::ModuleSelect { .. } => {}
     }
 }
 
@@ -566,6 +576,35 @@ pub fn main() {
             ),
             vec!["person".to_string(), "age".to_string()],
         );
+    }
+
+    #[test]
+    fn anonymous_free_variables_include_echo_value_then_message() {
+        assert_eq!(
+            anonymous_function_free_variables(
+                r#"
+pub fn main() {
+  let value = 1
+  let message = "selected"
+  fn() { echo value as message }
+  1
+}
+"#,
+            ),
+            vec!["value".to_string(), "message".to_string()],
+        );
+    }
+
+    #[test]
+    fn anonymous_free_variables_accept_missing_echo_operands() {
+        let body = Vec1::new(Statement::Expression(TypedExpr::Echo {
+            location: dummy_span(),
+            expression: None,
+            message: None,
+            type_: type_::int(),
+        }));
+
+        assert!(super::anonymous_free_variables(&[], &body).is_empty());
     }
 
     #[test]
