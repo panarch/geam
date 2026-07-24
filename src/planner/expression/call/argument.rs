@@ -65,7 +65,7 @@ pub(super) fn plan_custom_constructor_args(
             let Some(field) = constructor.fields().get(index) else {
                 return Err(PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::CallShape {
-                        reason: InvalidCallShapeReason::RecordConstructorArgumentCount {
+                        reason: InvalidCallShapeReason::RecordConstructorExtraArguments {
                             expected: constructor.fields().len(),
                             actual,
                         },

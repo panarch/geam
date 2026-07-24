@@ -9,6 +9,7 @@ use crate::planner::error::{
     InvalidCallShapeReason, InvalidModuleReferenceReason, InvalidTypedAstReason,
     InvalidUseShapeReason, PlanError,
 };
+use crate::planner::expression::record_constructor::ResolvedRecordConstructor;
 use ecow::EcoString;
 use gleam_core::ast::{CallArg as GleamCallArg, TypedExpr};
 use gleam_core::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
@@ -190,25 +191,16 @@ fn plan_call_expression(
                 type_,
                 ..
             } => {
-                let _linked_module = context.resolve_module_reference(module_name, label)?;
-                if name != label {
-                    return Err(PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::ModuleReference {
-                            module: module_name.clone(),
-                            name: label.clone(),
-                            reason: InvalidModuleReferenceReason::RecordConstructorName {
-                                actual: name.clone(),
-                            },
-                        },
-                    });
-                }
-                let constructor = context.module_custom_constructor(
-                    type_.as_ref(),
+                let constructor = ResolvedRecordConstructor::selected(
+                    context,
+                    module_name.clone(),
+                    label.clone(),
                     name.clone(),
-                    module_name,
+                    type_.clone(),
                     usize::from(*variant_index),
                     usize::from(*arity),
-                )?;
+                )?
+                .into_constructor();
                 return plan_custom_constructor_call(constructor, arguments, context, capture);
             }
             ModuleValueConstructor::Constant { .. } => {}
@@ -230,7 +222,7 @@ fn plan_custom_constructor_call(
         crate::plan::CustomConstruction::try_new(constructor, arguments).map_err(|error| {
             PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::RecordConstructorArgumentCount {
+                    reason: InvalidCallShapeReason::RecordConstructorMissingArguments {
                         expected: error.expected,
                         actual: error.actual,
                     },
@@ -565,7 +557,7 @@ pub fn main() { Boxed(1) }
             plan_module(constructor_arity_mismatch),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::RecordConstructorArgumentCount {
+                    reason: InvalidCallShapeReason::RecordConstructorMissingArguments {
                         expected: 1,
                         actual: 0,
                     },
@@ -618,7 +610,7 @@ pub fn main() { Boxed(1) }
             plan_module(extra_constructor_argument),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::RecordConstructorArgumentCount {
+                    reason: InvalidCallShapeReason::RecordConstructorExtraArguments {
                         expected: 1,
                         actual: 2,
                     },
@@ -789,7 +781,7 @@ pub fn main() {
             plan_module(argument_count_mismatch),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::RecordConstructorArgumentCount {
+                    reason: InvalidCallShapeReason::RecordConstructorMissingArguments {
                         expected: 1,
                         actual: 0,
                     },

@@ -4,9 +4,10 @@ use crate::plan::{
 };
 use crate::planner::context::{ModuleFunctionTarget, PlanContext};
 use crate::planner::error::{
-    InvalidExpressionShapeKind, InvalidExpressionType, InvalidModuleReferenceReason,
-    InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+    InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
+    UnsupportedExpressionKind,
 };
+use crate::planner::expression::record_constructor::ResolvedRecordConstructor;
 use gleam_core::ast::Constant;
 use gleam_core::type_::{PRELUDE_MODULE_NAME, Type, ValueConstructor, ValueConstructorVariant};
 use std::sync::Arc;
@@ -355,16 +356,10 @@ fn plan_record_constructor(
     let Some(shape) = crate::plan::ValueShape::from_gleam(constructor.type_.as_ref()) else {
         return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
     };
+    let module = module.clone();
+    let name = name.clone();
     let constructor = context.custom_constructor(&constructor)?;
-    crate::plan::module::custom_constructor_expr(constructor)
-        .with_shape(shape)
-        .ok_or_else(|| PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ModuleReference {
-                module: module.clone(),
-                name: name.clone(),
-                reason: InvalidModuleReferenceReason::RecordConstructorResultShape,
-            },
-        })
+    ResolvedRecordConstructor::direct(module, name, constructor).plan_reference(shape)
 }
 
 fn invalid_expression_shape(kind: InvalidExpressionShapeKind) -> Result<Expr, PlanError> {

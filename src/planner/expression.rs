@@ -7,6 +7,7 @@ mod function;
 mod operator;
 mod pipeline;
 mod record_access;
+mod record_constructor;
 mod record_update;
 mod var;
 

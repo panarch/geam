@@ -189,33 +189,80 @@ fn plan_implicit_argument(
     record_access::plan_from_expr(type_, label, index, Expr::custom(source), context)
 }
 
+enum RecordUpdateConstructorSource {
+    Direct(Box<ValueConstructor>),
+    Selected {
+        module_name: EcoString,
+        label: EcoString,
+        name: EcoString,
+        variant_index: usize,
+        arity: usize,
+        type_: Arc<Type>,
+    },
+}
+
 fn record_constructor(
     expression: TypedExpr,
     context: &PlanContext<'_>,
 ) -> Result<CustomConstructor, PlanError> {
-    match expression {
-        TypedExpr::Var { constructor, .. } => {
-            let ValueConstructorVariant::Record { .. } = &constructor.variant else {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::RecordUpdateShape {
-                        reason: InvalidRecordUpdateShapeReason::ConstructorKind,
-                    },
-                });
-            };
-            context.custom_constructor(&constructor)
-        }
+    let source = match expression {
+        TypedExpr::Var { constructor, .. } => match &constructor.variant {
+            ValueConstructorVariant::Record { .. } => {
+                Some(RecordUpdateConstructorSource::Direct(Box::new(constructor)))
+            }
+            ValueConstructorVariant::LocalVariable { .. }
+            | ValueConstructorVariant::ModuleConstant { .. }
+            | ValueConstructorVariant::ModuleFn { .. } => None,
+        },
         TypedExpr::ModuleSelect {
             module_name,
             label,
-            constructor:
-                ModuleValueConstructor::Record {
-                    name,
-                    variant_index,
-                    arity,
-                    type_,
-                    ..
-                },
+            constructor,
             ..
+        } => match constructor {
+            ModuleValueConstructor::Record {
+                name,
+                variant_index,
+                arity,
+                type_,
+                ..
+            } => Some(RecordUpdateConstructorSource::Selected {
+                module_name,
+                label,
+                name,
+                variant_index: usize::from(variant_index),
+                arity: usize::from(arity),
+                type_,
+            }),
+            ModuleValueConstructor::Constant { .. } | ModuleValueConstructor::Fn { .. } => None,
+        },
+        _ => {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::RecordUpdateShape {
+                    reason: InvalidRecordUpdateShapeReason::ConstructorExpression,
+                },
+            });
+        }
+    };
+    let Some(source) = source else {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::RecordUpdateShape {
+                reason: InvalidRecordUpdateShapeReason::ConstructorKind,
+            },
+        });
+    };
+
+    match source {
+        RecordUpdateConstructorSource::Direct(constructor) => {
+            context.custom_constructor(constructor.as_ref())
+        }
+        RecordUpdateConstructorSource::Selected {
+            module_name,
+            label,
+            name,
+            variant_index,
+            arity,
+            type_,
         } => {
             if label != name {
                 return Err(PlanError::InvalidTypedAst {
@@ -231,20 +278,10 @@ fn record_constructor(
                 type_.as_ref(),
                 name,
                 &module_name,
-                usize::from(variant_index),
-                usize::from(arity),
+                variant_index,
+                arity,
             )
         }
-        TypedExpr::ModuleSelect { .. } => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::RecordUpdateShape {
-                reason: InvalidRecordUpdateShapeReason::ConstructorKind,
-            },
-        }),
-        _ => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::RecordUpdateShape {
-                reason: InvalidRecordUpdateShapeReason::ConstructorExpression,
-            },
-        }),
     }
 }
 

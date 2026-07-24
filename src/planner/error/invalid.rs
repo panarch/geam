@@ -201,8 +201,10 @@ pub enum InvalidCallShapeReason {
     LocalFunctionCallArityMismatch,
     #[error("local function call return type does not match function table")]
     LocalFunctionCallReturnTypeMismatch,
-    #[error("record constructor argument count: expected {expected}, got {actual}")]
-    RecordConstructorArgumentCount { expected: usize, actual: usize },
+    #[error("record constructor has extra arguments: expected {expected}, got {actual}")]
+    RecordConstructorExtraArguments { expected: usize, actual: usize },
+    #[error("record constructor has missing arguments: expected {expected}, got {actual}")]
+    RecordConstructorMissingArguments { expected: usize, actual: usize },
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]

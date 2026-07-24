@@ -9,6 +9,7 @@ use crate::planner::context::{FunctionLocalBinding, ModuleFunctionTarget, PlanCo
 use crate::planner::error::{
     InvalidExpressionShapeKind, InvalidModuleReferenceReason, InvalidTypedAstReason, PlanError,
 };
+use crate::planner::expression::record_constructor::ResolvedRecordConstructor;
 use ecow::EcoString;
 use gleam_core::type_::{
     ModuleValueConstructor, PRELUDE_MODULE_NAME, ValueConstructor, ValueConstructorVariant,
@@ -67,15 +68,8 @@ pub(super) fn plan_var(
             }
             let shape = constructor_shape;
             let constructor = context.custom_constructor(&constructor)?;
-            crate::plan::module::custom_constructor_expr(constructor)
-                .with_shape(shape)
-                .ok_or_else(|| PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ModuleReference {
-                        module: module.clone(),
-                        name: name.clone(),
-                        reason: InvalidModuleReferenceReason::RecordConstructorResultShape,
-                    },
-                })
+            ResolvedRecordConstructor::direct(module.clone(), name.clone(), constructor)
+                .plan_reference(shape)
         }
         ValueConstructorVariant::ModuleFn {
             module,
@@ -131,36 +125,16 @@ pub(super) fn plan_module_select(
             arity,
             type_,
             ..
-        } => {
-            let _linked_module = context.resolve_module_reference(&module_name, &label)?;
-            if name != label {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ModuleReference {
-                        module: module_name,
-                        name: label,
-                        reason: InvalidModuleReferenceReason::RecordConstructorName {
-                            actual: name,
-                        },
-                    },
-                });
-            }
-            let constructor = context.module_custom_constructor(
-                type_.as_ref(),
-                name,
-                &module_name,
-                usize::from(variant_index),
-                usize::from(arity),
-            )?;
-            crate::plan::module::custom_constructor_expr(constructor)
-                .with_shape(shape)
-                .ok_or_else(|| PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ModuleReference {
-                        module: module_name,
-                        name: label,
-                        reason: InvalidModuleReferenceReason::RecordConstructorResultShape,
-                    },
-                })
-        }
+        } => ResolvedRecordConstructor::selected(
+            context,
+            module_name,
+            label,
+            name,
+            type_,
+            usize::from(variant_index),
+            usize::from(arity),
+        )?
+        .plan_reference(shape),
     }
 }
 
