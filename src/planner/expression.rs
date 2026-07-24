@@ -948,8 +948,8 @@ mod tests {
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span, expect_plan_error};
     use crate::planner::{
-        InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-        UnsupportedExpressionKind,
+        InvalidExpressionShapeKind, InvalidExpressionType, InvalidModuleReferenceReason,
+        InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
     };
     use gleam_core::ast::{Constant, Statement, TypedExpr, TypedModule};
     use gleam_core::type_::{self, ModuleValueConstructor, Type};
@@ -1016,8 +1016,10 @@ pub fn main() {
         assert_eq!(
             plan_module(module),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "First".into(),
+                    reason: InvalidModuleReferenceReason::RecordConstructorResultShape,
                 },
             }),
         );
@@ -1478,8 +1480,10 @@ pub fn main() -> Int {
                 },
             })),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::ModuleSelect,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "other".into(),
+                    name: "answer".into(),
+                    reason: InvalidModuleReferenceReason::UnlinkedModule,
                 },
             }),
         );

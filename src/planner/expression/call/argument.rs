@@ -57,6 +57,7 @@ pub(super) fn plan_custom_constructor_args(
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
 ) -> Result<Vec<Expr>, PlanError> {
+    let actual = arguments.len();
     arguments
         .into_iter()
         .enumerate()
@@ -64,7 +65,10 @@ pub(super) fn plan_custom_constructor_args(
             let Some(field) = constructor.fields().get(index) else {
                 return Err(PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::CallShape {
-                        reason: InvalidCallShapeReason::FunctionCallArityMismatch,
+                        reason: InvalidCallShapeReason::RecordConstructorArgumentCount {
+                            expected: constructor.fields().len(),
+                            actual,
+                        },
                     },
                 });
             };
@@ -210,8 +214,10 @@ pub fn main() {
         assert_eq!(
             plan_module(function_value),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: crate::planner::InvalidExpressionShapeKind::Invalid,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "expect_first".into(),
+                    reason: crate::planner::InvalidModuleReferenceReason::FunctionReferenceShape,
                 },
             }),
         );

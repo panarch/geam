@@ -1,11 +1,18 @@
 use crate::plan::{
-    ConstantTemplateId, ConstantTemplateSignature, ConstantTemplates, CustomTypeDefinition,
-    CustomTypeName, ModuleId, ValueShape,
+    ConstantTemplateId, ConstantTemplateSignature, CustomTypeDefinition, CustomTypeName, ModuleId,
+    ValueShape,
 };
 use crate::planner::context::FunctionInfo;
 use crate::planner::module::constant::ConstantSignatures;
 use ecow::EcoString;
 use std::collections::HashMap;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::planner) enum ModuleConstantResolutionError {
+    UnlinkedModule,
+    MissingConstant,
+    Instantiation,
+}
 
 pub(in crate::planner) struct ProgramRegistry {
     by_name: HashMap<EcoString, ModuleId>,
@@ -46,26 +53,21 @@ impl ProgramRegistry {
         self.modules[module.index()].functions.get(name).cloned()
     }
 
-    pub(in crate::planner) fn constant_expr(
-        &self,
-        module: &EcoString,
-        name: &EcoString,
-        shape: &ValueShape,
-    ) -> Option<crate::plan::Expr> {
-        self.constant_instantiation(module, name, shape)
-            .map(ConstantTemplates::reference)
-    }
-
     pub(in crate::planner) fn constant_instantiation(
         &self,
         module: &EcoString,
         name: &EcoString,
         shape: &ValueShape,
-    ) -> Option<crate::plan::ConstantInstantiation> {
-        let module = self.module_id(module)?;
-        self.modules[module.index()]
+    ) -> Result<crate::plan::ConstantInstantiation, ModuleConstantResolutionError> {
+        let module = self
+            .module_id(module)
+            .ok_or(ModuleConstantResolutionError::UnlinkedModule)?;
+        let signature = self.modules[module.index()]
             .constants
-            .instantiate(name, shape)
+            .signature(name)
+            .ok_or(ModuleConstantResolutionError::MissingConstant)?;
+        crate::planner::type_parameter::instantiate_constant(signature, shape)
+            .ok_or(ModuleConstantResolutionError::Instantiation)
     }
 
     pub(in crate::planner) fn constant_signature(
@@ -108,13 +110,14 @@ impl ModuleRegistry {
 
 #[cfg(test)]
 mod tests {
-    use super::{ModuleRegistry, ProgramRegistry};
+    use super::{ModuleConstantResolutionError, ModuleRegistry, ProgramRegistry};
     use crate::plan::{
         CustomTypeDefinition, CustomTypeName, CustomTypePublicity, FunctionShape,
         FunctionTemplateId, FunctionTemplateSignature, ModuleId, TypeScheme, ValueShape,
     };
     use crate::planner::context::FunctionInfo;
-    use crate::planner::module::constant::ConstantSignatures;
+    use crate::planner::module::constant::{ConstantSignatures, reserve_constants};
+    use crate::planner::support::compile;
     use crate::planner::type_parameter::TypeParameterScope;
     use std::collections::HashMap;
 
@@ -124,6 +127,10 @@ mod tests {
         let root = ModuleId::new(1);
         let alpha_type = custom_type("alpha", "Box");
         let root_type = custom_type("root", "Box");
+        let module = compile("const values = []\npub fn main() { Nil }");
+        let declarations = reserve_constants(root, module.definitions.constants)
+            .expect("generic constant declaration should reserve");
+        let (root_constants, _) = declarations.into_parts();
         let registry = ProgramRegistry::new(vec![
             ModuleRegistry::new(
                 "alpha".into(),
@@ -135,7 +142,7 @@ mod tests {
                 "root".into(),
                 vec![root_type.clone()],
                 HashMap::from([("same".into(), function_info(root))]),
-                ConstantSignatures::default(),
+                root_constants,
             ),
         ]);
 
@@ -179,12 +186,27 @@ mod tests {
             None,
         );
         assert_eq!(
-            registry.constant_expr(&"root".into(), &"missing".into(), &ValueShape::Int),
-            None,
+            registry.constant_instantiation(&"root".into(), &"missing".into(), &ValueShape::Int),
+            Err(ModuleConstantResolutionError::MissingConstant),
         );
         assert_eq!(
-            registry.constant_expr(&"missing".into(), &"value".into(), &ValueShape::Int),
-            None,
+            registry
+                .constant_instantiation(
+                    &"root".into(),
+                    &"values".into(),
+                    &ValueShape::List(Box::new(ValueShape::Int)),
+                )
+                .map(crate::plan::ConstantValue::reference)
+                .map(|value| value.shape()),
+            Ok(ValueShape::List(Box::new(ValueShape::Int))),
+        );
+        assert_eq!(
+            registry.constant_instantiation(&"root".into(), &"values".into(), &ValueShape::Int),
+            Err(ModuleConstantResolutionError::Instantiation),
+        );
+        assert_eq!(
+            registry.constant_instantiation(&"missing".into(), &"value".into(), &ValueShape::Int),
+            Err(ModuleConstantResolutionError::UnlinkedModule),
         );
     }
 

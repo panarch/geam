@@ -6,7 +6,9 @@ use crate::plan::{
     UtfCodepointFunctionExpr,
 };
 use crate::planner::context::{FunctionLocalBinding, PlanContext};
-use crate::planner::error::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
+use crate::planner::error::{
+    InvalidExpressionShapeKind, InvalidModuleReferenceReason, InvalidTypedAstReason, PlanError,
+};
 use ecow::EcoString;
 use gleam_core::type_::{
     ModuleValueConstructor, PRELUDE_MODULE_NAME, ValueConstructor, ValueConstructorVariant,
@@ -65,26 +67,23 @@ pub(super) fn plan_var(
             }
             if module != PRELUDE_MODULE_NAME && !context.module_is_linked(module) {
                 return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionShape {
-                        kind: InvalidExpressionShapeKind::ModuleSelect,
+                    reason: InvalidTypedAstReason::ModuleReference {
+                        module: module.clone(),
+                        name: name.clone(),
+                        reason: InvalidModuleReferenceReason::UnlinkedModule,
                     },
                 });
             }
 
             let shape = constructor_shape;
             let constructor = context.custom_constructor(&constructor)?;
-            if usize::from(arity) != constructor.fields().len() {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionShape {
-                        kind: InvalidExpressionShapeKind::RecordConstructor,
-                    },
-                });
-            }
             crate::plan::module::custom_constructor_expr(constructor)
                 .with_shape(shape)
-                .ok_or(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionShape {
-                        kind: InvalidExpressionShapeKind::RecordConstructor,
+                .ok_or_else(|| PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ModuleReference {
+                        module: module.clone(),
+                        name: name.clone(),
+                        reason: InvalidModuleReferenceReason::RecordConstructorResultShape,
                     },
                 })
         }
@@ -94,31 +93,21 @@ pub(super) fn plan_var(
             external_erlang,
             external_javascript,
             ..
-        } if context.module_is_linked(&module)
-            && external_erlang.is_none()
-            && external_javascript.is_none() =>
-        {
+        } => {
+            if external_erlang.is_some() || external_javascript.is_some() {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ModuleReference {
+                        module,
+                        name,
+                        reason: InvalidModuleReferenceReason::ExternalFunction,
+                    },
+                });
+            }
             plan_function_reference(&module, name, constructor_shape, context)
         }
-        ValueConstructorVariant::ModuleFn { .. } => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::ModuleSelect,
-            },
-        }),
-        ValueConstructorVariant::ModuleConstant { module, name, .. }
-            if context.module_is_linked(&module) =>
-        {
-            Ok(context
-                .module_constant_expr(&module, &name, &constructor_shape)
-                .ok_or_else(|| PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::UnknownLocal { name },
-                })?)
+        ValueConstructorVariant::ModuleConstant { module, name, .. } => {
+            context.module_constant_expr(&module, &name, &constructor_shape)
         }
-        ValueConstructorVariant::ModuleConstant { .. } => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::ModuleSelect,
-            },
-        }),
     }
 }
 
@@ -129,13 +118,6 @@ pub(super) fn plan_module_select(
     shape: crate::plan::ValueShape,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    if !context.module_is_linked(&module_name) {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::ModuleSelect,
-            },
-        });
-    }
     match constructor {
         ModuleValueConstructor::Fn {
             module,
@@ -143,52 +125,91 @@ pub(super) fn plan_module_select(
             external_erlang,
             external_javascript,
             ..
-        } if module == module_name
-            && name == label
-            && external_erlang.is_none()
-            && external_javascript.is_none() =>
-        {
+        } => {
+            if !context.module_is_linked(&module_name) {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ModuleReference {
+                        module: module_name,
+                        name: label,
+                        reason: InvalidModuleReferenceReason::UnlinkedModule,
+                    },
+                });
+            }
+            if module != module_name {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ModuleReference {
+                        module: module_name,
+                        name: label,
+                        reason: InvalidModuleReferenceReason::FunctionModule { actual: module },
+                    },
+                });
+            }
+            if name != label {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ModuleReference {
+                        module: module_name,
+                        name: label,
+                        reason: InvalidModuleReferenceReason::FunctionName { actual: name },
+                    },
+                });
+            }
+            if external_erlang.is_some() || external_javascript.is_some() {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ModuleReference {
+                        module: module_name,
+                        name: label,
+                        reason: InvalidModuleReferenceReason::ExternalFunction,
+                    },
+                });
+            }
             plan_function_reference(&module, name, shape, context)
         }
-        ModuleValueConstructor::Constant { .. } => context
-            .module_constant_expr(&module_name, &label, &shape)
-            .ok_or(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::UnknownLocal { name: label },
-            }),
+        ModuleValueConstructor::Constant { .. } => {
+            context.module_constant_expr(&module_name, &label, &shape)
+        }
         ModuleValueConstructor::Record {
             name,
             variant_index,
             arity,
             type_,
             ..
-        } if name == label => {
+        } => {
+            if !context.module_is_linked(&module_name) {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ModuleReference {
+                        module: module_name,
+                        name: label,
+                        reason: InvalidModuleReferenceReason::UnlinkedModule,
+                    },
+                });
+            }
+            if name != label {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ModuleReference {
+                        module: module_name,
+                        name: label,
+                        reason: InvalidModuleReferenceReason::RecordConstructorName {
+                            actual: name,
+                        },
+                    },
+                });
+            }
             let constructor = context.module_custom_constructor(
                 type_.as_ref(),
                 name,
                 &module_name,
                 usize::from(variant_index),
+                usize::from(arity),
             )?;
-            if usize::from(arity) != constructor.fields().len() {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionShape {
-                        kind: InvalidExpressionShapeKind::RecordConstructor,
-                    },
-                });
-            }
             crate::plan::module::custom_constructor_expr(constructor)
                 .with_shape(shape)
-                .ok_or(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionShape {
-                        kind: InvalidExpressionShapeKind::RecordConstructor,
+                .ok_or_else(|| PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ModuleReference {
+                        module: module_name,
+                        name: label,
+                        reason: InvalidModuleReferenceReason::RecordConstructorResultShape,
                     },
                 })
-        }
-        ModuleValueConstructor::Fn { .. } | ModuleValueConstructor::Record { .. } => {
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::ModuleSelect,
-                },
-            })
         }
     }
 }
@@ -199,24 +220,24 @@ fn plan_function_reference(
     constructor_shape: crate::plan::ValueShape,
     context: &PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    let function = context
-        .lookup_module_function(module, &name)
-        .ok_or_else(|| PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::UnknownLocal { name: name.clone() },
-        })?;
+    let function = context.module_function(module, &name)?;
 
     let crate::plan::ValueShape::Function(shape) = constructor_shape else {
         return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::Invalid,
+            reason: InvalidTypedAstReason::ModuleReference {
+                module: module.clone(),
+                name,
+                reason: InvalidModuleReferenceReason::FunctionType,
             },
         });
     };
     let instantiation = function
         .instantiate(&shape)
         .map_err(|_| PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::Invalid,
+            reason: InvalidTypedAstReason::ModuleReference {
+                module: module.clone(),
+                name: name.clone(),
+                reason: InvalidModuleReferenceReason::FunctionInstantiation,
             },
         })?;
     let reference = function.reference(instantiation);
@@ -224,9 +245,11 @@ fn plan_function_reference(
     FunctionExpr::reference(reference)
         .with_shape(*shape)
         .map(Expr::function)
-        .ok_or(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::Invalid,
+        .ok_or_else(|| PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ModuleReference {
+                module: module.clone(),
+                name,
+                reason: InvalidModuleReferenceReason::FunctionReferenceShape,
             },
         })
 }
@@ -314,7 +337,8 @@ mod tests {
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
     use crate::planner::{
-        InvalidCustomTypeReason, InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError,
+        InvalidCustomTypeReason, InvalidExpressionShapeKind, InvalidModuleReferenceReason,
+        InvalidTypedAstReason, PlanError,
     };
     use ecow::EcoString;
     use gleam_core::ast::{Publicity, Statement, TypedExpr, TypedStatement};
@@ -522,8 +546,10 @@ fn identity(value: Int) {
         assert_eq!(
             plan_module(missing_current_function),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::UnknownLocal {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
                     name: "identity".into(),
+                    reason: InvalidModuleReferenceReason::MissingFunction,
                 },
             }),
         );
@@ -557,8 +583,37 @@ pub fn main() {
         assert_eq!(
             plan_module(non_current_function),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::ModuleSelect,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "other".into(),
+                    name: "identity".into(),
+                    reason: InvalidModuleReferenceReason::UnlinkedModule,
+                },
+            }),
+        );
+
+        let mut external_function = compile(
+            r#"
+@external(erlang, "external", "identity")
+fn identity(value: Int) -> Int
+
+pub fn main() {
+  identity
+}
+"#,
+        );
+        external_function.definitions.functions.retain(|function| {
+            function
+                .name
+                .as_ref()
+                .is_some_and(|(_, name)| name == "main")
+        });
+        assert_eq!(
+            plan_module(external_function),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "identity".into(),
+                    reason: InvalidModuleReferenceReason::ExternalFunction,
                 },
             }),
         );
@@ -581,8 +636,10 @@ pub fn main() {
         assert_eq!(
             plan_module(invalid_function_shape),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "identity".into(),
+                    reason: InvalidModuleReferenceReason::FunctionType,
                 },
             }),
         );
@@ -605,8 +662,10 @@ pub fn main() {
         assert_eq!(
             plan_module(function_return_shape_mismatch),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "identity".into(),
+                    reason: InvalidModuleReferenceReason::FunctionInstantiation,
                 },
             }),
         );
@@ -624,8 +683,34 @@ pub fn main() {
         assert_eq!(
             plan_module(missing_constant),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::UnknownLocal {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
                     name: "answer".into(),
+                    reason: InvalidModuleReferenceReason::MissingConstant,
+                },
+            }),
+        );
+
+        let mut incompatible_constant_instantiation = compile(
+            r#"
+const values = []
+
+pub fn main() {
+  values
+}
+"#,
+        );
+        let (_, constructor) = expect_var_mut(expect_expression_statement_mut(
+            &mut incompatible_constant_instantiation.definitions.functions[0].body[0],
+        ));
+        constructor.type_ = type_::int();
+        assert_eq!(
+            plan_module(incompatible_constant_instantiation),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "values".into(),
+                    reason: InvalidModuleReferenceReason::ConstantInstantiation,
                 },
             }),
         );
@@ -675,8 +760,9 @@ pub fn main() { Boxed }
         assert_eq!(
             plan_module(constructor_arity_mismatch),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Boxed".into(),
+                    reason: InvalidCustomTypeReason::ConstructorArity,
                 },
             }),
         );
@@ -701,8 +787,10 @@ pub fn main() { Boxed }
                 "other",
             ))),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::ModuleSelect,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "other".into(),
+                    name: "Boxed".into(),
+                    reason: InvalidModuleReferenceReason::UnlinkedModule,
                 },
             }),
         );
@@ -724,6 +812,21 @@ pub fn main() {
         replace_main_value_with_module_select(&mut module_constructor);
         assert_eq!(plan_module(module_constructor), expected_constructor);
 
+        let mut unlinked_constructor = compile(constructor_source);
+        let (_, module_name, _, _) =
+            replace_main_value_with_module_select(&mut unlinked_constructor);
+        *module_name = "other".into();
+        assert_eq!(
+            plan_module(unlinked_constructor),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "other".into(),
+                    name: "Boxed".into(),
+                    reason: InvalidModuleReferenceReason::UnlinkedModule,
+                },
+            }),
+        );
+
         let mut arity_mismatch = compile(constructor_source);
         let (_, _, _, constructor) = replace_main_value_with_module_select(&mut arity_mismatch);
         let (arity, _) = module_record_fields(constructor);
@@ -731,8 +834,9 @@ pub fn main() {
         assert_eq!(
             plan_module(arity_mismatch),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Boxed".into(),
+                    reason: InvalidCustomTypeReason::ConstructorArity,
                 },
             }),
         );
@@ -758,8 +862,10 @@ pub fn main() {
         assert_eq!(
             plan_module(outer_shape_mismatch),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "Boxed".into(),
+                    reason: InvalidModuleReferenceReason::RecordConstructorResultShape,
                 },
             }),
         );
@@ -771,8 +877,12 @@ pub fn main() {
         assert_eq!(
             plan_module(constructor_label_mismatch),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::ModuleSelect,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "Other".into(),
+                    reason: InvalidModuleReferenceReason::RecordConstructorName {
+                        actual: "Boxed".into(),
+                    },
                 },
             }),
         );
@@ -798,8 +908,10 @@ pub fn main() {
         assert_eq!(
             plan_module(outer_module_mismatch),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::ModuleSelect,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "other".into(),
+                    name: "identity".into(),
+                    reason: InvalidModuleReferenceReason::UnlinkedModule,
                 },
             }),
         );
@@ -811,8 +923,12 @@ pub fn main() {
         assert_eq!(
             plan_module(target_module_mismatch),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::ModuleSelect,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "identity".into(),
+                    reason: InvalidModuleReferenceReason::FunctionModule {
+                        actual: "other".into(),
+                    },
                 },
             }),
         );
@@ -823,8 +939,12 @@ pub fn main() {
         assert_eq!(
             plan_module(function_label_mismatch),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::ModuleSelect,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "other".into(),
+                    reason: InvalidModuleReferenceReason::FunctionName {
+                        actual: "identity".into(),
+                    },
                 },
             }),
         );
@@ -836,8 +956,10 @@ pub fn main() {
         assert_eq!(
             plan_module(external_function),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::ModuleSelect,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "identity".into(),
+                    reason: InvalidModuleReferenceReason::ExternalFunction,
                 },
             }),
         );

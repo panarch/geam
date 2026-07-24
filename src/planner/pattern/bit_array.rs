@@ -294,10 +294,12 @@ fn plan_size_variable(
             name: constant_name,
             literal,
             ..
-        } if context
-            .module_constant_instantiation(&module, &constant_name, &crate::plan::ValueShape::Int)
-            .is_some() =>
-        {
+        } => {
+            context.module_constant_instantiation(
+                &module,
+                &constant_name,
+                &crate::plan::ValueShape::Int,
+            )?;
             plan_size_constant(literal, context)
         }
         _ => Err(invalid_pattern()),
@@ -463,7 +465,8 @@ mod tests {
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::error::{
-        InvalidTypedAstReason, PlanError, UnsupportedBitArraySegmentReason,
+        InvalidModuleReferenceReason, InvalidTypedAstReason, PlanError,
+        UnsupportedBitArraySegmentReason,
     };
     use crate::planner::support::{compile, dummy_span, expect_plan_error};
     use gleam_core::ast::Publicity;
@@ -1449,14 +1452,54 @@ pub fn main() { 0 }
 
         assert_eq!(
             super::plan_size_variable("missing_alias".into(), missing_alias, &context),
-            Err(super::invalid_pattern()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "alias".into(),
+                    reason: InvalidModuleReferenceReason::MissingConstant,
+                },
+            }),
         );
         assert_eq!(
             super::plan_size_variable("string".into(), string, &context),
-            Err(super::invalid_pattern()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "size".into(),
+                    reason: InvalidModuleReferenceReason::MissingConstant,
+                },
+            }),
         );
         assert_eq!(
             super::plan_size_variable("external".into(), external, &context),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "other".into(),
+                    name: "size".into(),
+                    reason: InvalidModuleReferenceReason::UnlinkedModule,
+                },
+            }),
+        );
+        assert_eq!(
+            super::plan_size_variable(
+                "record".into(),
+                ValueConstructor {
+                    publicity: Publicity::Private,
+                    deprecation: Deprecation::NotDeprecated,
+                    type_: type_::int(),
+                    variant: ValueConstructorVariant::Record {
+                        name: "Record".into(),
+                        arity: 0,
+                        field_map: None,
+                        location: dummy_span(),
+                        module: "main".into(),
+                        variants_count: 1,
+                        variant_index: 0,
+                        documentation: None,
+                    },
+                },
+                &context,
+            ),
             Err(super::invalid_pattern()),
         );
         assert_eq!(

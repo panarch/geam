@@ -54,15 +54,8 @@ fn plan_expr(
             type_,
             ..
         } => {
-            if !context.module_is_linked(&module_name) {
-                return invalid_expression_shape(InvalidExpressionShapeKind::ModuleSelect);
-            }
             let shape = context.value_shape_in_scope(type_.as_ref());
-            context
-                .module_constant_expr(&module_name, &label, &shape)
-                .ok_or_else(|| PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::UnknownLocal { name: label },
-                })
+            context.module_constant_expr(&module_name, &label, &shape)
         }
         ClauseGuard::FieldAccess {
             index: Some(index),
@@ -428,7 +421,8 @@ mod tests {
     use crate::planner::context::{AnonymousFunctions, FunctionLocalBinding, PlanContext};
     use crate::planner::support::dummy_span;
     use crate::planner::{
-        InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
+        InvalidExpressionShapeKind, InvalidExpressionType, InvalidModuleReferenceReason,
+        InvalidTypedAstReason, PlanError,
     };
     use ecow::EcoString;
     use gleam_core::ast::{BinOp, ClauseGuard, Constant, Publicity};
@@ -530,15 +524,21 @@ mod tests {
                 module_select("other", int_constant_literal(1)),
                 &mut context
             ),
-            Err(invalid_expression_shape(
-                InvalidExpressionShapeKind::ModuleSelect
-            )),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "other".into(),
+                    name: "answer".into(),
+                    reason: InvalidModuleReferenceReason::UnlinkedModule,
+                },
+            }),
         );
         assert_eq!(
             plan_expr(module_select("main", int_constant_literal(1)), &mut context),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::UnknownLocal {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
                     name: "answer".into(),
+                    reason: InvalidModuleReferenceReason::MissingConstant,
                 },
             }),
         );

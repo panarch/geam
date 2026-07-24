@@ -312,7 +312,7 @@ mod tests {
     };
     use crate::planner::error::{
         InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
-        InvalidPipelineShapeReason, InvalidTypedAstReason, PlanError,
+        InvalidModuleReferenceReason, InvalidPipelineShapeReason, InvalidTypedAstReason, PlanError,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
@@ -1000,8 +1000,10 @@ pub fn main() {
         assert_eq!(
             plan_module(module),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::ModuleSelect,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "other".into(),
+                    name: "answer".into(),
+                    reason: InvalidModuleReferenceReason::UnlinkedModule,
                 },
             }),
         );

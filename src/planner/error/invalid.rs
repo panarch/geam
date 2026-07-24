@@ -37,6 +37,12 @@ pub enum InvalidTypedAstReason {
     RecordUpdateShape {
         reason: InvalidRecordUpdateShapeReason,
     },
+    #[error("module reference {module}.{name}: {reason}")]
+    ModuleReference {
+        module: EcoString,
+        name: EcoString,
+        reason: InvalidModuleReferenceReason,
+    },
     #[error("use shape: {reason}")]
     UseShape { reason: InvalidUseShapeReason },
     #[error("unknown local variable: {name}")]
@@ -91,8 +97,6 @@ pub enum InvalidExpressionShapeKind {
     Invalid,
     #[error("function capture literal")]
     FunctionCaptureLiteral,
-    #[error("module select")]
-    ModuleSelect,
     #[error("positional access")]
     PositionalAccess,
     #[error("prelude constructor")]
@@ -105,10 +109,17 @@ pub enum InvalidExpressionShapeKind {
     RecordUpdate,
 }
 
-#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum InvalidRecordUpdateShapeReason {
-    #[error("record constructor")]
-    Constructor,
+    #[error("record constructor expression")]
+    ConstructorExpression,
+    #[error("record constructor kind")]
+    ConstructorKind,
+    #[error("record constructor name: expected {expected}, got {actual}")]
+    ConstructorName {
+        expected: EcoString,
+        actual: EcoString,
+    },
     #[error("record constructor argument count")]
     ArgumentCount,
     #[error("record constructor argument label")]
@@ -190,14 +201,38 @@ pub enum InvalidCallShapeReason {
     LocalFunctionCallArityMismatch,
     #[error("local function call return type does not match function table")]
     LocalFunctionCallReturnTypeMismatch,
-    #[error("module constant is not callable")]
-    NonCallableModuleConstant,
-    #[error("invalid module function")]
-    InvalidModuleFunction,
-    #[error("module function is missing from the linked registry")]
-    MissingModuleFunction,
-    #[error("invalid record constructor")]
-    InvalidRecordConstructor,
+    #[error("record constructor argument count: expected {expected}, got {actual}")]
+    RecordConstructorArgumentCount { expected: usize, actual: usize },
+}
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum InvalidModuleReferenceReason {
+    #[error("module is not linked")]
+    UnlinkedModule,
+    #[error("function is missing from the linked registry")]
+    MissingFunction,
+    #[error("constant is missing from the linked registry")]
+    MissingConstant,
+    #[error("constant is not callable")]
+    NonCallableConstant,
+    #[error("function constructor module is {actual}")]
+    FunctionModule { actual: EcoString },
+    #[error("function constructor name is {actual}")]
+    FunctionName { actual: EcoString },
+    #[error("external function")]
+    ExternalFunction,
+    #[error("record constructor name is {actual}")]
+    RecordConstructorName { actual: EcoString },
+    #[error("record constructor result shape")]
+    RecordConstructorResultShape,
+    #[error("function value type")]
+    FunctionType,
+    #[error("function signature instantiation")]
+    FunctionInstantiation,
+    #[error("function reference result shape")]
+    FunctionReferenceShape,
+    #[error("constant signature instantiation")]
+    ConstantInstantiation,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]

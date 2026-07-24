@@ -16,7 +16,8 @@ use crate::plan::{
     CustomConstructorRefinement, CustomType, CustomValueShape, FunctionShape, ValueShape,
 };
 use crate::planner::error::{
-    InvalidCustomTypeReason, InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError,
+    InvalidCustomTypeReason, InvalidExpressionShapeKind, InvalidModuleReferenceReason,
+    InvalidTypedAstReason, PlanError,
 };
 use ecow::EcoString;
 use gleam_core::type_::{
@@ -1912,6 +1913,30 @@ impl<'a> PlanContext<'a> {
         }
     }
 
+    pub(super) fn module_function(
+        &self,
+        module: &EcoString,
+        name: &EcoString,
+    ) -> Result<FunctionInfo, PlanError> {
+        if !self.module_is_linked(module) {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: module.clone(),
+                    name: name.clone(),
+                    reason: InvalidModuleReferenceReason::UnlinkedModule,
+                },
+            });
+        }
+        self.lookup_module_function(module, name)
+            .ok_or_else(|| PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: module.clone(),
+                    name: name.clone(),
+                    reason: InvalidModuleReferenceReason::MissingFunction,
+                },
+            })
+    }
+
     pub(super) fn module_is_linked(&self, module: &EcoString) -> bool {
         match self.registry {
             RegistryAccess::Program { registry } => registry.module_id(module).is_some(),
@@ -1925,12 +1950,9 @@ impl<'a> PlanContext<'a> {
         module: &EcoString,
         name: &EcoString,
         shape: &ValueShape,
-    ) -> Option<crate::plan::Expr> {
-        match self.registry {
-            RegistryAccess::Program { registry } => registry.constant_expr(module, name, shape),
-            #[cfg(test)]
-            RegistryAccess::Local { .. } => None,
-        }
+    ) -> Result<crate::plan::Expr, PlanError> {
+        self.module_constant_instantiation(module, name, shape)
+            .map(crate::plan::module::ConstantTemplates::reference)
     }
 
     pub(super) fn module_constant_instantiation(
@@ -1938,14 +1960,55 @@ impl<'a> PlanContext<'a> {
         module: &EcoString,
         name: &EcoString,
         shape: &ValueShape,
-    ) -> Option<crate::plan::ConstantInstantiation> {
-        match self.registry {
+    ) -> Result<crate::plan::ConstantInstantiation, PlanError> {
+        let result = match self.registry {
             RegistryAccess::Program { registry } => {
                 registry.constant_instantiation(module, name, shape)
             }
             #[cfg(test)]
-            RegistryAccess::Local { .. } => None,
+            RegistryAccess::Local { .. } if !self.module_is_linked(module) => {
+                Err(crate::planner::module::registry::ModuleConstantResolutionError::UnlinkedModule)
+            }
+            #[cfg(test)]
+            RegistryAccess::Local { .. } => Err(
+                crate::planner::module::registry::ModuleConstantResolutionError::MissingConstant,
+            ),
+        };
+        result.map_err(|error| {
+            let reason = match error {
+                crate::planner::module::registry::ModuleConstantResolutionError::UnlinkedModule => {
+                    InvalidModuleReferenceReason::UnlinkedModule
+                }
+                crate::planner::module::registry::ModuleConstantResolutionError::MissingConstant => {
+                    InvalidModuleReferenceReason::MissingConstant
+                }
+                crate::planner::module::registry::ModuleConstantResolutionError::Instantiation => {
+                    InvalidModuleReferenceReason::ConstantInstantiation
+                }
+            };
+            PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: module.clone(),
+                    name: name.clone(),
+                    reason,
+                },
+            }
+        })
+    }
+
+    fn validate_constructor_arity(
+        &self,
+        constructor: ResolvedCustomConstructor,
+        arity: usize,
+    ) -> Result<CustomConstructor, PlanError> {
+        let constructor = constructor.into_constructor();
+        if constructor.fields().len() != arity {
+            return Err(invalid_custom_type(
+                constructor.type_(),
+                InvalidCustomTypeReason::ConstructorArity,
+            ));
         }
+        Ok(constructor)
     }
 
     fn custom_type_definition(
@@ -1969,6 +2032,7 @@ impl<'a> PlanContext<'a> {
             name,
             module,
             variant_index,
+            arity,
             ..
         } = &constructor.variant
         else {
@@ -1979,13 +2043,13 @@ impl<'a> PlanContext<'a> {
             });
         };
 
-        self.custom_constructor_from_type(
+        let constructor = self.custom_constructor_from_type(
             constructor.type_.as_ref(),
             name.clone(),
             module,
             usize::from(*variant_index),
-        )
-        .map(ResolvedCustomConstructor::into_constructor)
+        )?;
+        self.validate_constructor_arity(constructor, usize::from(*arity))
     }
 
     pub(super) fn module_custom_constructor(
@@ -1994,9 +2058,10 @@ impl<'a> PlanContext<'a> {
         name: EcoString,
         module: &EcoString,
         variant_index: usize,
+        arity: usize,
     ) -> Result<CustomConstructor, PlanError> {
-        self.custom_constructor_from_type(type_, name, module, variant_index)
-            .map(ResolvedCustomConstructor::into_constructor)
+        let constructor = self.custom_constructor_from_type(type_, name, module, variant_index)?;
+        self.validate_constructor_arity(constructor, arity)
     }
 
     fn custom_constructor_from_type(
@@ -2823,7 +2888,9 @@ mod tests {
         TupleListLocalId, TupleLocalId, TypeParameterId, UtfCodepointListLocalId, ValueShape,
         ValueType,
     };
-    use crate::planner::{InvalidCustomTypeReason, InvalidTypedAstReason, PlanError};
+    use crate::planner::{
+        InvalidCustomTypeReason, InvalidModuleReferenceReason, InvalidTypedAstReason, PlanError,
+    };
     use ecow::EcoString;
     use gleam_core::ast::Publicity;
     use gleam_core::type_::{
@@ -2840,7 +2907,7 @@ mod tests {
     }
 
     #[test]
-    fn constant_lookup_without_a_registry_returns_none() {
+    fn local_registry_lookups_preserve_missing_and_unlinked_boundaries() {
         let module = EcoString::from("main");
         let mut anonymous = AnonymousFunctions::default();
         let (function_name, function) = anonymous.allocate(
@@ -2855,7 +2922,13 @@ mod tests {
 
         assert_eq!(
             context.module_constant_expr(&module, &EcoString::from("missing"), &ValueShape::Int,),
-            None,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "missing".into(),
+                    reason: InvalidModuleReferenceReason::MissingConstant,
+                },
+            }),
         );
         assert_eq!(
             context

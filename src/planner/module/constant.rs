@@ -1,15 +1,15 @@
 use crate::plan::{
-    ConstantBitArraySegment, ConstantInstantiation, ConstantListConstructionError,
-    ConstantTemplate, ConstantTemplateId, ConstantTemplateSignature, ConstantTemplates,
-    ConstantValue, CustomConstructorRefinement, CustomValueShape, Endianness, FloatBitSize,
-    FunctionShape, StringEncoding, TypeScheme, ValueShape, ValueType,
+    ConstantBitArraySegment, ConstantListConstructionError, ConstantTemplate, ConstantTemplateId,
+    ConstantTemplateSignature, ConstantTemplates, ConstantValue, CustomConstructorRefinement,
+    CustomValueShape, Endianness, FloatBitSize, FunctionShape, StringEncoding, TypeScheme,
+    ValueShape, ValueType,
 };
 use crate::planner::context::{AnonymousFunctions, PlanContext};
 use crate::planner::error::{
-    InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-    UnsupportedBitArraySegmentReason,
+    InvalidExpressionShapeKind, InvalidExpressionType, InvalidModuleReferenceReason,
+    InvalidTypedAstReason, PlanError, UnsupportedBitArraySegmentReason,
 };
-use crate::planner::type_parameter::{TypeParameterScope, instantiate_constant};
+use crate::planner::type_parameter::TypeParameterScope;
 use ecow::EcoString;
 use gleam_core::ast::{
     BitArrayOption, BitArraySegment as GleamBitArraySegment, Constant, TypedModuleConstant,
@@ -169,12 +169,11 @@ impl ConstantDeclarations {
 }
 
 impl ConstantSignatures {
-    pub(in crate::planner) fn instantiate(
+    pub(in crate::planner) fn signature(
         &self,
         name: &EcoString,
-        actual: &ValueShape,
-    ) -> Option<ConstantInstantiation> {
-        instantiate_constant(&self.entries[*self.by_name.get(name)?], actual)
+    ) -> Option<&ConstantTemplateSignature> {
+        Some(&self.entries[*self.by_name.get(name)?])
     }
 
     pub(in crate::planner) fn get(&self, id: ConstantTemplateId) -> &ConstantTemplateSignature {
@@ -388,13 +387,8 @@ fn plan_var(
     };
 
     match &constructor.variant {
-        ValueConstructorVariant::ModuleConstant { module, .. }
-            if context.module_is_linked(module) =>
-        {
-            let Some(instantiation) = context.module_constant_instantiation(module, &name, &shape)
-            else {
-                return Err(invalid_constant_shape_error());
-            };
+        ValueConstructorVariant::ModuleConstant { module, .. } => {
+            let instantiation = context.module_constant_instantiation(module, &name, &shape)?;
             Ok(ConstantValue::reference(instantiation))
         }
         ValueConstructorVariant::ModuleFn {
@@ -403,22 +397,36 @@ fn plan_var(
             external_erlang,
             external_javascript,
             ..
-        } if context.module_is_linked(module)
-            && external_erlang.is_none()
-            && external_javascript.is_none() =>
-        {
-            let ValueShape::Function(actual) = &shape else {
-                return Err(invalid_constant_shape_error());
-            };
-            let Some(function) = context.lookup_module_function(module, name) else {
+        } => {
+            if external_erlang.is_some() || external_javascript.is_some() {
                 return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::UnknownLocal { name: name.clone() },
+                    reason: InvalidTypedAstReason::ModuleReference {
+                        module: module.clone(),
+                        name: name.clone(),
+                        reason: InvalidModuleReferenceReason::ExternalFunction,
+                    },
+                });
+            }
+            let ValueShape::Function(actual) = &shape else {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ModuleReference {
+                        module: module.clone(),
+                        name: name.clone(),
+                        reason: InvalidModuleReferenceReason::FunctionType,
+                    },
                 });
             };
-            let instantiation = match function.instantiate(actual) {
-                Ok(instantiation) => instantiation,
-                Err(_) => return Err(invalid_constant_shape_error()),
-            };
+            let function = context.module_function(module, name)?;
+            let instantiation =
+                function
+                    .instantiate(actual)
+                    .map_err(|_| PlanError::InvalidTypedAst {
+                        reason: InvalidTypedAstReason::ModuleReference {
+                            module: module.clone(),
+                            name: name.clone(),
+                            reason: InvalidModuleReferenceReason::FunctionInstantiation,
+                        },
+                    })?;
             Ok(ConstantValue::function(
                 (**actual).clone(),
                 function.reference(instantiation),
@@ -427,10 +435,6 @@ fn plan_var(
         ValueConstructorVariant::Record { .. } => {
             plan_record(None, Some(constructor), shape, context)
         }
-        ValueConstructorVariant::ModuleConstant { .. }
-        | ValueConstructorVariant::ModuleFn { .. } => Err(invalid_expression_shape_error(
-            InvalidExpressionShapeKind::ModuleSelect,
-        )),
         ValueConstructorVariant::LocalVariable { .. } => Err(invalid_constant_shape_error()),
     }
 }
@@ -472,17 +476,16 @@ fn plan_record(
         ));
     }
     if module != PRELUDE_MODULE_NAME && !context.module_is_linked(module) {
-        return Err(invalid_expression_shape_error(
-            InvalidExpressionShapeKind::RecordConstructor,
-        ));
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ModuleReference {
+                module: module.clone(),
+                name: name.clone(),
+                reason: InvalidModuleReferenceReason::UnlinkedModule,
+            },
+        });
     }
 
     let constructor = context.custom_constructor(&constructor)?;
-    if usize::from(*arity) != constructor.fields().len() {
-        return Err(invalid_expression_shape_error(
-            InvalidExpressionShapeKind::RecordConstructor,
-        ));
-    }
 
     let Some(arguments) = arguments else {
         return match shape {
@@ -816,8 +819,8 @@ mod tests {
     };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, FunctionParam, PlanContext};
     use crate::planner::error::{
-        InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-        UnsupportedBitArraySegmentReason,
+        InvalidExpressionShapeKind, InvalidExpressionType, InvalidModuleReferenceReason,
+        InvalidTypedAstReason, PlanError, UnsupportedBitArraySegmentReason,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
@@ -848,10 +851,7 @@ mod tests {
         );
 
         let signatures = ConstantSignatures::empty();
-        assert_eq!(
-            signatures.instantiate(&"missing".into(), &ValueShape::Int),
-            None
-        );
+        assert_eq!(signatures.signature(&"missing".into()), None);
 
         let mut module = compile("const value = 1\npub fn main() { value }");
         module.definitions.constants[0].type_ = type_::string();
@@ -1187,7 +1187,13 @@ mod tests {
                 constructor: Some(Box::new(constructor)),
                 type_: type_::int(),
             }),
-            Err(invalid_shape.clone()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "first".into(),
+                    reason: InvalidModuleReferenceReason::MissingConstant,
+                },
+            }),
         );
 
         let function_module = compile(
@@ -1204,7 +1210,45 @@ mod tests {
                 constructor: Some(Box::new(function_constructor.clone())),
                 type_: type_::int(),
             }),
-            Err(invalid_shape.clone()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "identity".into(),
+                    reason: InvalidModuleReferenceReason::FunctionType,
+                },
+            }),
+        );
+
+        let external_function_module = compile(
+            r#"
+@external(erlang, "external", "identity")
+fn identity(value: Int) -> Int
+
+const function = identity
+
+pub fn main() {
+  1
+}
+"#,
+        );
+        let external_constructor =
+            constant_var_constructor(&external_function_module.definitions.constants[0].value)
+                .expect("function should be an external module function reference");
+        assert_eq!(
+            plan_fixture(Constant::Var {
+                location: dummy_span(),
+                module: None,
+                name: "identity".into(),
+                constructor: Some(Box::new(external_constructor)),
+                type_: type_::fn_(vec![type_::int()], type_::int()),
+            }),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "identity".into(),
+                    reason: InvalidModuleReferenceReason::ExternalFunction,
+                },
+            }),
         );
 
         let function_shape = FunctionShape::new(vec![ValueShape::Int], ValueShape::Int);
@@ -1239,7 +1283,13 @@ mod tests {
                 ))),
                 &mut context,
             ),
-            Err(invalid_shape.clone()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "identity".into(),
+                    reason: InvalidModuleReferenceReason::FunctionInstantiation,
+                },
+            }),
         );
 
         assert_eq!(
@@ -1334,7 +1384,13 @@ mod tests {
                     type_::int(),
                 ))),
             }),
-            Err(record_shape),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "other".into(),
+                    name: "External".into(),
+                    reason: InvalidModuleReferenceReason::UnlinkedModule,
+                },
+            }),
         );
         assert_eq!(
             plan_fixture(record_constant(
@@ -1488,7 +1544,12 @@ mod tests {
                 arity_mismatch,
                 result_type,
             )),
-            Err(record_shape),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Result".into(),
+                    reason: crate::planner::InvalidCustomTypeReason::ConstructorArity,
+                },
+            }),
         );
     }
 

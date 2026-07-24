@@ -278,7 +278,7 @@ fn invalid_hole_capture() -> PlanError {
 mod tests {
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span};
-    use crate::planner::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
+    use crate::planner::{InvalidModuleReferenceReason, InvalidTypedAstReason, PlanError};
     use gleam_core::ast::{
         CallArg, Constant, ImplicitCallArgOrigin, Statement, TypedExpr, TypedModule,
     };
@@ -294,8 +294,10 @@ mod tests {
         assert_eq!(
             plan_module(module),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::ModuleSelect,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "other".into(),
+                    name: "answer".into(),
+                    reason: InvalidModuleReferenceReason::UnlinkedModule,
                 },
             }),
         );

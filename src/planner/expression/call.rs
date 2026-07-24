@@ -6,7 +6,8 @@ mod implicit;
 use crate::plan::Expr;
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
-    InvalidCallShapeReason, InvalidTypedAstReason, InvalidUseShapeReason, PlanError,
+    InvalidCallShapeReason, InvalidModuleReferenceReason, InvalidTypedAstReason,
+    InvalidUseShapeReason, PlanError,
 };
 use ecow::EcoString;
 use gleam_core::ast::{CallArg as GleamCallArg, TypedExpr};
@@ -99,71 +100,58 @@ fn plan_call_expression(
                 external_erlang,
                 external_javascript,
                 ..
-            } if context.module_is_linked(module)
-                && external_erlang.is_none()
-                && external_javascript.is_none() =>
-            {
-                let function = context.lookup_module_function(module, name).ok_or(
-                    PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::CallShape {
-                            reason: InvalidCallShapeReason::MissingModuleFunction,
+            } => {
+                if external_erlang.is_some() || external_javascript.is_some() {
+                    return Err(PlanError::InvalidTypedAst {
+                        reason: InvalidTypedAstReason::ModuleReference {
+                            module: module.clone(),
+                            name: name.clone(),
+                            reason: InvalidModuleReferenceReason::ExternalFunction,
                         },
-                    },
-                )?;
+                    });
+                }
+                let function = context.module_function(module, name)?;
                 return direct::plan_direct_function_call(
                     type_, function, arguments, context, capture,
                 );
             }
-            ValueConstructorVariant::ModuleConstant { literal, .. }
-                if literal.type_().fn_types().is_none() =>
-            {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::CallShape {
-                        reason: InvalidCallShapeReason::NonCallableModuleConstant,
-                    },
-                });
-            }
-            ValueConstructorVariant::ModuleConstant { .. } => {}
-            ValueConstructorVariant::Record { module, arity, .. }
-                if module == PRELUDE_MODULE_NAME || context.module_is_linked(module) =>
-            {
-                let constructor = context.custom_constructor(constructor)?;
-                if usize::from(*arity) != arguments.len() {
+            ValueConstructorVariant::ModuleConstant {
+                module,
+                name,
+                literal,
+                ..
+            } => {
+                if !context.module_is_linked(module) {
                     return Err(PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::CallShape {
-                            reason: InvalidCallShapeReason::FunctionCallArityMismatch,
+                        reason: InvalidTypedAstReason::ModuleReference {
+                            module: module.clone(),
+                            name: name.clone(),
+                            reason: InvalidModuleReferenceReason::UnlinkedModule,
                         },
                     });
                 }
-                let arguments = argument::plan_custom_constructor_args(
-                    arguments,
-                    &constructor,
-                    context,
-                    capture,
-                )?;
-                let construction = crate::plan::CustomConstruction::try_new(constructor, arguments)
-                    .map_err(|_| PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::CallShape {
-                            reason: InvalidCallShapeReason::FunctionCallArityMismatch,
+                if literal.type_().fn_types().is_none() {
+                    return Err(PlanError::InvalidTypedAst {
+                        reason: InvalidTypedAstReason::ModuleReference {
+                            module: module.clone(),
+                            name: name.clone(),
+                            reason: InvalidModuleReferenceReason::NonCallableConstant,
                         },
-                    })?;
-                return context
-                    .custom_expr_from_construction(construction)
-                    .map(Expr::custom);
+                    });
+                }
             }
-            ValueConstructorVariant::Record { .. } => {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::CallShape {
-                        reason: InvalidCallShapeReason::InvalidRecordConstructor,
-                    },
-                });
-            }
-            ValueConstructorVariant::ModuleFn { .. } => {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::CallShape {
-                        reason: InvalidCallShapeReason::InvalidModuleFunction,
-                    },
-                });
+            ValueConstructorVariant::Record { module, name, .. } => {
+                if module != PRELUDE_MODULE_NAME && !context.module_is_linked(module) {
+                    return Err(PlanError::InvalidTypedAst {
+                        reason: InvalidTypedAstReason::ModuleReference {
+                            module: module.clone(),
+                            name: name.clone(),
+                            reason: InvalidModuleReferenceReason::UnlinkedModule,
+                        },
+                    });
+                }
+                let constructor = context.custom_constructor(constructor)?;
+                return plan_custom_constructor_call(constructor, arguments, context, capture);
             }
             ValueConstructorVariant::LocalVariable { .. } => {}
         }
@@ -175,13 +163,6 @@ fn plan_call_expression(
         ..
     } = &fun
     {
-        if !context.module_is_linked(module_name) {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::InvalidModuleFunction,
-                },
-            });
-        }
         match constructor {
             ModuleValueConstructor::Fn {
                 module,
@@ -189,18 +170,48 @@ fn plan_call_expression(
                 external_erlang,
                 external_javascript,
                 ..
-            } if module == module_name
-                && name == label
-                && external_erlang.is_none()
-                && external_javascript.is_none() =>
-            {
-                let function = context.lookup_module_function(module, name).ok_or(
-                    PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::CallShape {
-                            reason: InvalidCallShapeReason::MissingModuleFunction,
+            } => {
+                if !context.module_is_linked(module_name) {
+                    return Err(PlanError::InvalidTypedAst {
+                        reason: InvalidTypedAstReason::ModuleReference {
+                            module: module_name.clone(),
+                            name: label.clone(),
+                            reason: InvalidModuleReferenceReason::UnlinkedModule,
                         },
-                    },
-                )?;
+                    });
+                }
+                if module != module_name {
+                    return Err(PlanError::InvalidTypedAst {
+                        reason: InvalidTypedAstReason::ModuleReference {
+                            module: module_name.clone(),
+                            name: label.clone(),
+                            reason: InvalidModuleReferenceReason::FunctionModule {
+                                actual: module.clone(),
+                            },
+                        },
+                    });
+                }
+                if name != label {
+                    return Err(PlanError::InvalidTypedAst {
+                        reason: InvalidTypedAstReason::ModuleReference {
+                            module: module_name.clone(),
+                            name: label.clone(),
+                            reason: InvalidModuleReferenceReason::FunctionName {
+                                actual: name.clone(),
+                            },
+                        },
+                    });
+                }
+                if external_erlang.is_some() || external_javascript.is_some() {
+                    return Err(PlanError::InvalidTypedAst {
+                        reason: InvalidTypedAstReason::ModuleReference {
+                            module: module_name.clone(),
+                            name: label.clone(),
+                            reason: InvalidModuleReferenceReason::ExternalFunction,
+                        },
+                    });
+                }
+                let function = context.module_function(module, name)?;
                 return direct::plan_direct_function_call(
                     type_, function, arguments, context, capture,
                 );
@@ -211,64 +222,84 @@ fn plan_call_expression(
                 arity,
                 type_,
                 ..
-            } if name == label => {
+            } => {
+                if !context.module_is_linked(module_name) {
+                    return Err(PlanError::InvalidTypedAst {
+                        reason: InvalidTypedAstReason::ModuleReference {
+                            module: module_name.clone(),
+                            name: label.clone(),
+                            reason: InvalidModuleReferenceReason::UnlinkedModule,
+                        },
+                    });
+                }
+                if name != label {
+                    return Err(PlanError::InvalidTypedAst {
+                        reason: InvalidTypedAstReason::ModuleReference {
+                            module: module_name.clone(),
+                            name: label.clone(),
+                            reason: InvalidModuleReferenceReason::RecordConstructorName {
+                                actual: name.clone(),
+                            },
+                        },
+                    });
+                }
                 let constructor = context.module_custom_constructor(
                     type_.as_ref(),
                     name.clone(),
                     module_name,
                     usize::from(*variant_index),
+                    usize::from(*arity),
                 )?;
-                if usize::from(*arity) != arguments.len() {
+                return plan_custom_constructor_call(constructor, arguments, context, capture);
+            }
+            ModuleValueConstructor::Constant { literal, .. } => {
+                if !context.module_is_linked(module_name) {
                     return Err(PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::CallShape {
-                            reason: InvalidCallShapeReason::FunctionCallArityMismatch,
+                        reason: InvalidTypedAstReason::ModuleReference {
+                            module: module_name.clone(),
+                            name: label.clone(),
+                            reason: InvalidModuleReferenceReason::UnlinkedModule,
                         },
                     });
                 }
-                let arguments = argument::plan_custom_constructor_args(
-                    arguments,
-                    &constructor,
-                    context,
-                    capture,
-                )?;
-                let construction = crate::plan::CustomConstruction::try_new(constructor, arguments)
-                    .map_err(|_| PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::CallShape {
-                            reason: InvalidCallShapeReason::FunctionCallArityMismatch,
+                if literal.type_().fn_types().is_none() {
+                    return Err(PlanError::InvalidTypedAst {
+                        reason: InvalidTypedAstReason::ModuleReference {
+                            module: module_name.clone(),
+                            name: label.clone(),
+                            reason: InvalidModuleReferenceReason::NonCallableConstant,
                         },
-                    })?;
-                return context
-                    .custom_expr_from_construction(construction)
-                    .map(Expr::custom);
-            }
-            ModuleValueConstructor::Constant { literal, .. }
-                if literal.type_().fn_types().is_none() =>
-            {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::CallShape {
-                        reason: InvalidCallShapeReason::NonCallableModuleConstant,
-                    },
-                });
-            }
-            ModuleValueConstructor::Constant { .. } => {}
-            ModuleValueConstructor::Fn { .. } => {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::CallShape {
-                        reason: InvalidCallShapeReason::InvalidModuleFunction,
-                    },
-                });
-            }
-            ModuleValueConstructor::Record { .. } => {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::CallShape {
-                        reason: InvalidCallShapeReason::InvalidRecordConstructor,
-                    },
-                });
+                    });
+                }
             }
         }
     }
 
     function_value::plan_function_value_call(type_, fun, arguments, context, capture)
+}
+
+fn plan_custom_constructor_call(
+    constructor: crate::plan::CustomConstructor,
+    arguments: Vec<GleamCallArg<TypedExpr>>,
+    context: &mut PlanContext<'_>,
+    capture: Option<&CaptureSubstitution>,
+) -> Result<Expr, PlanError> {
+    let arguments =
+        argument::plan_custom_constructor_args(arguments, &constructor, context, capture)?;
+    let construction =
+        crate::plan::CustomConstruction::try_new(constructor, arguments).map_err(|error| {
+            PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::RecordConstructorArgumentCount {
+                        expected: error.expected,
+                        actual: error.actual,
+                    },
+                },
+            }
+        })?;
+    context
+        .custom_expr_from_construction(construction)
+        .map(Expr::custom)
 }
 
 #[cfg(test)]
@@ -353,7 +384,8 @@ mod tests {
     use super::support::{expect_call_statement_mut, expect_var_constructor_mut};
     use crate::planner::support::{compile, dummy_span};
     use crate::planner::{
-        InvalidCallShapeReason, InvalidCustomTypeReason, InvalidTypedAstReason, PlanError,
+        InvalidCallShapeReason, InvalidCustomTypeReason, InvalidModuleReferenceReason,
+        InvalidTypedAstReason, PlanError,
     };
     use crate::planner::{plan_module, plan_program};
     use crate::{ModuleSource, compile_typed_program};
@@ -536,8 +568,10 @@ pub fn main() {
         assert_eq!(
             plan_module(missing_current_module_fn),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::MissingModuleFunction,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "identity".into(),
+                    reason: InvalidModuleReferenceReason::MissingFunction,
                 },
             }),
         );
@@ -591,7 +625,10 @@ pub fn main() { Boxed(1) }
             plan_module(constructor_arity_mismatch),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::FunctionCallArityMismatch,
+                    reason: InvalidCallShapeReason::RecordConstructorArgumentCount {
+                        expected: 1,
+                        actual: 0,
+                    },
                 },
             }),
         );
@@ -620,8 +657,9 @@ pub fn main() { Boxed(1) }
         assert_eq!(
             plan_module(constructor_descriptor_arity_mismatch),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::FunctionCallArityMismatch,
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Boxed".into(),
+                    reason: InvalidCustomTypeReason::ConstructorArity,
                 },
             }),
         );
@@ -632,26 +670,18 @@ pub type Boxed { Boxed(Int) }
 pub fn main() { Boxed(1) }
 "#,
         );
-        let (_, function, arguments) = expect_call_statement_mut(
+        let (_, _, arguments) = expect_call_statement_mut(
             &mut extra_constructor_argument.definitions.functions[0].body[0],
         );
-        let constructor = expect_var_constructor_mut(function);
-        constructor.variant = ValueConstructorVariant::Record {
-            name: "Boxed".into(),
-            arity: 2,
-            field_map: None,
-            location: dummy_span(),
-            module: "main".into(),
-            variants_count: 1,
-            variant_index: 0,
-            documentation: None,
-        };
         arguments.push(arguments[0].clone());
         assert_eq!(
             plan_module(extra_constructor_argument),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::FunctionCallArityMismatch,
+                    reason: InvalidCallShapeReason::RecordConstructorArgumentCount {
+                        expected: 1,
+                        actual: 2,
+                    },
                 },
             }),
         );
@@ -718,8 +748,10 @@ pub fn main() { Boxed(1) }
         assert_eq!(
             plan_module(external_record_constructor),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::InvalidRecordConstructor,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "other".into(),
+                    name: "Boxed".into(),
+                    reason: InvalidModuleReferenceReason::UnlinkedModule,
                 },
             }),
         );
@@ -759,6 +791,21 @@ pub fn main() {
         *function = module_select_record("main", 1);
         assert_eq!(plan_module(qualified_constructor), expected);
 
+        let mut unlinked_constructor = compile(source);
+        let (_, function, _) =
+            expect_call_statement_mut(&mut unlinked_constructor.definitions.functions[0].body[0]);
+        *function = module_select_record("other", 1);
+        assert_eq!(
+            plan_module(unlinked_constructor),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "other".into(),
+                    name: "Boxed".into(),
+                    reason: InvalidModuleReferenceReason::UnlinkedModule,
+                },
+            }),
+        );
+
         let mut constructor_label_mismatch = compile(source);
         let (_, function, _) = expect_call_statement_mut(
             &mut constructor_label_mismatch.definitions.functions[0].body[0],
@@ -767,36 +814,45 @@ pub fn main() {
         assert_eq!(
             plan_module(constructor_label_mismatch),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::InvalidRecordConstructor,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "Other".into(),
+                    reason: InvalidModuleReferenceReason::RecordConstructorName {
+                        actual: "Boxed".into(),
+                    },
                 },
             }),
         );
 
-        let mut call_arity_mismatch = compile(source);
-        let (_, function, _) =
-            expect_call_statement_mut(&mut call_arity_mismatch.definitions.functions[0].body[0]);
+        let mut constructor_arity_mismatch = compile(source);
+        let (_, function, _) = expect_call_statement_mut(
+            &mut constructor_arity_mismatch.definitions.functions[0].body[0],
+        );
         *function = module_select_record("main", 0);
         assert_eq!(
-            plan_module(call_arity_mismatch),
+            plan_module(constructor_arity_mismatch),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::FunctionCallArityMismatch,
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Boxed".into(),
+                    reason: InvalidCustomTypeReason::ConstructorArity,
                 },
             }),
         );
 
-        let mut descriptor_arity_mismatch = compile(source);
+        let mut argument_count_mismatch = compile(source);
         let (_, function, arguments) = expect_call_statement_mut(
-            &mut descriptor_arity_mismatch.definitions.functions[0].body[0],
+            &mut argument_count_mismatch.definitions.functions[0].body[0],
         );
-        *function = module_select_record("main", 0);
+        *function = module_select_record("main", 1);
         arguments.clear();
         assert_eq!(
-            plan_module(descriptor_arity_mismatch),
+            plan_module(argument_count_mismatch),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::FunctionCallArityMismatch,
+                    reason: InvalidCallShapeReason::RecordConstructorArgumentCount {
+                        expected: 1,
+                        actual: 0,
+                    },
                 },
             }),
         );
@@ -845,8 +901,10 @@ pub fn main() {
         assert_eq!(
             plan_module(unlinked_function),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::InvalidModuleFunction,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "other".into(),
+                    name: "missing".into(),
+                    reason: InvalidModuleReferenceReason::UnlinkedModule,
                 },
             }),
         );
@@ -864,8 +922,10 @@ pub fn main() {
         assert_eq!(
             plan_module(missing_function),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::MissingModuleFunction,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "missing".into(),
+                    reason: InvalidModuleReferenceReason::MissingFunction,
                 },
             }),
         );
@@ -883,8 +943,12 @@ pub fn main() {
         assert_eq!(
             plan_module(function_module_mismatch),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::InvalidModuleFunction,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "identity".into(),
+                    reason: InvalidModuleReferenceReason::FunctionModule {
+                        actual: "other".into(),
+                    },
                 },
             }),
         );
@@ -902,8 +966,12 @@ pub fn main() {
         assert_eq!(
             plan_module(function_label_mismatch),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::InvalidModuleFunction,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "other".into(),
+                    reason: InvalidModuleReferenceReason::FunctionName {
+                        actual: "identity".into(),
+                    },
                 },
             }),
         );
@@ -921,8 +989,10 @@ pub fn main() {
         assert_eq!(
             plan_module(external_function),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::InvalidModuleFunction,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "identity".into(),
+                    reason: InvalidModuleReferenceReason::ExternalFunction,
                 },
             }),
         );
@@ -940,8 +1010,75 @@ pub fn main() {
         assert_eq!(
             plan_module(javascript_external_function),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::InvalidModuleFunction,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "identity".into(),
+                    reason: InvalidModuleReferenceReason::ExternalFunction,
+                },
+            }),
+        );
+
+        let mut direct_external_function = compile(
+            r#"
+@external(erlang, "external", "identity")
+fn identity(value: Int) -> Int
+
+pub fn main() {
+  identity(1)
+}
+"#,
+        );
+        direct_external_function
+            .definitions
+            .functions
+            .retain(|function| {
+                function
+                    .name
+                    .as_ref()
+                    .is_some_and(|(_, name)| name == "main")
+            });
+        assert_eq!(
+            plan_module(direct_external_function),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "identity".into(),
+                    reason: InvalidModuleReferenceReason::ExternalFunction,
+                },
+            }),
+        );
+
+        let mut direct_unlinked_constant = compile(
+            r#"
+fn add_one(value: Int) {
+  value + 1
+}
+
+const operation = add_one
+
+pub fn main() {
+  operation(1)
+}
+"#,
+        );
+        direct_unlinked_constant.name = "other".into();
+        direct_unlinked_constant.definitions.constants.clear();
+        direct_unlinked_constant
+            .definitions
+            .functions
+            .retain(|function| {
+                function
+                    .name
+                    .as_ref()
+                    .is_some_and(|(_, name)| name == "main")
+            });
+        assert_eq!(
+            plan_module(direct_unlinked_constant),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "operation".into(),
+                    reason: InvalidModuleReferenceReason::UnlinkedModule,
                 },
             }),
         );
@@ -972,8 +1109,44 @@ pub fn main() {
         assert_eq!(
             plan_module(module_returning_typed_expr(constant_call)),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::NonCallableModuleConstant,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "answer".into(),
+                    reason: InvalidModuleReferenceReason::NonCallableConstant,
+                },
+            }),
+        );
+
+        let unlinked_constant_call = TypedExpr::Call {
+            location: dummy_span(),
+            type_: type_::int(),
+            fun: Box::new(TypedExpr::ModuleSelect {
+                location: dummy_span(),
+                field_start: 0,
+                type_: type_::int(),
+                label: "answer".into(),
+                module_name: "other".into(),
+                module_alias: "other".into(),
+                constructor: ModuleValueConstructor::Constant {
+                    literal: Constant::Int {
+                        location: dummy_span(),
+                        value: "1".into(),
+                        int_value: 1.into(),
+                    },
+                    location: dummy_span(),
+                    documentation: None,
+                },
+            }),
+            arguments: Vec::new(),
+            open_parenthesis: Some(0),
+        };
+        assert_eq!(
+            plan_module(module_returning_typed_expr(unlinked_constant_call)),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "other".into(),
+                    name: "answer".into(),
+                    reason: InvalidModuleReferenceReason::UnlinkedModule,
                 },
             }),
         );
@@ -997,8 +1170,10 @@ pub fn main() {
         assert_eq!(
             plan_module(module_constant_call),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::NonCallableModuleConstant,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "answer".into(),
+                    reason: InvalidModuleReferenceReason::NonCallableConstant,
                 },
             }),
         );
@@ -1020,8 +1195,10 @@ pub fn main() {
         assert_eq!(
             plan_module(non_local_module_fn),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::InvalidModuleFunction,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "other".into(),
+                    name: "identity".into(),
+                    reason: InvalidModuleReferenceReason::UnlinkedModule,
                 },
             }),
         );

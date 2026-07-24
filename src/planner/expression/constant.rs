@@ -4,8 +4,8 @@ use crate::plan::{
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
-    InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-    UnsupportedExpressionKind,
+    InvalidExpressionShapeKind, InvalidExpressionType, InvalidModuleReferenceReason,
+    InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
 };
 use gleam_core::ast::Constant;
 use gleam_core::type_::{PRELUDE_MODULE_NAME, Type, ValueConstructor, ValueConstructorVariant};
@@ -226,15 +226,9 @@ fn plan_var(
     };
 
     match constructor.variant {
-        ValueConstructorVariant::ModuleConstant { module, .. }
-            if context.module_is_linked(&module) =>
-        {
+        ValueConstructorVariant::ModuleConstant { module, .. } => {
             let shape = context.value_shape_in_scope(constructor.type_.as_ref());
-            context
-                .module_constant_expr(&module, &name, &shape)
-                .ok_or_else(|| PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::UnknownLocal { name },
-                })
+            context.module_constant_expr(&module, &name, &shape)
         }
         ValueConstructorVariant::ModuleFn {
             module,
@@ -242,23 +236,21 @@ fn plan_var(
             external_erlang,
             external_javascript,
             ..
-        } if context.module_is_linked(&module)
-            && external_erlang.is_none()
-            && external_javascript.is_none() =>
-        {
-            let Some(function) = context.lookup_module_function(&module, &name) else {
+        } => {
+            if external_erlang.is_some() || external_javascript.is_some() {
                 return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::UnknownLocal { name },
+                    reason: InvalidTypedAstReason::ModuleReference {
+                        module,
+                        name,
+                        reason: InvalidModuleReferenceReason::ExternalFunction,
+                    },
                 });
-            };
+            }
+            let function = context.module_function(&module, &name)?;
 
             Ok(Expr::function(FunctionExpr::reference(
                 function.reference(function.signature.identity_instantiation()),
             )))
-        }
-        ValueConstructorVariant::ModuleConstant { .. }
-        | ValueConstructorVariant::ModuleFn { .. } => {
-            invalid_expression_shape(InvalidExpressionShapeKind::ModuleSelect)
         }
         ValueConstructorVariant::Record { .. } => plan_record_constructor(constructor, context),
         ValueConstructorVariant::LocalVariable { .. } => {
@@ -361,20 +353,25 @@ fn plan_record_constructor(
         return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
     }
     if module != PRELUDE_MODULE_NAME && !context.module_is_linked(module) {
-        return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ModuleReference {
+                module: module.clone(),
+                name: name.clone(),
+                reason: InvalidModuleReferenceReason::UnlinkedModule,
+            },
+        });
     }
     let Some(shape) = crate::plan::ValueShape::from_gleam(constructor.type_.as_ref()) else {
         return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
     };
     let constructor = context.custom_constructor(&constructor)?;
-    if usize::from(*arity) != constructor.fields().len() {
-        return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
-    }
     crate::plan::module::custom_constructor_expr(constructor)
         .with_shape(shape)
-        .ok_or(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::RecordConstructor,
+        .ok_or_else(|| PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ModuleReference {
+                module: module.clone(),
+                name: name.clone(),
+                reason: InvalidModuleReferenceReason::RecordConstructorResultShape,
             },
         })
 }
@@ -402,7 +399,7 @@ mod tests {
     };
     use crate::planner::error::{
         InvalidCustomTypeReason, InvalidExpressionShapeKind, InvalidExpressionType,
-        InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+        InvalidModuleReferenceReason, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
@@ -828,8 +825,35 @@ pub fn main() {
         assert_eq!(
             plan_var("add_one".into(), Some(constructor.clone()), &context),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::UnknownLocal {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
                     name: "add_one".into(),
+                    reason: InvalidModuleReferenceReason::MissingFunction,
+                },
+            }),
+        );
+
+        let mut external_function_module = compile(
+            r#"
+@external(erlang, "external", "add_one")
+fn add_one(value: Int) -> Int
+
+const f = add_one
+
+pub fn main() {
+  1
+}
+"#,
+        );
+        let external_constructor =
+            constant_definition_alias_constructor_mut(&mut external_function_module).clone();
+        assert_eq!(
+            plan_var("add_one".into(), Some(external_constructor), &context),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
+                    name: "add_one".into(),
+                    reason: InvalidModuleReferenceReason::ExternalFunction,
                 },
             }),
         );
@@ -847,8 +871,10 @@ pub fn main() {
         assert_eq!(
             plan_var("answer".into(), Some(current_constant), &context),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::UnknownLocal {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
                     name: "answer".into(),
+                    reason: InvalidModuleReferenceReason::MissingConstant,
                 },
             }),
         );
@@ -859,8 +885,10 @@ pub fn main() {
         assert_eq!(
             plan_var("add_one".into(), Some(external), &context),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::ModuleSelect,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "other".into(),
+                    name: "add_one".into(),
+                    reason: InvalidModuleReferenceReason::UnlinkedModule,
                 },
             }),
         );
@@ -1673,8 +1701,9 @@ pub fn main() {
                 &context,
             ),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Result".into(),
+                    reason: crate::planner::InvalidCustomTypeReason::ConstructorArity,
                 },
             }),
         );
@@ -1749,16 +1778,20 @@ pub fn main() {
         assert_eq!(
             plan_record_constructor(record_constructor("External", "other", 0), &context),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "other".into(),
+                    name: "External".into(),
+                    reason: InvalidModuleReferenceReason::UnlinkedModule,
                 },
             }),
         );
         assert_eq!(
             plan_record_constructor(record_constructor("Ok", "other", 0), &context),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "other".into(),
+                    name: "Ok".into(),
+                    reason: InvalidModuleReferenceReason::UnlinkedModule,
                 },
             }),
         );
@@ -1778,8 +1811,25 @@ pub fn main() {
         assert_eq!(
             plan_record_constructor(mismatched_result_constructor, &context),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Result".into(),
+                    reason: crate::planner::InvalidCustomTypeReason::ConstructorArity,
+                },
+            }),
+        );
+
+        let mut conflicting_result_constructor = result_constructor();
+        let mut conflicting_result_type = type_::result(type_::int(), type_::string());
+        std::sync::Arc::make_mut(&mut conflicting_result_type).set_custom_type_variant(1);
+        conflicting_result_constructor.type_ =
+            type_::fn_(vec![type_::int()], conflicting_result_type);
+        assert_eq!(
+            plan_record_constructor(conflicting_result_constructor, &context),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "gleam".into(),
+                    name: "Ok".into(),
+                    reason: InvalidModuleReferenceReason::RecordConstructorResultShape,
                 },
             }),
         );
@@ -1819,8 +1869,9 @@ pub fn main() { pair }
         assert_eq!(
             plan_module(module),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Pair".into(),
+                    reason: crate::planner::InvalidCustomTypeReason::ConstructorArity,
                 },
             }),
         );
@@ -1838,8 +1889,10 @@ pub fn main() { pair }
         assert_eq!(
             plan_module(missing_function),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::UnknownLocal {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "main".into(),
                     name: "add_one".into(),
+                    reason: InvalidModuleReferenceReason::MissingFunction,
                 },
             }),
         );
@@ -1850,8 +1903,10 @@ pub fn main() { pair }
         assert_eq!(
             plan_module(non_current_function),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::ModuleSelect,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "other".into(),
+                    name: "add_one".into(),
+                    reason: InvalidModuleReferenceReason::UnlinkedModule,
                 },
             }),
         );
@@ -1870,8 +1925,10 @@ pub fn main() {
         assert_eq!(
             plan_module(non_current_constant),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::ModuleSelect,
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "other".into(),
+                    name: "answer".into(),
+                    reason: InvalidModuleReferenceReason::UnlinkedModule,
                 },
             }),
         );

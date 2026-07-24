@@ -193,15 +193,16 @@ fn record_constructor(
     expression: TypedExpr,
     context: &PlanContext<'_>,
 ) -> Result<CustomConstructor, PlanError> {
-    let (constructor, arity) = match expression {
+    match expression {
         TypedExpr::Var { constructor, .. } => {
-            let ValueConstructorVariant::Record { arity, .. } = &constructor.variant else {
-                return Err(invalid_constructor());
+            let ValueConstructorVariant::Record { .. } = &constructor.variant else {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::RecordUpdateShape {
+                        reason: InvalidRecordUpdateShapeReason::ConstructorKind,
+                    },
+                });
             };
-            (
-                context.custom_constructor(&constructor)?,
-                usize::from(*arity),
-            )
+            context.custom_constructor(&constructor)
         }
         TypedExpr::ModuleSelect {
             module_name,
@@ -215,28 +216,35 @@ fn record_constructor(
                     ..
                 },
             ..
-        } if label == name => (
+        } => {
+            if label != name {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::RecordUpdateShape {
+                        reason: InvalidRecordUpdateShapeReason::ConstructorName {
+                            expected: label,
+                            actual: name,
+                        },
+                    },
+                });
+            }
             context.module_custom_constructor(
                 type_.as_ref(),
                 name,
                 &module_name,
                 usize::from(variant_index),
-            )?,
-            usize::from(arity),
-        ),
-        _ => return Err(invalid_constructor()),
-    };
-    if arity != constructor.fields().len() {
-        return Err(invalid_constructor());
-    }
-    Ok(constructor)
-}
-
-fn invalid_constructor() -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::RecordUpdateShape {
-            reason: InvalidRecordUpdateShapeReason::Constructor,
-        },
+                usize::from(arity),
+            )
+        }
+        TypedExpr::ModuleSelect { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::RecordUpdateShape {
+                reason: InvalidRecordUpdateShapeReason::ConstructorKind,
+            },
+        }),
+        _ => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::RecordUpdateShape {
+                reason: InvalidRecordUpdateShapeReason::ConstructorExpression,
+            },
+        }),
     }
 }
 
@@ -538,7 +546,12 @@ pub fn main() {
 
         assert_eq!(
             plan_module(module),
-            Err(invalid_shape(InvalidRecordUpdateShapeReason::Constructor,)),
+            Err(invalid_shape(
+                InvalidRecordUpdateShapeReason::ConstructorName {
+                    expected: "Other".into(),
+                    actual: "Person".into(),
+                },
+            )),
         );
     }
 
@@ -582,7 +595,12 @@ pub fn main() {
         };
         assert_eq!(
             plan_module(module_constructor),
-            Err(invalid_shape(InvalidRecordUpdateShapeReason::Constructor,)),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    name: "Person".into(),
+                    reason: InvalidCustomTypeReason::ConstructorArity,
+                },
+            }),
         );
 
         let mut module_mismatch = compile(SOURCE);
@@ -754,7 +772,9 @@ pub fn main() {
         };
         assert_eq!(
             plan_module(non_record_constructor),
-            Err(invalid_shape(InvalidRecordUpdateShapeReason::Constructor)),
+            Err(invalid_shape(
+                InvalidRecordUpdateShapeReason::ConstructorExpression,
+            )),
         );
     }
 
@@ -790,7 +810,40 @@ pub fn main() {
         *constructor = updated_record.clone();
         assert_eq!(
             plan_module(non_record_variant),
-            Err(invalid_shape(InvalidRecordUpdateShapeReason::Constructor)),
+            Err(invalid_shape(
+                InvalidRecordUpdateShapeReason::ConstructorKind,
+            )),
+        );
+    }
+
+    #[test]
+    fn reject_margin_record_update_non_constructor_module_select() {
+        let mut non_record_module_select = compile(SOURCE);
+        let (_, _, _, constructor, _) =
+            record_update_parts_mut(&mut non_record_module_select.definitions.functions[0].body[1]);
+        let type_ = constructor.type_();
+        *constructor = TypedExpr::ModuleSelect {
+            location: dummy_span(),
+            field_start: 0,
+            type_,
+            label: "value".into(),
+            module_name: "main".into(),
+            module_alias: "main".into(),
+            constructor: ModuleValueConstructor::Constant {
+                literal: gleam_core::ast::Constant::Int {
+                    location: dummy_span(),
+                    value: "1".into(),
+                    int_value: 1.into(),
+                },
+                location: dummy_span(),
+                documentation: None,
+            },
+        };
+        assert_eq!(
+            plan_module(non_record_module_select),
+            Err(invalid_shape(
+                InvalidRecordUpdateShapeReason::ConstructorKind,
+            )),
         );
     }
 
