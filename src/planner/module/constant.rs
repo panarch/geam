@@ -475,16 +475,6 @@ fn plan_record(
             InvalidExpressionShapeKind::RecordConstructor,
         ));
     }
-    if module != PRELUDE_MODULE_NAME && !context.module_is_linked(module) {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ModuleReference {
-                module: module.clone(),
-                name: name.clone(),
-                reason: InvalidModuleReferenceReason::UnlinkedModule,
-            },
-        });
-    }
-
     let constructor = context.custom_constructor(&constructor)?;
 
     let Some(arguments) = arguments else {

@@ -352,14 +352,8 @@ fn plan_record_constructor(
     if module == PRELUDE_MODULE_NAME && !matches!(name.as_str(), "Ok" | "Error") {
         return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
     }
-    if module != PRELUDE_MODULE_NAME && !context.module_is_linked(module) {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ModuleReference {
-                module: module.clone(),
-                name: name.clone(),
-                reason: InvalidModuleReferenceReason::UnlinkedModule,
-            },
-        });
+    if module != PRELUDE_MODULE_NAME {
+        let _linked_module = context.resolve_module_reference(module, name)?;
     }
     let Some(shape) = crate::plan::ValueShape::from_gleam(constructor.type_.as_ref()) else {
         return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
@@ -1791,6 +1785,18 @@ pub fn main() {
                 reason: InvalidTypedAstReason::ModuleReference {
                     module: "other".into(),
                     name: "Ok".into(),
+                    reason: InvalidModuleReferenceReason::UnlinkedModule,
+                },
+            }),
+        );
+        let mut unlinked_invalid_shape = record_constructor("External", "other", 0);
+        unlinked_invalid_shape.type_ = type_::unbound_var(0);
+        assert_eq!(
+            plan_record_constructor(unlinked_invalid_shape, &context),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "other".into(),
+                    name: "External".into(),
                     reason: InvalidModuleReferenceReason::UnlinkedModule,
                 },
             }),

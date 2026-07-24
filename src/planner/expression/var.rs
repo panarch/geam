@@ -65,16 +65,6 @@ pub(super) fn plan_var(
                     },
                 });
             }
-            if module != PRELUDE_MODULE_NAME && !context.module_is_linked(module) {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ModuleReference {
-                        module: module.clone(),
-                        name: name.clone(),
-                        reason: InvalidModuleReferenceReason::UnlinkedModule,
-                    },
-                });
-            }
-
             let shape = constructor_shape;
             let constructor = context.custom_constructor(&constructor)?;
             crate::plan::module::custom_constructor_expr(constructor)
@@ -126,15 +116,7 @@ pub(super) fn plan_module_select(
             external_javascript,
             ..
         } => {
-            if !context.module_is_linked(&module_name) {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ModuleReference {
-                        module: module_name,
-                        name: label,
-                        reason: InvalidModuleReferenceReason::UnlinkedModule,
-                    },
-                });
-            }
+            let _linked_module = context.resolve_module_reference(&module_name, &label)?;
             if module != module_name {
                 return Err(PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::ModuleReference {
@@ -174,15 +156,7 @@ pub(super) fn plan_module_select(
             type_,
             ..
         } => {
-            if !context.module_is_linked(&module_name) {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ModuleReference {
-                        module: module_name,
-                        name: label,
-                        reason: InvalidModuleReferenceReason::UnlinkedModule,
-                    },
-                });
-            }
+            let _linked_module = context.resolve_module_reference(&module_name, &label)?;
             if name != label {
                 return Err(PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::ModuleReference {

@@ -9,7 +9,6 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::planner) enum ModuleConstantResolutionError {
-    UnlinkedModule,
     MissingConstant,
     Instantiation,
 }
@@ -46,22 +45,18 @@ impl ProgramRegistry {
 
     pub(in crate::planner) fn function(
         &self,
-        module: &EcoString,
+        module: ModuleId,
         name: &EcoString,
     ) -> Option<FunctionInfo> {
-        let module = self.module_id(module)?;
         self.modules[module.index()].functions.get(name).cloned()
     }
 
     pub(in crate::planner) fn constant_instantiation(
         &self,
-        module: &EcoString,
+        module: ModuleId,
         name: &EcoString,
         shape: &ValueShape,
     ) -> Result<crate::plan::ConstantInstantiation, ModuleConstantResolutionError> {
-        let module = self
-            .module_id(module)
-            .ok_or(ModuleConstantResolutionError::UnlinkedModule)?;
         let signature = self.modules[module.index()]
             .constants
             .signature(name)
@@ -153,25 +148,19 @@ mod tests {
         assert_eq!(registry.module_id(&"missing".into()), None);
         assert_eq!(
             registry
-                .function(&"alpha".into(), &"same".into())
+                .function(alpha, &"same".into())
                 .map(function_template_id),
             Some(FunctionTemplateId::in_module(alpha, 0)),
         );
         assert_eq!(
             registry
-                .function(&"root".into(), &"same".into())
+                .function(root, &"same".into())
                 .map(function_template_id),
             Some(FunctionTemplateId::in_module(root, 0)),
         );
         assert_eq!(
             registry
-                .function(&"missing".into(), &"same".into())
-                .map(function_template_id),
-            None,
-        );
-        assert_eq!(
-            registry
-                .function(&"root".into(), &"missing".into())
+                .function(root, &"missing".into())
                 .map(function_template_id),
             None,
         );
@@ -186,13 +175,13 @@ mod tests {
             None,
         );
         assert_eq!(
-            registry.constant_instantiation(&"root".into(), &"missing".into(), &ValueShape::Int),
+            registry.constant_instantiation(root, &"missing".into(), &ValueShape::Int),
             Err(ModuleConstantResolutionError::MissingConstant),
         );
         assert_eq!(
             registry
                 .constant_instantiation(
-                    &"root".into(),
+                    root,
                     &"values".into(),
                     &ValueShape::List(Box::new(ValueShape::Int)),
                 )
@@ -201,12 +190,8 @@ mod tests {
             Ok(ValueShape::List(Box::new(ValueShape::Int))),
         );
         assert_eq!(
-            registry.constant_instantiation(&"root".into(), &"values".into(), &ValueShape::Int),
+            registry.constant_instantiation(root, &"values".into(), &ValueShape::Int),
             Err(ModuleConstantResolutionError::Instantiation),
-        );
-        assert_eq!(
-            registry.constant_instantiation(&"missing".into(), &"value".into(), &ValueShape::Int),
-            Err(ModuleConstantResolutionError::UnlinkedModule),
         );
     }
 

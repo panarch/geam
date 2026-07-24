@@ -11,9 +11,7 @@ use crate::planner::error::{
 };
 use ecow::EcoString;
 use gleam_core::ast::{CallArg as GleamCallArg, TypedExpr};
-use gleam_core::type_::{
-    ModuleValueConstructor, PRELUDE_MODULE_NAME, Type, ValueConstructorVariant,
-};
+use gleam_core::type_::{ModuleValueConstructor, Type, ValueConstructorVariant};
 use std::sync::Arc;
 
 pub(super) fn plan_call(
@@ -121,15 +119,7 @@ fn plan_call_expression(
                 literal,
                 ..
             } => {
-                if !context.module_is_linked(module) {
-                    return Err(PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::ModuleReference {
-                            module: module.clone(),
-                            name: name.clone(),
-                            reason: InvalidModuleReferenceReason::UnlinkedModule,
-                        },
-                    });
-                }
+                let _linked_module = context.resolve_module_reference(module, name)?;
                 if literal.type_().fn_types().is_none() {
                     return Err(PlanError::InvalidTypedAst {
                         reason: InvalidTypedAstReason::ModuleReference {
@@ -140,16 +130,7 @@ fn plan_call_expression(
                     });
                 }
             }
-            ValueConstructorVariant::Record { module, name, .. } => {
-                if module != PRELUDE_MODULE_NAME && !context.module_is_linked(module) {
-                    return Err(PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::ModuleReference {
-                            module: module.clone(),
-                            name: name.clone(),
-                            reason: InvalidModuleReferenceReason::UnlinkedModule,
-                        },
-                    });
-                }
+            ValueConstructorVariant::Record { .. } => {
                 let constructor = context.custom_constructor(constructor)?;
                 return plan_custom_constructor_call(constructor, arguments, context, capture);
             }
@@ -171,15 +152,7 @@ fn plan_call_expression(
                 external_javascript,
                 ..
             } => {
-                if !context.module_is_linked(module_name) {
-                    return Err(PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::ModuleReference {
-                            module: module_name.clone(),
-                            name: label.clone(),
-                            reason: InvalidModuleReferenceReason::UnlinkedModule,
-                        },
-                    });
-                }
+                let _linked_module = context.resolve_module_reference(module_name, label)?;
                 if module != module_name {
                     return Err(PlanError::InvalidTypedAst {
                         reason: InvalidTypedAstReason::ModuleReference {
@@ -223,15 +196,7 @@ fn plan_call_expression(
                 type_,
                 ..
             } => {
-                if !context.module_is_linked(module_name) {
-                    return Err(PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::ModuleReference {
-                            module: module_name.clone(),
-                            name: label.clone(),
-                            reason: InvalidModuleReferenceReason::UnlinkedModule,
-                        },
-                    });
-                }
+                let _linked_module = context.resolve_module_reference(module_name, label)?;
                 if name != label {
                     return Err(PlanError::InvalidTypedAst {
                         reason: InvalidTypedAstReason::ModuleReference {
@@ -253,15 +218,7 @@ fn plan_call_expression(
                 return plan_custom_constructor_call(constructor, arguments, context, capture);
             }
             ModuleValueConstructor::Constant { literal, .. } => {
-                if !context.module_is_linked(module_name) {
-                    return Err(PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::ModuleReference {
-                            module: module_name.clone(),
-                            name: label.clone(),
-                            reason: InvalidModuleReferenceReason::UnlinkedModule,
-                        },
-                    });
-                }
+                let _linked_module = context.resolve_module_reference(module_name, label)?;
                 if literal.type_().fn_types().is_none() {
                     return Err(PlanError::InvalidTypedAst {
                         reason: InvalidTypedAstReason::ModuleReference {

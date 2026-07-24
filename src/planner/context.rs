@@ -7,8 +7,8 @@ use crate::plan::{
     FunctionFunctionLocalId, FunctionFunctionType, FunctionListLocalId, FunctionReference,
     FunctionTemplate, FunctionTemplateSignature, FunctionType, IntFunctionLocalId, IntListLocalId,
     IntLocalId, ListExpr, ListFunctionLocal, ListListLocalId, ListLocal, ListLocalExpr, LocalId,
-    NilFunctionLocalId, NilListLocalId, NilLocalId, PanicSite, ParamBinding, ParamLocal, ParamSlot,
-    StringFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionLocalId,
+    ModuleId, NilFunctionLocalId, NilListLocalId, NilLocalId, PanicSite, ParamBinding, ParamLocal,
+    ParamSlot, StringFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionLocalId,
     TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
     UtfCodepointLocalId, ValueType,
 };
@@ -1897,20 +1897,25 @@ impl<'a> PlanContext<'a> {
         }
     }
 
-    pub(super) fn lookup_module_function(
+    pub(super) fn resolve_module_reference(
         &self,
         module: &EcoString,
         name: &EcoString,
-    ) -> Option<FunctionInfo> {
-        match self.registry {
-            RegistryAccess::Program { registry } => registry.function(module, name),
+    ) -> Result<ModuleId, PlanError> {
+        let module_id = match self.registry {
+            RegistryAccess::Program { registry } => registry.module_id(module),
             #[cfg(test)]
-            RegistryAccess::Local { functions, .. } if module == self.module_name => {
-                functions.get(name).cloned()
-            }
+            RegistryAccess::Local { .. } if module == self.module_name => Some(ModuleId::root()),
             #[cfg(test)]
             RegistryAccess::Local { .. } => None,
-        }
+        };
+        module_id.ok_or_else(|| PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ModuleReference {
+                module: module.clone(),
+                name: name.clone(),
+                reason: InvalidModuleReferenceReason::UnlinkedModule,
+            },
+        })
     }
 
     pub(super) fn module_function(
@@ -1918,31 +1923,19 @@ impl<'a> PlanContext<'a> {
         module: &EcoString,
         name: &EcoString,
     ) -> Result<FunctionInfo, PlanError> {
-        if !self.module_is_linked(module) {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ModuleReference {
-                    module: module.clone(),
-                    name: name.clone(),
-                    reason: InvalidModuleReferenceReason::UnlinkedModule,
-                },
-            });
-        }
-        self.lookup_module_function(module, name)
-            .ok_or_else(|| PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ModuleReference {
-                    module: module.clone(),
-                    name: name.clone(),
-                    reason: InvalidModuleReferenceReason::MissingFunction,
-                },
-            })
-    }
-
-    pub(super) fn module_is_linked(&self, module: &EcoString) -> bool {
-        match self.registry {
-            RegistryAccess::Program { registry } => registry.module_id(module).is_some(),
+        let module_id = self.resolve_module_reference(module, name)?;
+        let function = match self.registry {
+            RegistryAccess::Program { registry } => registry.function(module_id, name),
             #[cfg(test)]
-            RegistryAccess::Local { .. } => module == self.module_name,
-        }
+            RegistryAccess::Local { functions, .. } => functions.get(name).cloned(),
+        };
+        function.ok_or_else(|| PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ModuleReference {
+                module: module.clone(),
+                name: name.clone(),
+                reason: InvalidModuleReferenceReason::MissingFunction,
+            },
+        })
     }
 
     pub(super) fn module_constant_expr(
@@ -1961,13 +1954,10 @@ impl<'a> PlanContext<'a> {
         name: &EcoString,
         shape: &ValueShape,
     ) -> Result<crate::plan::ConstantInstantiation, PlanError> {
+        let module_id = self.resolve_module_reference(module, name)?;
         let result = match self.registry {
             RegistryAccess::Program { registry } => {
-                registry.constant_instantiation(module, name, shape)
-            }
-            #[cfg(test)]
-            RegistryAccess::Local { .. } if !self.module_is_linked(module) => {
-                Err(crate::planner::module::registry::ModuleConstantResolutionError::UnlinkedModule)
+                registry.constant_instantiation(module_id, name, shape)
             }
             #[cfg(test)]
             RegistryAccess::Local { .. } => Err(
@@ -1976,9 +1966,6 @@ impl<'a> PlanContext<'a> {
         };
         result.map_err(|error| {
             let reason = match error {
-                crate::planner::module::registry::ModuleConstantResolutionError::UnlinkedModule => {
-                    InvalidModuleReferenceReason::UnlinkedModule
-                }
                 crate::planner::module::registry::ModuleConstantResolutionError::MissingConstant => {
                     InvalidModuleReferenceReason::MissingConstant
                 }
@@ -2043,6 +2030,9 @@ impl<'a> PlanContext<'a> {
             });
         };
 
+        if module != PRELUDE_MODULE_NAME {
+            let _linked_module = self.resolve_module_reference(module, name)?;
+        }
         let constructor = self.custom_constructor_from_type(
             constructor.type_.as_ref(),
             name.clone(),
@@ -2931,16 +2921,25 @@ mod tests {
             }),
         );
         assert_eq!(
-            context
-                .lookup_module_function(&module, &EcoString::from("present"))
-                .map(function_template_id),
-            Some(function_id),
+            context.resolve_module_reference(&module, &EcoString::from("present")),
+            Ok(crate::plan::ModuleId::root()),
         );
         assert_eq!(
             context
-                .lookup_module_function(&EcoString::from("other"), &EcoString::from("present"))
+                .module_function(&module, &EcoString::from("present"))
                 .map(function_template_id),
-            None,
+            Ok(function_id),
+        );
+        assert_eq!(
+            context
+                .resolve_module_reference(&EcoString::from("other"), &EcoString::from("present"),),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: "other".into(),
+                    name: "present".into(),
+                    reason: InvalidModuleReferenceReason::UnlinkedModule,
+                },
+            }),
         );
     }
 
