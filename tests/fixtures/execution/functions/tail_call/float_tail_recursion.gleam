@@ -9,4 +9,4 @@ pub fn main() {
   loop(10000, 0.0)
 }
 
-// geam:expect Float(5000.0)
+// @geam:expect Float(5000.0)

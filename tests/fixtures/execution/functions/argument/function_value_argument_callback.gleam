@@ -10,4 +10,4 @@ pub fn main() {
   apply_int(add_one, 41)
 }
 
-// geam:expect Int(42)
+// @geam:expect Int(42)

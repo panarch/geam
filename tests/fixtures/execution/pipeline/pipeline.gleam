@@ -17,4 +17,4 @@ pub fn main() {
   chained + hole
 }
 
-// geam:expect Int(18)
+// @geam:expect Int(18)

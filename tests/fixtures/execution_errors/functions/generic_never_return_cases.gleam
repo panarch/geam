@@ -65,7 +65,7 @@ pub fn main() {
   choose(0)
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: generic return case failed

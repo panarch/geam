@@ -2,7 +2,7 @@ pub fn main() {
   <<panic as "value failed":utf8>>
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: value failed

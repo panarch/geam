@@ -11,7 +11,7 @@ pub fn main() {
   function(invalid_int())
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: generic argument failed

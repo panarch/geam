@@ -6,7 +6,7 @@ pub fn main() -> Int {
   use value <- with_value
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::incomplete_use
 //
 //   x incomplete_use: Use callback is incomplete.

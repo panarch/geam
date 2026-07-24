@@ -9,4 +9,4 @@ pub fn main() {
   count_down(10000, 0)
 }
 
-// geam:expect Int(10000)
+// @geam:expect Int(10000)

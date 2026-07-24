@@ -9,7 +9,7 @@ pub fn main() -> List(List(value)) {
   [choose(True)]
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: nested generic list item failed

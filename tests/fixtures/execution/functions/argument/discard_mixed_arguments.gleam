@@ -6,4 +6,4 @@ pub fn main() {
   pick(1, 42)
 }
 
-// geam:expect Int(42)
+// @geam:expect Int(42)

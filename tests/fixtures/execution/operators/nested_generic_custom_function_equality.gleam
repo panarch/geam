@@ -14,4 +14,4 @@ pub fn main() {
   Wrapper(Boxed(value)) == Wrapper(Boxed(value))
 }
 
-// geam:expect Bool(true)
+// @geam:expect Bool(true)

@@ -15,4 +15,4 @@ pub fn main() {
   #(from_constructor, from_variable, from_alias, from_constructor_alias)
 }
 
-// geam:expect Tuple([Int(1), Nil, Nil, Nil])
+// @geam:expect Tuple([Int(1), Nil, Nil, Nil])

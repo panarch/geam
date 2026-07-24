@@ -566,4 +566,4 @@ pub fn main() {
   0
 }
 
-// geam:expect Int(0)
+// @geam:expect Int(0)

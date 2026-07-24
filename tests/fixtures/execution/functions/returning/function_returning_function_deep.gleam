@@ -26,4 +26,4 @@ pub fn main() {
   get5()()()()()(41)
 }
 
-// geam:expect Int(42)
+// @geam:expect Int(42)

@@ -94,4 +94,4 @@ pub fn main() {
   access_everything(codepoint)
 }
 
-// geam:expect Tuple([Int(1), Float(1.5), String("one"), BitArray(bytes=[1], bit_len=8), UtfCodepoint('A'), Custom(type=geam/main/Inner, constructor=Inner#0, fields=[Int(2)]), Bool(true), Nil, Tuple([Int(3)]), List(Int)([Int(4)]), Int(6), Float(1.5), String("one"), BitArray(bytes=[1], bit_len=8), UtfCodepoint('A'), Custom(type=geam/main/Inner, constructor=Inner#0, fields=[Int(2)]), Bool(true), Nil, Tuple([Int(3)]), List(Int)([Int(4)]), Int(7)])
+// @geam:expect Tuple([Int(1), Float(1.5), String("one"), BitArray(bytes=[1], bit_len=8), UtfCodepoint('A'), Custom(type=geam/main/Inner, constructor=Inner#0, fields=[Int(2)]), Bool(true), Nil, Tuple([Int(3)]), List(Int)([Int(4)]), Int(6), Float(1.5), String("one"), BitArray(bytes=[1], bit_len=8), UtfCodepoint('A'), Custom(type=geam/main/Inner, constructor=Inner#0, fields=[Int(2)]), Bool(true), Nil, Tuple([Int(3)]), List(Int)([Int(4)]), Int(7)])

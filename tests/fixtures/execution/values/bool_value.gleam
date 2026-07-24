@@ -2,4 +2,4 @@ pub fn main() {
   !False
 }
 
-// geam:expect Bool(true)
+// @geam:expect Bool(true)

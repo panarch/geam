@@ -23,4 +23,4 @@ pub fn main() {
   int_guard == 2 && bool_guard && string_guard == "one" && float_guard == 3.0
 }
 
-// geam:expect Bool(true)
+// @geam:expect Bool(true)

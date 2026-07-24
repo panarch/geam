@@ -6,4 +6,4 @@ pub fn main() {
   }
 }
 
-// geam:expect String("Hello, GeamGeam")
+// @geam:expect String("Hello, GeamGeam")

@@ -11,4 +11,4 @@ pub fn main() {
   run(f)
 }
 
-// geam:expect List(Int)([Int(1), Int(2), Int(3)])
+// @geam:expect List(Int)([Int(1), Int(2), Int(3)])

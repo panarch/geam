@@ -10,4 +10,4 @@ pub fn main() {
   classify("one") + classify("many")
 }
 
-// geam:expect Int(40)
+// @geam:expect Int(40)

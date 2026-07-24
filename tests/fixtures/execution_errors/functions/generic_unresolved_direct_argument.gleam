@@ -11,7 +11,7 @@ pub fn main() {
   value
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: generic direct argument failed

@@ -3,7 +3,7 @@ pub fn main() -> value {
   value
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: generic local failed

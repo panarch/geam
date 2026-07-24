@@ -9,4 +9,4 @@ pub fn main() {
   result + other + alias
 }
 
-// geam:expect Int(32)
+// @geam:expect Int(32)

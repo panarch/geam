@@ -2,7 +2,7 @@ pub fn main() -> List(List(value)) {
   [panic as "nested generic list element failed"]
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: nested generic list element failed

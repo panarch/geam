@@ -12,4 +12,4 @@ pub fn main() {
   #(select(0, 41), as_function(0, 42), apply(select, 43))
 }
 
-// geam:expect Tuple([Int(41), Int(42), Int(43)])
+// @geam:expect Tuple([Int(41), Int(42), Int(43)])

@@ -7,4 +7,4 @@ pub fn main() {
   1 |> f(10, _)
 }
 
-// geam:expect Int(9)
+// @geam:expect Int(9)

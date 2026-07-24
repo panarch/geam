@@ -10,4 +10,4 @@ pub fn main() {
   boxed(1)
 }
 
-// geam:expect List(geam/main/Boxed(Int))([Custom(type=geam/main/Boxed(Int), constructor=Boxed#0, fields=[Int(1)])])
+// @geam:expect List(geam/main/Boxed(Int))([Custom(type=geam/main/Boxed(Int), constructor=Boxed#0, fields=[Int(1)])])

@@ -8,4 +8,4 @@ pub fn main() {
   add_block_base(31) + base
 }
 
-// geam:expect Int(42)
+// @geam:expect Int(42)

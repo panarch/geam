@@ -3,4 +3,4 @@ pub fn main() {
   value + alias
 }
 
-// geam:expect Int(2)
+// @geam:expect Int(2)

@@ -71,7 +71,7 @@ pub fn main() {
   call_int()
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: concrete function specialization failed

@@ -57,4 +57,4 @@ pub fn main() {
   }
 }
 
-// geam:expect Tuple([UtfCodepoint('A'), UtfCodepoint('B'), List(UtfCodepoint)([UtfCodepoint('A')]), UtfCodepoint('B'), Bool(true), Bool(true), Bool(true), Bool(true), Tuple([UtfCodepoint('A'), List(UtfCodepoint)([UtfCodepoint('B')])]), Tuple([UtfCodepoint('A'), UtfCodepoint('B')]), UtfCodepoint('B')])
+// @geam:expect Tuple([UtfCodepoint('A'), UtfCodepoint('B'), List(UtfCodepoint)([UtfCodepoint('A')]), UtfCodepoint('B'), Bool(true), Bool(true), Bool(true), Bool(true), Tuple([UtfCodepoint('A'), List(UtfCodepoint)([UtfCodepoint('B')])]), Tuple([UtfCodepoint('A'), UtfCodepoint('B')]), UtfCodepoint('B')])

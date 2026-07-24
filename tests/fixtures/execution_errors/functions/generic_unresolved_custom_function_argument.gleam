@@ -15,7 +15,7 @@ pub fn main() {
   function(fail())
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: generic function argument failed

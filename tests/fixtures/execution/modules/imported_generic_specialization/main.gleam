@@ -31,4 +31,4 @@ pub fn main() {
     generic_nested_empty() == [],
   )
 }
-// geam:expect Tuple([Int(1), String("two"), List(Int)([Int(3)]), Int(4), Tuple([Int(5), String("six")]), Bool(true), Bool(true), Bool(true), Bool(true)])
+// @geam:expect Tuple([Int(1), String("two"), List(Int)([Int(3)]), Int(4), Tuple([Int(5), String("six")]), Bool(true), Bool(true), Bool(true), Bool(true)])

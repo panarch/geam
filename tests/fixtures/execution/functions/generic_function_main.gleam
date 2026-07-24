@@ -19,4 +19,4 @@ pub fn main() {
   )
 }
 
-// geam:expect Tuple([Function(fn(Parameter(0)) -> Parameter(0)), Function(fn(Parameter(1)) -> Parameter(1)), Function(fn(Parameter(2)) -> Parameter(2))])
+// @geam:expect Tuple([Function(fn(Parameter(0)) -> Parameter(0)), Function(fn(Parameter(1)) -> Parameter(1)), Function(fn(Parameter(2)) -> Parameter(2))])

@@ -6,4 +6,4 @@ pub fn main() {
   value
 }
 
-// geam:expect Function(fn() -> Float)
+// @geam:expect Function(fn() -> Float)

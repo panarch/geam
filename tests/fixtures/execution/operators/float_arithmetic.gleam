@@ -6,4 +6,4 @@ pub fn main() {
   product /. 2.0
 }
 
-// geam:expect Float(3.0)
+// @geam:expect Float(3.0)

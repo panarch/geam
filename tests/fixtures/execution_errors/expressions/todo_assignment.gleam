@@ -3,7 +3,7 @@ pub fn main() {
   value + 1
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::todo
 //
 //   x todo: `todo` expression evaluated. This code has not yet been implemented.

@@ -9,7 +9,7 @@ pub fn main() {
   value_stop(1) == 1
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: generic value subject failed

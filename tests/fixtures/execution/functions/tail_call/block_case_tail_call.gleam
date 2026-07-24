@@ -11,4 +11,4 @@ pub fn main() {
   loop(5000, 0)
 }
 
-// geam:expect Int(10000)
+// @geam:expect Int(10000)

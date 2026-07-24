@@ -17,4 +17,4 @@ pub fn main() {
   fallback_first("one") + duplicate_literal("one")
 }
 
-// geam:expect Int(107)
+// @geam:expect Int(107)

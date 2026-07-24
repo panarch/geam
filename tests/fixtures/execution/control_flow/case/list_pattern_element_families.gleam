@@ -98,4 +98,4 @@ pub fn main() {
   && function_function_ok
 }
 
-// geam:expect Bool(true)
+// @geam:expect Bool(true)

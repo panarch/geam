@@ -3,4 +3,4 @@ pub fn main() {
   pair.0
 }
 
-// geam:expect Int(1)
+// @geam:expect Int(1)

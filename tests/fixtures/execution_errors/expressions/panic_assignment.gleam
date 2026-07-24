@@ -3,7 +3,7 @@ pub fn main() {
   value + 1
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: boom

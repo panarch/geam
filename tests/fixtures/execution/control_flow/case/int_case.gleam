@@ -40,4 +40,4 @@ pub fn main() {
   classify(1) + classify(9) + fallback_first(1) + duplicate_literal(1)
 }
 
-// geam:expect Int(157)
+// @geam:expect Int(157)

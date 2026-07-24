@@ -10,7 +10,7 @@ pub fn main() {
   fail(Ok(1))
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: generic certain custom case failed

@@ -13,7 +13,7 @@ pub fn main() {
   impossible(True)
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: generic custom specialization failed

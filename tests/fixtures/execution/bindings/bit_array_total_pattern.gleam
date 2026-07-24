@@ -5,4 +5,4 @@ pub fn main() {
   #(all, nested, value, inner)
 }
 
-// geam:expect Tuple([BitArray(bytes=[1, 2], bit_len=16), BitArray(bytes=[3], bit_len=8), Int(4), BitArray(bytes=[5], bit_len=8)])
+// @geam:expect Tuple([BitArray(bytes=[1, 2], bit_len=16), BitArray(bytes=[3], bit_len=8), Int(4), BitArray(bytes=[5], bit_len=8)])

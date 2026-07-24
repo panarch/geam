@@ -3,7 +3,7 @@ pub fn main() {
   <<bits:bits-size(panic as "size failed")>>
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: size failed

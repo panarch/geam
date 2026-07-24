@@ -32,7 +32,7 @@ pub fn main() {
   Nil
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: custom static bool case failed

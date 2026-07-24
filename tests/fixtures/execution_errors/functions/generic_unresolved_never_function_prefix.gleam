@@ -14,7 +14,7 @@ pub fn main() {
   stop(diverge, fail_value())
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: generic argument failed

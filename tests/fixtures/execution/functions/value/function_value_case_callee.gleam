@@ -89,4 +89,4 @@ pub fn main() {
   bool_hit + bool_miss + int_hit + int_fallback
 }
 
-// geam:expect Int(26)
+// @geam:expect Int(26)

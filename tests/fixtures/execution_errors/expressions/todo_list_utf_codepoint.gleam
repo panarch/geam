@@ -2,7 +2,7 @@ pub fn main() -> List(UtfCodepoint) {
   todo
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::todo
 //
 //   x todo: `todo` expression evaluated. This code has not yet been implemented.

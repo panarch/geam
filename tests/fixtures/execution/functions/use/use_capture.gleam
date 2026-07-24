@@ -8,4 +8,4 @@ pub fn main() {
   value + base
 }
 
-// geam:expect Int(42)
+// @geam:expect Int(42)

@@ -9,7 +9,7 @@ pub fn main() {
   first([])
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: empty generic list

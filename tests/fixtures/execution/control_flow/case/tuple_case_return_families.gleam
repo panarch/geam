@@ -39,4 +39,4 @@ pub fn main() {
   #(a.0 + b.0 + c.0 + d.0, d.1)
 }
 
-// geam:expect Tuple([Int(4), String("float")])
+// @geam:expect Tuple([Int(4), String("float")])

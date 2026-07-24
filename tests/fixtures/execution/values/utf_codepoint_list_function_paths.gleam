@@ -41,4 +41,4 @@ pub fn main() {
   )
 }
 
-// geam:expect Tuple([UtfCodepoint('A'), UtfCodepoint('A'), UtfCodepoint('A'), UtfCodepoint('A'), UtfCodepoint('A'), UtfCodepoint('A')])
+// @geam:expect Tuple([UtfCodepoint('A'), UtfCodepoint('A'), UtfCodepoint('A'), UtfCodepoint('A'), UtfCodepoint('A'), UtfCodepoint('A')])

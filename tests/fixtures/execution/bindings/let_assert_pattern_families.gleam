@@ -57,4 +57,4 @@ pub fn main() {
   )
 }
 
-// geam:expect Tuple([Int(1), Int(1), Int(2), Int(3), Int(4), String("fix"), Int(11), Int(17), Int(14), Int(11), Int(42)])
+// @geam:expect Tuple([Int(1), Int(1), Int(2), Int(3), Int(4), String("fix"), Int(11), Int(17), Int(14), Int(11), Int(42)])

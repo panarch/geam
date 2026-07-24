@@ -16,4 +16,4 @@ pub fn main() {
   #(unwrap(wrap(1)), unwrap(wrap("two")))
 }
 
-// geam:expect Tuple([Int(1), String("two")])
+// @geam:expect Tuple([Int(1), String("two")])

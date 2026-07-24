@@ -10,4 +10,4 @@ pub fn main() {
   and_false() || or_true()
 }
 
-// geam:expect Bool(true)
+// @geam:expect Bool(true)

@@ -20,7 +20,7 @@ fn choose(flag: Bool, number: Int, decimal: Float, text: String) -> Int {
 pub fn main() { choose(False, 0, 0.0, "") }
 
 
-// geam:explain
+// @geam:explain
 // module main
 // main int#0
 //

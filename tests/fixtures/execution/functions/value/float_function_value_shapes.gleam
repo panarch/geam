@@ -63,4 +63,4 @@ pub fn main() {
   +. block_add(1.0)
 }
 
-// geam:expect Float(15.5)
+// @geam:expect Float(15.5)

@@ -51,7 +51,7 @@ pub fn main() -> fn() -> Nil {
 }
 
 
-// geam:explain
+// @geam:explain
 // module main
 // main function.nil#0
 //

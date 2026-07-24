@@ -12,4 +12,4 @@ pub fn main() {
   run()
 }
 
-// geam:expect Int(42)
+// @geam:expect Int(42)

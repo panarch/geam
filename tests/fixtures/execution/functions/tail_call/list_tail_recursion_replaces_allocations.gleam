@@ -9,4 +9,4 @@ pub fn main() {
   done(10000, [])
 }
 
-// geam:expect List(Int)([Int(1)])
+// @geam:expect List(Int)([Int(1)])

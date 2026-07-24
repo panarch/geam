@@ -4,4 +4,4 @@ pub fn main() {
   make(1)
 }
 
-// geam:expect List(Int)([Int(10), Int(1)])
+// @geam:expect List(Int)([Int(10), Int(1)])

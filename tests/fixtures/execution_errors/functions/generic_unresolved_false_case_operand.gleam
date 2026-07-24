@@ -11,7 +11,7 @@ pub fn main() {
   compare(False)
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: generic false case failed

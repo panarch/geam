@@ -3,4 +3,4 @@ pub fn main() {
   text
 }
 
-// geam:expect String("geam")
+// @geam:expect String("geam")

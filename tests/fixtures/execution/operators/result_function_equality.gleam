@@ -8,4 +8,4 @@ pub fn main() {
   left == right
 }
 
-// geam:expect Bool(true)
+// @geam:expect Bool(true)

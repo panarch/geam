@@ -42,7 +42,7 @@ pub fn main() {
   keep_function(fail())
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: generic symbolic function failed

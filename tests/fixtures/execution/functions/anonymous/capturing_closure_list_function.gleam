@@ -14,4 +14,4 @@ pub fn main() {
   closure(1)
 }
 
-// geam:expect List(Int)([Int(1), Int(2)])
+// @geam:expect List(Int)([Int(1), Int(2)])

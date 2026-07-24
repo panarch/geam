@@ -6,4 +6,4 @@ pub fn main() {
   join("ge", "am")
 }
 
-// geam:expect String("geam")
+// @geam:expect String("geam")

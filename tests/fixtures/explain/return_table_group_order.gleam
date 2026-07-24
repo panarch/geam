@@ -15,7 +15,7 @@ pub fn main() {
 }
 
 
-// geam:explain
+// @geam:explain
 // module main
 // main int#0
 //

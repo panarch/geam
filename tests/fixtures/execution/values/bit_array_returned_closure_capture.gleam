@@ -13,4 +13,4 @@ pub fn main() -> fn(BitArray) -> BitArray {
   }
 }
 
-// geam:expect Function(fn(BitArray) -> BitArray)
+// @geam:expect Function(fn(BitArray) -> BitArray)

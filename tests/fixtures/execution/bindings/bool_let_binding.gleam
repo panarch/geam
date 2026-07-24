@@ -3,4 +3,4 @@ pub fn main() {
   flag
 }
 
-// geam:expect Bool(true)
+// @geam:expect Bool(true)

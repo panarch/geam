@@ -33,7 +33,7 @@ pub fn main() -> fn() -> Int {
 }
 
 
-// geam:explain
+// @geam:explain
 // module main
 // main function.int#0
 //

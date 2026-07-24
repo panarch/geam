@@ -11,4 +11,4 @@ pub fn main() {
   y
 }
 
-// geam:expect Bool(true)
+// @geam:expect Bool(true)

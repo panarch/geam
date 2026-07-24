@@ -2,7 +2,7 @@ pub fn main() {
   panic as "boom"
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: boom

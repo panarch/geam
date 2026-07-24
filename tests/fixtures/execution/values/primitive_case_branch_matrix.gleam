@@ -32,4 +32,4 @@ pub fn main() {
   Nil
 }
 
-// geam:expect Nil
+// @geam:expect Nil

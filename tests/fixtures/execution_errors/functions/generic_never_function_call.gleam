@@ -10,7 +10,7 @@ pub fn main() {
   invoke(fail)
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: generic function call failed

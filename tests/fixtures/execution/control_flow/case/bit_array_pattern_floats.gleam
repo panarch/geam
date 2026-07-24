@@ -53,4 +53,4 @@ pub fn main() {
   )
 }
 
-// geam:expect Tuple([Float(3.0), Float(1.5), Float(1.5), Float(1.5), Float(1.5), Float(1.5), Bool(true), Bool(true), Float(0.0), Bool(false), Bool(false), Bool(false)])
+// @geam:expect Tuple([Float(3.0), Float(1.5), Float(1.5), Float(1.5), Float(1.5), Float(1.5), Bool(true), Bool(true), Float(0.0), Bool(false), Bool(false), Bool(false)])

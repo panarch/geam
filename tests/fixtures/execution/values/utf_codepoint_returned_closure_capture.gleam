@@ -20,4 +20,4 @@ pub fn main() -> fn(UtfCodepoint) -> UtfCodepoint {
   }
 }
 
-// geam:expect Function(fn(UtfCodepoint) -> UtfCodepoint)
+// @geam:expect Function(fn(UtfCodepoint) -> UtfCodepoint)

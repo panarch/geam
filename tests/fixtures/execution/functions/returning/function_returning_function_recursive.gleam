@@ -41,4 +41,4 @@ pub fn main() {
   from_int_fallback()()(1) + run_get(get_get, 2)
 }
 
-// geam:expect Int(5)
+// @geam:expect Int(5)

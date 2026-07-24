@@ -6,4 +6,4 @@ pub fn main() {
   2 |> add(to: 40, value: _)
 }
 
-// geam:expect Int(42)
+// @geam:expect Int(42)

@@ -22,4 +22,4 @@ pub fn main() {
   bind(codepoint())
 }
 
-// geam:expect Tuple([UtfCodepoint('A'), UtfCodepoint('A')])
+// @geam:expect Tuple([UtfCodepoint('A'), UtfCodepoint('A')])

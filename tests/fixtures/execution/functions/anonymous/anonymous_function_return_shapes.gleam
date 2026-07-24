@@ -22,4 +22,4 @@ pub fn main() {
   apply_int(fn(value) { value + 1 }, 41)
 }
 
-// geam:expect Int(42)
+// @geam:expect Int(42)

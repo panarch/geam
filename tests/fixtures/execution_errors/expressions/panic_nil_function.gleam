@@ -2,7 +2,7 @@ pub fn main() -> fn() -> Nil {
   panic
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: `panic` expression evaluated.

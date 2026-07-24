@@ -43,4 +43,4 @@ pub fn main() {
   )
 }
 
-// geam:expect Tuple([Bool(true), List(Parameter(0))([]), List(Parameter(1))([]), List(Parameter(2))([]), List(Parameter(3))([])])
+// @geam:expect Tuple([Bool(true), List(Parameter(0))([]), List(Parameter(1))([]), List(Parameter(2))([]), List(Parameter(3))([])])

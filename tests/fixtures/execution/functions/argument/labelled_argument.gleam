@@ -6,4 +6,4 @@ pub fn main() {
   identity(1)
 }
 
-// geam:expect Int(1)
+// @geam:expect Int(1)

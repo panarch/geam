@@ -4,4 +4,4 @@ pub fn main() {
   result
 }
 
-// geam:expect Custom(type=/gleam/Result(Int, Nil), constructor=Ok#0, fields=[Int(1)])
+// @geam:expect Custom(type=/gleam/Result(Int, Nil), constructor=Ok#0, fields=[Int(1)])

@@ -16,4 +16,4 @@ pub fn main() {
   #(bind_function(identity), bind_list([]))
 }
 
-// geam:expect Tuple([Function(fn(Parameter(0)) -> Parameter(0)), List(Parameter(1))([])])
+// @geam:expect Tuple([Function(fn(Parameter(0)) -> Parameter(0)), List(Parameter(1))([])])

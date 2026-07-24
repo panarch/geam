@@ -12,4 +12,4 @@ pub fn main() {
   literal && discard
 }
 
-// geam:expect Bool(true)
+// @geam:expect Bool(true)

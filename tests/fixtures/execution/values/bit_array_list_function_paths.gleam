@@ -32,4 +32,4 @@ pub fn main() {
   )
 }
 
-// geam:expect Tuple([BitArray(bytes=[1], bit_len=8), BitArray(bytes=[1], bit_len=8), BitArray(bytes=[1], bit_len=8), BitArray(bytes=[1], bit_len=8), BitArray(bytes=[1], bit_len=8)])
+// @geam:expect Tuple([BitArray(bytes=[1], bit_len=8), BitArray(bytes=[1], bit_len=8), BitArray(bytes=[1], bit_len=8), BitArray(bytes=[1], bit_len=8), BitArray(bytes=[1], bit_len=8)])

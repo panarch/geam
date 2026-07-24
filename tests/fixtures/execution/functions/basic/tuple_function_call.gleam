@@ -10,4 +10,4 @@ pub fn main() {
   first(pair())
 }
 
-// geam:expect Int(1)
+// @geam:expect Int(1)

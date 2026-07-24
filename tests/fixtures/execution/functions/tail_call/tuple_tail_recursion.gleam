@@ -10,4 +10,4 @@ pub fn main() {
   result.0 + result.1
 }
 
-// geam:expect Int(20000)
+// @geam:expect Int(20000)

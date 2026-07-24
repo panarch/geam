@@ -7,7 +7,7 @@ pub fn main() -> UtfCodepoint {
   panic
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: step

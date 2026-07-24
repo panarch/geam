@@ -7,4 +7,4 @@ pub fn main() {
   whole
 }
 
-// geam:expect List(Int)([Int(1), Int(2)])
+// @geam:expect List(Int)([Int(1), Int(2)])

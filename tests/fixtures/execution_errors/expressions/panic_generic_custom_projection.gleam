@@ -10,7 +10,7 @@ pub fn main() -> value {
   boxed_value().value
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: generic custom projection failed

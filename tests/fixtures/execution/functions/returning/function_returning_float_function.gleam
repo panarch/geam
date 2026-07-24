@@ -10,4 +10,4 @@ pub fn main() {
   get()(1.5)
 }
 
-// geam:expect Float(2.0)
+// @geam:expect Float(2.0)

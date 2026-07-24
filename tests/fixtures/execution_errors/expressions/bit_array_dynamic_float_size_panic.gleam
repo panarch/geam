@@ -2,7 +2,7 @@ pub fn main() {
   <<1.5:float-size(panic as "size failed")>>
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: size failed

@@ -6,7 +6,7 @@ pub fn main() {
   #(fail()) == #(fail())
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: generic tuple operand failed

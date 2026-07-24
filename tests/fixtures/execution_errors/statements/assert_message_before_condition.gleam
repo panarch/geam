@@ -7,7 +7,7 @@ pub fn main() {
   1
 }
 
-// geam:expect-error
+// @geam:expect-error
 // geam::panic
 //
 //   x panic: message

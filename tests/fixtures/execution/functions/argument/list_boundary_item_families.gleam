@@ -127,4 +127,4 @@ pub fn main() {
   function_callback()()
 }
 
-// geam:expect Int(1)
+// @geam:expect Int(1)

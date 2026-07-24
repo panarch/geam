@@ -7,4 +7,4 @@ pub fn main() {
   pair.1
 }
 
-// geam:expect String("one")
+// @geam:expect String("one")

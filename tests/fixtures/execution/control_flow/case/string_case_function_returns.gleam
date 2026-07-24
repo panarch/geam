@@ -100,4 +100,4 @@ pub fn main() {
   + choose_getter("miss")("ignored")(10)
 }
 
-// geam:expect Int(78)
+// @geam:expect Int(78)

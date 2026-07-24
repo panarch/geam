@@ -119,4 +119,4 @@ pub fn main() {
   )
 }
 
-// geam:expect Tuple([Int(2), Float(2.5), String("two"), BitArray(bytes=[2], bit_len=8), UtfCodepoint('A'), Custom(type=geam/main/Inner, constructor=Inner#0, fields=[Int(5)]), Bool(false), Nil, Tuple([Int(6)]), List(Int)([Int(7)]), Int(7), Float(2.5), String("two"), BitArray(bytes=[2], bit_len=8), UtfCodepoint('A'), Custom(type=geam/main/Inner, constructor=Inner#0, fields=[Int(5)]), Bool(false), Nil, Tuple([Int(6)]), List(Int)([Int(7)]), Int(8)])
+// @geam:expect Tuple([Int(2), Float(2.5), String("two"), BitArray(bytes=[2], bit_len=8), UtfCodepoint('A'), Custom(type=geam/main/Inner, constructor=Inner#0, fields=[Int(5)]), Bool(false), Nil, Tuple([Int(6)]), List(Int)([Int(7)]), Int(7), Float(2.5), String("two"), BitArray(bytes=[2], bit_len=8), UtfCodepoint('A'), Custom(type=geam/main/Inner, constructor=Inner#0, fields=[Int(5)]), Bool(false), Nil, Tuple([Int(6)]), List(Int)([Int(7)]), Int(8)])

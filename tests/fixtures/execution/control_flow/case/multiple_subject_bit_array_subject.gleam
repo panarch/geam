@@ -4,4 +4,4 @@ pub fn main() {
   }
 }
 
-// geam:expect BitArray(bytes=[2], bit_len=8)
+// @geam:expect BitArray(bytes=[2], bit_len=8)

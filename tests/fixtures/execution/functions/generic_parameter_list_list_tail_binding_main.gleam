@@ -7,4 +7,4 @@ pub fn main() {
   tail([[]])
 }
 
-// geam:expect List(List(Parameter(0)))([])
+// @geam:expect List(List(Parameter(0)))([])
