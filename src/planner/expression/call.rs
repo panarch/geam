@@ -11,7 +11,7 @@ use crate::planner::error::{
 };
 use ecow::EcoString;
 use gleam_core::ast::{CallArg as GleamCallArg, TypedExpr};
-use gleam_core::type_::{ModuleValueConstructor, Type, ValueConstructorVariant};
+use gleam_core::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
 use std::sync::Arc;
 
 pub(super) fn plan_call(
@@ -90,6 +90,42 @@ fn plan_call_expression(
     context: &mut PlanContext<'_>,
     capture: Option<&CaptureSubstitution>,
 ) -> Result<Expr, PlanError> {
+    let module_constant = match &fun {
+        TypedExpr::Var {
+            constructor:
+                ValueConstructor {
+                    variant:
+                        ValueConstructorVariant::ModuleConstant {
+                            module,
+                            name,
+                            literal,
+                            ..
+                        },
+                    ..
+                },
+            ..
+        } => Some((module, name, literal)),
+        TypedExpr::ModuleSelect {
+            module_name,
+            label,
+            constructor: ModuleValueConstructor::Constant { literal, .. },
+            ..
+        } => Some((module_name, label, literal)),
+        _ => None,
+    };
+    if let Some((module, name, literal)) = module_constant {
+        let _linked_module = context.resolve_module_reference(module, name)?;
+        if literal.type_().fn_types().is_none() {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ModuleReference {
+                    module: module.clone(),
+                    name: name.clone(),
+                    reason: InvalidModuleReferenceReason::NonCallableConstant,
+                },
+            });
+        }
+    }
+
     if let TypedExpr::Var { constructor, .. } = &fun {
         match &constructor.variant {
             ValueConstructorVariant::ModuleFn {
@@ -110,23 +146,7 @@ fn plan_call_expression(
                     type_, function, arguments, context, capture,
                 );
             }
-            ValueConstructorVariant::ModuleConstant {
-                module,
-                name,
-                literal,
-                ..
-            } => {
-                let _linked_module = context.resolve_module_reference(module, name)?;
-                if literal.type_().fn_types().is_none() {
-                    return Err(PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::ModuleReference {
-                            module: module.clone(),
-                            name: name.clone(),
-                            reason: InvalidModuleReferenceReason::NonCallableConstant,
-                        },
-                    });
-                }
-            }
+            ValueConstructorVariant::ModuleConstant { .. } => {}
             ValueConstructorVariant::Record { .. } => {
                 let constructor = context.custom_constructor(constructor)?;
                 return plan_custom_constructor_call(constructor, arguments, context, capture);
@@ -191,18 +211,7 @@ fn plan_call_expression(
                 )?;
                 return plan_custom_constructor_call(constructor, arguments, context, capture);
             }
-            ModuleValueConstructor::Constant { literal, .. } => {
-                let _linked_module = context.resolve_module_reference(module_name, label)?;
-                if literal.type_().fn_types().is_none() {
-                    return Err(PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::ModuleReference {
-                            module: module_name.clone(),
-                            name: label.clone(),
-                            reason: InvalidModuleReferenceReason::NonCallableConstant,
-                        },
-                    });
-                }
-            }
+            ModuleValueConstructor::Constant { .. } => {}
         }
     }
 
