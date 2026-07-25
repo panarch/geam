@@ -692,6 +692,14 @@ impl<'a> PlanContext<'a> {
         )
     }
 
+    pub(super) fn echo_site(&self, location: gleam_core::ast::SrcSpan) -> crate::plan::EchoSite {
+        crate::plan::EchoSite::new(
+            self.module_name.clone(),
+            self.current_function.clone(),
+            location.into(),
+        )
+    }
+
     pub(super) fn define_existing_local(&mut self, name: EcoString, local: LocalId) {
         match local {
             LocalId::Generic(local) => {

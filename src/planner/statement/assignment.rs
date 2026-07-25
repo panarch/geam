@@ -2476,13 +2476,16 @@ pub fn main() {
             expect_plan_error(
                 r#"
 pub fn main() {
-  let _ = echo 1
+  let _ = {
+    <<1:native>>
+    1
+  }
   42
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
     }
@@ -2683,12 +2686,15 @@ pub fn main() {
             expect_plan_error(
                 r#"
 pub fn main() {
-  let x = echo 1
+  let x = {
+    <<1:native>>
+    1
+  }
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
     }

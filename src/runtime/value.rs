@@ -2,6 +2,7 @@ mod bit_array;
 mod capture;
 mod custom;
 mod function;
+mod inspection;
 mod list;
 
 use ecow::EcoString;
@@ -19,6 +20,7 @@ pub(crate) use self::function::{
     IntFunctionValue, ListFunctionValue, NeverFunctionValue, NilFunctionValue, StringFunctionValue,
     TupleFunctionValue, UtfCodepointFunctionValue,
 };
+pub use self::inspection::ValueInspection;
 pub use self::list::{ListValue, ListValueItemTypeMismatch};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -37,6 +39,10 @@ pub enum Value {
 }
 
 impl Value {
+    pub fn inspect(&self) -> ValueInspection<'_> {
+        ValueInspection::new(self)
+    }
+
     pub fn value_type(&self) -> ValueType {
         match self {
             Self::Int(_) => ValueType::Int,

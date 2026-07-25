@@ -338,7 +338,6 @@ mod tests {
     use crate::planner::support::{compile, dummy_span};
     use crate::planner::{
         InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-        UnsupportedExpressionKind,
     };
     use gleam_core::ast::{
         AssignmentKind, BitArraySegment as BitArrayPatternSegmentAst, Pattern, Statement,
@@ -1301,13 +1300,19 @@ pub fn main() {
                     name: "_".into(),
                     type_: type_::int(),
                 },
-                typed_echo_expr(type_::nil()),
+                TypedExpr::Invalid {
+                    location: dummy_span(),
+                    type_: type_::nil(),
+                    extra_information: None,
+                },
                 None,
                 &mut context,
             )
             .err(),
-            Some(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            Some(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::Invalid,
+                },
             }),
         );
     }
@@ -1364,13 +1369,19 @@ pub fn main() {
             super::plan_assert_assignment(
                 dummy_span(),
                 int_list_pattern(),
-                typed_echo_expr(type_::list(type_::int())),
+                TypedExpr::Invalid {
+                    location: dummy_span(),
+                    type_: type_::list(type_::int()),
+                    extra_information: None,
+                },
                 None,
                 &mut context,
             )
             .err(),
-            Some(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            Some(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::Invalid,
+                },
             }),
         );
     }
@@ -1444,12 +1455,18 @@ pub fn main() {
                     name: "_".into(),
                     type_: type_::int(),
                 },
-                typed_echo_expr(type_::nil()),
+                TypedExpr::Invalid {
+                    location: dummy_span(),
+                    type_: type_::nil(),
+                    extra_information: None,
+                },
                 None,
                 &mut context,
             ),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::Invalid,
+                },
             }),
         );
     }
@@ -1466,12 +1483,18 @@ pub fn main() {
                 dummy_span(),
                 int_list_pattern(),
                 typed_int_list_expr(),
-                Some(typed_echo_expr(type_::string())),
+                Some(TypedExpr::Invalid {
+                    location: dummy_span(),
+                    type_: type_::string(),
+                    extra_information: None,
+                }),
                 &mut context,
             )
             .err(),
-            Some(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            Some(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::Invalid,
+                },
             }),
         );
     }
@@ -1496,15 +1519,6 @@ pub fn main() {
             type_: type_::list(type_::int()),
             elements: vec![typed_int_expr(1)],
             tail: None,
-        }
-    }
-
-    fn typed_echo_expr(type_: std::sync::Arc<gleam_core::type_::Type>) -> TypedExpr {
-        TypedExpr::Echo {
-            location: dummy_span(),
-            type_,
-            expression: None,
-            message: None,
         }
     }
 

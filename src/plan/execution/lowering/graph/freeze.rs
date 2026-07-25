@@ -260,6 +260,19 @@ where
             freeze_match_edge(&success, layout, liveness, block_ids),
             freeze_edge(&failure, layout, liveness, block_ids),
         )),
+        DraftTerminator::Echo {
+            subject,
+            message,
+            site,
+            next,
+        } => E::Echo(execution::graph::Echo::new(
+            layout.values.any(&subject),
+            message
+                .as_ref()
+                .map(|message| layout.values.string(message)),
+            site,
+            freeze_edge(&next, layout, liveness, block_ids),
+        )),
         DraftTerminator::Return { value: _, index } => {
             let id = execution::graph::BlockGraphExitId::new(exits.len());
             exits.push(FrozenGraphExit::Return(

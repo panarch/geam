@@ -36,6 +36,7 @@ mod tests {
         FunctionFunctionId, FunctionType, IntFunctionFunctionId, IntFunctionId, LocalId,
         RuntimeFunctionId, ValueType,
     };
+    use crate::planner::PlanError;
     use crate::planner::dsl::{
         block_function, block_int, bool_, bool_return_block, bool_return_expr, evaluate_step,
         float, float_return_block, float_return_expr, function, function_ref, int,
@@ -46,7 +47,6 @@ mod tests {
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, expect_plan_error};
-    use crate::planner::{PlanError, UnsupportedExpressionKind};
 
     #[test]
     fn plan_block_return_values() {
@@ -374,26 +374,26 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_unsupported_expression_inside_block() {
+    fn child_expression_error_inside_block_is_preserved() {
         assert_eq!(
             expect_plan_error(
                 r#"
 pub fn main() {
   {
-    echo 1
+    <<1:native>>
     1
   }
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
     }
 
     #[test]
-    fn reject_profile_unsupported_expression_inside_function_valued_block() {
+    fn child_expression_error_inside_function_valued_block_is_preserved() {
         assert_eq!(
             expect_plan_error(
                 r#"
@@ -403,14 +403,14 @@ fn add_one(value: Int) {
 
 pub fn main() {
   {
-    echo 1
+    <<1:native>>
     add_one
   }
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
     }

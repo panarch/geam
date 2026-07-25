@@ -732,7 +732,6 @@ mod tests {
     use crate::planner::support::{dummy_span, expect_plan_error};
     use crate::planner::{
         InvalidCaseShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-        UnsupportedExpressionKind,
     };
     use gleam_core::ast::{ClauseGuard, Constant, Pattern, TypedModule};
     use gleam_core::type_::{self, error::VariableOrigin};
@@ -1782,14 +1781,14 @@ pub fn main() {
 pub fn main() {
   case 1 {
     1 -> 1
-    1 -> echo 2
+    1 -> { <<1:native>> 2 }
     _ -> 0
   }
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
     }

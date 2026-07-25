@@ -21,10 +21,23 @@ pub fn main() {
 
 The `@geam:` namespace distinguishes fixture-runner directives from ordinary
 source comments and expected output. Its directives are `expect`,
-`expect-error`, `explain`, and `reject`.
+`expect-error`, `echo`, `explain`, and `reject`. Each `echo` block contains one
+exact `EchoOutput::to_string()` result:
+
+```gleam
+pub fn main() {
+  echo 1 as "selected"
+}
+
+// @geam:echo
+// tests/fixtures/execution/example.gleam:2 selected
+// 1
+// @geam:expect Int(1)
+```
 
 The integration runner reads those fixtures through the public Geam API:
-`compile_typed_module -> plan_module -> ExecutionPlan::from_module_plan -> run_main`.
+`compile_typed_module -> plan_module_with_source ->
+ExecutionPlan::from_module_plan -> run_main`.
 
 Multi-module execution cases live under
 `tests/fixtures/execution/modules/<case>/`. The runner derives canonical module

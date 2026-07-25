@@ -1,4 +1,5 @@
 mod branch;
+mod echo;
 mod edge;
 mod jump;
 mod let_assert;
@@ -9,6 +10,7 @@ mod source_stop;
 mod switch;
 
 pub(crate) use branch::BoolBranch;
+pub(crate) use echo::Echo;
 pub(crate) use edge::{Edge, MatchEdge, MatchEdgeArgument};
 pub(crate) use jump::Jump;
 pub(crate) use let_assert::LetAssertPanic;
@@ -31,6 +33,7 @@ pub(crate) enum Terminator {
     FloatSwitch(FloatSwitch),
     StringSwitch(StringSwitch),
     Match(Match),
+    Echo(Echo),
     Exit(BlockGraphExitId),
     SourceStop(SourceStop),
     LetAssertPanic(LetAssertPanic),
@@ -49,6 +52,7 @@ impl Terminator {
             Self::FloatSwitch(switch) => context.write(switch),
             Self::StringSwitch(switch) => context.write(switch),
             Self::Match(matcher) => context.write(matcher),
+            Self::Echo(echo) => context.write(echo),
             Self::Exit(exit) => context.write_exit(*exit),
             Self::SourceStop(stop) => context.write(stop),
             Self::LetAssertPanic(panic) => context.write(panic),

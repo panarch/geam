@@ -1494,7 +1494,7 @@ pub fn main() -> {return_type} {{ {expression} }}
             ),
         ]);
         let plan = crate::ExecutionPlan::from_module_plan(module);
-        crate::run_main(&plan)
+        crate::run_main(&plan, &mut Vec::new())
     }
 
     fn custom_type_template(type_: &ValueType) -> CustomTypeTemplate {

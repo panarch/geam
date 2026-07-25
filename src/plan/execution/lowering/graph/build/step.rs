@@ -380,6 +380,7 @@ fn lower_step(
             super::local::LocalKey::new(super::local::LocalKind::GenericFunction, local.id().0),
             function::generic_function_expr(value.expression(), cursor, graph, context),
         ),
+        S::Echo(echo) => lower_echo(echo, cursor, graph, context),
         S::AssertPattern {
             subject,
             pattern,
@@ -415,6 +416,450 @@ fn lower_step(
             super::expression::expr(value, cursor, graph, context).map(|flow| flow.map(|_| ()))
         }
     }
+}
+
+fn lower_echo(
+    echo: &module::Echo,
+    cursor: DraftCursor,
+    graph: &mut DraftGraph,
+    context: &mut super::LoweringContext,
+) -> Lowered<()> {
+    lower_echo_subject(echo.subject(), cursor, graph, context).and_then(|flow| {
+        flow.and_then(|cursor, subject| match echo.message() {
+            Some(message) => string_expr(message, cursor, graph, context).map(|flow| match flow {
+                DraftFlow::Value { cursor, value } => {
+                    let message = value;
+                    let next = graph.empty_block(cursor.scope().clone());
+                    graph.finish_echo(
+                        cursor,
+                        subject,
+                        Some(message),
+                        echo.site().clone(),
+                        next.id(),
+                    );
+                    DraftFlow::value(next, ())
+                }
+                DraftFlow::Diverged => DraftFlow::Diverged,
+            }),
+            None => {
+                let next = graph.empty_block(cursor.scope().clone());
+                graph.finish_echo(cursor, subject, None, echo.site().clone(), next.id());
+                Representability::Inhabited(DraftFlow::value(next, ()))
+            }
+        })
+    })
+}
+
+fn lower_echo_subject(
+    subject: &module::EchoSubject,
+    cursor: DraftCursor,
+    graph: &mut DraftGraph,
+    context: &mut super::LoweringContext,
+) -> Lowered<DraftValueRef> {
+    use module::EchoSubject as S;
+
+    match subject {
+        S::Generic { local, value } => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::Generic, local.id().0),
+            generic::generic_expr(value, cursor, graph, context),
+        ),
+        S::Int { local, value } => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::Int, local.0),
+            int_expr(value, cursor, graph, context),
+        ),
+        S::Float { local, value } => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::Float, local.0),
+            float_expr(value, cursor, graph, context),
+        ),
+        S::String { local, value } => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::String, local.0),
+            string_expr(value, cursor, graph, context),
+        ),
+        S::BitArray { local, value } => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::BitArray, local.0),
+            bit_array_expr(value, cursor, graph, context),
+        ),
+        S::UtfCodepoint { local, value } => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::UtfCodepoint, local.0),
+            utf_codepoint_expr(value, cursor, graph, context),
+        ),
+        S::Custom(value) => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::Custom, value.local().id().0),
+            custom_expr(value.value(), cursor, graph, context),
+        ),
+        S::Bool { local, value } => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::Bool, local.0),
+            bool_expr(value, cursor, graph, context),
+        ),
+        S::Nil { local, value } => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::Nil, local.0),
+            nil_expr(value, cursor, graph, context),
+        ),
+        S::Tuple { local, value } => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::Tuple, local.0),
+            tuple_expr(value, cursor, graph, context),
+        ),
+        S::List(value) => lower_echo_list_subject(value, cursor, graph, context),
+        S::IntFunction { local, value } => {
+            let key = super::local::LocalKey::new(super::local::LocalKind::IntFunction, local.0);
+            let shape = context.concrete_function_shape(value.shape());
+            if matches!(
+                context.function_representation(&shape),
+                FunctionRepresentation::Symbolic
+            ) {
+                bind_echo_subject(
+                    key,
+                    function::symbolic_int_function_expr(
+                        value.expression(),
+                        &shape,
+                        cursor,
+                        graph,
+                        context,
+                    ),
+                )
+            } else {
+                bind_echo_subject(
+                    key,
+                    function::int_function_expr(value.expression(), cursor, graph, context),
+                )
+            }
+        }
+        S::FloatFunction { local, value } => {
+            let key = super::local::LocalKey::new(super::local::LocalKind::FloatFunction, local.0);
+            let shape = context.concrete_function_shape(value.shape());
+            if matches!(
+                context.function_representation(&shape),
+                FunctionRepresentation::Symbolic
+            ) {
+                bind_echo_subject(
+                    key,
+                    function::symbolic_float_function_expr(
+                        value.expression(),
+                        &shape,
+                        cursor,
+                        graph,
+                        context,
+                    ),
+                )
+            } else {
+                bind_echo_subject(
+                    key,
+                    function::float_function_expr(value.expression(), cursor, graph, context),
+                )
+            }
+        }
+        S::StringFunction { local, value } => {
+            let key = super::local::LocalKey::new(super::local::LocalKind::StringFunction, local.0);
+            let shape = context.concrete_function_shape(value.shape());
+            if matches!(
+                context.function_representation(&shape),
+                FunctionRepresentation::Symbolic
+            ) {
+                bind_echo_subject(
+                    key,
+                    function::symbolic_string_function_expr(
+                        value.expression(),
+                        &shape,
+                        cursor,
+                        graph,
+                        context,
+                    ),
+                )
+            } else {
+                bind_echo_subject(
+                    key,
+                    function::string_function_expr(value.expression(), cursor, graph, context),
+                )
+            }
+        }
+        S::BitArrayFunction { local, value } => {
+            let key =
+                super::local::LocalKey::new(super::local::LocalKind::BitArrayFunction, local.0);
+            let shape = context.concrete_function_shape(value.shape());
+            if matches!(
+                context.function_representation(&shape),
+                FunctionRepresentation::Symbolic
+            ) {
+                bind_echo_subject(
+                    key,
+                    function::symbolic_bit_array_function_expr(
+                        value.expression(),
+                        &shape,
+                        cursor,
+                        graph,
+                        context,
+                    ),
+                )
+            } else {
+                bind_echo_subject(
+                    key,
+                    function::bit_array_function_expr(value.expression(), cursor, graph, context),
+                )
+            }
+        }
+        S::UtfCodepointFunction { local, value } => {
+            let key =
+                super::local::LocalKey::new(super::local::LocalKind::UtfCodepointFunction, local.0);
+            let shape = context.concrete_function_shape(value.shape());
+            if matches!(
+                context.function_representation(&shape),
+                FunctionRepresentation::Symbolic
+            ) {
+                bind_echo_subject(
+                    key,
+                    function::symbolic_utf_codepoint_function_expr(
+                        value.expression(),
+                        &shape,
+                        cursor,
+                        graph,
+                        context,
+                    ),
+                )
+            } else {
+                bind_echo_subject(
+                    key,
+                    function::utf_codepoint_function_expr(
+                        value.expression(),
+                        cursor,
+                        graph,
+                        context,
+                    ),
+                )
+            }
+        }
+        S::CustomFunction { local, value } => {
+            let key =
+                super::local::LocalKey::new(super::local::LocalKind::CustomFunction, local.id().0);
+            let shape = context.concrete_function_shape(value.shape());
+            match context.function_representation(&shape) {
+                FunctionRepresentation::Symbolic => bind_echo_subject(
+                    key,
+                    function::symbolic_custom_function_expr_kind(
+                        value.expression().kind(),
+                        &shape,
+                        cursor,
+                        graph,
+                        context,
+                    ),
+                ),
+                FunctionRepresentation::Never(_) => bind_echo_subject(
+                    key,
+                    function::custom_never_function_expr(
+                        value.expression(),
+                        cursor,
+                        graph,
+                        context,
+                    ),
+                ),
+                FunctionRepresentation::Executable(_) => bind_echo_subject(
+                    key,
+                    function::custom_function_expr(value.expression(), cursor, graph, context),
+                ),
+            }
+        }
+        S::BoolFunction { local, value } => {
+            let key = super::local::LocalKey::new(super::local::LocalKind::BoolFunction, local.0);
+            let shape = context.concrete_function_shape(value.shape());
+            if matches!(
+                context.function_representation(&shape),
+                FunctionRepresentation::Symbolic
+            ) {
+                bind_echo_subject(
+                    key,
+                    function::symbolic_bool_function_expr(
+                        value.expression(),
+                        &shape,
+                        cursor,
+                        graph,
+                        context,
+                    ),
+                )
+            } else {
+                bind_echo_subject(
+                    key,
+                    function::bool_function_expr(value.expression(), cursor, graph, context),
+                )
+            }
+        }
+        S::NilFunction { local, value } => {
+            let key = super::local::LocalKey::new(super::local::LocalKind::NilFunction, local.0);
+            let shape = context.concrete_function_shape(value.shape());
+            if matches!(
+                context.function_representation(&shape),
+                FunctionRepresentation::Symbolic
+            ) {
+                bind_echo_subject(
+                    key,
+                    function::symbolic_nil_function_expr(
+                        value.expression(),
+                        &shape,
+                        cursor,
+                        graph,
+                        context,
+                    ),
+                )
+            } else {
+                bind_echo_subject(
+                    key,
+                    function::nil_function_expr(value.expression(), cursor, graph, context),
+                )
+            }
+        }
+        S::TupleFunction { local, value } => {
+            let key = super::local::LocalKey::new(super::local::LocalKind::TupleFunction, local.0);
+            let shape = context.concrete_function_shape(value.shape());
+            match context.function_representation(&shape) {
+                FunctionRepresentation::Symbolic => bind_echo_subject(
+                    key,
+                    function::symbolic_tuple_function_expr(
+                        value.expression(),
+                        &shape,
+                        cursor,
+                        graph,
+                        context,
+                    ),
+                ),
+                FunctionRepresentation::Never(_) => bind_echo_subject(
+                    key,
+                    function::tuple_never_function_expr(value.expression(), cursor, graph, context),
+                ),
+                FunctionRepresentation::Executable(_) => bind_echo_subject(
+                    key,
+                    function::tuple_function_expr(value.expression(), cursor, graph, context),
+                ),
+            }
+        }
+        S::ListFunction { local, value } => {
+            let key = super::local::list_function_local_key(local);
+            let shape = context.concrete_function_shape(value.shape());
+            if matches!(
+                context.function_representation(&shape),
+                FunctionRepresentation::Symbolic
+            ) {
+                bind_echo_subject(
+                    key,
+                    function::symbolic_list_function_expr(
+                        value.expression(),
+                        &shape,
+                        cursor,
+                        graph,
+                        context,
+                    ),
+                )
+            } else {
+                bind_echo_subject(
+                    key,
+                    function::list_function_expr(value.expression(), cursor, graph, context),
+                )
+            }
+        }
+        S::FunctionFunction { local, value } => {
+            let key = super::local::LocalKey::new(
+                super::local::LocalKind::FunctionFunction,
+                local.id().0,
+            );
+            let shape = context.concrete_function_shape(value.shape());
+            if matches!(
+                context.function_representation(&shape),
+                FunctionRepresentation::Symbolic
+            ) {
+                bind_echo_subject(
+                    key,
+                    function::symbolic_function_function_expr_kind(
+                        value.expression().kind(),
+                        &shape,
+                        cursor,
+                        graph,
+                        context,
+                    ),
+                )
+            } else {
+                bind_echo_subject(
+                    key,
+                    function::function_function_expr(value.expression(), cursor, graph, context),
+                )
+            }
+        }
+        S::GenericFunction { local, value } => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::GenericFunction, local.id().0),
+            function::generic_function_expr(value.expression(), cursor, graph, context),
+        ),
+    }
+}
+
+fn lower_echo_list_subject(
+    subject: &module::ListLocalExpr,
+    cursor: DraftCursor,
+    graph: &mut DraftGraph,
+    context: &mut super::LoweringContext,
+) -> Lowered<DraftValueRef> {
+    match subject {
+        module::ListLocalExpr::Generic { local, value, .. } => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::GenericList, local.0),
+            list::generic_list_expr(value, cursor, graph, context),
+        ),
+        module::ListLocalExpr::ParameterList { local, value, .. } => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::ListList, local.0),
+            list::parameter_list_list_expr(value, cursor, graph, context),
+        ),
+        module::ListLocalExpr::Int { local, value } => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::IntList, local.0),
+            list::int_list_expr(value, cursor, graph, context),
+        ),
+        module::ListLocalExpr::String { local, value } => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::StringList, local.0),
+            list::string_list_expr(value, cursor, graph, context),
+        ),
+        module::ListLocalExpr::BitArray { local, value } => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::BitArrayList, local.0),
+            list::bit_array_list_expr(value, cursor, graph, context),
+        ),
+        module::ListLocalExpr::UtfCodepoint { local, value } => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::UtfCodepointList, local.0),
+            list::utf_codepoint_list_expr(value, cursor, graph, context),
+        ),
+        module::ListLocalExpr::Custom { local, value, .. } => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::CustomList, local.0),
+            list::custom_list_expr(value, cursor, graph, context),
+        ),
+        module::ListLocalExpr::Float { local, value } => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::FloatList, local.0),
+            list::float_list_expr(value, cursor, graph, context),
+        ),
+        module::ListLocalExpr::Bool { local, value } => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::BoolList, local.0),
+            list::bool_list_expr(value, cursor, graph, context),
+        ),
+        module::ListLocalExpr::Nil { local, value } => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::NilList, local.0),
+            list::nil_list_expr(value, cursor, graph, context),
+        ),
+        module::ListLocalExpr::Tuple { local, value, .. } => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::TupleList, local.0),
+            list::tuple_list_expr(value, cursor, graph, context),
+        ),
+        module::ListLocalExpr::List { local, value, .. } => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::ListList, local.0),
+            list::list_list_expr(value, cursor, graph, context),
+        ),
+        module::ListLocalExpr::Function { local, value, .. } => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::FunctionList, local.0),
+            list::function_list_expr(value, cursor, graph, context),
+        ),
+    }
+}
+
+fn bind_echo_subject<Value: DraftGraphValue>(
+    key: super::local::LocalKey,
+    lowered: Lowered<Value>,
+) -> Lowered<DraftValueRef> {
+    lowered.map(|flow| {
+        flow.map_cursor(|cursor, value| {
+            let value = value.erase();
+            cursor.scope_mut().insert(key, value.clone());
+            value
+        })
+    })
 }
 
 fn list_binding(

@@ -15,7 +15,7 @@ use super::id::{
     UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
 use crate::plan::{BitArrayPattern, CustomBindingPattern};
-use crate::plan::{PanicSite, SourceSpan, ValueType};
+use crate::plan::{EchoSite, PanicSite, SourceSpan, ValueType};
 use ecow::EcoString;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -206,6 +206,7 @@ pub(crate) enum StepKind {
         name: EcoString,
         value: TypedFunctionExpr<GenericFunctionExpr>,
     },
+    Echo(Echo),
     AssertPattern {
         subject: AssertSubject,
         pattern: AssertPattern,
@@ -223,6 +224,103 @@ pub(crate) enum StepKind {
         site: PanicSite,
     },
     Evaluate(Expr),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Echo {
+    subject: EchoSubject,
+    message: Option<StringExpr>,
+    site: EchoSite,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum EchoSubject {
+    Generic {
+        local: GenericLocal,
+        value: GenericExpr,
+    },
+    Int {
+        local: IntLocalId,
+        value: IntExpr,
+    },
+    Float {
+        local: FloatLocalId,
+        value: FloatExpr,
+    },
+    String {
+        local: StringLocalId,
+        value: StringExpr,
+    },
+    BitArray {
+        local: BitArrayLocalId,
+        value: BitArrayExpr,
+    },
+    UtfCodepoint {
+        local: UtfCodepointLocalId,
+        value: UtfCodepointExpr,
+    },
+    Custom(CustomLocalExpr),
+    Bool {
+        local: BoolLocalId,
+        value: BoolExpr,
+    },
+    Nil {
+        local: NilLocalId,
+        value: NilExpr,
+    },
+    Tuple {
+        local: TupleLocalId,
+        value: TupleExpr,
+    },
+    List(ListLocalExpr),
+    IntFunction {
+        local: IntFunctionLocalId,
+        value: TypedFunctionExpr<IntFunctionExpr>,
+    },
+    FloatFunction {
+        local: FloatFunctionLocalId,
+        value: TypedFunctionExpr<FloatFunctionExpr>,
+    },
+    StringFunction {
+        local: StringFunctionLocalId,
+        value: TypedFunctionExpr<StringFunctionExpr>,
+    },
+    BitArrayFunction {
+        local: BitArrayFunctionLocalId,
+        value: TypedFunctionExpr<BitArrayFunctionExpr>,
+    },
+    UtfCodepointFunction {
+        local: UtfCodepointFunctionLocalId,
+        value: TypedFunctionExpr<UtfCodepointFunctionExpr>,
+    },
+    CustomFunction {
+        local: CustomFunctionLocal,
+        value: TypedFunctionExpr<CustomFunctionExpr>,
+    },
+    BoolFunction {
+        local: BoolFunctionLocalId,
+        value: TypedFunctionExpr<BoolFunctionExpr>,
+    },
+    NilFunction {
+        local: NilFunctionLocalId,
+        value: TypedFunctionExpr<NilFunctionExpr>,
+    },
+    TupleFunction {
+        local: TupleFunctionLocalId,
+        value: TypedFunctionExpr<TupleFunctionExpr>,
+    },
+    ListFunction {
+        local: ListFunctionLocal,
+        value: TypedFunctionExpr<ListFunctionExpr>,
+    },
+    FunctionFunction {
+        local: FunctionFunctionLocal,
+        value: TypedFunctionExpr<FunctionFunctionExpr>,
+    },
+    GenericFunction {
+        local: GenericFunctionLocal,
+        value: TypedFunctionExpr<GenericFunctionExpr>,
+    },
 }
 
 impl AssertBinding {
@@ -315,6 +413,16 @@ impl Step {
     pub(crate) fn let_generic(local: GenericLocal, name: EcoString, value: GenericExpr) -> Self {
         Self {
             kind: StepKind::LetGeneric { local, name, value },
+        }
+    }
+
+    pub(crate) fn echo(subject: EchoSubject, message: Option<StringExpr>, site: EchoSite) -> Self {
+        Self {
+            kind: StepKind::Echo(Echo {
+                subject,
+                message,
+                site,
+            }),
         }
     }
 
@@ -673,6 +781,20 @@ impl Step {
 
     pub(crate) fn kind(&self) -> &StepKind {
         &self.kind
+    }
+}
+
+impl Echo {
+    pub(crate) fn subject(&self) -> &EchoSubject {
+        &self.subject
+    }
+
+    pub(crate) fn message(&self) -> Option<&StringExpr> {
+        self.message.as_ref()
+    }
+
+    pub(crate) fn site(&self) -> &EchoSite {
+        &self.site
     }
 }
 

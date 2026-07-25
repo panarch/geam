@@ -734,7 +734,6 @@ mod tests {
     use crate::planner::support::{dummy_span, expect_plan_error};
     use crate::planner::{
         InvalidCaseShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-        UnsupportedExpressionKind,
     };
     use gleam_core::ast::{ClauseGuard, Constant, Pattern, TypedModule};
     use gleam_core::type_::{self, error::VariableOrigin};
@@ -1361,14 +1360,14 @@ fn duplicate_literal(value: Float) {
 pub fn main() {
   case 1.0 {
     1.0 -> 1
-    1.0 -> echo 2
+    1.0 -> { <<1:native>> 2 }
     _ -> 0
   }
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
     }

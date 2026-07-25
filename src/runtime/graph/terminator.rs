@@ -90,6 +90,17 @@ pub(super) fn terminator_action(
                 None => transition(environment, matcher.failure()),
             })
         }
+        Terminator::Echo(echo) => {
+            let subject = environment.value(echo.subject());
+            let message = echo.message().map(|message| environment.string(message));
+            let value = crate::runtime::materialize::value(plan, state, subject);
+            let location = crate::runtime::EchoLocation::from_context(
+                echo.site().clone(),
+                plan.source_context_for(echo.site().module()),
+            );
+            state.emit_echo(crate::runtime::EchoOutput::new(location, message, value));
+            Ok(transition(environment, echo.next()))
+        }
         Terminator::Exit(exit) => Ok(GraphAction::Exit(*exit)),
         Terminator::SourceStop(stop) => {
             let message = stop.message().map(|message| environment.string(message));

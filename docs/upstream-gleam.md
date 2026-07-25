@@ -112,6 +112,7 @@ pub fn plan_program(
 
 pub fn run_main(
     plan: &geam::ExecutionPlan,
+    echo: &mut dyn geam::EchoSink,
 ) -> Result<geam::Value, geam::ExecutionError>
 
 impl geam::ExecutionPlan {
@@ -125,6 +126,10 @@ execution nodes remain opaque, while `ExecutionPlan::explain()` provides a
 human-readable view of lowered functions, constant programs, typed values,
 instructions, block parameters, and control-flow edges. Its text is not a
 machine-stable serialization format.
+
+The caller supplies the `EchoSink` used by `run_main`. Each emitted
+`EchoOutput` owns its materialized value, optional message, and compact source
+location; Geam does not select an output destination for the host.
 
 ## Intentionally Out Of Scope
 

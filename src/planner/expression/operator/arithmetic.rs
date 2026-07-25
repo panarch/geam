@@ -111,7 +111,7 @@ mod tests {
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span, expect_plan_error};
     use crate::planner::{
-        InvalidExpressionType, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+        InvalidExpressionType, InvalidTypedAstReason, PlanError, UnsupportedBitArraySegmentReason,
     };
     use gleam_core::ast::{BinOp, TypedExpr};
     use gleam_core::type_;
@@ -199,7 +199,7 @@ pub fn div() {
                 r#"
 pub fn main() {
   {
-    echo 1
+    <<1:native>>
     1
   } + 1
 }
@@ -210,7 +210,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   1 + {
-    echo 1
+    <<1:native>>
     1
   }
 }
@@ -221,7 +221,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    echo 1
+    <<1:native>>
     1
   } - 1
 }
@@ -232,7 +232,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   1 - {
-    echo 1
+    <<1:native>>
     1
   }
 }
@@ -243,7 +243,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    echo 1
+    <<1:native>>
     1
   } * 1
 }
@@ -254,7 +254,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   1 * {
-    echo 1
+    <<1:native>>
     1
   }
 }
@@ -265,7 +265,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    echo 1
+    <<1:native>>
     1
   } / 1
 }
@@ -276,7 +276,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   1 / {
-    echo 1
+    <<1:native>>
     1
   }
 }
@@ -287,7 +287,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    echo 1
+    <<1:native>>
     1
   } % 1
 }
@@ -298,7 +298,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   1 % {
-    echo 1
+    <<1:native>>
     1
   }
 }
@@ -309,7 +309,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    echo 1
+    <<1:native>>
     1.0
   } +. 1.0
 }
@@ -320,7 +320,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   1.0 +. {
-    echo 1
+    <<1:native>>
     1.0
   }
 }
@@ -331,7 +331,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    echo 1
+    <<1:native>>
     1.0
   } -. 1.0
 }
@@ -342,7 +342,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   1.0 -. {
-    echo 1
+    <<1:native>>
     1.0
   }
 }
@@ -353,7 +353,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    echo 1
+    <<1:native>>
     1.0
   } *. 1.0
 }
@@ -364,7 +364,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   1.0 *. {
-    echo 1
+    <<1:native>>
     1.0
   }
 }
@@ -375,7 +375,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    echo 1
+    <<1:native>>
     1.0
   } /. 1.0
 }
@@ -386,14 +386,14 @@ pub fn main() {
                 r#"
 pub fn main() {
   1.0 /. {
-    echo 1
+    <<1:native>>
     1.0
   }
 }
 "#,
             ),
         ] {
-            assert_echo_reject(name, src);
+            assert_native_endianness_rejected(name, src);
         }
     }
 
@@ -449,11 +449,11 @@ pub fn main() {
         );
     }
 
-    fn assert_echo_reject(name: &str, src: &str) {
+    fn assert_native_endianness_rejected(name: &str, src: &str) {
         assert_eq!(
             expect_plan_error(src),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: UnsupportedBitArraySegmentReason::NativeEndianness,
             },
             "{name}",
         );

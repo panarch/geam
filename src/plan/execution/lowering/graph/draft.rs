@@ -276,6 +276,12 @@ pub(in crate::plan::execution::lowering) enum DraftTerminator {
         success: DraftMatchEdge,
         failure: DraftEdge,
     },
+    Echo {
+        subject: DraftValueRef,
+        message: Option<DraftString>,
+        site: crate::plan::EchoSite,
+        next: DraftEdge,
+    },
     Return {
         value: DraftValueRef,
         index: usize,
@@ -1094,6 +1100,28 @@ impl DraftGraph {
         );
     }
 
+    pub(in crate::plan::execution::lowering) fn finish_echo(
+        &mut self,
+        cursor: DraftCursor,
+        subject: DraftValueRef,
+        message: Option<DraftString>,
+        site: crate::plan::EchoSite,
+        next: DraftBlockId,
+    ) {
+        self.finish(
+            cursor,
+            DraftTerminator::Echo {
+                subject,
+                message,
+                site,
+                next: DraftEdge {
+                    target: next,
+                    explicit_args: Vec::new(),
+                },
+            },
+        );
+    }
+
     pub(in crate::plan::execution::lowering) fn finish_source_stop(
         &mut self,
         cursor: DraftCursor,
@@ -1258,6 +1286,7 @@ impl DraftTerminator {
             Self::Match {
                 success, failure, ..
             } => vec![success.target, failure.target],
+            Self::Echo { next, .. } => vec![next.target],
             Self::Return { .. }
             | Self::TailCall { .. }
             | Self::SourceStop { .. }
@@ -1324,6 +1353,18 @@ impl DraftTerminator {
                 pattern.uses(values);
                 success.uses(values);
                 failure.uses(values);
+            }
+            Self::Echo {
+                subject,
+                message,
+                next,
+                ..
+            } => {
+                values.push(subject.clone());
+                if let Some(message) = message {
+                    values.push(message.erase());
+                }
+                next.uses(values);
             }
             Self::Return { value, index: _ } => values.push(value.clone()),
             Self::TailCall { args, .. } | Self::NeverCall { args, .. } => {

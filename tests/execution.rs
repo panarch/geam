@@ -81,6 +81,7 @@ mod explain {
         closure_captures,
         constant_programs,
         constant_utf_codepoint_list,
+        echo,
         function_instructions,
         function_return_call_and_block,
         function_return_control_flow,
@@ -143,6 +144,10 @@ mod expressions {
         bit_array_float_16,
         bit_array_dynamic_size,
         bit_array_sized_bits,
+        echo,
+        echo_closure,
+        echo_families,
+        echo_symbolic_families,
         list_bit_array_element,
         list_utf_codepoint_element,
         record_access,
@@ -199,6 +204,7 @@ mod modules {
         imported_function_identity,
         module_identity,
         root_entry_contract,
+        echo_dependency,
     );
 }
 
@@ -400,6 +406,8 @@ mod pipeline {
         anonymous_function_call,
         function_value_hole_call,
         function_returning_function_call,
+        echo,
+        echo_order,
     );
 }
 
@@ -620,6 +628,9 @@ mod execution_errors {
 
     mod expressions {
         execution_error_cases!("expressions";
+            echo_message_panic,
+            echo_then_panic,
+            echo_value_panic,
             panic,
             panic_message,
             panic_assignment,
@@ -778,6 +789,12 @@ mod execution_errors {
         }
     }
 
+    mod pipeline {
+        execution_error_cases!("pipeline";
+            echo_then_panic,
+        );
+    }
+
     mod patterns {
         execution_error_cases!("patterns";
             let_assert_empty_head,
@@ -842,7 +859,6 @@ mod rejection {
 
     mod expressions {
         rejection_cases!("expressions";
-            echo,
             bit_array_native_endian,
         );
     }
@@ -850,12 +866,6 @@ mod rejection {
     mod case_patterns {
         rejection_cases!("case_patterns";
             bit_array_pattern_native_endian,
-        );
-    }
-
-    mod pipeline {
-        rejection_cases!("pipeline";
-            echo,
         );
     }
 }
@@ -1085,12 +1095,18 @@ fn run_fixture(file_name: &str) {
     let path = format!("tests/fixtures/execution/{file_name}");
     let src = std::fs::read_to_string(&path).expect("fixture should be readable");
     let expected = expected_text_with_prefix(&src, "// @geam:expect ");
-    let module = compile_typed_module("main", path, &src).expect("fixture should compile");
-    let module_plan = plan_module(module).expect("fixture should plan");
+    let module = compile_typed_module("main", path.clone(), &src).expect("fixture should compile");
+    let source_context = SourceContext::new(path, src.clone());
+    let module_plan = plan_module_with_source(module, source_context).expect("fixture should plan");
     let plan = geam::ExecutionPlan::from_module_plan(module_plan);
-    let actual = run_main(&plan).expect("fixture should run");
+    let mut echo = Vec::new();
+    let actual = run_main(&plan, &mut echo).expect("fixture should run");
 
     assert_eq!(render_value(&actual), expected);
+    assert_eq!(
+        echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        expected_echoes(&src),
+    );
 }
 
 fn run_module_fixture(case: &str) {
@@ -1102,9 +1118,14 @@ fn run_module_fixture(case: &str) {
         .expect("module fixture should compile");
     let module_plan = plan_program(program).expect("module fixture should plan");
     let plan = geam::ExecutionPlan::from_module_plan(module_plan);
-    let actual = run_main(&plan).expect("module fixture should run");
+    let mut echo = Vec::new();
+    let actual = run_main(&plan, &mut echo).expect("module fixture should run");
 
     assert_eq!(render_value(&actual), expected);
+    assert_eq!(
+        echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        expected_echoes(&main),
+    );
 }
 
 fn run_error_fixture(file_name: &str) {
@@ -1118,13 +1139,18 @@ fn run_error_fixture(file_name: &str) {
     );
     let module_plan = plan_module_with_source(module, source_context).expect("fixture should plan");
     let plan = geam::ExecutionPlan::from_module_plan(module_plan);
-    let error = run_main(&plan).expect_err("fixture should fail during execution");
+    let mut echo = Vec::new();
+    let error = run_main(&plan, &mut echo).expect_err("fixture should fail during execution");
     assert!(
         matches!(error, ExecutionError::Panic(_)),
         "execution-error fixture should fail with source panic"
     );
 
     assert_eq!(render_execution_error(&error), expected);
+    assert_eq!(
+        echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        expected_echoes(&src),
+    );
 }
 
 fn run_module_error_fixture(case: &str) {
@@ -1136,9 +1162,48 @@ fn run_module_error_fixture(case: &str) {
         .expect("module error fixture should compile");
     let module_plan = plan_program(program).expect("module error fixture should plan");
     let plan = geam::ExecutionPlan::from_module_plan(module_plan);
-    let error = run_main(&plan).expect_err("module error fixture should fail during execution");
+    let mut echo = Vec::new();
+    let error =
+        run_main(&plan, &mut echo).expect_err("module error fixture should fail during execution");
 
     assert_eq!(render_execution_error(&error), expected);
+    assert_eq!(
+        echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        expected_echoes(&main),
+    );
+}
+
+fn expected_echoes(source: &str) -> Vec<String> {
+    let mut outputs = Vec::new();
+    let mut current = None;
+
+    for line in source.lines() {
+        if line == "// @geam:echo" {
+            if let Some(output) = current.replace(String::new()) {
+                outputs.push(output);
+            }
+            continue;
+        }
+        if line.starts_with("// @geam:") {
+            if let Some(output) = current.take() {
+                outputs.push(output);
+            }
+            continue;
+        }
+        if let Some(output) = &mut current {
+            let comment = line
+                .strip_prefix("//")
+                .expect("echo output lines should be comments");
+            if !output.is_empty() {
+                output.push('\n');
+            }
+            output.push_str(comment.strip_prefix(' ').unwrap_or(comment));
+        }
+    }
+    if let Some(output) = current {
+        outputs.push(output);
+    }
+    outputs
 }
 
 fn reject_fixture(file_name: &str) {

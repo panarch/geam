@@ -1,4 +1,5 @@
 mod constant;
+mod echo;
 mod error;
 mod evaluated;
 mod function;
@@ -7,6 +8,7 @@ mod materialize;
 mod state;
 mod value;
 
+pub use echo::{EchoLocation, EchoOutput, EchoSink};
 pub use error::{
     BitArraySegmentPanicReason, ExecutionError, InvariantError, Panic, PanicDetails, PanicKind,
     PanicMessage,
@@ -28,7 +30,7 @@ pub(crate) use value::{
 };
 pub use value::{
     BitArrayValue, BitArrayValueLengthError, CustomFieldValue, CustomValue, FunctionValue,
-    ListValue, ListValueItemTypeMismatch, Value,
+    ListValue, ListValueItemTypeMismatch, Value, ValueInspection,
 };
 
 use crate::plan::execution::ExecutionPlan;
@@ -36,8 +38,8 @@ use crate::plan::execution::function::RuntimeFunctionId;
 use crate::runtime::graph::RetainedValues;
 use crate::runtime::state::RuntimeState;
 
-pub fn run_main(plan: &ExecutionPlan) -> Result<Value, ExecutionError> {
-    let mut state = RuntimeState::new();
+pub fn run_main(plan: &ExecutionPlan, echo: &mut dyn EchoSink) -> Result<Value, ExecutionError> {
+    let mut state = RuntimeState::new(echo);
     let inputs = RetainedValues::empty();
     let value = match plan.main_runtime() {
         RuntimeFunctionId::Never(function) => {
@@ -90,7 +92,7 @@ fn run_src(src: &str) -> Value {
         crate::compile_typed_module("main", "main.gleam", src).expect("source should compile");
     let module_plan = crate::plan_module(module).expect("source should plan");
     let plan = crate::ExecutionPlan::from_module_plan(module_plan);
-    run_main(&plan).expect("source should run")
+    run_main(&plan, &mut Vec::new()).expect("source should run")
 }
 
 #[cfg(test)]
@@ -99,7 +101,7 @@ fn run_src_error(src: &str) -> ExecutionError {
         crate::compile_typed_module("main", "main.gleam", src).expect("source should compile");
     let module_plan = crate::plan_module(module).expect("source should plan");
     let plan = crate::ExecutionPlan::from_module_plan(module_plan);
-    run_main(&plan).expect_err("source should fail at runtime")
+    run_main(&plan, &mut Vec::new()).expect_err("source should fail at runtime")
 }
 
 #[cfg(test)]

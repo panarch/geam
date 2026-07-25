@@ -13,7 +13,7 @@ pub use invalid::{
 pub use unsupported::{
     UnsupportedArgumentReason, UnsupportedBitArraySegmentReason, UnsupportedCaseReason,
     UnsupportedExpressionKind, UnsupportedFunctionReason, UnsupportedPatternKind,
-    UnsupportedPipelineReason, UnsupportedTopLevelKind,
+    UnsupportedTopLevelKind,
 };
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -46,9 +46,6 @@ pub enum PlanError {
 
     #[error("unsupported case: {reason}")]
     UnsupportedCase { reason: UnsupportedCaseReason },
-
-    #[error("unsupported pipeline: {reason}")]
-    UnsupportedPipeline { reason: UnsupportedPipelineReason },
 
     #[error("invalid Gleam typed AST: {reason}")]
     InvalidTypedAst { reason: InvalidTypedAstReason },

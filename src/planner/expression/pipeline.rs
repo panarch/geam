@@ -1,11 +1,11 @@
-use super::{block, call, plan_expr};
+use super::{block, call, echo, plan_expr, var};
 use crate::plan::{Expr, Step};
 use crate::planner::context::PlanContext;
-use crate::planner::error::{
-    InvalidPipelineShapeReason, InvalidTypedAstReason, PlanError, UnsupportedPipelineReason,
-};
+use crate::planner::error::{InvalidPipelineShapeReason, InvalidTypedAstReason, PlanError};
 use crate::planner::statement::plan_variable_runtime_step;
-use gleam_core::ast::{PipelineAssignmentKind, TypedExpr, TypedPipelineAssignment};
+use gleam_core::ast::{PIPE_VARIABLE, PipelineAssignmentKind, TypedExpr, TypedPipelineAssignment};
+use gleam_core::type_::ValueConstructor;
+use gleam_core::type_::error::VariableOrigin;
 
 pub(super) fn plan(
     first_value: TypedPipelineAssignment,
@@ -55,10 +55,26 @@ fn plan_pipeline_value(
             plan_direct_call(expression, context)
         }
         PipelineAssignmentKind::Hole { .. } => plan_hole_call(expression, context),
-        PipelineAssignmentKind::Echo => Err(PlanError::UnsupportedPipeline {
-            reason: UnsupportedPipelineReason::Echo,
-        }),
+        PipelineAssignmentKind::Echo => plan_echo(expression, context),
     }
+}
+
+fn plan_echo(expression: TypedExpr, context: &mut PlanContext<'_>) -> Result<Expr, PlanError> {
+    let TypedExpr::Echo {
+        location,
+        expression: None,
+        message,
+        type_,
+    } = expression
+    else {
+        return Err(invalid_pipeline_shape(InvalidPipelineShapeReason::EchoStep));
+    };
+    let shape = context.value_shape(&type_);
+    let constructor =
+        ValueConstructor::local_variable(location, VariableOrigin::generated(), type_);
+    let value = var::plan_var(PIPE_VARIABLE.into(), constructor, shape, context)?;
+
+    echo::plan_value(location, value, message.map(|message| *message), context)
 }
 
 fn plan_direct_call(
@@ -104,7 +120,7 @@ fn invalid_pipeline_shape(reason: InvalidPipelineShapeReason) -> PlanError {
 
 #[cfg(test)]
 mod tests {
-    use crate::plan::{IntLocalId, LocalId};
+    use crate::plan::{EchoSite, EchoSubject, IntLocalId, LocalId, SourceSpan, Step};
     use crate::planner::dsl::{
         block_int, bool_, bool_arg, bool_return_block, bool_return_tail_call, call_int,
         call_int_function, function, int, int_arg, int_function_call_arg, int_function_closure,
@@ -117,8 +133,9 @@ mod tests {
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span, expect_plan_error};
     use crate::planner::{
-        InvalidCallShapeReason, InvalidExpressionType, InvalidPipelineShapeReason,
-        InvalidTypedAstReason, PlanError, UnsupportedExpressionKind, UnsupportedPipelineReason,
+        InvalidCallShapeReason, InvalidExpressionShapeKind, InvalidExpressionType,
+        InvalidPipelineShapeReason, InvalidTypedAstReason, PlanError,
+        UnsupportedBitArraySegmentReason,
     };
     use gleam_core::ast::{
         ArgNames, CallArg, FunctionLiteralKind, ImplicitCallArgOrigin, PipelineAssignmentKind,
@@ -127,6 +144,35 @@ mod tests {
     use gleam_core::type_::{self, ValueConstructor, ValueConstructorVariant};
     use std::sync::Arc;
     use vec1::Vec1;
+
+    #[test]
+    fn plan_pipeline_echo() {
+        let source = r#"pub fn main() { 1 |> echo as "selected" }"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
+        let expected = module(
+            "main",
+            function(
+                "main",
+                int_return_block(
+                    [let_int_step(0, "_pipe", int(1))],
+                    int_return_block(
+                        [Step::echo(
+                            EchoSubject::Int {
+                                local: IntLocalId(1),
+                                value: local_int(0, "_pipe").into(),
+                            },
+                            Some(string("selected").into()),
+                            EchoSite::new("main".into(), "main".into(), SourceSpan::new(21, 39)),
+                        )],
+                        int_return_expr(local_int(1, "<echo>")),
+                    ),
+                ),
+            ),
+            [],
+        );
+
+        assert_eq!(actual, expected);
+    }
 
     #[test]
     fn plan_pipeline_direct_local_function() {
@@ -591,9 +637,22 @@ fn identity_nil(value: Nil) {
     #[test]
     fn reject_profile_pipeline_forms() {
         assert_eq!(
-            expect_plan_error(r#"pub fn main() { 1 |> echo }"#),
-            PlanError::UnsupportedPipeline {
-                reason: UnsupportedPipelineReason::Echo,
+            expect_plan_error(
+                r#"
+fn add(left: Int, right: Int) {
+  left + right
+}
+
+pub fn main() {
+  {
+    <<1:native>>
+    1
+  } |> add(1)
+}
+"#,
+            ),
+            PlanError::UnsupportedBitArraySegment {
+                reason: UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
         assert_eq!(
@@ -604,28 +663,15 @@ fn add(left: Int, right: Int) {
 }
 
 pub fn main() {
-  echo 1 |> add(1)
+  1 |> add({
+    <<1:native>>
+    1
+  })
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
-            },
-        );
-        assert_eq!(
-            expect_plan_error(
-                r#"
-fn add(left: Int, right: Int) {
-  left + right
-}
-
-pub fn main() {
-  1 |> add(echo 1)
-}
-"#,
-            ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
     }
@@ -636,15 +682,17 @@ pub fn main() {
         let (first_value, _, _, _) = expect_pipeline_statement_mut(
             &mut unsupported_first_assignment.definitions.functions[1].body[0],
         );
-        let mut echo_module = compile("pub fn main() { echo 1 }");
-        let echo =
-            expect_expression_statement_mut(&mut echo_module.definitions.functions[0].body[0])
-                .clone();
-        *first_value.value = echo;
+        *first_value.value = TypedExpr::Invalid {
+            location: dummy_span(),
+            type_: type_::int(),
+            extra_information: None,
+        };
         assert_eq!(
             plan_module(unsupported_first_assignment),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::Invalid,
+                },
             }),
         );
 
@@ -709,6 +757,48 @@ pub fn main() {
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
                     reason: InvalidCallShapeReason::LocalFunctionCallReturnTypeMismatch,
+                },
+            }),
+        );
+
+        let pipeline_echo_source = r#"
+pub fn main() {
+  1 |> echo
+}
+"#;
+        let mut invalid_echo_step = compile(pipeline_echo_source);
+        let (_, _, finally, _) =
+            expect_pipeline_statement_mut(&mut invalid_echo_step.definitions.functions[0].body[0]);
+        **finally = super::super::typed_int_expr(1);
+        assert_eq!(
+            plan_module(invalid_echo_step),
+            Err(invalid_pipeline_shape(InvalidPipelineShapeReason::EchoStep,)),
+        );
+
+        let mut echo_with_subject = compile(pipeline_echo_source);
+        let (_, _, finally, _) =
+            expect_pipeline_statement_mut(&mut echo_with_subject.definitions.functions[0].body[0]);
+        **finally = TypedExpr::Echo {
+            location: dummy_span(),
+            expression: Some(Box::new(super::super::typed_int_expr(1))),
+            message: None,
+            type_: type_::int(),
+        };
+        assert_eq!(
+            plan_module(echo_with_subject),
+            Err(invalid_pipeline_shape(InvalidPipelineShapeReason::EchoStep,)),
+        );
+
+        let mut missing_echo_pipe_local = compile(pipeline_echo_source);
+        let (first_value, _, _, _) = expect_pipeline_statement_mut(
+            &mut missing_echo_pipe_local.definitions.functions[0].body[0],
+        );
+        first_value.name = "_other".into();
+        assert_eq!(
+            plan_module(missing_echo_pipe_local),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::UnknownLocal {
+                    name: "_pipe".into(),
                 },
             }),
         );

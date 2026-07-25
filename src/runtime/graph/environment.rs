@@ -809,7 +809,10 @@ pub fn main() {
         let module = crate::plan_module(typed).expect("source should plan");
 
         assert_eq!(
-            crate::run_main(&crate::ExecutionPlan::from_module_plan(module)),
+            crate::run_main(
+                &crate::ExecutionPlan::from_module_plan(module),
+                &mut Vec::new(),
+            ),
             Ok(Value::List(ListValue::utf_codepoint(vec!['A']))),
         );
     }

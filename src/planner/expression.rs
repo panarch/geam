@@ -3,6 +3,7 @@ mod block;
 mod call;
 mod case;
 mod constant;
+mod echo;
 mod function;
 mod operator;
 mod pipeline;
@@ -19,7 +20,6 @@ use crate::plan::{
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
     InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-    UnsupportedExpressionKind,
 };
 use gleam_core::ast::TodoKind;
 use gleam_core::ast::TypedExpr;
@@ -125,9 +125,17 @@ pub(super) fn plan_expr(
             message,
             ..
         } => plan_panic_expr(location, message.map(|message| *message), type_, context),
-        TypedExpr::Echo { .. } => Err(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::Echo,
-        }),
+        TypedExpr::Echo {
+            location,
+            expression,
+            message,
+            ..
+        } => echo::plan(
+            location,
+            expression.map(|value| *value),
+            message.map(|value| *value),
+            context,
+        ),
         TypedExpr::BitArray { segments, .. } => {
             bit_array::plan_expression(segments, context).map(Expr::bit_array)
         }
@@ -950,7 +958,7 @@ mod tests {
     use crate::planner::support::{compile, dummy_span, expect_plan_error};
     use crate::planner::{
         InvalidExpressionShapeKind, InvalidExpressionType, InvalidModuleReferenceReason,
-        InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+        InvalidTypedAstReason, PlanError,
     };
     use gleam_core::ast::{Constant, Statement, TypedExpr, TypedModule};
     use gleam_core::type_::{self, ModuleValueConstructor, Type};
@@ -1345,12 +1353,15 @@ pub fn main() -> Int {
             expect_plan_error(
                 r#"
 pub fn main() -> Int {
-  panic as echo "boom"
+  panic as {
+    <<1:native>>
+    "boom"
+  }
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
 
@@ -1358,12 +1369,15 @@ pub fn main() -> Int {
             expect_plan_error(
                 r#"
 pub fn main() -> Int {
-  todo as echo "later"
+  todo as {
+    <<1:native>>
+    "later"
+  }
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
     }
@@ -1431,16 +1445,6 @@ pub fn main() -> Int {
                 }),
             );
         }
-    }
-
-    #[test]
-    fn reject_profile_expression_variants() {
-        assert_eq!(
-            expect_plan_error(r#"pub fn main() { echo 1 }"#),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
-            },
-        );
     }
 
     #[test]

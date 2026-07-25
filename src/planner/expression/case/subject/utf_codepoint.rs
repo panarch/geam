@@ -125,9 +125,7 @@ mod tests {
     };
     use crate::planner::plan_module;
     use crate::planner::support::dummy_span;
-    use crate::planner::{
-        InvalidCaseShapeReason, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
-    };
+    use crate::planner::{InvalidCaseShapeReason, InvalidTypedAstReason, PlanError};
     use gleam_core::type_::error::VariableOrigin;
 
     #[test]
@@ -286,21 +284,21 @@ pub fn main() {
         for source in [
             r#"
 fn identity(value: UtfCodepoint) -> UtfCodepoint {
-  case echo value { bound -> bound }
+  case { <<1:native>> value } { bound -> bound }
 }
 pub fn main() { 0 }
 "#,
             r#"
 fn identity(value: UtfCodepoint) -> UtfCodepoint {
-  case value { bound -> echo bound }
+  case value { bound -> { <<1:native>> bound } }
 }
 pub fn main() { 0 }
 "#,
         ] {
             assert_eq!(
                 plan_module(crate::planner::support::compile(source)),
-                Err(PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::Echo,
+                Err(PlanError::UnsupportedBitArraySegment {
+                    reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
                 }),
             );
         }

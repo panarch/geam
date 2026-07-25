@@ -3,5 +3,6 @@ pub fn value() {
 }
 
 fn unsupported() {
-  echo 1
+  <<1:native>>
+  1
 }

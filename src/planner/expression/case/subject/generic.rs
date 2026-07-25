@@ -135,9 +135,7 @@ mod tests {
     use crate::planner::expression::typed_int_expr;
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
-    use crate::planner::{
-        InvalidCaseShapeReason, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
-    };
+    use crate::planner::{InvalidCaseShapeReason, InvalidTypedAstReason, PlanError};
     use ecow::EcoString;
     use gleam_core::ast::{BinOp, ClauseGuard, Constant, Pattern};
     use gleam_core::type_::{self, error::VariableOrigin};
@@ -327,7 +325,7 @@ pub fn main() { 1 }
         for source in [
             r#"
 fn invalid(value: value) -> value {
-  case echo value {
+  case { <<1:native>> value } {
     _ -> value
   }
 }
@@ -337,7 +335,7 @@ pub fn main() { 1 }
             r#"
 fn invalid(value: value) -> value {
   case value {
-    _ -> echo value
+    _ -> { <<1:native>> value }
   }
 }
 
@@ -346,8 +344,8 @@ pub fn main() { 1 }
         ] {
             assert_eq!(
                 plan_module(compile(source)),
-                Err(PlanError::UnsupportedExpression {
-                    kind: UnsupportedExpressionKind::Echo,
+                Err(PlanError::UnsupportedBitArraySegment {
+                    reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
                 }),
             );
         }

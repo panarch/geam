@@ -855,9 +855,7 @@ mod tests {
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span, expect_plan_error};
-    use crate::planner::{
-        InvalidCaseShapeReason, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
-    };
+    use crate::planner::{InvalidCaseShapeReason, InvalidTypedAstReason, PlanError};
     use ecow::EcoString;
     use gleam_core::ast::TypedExpr;
     use gleam_core::type_::{self, Type, TypeVar};
@@ -1278,13 +1276,13 @@ mod tests {
 pub fn main() {
   case True {
     _ -> 1
-    True -> echo 2
+    True -> { <<1:native>> 2 }
   }
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
 
@@ -1294,13 +1292,13 @@ pub fn main() {
 pub fn main() {
   case 1 {
     _ -> 1
-    1 -> echo 2
+    1 -> { <<1:native>> 2 }
   }
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
 
@@ -1309,14 +1307,14 @@ pub fn main() {
                 r#"
 pub fn main() {
   case 1 {
-    value if value > 0 -> echo value
+    value if value > 0 -> { <<1:native>> value }
     _ -> 0
   }
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
     }

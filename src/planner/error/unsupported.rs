@@ -38,8 +38,6 @@ pub enum UnsupportedPatternKind {
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedExpressionKind {
-    #[error("echo")]
-    Echo,
     #[error("list element type is not supported")]
     UnsupportedListElementType,
 }
@@ -56,10 +54,4 @@ pub enum UnsupportedBitArraySegmentReason {
 pub enum UnsupportedCaseReason {
     #[error("case subject type is not supported")]
     UnsupportedSubjectType,
-}
-
-#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
-pub enum UnsupportedPipelineReason {
-    #[error("echo")]
-    Echo,
 }

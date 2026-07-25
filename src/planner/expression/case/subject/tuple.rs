@@ -1330,14 +1330,14 @@ pub fn main() {
             expect_plan_error(
                 r#"
 pub fn main() {
-  case echo #(1, 2) {
+  case { <<1:native>> #(1, 2) } {
     _ -> 0
   }
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: crate::planner::UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
     }
@@ -1349,13 +1349,13 @@ pub fn main() {
                 r#"
 pub fn main() {
   case #(1, 2) {
-    _ -> echo 0
+    _ -> { <<1:native>> 0 }
   }
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: crate::planner::UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
     }

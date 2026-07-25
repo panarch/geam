@@ -34,7 +34,7 @@ mod tests {
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span, expect_plan_error};
     use crate::planner::{
-        InvalidExpressionType, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+        InvalidExpressionType, InvalidTypedAstReason, PlanError, UnsupportedBitArraySegmentReason,
     };
     use gleam_core::ast::{BinOp, TypedExpr};
     use gleam_core::type_;
@@ -69,14 +69,14 @@ pub fn or_op() {
                 r#"
 pub fn main() {
   False && {
-    echo 1
+    <<1:native>>
     True
   }
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
         assert_eq!(
@@ -84,14 +84,14 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    echo 1
+    <<1:native>>
     False
   } || True
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
         assert_eq!(
@@ -99,14 +99,14 @@ pub fn main() {
                 r#"
 pub fn main() {
   True || {
-    echo 1
+    <<1:native>>
     False
   }
 }
 "#,
             ),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
     }

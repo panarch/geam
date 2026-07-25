@@ -21,6 +21,13 @@ pub struct PanicSite {
     span: SourceSpan,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EchoSite {
+    module: EcoString,
+    function: EcoString,
+    span: SourceSpan,
+}
+
 impl SourceContext {
     pub fn new(path: impl Into<Utf8PathBuf>, source: impl Into<String>) -> Self {
         Self {
@@ -108,9 +115,31 @@ impl PanicSite {
     }
 }
 
+impl EchoSite {
+    pub fn new(module: EcoString, function: EcoString, span: SourceSpan) -> Self {
+        Self {
+            module,
+            function,
+            span,
+        }
+    }
+
+    pub fn module(&self) -> &EcoString {
+        &self.module
+    }
+
+    pub fn function(&self) -> &EcoString {
+        &self.function
+    }
+
+    pub fn span(&self) -> SourceSpan {
+        self.span
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{PanicSite, SourceContext, SourceSpan};
+    use super::{EchoSite, PanicSite, SourceContext, SourceSpan};
     use gleam_core::ast::SrcSpan;
 
     #[test]
@@ -140,6 +169,15 @@ mod tests {
     #[test]
     fn panic_site_preserves_module_function_and_span() {
         let site = PanicSite::new("main".into(), "run".into(), SourceSpan::new(4, 8));
+
+        assert_eq!(site.module(), "main");
+        assert_eq!(site.function(), "run");
+        assert_eq!(site.span(), SourceSpan::new(4, 8));
+    }
+
+    #[test]
+    fn echo_site_preserves_module_function_and_span() {
+        let site = EchoSite::new("main".into(), "run".into(), SourceSpan::new(4, 8));
 
         assert_eq!(site.module(), "main");
         assert_eq!(site.function(), "run");

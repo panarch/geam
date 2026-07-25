@@ -1209,9 +1209,9 @@ pub fn main() { 0 }
     #[test]
     fn reject_profile_bit_array_segment_expression_error() {
         assert_eq!(
-            crate::planner::support::expect_plan_error("pub fn main() { <<echo 1>> }"),
-            PlanError::UnsupportedExpression {
-                kind: crate::planner::error::UnsupportedExpressionKind::Echo,
+            crate::planner::support::expect_plan_error("pub fn main() { <<{ <<1:native>> 1 }>> }",),
+            PlanError::UnsupportedBitArraySegment {
+                reason: UnsupportedBitArraySegmentReason::NativeEndianness,
             },
         );
     }

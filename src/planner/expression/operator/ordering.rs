@@ -96,7 +96,7 @@ mod tests {
     use crate::planner::dsl::{float, function, int, module};
     use crate::planner::plan_module;
     use crate::planner::support::{compile, expect_plan_error};
-    use crate::planner::{PlanError, UnsupportedExpressionKind};
+    use crate::planner::{PlanError, UnsupportedBitArraySegmentReason};
 
     #[test]
     fn plan_integer_ordering() {
@@ -176,7 +176,7 @@ pub fn gte() {
                 r#"
 pub fn main() {
   {
-    echo 1
+    <<1:native>>
     1
   } < 1
 }
@@ -187,7 +187,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   1 < {
-    echo 1
+    <<1:native>>
     1
   }
 }
@@ -198,7 +198,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    echo 1
+    <<1:native>>
     1
   } <= 1
 }
@@ -209,7 +209,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   1 <= {
-    echo 1
+    <<1:native>>
     1
   }
 }
@@ -220,7 +220,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    echo 1
+    <<1:native>>
     1
   } > 1
 }
@@ -231,7 +231,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   1 > {
-    echo 1
+    <<1:native>>
     1
   }
 }
@@ -242,7 +242,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    echo 1
+    <<1:native>>
     1
   } >= 1
 }
@@ -253,7 +253,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   1 >= {
-    echo 1
+    <<1:native>>
     1
   }
 }
@@ -264,7 +264,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    echo 1
+    <<1:native>>
     1.0
   } <. 1.0
 }
@@ -275,7 +275,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   1.0 <. {
-    echo 1
+    <<1:native>>
     1.0
   }
 }
@@ -286,7 +286,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    echo 1
+    <<1:native>>
     1.0
   } <=. 1.0
 }
@@ -297,7 +297,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   1.0 <=. {
-    echo 1
+    <<1:native>>
     1.0
   }
 }
@@ -308,7 +308,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    echo 1
+    <<1:native>>
     1.0
   } >. 1.0
 }
@@ -319,7 +319,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   1.0 >. {
-    echo 1
+    <<1:native>>
     1.0
   }
 }
@@ -330,7 +330,7 @@ pub fn main() {
                 r#"
 pub fn main() {
   {
-    echo 1
+    <<1:native>>
     1.0
   } >=. 1.0
 }
@@ -341,22 +341,22 @@ pub fn main() {
                 r#"
 pub fn main() {
   1.0 >=. {
-    echo 1
+    <<1:native>>
     1.0
   }
 }
 "#,
             ),
         ] {
-            assert_echo_reject(name, src);
+            assert_native_endianness_rejected(name, src);
         }
     }
 
-    fn assert_echo_reject(name: &str, src: &str) {
+    fn assert_native_endianness_rejected(name: &str, src: &str) {
         assert_eq!(
             expect_plan_error(src),
-            PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::Echo,
+            PlanError::UnsupportedBitArraySegment {
+                reason: UnsupportedBitArraySegmentReason::NativeEndianness,
             },
             "{name}",
         );

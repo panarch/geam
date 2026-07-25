@@ -16,8 +16,7 @@ pub use error::{
     InvalidModuleReferenceReason, InvalidPipelineShapeReason, InvalidRecordUpdateShapeReason,
     InvalidTypedAstReason, InvalidUseShapeReason, PlanError, UnsupportedArgumentReason,
     UnsupportedBitArraySegmentReason, UnsupportedCaseReason, UnsupportedExpressionKind,
-    UnsupportedFunctionReason, UnsupportedPatternKind, UnsupportedPipelineReason,
-    UnsupportedTopLevelKind,
+    UnsupportedFunctionReason, UnsupportedPatternKind, UnsupportedTopLevelKind,
 };
 pub use module::{plan_module, plan_module_with_source, plan_program};
 

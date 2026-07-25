@@ -632,7 +632,10 @@ mod tests {
                 .map(|context| context.source()),
             Some(dependency_source),
         );
-        assert_eq!(crate::run_main(&execution), Ok(crate::Value::Int(7.into())),);
+        assert_eq!(
+            crate::run_main(&execution, &mut Vec::new()),
+            Ok(crate::Value::Int(7.into())),
+        );
         assert_eq!(
             execution.explain().to_string(),
             concat!(
@@ -683,7 +686,7 @@ pub fn main() {
         assert_eq!(execution.functions.value_returns.string_functions.len(), 1);
         assert_eq!(execution.functions.value_returns.tuple_functions.len(), 1);
         assert_eq!(
-            crate::run_main(&execution),
+            crate::run_main(&execution, &mut Vec::new()),
             Ok(crate::Value::Tuple(vec![
                 crate::Value::Int(1.into()),
                 crate::Value::Int(2.into()),
