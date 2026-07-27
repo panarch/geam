@@ -21,10 +21,10 @@ Gleam source -> Geam execution plan -> Rust-embedded runtime
 
 Geam keeps Gleam as the source language. It uses Gleam's parser and
 analyse/infer pass, then lowers the supported executable surface of an
-in-memory module graph into a Rust-owned plan.
+selected module graph into a Rust-owned plan.
 
 ```text
-Gleam module sources
+Resolved Gleam project or in-memory module sources
 -> Gleam typed program
 -> Geam module plan
 -> Geam execution plan
@@ -43,15 +43,18 @@ human-readable output rather than a stable serialization format.
 ## Status
 
 Geam is in an early runtime milestone. The current execution profile includes
-the core Gleam value families, local custom types, generics, patterns, records,
-functions, constants, and in-memory imports. Package loading, the Gleam
-standard library, and backend external functions or types are not runtime
-linkage surfaces.
+the core Gleam value families, custom types, generics, patterns, records,
+functions, constants, imports, and read-only loading of already resolved Gleam
+projects. The official `gleam_stdlib` package is not built in: compatible
+imported modules are compiled from the package sources resolved by Gleam.
+Backend external functions or types are not runtime linkage surfaces.
 
 The main public entry points are:
 
 - `compile_typed_module`
 - `compile_typed_program`
+- `compile_typed_package_program`
+- `compile_typed_project`
 - `plan_module`
 - `plan_program`
 - `ExecutionPlan::explain`
@@ -64,7 +67,9 @@ emit through that boundary and continue with their original value.
 
 ## Upstream
 
-Current Gleam baseline: `v1.17.0`.
+Current Gleam compiler baseline: `v1.17.0`.
+
+Current Gleam stdlib integration baseline: `gleam_stdlib` `v1.0.3`.
 
 See [docs/upstream-gleam.md](docs/upstream-gleam.md) for the exact commit,
 compiler-boundary details, and sync policy.

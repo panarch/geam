@@ -46,6 +46,29 @@ and `support/math.gleam` becomes `support/math`) and uses the public
 `compile_typed_program -> plan_program` pipeline. It does not perform package or
 filesystem module resolution beyond loading the fixture case.
 
+Resolved-project loader behavior is covered by synthetic temporary projects in
+the frontend owner tests. These tests construct Hex, Git, and Local package
+layouts without network access or an installed Gleam CLI. They keep normal
+`cargo test`, locked tests, and coverage hermetic.
+
+The tracked `tests/fixtures/projects/gleam_stdlib` project locks official
+`gleam_stdlib` `v1.0.3` but does not track downloaded package source. Its
+ignored integration test is run separately:
+
+```sh
+cd tests/fixtures/projects/gleam_stdlib
+gleam deps download
+cd ../../../..
+cargo test --test gleam_stdlib -- --ignored
+```
+
+CI prepares this fixture with Gleam `v1.17.0` and runs selected official
+pure-Gleam modules through `compile_typed_project -> plan_program ->
+ExecutionPlan::from_module_plan -> run_main`. Each tracked module fixes its
+analyzed public surface and verifies representative behavior in a local Gleam
+fixture. This integration suite does not replace synthetic owner coverage for
+the production loader.
+
 Source-level rejection fixtures live under categorized
 `tests/fixtures/rejection/**/*.gleam` paths. They are reserved for public
 boundary cases that are clearer as complete Gleam modules than as planner unit

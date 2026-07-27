@@ -77,6 +77,37 @@ jobs:
       - name: Run locked tests
         run: cargo test --locked
 
+  gleam-stdlib:
+    name: Gleam stdlib
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Gleam toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          gleam-version: "1.17.0"
+          rebar3-version: "3"
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false
+          rustflags: ""
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Download fixture dependencies
+        working-directory: tests/fixtures/projects/gleam_stdlib
+        run: gleam deps download
+
+      - name: Run Gleam stdlib tests
+        run: cargo test --test gleam_stdlib -- --ignored
+
   coverage:
     name: coverage
     runs-on: ubuntu-latest

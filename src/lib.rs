@@ -4,7 +4,8 @@ pub mod planner;
 pub mod runtime;
 
 pub use frontend::{
-    FrontendError, ModuleSource, TypedProgram, compile_typed_module, compile_typed_program,
+    FrontendError, ModuleSource, PackageSource, ProjectError, TypedProgram, compile_typed_module,
+    compile_typed_package_program, compile_typed_program, compile_typed_project,
 };
 pub use plan::execution::{ExecutionPlan, ExecutionPlanExplanation};
 pub use plan::{

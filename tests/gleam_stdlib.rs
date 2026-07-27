@@ -1,0 +1,182 @@
+use camino::{Utf8Path, Utf8PathBuf};
+use geam::{ExecutionPlan, TypedProgram, Value, compile_typed_project, plan_program, run_main};
+use gleam_core::type_::printer::Printer;
+
+#[path = "gleam_stdlib/gleam_bool.rs"]
+mod gleam_bool;
+#[path = "gleam_stdlib/gleam_order.rs"]
+mod gleam_order;
+
+struct ExpectedSurface {
+    values: &'static [&'static str],
+    types: &'static [(&'static str, usize)],
+    type_aliases: &'static [&'static str],
+    constructors: &'static [(&'static str, &'static str, usize)],
+    functions: &'static str,
+}
+
+fn assert_surface(root_module: &str, dependency_module: &str, expected: &ExpectedSurface) {
+    let program = compile_fixture(root_module, dependency_module);
+    let module = program
+        .modules()
+        .find(|module| {
+            module.type_info.package == "gleam_stdlib" && module.name == dependency_module
+        })
+        .expect("stdlib dependency module should be loaded");
+
+    let mut values = module
+        .type_info
+        .values
+        .keys()
+        .map(|name| name.as_str())
+        .collect::<Vec<_>>();
+    values.sort_unstable();
+    assert_eq!(values.as_slice(), expected.values);
+
+    let mut types = module
+        .type_info
+        .types
+        .keys()
+        .map(|name| name.as_str())
+        .collect::<Vec<_>>();
+    types.sort_unstable();
+    assert_eq!(
+        types,
+        expected
+            .types
+            .iter()
+            .map(|(name, _)| *name)
+            .collect::<Vec<_>>(),
+    );
+
+    let mut type_aliases = module
+        .type_info
+        .type_aliases
+        .keys()
+        .map(|name| name.as_str())
+        .collect::<Vec<_>>();
+    type_aliases.sort_unstable();
+    assert_eq!(type_aliases.as_slice(), expected.type_aliases);
+
+    let mut custom_types = module
+        .definitions
+        .custom_types
+        .iter()
+        .filter(|type_| type_.publicity.is_public())
+        .map(|type_| (type_.name.as_str(), type_.parameters.len()))
+        .collect::<Vec<_>>();
+    custom_types.sort_unstable();
+    assert_eq!(custom_types.as_slice(), expected.types);
+
+    let mut constructors = module
+        .definitions
+        .custom_types
+        .iter()
+        .filter(|type_| type_.publicity.is_public())
+        .flat_map(|type_| {
+            type_.constructors.iter().map(|constructor| {
+                (
+                    type_.name.as_str(),
+                    constructor.name.as_str(),
+                    constructor.arguments.len(),
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    constructors.sort_unstable();
+    assert_eq!(constructors.as_slice(), expected.constructors);
+
+    let mut functions = module
+        .definitions
+        .functions
+        .iter()
+        .filter(|function| function.publicity.is_public())
+        .map(|function| {
+            let (_, name) = function
+                .name
+                .as_ref()
+                .expect("public module function should have a name");
+            let mut printer = Printer::new_without_type_variables(&module.names);
+            let mut signature = String::from(name.as_str());
+            signature.push_str(": fn(");
+
+            for (index, argument) in function.arguments.iter().enumerate() {
+                if index > 0 {
+                    signature.push_str(", ");
+                }
+                if let Some(label) = argument.names.get_label() {
+                    signature.push_str(label);
+                    signature.push_str(": ");
+                }
+                signature.push_str(&printer.print_type(&argument.type_));
+            }
+
+            signature.push_str(") -> ");
+            signature.push_str(&printer.print_type(&function.return_type));
+            signature
+        })
+        .collect::<Vec<_>>();
+    functions.sort_unstable();
+    assert_eq!(functions.join("\n"), expected.functions.trim());
+}
+
+fn run_fixture(root_module: &str, dependency_module: &str) -> Value {
+    let source = std::fs::read_to_string(
+        project_root()
+            .join("src")
+            .join(root_module)
+            .with_extension("gleam"),
+    )
+    .expect("stdlib fixture source should be readable");
+    let expected = source
+        .lines()
+        .rev()
+        .find(|line| !line.trim().is_empty())
+        .expect("stdlib fixture should not be empty")
+        .trim()
+        .strip_prefix("// @geam:expect ")
+        .expect("last non-empty stdlib fixture line should contain `// @geam:expect`");
+    let program = compile_fixture(root_module, dependency_module);
+    let module_plan = plan_program(program).expect("stdlib fixture should plan");
+
+    assert_eq!(
+        module_plan
+            .modules()
+            .iter()
+            .map(|module| (module.package().as_str(), module.module().as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("gleam_stdlib", dependency_module),
+            ("geam_stdlib_test", root_module),
+        ],
+    );
+
+    let plan = ExecutionPlan::from_module_plan(module_plan);
+    let actual = run_main(&plan, &mut Vec::new()).expect("stdlib fixture should run");
+
+    assert_eq!(actual.inspect().to_string(), expected);
+
+    actual
+}
+
+fn compile_fixture(root_module: &str, dependency_module: &str) -> TypedProgram {
+    let program =
+        compile_typed_project(project_root(), root_module).expect("stdlib fixture should compile");
+
+    assert_eq!(
+        program
+            .modules()
+            .map(|module| (module.type_info.package.as_str(), module.name.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("gleam_stdlib", dependency_module),
+            ("geam_stdlib_test", root_module),
+        ],
+    );
+
+    program
+}
+
+fn project_root() -> Utf8PathBuf {
+    Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/projects/gleam_stdlib")
+}

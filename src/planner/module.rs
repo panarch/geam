@@ -61,6 +61,7 @@ struct ModuleInput {
 
 struct ModuleDeclarations {
     id: ModuleId,
+    package: EcoString,
     module_name: EcoString,
     source_context: Option<SourceContext>,
     custom_types: Vec<crate::plan::CustomTypeDefinition>,
@@ -70,6 +71,7 @@ struct ModuleDeclarations {
 
 struct ModuleBodies {
     id: ModuleId,
+    package: EcoString,
     source_context: Option<SourceContext>,
     functions: Vec<FunctionToPlan>,
     constants: ConstantBodies,
@@ -78,6 +80,7 @@ struct ModuleBodies {
 
 struct ModuleFunctionDeclarations {
     id: ModuleId,
+    package: EcoString,
     module_name: EcoString,
     source_context: Option<SourceContext>,
     custom_types: Vec<crate::plan::CustomTypeDefinition>,
@@ -89,6 +92,7 @@ struct ModuleFunctionDeclarations {
 
 struct ModuleFunctions {
     id: ModuleId,
+    package: EcoString,
     source_context: Option<SourceContext>,
     functions: Vec<FunctionToPlan>,
     constants: crate::plan::ConstantTemplates,
@@ -108,6 +112,7 @@ fn plan_modules(root_index: usize, modules: Vec<ModuleInput>) -> Result<ModulePl
             custom_type::plan_custom_types(&package, &module_name, definitions.custom_types)?;
         declarations.push(ModuleDeclarations {
             id,
+            package,
             module_name,
             source_context: module.source_context,
             custom_types,
@@ -130,6 +135,7 @@ fn plan_modules(root_index: usize, modules: Vec<ModuleInput>) -> Result<ModulePl
         } = function_table(declaration.id, &declaration.functions, role)?;
         function_declarations.push(ModuleFunctionDeclarations {
             id: declaration.id,
+            package: declaration.package,
             module_name: declaration.module_name,
             source_context: declaration.source_context,
             custom_types: declaration.custom_types,
@@ -153,6 +159,7 @@ fn plan_modules(root_index: usize, modules: Vec<ModuleInput>) -> Result<ModulePl
         ));
         bodies.push(ModuleBodies {
             id: declaration.id,
+            package: declaration.package,
             source_context: declaration.source_context,
             functions: declaration.functions,
             constants: constant_bodies,
@@ -167,6 +174,7 @@ fn plan_modules(root_index: usize, modules: Vec<ModuleInput>) -> Result<ModulePl
             plan_constant_bodies(module.constants, &registry, &mut module.anonymous_functions)?;
         functions_to_plan.push(ModuleFunctions {
             id: module.id,
+            package: module.package,
             source_context: module.source_context,
             functions: module.functions,
             constants,
@@ -188,12 +196,15 @@ fn plan_modules(root_index: usize, modules: Vec<ModuleInput>) -> Result<ModulePl
         planned_functions.sort_by_key(|function| function.id().index());
         planned_modules.push(PlannedModule::new(
             module.id,
-            registry.module_name(module.id).clone(),
-            module.source_context,
-            registry.custom_types(module.id).to_vec(),
-            module.constants,
-            planned_functions,
-            module.anonymous_functions.into_functions(),
+            module.package,
+            crate::plan::module::PlannedModuleParts {
+                module: registry.module_name(module.id).clone(),
+                source_context: module.source_context,
+                custom_types: registry.custom_types(module.id).to_vec(),
+                constants: module.constants,
+                functions: planned_functions,
+                anonymous_functions: module.anonymous_functions.into_functions(),
+            },
         ));
     }
 
@@ -698,7 +709,9 @@ impl FunctionParamLocalCounters {
 #[cfg(test)]
 mod tests {
     use super::{plan_module, plan_program};
-    use crate::frontend::{ModuleSource, compile_typed_program};
+    use crate::frontend::{
+        ModuleSource, PackageSource, compile_typed_package_program, compile_typed_program,
+    };
     use crate::plan::module::{ReturnBodyKind, ReturnExprKind};
     use crate::plan::{
         BitArrayListLocalId, BoolListLocalId, ConstantTemplate, ConstantTemplateId,
@@ -768,6 +781,8 @@ pub fn main() {
         );
         assert_eq!(plan.modules()[0].id(), crate::plan::ModuleId::new(0));
         assert_eq!(plan.modules()[1].id(), crate::plan::ModuleId::new(1));
+        assert_eq!(plan.modules()[0].package(), "geam");
+        assert_eq!(plan.modules()[1].package(), "geam");
         assert_eq!(
             plan.modules()[0].functions()[0].id().module(),
             crate::plan::ModuleId::new(0),
@@ -796,6 +811,67 @@ pub fn main() {
 }
 "#,
             )
+        );
+    }
+
+    #[test]
+    fn plan_program_preserves_cross_package_module_and_custom_type_ownership() {
+        let typed = compile_typed_package_program(
+            "application",
+            "main",
+            [
+                PackageSource::new(
+                    "application",
+                    ["library"],
+                    [ModuleSource::new(
+                        "main",
+                        "main.gleam",
+                        r#"
+import support.{Boxed, boxed}
+
+pub fn main() {
+  boxed(42)
+}
+"#,
+                    )],
+                ),
+                PackageSource::new(
+                    "library",
+                    Vec::<ecow::EcoString>::new(),
+                    [ModuleSource::new(
+                        "support",
+                        "support.gleam",
+                        r#"
+pub type Boxed(value) {
+  Boxed(value)
+}
+
+pub fn boxed(value) {
+  Boxed(value)
+}
+"#,
+                    )],
+                ),
+            ],
+        )
+        .expect("package program should compile");
+        let plan = plan_program(typed).expect("package program should plan");
+
+        assert_eq!(
+            plan.modules()
+                .iter()
+                .map(|module| (module.package().as_str(), module.module().as_str()))
+                .collect::<Vec<_>>(),
+            [("library", "support"), ("application", "main")],
+        );
+        let custom_name = plan.modules()[0].custom_types()[0].name();
+        assert_eq!(custom_name.package(), "library");
+        assert_eq!(custom_name.module(), "support");
+        assert_eq!(custom_name.name(), "Boxed");
+        assert_eq!(plan.root(), ModuleId::new(1));
+        assert_eq!(
+            plan.entry(),
+            FunctionTemplateId::in_module(ModuleId::new(1), 0)
         );
     }
 
