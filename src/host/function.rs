@@ -1,8 +1,9 @@
 mod adapter;
 mod argument;
 mod return_;
+mod type_;
 
-use crate::plan::{FunctionType, ValueType};
+use crate::plan::FunctionType;
 use ecow::EcoString;
 use std::fmt;
 
@@ -10,6 +11,7 @@ pub(crate) use argument::{
     HostBoolArgumentSlot, HostCallArguments, HostIntArgumentSlot, HostParameter,
 };
 pub(crate) use return_::{HostBoolFunction, HostFunctionImplementation, HostIntFunction};
+pub(crate) use type_::HostValueType;
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct HostFunctionSchema {
@@ -56,12 +58,6 @@ impl<Function, Arguments, Return> HostFunction<Arguments, Return> for Function w
 pub(crate) struct HostFunctionDefinition {
     schema: HostFunctionSchema,
     implementation: HostFunctionImplementation,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum HostValueType {
-    Int,
-    Bool,
 }
 
 impl HostFunctionSchema {
@@ -122,15 +118,6 @@ impl HostFunctionDefinition {
 
     pub(crate) fn into_parts(self) -> (HostFunctionSchema, HostFunctionImplementation) {
         (self.schema, self.implementation)
-    }
-}
-
-impl HostValueType {
-    pub(crate) fn value_type(self) -> ValueType {
-        match self {
-            Self::Int => ValueType::Int,
-            Self::Bool => ValueType::Bool,
-        }
     }
 }
 
