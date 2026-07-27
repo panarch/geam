@@ -118,8 +118,10 @@ pub(crate) enum ParamLocal {
     GenericFunction(GenericFunctionLocal),
 }
 
-pub(crate) type GenericReturn = ReturnBody<super::GenericExpr, FunctionInstantiation>;
-pub(crate) type IntReturn = ReturnBody<IntExpr, FunctionInstantiation>;
+pub(crate) type GenericReturn =
+    ReturnBody<super::GenericExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
+pub(crate) type IntReturn =
+    ReturnBody<IntExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
 pub(crate) type FloatReturn = ReturnBody<FloatExpr, FunctionInstantiation>;
 pub(crate) type StringReturn = ReturnBody<StringExpr, FunctionInstantiation>;
 pub(crate) type BitArrayReturn = ReturnBody<BitArrayExpr, FunctionInstantiation>;
@@ -130,7 +132,8 @@ pub(crate) struct CustomReturn {
     body_shape: crate::plan::CustomValueShape,
     body: ReturnBody<super::CustomExprKind, FunctionInstantiation>,
 }
-pub(crate) type BoolReturn = ReturnBody<BoolExpr, FunctionInstantiation>;
+pub(crate) type BoolReturn =
+    ReturnBody<BoolExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
 pub(crate) type NilReturn = ReturnBody<NilExpr, FunctionInstantiation>;
 pub(crate) type TupleReturn = ReturnBody<TupleExpr, FunctionInstantiation>;
 pub(crate) type GenericListReturn = ReturnBody<super::GenericListExpr, FunctionInstantiation>;
@@ -1827,9 +1830,12 @@ impl<Expression, Function> ReturnBody<Expression, Function> {
         }
     }
 
-    pub(crate) fn tail_call(function: Function, args: Vec<CallArg>) -> Self {
+    pub(crate) fn tail_call(function: impl Into<Function>, args: Vec<CallArg>) -> Self {
         Self {
-            kind: ReturnBodyKind::TailCall { function, args },
+            kind: ReturnBodyKind::TailCall {
+                function: function.into(),
+                args,
+            },
         }
     }
 

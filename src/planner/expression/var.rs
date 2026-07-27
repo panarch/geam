@@ -143,7 +143,7 @@ fn plan_function_reference(
     constructor_shape: crate::plan::ValueShape,
     context: &PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    let target = target.validate_external()?;
+    let target = target.validate_external(context)?;
     let function = context.module_function(&target)?;
     let shape = target.function_shape(constructor_shape)?;
     let instantiation = target.instantiate_reference(&function, &shape)?;
@@ -238,8 +238,9 @@ mod tests {
     };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
     use crate::planner::dsl::{
-        bool_, call_int_function, function, function_ref, int, int_function_call_arg, local_bool,
-        local_float, local_int, local_int_function, local_nil, local_string, module, nil,
+        bool_, call_int_function_at, function, function_ref, host_call_site, int,
+        int_function_call_arg, local_bool, local_float, local_int, local_int_function, local_nil,
+        local_string, module, nil,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
@@ -358,8 +359,7 @@ pub fn main() {
 
     #[test]
     fn plan_top_level_function_reference_with_function_argument() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add_one(value: Int) {
   value + 1
 }
@@ -372,9 +372,8 @@ pub fn main() {
   apply
   1
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function("main", int(1)).evaluate(function_ref(
@@ -391,9 +390,10 @@ pub fn main() {
                 function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value"),
                 function(
                     "apply",
-                    call_int_function(
+                    call_int_function_at(
                         local_int_function(0, "function", [LocalId::Int(IntLocalId(0))]),
                         [int_function_call_arg(local_int(0, "value"))],
+                        host_call_site(source, "apply", "function(value)"),
                     ),
                 )
                 .param_int_function(0, "function", [ValueType::Int])

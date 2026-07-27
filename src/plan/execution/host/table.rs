@@ -1,14 +1,15 @@
 use super::{HostBoolFunctionId, HostIntFunctionId, HostedBoolFunction, HostedIntFunction};
+use crate::host::HostProfile;
 
-pub(crate) struct HostFunctionTables {
-    int_functions: Box<[HostedIntFunction]>,
-    bool_functions: Box<[HostedBoolFunction]>,
+pub(crate) struct HostFunctionTables<Profile: HostProfile> {
+    int_functions: Box<[HostedIntFunction<Profile>]>,
+    bool_functions: Box<[HostedBoolFunction<Profile>]>,
 }
 
-impl HostFunctionTables {
+impl<Profile: HostProfile> HostFunctionTables<Profile> {
     pub(in crate::plan::execution) fn new(
-        int_functions: Box<[HostedIntFunction]>,
-        bool_functions: Box<[HostedBoolFunction]>,
+        int_functions: Box<[HostedIntFunction<Profile>]>,
+        bool_functions: Box<[HostedBoolFunction<Profile>]>,
     ) -> Self {
         Self {
             int_functions,
@@ -16,21 +17,21 @@ impl HostFunctionTables {
         }
     }
 
-    pub(crate) fn int(&self, id: HostIntFunctionId) -> &HostedIntFunction {
+    pub(crate) fn int(&self, id: HostIntFunctionId) -> &HostedIntFunction<Profile> {
         &self.int_functions[id.index()]
     }
 
-    pub(crate) fn bool(&self, id: HostBoolFunctionId) -> &HostedBoolFunction {
+    pub(crate) fn bool(&self, id: HostBoolFunctionId) -> &HostedBoolFunction<Profile> {
         &self.bool_functions[id.index()]
     }
 
     #[cfg(test)]
-    pub(in crate::plan::execution) fn int_functions(&self) -> &[HostedIntFunction] {
+    pub(in crate::plan::execution) fn int_functions(&self) -> &[HostedIntFunction<Profile>] {
         &self.int_functions
     }
 
     #[cfg(test)]
-    pub(in crate::plan::execution) fn bool_functions(&self) -> &[HostedBoolFunction] {
+    pub(in crate::plan::execution) fn bool_functions(&self) -> &[HostedBoolFunction<Profile>] {
         &self.bool_functions
     }
 }
@@ -38,7 +39,7 @@ impl HostFunctionTables {
 #[cfg(test)]
 mod tests {
     use crate::{
-        HostModule, HostModules, HostedExecution, ModuleSource, PackageSource, Value,
+        HostModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource, Value,
         compile_typed_host_program, plan_host_program,
     };
     use num_bigint::BigInt;
@@ -57,7 +58,7 @@ mod tests {
             .expect("host function should be valid")
             .with_function("unused_predicate", || false)
             .expect("host function should be valid");
-        let hosts = HostModules::new([math]).expect("host modules should be unique");
+        let hosts = HostProviderSet::new([math]).expect("host modules should be unique");
         let source = r#"
 import host/math
 
@@ -95,7 +96,7 @@ pub fn main() {
         assert_eq!(positive.module(), "host/math");
         assert_eq!(positive.name(), "positive");
         assert_eq!(
-            execution.run_main(&mut Vec::new()),
+            execution.run_main(&mut (), &mut Vec::new()),
             Ok(Value::Tuple(vec![Value::Int(2.into()), Value::Bool(true)])),
         );
     }

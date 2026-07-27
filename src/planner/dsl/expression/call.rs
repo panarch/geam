@@ -20,6 +20,19 @@ pub(crate) fn call_int(function: usize, args: impl IntoIterator<Item = CallArg>)
     ))
 }
 
+pub(crate) fn call_int_at(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+    site: crate::plan::HostCallSite,
+) -> Int {
+    let args = args.into_iter().collect::<Vec<_>>();
+    Int(IntExpr::call_at(
+        instantiation(function, &args, ValueShape::Int),
+        args,
+        site,
+    ))
+}
+
 pub(crate) fn call_string(function: usize, args: impl IntoIterator<Item = CallArg>) -> String {
     let args = args.into_iter().collect::<Vec<_>>();
     String(StringExpr::call(
@@ -41,6 +54,19 @@ pub(crate) fn call_bool(function: usize, args: impl IntoIterator<Item = CallArg>
     Bool(BoolExpr::call(
         instantiation(function, &args, ValueShape::Bool),
         args,
+    ))
+}
+
+pub(crate) fn call_bool_at(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+    site: crate::plan::HostCallSite,
+) -> Bool {
+    let args = args.into_iter().collect::<Vec<_>>();
+    Bool(BoolExpr::call_at(
+        instantiation(function, &args, ValueShape::Bool),
+        args,
+        site,
     ))
 }
 
@@ -95,6 +121,18 @@ pub(crate) fn call_int_function(
     Int(IntExpr::function_call(
         function.into(),
         args.into_iter().collect(),
+    ))
+}
+
+pub(crate) fn call_int_function_at(
+    function: IntFunction,
+    args: impl IntoIterator<Item = CallArg>,
+    site: crate::plan::HostCallSite,
+) -> Int {
+    Int(IntExpr::function_call_at(
+        function.into(),
+        args.into_iter().collect(),
+        site,
     ))
 }
 

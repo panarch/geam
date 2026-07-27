@@ -11,14 +11,14 @@ use crate::runtime::error::ExecutionResult;
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedValue, values_equal,
 };
-use crate::runtime::state::RuntimeState;
+use crate::runtime::state::RuntimeStateFor;
 use crate::runtime::{ExecutableRuntimePlan, ExecutionError, InvariantError};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
-pub(super) fn int(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn int<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &BlockEnvironment,
     instruction: &IntInstruction,
     expected: &ValueType,
@@ -28,15 +28,28 @@ pub(super) fn int(
     match instruction {
         I::Value(value) => Ok(value.clone()),
         I::Constant(id) => constant(plan, state, *id),
-        I::Call { function, args } => {
-            crate::runtime::function::run_int(plan, state, *function, environment.retain(args))
-        }
-        I::FunctionCall { function, args } => {
+        I::Call {
+            function,
+            args,
+            site,
+        } => crate::runtime::function::run_int(
+            plan,
+            state,
+            *function,
+            crate::runtime::error::HostCallOrigin::source(site.clone()),
+            environment.retain(args),
+        ),
+        I::FunctionCall {
+            function,
+            args,
+            site,
+        } => {
             let function = environment.int_function(*function);
             crate::runtime::function::run_int(
                 plan,
                 state,
                 function.runtime_id(),
+                crate::runtime::error::HostCallOrigin::source(site.clone()),
                 inputs_with_captures(environment, args, function.captures()),
             )
         }
@@ -91,9 +104,9 @@ pub(super) fn int(
     }
 }
 
-pub(super) fn float(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn float<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &BlockEnvironment,
     instruction: &FloatInstruction,
     expected: &ValueType,
@@ -157,9 +170,9 @@ pub(super) fn float(
     }
 }
 
-pub(super) fn string(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn string<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &BlockEnvironment,
     instruction: &StringInstruction,
     expected: &ValueType,
@@ -222,9 +235,9 @@ pub(super) fn string(
     }
 }
 
-pub(super) fn bit_array(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn bit_array<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &BlockEnvironment,
     instruction: &BitArrayInstruction,
     expected: &ValueType,
@@ -280,9 +293,9 @@ pub(super) fn bit_array(
     }
 }
 
-pub(super) fn utf_codepoint(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn utf_codepoint<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &BlockEnvironment,
     instruction: &UtfCodepointInstruction,
     expected: &ValueType,
@@ -336,9 +349,9 @@ pub(super) fn utf_codepoint(
     }
 }
 
-pub(super) fn custom(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn custom<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &BlockEnvironment,
     instruction: &CustomInstruction,
     expected: &ValueType,
@@ -407,9 +420,9 @@ pub(super) fn custom(
     }
 }
 
-pub(super) fn bool(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn bool<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &BlockEnvironment,
     instruction: &BoolInstruction,
     expected: &ValueType,
@@ -419,15 +432,28 @@ pub(super) fn bool(
     match instruction {
         I::Value(value) => Ok(*value),
         I::Constant(id) => constant(plan, state, *id),
-        I::Call { function, args } => {
-            crate::runtime::function::run_bool(plan, state, *function, environment.retain(args))
-        }
-        I::FunctionCall { function, args } => {
+        I::Call {
+            function,
+            args,
+            site,
+        } => crate::runtime::function::run_bool(
+            plan,
+            state,
+            *function,
+            crate::runtime::error::HostCallOrigin::source(site.clone()),
+            environment.retain(args),
+        ),
+        I::FunctionCall {
+            function,
+            args,
+            site,
+        } => {
             let function = environment.bool_function(*function);
             crate::runtime::function::run_bool(
                 plan,
                 state,
                 function.runtime_id(),
+                crate::runtime::error::HostCallOrigin::source(site.clone()),
                 inputs_with_captures(environment, args, function.captures()),
             )
         }
@@ -492,9 +518,9 @@ pub(super) fn bool(
     }
 }
 
-pub(super) fn nil(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn nil<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &BlockEnvironment,
     instruction: &NilInstruction,
     expected: &ValueType,
@@ -533,9 +559,9 @@ pub(super) fn nil(
     }
 }
 
-pub(super) fn tuple(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn tuple<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &BlockEnvironment,
     instruction: &TupleInstruction,
     expected: &ValueType,
@@ -588,12 +614,13 @@ pub(super) fn tuple(
     }
 }
 
-pub(super) fn constant<Value>(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn constant<Plan, Value>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     id: ConstantId<Value>,
 ) -> ExecutionResult<Value::Evaluated>
 where
+    Plan: ExecutableRuntimePlan,
     Value: ConstantValue + GraphValue,
 {
     evaluate_constant(plan, state, plan.constant(id))

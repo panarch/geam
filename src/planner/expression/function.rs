@@ -305,10 +305,11 @@ mod tests {
         SourceSpan, StringExpr, TupleLocalId, ValueType,
     };
     use crate::planner::dsl::{
-        call_int_function, capture_int, capture_tuple, function, function_function_closure, int,
-        int_arg, int_function_call_arg, int_function_closure, int_return_tail_call,
-        let_int_function_step, let_int_step, let_tuple_step, local_int, local_int_function,
-        local_tuple, module_with_anonymous, string, tuple, tuple_function_closure,
+        call_int_function_at, capture_int, capture_tuple, function, function_function_closure,
+        host_call_site, int, int_arg, int_function_call_arg, int_function_closure,
+        int_return_tail_call_at, let_int_function_step, let_int_step, let_tuple_step, local_int,
+        local_int_function, local_tuple, module_with_anonymous, string, tuple,
+        tuple_function_closure,
     };
     use crate::planner::error::{
         InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
@@ -325,15 +326,13 @@ mod tests {
 
     #[test]
     fn plan_non_capturing_anonymous_function() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 pub fn main() {
   let add_one = fn(value) { value + 1 }
   add_one(41)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let add_one = int_function_closure(
             1,
             [LocalId::Int(IntLocalId(0))],
@@ -343,9 +342,10 @@ pub fn main() {
             "main",
             function(
                 "main",
-                call_int_function(
+                call_int_function_at(
                     local_int_function(0, "add_one", [LocalId::Int(IntLocalId(0))]),
                     [int_function_call_arg(int(41))],
+                    host_call_site(source, "main", "add_one(41)"),
                 ),
             )
             .step(let_int_function_step(0, "add_one", add_one)),
@@ -386,8 +386,7 @@ pub fn main() {
 
     #[test]
     fn plan_anonymous_function_referencing_top_level_function() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add_one(value: Int) {
   value + 1
 }
@@ -396,9 +395,8 @@ pub fn main() {
   let wrapped = fn(value) { add_one(value) }
   wrapped(41)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let wrapped = int_function_closure(
             2,
             [LocalId::Int(IntLocalId(0))],
@@ -408,16 +406,21 @@ pub fn main() {
             "main",
             function(
                 "main",
-                call_int_function(
+                call_int_function_at(
                     local_int_function(0, "wrapped", [LocalId::Int(IntLocalId(0))]),
                     [int_function_call_arg(int(41))],
+                    host_call_site(source, "main", "wrapped(41)"),
                 ),
             )
             .step(let_int_function_step(0, "wrapped", wrapped)),
             [function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value")],
             [function(
                 "<anonymous:0>",
-                int_return_tail_call(1, [int_arg(local_int(0, "value"))]),
+                int_return_tail_call_at(
+                    1,
+                    [int_arg(local_int(0, "value"))],
+                    host_call_site(source, "<anonymous:0>", "add_one(value)"),
+                ),
             )
             .param_int(0, "value")],
         );
@@ -666,8 +669,7 @@ pub fn main() {
 
     #[test]
     fn plan_function_capture_literal() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add(left: Int, right: Int) {
   left + right
 }
@@ -676,9 +678,8 @@ pub fn main() {
   let add_one = add(1, _)
   add_one(41)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let add_one = int_function_closure(
             2,
             [LocalId::Int(IntLocalId(0))],
@@ -688,9 +689,10 @@ pub fn main() {
             "main",
             function(
                 "main",
-                call_int_function(
+                call_int_function_at(
                     local_int_function(0, "add_one", [LocalId::Int(IntLocalId(0))]),
                     [int_function_call_arg(int(41))],
+                    host_call_site(source, "main", "add_one(41)"),
                 ),
             )
             .step(let_int_function_step(0, "add_one", add_one)),
@@ -701,9 +703,10 @@ pub fn main() {
             ],
             [function(
                 "<anonymous:0>",
-                int_return_tail_call(
+                int_return_tail_call_at(
                     1,
                     [int_arg(int(1)), int_arg(local_int(0, CAPTURE_VARIABLE))],
+                    host_call_site(source, "<anonymous:0>", "add(1, _)"),
                 ),
             )
             .param_int(0, CAPTURE_VARIABLE)],
@@ -714,8 +717,7 @@ pub fn main() {
 
     #[test]
     fn plan_function_capture_labelled_argument() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add(to base: Int, value amount: Int) {
   base + amount
 }
@@ -724,9 +726,8 @@ pub fn main() {
   let add_one = add(to: 1, value: _)
   add_one(41)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let add_one = int_function_closure(
             2,
             [LocalId::Int(IntLocalId(0))],
@@ -736,9 +737,10 @@ pub fn main() {
             "main",
             function(
                 "main",
-                call_int_function(
+                call_int_function_at(
                     local_int_function(0, "add_one", [LocalId::Int(IntLocalId(0))]),
                     [int_function_call_arg(int(41))],
+                    host_call_site(source, "main", "add_one(41)"),
                 ),
             )
             .step(let_int_function_step(0, "add_one", add_one)),
@@ -749,9 +751,10 @@ pub fn main() {
             ],
             [function(
                 "<anonymous:0>",
-                int_return_tail_call(
+                int_return_tail_call_at(
                     1,
                     [int_arg(int(1)), int_arg(local_int(0, CAPTURE_VARIABLE))],
+                    host_call_site(source, "<anonymous:0>", "add(to: 1, value: _)"),
                 ),
             )
             .param_int(0, CAPTURE_VARIABLE)],
@@ -762,8 +765,7 @@ pub fn main() {
 
     #[test]
     fn plan_function_capture_literal_with_closure_capture() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add(left: Int, right: Int) {
   left + right
 }
@@ -773,17 +775,17 @@ pub fn main() {
   let add_base = add(base, _)
   add_base(41)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let add_base = int_function_closure(2, [LocalId::Int(IntLocalId(0))], [capture_int(0)]);
         let expected = module_with_anonymous(
             "main",
             function(
                 "main",
-                call_int_function(
+                call_int_function_at(
                     local_int_function(0, "add_base", [LocalId::Int(IntLocalId(0))]),
                     [int_function_call_arg(int(41))],
+                    host_call_site(source, "main", "add_base(41)"),
                 ),
             )
             .step(let_int_step(0, "base", int(1)))
@@ -795,12 +797,13 @@ pub fn main() {
             ],
             [function(
                 "<anonymous:0>",
-                int_return_tail_call(
+                int_return_tail_call_at(
                     1,
                     [
                         int_arg(local_int(1, "base")),
                         int_arg(local_int(0, CAPTURE_VARIABLE)),
                     ],
+                    host_call_site(source, "<anonymous:0>", "add(base, _)"),
                 ),
             )
             .param_int(0, CAPTURE_VARIABLE)

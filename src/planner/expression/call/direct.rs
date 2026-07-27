@@ -3,11 +3,12 @@ use crate::plan::{Expr, FunctionShape};
 use crate::planner::context::{FunctionInfo, FunctionParam, PlanContext};
 use crate::planner::error::{InvalidCallShapeReason, InvalidTypedAstReason, PlanError};
 use crate::planner::type_parameter::FunctionInstantiationMismatch;
-use gleam_core::ast::{CallArg as GleamCallArg, TypedExpr};
+use gleam_core::ast::{CallArg as GleamCallArg, SrcSpan, TypedExpr};
 use gleam_core::type_::Type;
 use std::sync::Arc;
 
 pub(super) fn plan_direct_function_call(
+    location: SrcSpan,
     type_: Arc<Type>,
     function: FunctionInfo,
     arguments: Vec<GleamCallArg<TypedExpr>>,
@@ -39,7 +40,11 @@ pub(super) fn plan_direct_function_call(
         capture,
     )?;
 
-    Ok(Expr::call(instantiation, args))
+    Ok(Expr::call_at(
+        instantiation,
+        args,
+        context.host_call_site(location),
+    ))
 }
 
 fn function_instantiation_mismatch(mismatch: FunctionInstantiationMismatch) -> PlanError {
@@ -84,10 +89,11 @@ mod tests {
     use super::function_instantiation_mismatch;
     use crate::plan::{Expr, FunctionType, IntLocalId, LocalId, Step, ValueType};
     use crate::planner::dsl::{
-        call_float, call_int_function, call_list, float, float_arg, function, int, int_arg,
-        int_function_arg, int_function_call_arg, int_function_ref, int_return_tail_call,
-        let_float_step, let_int_function_step, let_list_step, list, list_return_expr, local_float,
-        local_int, local_int_function, local_list, module, return_list,
+        call_float, call_int_function_at, call_list, float, float_arg, function, host_call_site,
+        int, int_arg, int_function_arg, int_function_call_arg, int_function_ref,
+        int_return_tail_call_at, let_float_step, let_int_function_step, let_list_step, list,
+        list_return_expr, local_float, local_int, local_int_function, local_list, module,
+        return_list,
     };
     use crate::planner::expression::call::support::expect_call_statement_mut;
     use crate::planner::expression::{typed_int_expr, typed_string_expr};
@@ -128,8 +134,7 @@ mod tests {
 
     #[test]
     fn plan_unresolved_direct_call_return_outside_current_template() {
-        let plan = plan_module(compile(
-            r#"
+        let source = r#"
 fn fail() -> value {
   panic
 }
@@ -138,24 +143,23 @@ pub fn main() {
   let _ = fail()
   1
 }
-"#,
-        ))
-        .expect("unresolved diverging call should plan");
+"#;
+        let plan = plan_module(compile(source)).expect("unresolved diverging call should plan");
 
         assert_eq!(plan.main_function().steps().len(), 1);
         assert_eq!(
             plan.main_function().steps()[0],
-            Step::evaluate(Expr::call(
+            Step::evaluate(Expr::call_at(
                 plan.functions()[0].signature().identity_instantiation(),
                 Vec::new(),
+                host_call_site(source, "main", "fail()"),
             )),
         );
     }
 
     #[test]
     fn plan_function_value_argument_direct_call() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add_one(value: Int) {
   value + 1
 }
@@ -167,28 +171,29 @@ fn apply(function: fn(Int) -> Int, value: Int) {
 pub fn main() {
   apply(add_one, 41)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
-                int_return_tail_call(
+                int_return_tail_call_at(
                     2,
                     [
                         int_function_arg(int_function_ref(1, [LocalId::Int(IntLocalId(0))])),
                         int_arg(int(41)),
                     ],
+                    host_call_site(source, "main", "apply(add_one, 41)"),
                 ),
             ),
             [
                 function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value"),
                 function(
                     "apply",
-                    call_int_function(
+                    call_int_function_at(
                         local_int_function(0, "function", [LocalId::Int(IntLocalId(0))]),
                         [int_function_call_arg(local_int(0, "value"))],
+                        host_call_site(source, "apply", "function(value)"),
                     ),
                 )
                 .param_int_function(0, "function", [ValueType::Int])
@@ -201,8 +206,7 @@ pub fn main() {
 
     #[test]
     fn plan_local_function_value_argument_direct_call() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add_one(value: Int) {
   value + 1
 }
@@ -215,14 +219,13 @@ pub fn main() {
   let add = add_one
   apply(add, 41)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
-                int_return_tail_call(
+                int_return_tail_call_at(
                     2,
                     [
                         int_function_arg(local_int_function(
@@ -232,6 +235,7 @@ pub fn main() {
                         )),
                         int_arg(int(41)),
                     ],
+                    host_call_site(source, "main", "apply(add, 41)"),
                 ),
             )
             .step(let_int_function_step(
@@ -243,9 +247,10 @@ pub fn main() {
                 function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value"),
                 function(
                     "apply",
-                    call_int_function(
+                    call_int_function_at(
                         local_int_function(0, "function", [LocalId::Int(IntLocalId(0))]),
                         [int_function_call_arg(local_int(0, "value"))],
+                        host_call_site(source, "apply", "function(value)"),
                     ),
                 )
                 .param_int_function(0, "function", [ValueType::Int])
@@ -258,8 +263,7 @@ pub fn main() {
 
     #[test]
     fn plan_labelled_direct_call_uses_function_param_order() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add(to base: Int, value amount: Int) {
   base + amount
 }
@@ -267,14 +271,17 @@ fn add(to base: Int, value amount: Int) {
 pub fn main() {
   add(value: 2, to: 40)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
-                int_return_tail_call(1, [int_arg(int(40)), int_arg(int(2))]),
+                int_return_tail_call_at(
+                    1,
+                    [int_arg(int(40)), int_arg(int(2))],
+                    host_call_site(source, "main", "add(value: 2, to: 40)"),
+                ),
             ),
             [
                 function("add", local_int(0, "base").add_int(local_int(1, "amount")))

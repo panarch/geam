@@ -319,8 +319,14 @@ impl<Value: Default> ListPool<Value> {
     }
 }
 
-pub(in crate::runtime) struct RuntimeState<'echo> {
-    echo: &'echo mut dyn crate::runtime::EchoSink,
+enum HostRunState<'run, State> {
+    Owned(State),
+    Borrowed(&'run mut State),
+}
+
+pub(in crate::runtime) struct RuntimeState<'run, State = ()> {
+    echo: &'run mut dyn crate::runtime::EchoSink,
+    host: HostRunState<'run, State>,
     releases: Rc<RefCell<Vec<ListStorageKey>>>,
     ints: ListPool<Vec<BigInt>>,
     strings: ListPool<Vec<EcoString>>,
@@ -336,10 +342,30 @@ pub(in crate::runtime) struct RuntimeState<'echo> {
     functions: ListPool<Vec<EvaluatedFunctionValue>>,
 }
 
-impl<'echo> RuntimeState<'echo> {
-    pub(super) fn new(echo: &'echo mut dyn crate::runtime::EchoSink) -> Self {
+pub(in crate::runtime) type RuntimeStateFor<'run, Plan> =
+    RuntimeState<'run, <Plan as crate::plan::execution::runtime::RuntimeExecutionPlan>::RunState>;
+
+impl<'run> RuntimeState<'run, ()> {
+    pub(super) fn new(echo: &'run mut dyn crate::runtime::EchoSink) -> Self {
+        Self::with_storage(echo, HostRunState::Owned(()))
+    }
+}
+
+impl<'run, State> RuntimeState<'run, State> {
+    pub(super) fn with_host(
+        echo: &'run mut dyn crate::runtime::EchoSink,
+        state: &'run mut State,
+    ) -> Self {
+        Self::with_storage(echo, HostRunState::Borrowed(state))
+    }
+
+    fn with_storage(
+        echo: &'run mut dyn crate::runtime::EchoSink,
+        host: HostRunState<'run, State>,
+    ) -> Self {
         Self {
             echo,
+            host,
             releases: Rc::new(RefCell::new(Vec::new())),
             ints: ListPool::default(),
             strings: ListPool::default(),
@@ -353,6 +379,13 @@ impl<'echo> RuntimeState<'echo> {
             parameter_list_lists: ListPool::default(),
             lists: ListPool::default(),
             functions: ListPool::default(),
+        }
+    }
+
+    pub(super) fn host_state(&mut self) -> &mut State {
+        match &mut self.host {
+            HostRunState::Owned(state) => state,
+            HostRunState::Borrowed(state) => state,
         }
     }
 
@@ -778,6 +811,21 @@ pub fn main() {
 "#;
 
     #[test]
+    fn runtime_state_exposes_owned_and_borrowed_host_state() {
+        let mut echo = Vec::new();
+        let mut plain = RuntimeState::new(&mut echo);
+
+        assert_eq!(plain.host_state(), &mut ());
+
+        let mut host = 41;
+        let mut echo = Vec::new();
+        let mut hosted = RuntimeState::with_host(&mut echo, &mut host);
+        *hosted.host_state() += 1;
+
+        assert_eq!(hosted.host_state(), &mut 42);
+    }
+
+    #[test]
     fn last_owner_enqueues_release_and_reuses_the_exact_slot() {
         let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [1] }");
         let type_id = plan.int_list_function_id(0).type_id();
@@ -901,6 +949,7 @@ pub fn main() -> Int {
             &plan,
             &mut state,
             main,
+            crate::runtime::error::HostCallOrigin::Entry,
             RetainedValues::empty(),
         ));
 
@@ -934,6 +983,7 @@ pub fn main() -> Int {
             &plan,
             &mut state,
             main,
+            crate::runtime::error::HostCallOrigin::Entry,
             RetainedValues::empty(),
         ));
 

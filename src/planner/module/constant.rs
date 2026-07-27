@@ -403,7 +403,7 @@ fn plan_var(
                 name.clone(),
                 external_erlang.is_some() || external_javascript.is_some(),
             )
-            .validate_external()?;
+            .validate_external(context)?;
             let actual = target.function_shape(shape.clone())?;
             let function = context.module_function(&target)?;
             let instantiation = target.instantiate_reference(&function, &actual)?;
@@ -1238,6 +1238,7 @@ pub fn main() {
                     ParamBinding::Named("value".into()),
                     None,
                 )],
+                definition_span: crate::plan::SourceSpan::new(0, 0),
             },
         )]);
         let module_name = EcoString::from("main");

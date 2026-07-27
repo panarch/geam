@@ -230,6 +230,7 @@ struct FunctionTable {
 }
 
 struct FunctionToPlan {
+    name: EcoString,
     info: FunctionInfo,
     function: TypedFunction,
 }
@@ -249,6 +250,7 @@ fn function_table(
         let scheme = type_parameters.scheme();
         seeds.push(FunctionSeed {
             name,
+            definition_span: function.location.into(),
             function: function.clone(),
             params,
             return_shape,
@@ -293,6 +295,7 @@ fn function_table(
         let info = function_info(module, local_index, &seed);
         by_name.insert(seed.name.clone(), info.clone());
         functions_to_plan.push(FunctionToPlan {
+            name: seed.name,
             info,
             function: seed.function,
         });
@@ -323,12 +326,14 @@ fn function_info(module: ModuleId, function_index: usize, seed: &FunctionSeed) -
         type_parameters: seed.type_parameters.clone(),
         return_shape: seed.return_shape.clone(),
         params: seed.params.clone(),
+        definition_span: seed.definition_span,
     }
 }
 
 #[derive(Clone)]
 struct FunctionSeed {
     name: EcoString,
+    definition_span: crate::plan::SourceSpan,
     function: TypedFunction,
     params: Vec<FunctionParam>,
     return_shape: crate::plan::ValueShape,
@@ -729,8 +734,9 @@ mod tests {
         TupleExprKind, TupleListLocalId, TypeParameterId, TypeScheme, ValueShape, ValueType,
     };
     use crate::planner::dsl::{
-        call_int, call_int_returning_function, function, function_ref, int, int_arg,
-        int_function_closure, int_return_tail_call, local_int, module, string, string_function_ref,
+        call_int_at, call_int_returning_function, function, function_ref, host_call_site, int,
+        int_arg, int_function_closure, int_return_tail_call_at, local_int, module, string,
+        string_function_ref,
     };
     use crate::planner::support::{compile, expect_plan_error};
     use crate::planner::{
@@ -1163,8 +1169,7 @@ pub fn main() {
 
     #[test]
     fn plan_functions_before_and_after_main() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn before() {
   1
 }
@@ -1176,14 +1181,15 @@ pub fn main() {
 fn after() {
   2
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
-                call_int(1, Vec::new()).add_int(call_int(2, Vec::new())),
+                call_int_at(1, Vec::new(), host_call_site(source, "main", "before()")).add_int(
+                    call_int_at(2, Vec::new(), host_call_site(source, "main", "after()")),
+                ),
             ),
             [function("before", int(1)), function("after", int(2))],
         );
@@ -1193,8 +1199,7 @@ fn after() {
 
     #[test]
     fn plan_type_alias_function_signature_as_underlying_type() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 pub type UserId =
   Int
 
@@ -1205,12 +1210,18 @@ fn identity(value: UserId) -> UserId {
 pub fn main() {
   identity(41)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
-            function("main", int_return_tail_call(1, [int_arg(int(41))])),
+            function(
+                "main",
+                int_return_tail_call_at(
+                    1,
+                    [int_arg(int(41))],
+                    host_call_site(source, "main", "identity(41)"),
+                ),
+            ),
             [function("identity", local_int(0, "value")).param_int(0, "value")],
         );
 
@@ -1720,8 +1731,7 @@ fn tuple_getter(callback: fn(#(Int)) -> #(String)) {
 
     #[test]
     fn plan_discard_function_argument_slots() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn pick(_: Int, value: Int) {
   value
 }
@@ -1729,14 +1739,17 @@ fn pick(_: Int, value: Int) {
 pub fn main() {
   pick(1, 42)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
-                int_return_tail_call(1, [int_arg(int(1)), int_arg(int(42))]),
+                int_return_tail_call_at(
+                    1,
+                    [int_arg(int(1)), int_arg(int(42))],
+                    host_call_site(source, "main", "pick(1, 42)"),
+                ),
             ),
             [function("pick", local_int(1, "value"))
                 .discard_int_param(0)
@@ -1818,8 +1831,7 @@ fn count(values: Outcome) {
 
     #[test]
     fn plan_labelled_function_argument_uses_local_name() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn identity(value local: Int) {
   local
 }
@@ -1827,12 +1839,18 @@ fn identity(value local: Int) {
 pub fn main() {
   identity(value: 1)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
-            function("main", int_return_tail_call(1, [int_arg(int(1))])),
+            function(
+                "main",
+                int_return_tail_call_at(
+                    1,
+                    [int_arg(int(1))],
+                    host_call_site(source, "main", "identity(value: 1)"),
+                ),
+            ),
             [function("identity", local_int(0, "local")).param_int(0, "local")],
         );
 

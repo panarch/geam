@@ -11,7 +11,7 @@ use crate::runtime::evaluated::{
     EvaluatedListCapture, FunctionReferenceId,
 };
 use crate::runtime::function::{RuntimeBoolFunction as _, RuntimeIntFunction as _};
-use crate::runtime::state::RuntimeState;
+use crate::runtime::state::RuntimeStateFor;
 use crate::runtime::{ExecutableRuntimePlan, ExecutionError, InvariantError};
 
 #[derive(Clone, Copy)]
@@ -20,9 +20,9 @@ enum FunctionIdentity {
     Instance,
 }
 
-pub(super) fn evaluate(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn evaluate<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &BlockEnvironment,
     instruction: &FunctionInstruction,
     expected: &ValueType,

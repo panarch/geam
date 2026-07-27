@@ -60,7 +60,8 @@ pub(super) fn plan_negate_bool(
 mod tests {
     use super::super::{module_returning_typed_expr, typed_int_expr, typed_prelude_constructor};
     use crate::planner::dsl::{
-        function, int, int_arg, int_return_tail_call, local_bool, local_int, module,
+        function, host_call_site, int, int_arg, int_return_tail_call_at, local_bool, local_int,
+        module,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
@@ -70,8 +71,7 @@ mod tests {
 
     #[test]
     fn plan_negation_expressions() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 pub fn negate(value: Int) {
   -value
 }
@@ -83,12 +83,18 @@ pub fn invert(value: Bool) {
 pub fn main() {
   negate(1)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
-            function("main", int_return_tail_call(1, [int_arg(int(1))])),
+            function(
+                "main",
+                int_return_tail_call_at(
+                    1,
+                    [int_arg(int(1))],
+                    host_call_site(source, "main", "negate(1)"),
+                ),
+            ),
             [
                 function("negate", local_int(0, "value").negate_int()).param_int(0, "value"),
                 function("invert", local_bool(0, "value").negate_bool()).param_bool(0, "value"),

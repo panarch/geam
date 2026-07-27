@@ -28,12 +28,14 @@ use super::type_::{
     ListTypeId, TupleListTypeId, ValueShapeId, ValueType,
 };
 use super::{ExecutionHost, ExecutionPlan, ExecutionProgram, HostedExecution};
+use crate::host::HostProfile;
 use crate::plan::SourceContext;
 use ecow::EcoString;
 use std::convert::Infallible;
 
 pub(crate) trait RuntimeExecutionPlan: Sized {
     type Host: ExecutionHost;
+    type RunState;
     type IntFunction;
     type BoolFunction;
 
@@ -333,6 +335,7 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
 
 impl RuntimeExecutionPlan for ExecutionPlan {
     type Host = Infallible;
+    type RunState = ();
     type IntFunction = ExecutableFunction<IntFunctionBody>;
     type BoolFunction = ExecutableFunction<BoolFunctionBody>;
 
@@ -349,8 +352,9 @@ impl RuntimeExecutionPlan for ExecutionPlan {
     }
 }
 
-impl RuntimeExecutionPlan for HostedExecution {
-    type Host = HostedExecutionHost;
+impl<Profile: HostProfile> RuntimeExecutionPlan for HostedExecution<Profile> {
+    type Host = HostedExecutionHost<Profile>;
+    type RunState = Profile::RunState;
     type IntFunction = ValueFunctionEntry<IntFunctionBody, HostIntFunctionId>;
     type BoolFunction = ValueFunctionEntry<BoolFunctionBody, HostBoolFunctionId>;
 

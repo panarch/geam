@@ -10,8 +10,8 @@ mod value;
 
 pub use echo::{EchoLocation, EchoOutput, EchoSink};
 pub use error::{
-    BitArraySegmentPanicReason, ExecutionError, InvariantError, Panic, PanicDetails, PanicKind,
-    PanicMessage,
+    BitArraySegmentPanicReason, ExecutionError, HostError, HostLocation, InvariantError, Panic,
+    PanicDetails, PanicKind, PanicMessage,
 };
 pub(in crate::runtime) use evaluated::{
     EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
@@ -56,65 +56,70 @@ where
 }
 
 pub fn run_main(plan: &ExecutionPlan, echo: &mut dyn EchoSink) -> Result<Value, ExecutionError> {
-    run_program(plan, echo)
-}
-
-pub(crate) fn run_hosted_main(
-    plan: &crate::plan::execution::HostedExecution,
-    echo: &mut dyn EchoSink,
-) -> Result<Value, ExecutionError> {
-    run_program(plan, echo)
-}
-
-fn run_program(
-    plan: &impl ExecutableRuntimePlan,
-    echo: &mut dyn EchoSink,
-) -> Result<Value, ExecutionError> {
     let mut state = RuntimeState::new(echo);
+    run_program(plan, &mut state)
+}
+
+pub(crate) fn run_hosted_main<Profile: crate::HostProfile>(
+    plan: &crate::plan::execution::HostedExecution<Profile>,
+    host: &mut Profile::RunState,
+    echo: &mut dyn EchoSink,
+) -> Result<Value, ExecutionError> {
+    let mut state = RuntimeState::with_host(echo, host);
+    run_program(plan, &mut state)
+}
+
+fn run_program<Plan>(
+    plan: &Plan,
+    state: &mut RuntimeState<'_, Plan::RunState>,
+) -> Result<Value, ExecutionError>
+where
+    Plan: ExecutableRuntimePlan,
+{
     let inputs = RetainedValues::empty();
     let value = match plan.main_runtime() {
         RuntimeFunctionId::Never(function) => {
-            return function::run_never(plan, &mut state, function, inputs)
-                .map(|never| match never {});
+            return function::run_never(plan, state, function, inputs).map(|never| match never {});
         }
         RuntimeFunctionId::Int(function) => {
-            function::run_int(plan, &mut state, function, inputs).map(EvaluatedValue::Int)
+            function::run_int(plan, state, function, error::HostCallOrigin::Entry, inputs)
+                .map(EvaluatedValue::Int)
         }
         RuntimeFunctionId::Float(function) => {
-            function::run_float(plan, &mut state, function, inputs).map(EvaluatedValue::Float)
+            function::run_float(plan, state, function, inputs).map(EvaluatedValue::Float)
         }
         RuntimeFunctionId::String(function) => {
-            function::run_string(plan, &mut state, function, inputs).map(EvaluatedValue::String)
+            function::run_string(plan, state, function, inputs).map(EvaluatedValue::String)
         }
         RuntimeFunctionId::BitArray(function) => {
-            function::run_bit_array(plan, &mut state, function, inputs)
-                .map(EvaluatedValue::BitArray)
+            function::run_bit_array(plan, state, function, inputs).map(EvaluatedValue::BitArray)
         }
         RuntimeFunctionId::UtfCodepoint(function) => {
-            function::run_utf_codepoint(plan, &mut state, function, inputs)
+            function::run_utf_codepoint(plan, state, function, inputs)
                 .map(EvaluatedValue::UtfCodepoint)
         }
         RuntimeFunctionId::Custom(function) => {
-            function::run_custom(plan, &mut state, function, inputs).map(EvaluatedValue::Custom)
+            function::run_custom(plan, state, function, inputs).map(EvaluatedValue::Custom)
         }
         RuntimeFunctionId::Bool(function) => {
-            function::run_bool(plan, &mut state, function, inputs).map(EvaluatedValue::Bool)
+            function::run_bool(plan, state, function, error::HostCallOrigin::Entry, inputs)
+                .map(EvaluatedValue::Bool)
         }
         RuntimeFunctionId::Nil(function) => {
-            function::run_nil(plan, &mut state, function, inputs).map(|()| EvaluatedValue::Nil)
+            function::run_nil(plan, state, function, inputs).map(|()| EvaluatedValue::Nil)
         }
         RuntimeFunctionId::Tuple { id, .. } => {
-            function::run_tuple(plan, &mut state, id, inputs).map(EvaluatedValue::Tuple)
+            function::run_tuple(plan, state, id, inputs).map(EvaluatedValue::Tuple)
         }
         RuntimeFunctionId::List(function) => {
-            function::run_list(plan, &mut state, function, inputs).map(EvaluatedValue::List)
+            function::run_list(plan, state, function, inputs).map(EvaluatedValue::List)
         }
         RuntimeFunctionId::Function { id, .. } => {
-            function::run_function(plan, &mut state, id, inputs).map(EvaluatedValue::Function)
+            function::run_function(plan, state, id, inputs).map(EvaluatedValue::Function)
         }
     }?;
     state.drain_releases();
-    Ok(materialize::value(plan, &state, value))
+    Ok(materialize::value(plan, state, value))
 }
 
 #[cfg(test)]

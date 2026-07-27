@@ -1,11 +1,11 @@
 use super::HostedFunction;
-use crate::host::{HostCallArguments, HostIntFunction};
+use crate::host::{HostCallArguments, HostCallError, HostIntFunction, HostProfile};
 use num_bigint::BigInt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct HostIntFunctionId(usize);
 
-pub(crate) type HostedIntFunction = HostedFunction<HostIntFunction>;
+pub(crate) type HostedIntFunction<Profile> = HostedFunction<HostIntFunction<Profile>>;
 
 impl HostIntFunctionId {
     pub(in crate::plan::execution) fn new(index: usize) -> Self {
@@ -17,8 +17,12 @@ impl HostIntFunctionId {
     }
 }
 
-impl HostedIntFunction {
-    pub(crate) fn call(&self, arguments: &dyn HostCallArguments) -> BigInt {
-        self.implementation.call(arguments)
+impl<Profile: HostProfile> HostedIntFunction<Profile> {
+    pub(crate) fn call(
+        &self,
+        state: &mut Profile::RunState,
+        arguments: &dyn HostCallArguments,
+    ) -> Result<BigInt, HostCallError> {
+        self.implementation.call(state, arguments)
     }
 }

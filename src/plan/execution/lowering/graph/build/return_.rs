@@ -9,11 +9,12 @@ use std::convert::Infallible;
 
 pub(in crate::plan::execution::lowering::graph) fn build_function_graph<
     ModuleExpression,
+    ModuleFunction,
     DraftReturn,
     TailCall,
 >(
     template: &module::FunctionTemplate,
-    body: &module::ReturnBody<ModuleExpression, module::FunctionInstantiation>,
+    body: &module::ReturnBody<ModuleExpression, ModuleFunction>,
     context: &mut super::LoweringContext,
     lower_expression: impl Copy
     + Fn(
@@ -23,10 +24,7 @@ pub(in crate::plan::execution::lowering::graph) fn build_function_graph<
         &mut super::LoweringContext,
     ) -> Representability<DraftFlow<DraftReturn>>,
     lower_function: impl Copy
-    + Fn(
-        &module::FunctionInstantiation,
-        &mut super::LoweringContext,
-    ) -> Representability<TailCall>,
+    + Fn(&ModuleFunction, &mut super::LoweringContext) -> Representability<TailCall>,
 ) -> Representability<DraftGraphBuilder<DraftReturn, TailCall>>
 where
     DraftReturn: DraftGraphValue,
@@ -49,9 +47,12 @@ where
         .map(|_| graph)
 }
 
-pub(in crate::plan::execution::lowering::graph) fn build_never_function_graph<ModuleExpression>(
+pub(in crate::plan::execution::lowering::graph) fn build_never_function_graph<
+    ModuleExpression,
+    ModuleFunction,
+>(
     template: &module::FunctionTemplate,
-    body: &module::ReturnBody<ModuleExpression, module::FunctionInstantiation>,
+    body: &module::ReturnBody<ModuleExpression, ModuleFunction>,
     context: &mut super::LoweringContext,
     lower_expression: impl Copy
     + Fn(
@@ -60,13 +61,25 @@ pub(in crate::plan::execution::lowering::graph) fn build_never_function_graph<Mo
         &mut DraftGraph,
         &mut super::LoweringContext,
     ) -> Representability<()>,
+    lower_function: impl Copy
+    + Fn(
+        &ModuleFunction,
+        &mut super::LoweringContext,
+    ) -> Representability<execution::function::NeverFunctionId>,
 ) -> Representability<DraftGraphBuilder<DraftNeverReturn, execution::function::NeverFunctionId>> {
     let (mut graph, cursor) = graph_builder(template, context);
     lower_prefix(template.steps(), cursor, &mut graph, context)
         .and_then(|flow| {
             flow.and_then(|cursor, ()| {
-                lower_never_return_body(body, cursor, &mut graph, context, lower_expression)
-                    .map(|()| DraftFlow::<()>::Diverged)
+                lower_never_return_body(
+                    body,
+                    cursor,
+                    &mut graph,
+                    context,
+                    lower_expression,
+                    lower_function,
+                )
+                .map(|()| DraftFlow::<()>::Diverged)
             })
         })
         .map(|_| graph)
@@ -148,8 +161,8 @@ fn lower_prefix(
     super::step::steps(steps, cursor, graph, context)
 }
 
-fn lower_return_body<ModuleExpression, DraftReturn, TailCall>(
-    body: &module::ReturnBody<ModuleExpression, module::FunctionInstantiation>,
+fn lower_return_body<ModuleExpression, ModuleFunction, DraftReturn, TailCall>(
+    body: &module::ReturnBody<ModuleExpression, ModuleFunction>,
     cursor: DraftCursor,
     graph: &mut DraftGraphBuilder<DraftReturn, TailCall>,
     context: &mut super::LoweringContext,
@@ -161,10 +174,7 @@ fn lower_return_body<ModuleExpression, DraftReturn, TailCall>(
         &mut super::LoweringContext,
     ) -> Representability<DraftFlow<DraftReturn>>,
     lower_function: impl Copy
-    + Fn(
-        &module::FunctionInstantiation,
-        &mut super::LoweringContext,
-    ) -> Representability<TailCall>,
+    + Fn(&ModuleFunction, &mut super::LoweringContext) -> Representability<TailCall>,
 ) -> Representability<()>
 where
     DraftReturn: DraftGraphValue,
@@ -295,17 +305,17 @@ where
     }
 }
 
-struct ReturnSwitch<'a, Pattern, ModuleExpression> {
+struct ReturnSwitch<'a, Pattern, ModuleExpression, ModuleFunction> {
     clauses: &'a [(
         Pattern,
-        module::ReturnBody<ModuleExpression, module::FunctionInstantiation>,
+        module::ReturnBody<ModuleExpression, ModuleFunction>,
     )],
-    fallback: &'a module::ReturnBody<ModuleExpression, module::FunctionInstantiation>,
+    fallback: &'a module::ReturnBody<ModuleExpression, ModuleFunction>,
 }
 
-fn lower_switch<Pattern, Subject, ModuleExpression, DraftReturn, TailCall>(
+fn lower_switch<Pattern, Subject, ModuleExpression, ModuleFunction, DraftReturn, TailCall>(
     subject: Representability<DraftFlow<Subject>>,
-    switch: ReturnSwitch<'_, Pattern, ModuleExpression>,
+    switch: ReturnSwitch<'_, Pattern, ModuleExpression, ModuleFunction>,
     graph: &mut DraftGraphBuilder<DraftReturn, TailCall>,
     context: &mut super::LoweringContext,
     finish: impl FnOnce(
@@ -323,10 +333,7 @@ fn lower_switch<Pattern, Subject, ModuleExpression, DraftReturn, TailCall>(
         &mut super::LoweringContext,
     ) -> Representability<DraftFlow<DraftReturn>>,
     lower_function: impl Copy
-    + Fn(
-        &module::FunctionInstantiation,
-        &mut super::LoweringContext,
-    ) -> Representability<TailCall>,
+    + Fn(&ModuleFunction, &mut super::LoweringContext) -> Representability<TailCall>,
 ) -> Representability<()>
 where
     Pattern: Clone,
@@ -385,8 +392,8 @@ where
     })
 }
 
-fn lower_never_return_body<ModuleExpression>(
-    body: &module::ReturnBody<ModuleExpression, module::FunctionInstantiation>,
+fn lower_never_return_body<ModuleExpression, ModuleFunction>(
+    body: &module::ReturnBody<ModuleExpression, ModuleFunction>,
     cursor: DraftCursor,
     graph: &mut DraftGraphBuilder<DraftNeverReturn, execution::function::NeverFunctionId>,
     context: &mut super::LoweringContext,
@@ -397,6 +404,11 @@ fn lower_never_return_body<ModuleExpression>(
         &mut DraftGraph,
         &mut super::LoweringContext,
     ) -> Representability<()>,
+    lower_function: impl Copy
+    + Fn(
+        &ModuleFunction,
+        &mut super::LoweringContext,
+    ) -> Representability<execution::function::NeverFunctionId>,
 ) -> Representability<()> {
     use module::ReturnBodyKind as B;
 
@@ -405,7 +417,7 @@ fn lower_never_return_body<ModuleExpression>(
         B::TailCall { function, args } => {
             super::expression::call_args(args, cursor, graph, context).and_then(|flow| {
                 flow.fold(Representability::Inhabited(()), |cursor, args| {
-                    context.never_function_id(function).map(|function| {
+                    lower_function(function, context).map(|function| {
                         graph.finish_tail_call(cursor, function, args);
                     })
                 })
@@ -419,27 +431,41 @@ fn lower_never_return_body<ModuleExpression>(
             super::expression::bool::bool_paths(subject, cursor, graph, context).and_then(|paths| {
                 match paths {
                     super::expression::bool::BoolPaths::Diverged => Representability::Inhabited(()),
-                    super::expression::bool::BoolPaths::True(cursor) => {
-                        lower_never_return_body(true_body, cursor, graph, context, lower_expression)
-                    }
+                    super::expression::bool::BoolPaths::True(cursor) => lower_never_return_body(
+                        true_body,
+                        cursor,
+                        graph,
+                        context,
+                        lower_expression,
+                        lower_function,
+                    ),
                     super::expression::bool::BoolPaths::False(cursor) => lower_never_return_body(
                         false_body,
                         cursor,
                         graph,
                         context,
                         lower_expression,
+                        lower_function,
                     ),
                     super::expression::bool::BoolPaths::Both { true_, false_ } => {
-                        lower_never_return_body(true_body, true_, graph, context, lower_expression)
-                            .and_then(|()| {
-                                lower_never_return_body(
-                                    false_body,
-                                    false_,
-                                    graph,
-                                    context,
-                                    lower_expression,
-                                )
-                            })
+                        lower_never_return_body(
+                            true_body,
+                            true_,
+                            graph,
+                            context,
+                            lower_expression,
+                            lower_function,
+                        )
+                        .and_then(|()| {
+                            lower_never_return_body(
+                                false_body,
+                                false_,
+                                graph,
+                                context,
+                                lower_expression,
+                                lower_function,
+                            )
+                        })
                     }
                 }
             })
@@ -450,14 +476,14 @@ fn lower_never_return_body<ModuleExpression>(
             fallback,
         } => lower_never_switch(
             super::expression::int_expr(subject, cursor, graph, context),
-            clauses,
-            fallback,
+            ReturnSwitch { clauses, fallback },
             graph,
             context,
             |cursor, subject, clauses, fallback, graph| {
                 graph.finish_int_switch(cursor, subject, clauses, fallback);
             },
             lower_expression,
+            lower_function,
         ),
         B::FloatCase {
             subject,
@@ -465,14 +491,14 @@ fn lower_never_return_body<ModuleExpression>(
             fallback,
         } => lower_never_switch(
             super::expression::float_expr(subject, cursor, graph, context),
-            clauses,
-            fallback,
+            ReturnSwitch { clauses, fallback },
             graph,
             context,
             |cursor, subject, clauses, fallback, graph| {
                 graph.finish_float_switch(cursor, subject, clauses, fallback);
             },
             lower_expression,
+            lower_function,
         ),
         B::StringCase {
             subject,
@@ -480,32 +506,35 @@ fn lower_never_return_body<ModuleExpression>(
             fallback,
         } => lower_never_switch(
             super::expression::string_expr(subject, cursor, graph, context),
-            clauses,
-            fallback,
+            ReturnSwitch { clauses, fallback },
             graph,
             context,
             |cursor, subject, clauses, fallback, graph| {
                 graph.finish_string_switch(cursor, subject, clauses, fallback);
             },
             lower_expression,
+            lower_function,
         ),
         B::Block { steps, return_ } => {
             super::step::steps(steps, cursor, graph, context).and_then(|flow| {
                 flow.fold(Representability::Inhabited(()), |cursor, ()| {
-                    lower_never_return_body(return_, cursor, graph, context, lower_expression)
+                    lower_never_return_body(
+                        return_,
+                        cursor,
+                        graph,
+                        context,
+                        lower_expression,
+                        lower_function,
+                    )
                 })
             })
         }
     }
 }
 
-fn lower_never_switch<Pattern, Subject, ModuleExpression>(
+fn lower_never_switch<Pattern, Subject, ModuleExpression, ModuleFunction>(
     subject: Representability<DraftFlow<Subject>>,
-    clauses: &[(
-        Pattern,
-        module::ReturnBody<ModuleExpression, module::FunctionInstantiation>,
-    )],
-    fallback: &module::ReturnBody<ModuleExpression, module::FunctionInstantiation>,
+    switch: ReturnSwitch<'_, Pattern, ModuleExpression, ModuleFunction>,
     graph: &mut DraftGraphBuilder<DraftNeverReturn, execution::function::NeverFunctionId>,
     context: &mut super::LoweringContext,
     finish: impl FnOnce(
@@ -522,10 +551,16 @@ fn lower_never_switch<Pattern, Subject, ModuleExpression>(
         &mut DraftGraph,
         &mut super::LoweringContext,
     ) -> Representability<()>,
+    lower_function: impl Copy
+    + Fn(
+        &ModuleFunction,
+        &mut super::LoweringContext,
+    ) -> Representability<execution::function::NeverFunctionId>,
 ) -> Representability<()>
 where
     Pattern: Clone,
 {
+    let ReturnSwitch { clauses, fallback } = switch;
     subject.and_then(|flow| {
         flow.fold(Representability::Inhabited(()), |cursor, subject| {
             let scope = cursor.scope().clone();
@@ -559,6 +594,7 @@ where
                                 graph,
                                 context,
                                 lower_expression,
+                                lower_function,
                             )
                         })
                     },
@@ -570,6 +606,7 @@ where
                         graph,
                         context,
                         lower_expression,
+                        lower_function,
                     )
                 })
         })
@@ -636,6 +673,20 @@ mod tests {
         _context: &mut crate::plan::execution::lowering::LoweringContext,
     ) -> Representability<()> {
         Representability::Uninhabited
+    }
+
+    fn finish_never_function(
+        function: &FunctionInstantiation,
+        context: &mut crate::plan::execution::lowering::LoweringContext,
+    ) -> Representability<crate::plan::execution::function::NeverFunctionId> {
+        context.never_function_id(function)
+    }
+
+    fn finish_never_call_target(
+        target: &crate::plan::FunctionCallTarget<FunctionInstantiation>,
+        context: &mut crate::plan::execution::lowering::LoweringContext,
+    ) -> Representability<crate::plan::execution::function::NeverFunctionId> {
+        context.never_function_id(target.function())
     }
 
     #[derive(Clone, Copy)]
@@ -802,6 +853,68 @@ mod tests {
     }
 
     #[test]
+    fn never_return_tail_calls_preserve_plain_and_source_call_targets() {
+        let function = crate::plan::monomorphic_function_instantiation(
+            0,
+            crate::plan::FunctionShape::new(Vec::new(), ValueShape::Int),
+        );
+        let plain_body =
+            ReturnBody::<IntExpr, FunctionInstantiation>::tail_call(function.clone(), Vec::new());
+        let mut context =
+            crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
+        let (mut graph, cursor) = DraftGraphBuilder::<
+            DraftNeverReturn,
+            crate::plan::execution::function::NeverFunctionId,
+        >::new(Vec::new(), Vec::new());
+
+        assert_eq!(
+            super::lower_never_return_body(
+                &plain_body,
+                cursor,
+                &mut graph,
+                &mut context,
+                reject_never_expression,
+                finish_never_function,
+            ),
+            Representability::Inhabited(()),
+        );
+        let lowered = super::super::super::freeze::freeze(graph, &mut context);
+        assert_eq!(lowered.body.block_graph().blocks().len(), 1);
+
+        let parameter = TypeParameterId(0);
+        let target = crate::plan::FunctionCallTarget::new(
+            function,
+            crate::plan::HostCallSite::new(
+                "main".into(),
+                "tail".into(),
+                crate::plan::SourceSpan::new(4, 8),
+            ),
+        );
+        let source_body = ReturnBody::<
+            GenericExpr,
+            crate::plan::FunctionCallTarget<FunctionInstantiation>,
+        >::tail_call(target, Vec::new());
+        let template = FunctionTemplate::new(
+            FunctionTemplateId::new(3),
+            "tail".into(),
+            Vec::new(),
+            Vec::new(),
+            ReturnExpr::generic_body(parameter, source_body.clone()),
+        );
+        let mut context =
+            crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
+        let lowered = super::super::super::lower_never_function_graph(
+            &template,
+            &source_body,
+            &mut context,
+            super::super::expression::generic::never_expr,
+            finish_never_call_target,
+        );
+
+        assert_eq!(lowered.map(|_| ()), Representability::Inhabited(()));
+    }
+
+    #[test]
     fn never_return_body_preserves_static_and_diverging_bool_paths() {
         let mut context =
             crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
@@ -821,6 +934,7 @@ mod tests {
                 &mut graph,
                 &mut context,
                 finish_never_expression,
+                finish_never_function,
             ),
             Representability::Inhabited(()),
         );
@@ -849,6 +963,7 @@ mod tests {
                 &mut graph,
                 &mut context,
                 finish_never_expression,
+                finish_never_function,
             ),
             Representability::Inhabited(()),
         );
@@ -884,6 +999,7 @@ mod tests {
                 &mut graph,
                 &mut context,
                 finish_never_expression,
+                finish_never_function,
             ),
             Representability::Inhabited(()),
         );
@@ -923,6 +1039,7 @@ mod tests {
                 &mut graph,
                 &mut context,
                 finish_never_expression,
+                finish_never_function,
             ),
             Representability::Inhabited(()),
         );
@@ -949,6 +1066,7 @@ mod tests {
                 &mut graph,
                 &mut context,
                 reject_never_expression,
+                finish_never_function,
             ),
             Representability::Uninhabited,
         );
@@ -997,6 +1115,7 @@ mod tests {
                     &mut graph,
                     &mut context,
                     finish_never_expression,
+                    finish_never_function,
                 ),
                 Representability::Inhabited(()),
             );
@@ -1043,6 +1162,7 @@ mod tests {
                 &mut graph,
                 &mut context,
                 finish_never_expression,
+                finish_never_function,
             ),
             Representability::Inhabited(()),
         );
@@ -1075,6 +1195,7 @@ mod tests {
             &body,
             &mut context,
             super::super::expression::generic::never_expr,
+            finish_never_call_target,
         );
         assert_eq!(
             lowered.map(|lowered| {
@@ -1110,6 +1231,7 @@ mod tests {
                 &mut graph,
                 &mut context,
                 finish_never_tuple_expression,
+                finish_never_function,
             ),
             Representability::Inhabited(()),
         );

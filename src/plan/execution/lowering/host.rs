@@ -8,6 +8,7 @@ use super::{
     SpecializationState, resolve_specialization_fixed_point,
 };
 use crate::host::HostFunctionImplementation as RegisteredHostFunctionImplementation;
+use crate::host::HostProfile;
 use crate::plan::execution::function::{BoolFunctionBody, IntFunctionBody, ValueFunctionEntry};
 use crate::plan::execution::graph::{
     BoolLocalId as ExecutionBoolLocalId, IntLocalId as ExecutionIntLocalId, ParamLocal,
@@ -18,9 +19,10 @@ use crate::plan::execution::host::{
 };
 use crate::plan::execution::{ExecutionModuleContext, ExecutionProgram, ExecutionProgramCommon};
 use crate::plan::{
-    ConstantTemplates, FunctionTemplate, FunctionTemplateId, FunctionTemplateSignature,
+    FunctionTemplate, FunctionTemplateId, FunctionTemplateSignature,
     HostFunctionTemplate as PlannedHostFunctionTemplate, HostParameter, HostReturnFamily,
-    HostedModulePlan, HostedModulePlanParts, HostedPlannedModuleKind,
+    HostedFunctionTemplate as PlannedHostedFunctionTemplate, HostedModulePlan,
+    HostedModulePlanParts,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -39,9 +41,12 @@ enum HostedFunctionTemplate {
     Host(PlannedHostFunctionTemplate),
 }
 
-pub(in crate::plan::execution) fn lower_hosted(
-    module_plan: HostedModulePlan,
-) -> (ExecutionProgram<HostedExecutionHost>, HostFunctionTables) {
+pub(in crate::plan::execution) fn lower_hosted<Profile: HostProfile>(
+    module_plan: HostedModulePlan<Profile>,
+) -> (
+    ExecutionProgram<HostedExecutionHost<Profile>>,
+    HostFunctionTables<Profile>,
+) {
     let HostedModulePlanParts {
         root,
         entry,
@@ -67,44 +72,33 @@ pub(in crate::plan::execution) fn lower_hosted(
     let mut custom_types = Vec::new();
 
     for module in modules {
-        match module.into_kind() {
-            HostedPlannedModuleKind::Source(module) => {
-                let parts = (*module).into_parts();
-                module_contexts.push(ExecutionModuleContext::new(
-                    parts.module,
-                    parts.source_context,
-                ));
-                custom_types.extend(parts.custom_types);
-                constant_templates.push(parts.constants);
-                let mut templates = parts
-                    .functions
-                    .into_iter()
-                    .map(|template| HostedFunctionTemplate::Source(Box::new(template)))
-                    .collect::<Vec<_>>();
-                templates.extend(
-                    parts
-                        .anonymous_functions
-                        .into_iter()
-                        .map(|template| HostedFunctionTemplate::Source(Box::new(template))),
-                );
-                templates.sort_by_key(HostedFunctionTemplate::index);
-                module_templates.push(templates);
-            }
-            HostedPlannedModuleKind::Host(module) => {
-                let (module_id, _, module_name, functions) = module.into_parts();
-                module_contexts.push(ExecutionModuleContext::new(module_name, None));
-                constant_templates.push(ConstantTemplates::from_module_entries(
-                    module_id,
-                    Vec::new(),
-                ));
-                let mut templates = functions
-                    .into_iter()
-                    .map(HostedFunctionTemplate::Host)
-                    .collect::<Vec<_>>();
-                templates.sort_by_key(HostedFunctionTemplate::index);
-                module_templates.push(templates);
-            }
-        }
+        let parts = module.into_parts();
+        module_contexts.push(ExecutionModuleContext::new(
+            parts.module,
+            parts.source_context,
+        ));
+        custom_types.extend(parts.custom_types);
+        constant_templates.push(parts.constants);
+        let mut templates = parts
+            .functions
+            .into_iter()
+            .map(|template| match template {
+                PlannedHostedFunctionTemplate::GleamBody(template) => {
+                    HostedFunctionTemplate::Source(template)
+                }
+                PlannedHostedFunctionTemplate::HostTemplate(template) => {
+                    HostedFunctionTemplate::Host(template)
+                }
+            })
+            .collect::<Vec<_>>();
+        templates.extend(
+            parts
+                .anonymous_functions
+                .into_iter()
+                .map(|template| HostedFunctionTemplate::Source(Box::new(template))),
+        );
+        templates.sort_by_key(HostedFunctionTemplate::index);
+        module_templates.push(templates);
     }
 
     let templates = HostedFunctionTemplates {
@@ -177,8 +171,8 @@ pub(in crate::plan::execution) fn lower_hosted(
                                 let target = HostIntFunctionId::new(host_int_functions.len());
                                 host_int_functions.push(HostedIntFunction::new(
                                     template.package().clone(),
-                                    template.module().clone(),
-                                    template.name().clone(),
+                                    template.site().clone(),
+                                    template.type_().clone(),
                                     parameters,
                                     type_,
                                     int_implementations[&template.id()].clone(),
@@ -194,8 +188,8 @@ pub(in crate::plan::execution) fn lower_hosted(
                                 let target = HostBoolFunctionId::new(host_bool_functions.len());
                                 host_bool_functions.push(HostedBoolFunction::new(
                                     template.package().clone(),
-                                    template.module().clone(),
-                                    template.name().clone(),
+                                    template.site().clone(),
+                                    template.type_().clone(),
                                     parameters,
                                     type_,
                                     bool_implementations[&template.id()].clone(),

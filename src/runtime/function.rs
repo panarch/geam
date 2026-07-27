@@ -18,7 +18,7 @@ use crate::plan::execution::function::{FunctionBody, FunctionExit};
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::graph::{self, GraphValue, RetainedValues};
-use crate::runtime::state::RuntimeState;
+use crate::runtime::state::RuntimeStateFor;
 
 pub(super) enum EvaluatedFunctionExit<Return, TailCall> {
     Return(Return),
@@ -28,13 +28,14 @@ pub(super) enum EvaluatedFunctionExit<Return, TailCall> {
     },
 }
 
-pub(super) fn evaluate<Return, TailCall>(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn evaluate<Plan, Return, TailCall>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     function: &FunctionBody<Return, TailCall>,
     inputs: RetainedValues,
 ) -> ExecutionResult<EvaluatedFunctionExit<Return::Evaluated, TailCall>>
 where
+    Plan: ExecutableRuntimePlan,
     Return: GraphValue,
     TailCall: Clone,
 {
@@ -55,12 +56,12 @@ where
 
 fn run_tail<Plan, Id, Return, TailCall>(
     plan: &Plan,
-    state: &mut RuntimeState,
+    state: &mut RuntimeStateFor<'_, Plan>,
     mut function: Id,
     mut inputs: RetainedValues,
     execute: impl Fn(
         &Plan,
-        &mut RuntimeState,
+        &mut RuntimeStateFor<'_, Plan>,
         &Id,
         RetainedValues,
     ) -> ExecutionResult<EvaluatedFunctionExit<Return, TailCall>>,

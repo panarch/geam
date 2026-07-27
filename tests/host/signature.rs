@@ -1,5 +1,5 @@
 use geam::{
-    HostModule, HostModules, HostedExecution, ModuleSource, PackageSource, Value,
+    HostModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource, Value,
     compile_typed_host_program, plan_host_program,
 };
 use num_bigint::BigInt;
@@ -27,7 +27,7 @@ fn executes_zero_through_seven_mixed_int_and_bool_signatures() {
             },
         )
         .expect("host function should be valid");
-    let hosts = HostModules::new([math]).expect("host modules should be unique");
+    let hosts = HostProviderSet::new([math]).expect("host modules should be unique");
     let source = r#"
 import host/math.{all, is_positive, ready}
 
@@ -81,5 +81,5 @@ pub fn main() {
         Value::Bool(true),
     ]);
 
-    assert_eq!(execution.run_main(&mut Vec::new()), Ok(expected));
+    assert_eq!(execution.run_main(&mut (), &mut Vec::new()), Ok(expected));
 }

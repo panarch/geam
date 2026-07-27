@@ -18,7 +18,7 @@ use crate::plan::execution::runtime::RuntimeExecutionPlan;
 
 pub(super) fn value(
     plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState,
+    state: &RuntimeState<'_, impl Sized>,
     value: EvaluatedValue,
 ) -> Value {
     match value {
@@ -43,7 +43,11 @@ pub(super) fn value(
     }
 }
 
-fn list(plan: &impl RuntimeExecutionPlan, state: &RuntimeState, value: &ListValueId) -> ListValue {
+fn list(
+    plan: &impl RuntimeExecutionPlan,
+    state: &RuntimeState<'_, impl Sized>,
+    value: &ListValueId,
+) -> ListValue {
     match value {
         ListValueId::Parameter(value) => {
             ListValue::empty(crate::plan::ValueType::Parameter(value.type_id().item()))
@@ -117,7 +121,7 @@ fn list(plan: &impl RuntimeExecutionPlan, state: &RuntimeState, value: &ListValu
 
 fn function(
     plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState,
+    state: &RuntimeState<'_, impl Sized>,
     value: EvaluatedFunctionValue,
 ) -> FunctionValue {
     let kind = match value.kind() {
@@ -166,7 +170,7 @@ fn function(
 
 fn custom(
     plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState,
+    state: &RuntimeState<'_, impl Sized>,
     value: EvaluatedCustomValue,
 ) -> CustomValue {
     let constructor = plan.custom_constructor(value.constructor());
@@ -191,7 +195,7 @@ fn custom(
 
 fn int_function(
     plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState,
+    state: &RuntimeState<'_, impl Sized>,
     value: &EvaluatedIntFunction,
 ) -> IntFunctionValue {
     IntFunctionValue::new_with_captures(
@@ -204,7 +208,7 @@ fn int_function(
 
 fn generic_function(
     plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState,
+    state: &RuntimeState<'_, impl Sized>,
     value: &EvaluatedGenericFunction,
 ) -> GenericFunctionValue {
     GenericFunctionValue::from_evaluated(
@@ -217,7 +221,7 @@ fn generic_function(
 
 fn never_function(
     plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState,
+    state: &RuntimeState<'_, impl Sized>,
     value: &EvaluatedNeverFunction,
 ) -> NeverFunctionValue {
     NeverFunctionValue::from_evaluated(
@@ -230,7 +234,7 @@ fn never_function(
 
 fn float_function(
     plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState,
+    state: &RuntimeState<'_, impl Sized>,
     value: &EvaluatedFloatFunction,
 ) -> FloatFunctionValue {
     FloatFunctionValue::new_with_captures(
@@ -243,7 +247,7 @@ fn float_function(
 
 fn string_function(
     plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState,
+    state: &RuntimeState<'_, impl Sized>,
     value: &EvaluatedStringFunction,
 ) -> StringFunctionValue {
     StringFunctionValue::new_with_captures(
@@ -256,7 +260,7 @@ fn string_function(
 
 fn bit_array_function(
     plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState,
+    state: &RuntimeState<'_, impl Sized>,
     value: &EvaluatedBitArrayFunction,
 ) -> BitArrayFunctionValue {
     BitArrayFunctionValue::new_with_captures(
@@ -269,7 +273,7 @@ fn bit_array_function(
 
 fn utf_codepoint_function(
     plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState,
+    state: &RuntimeState<'_, impl Sized>,
     value: &EvaluatedUtfCodepointFunction,
 ) -> UtfCodepointFunctionValue {
     UtfCodepointFunctionValue::new_with_captures(
@@ -282,7 +286,7 @@ fn utf_codepoint_function(
 
 fn custom_function(
     plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState,
+    state: &RuntimeState<'_, impl Sized>,
     value: &EvaluatedCustomFunction,
 ) -> CustomFunctionValue {
     let target = match value {
@@ -303,7 +307,7 @@ fn custom_function(
 
 fn bool_function(
     plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState,
+    state: &RuntimeState<'_, impl Sized>,
     value: &EvaluatedBoolFunction,
 ) -> BoolFunctionValue {
     BoolFunctionValue::new_with_captures(
@@ -316,7 +320,7 @@ fn bool_function(
 
 fn nil_function(
     plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState,
+    state: &RuntimeState<'_, impl Sized>,
     value: &EvaluatedNilFunction,
 ) -> NilFunctionValue {
     NilFunctionValue::new_with_captures(
@@ -329,7 +333,7 @@ fn nil_function(
 
 fn tuple_function(
     plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState,
+    state: &RuntimeState<'_, impl Sized>,
     value: &EvaluatedTupleFunction,
 ) -> TupleFunctionValue {
     TupleFunctionValue::from_evaluated(
@@ -342,7 +346,7 @@ fn tuple_function(
 
 fn list_function(
     plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState,
+    state: &RuntimeState<'_, impl Sized>,
     value: &EvaluatedListFunction,
 ) -> ListFunctionValue {
     ListFunctionValue::new_with_captures(
@@ -355,7 +359,7 @@ fn list_function(
 
 fn function_function(
     plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState,
+    state: &RuntimeState<'_, impl Sized>,
     value: &EvaluatedFunctionFunction,
 ) -> FunctionFunctionValue {
     FunctionFunctionValue::from_evaluated(
@@ -368,7 +372,7 @@ fn function_function(
 
 fn nested_list_values(
     plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState,
+    state: &RuntimeState<'_, impl Sized>,
     value: &super::state::ListListValueId,
 ) -> Vec<ListValue> {
     state
@@ -382,7 +386,7 @@ fn nested_list_values(
 
 fn captures(
     plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState,
+    state: &RuntimeState<'_, impl Sized>,
     values: &[EvaluatedCapture],
 ) -> Vec<CaptureValue> {
     values
@@ -393,7 +397,7 @@ fn captures(
 
 fn capture(
     plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState,
+    state: &RuntimeState<'_, impl Sized>,
     value: &EvaluatedCapture,
 ) -> CaptureValue {
     match value.kind() {
@@ -466,7 +470,7 @@ fn capture(
 
 fn list_capture(
     plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState,
+    state: &RuntimeState<'_, impl Sized>,
     value: &EvaluatedListCapture,
 ) -> CaptureListValue {
     match value {

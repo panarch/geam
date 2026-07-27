@@ -1,4 +1,5 @@
 use super::{ExecutionPlan, HostedExecution};
+use crate::host::HostProfile;
 use crate::plan::execution::type_::{ValueShapeId, ValueShapeTable, ValueType};
 use std::fmt;
 
@@ -40,8 +41,8 @@ impl<'plan, 'output> ExplainContext<'plan, 'output> {
         }
     }
 
-    pub(in crate::plan::execution) fn new_hosted(
-        execution: &'plan HostedExecution,
+    pub(in crate::plan::execution) fn new_hosted<Profile: HostProfile>(
+        execution: &'plan HostedExecution<Profile>,
         output: &'output mut String,
     ) -> Self {
         Self {
@@ -95,7 +96,11 @@ pub struct ExecutionPlanExplanation<'a> {
 
 enum ExplainedExecution<'a> {
     Plain(&'a ExecutionPlan),
-    Hosted(&'a HostedExecution),
+    Hosted(&'a dyn HostedExplanation),
+}
+
+trait HostedExplanation {
+    fn write_to(&self, output: &mut String);
 }
 
 impl<'a> ExecutionPlanExplanation<'a> {
@@ -105,7 +110,9 @@ impl<'a> ExecutionPlanExplanation<'a> {
         }
     }
 
-    pub(super) fn new_hosted(execution: &'a HostedExecution) -> Self {
+    pub(super) fn new_hosted<Profile: HostProfile>(
+        execution: &'a HostedExecution<Profile>,
+    ) -> Self {
         Self {
             execution: ExplainedExecution::Hosted(execution),
         }
@@ -120,12 +127,16 @@ impl fmt::Display for ExecutionPlanExplanation<'_> {
                 let mut context = ExplainContext::new(plan, &mut output);
                 context.write(plan);
             }
-            ExplainedExecution::Hosted(execution) => {
-                let mut context = ExplainContext::new_hosted(execution, &mut output);
-                context.write(execution);
-            }
+            ExplainedExecution::Hosted(execution) => execution.write_to(&mut output),
         }
         formatter.write_str(&output)
+    }
+}
+
+impl<Profile: HostProfile> HostedExplanation for HostedExecution<Profile> {
+    fn write_to(&self, output: &mut String) {
+        let mut context = ExplainContext::new_hosted(self, output);
+        context.write(self);
     }
 }
 

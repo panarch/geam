@@ -3,12 +3,12 @@ use crate::plan::execution::function::StringFunctionId;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::graph::RetainedValues;
-use crate::runtime::state::RuntimeState;
+use crate::runtime::state::RuntimeStateFor;
 use ecow::EcoString;
 
-pub(in crate::runtime) fn run_string(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(in crate::runtime) fn run_string<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     function: StringFunctionId,
     inputs: RetainedValues,
 ) -> ExecutionResult<EcoString> {

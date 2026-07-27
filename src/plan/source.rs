@@ -28,6 +28,19 @@ pub struct EchoSite {
     span: SourceSpan,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostCallSite {
+    module: EcoString,
+    function: EcoString,
+    span: SourceSpan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FunctionCallTarget<Function> {
+    function: Function,
+    site: HostCallSite,
+}
+
 impl SourceContext {
     pub fn new(path: impl Into<Utf8PathBuf>, source: impl Into<String>) -> Self {
         Self {
@@ -137,9 +150,63 @@ impl EchoSite {
     }
 }
 
+impl HostCallSite {
+    pub fn new(module: EcoString, function: EcoString, span: SourceSpan) -> Self {
+        Self {
+            module,
+            function,
+            span,
+        }
+    }
+
+    pub fn module(&self) -> &EcoString {
+        &self.module
+    }
+
+    pub fn function(&self) -> &EcoString {
+        &self.function
+    }
+
+    pub fn span(&self) -> SourceSpan {
+        self.span
+    }
+
+    #[cfg(test)]
+    pub(crate) fn unknown() -> Self {
+        Self::new(
+            "<unknown>".into(),
+            "<unknown>".into(),
+            SourceSpan::new(0, 0),
+        )
+    }
+}
+
+impl<Function> FunctionCallTarget<Function> {
+    pub(crate) fn new(function: Function, site: HostCallSite) -> Self {
+        Self { function, site }
+    }
+
+    pub(crate) fn function(&self) -> &Function {
+        &self.function
+    }
+
+    pub(crate) fn site(&self) -> &HostCallSite {
+        &self.site
+    }
+}
+
+#[cfg(test)]
+impl From<crate::plan::FunctionInstantiation>
+    for FunctionCallTarget<crate::plan::FunctionInstantiation>
+{
+    fn from(function: crate::plan::FunctionInstantiation) -> Self {
+        Self::new(function, HostCallSite::unknown())
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{EchoSite, PanicSite, SourceContext, SourceSpan};
+    use super::{EchoSite, HostCallSite, PanicSite, SourceContext, SourceSpan};
     use gleam_core::ast::SrcSpan;
 
     #[test]
@@ -178,6 +245,15 @@ mod tests {
     #[test]
     fn echo_site_preserves_module_function_and_span() {
         let site = EchoSite::new("main".into(), "run".into(), SourceSpan::new(4, 8));
+
+        assert_eq!(site.module(), "main");
+        assert_eq!(site.function(), "run");
+        assert_eq!(site.span(), SourceSpan::new(4, 8));
+    }
+
+    #[test]
+    fn host_call_site_preserves_module_function_and_span() {
+        let site = HostCallSite::new("main".into(), "run".into(), SourceSpan::new(4, 8));
 
         assert_eq!(site.module(), "main");
         assert_eq!(site.function(), "run");

@@ -64,12 +64,13 @@ the same target share one identity.
 
 ## Rust Host Functions
 
-Rust host functions enter through package-qualified source-less host modules.
-The ordinary `ExecutionPlan` has an uninhabited host target and remains
-host-free. Hosted source instead follows this separate pipeline:
+Rust host functions enter through package-qualified source-less host modules
+or providers for existing source external declarations. The ordinary
+`ExecutionPlan` has an uninhabited host target and remains host-free. Hosted
+source instead follows this separate pipeline:
 
 ```text
-HostModules + PackageSource[]
+HostProviderSet + PackageSource[]
 -> HostedTypedProgram
 -> HostedModulePlan
 -> HostedExecution
@@ -80,6 +81,11 @@ implementations and signature mismatches cannot become runtime states. The
 plan retains only package, module, function, scheme, shape, and callable target
 metadata. Rust callback objects are carried separately and retained only for
 host functions reached by execution specialization.
+
+Provider selection is completed before source body planning. An exact provider
+selects a host template, an external declaration with no provider uses its
+Gleam body when one exists, and an external-only declaration without a
+provider is rejected. A provider cannot replace an ordinary Gleam function.
 
 Host calls use the same family-specific runtime function IDs as Gleam
 functions. Direct calls, tail calls, function-value calls, and top-level
@@ -97,8 +103,12 @@ types and arities have no `HostFunction` implementation.
 
 Runtime receives the sealed Int/Bool slots and calls the matching typed
 function family without a `Value` downcast, signature check, string lookup,
-panic translation, provider fallback, or mutable per-run host state. Source
-`@external` provider binding and broader value families are separate work.
+panic translation, or runtime fallback selection. Each `HostProfile` defines a
+caller-owned `RunState`; a scoped callback can project only its declared
+`HostProvider::State` through the active `HostCall`. An owned `HostFailure`
+becomes `ExecutionError::Host` with the failed provider identity, concrete
+signature, and preserved source call site. Broader value families remain
+separate work.
 
 ## Generic Values
 

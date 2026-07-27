@@ -43,9 +43,15 @@ use super::specialization::Representability;
 use crate::plan::{execution, module};
 use std::convert::Infallible;
 
-pub(super) fn lower_function_graph<ModuleExpression, DraftReturn, FrozenReturn, TailCall>(
+pub(super) fn lower_function_graph<
+    ModuleExpression,
+    ModuleFunction,
+    DraftReturn,
+    FrozenReturn,
+    TailCall,
+>(
     template: &module::FunctionTemplate,
-    body: &module::ReturnBody<ModuleExpression, module::FunctionInstantiation>,
+    body: &module::ReturnBody<ModuleExpression, ModuleFunction>,
     context: &mut LoweringContext,
     lower_expression: impl Copy
     + Fn(
@@ -54,11 +60,7 @@ pub(super) fn lower_function_graph<ModuleExpression, DraftReturn, FrozenReturn, 
         &mut draft::DraftGraph,
         &mut LoweringContext,
     ) -> Representability<draft::DraftFlow<DraftReturn>>,
-    lower_function: impl Copy
-    + Fn(
-        &module::FunctionInstantiation,
-        &mut LoweringContext,
-    ) -> Representability<TailCall>,
+    lower_function: impl Copy + Fn(&ModuleFunction, &mut LoweringContext) -> Representability<TailCall>,
 ) -> Representability<
     draft::LoweredFunctionGraph<execution::function::FunctionBody<FrozenReturn, TailCall>>,
 >
@@ -70,9 +72,9 @@ where
         .map(|graph| freeze::freeze(graph, context))
 }
 
-pub(super) fn lower_never_function_graph<ModuleExpression>(
+pub(super) fn lower_never_function_graph<ModuleExpression, ModuleFunction>(
     template: &module::FunctionTemplate,
-    body: &module::ReturnBody<ModuleExpression, module::FunctionInstantiation>,
+    body: &module::ReturnBody<ModuleExpression, ModuleFunction>,
     context: &mut LoweringContext,
     lower_expression: impl Copy
     + Fn(
@@ -81,12 +83,17 @@ pub(super) fn lower_never_function_graph<ModuleExpression>(
         &mut draft::DraftGraph,
         &mut LoweringContext,
     ) -> Representability<()>,
+    lower_function: impl Copy
+    + Fn(
+        &ModuleFunction,
+        &mut LoweringContext,
+    ) -> Representability<execution::function::NeverFunctionId>,
 ) -> Representability<
     draft::LoweredFunctionGraph<
         execution::function::FunctionBody<Infallible, execution::function::NeverFunctionId>,
     >,
 > {
-    build::build_never_function_graph(template, body, context, lower_expression)
+    build::build_never_function_graph(template, body, context, lower_expression, lower_function)
         .map(|graph| freeze::freeze(graph, context))
 }
 

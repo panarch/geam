@@ -37,6 +37,7 @@ use self::type_::{
     ListTypeId, TupleListTypeId, ValueShapeDescriptor, ValueShapeId, ValueType,
 };
 use self::type_::{CustomTypeTable, ListTypeTable, ValueShapeTable};
+use crate::host::HostProfile;
 use crate::plan::{HostedModulePlan, ModuleId, ModulePlan, SourceContext};
 use ecow::EcoString;
 pub use explain::ExecutionPlanExplanation;
@@ -46,22 +47,25 @@ pub struct ExecutionPlan {
     program: ExecutionProgram<Infallible>,
 }
 
-pub struct HostedExecution {
-    program: ExecutionProgram<host::HostedExecutionHost>,
-    host_functions: host::HostFunctionTables,
+pub struct HostedExecution<Profile: HostProfile> {
+    program: ExecutionProgram<host::HostedExecutionHost<Profile>>,
+    host_functions: host::HostFunctionTables<Profile>,
 }
 
 pub(crate) trait ExecutionHost {
+    type RunState;
     type IntFunction;
     type BoolFunction;
 }
 
 impl ExecutionHost for Infallible {
+    type RunState = ();
     type IntFunction = ExecutableFunction<IntFunctionBody>;
     type BoolFunction = ExecutableFunction<function::BoolFunctionBody>;
 }
 
-impl ExecutionHost for host::HostedExecutionHost {
+impl<Profile: HostProfile> ExecutionHost for host::HostedExecutionHost<Profile> {
+    type RunState = Profile::RunState;
     type IntFunction = function::ValueFunctionEntry<IntFunctionBody, host::HostIntFunctionId>;
     type BoolFunction =
         function::ValueFunctionEntry<function::BoolFunctionBody, host::HostBoolFunctionId>;
@@ -112,7 +116,7 @@ impl explain::Explain for ExecutionPlan {
     }
 }
 
-impl explain::Explain for HostedExecution {
+impl<Profile: HostProfile> explain::Explain for HostedExecution<Profile> {
     fn write_explanation(&self, context: &mut explain::ExplainContext<'_, '_>) {
         context.push_str("module ");
         context.push_str(&self.program.common.modules[self.program.common.root.index()].module);
@@ -528,8 +532,8 @@ impl ExecutionPlan {
     }
 }
 
-impl HostedExecution {
-    pub fn from_module_plan(module_plan: HostedModulePlan) -> Self {
+impl<Profile: HostProfile> HostedExecution<Profile> {
+    pub fn from_module_plan(module_plan: HostedModulePlan<Profile>) -> Self {
         let (program, host_functions) = lowering::lower_hosted(module_plan);
         Self {
             program,
@@ -539,9 +543,10 @@ impl HostedExecution {
 
     pub fn run_main(
         &self,
+        state: &mut Profile::RunState,
         echo: &mut dyn crate::EchoSink,
     ) -> Result<crate::Value, crate::ExecutionError> {
-        crate::runtime::run_hosted_main(self, echo)
+        crate::runtime::run_hosted_main(self, state, echo)
     }
 
     pub fn explain(&self) -> ExecutionPlanExplanation<'_> {
@@ -551,14 +556,14 @@ impl HostedExecution {
     pub(crate) fn host_int_function(
         &self,
         id: host::HostIntFunctionId,
-    ) -> &host::HostedIntFunction {
+    ) -> &host::HostedIntFunction<Profile> {
         self.host_functions.int(id)
     }
 
     pub(crate) fn host_bool_function(
         &self,
         id: host::HostBoolFunctionId,
-    ) -> &host::HostedBoolFunction {
+    ) -> &host::HostedBoolFunction<Profile> {
         self.host_functions.bool(id)
     }
 }
@@ -570,11 +575,9 @@ mod tests {
     use crate::plan::execution::function::{
         BoolFunctionBody, BoolFunctionId, IntFunctionBody, IntFunctionId, ValueFunctionEntry,
     };
-    use crate::plan::execution::host::{
-        HostBoolFunctionId, HostIntFunctionId, HostedBoolFunction, HostedIntFunction,
-    };
+    use crate::plan::execution::host::{HostBoolFunctionId, HostIntFunctionId};
     use crate::{
-        HostModule, HostModules, ModuleSource, PackageSource, compile_typed_host_program,
+        HostModule, HostProviderSet, ModuleSource, PackageSource, compile_typed_host_program,
         compile_typed_module, plan_host_program, plan_module,
     };
     use num_bigint::BigInt;
@@ -597,7 +600,7 @@ mod tests {
             .expect("host module should be valid")
             .with_function("add", <BigInt as std::ops::Add>::add)
             .expect("host function should be valid");
-        let hosts = HostModules::new([math]).expect("host modules should be unique");
+        let hosts = HostProviderSet::new([math]).expect("host modules should be unique");
         let source = r#"
 import host/math
 
@@ -635,10 +638,10 @@ pub fn main() {
             host,
             ValueFunctionEntry::Host(target) if *target == HostIntFunctionId::new(0)
         ));
-        let implementation: &HostedIntFunction = &execution.host_functions.int_functions()[0];
+        let implementation = &execution.host_functions.int_functions()[0];
         assert_eq!(implementation.name(), "add");
         assert_eq!(
-            execution.run_main(&mut Vec::new()),
+            execution.run_main(&mut (), &mut Vec::new()),
             Ok(crate::Value::Int(3.into())),
         );
     }
@@ -649,7 +652,7 @@ pub fn main() {
             .expect("host module should be valid")
             .with_function("is_positive", |value: BigInt| value > BigInt::from(0))
             .expect("host function should be valid");
-        let hosts = HostModules::new([predicates]).expect("host modules should be unique");
+        let hosts = HostProviderSet::new([predicates]).expect("host modules should be unique");
         let source = r#"
 import host/predicates
 
@@ -692,10 +695,10 @@ pub fn main() {
             host,
             ValueFunctionEntry::Host(target) if *target == HostBoolFunctionId::new(0)
         ));
-        let implementation: &HostedBoolFunction = &execution.host_functions.bool_functions()[0];
+        let implementation = &execution.host_functions.bool_functions()[0];
         assert_eq!(implementation.name(), "is_positive");
         assert_eq!(
-            execution.run_main(&mut Vec::new()),
+            execution.run_main(&mut (), &mut Vec::new()),
             Ok(crate::Value::Bool(true)),
         );
     }
@@ -726,7 +729,7 @@ pub fn main() {
             .expect("host module should be valid")
             .with_function("add", <BigInt as std::ops::Add>::add)
             .expect("host function should be valid");
-        let hosts = HostModules::new([math]).expect("host modules should be unique");
+        let hosts = HostProviderSet::new([math]).expect("host modules should be unique");
         let source = "import host/math\npub fn main() { math.add(1, 2) }";
         let typed = compile_typed_host_program(
             "application",

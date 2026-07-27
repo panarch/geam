@@ -16,10 +16,12 @@ pub(crate) enum IntInstruction {
     Call {
         function: IntFunctionId,
         args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: IntFunctionLocalId,
         args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: TupleLocalId,
@@ -62,10 +64,10 @@ impl Explain for IntInstruction {
         match self {
             IntInstruction::Value(value) => write_literal(output, "int.value", &value.to_string()),
             IntInstruction::Constant(id) => write_constant(output, "int", *id),
-            IntInstruction::Call { function, args } => {
+            IntInstruction::Call { function, args, .. } => {
                 write_call(output, "int.call", function, args)
             }
-            IntInstruction::FunctionCall { function, args } => {
+            IntInstruction::FunctionCall { function, args, .. } => {
                 write_function_call(output, "int.function_call", function, args);
             }
             IntInstruction::TupleIndex { tuple, index } => {

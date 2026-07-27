@@ -208,6 +208,11 @@ family-local parameter layout, and callback adapter together. Planner and
 runtime phases may consume that layout, but must not independently infer the
 same signature or parameter indexing.
 
+Source provider selection must finish before function body planning. Match an
+exact external scheme, preserve a declared Gleam fallback when no provider is
+selected, reject missing providers for bodyless externals, and never defer
+selection or ordinary-function override decisions to runtime.
+
 ## Panic Rules
 
 Production Geam logic must not use explicit panic paths for control flow,

@@ -7,7 +7,7 @@ pub(crate) enum HostParameter {
 }
 
 impl HostParameter {
-    pub(super) fn shape(self) -> ValueShape {
+    pub(crate) fn shape(&self) -> ValueShape {
         match self {
             Self::Int(_) => ValueShape::Int,
             Self::Bool(_) => ValueShape::Bool,

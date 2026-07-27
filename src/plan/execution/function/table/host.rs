@@ -1,25 +1,26 @@
 use super::{FunctionTables, write_function, write_table};
+use crate::host::HostProfile;
 use crate::plan::execution::explain::{Explain, ExplainContext, FunctionLabel};
 use crate::plan::execution::function::{BoolFunctionBody, IntFunctionBody, ValueFunctionEntry};
 use crate::plan::execution::host::{
     HostBoolFunctionId, HostFunctionTables, HostIntFunctionId, HostedFunction,
 };
 
-pub(in crate::plan::execution) struct HostedFunctionTablesExplanation<'a> {
+pub(in crate::plan::execution) struct HostedFunctionTablesExplanation<'a, Profile: HostProfile> {
     tables: &'a FunctionTables<
         ValueFunctionEntry<IntFunctionBody, HostIntFunctionId>,
         ValueFunctionEntry<BoolFunctionBody, HostBoolFunctionId>,
     >,
-    host_functions: &'a HostFunctionTables,
+    host_functions: &'a HostFunctionTables<Profile>,
 }
 
-impl<'a> HostedFunctionTablesExplanation<'a> {
+impl<'a, Profile: HostProfile> HostedFunctionTablesExplanation<'a, Profile> {
     pub(in crate::plan::execution) fn new(
         tables: &'a FunctionTables<
             ValueFunctionEntry<IntFunctionBody, HostIntFunctionId>,
             ValueFunctionEntry<BoolFunctionBody, HostBoolFunctionId>,
         >,
-        host_functions: &'a HostFunctionTables,
+        host_functions: &'a HostFunctionTables<Profile>,
     ) -> Self {
         Self {
             tables,
@@ -28,7 +29,7 @@ impl<'a> HostedFunctionTablesExplanation<'a> {
     }
 }
 
-impl Explain for HostedFunctionTablesExplanation<'_> {
+impl<Profile: HostProfile> Explain for HostedFunctionTablesExplanation<'_, Profile> {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
         write_table(context, "never", &self.tables.value_returns.never_functions);
         for (index, function) in self.tables.value_returns.int_functions.iter().enumerate() {
@@ -108,7 +109,7 @@ mod tests {
     use super::HostedFunctionTablesExplanation;
     use crate::plan::execution::explain;
     use crate::{
-        HostModule, HostModules, HostedExecution, ModuleSource, PackageSource,
+        HostModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
         compile_typed_host_program, plan_host_program,
     };
     use num_bigint::BigInt;
@@ -139,7 +140,7 @@ mod tests {
             .expect("host function should be valid")
             .with_function("all", all)
             .expect("host function should be valid");
-        let hosts = HostModules::new([math]).expect("host modules should be unique");
+        let hosts = HostProviderSet::new([math]).expect("host modules should be unique");
         let source = r#"
 import host/math
 

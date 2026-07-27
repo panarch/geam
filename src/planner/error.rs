@@ -1,9 +1,11 @@
 use ecow::EcoString;
 use thiserror::Error;
 
+mod host;
 mod invalid;
 mod unsupported;
 
+pub use host::HostProviderLinkReason;
 pub use invalid::{
     InvalidCallShapeReason, InvalidCaseShapeReason, InvalidCustomTypeReason,
     InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
@@ -18,6 +20,21 @@ pub use unsupported::{
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum PlanError {
+    #[error("host provider {package}::{module}.{function}: {reason}")]
+    HostProviderLink {
+        package: EcoString,
+        module: EcoString,
+        function: EcoString,
+        reason: Box<HostProviderLinkReason>,
+    },
+
+    #[error("external function {package}::{module}.{function} has no host provider or Gleam body")]
+    MissingHostProvider {
+        package: EcoString,
+        module: EcoString,
+        function: EcoString,
+    },
+
     #[error("unsupported top-level definition: {kind}")]
     UnsupportedTopLevel { kind: UnsupportedTopLevelKind },
 

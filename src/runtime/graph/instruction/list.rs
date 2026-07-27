@@ -28,15 +28,16 @@ use crate::runtime::state::{
     BitArrayListValueId, BoolListValueId, CustomListAllocation, CustomListValueId,
     FloatListValueId, FunctionListValueId, IntListValueId, ListHandleCore, ListListValueId,
     ListValueId, NilListValueId, ParameterListListValueId, ParameterListValueId, RuntimeState,
-    StoredListValueId, StringListValueId, TupleListValueId, UtfCodepointListValueId,
+    RuntimeStateFor, StoredListValueId, StringListValueId, TupleListValueId,
+    UtfCodepointListValueId,
 };
 use crate::runtime::{ExecutionError, InvariantError};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
-pub(super) fn execute(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn execute<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &mut BlockEnvironment,
     instruction: &ListInstruction,
     expected: &ValueType,
@@ -47,7 +48,7 @@ pub(super) fn execute(
             environment.push_parameter_list(value);
         }
         ListInstruction::ParameterList(type_id, instruction) => {
-            let value = typed::<ParameterListFamily>(
+            let value = typed::<ParameterListFamily, _>(
                 plan,
                 state,
                 environment,
@@ -59,21 +60,33 @@ pub(super) fn execute(
         }
         ListInstruction::Int(type_id, instruction) => {
             let value =
-                typed::<IntFamily>(plan, state, environment, *type_id, instruction, expected)?;
+                typed::<IntFamily, _>(plan, state, environment, *type_id, instruction, expected)?;
             environment.push_int_list(value);
         }
         ListInstruction::String(type_id, instruction) => {
-            let value =
-                typed::<StringFamily>(plan, state, environment, *type_id, instruction, expected)?;
+            let value = typed::<StringFamily, _>(
+                plan,
+                state,
+                environment,
+                *type_id,
+                instruction,
+                expected,
+            )?;
             environment.push_string_list(value);
         }
         ListInstruction::BitArray(type_id, instruction) => {
-            let value =
-                typed::<BitArrayFamily>(plan, state, environment, *type_id, instruction, expected)?;
+            let value = typed::<BitArrayFamily, _>(
+                plan,
+                state,
+                environment,
+                *type_id,
+                instruction,
+                expected,
+            )?;
             environment.push_bit_array_list(value);
         }
         ListInstruction::UtfCodepoint(type_id, instruction) => {
-            let value = typed::<UtfCodepointFamily>(
+            let value = typed::<UtfCodepointFamily, _>(
                 plan,
                 state,
                 environment,
@@ -84,47 +97,59 @@ pub(super) fn execute(
             environment.push_utf_codepoint_list(value);
         }
         ListInstruction::Custom(type_id, instruction) => {
-            let value =
-                typed::<CustomFamily>(plan, state, environment, *type_id, instruction, expected)?;
+            let value = typed::<CustomFamily, _>(
+                plan,
+                state,
+                environment,
+                *type_id,
+                instruction,
+                expected,
+            )?;
             environment.push_custom_list(value);
         }
         ListInstruction::Float(type_id, instruction) => {
             let value =
-                typed::<FloatFamily>(plan, state, environment, *type_id, instruction, expected)?;
+                typed::<FloatFamily, _>(plan, state, environment, *type_id, instruction, expected)?;
             environment.push_float_list(value);
         }
         ListInstruction::Bool(type_id, instruction) => {
             let value =
-                typed::<BoolFamily>(plan, state, environment, *type_id, instruction, expected)?;
+                typed::<BoolFamily, _>(plan, state, environment, *type_id, instruction, expected)?;
             environment.push_bool_list(value);
         }
         ListInstruction::Nil(type_id, instruction) => {
             let value =
-                typed::<NilFamily>(plan, state, environment, *type_id, instruction, expected)?;
+                typed::<NilFamily, _>(plan, state, environment, *type_id, instruction, expected)?;
             environment.push_nil_list(value);
         }
         ListInstruction::Tuple(type_id, instruction) => {
             let value =
-                typed::<TupleFamily>(plan, state, environment, *type_id, instruction, expected)?;
+                typed::<TupleFamily, _>(plan, state, environment, *type_id, instruction, expected)?;
             environment.push_tuple_list(value);
         }
         ListInstruction::List(type_id, instruction) => {
             let value =
-                typed::<ListFamily>(plan, state, environment, *type_id, instruction, expected)?;
+                typed::<ListFamily, _>(plan, state, environment, *type_id, instruction, expected)?;
             environment.push_list_list(value);
         }
         ListInstruction::Function(type_id, instruction) => {
-            let value =
-                typed::<FunctionFamily>(plan, state, environment, *type_id, instruction, expected)?;
+            let value = typed::<FunctionFamily, _>(
+                plan,
+                state,
+                environment,
+                *type_id,
+                instruction,
+                expected,
+            )?;
             environment.push_function_list(value);
         }
     }
     Ok(())
 }
 
-fn parameter(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+fn parameter<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &BlockEnvironment,
     type_id: ParameterListTypeId,
     instruction: &ParameterListInstruction,
@@ -193,21 +218,21 @@ trait RuntimeTypedList {
 
     fn element(environment: &BlockEnvironment, local: &Self::ElementLocal) -> Self::Element;
     fn local(environment: &BlockEnvironment, local: Self::Local) -> Self::Handle;
-    fn values(state: &RuntimeState, value: &Self::Handle) -> Vec<Self::Element>;
-    fn allocate(
-        state: &mut RuntimeState,
+    fn values<State>(state: &RuntimeState<'_, State>, value: &Self::Handle) -> Vec<Self::Element>;
+    fn allocate<State>(
+        state: &mut RuntimeState<'_, State>,
         type_id: Self::TypeId,
         values: Vec<Self::Element>,
     ) -> Self::Handle;
-    fn run_direct(
-        plan: &impl ExecutableRuntimePlan,
-        state: &mut RuntimeState,
+    fn run_direct<Plan: ExecutableRuntimePlan>(
+        plan: &Plan,
+        state: &mut RuntimeStateFor<'_, Plan>,
         function: Self::Function,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle>;
-    fn run_value(
-        plan: &impl ExecutableRuntimePlan,
-        state: &mut RuntimeState,
+    fn run_value<Plan: ExecutableRuntimePlan>(
+        plan: &Plan,
+        state: &mut RuntimeStateFor<'_, Plan>,
         function: EvaluatedListFunction,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle>;
@@ -215,9 +240,9 @@ trait RuntimeTypedList {
     fn from_core(type_id: Self::TypeId, core: ListHandleCore) -> Self::Handle;
 }
 
-fn typed<Family: RuntimeTypedList>(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+fn typed<Family: RuntimeTypedList, Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &BlockEnvironment,
     type_id: Family::TypeId,
     instruction: &TypedListInstruction<Family::ElementLocal, Family::Local, Family::Function>,
@@ -341,30 +366,33 @@ macro_rules! vector_family {
                 environment.$local_method(local)
             }
 
-            fn values(state: &RuntimeState, value: &Self::Handle) -> Vec<Self::Element> {
+            fn values<State>(
+                state: &RuntimeState<'_, State>,
+                value: &Self::Handle,
+            ) -> Vec<Self::Element> {
                 state.$values_method(value).to_vec()
             }
 
-            fn allocate(
-                state: &mut RuntimeState,
+            fn allocate<State>(
+                state: &mut RuntimeState<'_, State>,
                 type_id: Self::TypeId,
                 values: Vec<Self::Element>,
             ) -> Self::Handle {
                 state.$allocate_method(type_id, values)
             }
 
-            fn run_direct(
-                plan: &impl ExecutableRuntimePlan,
-                state: &mut RuntimeState,
+            fn run_direct<Plan: ExecutableRuntimePlan>(
+                plan: &Plan,
+                state: &mut RuntimeStateFor<'_, Plan>,
                 function: Self::Function,
                 inputs: RetainedValues,
             ) -> ExecutionResult<Self::Handle> {
                 crate::runtime::function::$run_method(plan, state, function, inputs)
             }
 
-            fn run_value(
-                plan: &impl ExecutableRuntimePlan,
-                state: &mut RuntimeState,
+            fn run_value<Plan: ExecutableRuntimePlan>(
+                plan: &Plan,
+                state: &mut RuntimeStateFor<'_, Plan>,
                 function: EvaluatedListFunction,
                 inputs: RetainedValues,
             ) -> ExecutionResult<Self::Handle> {
@@ -521,30 +549,30 @@ impl RuntimeTypedList for CustomFamily {
         environment.custom_list(local)
     }
 
-    fn values(state: &RuntimeState, value: &Self::Handle) -> Vec<Self::Element> {
+    fn values<State>(state: &RuntimeState<'_, State>, value: &Self::Handle) -> Vec<Self::Element> {
         state.custom_values(value).to_vec()
     }
 
-    fn allocate(
-        state: &mut RuntimeState,
+    fn allocate<State>(
+        state: &mut RuntimeState<'_, State>,
         type_id: Self::TypeId,
         values: Vec<Self::Element>,
     ) -> Self::Handle {
         state.custom(CustomListAllocation::new(type_id, values))
     }
 
-    fn run_direct(
-        plan: &impl ExecutableRuntimePlan,
-        state: &mut RuntimeState,
+    fn run_direct<Plan: ExecutableRuntimePlan>(
+        plan: &Plan,
+        state: &mut RuntimeStateFor<'_, Plan>,
         function: Self::Function,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle> {
         crate::runtime::function::run_custom_list(plan, state, function, inputs)
     }
 
-    fn run_value(
-        plan: &impl ExecutableRuntimePlan,
-        state: &mut RuntimeState,
+    fn run_value<Plan: ExecutableRuntimePlan>(
+        plan: &Plan,
+        state: &mut RuntimeStateFor<'_, Plan>,
         function: EvaluatedListFunction,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle> {
@@ -586,30 +614,30 @@ impl RuntimeTypedList for NilFamily {
         environment.nil_list(local)
     }
 
-    fn values(state: &RuntimeState, value: &Self::Handle) -> Vec<Self::Element> {
+    fn values<State>(state: &RuntimeState<'_, State>, value: &Self::Handle) -> Vec<Self::Element> {
         vec![(); state.nil_len(value)]
     }
 
-    fn allocate(
-        state: &mut RuntimeState,
+    fn allocate<State>(
+        state: &mut RuntimeState<'_, State>,
         type_id: Self::TypeId,
         values: Vec<Self::Element>,
     ) -> Self::Handle {
         state.nil(type_id, values.len())
     }
 
-    fn run_direct(
-        plan: &impl ExecutableRuntimePlan,
-        state: &mut RuntimeState,
+    fn run_direct<Plan: ExecutableRuntimePlan>(
+        plan: &Plan,
+        state: &mut RuntimeStateFor<'_, Plan>,
         function: Self::Function,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle> {
         crate::runtime::function::run_nil_list(plan, state, function, inputs)
     }
 
-    fn run_value(
-        plan: &impl ExecutableRuntimePlan,
-        state: &mut RuntimeState,
+    fn run_value<Plan: ExecutableRuntimePlan>(
+        plan: &Plan,
+        state: &mut RuntimeStateFor<'_, Plan>,
         function: EvaluatedListFunction,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle> {
@@ -651,33 +679,33 @@ impl RuntimeTypedList for ParameterListFamily {
         environment.parameter_list_list(local)
     }
 
-    fn values(state: &RuntimeState, value: &Self::Handle) -> Vec<Self::Element> {
+    fn values<State>(state: &RuntimeState<'_, State>, value: &Self::Handle) -> Vec<Self::Element> {
         vec![
             ParameterListValueId::new(value.type_id().item_type());
             state.parameter_list_list_len(value)
         ]
     }
 
-    fn allocate(
-        state: &mut RuntimeState,
+    fn allocate<State>(
+        state: &mut RuntimeState<'_, State>,
         type_id: Self::TypeId,
         values: Vec<Self::Element>,
     ) -> Self::Handle {
         state.parameter_list_list(type_id, values.len())
     }
 
-    fn run_direct(
-        plan: &impl ExecutableRuntimePlan,
-        state: &mut RuntimeState,
+    fn run_direct<Plan: ExecutableRuntimePlan>(
+        plan: &Plan,
+        state: &mut RuntimeStateFor<'_, Plan>,
         function: Self::Function,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle> {
         crate::runtime::function::run_parameter_list_list(plan, state, function, inputs)
     }
 
-    fn run_value(
-        plan: &impl ExecutableRuntimePlan,
-        state: &mut RuntimeState,
+    fn run_value<Plan: ExecutableRuntimePlan>(
+        plan: &Plan,
+        state: &mut RuntimeStateFor<'_, Plan>,
         function: EvaluatedListFunction,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle> {
@@ -719,30 +747,30 @@ impl RuntimeTypedList for ListFamily {
         environment.list_list(local)
     }
 
-    fn values(state: &RuntimeState, value: &Self::Handle) -> Vec<Self::Element> {
+    fn values<State>(state: &RuntimeState<'_, State>, value: &Self::Handle) -> Vec<Self::Element> {
         state.list_values(value).to_vec()
     }
 
-    fn allocate(
-        state: &mut RuntimeState,
+    fn allocate<State>(
+        state: &mut RuntimeState<'_, State>,
         type_id: Self::TypeId,
         values: Vec<Self::Element>,
     ) -> Self::Handle {
         state.list(type_id, values)
     }
 
-    fn run_direct(
-        plan: &impl ExecutableRuntimePlan,
-        state: &mut RuntimeState,
+    fn run_direct<Plan: ExecutableRuntimePlan>(
+        plan: &Plan,
+        state: &mut RuntimeStateFor<'_, Plan>,
         function: Self::Function,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle> {
         crate::runtime::function::run_list_list(plan, state, function, inputs)
     }
 
-    fn run_value(
-        plan: &impl ExecutableRuntimePlan,
-        state: &mut RuntimeState,
+    fn run_value<Plan: ExecutableRuntimePlan>(
+        plan: &Plan,
+        state: &mut RuntimeStateFor<'_, Plan>,
         function: EvaluatedListFunction,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle> {
@@ -784,30 +812,30 @@ impl RuntimeTypedList for FunctionFamily {
         environment.function_list(local)
     }
 
-    fn values(state: &RuntimeState, value: &Self::Handle) -> Vec<Self::Element> {
+    fn values<State>(state: &RuntimeState<'_, State>, value: &Self::Handle) -> Vec<Self::Element> {
         state.function_values(value).to_vec()
     }
 
-    fn allocate(
-        state: &mut RuntimeState,
+    fn allocate<State>(
+        state: &mut RuntimeState<'_, State>,
         type_id: Self::TypeId,
         values: Vec<Self::Element>,
     ) -> Self::Handle {
         state.function(type_id, values)
     }
 
-    fn run_direct(
-        plan: &impl ExecutableRuntimePlan,
-        state: &mut RuntimeState,
+    fn run_direct<Plan: ExecutableRuntimePlan>(
+        plan: &Plan,
+        state: &mut RuntimeStateFor<'_, Plan>,
         function: Self::Function,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle> {
         crate::runtime::function::run_function_list(plan, state, function, inputs)
     }
 
-    fn run_value(
-        plan: &impl ExecutableRuntimePlan,
-        state: &mut RuntimeState,
+    fn run_value<Plan: ExecutableRuntimePlan>(
+        plan: &Plan,
+        state: &mut RuntimeStateFor<'_, Plan>,
         function: EvaluatedListFunction,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle> {
@@ -1547,8 +1575,15 @@ pub fn main() {
         Family::Handle: std::fmt::Debug,
     {
         assert_eq!(
-            typed::<Family>(plan, state, environment, type_id, instruction, expected)
-                .expect_err("malformed projected list should fail at its owning boundary"),
+            typed::<Family, crate::ExecutionPlan>(
+                plan,
+                state,
+                environment,
+                type_id,
+                instruction,
+                expected,
+            )
+            .expect_err("malformed projected list should fail at its owning boundary"),
             expected_error,
         );
     }
@@ -1593,7 +1628,7 @@ pub fn main() {
         };
 
         assert_eq!(
-            typed::<Family>(
+            typed::<Family, crate::ExecutionPlan>(
                 plan,
                 &mut state,
                 &environment,

@@ -901,14 +901,20 @@ pub fn main() {
         arguments.push_evaluated(EvaluatedValue::Int(20.into()));
 
         let implementation = int_implementation(implementation);
-        assert_eq!(implementation.call(&arguments), BigInt::from(20));
+        assert_eq!(
+            implementation.call(&mut (), &arguments),
+            Ok(BigInt::from(20))
+        );
 
         let mut arguments = RetainedValues::empty();
         arguments.push_evaluated(EvaluatedValue::Int(10.into()));
         arguments.push_evaluated(EvaluatedValue::Bool(true));
         arguments.push_evaluated(EvaluatedValue::Int(20.into()));
 
-        assert_eq!(implementation.call(&arguments), BigInt::from(10));
+        assert_eq!(
+            implementation.call(&mut (), &arguments),
+            Ok(BigInt::from(10))
+        );
     }
 
     #[test]
@@ -919,7 +925,9 @@ pub fn main() {
         int_implementation(implementation);
     }
 
-    fn int_implementation(implementation: HostFunctionImplementation) -> HostIntFunction {
+    fn int_implementation(
+        implementation: HostFunctionImplementation<crate::host::StatelessHostProfile>,
+    ) -> HostIntFunction<crate::host::StatelessHostProfile> {
         let HostFunctionImplementation::Int(implementation) = implementation else {
             panic!("choose should retain an Int implementation");
         };

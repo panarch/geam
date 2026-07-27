@@ -2,14 +2,15 @@ use crate::plan::execution::constant::ConstantProgram;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::graph::{self, GraphValue, RetainedValues};
-use crate::runtime::state::RuntimeState;
+use crate::runtime::state::RuntimeStateFor;
 
-pub(super) fn evaluate<Return>(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn evaluate<Plan, Return>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     program: &ConstantProgram<Return>,
 ) -> ExecutionResult<Return::Evaluated>
 where
+    Plan: ExecutableRuntimePlan,
     Return: GraphValue,
 {
     graph::execute(plan, state, program.block_graph(), RetainedValues::empty()).map(|completed| {

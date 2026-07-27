@@ -103,13 +103,23 @@ fn freeze_int(
     match instruction {
         DraftIntInstruction::Value(value) => E::Value(value.clone()),
         DraftIntInstruction::Constant(id) => E::Constant(*id),
-        DraftIntInstruction::Call { function, args } => E::Call {
+        DraftIntInstruction::Call {
+            function,
+            args,
+            site,
+        } => E::Call {
             function: *function,
             args: values.any_slice(args),
+            site: site.clone(),
         },
-        DraftIntInstruction::FunctionCall { function, args } => E::FunctionCall {
+        DraftIntInstruction::FunctionCall {
+            function,
+            args,
+            site,
+        } => E::FunctionCall {
             function: values.int_function(function),
             args: values.any_slice(args),
+            site: site.clone(),
         },
         DraftIntInstruction::TupleIndex { tuple, index } => E::TupleIndex {
             tuple: values.tuple(tuple),
@@ -430,13 +440,23 @@ fn freeze_bool(
     match instruction {
         DraftBoolInstruction::Value(value) => E::Value(*value),
         DraftBoolInstruction::Constant(id) => E::Constant(*id),
-        DraftBoolInstruction::Call { function, args } => E::Call {
+        DraftBoolInstruction::Call {
+            function,
+            args,
+            site,
+        } => E::Call {
             function: *function,
             args: values.any_slice(args),
+            site: site.clone(),
         },
-        DraftBoolInstruction::FunctionCall { function, args } => E::FunctionCall {
+        DraftBoolInstruction::FunctionCall {
+            function,
+            args,
+            site,
+        } => E::FunctionCall {
             function: values.bool_function(function),
             args: values.any_slice(args),
+            site: site.clone(),
         },
         DraftBoolInstruction::TupleIndex { tuple, index } => E::TupleIndex {
             tuple: values.tuple(tuple),

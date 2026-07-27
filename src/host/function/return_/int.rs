@@ -1,17 +1,29 @@
 use super::{HostCallback, HostFunctionImplementation, HostReturn};
 use crate::host::function::HostValueType;
 use crate::host::function::argument::HostCallArguments;
+use crate::host::{HostCallError, HostProfile};
 use num_bigint::BigInt;
 use std::sync::Arc;
 
-#[derive(Clone)]
-pub(crate) struct HostIntFunction {
-    implementation: Arc<HostCallback<BigInt>>,
+pub(crate) struct HostIntFunction<Profile: HostProfile> {
+    implementation: Arc<HostCallback<Profile, BigInt>>,
 }
 
-impl HostIntFunction {
-    pub(crate) fn call(&self, arguments: &dyn HostCallArguments) -> BigInt {
-        (self.implementation)(arguments)
+impl<Profile: HostProfile> Clone for HostIntFunction<Profile> {
+    fn clone(&self) -> Self {
+        Self {
+            implementation: Arc::clone(&self.implementation),
+        }
+    }
+}
+
+impl<Profile: HostProfile> HostIntFunction<Profile> {
+    pub(crate) fn call(
+        &self,
+        state: &mut Profile::RunState,
+        arguments: &dyn HostCallArguments,
+    ) -> Result<BigInt, HostCallError> {
+        (self.implementation)(state, arguments)
     }
 }
 
@@ -20,9 +32,12 @@ impl HostReturn for BigInt {
         HostValueType::Int
     }
 
-    fn implementation(
-        function: impl Fn(&dyn HostCallArguments) -> Self + Send + Sync + 'static,
-    ) -> HostFunctionImplementation {
+    fn implementation<Profile: HostProfile>(
+        function: impl Fn(&mut Profile::RunState, &dyn HostCallArguments) -> Result<Self, HostCallError>
+        + Send
+        + Sync
+        + 'static,
+    ) -> HostFunctionImplementation<Profile> {
         HostFunctionImplementation::Int(HostIntFunction {
             implementation: Arc::new(function),
         })
@@ -32,6 +47,7 @@ impl HostReturn for BigInt {
 #[cfg(test)]
 mod tests {
     use super::{HostFunctionImplementation, HostIntFunction, HostReturn};
+    use crate::host::StatelessHostProfile;
     use crate::host::function::HostValueType;
     use crate::host::function::argument::{CallArguments, HostCallArguments, HostParameterLayout};
     use num_bigint::BigInt;
@@ -42,26 +58,30 @@ mod tests {
         let slot = layout.register::<BigInt>();
         assert_eq!(<BigInt as HostReturn>::type_(), HostValueType::Int);
         let implementation =
-            <BigInt as HostReturn>::implementation(move |arguments| arguments.int(slot) + 42);
+            <BigInt as HostReturn>::implementation::<StatelessHostProfile>(move |(), arguments| {
+                Ok(arguments.int(slot) + 42)
+            });
         let arguments = CallArguments::new(vec![BigInt::from(0)], Vec::new());
 
         assert_eq!(
-            int_implementation(implementation).call(&arguments),
-            BigInt::from(42),
+            int_implementation(implementation).call(&mut (), &arguments),
+            Ok(BigInt::from(42)),
         );
     }
 
     #[test]
     #[should_panic(expected = "BigInt return should create an Int implementation")]
     fn int_return_shape_guard_is_visible() {
-        let callback = |_: &dyn HostCallArguments| true;
+        let callback = |(): &mut (), _: &dyn HostCallArguments| Ok(true);
         let arguments = CallArguments::new(Vec::new(), Vec::new());
-        assert!(callback(&arguments));
-        let implementation = <bool as HostReturn>::implementation(callback);
+        assert_eq!(callback(&mut (), &arguments), Ok(true));
+        let implementation = <bool as HostReturn>::implementation::<StatelessHostProfile>(callback);
         int_implementation(implementation);
     }
 
-    fn int_implementation(implementation: HostFunctionImplementation) -> HostIntFunction {
+    fn int_implementation(
+        implementation: HostFunctionImplementation<StatelessHostProfile>,
+    ) -> HostIntFunction<StatelessHostProfile> {
         let HostFunctionImplementation::Int(implementation) = implementation else {
             panic!("BigInt return should create an Int implementation");
         };

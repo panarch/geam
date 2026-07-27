@@ -40,10 +40,12 @@ pub(in crate::plan::execution::lowering) enum DraftIntInstruction {
     Call {
         function: IntFunctionId,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: DraftFunction,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: DraftTuple,
@@ -285,10 +287,12 @@ pub(in crate::plan::execution::lowering) enum DraftBoolInstruction {
     Call {
         function: BoolFunctionId,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: DraftFunction,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: DraftTuple,
@@ -637,7 +641,7 @@ impl DraftIntInstruction {
         match self {
             Self::Value(_) | Self::Constant(_) => {}
             Self::Call { args, .. } => push_operands(args, values),
-            Self::FunctionCall { function, args } => {
+            Self::FunctionCall { function, args, .. } => {
                 function.push_operand(values);
                 push_operands(args, values);
             }
@@ -665,7 +669,7 @@ impl DraftFloatInstruction {
         match self {
             Self::Value(_) | Self::Constant(_) => {}
             Self::Call { args, .. } => push_operands(args, values),
-            Self::FunctionCall { function, args } => {
+            Self::FunctionCall { function, args, .. } => {
                 function.push_operand(values);
                 push_operands(args, values);
             }
@@ -691,7 +695,7 @@ impl DraftStringInstruction {
         match self {
             Self::Value(_) | Self::Constant(_) => {}
             Self::Call { args, .. } => push_operands(args, values),
-            Self::FunctionCall { function, args } => {
+            Self::FunctionCall { function, args, .. } => {
                 function.push_operand(values);
                 push_operands(args, values);
             }
@@ -768,7 +772,7 @@ impl DraftBitArrayInstruction {
             }
             Self::Constant(_) => {}
             Self::Call { args, .. } => push_operands(args, values),
-            Self::FunctionCall { function, args } => {
+            Self::FunctionCall { function, args, .. } => {
                 function.push_operand(values);
                 push_operands(args, values);
             }
@@ -825,7 +829,7 @@ impl DraftBoolInstruction {
         match self {
             Self::Value(_) | Self::Constant(_) => {}
             Self::Call { args, .. } => push_operands(args, values),
-            Self::FunctionCall { function, args } => {
+            Self::FunctionCall { function, args, .. } => {
                 function.push_operand(values);
                 push_operands(args, values);
             }

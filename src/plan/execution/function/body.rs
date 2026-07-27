@@ -127,6 +127,14 @@ impl TailCallLabelIndex for IntFunctionId {
     }
 }
 
+impl<Function: TailCallLabelIndex> TailCallLabelIndex
+    for crate::plan::FunctionCallTarget<Function>
+{
+    fn tail_call_label_index(&self) -> usize {
+        self.function().tail_call_label_index()
+    }
+}
+
 impl TailCallLabelIndex for FloatFunctionId {
     fn tail_call_label_index(&self) -> usize {
         self.0

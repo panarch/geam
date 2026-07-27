@@ -47,12 +47,13 @@ the core Gleam value families, custom types, generics, patterns, records,
 functions, constants, imports, and read-only loading of already resolved Gleam
 projects. The official `gleam_stdlib` package is not built in: compatible
 imported modules are compiled from the package sources resolved by Gleam.
-Package-qualified source-less Rust host modules can provide infallible
-functions with zero through seven `BigInt`/`bool` arguments and a
-`BigInt`/`bool` return through a separate hosted pipeline. Unsupported Rust
-types and arities are rejected by trait resolution rather than at runtime.
-Source-declared backend external functions or types are not provider linkage
-surfaces.
+Package-qualified source-less Rust host modules and source-backed external
+function providers can supply functions with zero through seven
+`BigInt`/`bool` arguments and a `BigInt`/`bool` return through a separate
+hosted pipeline. Unsupported Rust types and arities are rejected by trait
+resolution rather than at runtime. Provider linkage selects an exact external
+declaration or its Gleam fallback during planning; ordinary Gleam functions
+cannot be overridden.
 
 The main public entry points are:
 
@@ -79,7 +80,9 @@ host-free. Rust callbacks enter only through
 `HostedTypedProgram -> HostedModulePlan -> HostedExecution`; the hosted plan
 nodes store callable schemas and targets, while the hosted wrapper carries
 implementations as a private sidecar until `HostedExecution` retains only the
-callbacks selected by specialization.
+callbacks selected by specialization. A `HostProfile` defines caller-owned
+run state, and `HostedExecution::run_main` borrows that state explicitly for
+one run.
 
 ## Upstream
 

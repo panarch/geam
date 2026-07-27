@@ -4,11 +4,11 @@ use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::evaluated::EvaluatedBitArray;
 use crate::runtime::graph::RetainedValues;
-use crate::runtime::state::RuntimeState;
+use crate::runtime::state::RuntimeStateFor;
 
-pub(in crate::runtime) fn run_bit_array(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(in crate::runtime) fn run_bit_array<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     function: BitArrayFunctionId,
     inputs: RetainedValues,
 ) -> ExecutionResult<EvaluatedBitArray> {

@@ -12,7 +12,7 @@ use crate::plan::execution::graph::{
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedValue};
-use crate::runtime::state::RuntimeState;
+use crate::runtime::state::RuntimeStateFor;
 use crate::runtime::{ExecutionError, InvariantError};
 
 pub(super) struct MatchBindings {
@@ -46,9 +46,9 @@ impl MatchBindings {
     }
 }
 
-pub(super) fn match_pattern(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn match_pattern<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &BlockEnvironment,
     pattern: &MatchPattern,
     subject: &EvaluatedValue,
@@ -61,9 +61,9 @@ pub(super) fn match_pattern(
     }
 }
 
-fn matches(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+fn matches<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &BlockEnvironment,
     pattern: &MatchPattern,
     value: &EvaluatedValue,

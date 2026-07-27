@@ -1,315 +1,667 @@
 use super::constant::{self, plan_constant_bodies, reserve_constants};
 use super::custom_type;
 use super::registry::{ModuleRegistry, ProgramRegistry};
-use super::{
-    FunctionTable, ModuleBodies, ModuleDeclarations, ModuleFunctionDeclarations, ModuleFunctions,
-    ModuleRole, function_table,
-};
+use super::{ModuleRole, function_table};
 use crate::frontend::{HostedTypedProgram, HostedTypedProgramModule};
 use crate::host::{
-    HostFunctionDefinition, HostParameter as RegisteredHostParameter, HostValueType,
+    HostFunctionSchema, HostParameter as RegisteredHostParameter, HostProfile, HostValueType,
+    RegisteredHostFunction, RegisteredHostImplementationId,
 };
 use crate::plan::{
-    BoolLocalId, FunctionTemplateId, HostFunctionImplementation, HostFunctionTemplate,
-    HostParameter as PlannedHostParameter, HostReturnFamily, HostedModulePlan, HostedPlannedModule,
-    IntLocalId, ModuleId, ParamBinding, ParamLocal, PlannedHostModule, PlannedModule,
-    SourceContext, ValueShape,
+    BoolLocalId, ConstantTemplates, FunctionTemplateId, HostFunctionImplementation,
+    HostFunctionTemplate, HostParameter as PlannedHostParameter, HostReturnFamily,
+    HostedFunctionTemplate, HostedModulePlan, HostedPlannedModule, HostedPlannedModuleParts,
+    IntLocalId, ModuleId, ParamBinding, ParamLocal, SourceContext,
 };
 use crate::planner::context::{FunctionInfo, FunctionParam, PlanContext};
-use crate::planner::error::PlanError;
-use crate::planner::function::plan_function;
+use crate::planner::error::{HostProviderLinkReason, PlanError};
+use crate::planner::function::{plan_function, plan_selected_external_fallback};
 use crate::planner::type_parameter::TypeParameterScope;
 use ecow::EcoString;
-use std::collections::HashMap;
+use gleam_core::ast::TypedFunction;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
-pub fn plan_host_program(program: HostedTypedProgram) -> Result<HostedModulePlan, PlanError> {
-    let (root_index, modules) = program.into_parts();
+pub fn plan_host_program<Profile: HostProfile>(
+    program: HostedTypedProgram<Profile>,
+) -> Result<HostedModulePlan<Profile>, PlanError> {
+    let (root_index, modules, providers, implementations) = program.into_parts();
+    plan_host_program_schema(root_index, modules, providers).map(|planned| {
+        let host_implementations = planned
+            .implementations
+            .into_iter()
+            .map(|(template, implementation)| {
+                HostFunctionImplementation::new(
+                    template,
+                    implementations.implementation(implementation),
+                )
+            })
+            .collect();
+        HostedModulePlan::new(
+            planned.root,
+            planned.entry,
+            planned.modules,
+            host_implementations,
+        )
+    })
+}
+
+fn plan_host_program_schema(
+    root_index: usize,
+    modules: Vec<HostedTypedProgramModule>,
+    providers: Vec<crate::host::RegisteredHostProviderModule>,
+) -> Result<PlannedHostedProgram, PlanError> {
     let root = ModuleId::new(root_index);
-    let mut declarations = Vec::with_capacity(modules.len());
+    collect_hosted_module_declarations(modules, providers)
+        .and_then(|declarations| link_hosted_modules(root, declarations))
+        .and_then(reserve_hosted_constants)
+        .and_then(|(registry, modules)| plan_hosted_constant_bodies(registry, modules))
+        .and_then(|(registry, modules)| plan_hosted_modules(root, &registry, modules))
+}
 
-    for (index, module) in modules.into_iter().enumerate() {
-        let id = ModuleId::new(index);
-        match module {
-            HostedTypedProgramModule::Source(module) => {
-                let package = module.module.type_info.package.clone();
-                let definitions = module.module.definitions;
-                let module_name = module.module.name;
-                let custom_types = custom_type::plan_custom_types(
-                    &package,
-                    &module_name,
-                    definitions.custom_types,
-                )?;
-                declarations.push(HostedModuleDeclarations::Source(ModuleDeclarations {
+fn collect_hosted_module_declarations(
+    modules: Vec<HostedTypedProgramModule>,
+    providers: Vec<crate::host::RegisteredHostProviderModule>,
+) -> Result<Vec<HostedModuleDeclaration>, PlanError> {
+    let mut provider_modules = providers
+        .into_iter()
+        .map(|provider| {
+            let (package, module, functions) = provider.into_parts();
+            ((package, module), functions)
+        })
+        .collect::<BTreeMap<_, _>>();
+    modules
+        .into_iter()
+        .enumerate()
+        .map(|(index, module)| {
+            hosted_module_declaration(ModuleId::new(index), module, &mut provider_modules)
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .and_then(|declarations| {
+            if let Some(((package, module), functions)) = provider_modules.into_iter().next() {
+                let function = functions
+                    .iter()
+                    .map(|function| function.schema().name().clone())
+                    .min()
+                    .unwrap_or_default();
+                Err(PlanError::HostProviderLink {
+                    package,
+                    module,
+                    function,
+                    reason: Box::new(HostProviderLinkReason::MissingModule),
+                })
+            } else {
+                Ok(declarations)
+            }
+        })
+}
+
+fn hosted_module_declaration(
+    id: ModuleId,
+    module: HostedTypedProgramModule,
+    provider_modules: &mut BTreeMap<(EcoString, EcoString), Vec<RegisteredHostFunction>>,
+) -> Result<HostedModuleDeclaration, PlanError> {
+    match module {
+        HostedTypedProgramModule::Source(module) => {
+            let path = module.path;
+            let source = module.source;
+            let package = module.module.type_info.package.clone();
+            let definitions = module.module.definitions;
+            let module_name = module.module.name;
+            custom_type::plan_custom_types(&package, &module_name, definitions.custom_types).map(
+                |custom_types| HostedModuleDeclaration::Source {
                     id,
+                    providers: provider_modules
+                        .remove(&(package.clone(), module_name.clone()))
+                        .unwrap_or_default(),
                     package,
                     module_name,
-                    source_context: Some(SourceContext::new(module.path, module.source)),
+                    source_context: Some(SourceContext::new(path, source)),
                     custom_types,
                     functions: definitions.functions,
                     constants: definitions.constants,
-                }));
-            }
-            HostedTypedProgramModule::Host(module) => {
-                let (package, module_name, functions) = module.into_parts();
-                declarations.push(HostedModuleDeclarations::Host {
-                    id,
-                    package,
-                    module_name,
-                    functions,
-                });
-            }
+                },
+            )
         }
-    }
-
-    let mut function_declarations = Vec::with_capacity(declarations.len());
-    let mut implementations = Vec::new();
-    for declaration in declarations {
-        match declaration {
-            HostedModuleDeclarations::Source(declaration) => {
-                let role = if declaration.id == root {
-                    ModuleRole::Root
-                } else {
-                    ModuleRole::Dependency
-                };
-                let FunctionTable {
-                    by_name,
-                    functions,
-                    anonymous_functions,
-                } = function_table(declaration.id, &declaration.functions, role)?;
-                function_declarations.push(HostedModuleFunctionDeclarations::Source(
-                    ModuleFunctionDeclarations {
-                        id: declaration.id,
-                        package: declaration.package,
-                        module_name: declaration.module_name,
-                        source_context: declaration.source_context,
-                        custom_types: declaration.custom_types,
-                        functions_by_name: by_name,
-                        functions,
-                        constants: declaration.constants,
-                        anonymous_functions,
-                    },
-                ));
-            }
-            HostedModuleDeclarations::Host {
+        HostedTypedProgramModule::Host(module) => {
+            let (package, module_name, functions) = module.into_parts();
+            Ok(HostedModuleDeclaration::Host {
                 id,
                 package,
                 module_name,
                 functions,
-            } => {
-                let mut functions_by_name = HashMap::with_capacity(functions.len());
-                let mut templates = Vec::with_capacity(functions.len());
-                for (function_index, definition) in functions.into_iter().enumerate() {
-                    let (schema, implementation) = definition.into_parts();
-                    let id = FunctionTemplateId::in_module(id, function_index);
-                    let mut template_params = Vec::with_capacity(schema.parameters().len());
-                    let mut function_params = Vec::with_capacity(schema.parameters().len());
-                    for parameter in schema.parameters() {
-                        let (local, shape, template_param) = match parameter {
-                            RegisteredHostParameter::Int(slot) => {
-                                let local = IntLocalId(slot.index());
-                                (
-                                    ParamLocal::int(local),
-                                    ValueShape::Int,
-                                    PlannedHostParameter::Int(local),
-                                )
-                            }
-                            RegisteredHostParameter::Bool(slot) => {
-                                let local = BoolLocalId(slot.index());
-                                (
-                                    ParamLocal::bool(local),
-                                    ValueShape::Bool,
-                                    PlannedHostParameter::Bool(local),
-                                )
-                            }
-                        };
-                        template_params.push(template_param);
-                        function_params.push(FunctionParam::new(
-                            local,
-                            shape,
-                            ParamBinding::Discard,
-                            None,
-                        ));
+            })
+        }
+    }
+}
+
+fn link_hosted_modules(
+    root: ModuleId,
+    declarations: Vec<HostedModuleDeclaration>,
+) -> Result<Vec<LinkedModule>, PlanError> {
+    declarations
+        .into_iter()
+        .map(|declaration| link_hosted_module(root, declaration))
+        .collect()
+}
+
+fn link_hosted_module(
+    root: ModuleId,
+    declaration: HostedModuleDeclaration,
+) -> Result<LinkedModule, PlanError> {
+    match declaration {
+        HostedModuleDeclaration::Source {
+            id,
+            package,
+            module_name,
+            source_context,
+            custom_types,
+            functions,
+            constants,
+            providers,
+        } => {
+            let role = if id == root {
+                ModuleRole::Root
+            } else {
+                ModuleRole::Dependency
+            };
+            function_table(id, &functions, role).and_then(|table| {
+                link_source_functions(
+                    package.clone(),
+                    module_name.clone(),
+                    table.functions,
+                    providers,
+                )
+                .map(|(functions, executable_externals)| LinkedModule {
+                    id,
+                    package,
+                    module_name,
+                    source_context,
+                    custom_types,
+                    functions_by_name: table.by_name,
+                    functions,
+                    executable_externals,
+                    constants,
+                    anonymous_functions: table.anonymous_functions,
+                })
+            })
+        }
+        HostedModuleDeclaration::Host {
+            id,
+            package,
+            module_name,
+            functions,
+        } => Ok(link_source_less_module(id, package, module_name, functions)),
+    }
+}
+
+fn link_source_functions(
+    package: EcoString,
+    module: EcoString,
+    functions: Vec<super::FunctionToPlan>,
+    providers: Vec<RegisteredHostFunction>,
+) -> Result<(Vec<LinkedFunction>, HashSet<EcoString>), PlanError> {
+    let providers = providers
+        .into_iter()
+        .map(|definition| (definition.schema().name().clone(), definition))
+        .collect::<BTreeMap<_, _>>();
+    functions
+        .into_iter()
+        .try_fold(
+            (Vec::new(), providers, HashSet::new()),
+            |(mut linked, mut providers, mut executable_externals), function| {
+                let name = function.name;
+                let external = function.function.external_erlang.is_some()
+                    || function.function.external_javascript.is_some();
+                if let Some(provider) = providers.remove(&name) {
+                    if !external {
+                        return Err(PlanError::HostProviderLink {
+                            package: package.clone(),
+                            module: module.clone(),
+                            function: name,
+                            reason: Box::new(HostProviderLinkReason::NonExternalFunction),
+                        });
                     }
-                    let return_family = match schema.return_type() {
-                        HostValueType::Int => HostReturnFamily::Int,
-                        HostValueType::Bool => HostReturnFamily::Bool,
-                    };
-                    let return_shape = return_family.shape();
-                    let template = HostFunctionTemplate::new(
-                        id,
+                    executable_externals.insert(name);
+                    bind_source_host_function(
                         package.clone(),
-                        module_name.clone(),
-                        schema.name().clone(),
-                        template_params,
-                        return_family,
-                        schema.type_().clone(),
-                    );
-                    functions_by_name.insert(
-                        schema.name().clone(),
-                        FunctionInfo {
-                            signature: template.signature().clone(),
-                            type_parameters: TypeParameterScope::default(),
-                            return_shape,
-                            params: function_params,
-                        },
-                    );
-                    implementations.push(HostFunctionImplementation::new(id, implementation));
-                    templates.push(template);
+                        module.clone(),
+                        provider,
+                        &function.info,
+                    )
+                    .map(|(template, implementation)| {
+                        linked.push(LinkedFunction::Host {
+                            template,
+                            implementation,
+                        });
+                        (linked, providers, executable_externals)
+                    })
+                } else if external {
+                    if function.function.body.is_empty() {
+                        return Err(PlanError::MissingHostProvider {
+                            package: package.clone(),
+                            module: module.clone(),
+                            function: name,
+                        });
+                    }
+                    executable_externals.insert(name.clone());
+                    linked.push(LinkedFunction::ExternalFallback {
+                        name,
+                        info: function.info,
+                        function: function.function,
+                    });
+                    Ok((linked, providers, executable_externals))
+                } else {
+                    linked.push(LinkedFunction::Gleam {
+                        info: function.info,
+                        function: function.function,
+                    });
+                    Ok((linked, providers, executable_externals))
                 }
-                function_declarations.push(HostedModuleFunctionDeclarations::Host {
-                    functions_by_name,
-                    module: PlannedHostModule::new(id, package, module_name, templates),
-                });
+            },
+        )
+        .and_then(|(linked, providers, executable_externals)| {
+            if let Some((function, _)) = providers.into_iter().next() {
+                Err(PlanError::HostProviderLink {
+                    package,
+                    module,
+                    function,
+                    reason: Box::new(HostProviderLinkReason::MissingDeclaration),
+                })
+            } else {
+                Ok((linked, executable_externals))
             }
-        }
-    }
+        })
+}
 
-    let mut registry_modules = Vec::with_capacity(function_declarations.len());
-    let mut bodies = Vec::with_capacity(function_declarations.len());
-    for declaration in function_declarations {
-        match declaration {
-            HostedModuleFunctionDeclarations::Source(declaration) => {
-                let constants = reserve_constants(declaration.id, declaration.constants)?;
-                let (constant_signatures, constant_bodies) = constants.into_parts();
-                registry_modules.push(ModuleRegistry::new(
-                    declaration.module_name,
-                    declaration.custom_types,
-                    declaration.functions_by_name,
-                    constant_signatures,
-                ));
-                bodies.push(HostedModuleBodies::Source(ModuleBodies {
-                    id: declaration.id,
-                    package: declaration.package,
-                    source_context: declaration.source_context,
-                    functions: declaration.functions,
-                    constants: constant_bodies,
-                    anonymous_functions: declaration.anonymous_functions,
-                }));
-            }
-            HostedModuleFunctionDeclarations::Host {
-                functions_by_name,
-                module,
-            } => {
-                registry_modules.push(ModuleRegistry::new(
-                    module.module().clone(),
-                    Vec::new(),
-                    functions_by_name,
-                    constant::ConstantSignatures::default(),
-                ));
-                bodies.push(HostedModuleBodies::Host(module));
-            }
-        }
+fn link_source_less_module(
+    id: ModuleId,
+    package: EcoString,
+    module_name: EcoString,
+    functions: Vec<RegisteredHostFunction>,
+) -> LinkedModule {
+    let function_count = functions.len();
+    let mut functions_by_name = HashMap::with_capacity(function_count);
+    let mut linked_functions = Vec::with_capacity(function_count);
+    for (function_index, definition) in functions.into_iter().enumerate() {
+        let function_id = FunctionTemplateId::in_module(id, function_index);
+        let (template, implementation) = bind_source_less_host_function(
+            function_id,
+            package.clone(),
+            module_name.clone(),
+            definition,
+        );
+        let info = host_function_info(&template);
+        functions_by_name.insert(template.name().clone(), info);
+        linked_functions.push(LinkedFunction::Host {
+            template,
+            implementation,
+        });
     }
+    LinkedModule {
+        id,
+        package,
+        module_name,
+        source_context: None,
+        custom_types: Vec::new(),
+        functions_by_name,
+        functions: linked_functions,
+        executable_externals: HashSet::new(),
+        constants: Vec::new(),
+        anonymous_functions: super::AnonymousFunctions::in_module(id, function_count),
+    }
+}
 
-    let registry = ProgramRegistry::new(registry_modules);
-    let mut functions_to_plan = Vec::with_capacity(bodies.len());
-    for module in bodies {
-        match module {
-            HostedModuleBodies::Source(mut module) => {
-                let constants = plan_constant_bodies(
-                    module.constants,
-                    &registry,
-                    &mut module.anonymous_functions,
-                )?;
-                functions_to_plan.push(HostedModuleFunctions::Source(Box::new(ModuleFunctions {
+fn reserve_hosted_constants(
+    modules: Vec<LinkedModule>,
+) -> Result<(ProgramRegistry, Vec<ModuleWithConstants>), PlanError> {
+    modules
+        .into_iter()
+        .map(reserve_hosted_module_constants)
+        .collect::<Result<Vec<_>, _>>()
+        .map(|reserved| {
+            let (registry_modules, modules) = reserved.into_iter().unzip();
+            (ProgramRegistry::new(registry_modules), modules)
+        })
+}
+
+fn reserve_hosted_module_constants(
+    module: LinkedModule,
+) -> Result<(ModuleRegistry, ModuleWithConstants), PlanError> {
+    reserve_constants(module.id, module.constants).map(|constants| {
+        let (constant_signatures, constant_bodies) = constants.into_parts();
+        (
+            ModuleRegistry::new(
+                module.module_name,
+                module.custom_types.clone(),
+                module.functions_by_name,
+                constant_signatures,
+            )
+            .with_executable_externals(module.executable_externals),
+            ModuleWithConstants {
+                id: module.id,
+                package: module.package,
+                source_context: module.source_context,
+                custom_types: module.custom_types,
+                functions: module.functions,
+                constants: constant_bodies,
+                anonymous_functions: module.anonymous_functions,
+            },
+        )
+    })
+}
+
+fn plan_hosted_constant_bodies(
+    registry: ProgramRegistry,
+    modules: Vec<ModuleWithConstants>,
+) -> Result<(ProgramRegistry, Vec<ModuleToPlan>), PlanError> {
+    modules
+        .into_iter()
+        .map(|mut module| {
+            plan_constant_bodies(module.constants, &registry, &mut module.anonymous_functions).map(
+                |constants| ModuleToPlan {
                     id: module.id,
                     package: module.package,
                     source_context: module.source_context,
+                    custom_types: module.custom_types,
                     functions: module.functions,
                     constants,
                     anonymous_functions: module.anonymous_functions,
-                })));
-            }
-            HostedModuleBodies::Host(module) => {
-                functions_to_plan.push(HostedModuleFunctions::Host(module));
-            }
-        }
-    }
-
-    let mut planned_modules = Vec::with_capacity(functions_to_plan.len());
-    for module in functions_to_plan {
-        match module {
-            HostedModuleFunctions::Source(module) => {
-                let mut module = *module;
-                let mut planned_functions = Vec::with_capacity(module.functions.len());
-                for function in module.functions {
-                    let context = PlanContext::new_in_program(
-                        module.id,
-                        &registry,
-                        &mut module.anonymous_functions,
-                    );
-                    planned_functions.push(plan_function(
-                        function.info,
-                        function.function,
-                        context,
-                    )?);
-                }
-                planned_functions.sort_by_key(|function| function.id().index());
-                planned_modules.push(HostedPlannedModule::from_source(PlannedModule::new(
-                    module.id,
-                    module.package,
-                    crate::plan::module::PlannedModuleParts {
-                        module: registry.module_name(module.id).clone(),
-                        source_context: module.source_context,
-                        custom_types: registry.custom_types(module.id).to_vec(),
-                        constants: module.constants,
-                        functions: planned_functions,
-                        anonymous_functions: module.anonymous_functions.into_functions(),
-                    },
-                )));
-            }
-            HostedModuleFunctions::Host(module) => {
-                planned_modules.push(HostedPlannedModule::from_host(module));
-            }
-        }
-    }
-
-    Ok(HostedModulePlan::new(
-        root,
-        FunctionTemplateId::in_module(root, 0),
-        planned_modules,
-        implementations,
-    ))
+                },
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(|modules| (registry, modules))
 }
 
-enum HostedModuleDeclarations {
-    Source(ModuleDeclarations),
+fn plan_hosted_modules(
+    root: ModuleId,
+    registry: &ProgramRegistry,
+    modules: Vec<ModuleToPlan>,
+) -> Result<PlannedHostedProgram, PlanError> {
+    let mut implementations = Vec::new();
+    modules
+        .into_iter()
+        .map(|module| plan_hosted_module(module, registry, &mut implementations))
+        .collect::<Result<Vec<_>, _>>()
+        .map(|modules| PlannedHostedProgram {
+            root,
+            entry: FunctionTemplateId::in_module(root, 0),
+            modules,
+            implementations,
+        })
+}
+
+fn plan_hosted_module(
+    mut module: ModuleToPlan,
+    registry: &ProgramRegistry,
+    implementations: &mut Vec<(FunctionTemplateId, RegisteredHostImplementationId)>,
+) -> Result<HostedPlannedModule, PlanError> {
+    module
+        .functions
+        .into_iter()
+        .map(|function| {
+            plan_hosted_function(
+                module.id,
+                function,
+                registry,
+                &mut module.anonymous_functions,
+                implementations,
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(|mut functions| {
+            functions.sort_by_key(|function| match function {
+                HostedFunctionTemplate::GleamBody(function) => function.id().index(),
+                HostedFunctionTemplate::HostTemplate(function) => function.id().index(),
+            });
+            HostedPlannedModule::new(HostedPlannedModuleParts {
+                id: module.id,
+                package: module.package,
+                module: registry.module_name(module.id).clone(),
+                source_context: module.source_context,
+                custom_types: module.custom_types,
+                constants: module.constants,
+                functions,
+                anonymous_functions: module.anonymous_functions.into_functions(),
+            })
+        })
+}
+
+fn plan_hosted_function(
+    module: ModuleId,
+    function: LinkedFunction,
+    registry: &ProgramRegistry,
+    anonymous_functions: &mut super::AnonymousFunctions,
+    implementations: &mut Vec<(FunctionTemplateId, RegisteredHostImplementationId)>,
+) -> Result<HostedFunctionTemplate, PlanError> {
+    match function {
+        LinkedFunction::Gleam { info, function } => plan_function(
+            info,
+            function,
+            PlanContext::new_in_program(module, registry, anonymous_functions),
+        )
+        .map(|function| HostedFunctionTemplate::GleamBody(Box::new(function))),
+        LinkedFunction::ExternalFallback {
+            name,
+            info,
+            function,
+        } => plan_selected_external_fallback(
+            name,
+            info,
+            function,
+            PlanContext::new_in_program(module, registry, anonymous_functions),
+        )
+        .map(|function| HostedFunctionTemplate::GleamBody(Box::new(function))),
+        LinkedFunction::Host {
+            template,
+            implementation,
+        } => {
+            implementations.push((template.id(), implementation));
+            Ok(HostedFunctionTemplate::HostTemplate(template))
+        }
+    }
+}
+
+struct PlannedHostedProgram {
+    root: ModuleId,
+    entry: FunctionTemplateId,
+    modules: Vec<HostedPlannedModule>,
+    implementations: Vec<(FunctionTemplateId, RegisteredHostImplementationId)>,
+}
+
+enum HostedModuleDeclaration {
+    Source {
+        id: ModuleId,
+        package: EcoString,
+        module_name: EcoString,
+        source_context: Option<SourceContext>,
+        custom_types: Vec<crate::plan::CustomTypeDefinition>,
+        functions: Vec<TypedFunction>,
+        constants: Vec<gleam_core::ast::TypedModuleConstant>,
+        providers: Vec<RegisteredHostFunction>,
+    },
     Host {
         id: ModuleId,
         package: EcoString,
         module_name: EcoString,
-        functions: Vec<HostFunctionDefinition>,
+        functions: Vec<RegisteredHostFunction>,
     },
 }
 
-enum HostedModuleFunctionDeclarations {
-    Source(ModuleFunctionDeclarations),
+struct LinkedModule {
+    id: ModuleId,
+    package: EcoString,
+    module_name: EcoString,
+    source_context: Option<SourceContext>,
+    custom_types: Vec<crate::plan::CustomTypeDefinition>,
+    functions_by_name: HashMap<EcoString, FunctionInfo>,
+    functions: Vec<LinkedFunction>,
+    executable_externals: HashSet<EcoString>,
+    constants: Vec<gleam_core::ast::TypedModuleConstant>,
+    anonymous_functions: super::AnonymousFunctions,
+}
+
+enum LinkedFunction {
+    Gleam {
+        info: FunctionInfo,
+        function: TypedFunction,
+    },
+    ExternalFallback {
+        name: EcoString,
+        info: FunctionInfo,
+        function: TypedFunction,
+    },
     Host {
-        functions_by_name: HashMap<EcoString, FunctionInfo>,
-        module: PlannedHostModule,
+        template: HostFunctionTemplate,
+        implementation: RegisteredHostImplementationId,
     },
 }
 
-enum HostedModuleBodies {
-    Source(ModuleBodies),
-    Host(PlannedHostModule),
+struct ModuleWithConstants {
+    id: ModuleId,
+    package: EcoString,
+    source_context: Option<SourceContext>,
+    custom_types: Vec<crate::plan::CustomTypeDefinition>,
+    functions: Vec<LinkedFunction>,
+    constants: constant::ConstantBodies,
+    anonymous_functions: super::AnonymousFunctions,
 }
 
-enum HostedModuleFunctions {
-    Source(Box<ModuleFunctions>),
-    Host(PlannedHostModule),
+struct ModuleToPlan {
+    id: ModuleId,
+    package: EcoString,
+    source_context: Option<SourceContext>,
+    custom_types: Vec<crate::plan::CustomTypeDefinition>,
+    functions: Vec<LinkedFunction>,
+    constants: ConstantTemplates,
+    anonymous_functions: super::AnonymousFunctions,
+}
+
+fn bind_source_host_function(
+    package: EcoString,
+    module: EcoString,
+    definition: RegisteredHostFunction,
+    source: &FunctionInfo,
+) -> Result<(HostFunctionTemplate, RegisteredHostImplementationId), PlanError> {
+    let (schema, implementation) = definition.into_parts();
+    let (template_params, return_family, registered_shape) = host_function_layout(&schema);
+    if source.signature.scheme() != &crate::plan::TypeScheme::new(0)
+        || source.signature.shape() != &registered_shape
+    {
+        return Err(PlanError::HostProviderLink {
+            package,
+            module,
+            function: schema.name().clone(),
+            reason: Box::new(HostProviderLinkReason::SchemeMismatch {
+                expected_scheme: source.signature.scheme().clone(),
+                expected_type: source.signature.shape().type_(),
+                actual_scheme: crate::plan::TypeScheme::new(0),
+                actual_type: registered_shape.type_(),
+            }),
+        });
+    }
+    let template = HostFunctionTemplate::from_signature(
+        source.signature.clone(),
+        package,
+        crate::plan::HostCallSite::new(module, schema.name().clone(), source.definition_span),
+        template_params,
+        return_family,
+        schema.type_().clone(),
+    );
+    Ok((template, implementation))
+}
+
+fn bind_source_less_host_function(
+    id: FunctionTemplateId,
+    package: EcoString,
+    module: EcoString,
+    definition: RegisteredHostFunction,
+) -> (HostFunctionTemplate, RegisteredHostImplementationId) {
+    let (schema, implementation) = definition.into_parts();
+    let (template_params, return_family, registered_shape) = host_function_layout(&schema);
+    let signature = crate::plan::FunctionTemplateSignature::new(
+        id,
+        crate::plan::TypeScheme::new(0),
+        registered_shape,
+    );
+    let template = HostFunctionTemplate::from_signature(
+        signature,
+        package,
+        crate::plan::HostCallSite::new(
+            module,
+            schema.name().clone(),
+            crate::plan::SourceSpan::new(0, 0),
+        ),
+        template_params,
+        return_family,
+        schema.type_().clone(),
+    );
+    (template, implementation)
+}
+
+fn host_function_layout(
+    schema: &HostFunctionSchema,
+) -> (
+    Vec<PlannedHostParameter>,
+    HostReturnFamily,
+    crate::plan::FunctionShape,
+) {
+    let mut template_params = Vec::with_capacity(schema.parameters().len());
+    for parameter in schema.parameters() {
+        template_params.push(match parameter {
+            RegisteredHostParameter::Int(slot) => {
+                PlannedHostParameter::Int(IntLocalId(slot.index()))
+            }
+            RegisteredHostParameter::Bool(slot) => {
+                PlannedHostParameter::Bool(BoolLocalId(slot.index()))
+            }
+        });
+    }
+    let return_family = match schema.return_type() {
+        HostValueType::Int => HostReturnFamily::Int,
+        HostValueType::Bool => HostReturnFamily::Bool,
+    };
+    let registered_shape = crate::plan::FunctionShape::new(
+        template_params
+            .iter()
+            .map(PlannedHostParameter::shape)
+            .collect(),
+        return_family.shape(),
+    );
+    (template_params, return_family, registered_shape)
+}
+
+fn host_function_info(template: &HostFunctionTemplate) -> FunctionInfo {
+    let params = template
+        .parameters()
+        .iter()
+        .map(|parameter| {
+            let local = match parameter {
+                PlannedHostParameter::Int(local) => ParamLocal::int(*local),
+                PlannedHostParameter::Bool(local) => ParamLocal::bool(*local),
+            };
+            FunctionParam::new(local, parameter.shape(), ParamBinding::Discard, None)
+        })
+        .collect();
+    FunctionInfo {
+        signature: template.signature().clone(),
+        type_parameters: TypeParameterScope::default(),
+        return_shape: template.return_family().shape(),
+        params,
+        definition_span: template.site().span(),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::plan_host_program;
     use crate::frontend::{ModuleSource, PackageSource, compile_typed_host_program};
-    use crate::host::{HostModule, HostModules};
+    use crate::host::{HostModule, HostProviderModule, HostProviderSet, StatelessHostProfile};
     use crate::plan::{
         BoolLocalId, FunctionShape, FunctionTemplateId, FunctionType, HostParameter,
         HostReturnFamily, IntLocalId, ModuleId, ValueShape, ValueType,
     };
-    use crate::planner::{PlanError, UnsupportedFunctionReason};
+    use crate::planner::{HostProviderLinkReason, PlanError, UnsupportedFunctionReason};
     use ecow::EcoString;
     use num_bigint::BigInt;
 
@@ -331,7 +683,7 @@ mod tests {
         };
         assert!(all(true, true, true, true, true, true, true));
 
-        let hosts = HostModules::new([HostModule::new("host_support", "host/math")
+        let hosts = HostProviderSet::new([HostModule::new("host_support", "host/math")
             .expect("host module should be valid")
             .with_function("add", <BigInt as std::ops::Add>::add)
             .expect("host function should be valid")
@@ -381,68 +733,75 @@ pub fn main() {
         );
         assert_eq!(plan.modules()[0].id(), ModuleId::new(0));
         assert_eq!(plan.modules()[1].id(), ModuleId::new(1));
-        assert!(plan.modules()[0].source().is_none());
-        assert!(plan.modules()[1].host().is_none());
-        let host = plan.modules()[0]
-            .host()
-            .expect("host module should retain host templates");
+        assert!(plan.modules()[0].source_context().is_none());
+        assert!(plan.modules()[1].source_context().is_some());
+        let host = &plan.modules()[0];
         assert_eq!(host.id(), ModuleId::new(0));
         assert_eq!(host.functions().len(), 5);
-        assert_eq!(host.functions()[0].name(), "add");
+        let functions = host
+            .functions()
+            .iter()
+            .map(|function| {
+                function
+                    .host_template()
+                    .expect("source-less module should retain host templates")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(functions[0].name(), "add");
         assert_eq!(
-            host.functions()[0].id(),
+            functions[0].id(),
             FunctionTemplateId::in_module(ModuleId::new(0), 0),
         );
-        assert_eq!(host.functions()[0].package(), "host_support");
-        assert_eq!(host.functions()[0].module(), "host/math");
-        assert_eq!(host.functions()[0].scheme().parameters(), &[]);
+        assert_eq!(functions[0].package(), "host_support");
+        assert_eq!(functions[0].module(), "host/math");
+        assert_eq!(functions[0].scheme().parameters(), &[]);
         assert_eq!(
-            host.functions()[0].signature().shape(),
+            functions[0].signature().shape(),
             &FunctionShape::new(vec![ValueShape::Int, ValueShape::Int], ValueShape::Int,),
         );
         assert_eq!(
-            host.functions()[0].type_(),
+            functions[0].type_(),
             &FunctionType::new(vec![ValueType::Int, ValueType::Int], ValueType::Int),
         );
-        assert_eq!(host.functions()[1].name(), "subtract");
-        assert_eq!(host.functions()[2].name(), "ready");
-        assert_eq!(host.functions()[2].parameters(), &[]);
-        assert_eq!(host.functions()[2].return_family(), HostReturnFamily::Bool,);
+        assert_eq!(functions[1].name(), "subtract");
+        assert_eq!(functions[2].name(), "ready");
+        assert_eq!(functions[2].parameters(), &[]);
+        assert_eq!(functions[2].return_family(), HostReturnFamily::Bool,);
         assert_eq!(
-            host.functions()[2].signature().shape(),
+            functions[2].signature().shape(),
             &FunctionShape::new(Vec::new(), ValueShape::Bool),
         );
         assert_eq!(
-            host.functions()[2].type_(),
+            functions[2].type_(),
             &FunctionType::new(Vec::new(), ValueType::Bool),
         );
-        assert_eq!(host.functions()[3].name(), "choose");
+        assert_eq!(functions[3].name(), "choose");
         assert_eq!(
-            host.functions()[3].parameters(),
+            functions[3].parameters(),
             [
                 HostParameter::Bool(BoolLocalId(0)),
                 HostParameter::Int(IntLocalId(0)),
                 HostParameter::Int(IntLocalId(1)),
             ],
         );
-        assert_eq!(host.functions()[3].return_family(), HostReturnFamily::Int,);
+        assert_eq!(functions[3].return_family(), HostReturnFamily::Int,);
         assert_eq!(
-            host.functions()[3].signature().shape(),
+            functions[3].signature().shape(),
             &FunctionShape::new(
                 vec![ValueShape::Bool, ValueShape::Int, ValueShape::Int],
                 ValueShape::Int,
             ),
         );
         assert_eq!(
-            host.functions()[3].type_(),
+            functions[3].type_(),
             &FunctionType::new(
                 vec![ValueType::Bool, ValueType::Int, ValueType::Int],
                 ValueType::Int,
             ),
         );
-        assert_eq!(host.functions()[4].name(), "all");
+        assert_eq!(functions[4].name(), "all");
         assert_eq!(
-            host.functions()[4].parameters(),
+            functions[4].parameters(),
             [
                 HostParameter::Bool(BoolLocalId(0)),
                 HostParameter::Bool(BoolLocalId(1)),
@@ -453,19 +812,19 @@ pub fn main() {
                 HostParameter::Bool(BoolLocalId(6)),
             ],
         );
-        assert_eq!(host.functions()[4].return_family(), HostReturnFamily::Bool);
+        assert_eq!(functions[4].return_family(), HostReturnFamily::Bool);
         assert_eq!(
-            host.functions()[4].signature().shape(),
+            functions[4].signature().shape(),
             &FunctionShape::new(vec![ValueShape::Bool; 7], ValueShape::Bool),
         );
         assert_eq!(
-            host.functions()[4].type_(),
+            functions[4].type_(),
             &FunctionType::new(vec![ValueType::Bool; 7], ValueType::Bool),
         );
-        let source = plan.modules()[1]
-            .source()
-            .expect("root module should retain its source plan");
-        assert_eq!(source.functions()[0].name(), "main");
+        let source = plan.modules()[1].functions()[0]
+            .gleam_body()
+            .expect("root module should retain its source function");
+        assert_eq!(source.name(), "main");
     }
 
     #[test]
@@ -493,7 +852,8 @@ pub fn main() {
                     )],
                 ),
             ],
-            HostModules::new(Vec::<HostModule>::new()).expect("empty host modules should be valid"),
+            HostProviderSet::new(Vec::<HostModule>::new())
+                .expect("empty host modules should be valid"),
         )
         .expect("hosted source program should compile");
         let plan = plan_host_program(typed).expect("hosted source program should plan");
@@ -507,12 +867,67 @@ pub fn main() {
             [("library", "support"), ("application", "main")],
         );
         assert_eq!(
-            plan.modules()[0]
-                .source()
-                .expect("dependency should remain a source module")
-                .functions()[0]
+            plan.modules()[0].functions()[0]
+                .gleam_body()
+                .expect("dependency should remain a source function")
                 .name(),
             "unused",
+        );
+    }
+
+    #[test]
+    fn source_provider_and_gleam_fallback_keep_distinct_body_owners() {
+        let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
+            .expect("provider module should be valid")
+            .with_function("provided", std::convert::identity::<BigInt>)
+            .expect("provider function should be valid");
+        let source = r#"
+@external(erlang, "host", "provided")
+fn provided(value: Int) -> Int
+
+@external(erlang, "host", "fallback")
+fn fallback(value: Int) -> Int {
+  value + 1
+}
+
+pub fn main() {
+  #(provided(1), fallback(2))
+}
+"#;
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<EcoString>::new(),
+                [ModuleSource::new("main", "main.gleam", source)],
+            )],
+            HostProviderSet::with_providers(Vec::<HostModule>::new(), [provider])
+                .expect("provider module should be unique"),
+        )
+        .expect("source should compile");
+        let plan = plan_host_program(typed).expect("provider and fallback should plan");
+        let functions = plan.modules()[0].functions();
+
+        assert_eq!(
+            functions
+                .iter()
+                .map(|function| {
+                    (
+                        function
+                            .gleam_body()
+                            .map(|function| function.name().as_str()),
+                        function
+                            .host_template()
+                            .map(|function| function.name().as_str()),
+                    )
+                })
+                .collect::<Vec<_>>(),
+            [
+                (Some("main"), None),
+                (None, Some("provided")),
+                (Some("fallback"), None),
+            ],
         );
     }
 
@@ -568,7 +983,7 @@ pub fn main() { 1 }
                     Vec::<EcoString>::new(),
                     [ModuleSource::new("main", "main.gleam", source)],
                 )],
-                HostModules::new(Vec::<HostModule>::new())
+                HostProviderSet::new(Vec::<HostModule>::new())
                     .expect("empty host modules should be valid"),
             )
             .expect("profile-out source should still compile");
@@ -598,7 +1013,8 @@ pub fn value() { 1 }
                     ),
                 ],
             )],
-            HostModules::new(Vec::<HostModule>::new()).expect("empty host modules should be valid"),
+            HostProviderSet::new(Vec::<HostModule>::new())
+                .expect("empty host modules should be valid"),
         )
         .expect("profile-out source should still compile");
 
@@ -611,7 +1027,7 @@ pub fn value() { 1 }
     }
 
     #[test]
-    fn reject_profile_host_program_constant_body_precedence() {
+    fn missing_provider_precedes_source_body_planning() {
         let typed = compile_typed_host_program(
             "application",
             "main",
@@ -642,14 +1058,272 @@ pub fn native() -> Int
                     )],
                 ),
             ],
-            HostModules::new(Vec::<HostModule>::new()).expect("empty host modules should be valid"),
+            HostProviderSet::new(Vec::<HostModule>::new())
+                .expect("empty host modules should be valid"),
         )
         .expect("profile-out source should still compile");
 
         assert_eq!(
             plan_host_program(typed).err(),
+            Some(PlanError::MissingHostProvider {
+                package: "library".into(),
+                module: "support".into(),
+                function: "native".into(),
+            }),
+        );
+    }
+
+    #[test]
+    fn selected_external_fallback_body_preserves_its_planning_error() {
+        let source = r#"
+@external(erlang, "host", "fallback")
+fn fallback() -> BitArray {
+  <<1:native>>
+}
+
+pub fn main() {
+  1
+}
+"#;
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<EcoString>::new(),
+                [ModuleSource::new("main", "main.gleam", source)],
+            )],
+            HostProviderSet::new(Vec::<HostModule>::new())
+                .expect("empty host modules should be valid"),
+        )
+        .expect("external fallback should compile");
+
+        assert_eq!(
+            plan_host_program(typed).err(),
             Some(PlanError::UnsupportedBitArraySegment {
                 reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
+            }),
+        );
+    }
+
+    #[test]
+    fn provider_module_must_link_to_a_source_module() {
+        let provider = HostProviderModule::<StatelessHostProfile>::new("application", "missing")
+            .expect("provider module should be valid")
+            .with_function("native", BigInt::default)
+            .expect("provider function should be valid");
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<EcoString>::new(),
+                [ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    "pub fn main() { 1 }",
+                )],
+            )],
+            HostProviderSet::with_providers(Vec::<HostModule>::new(), [provider])
+                .expect("provider module should be unique"),
+        )
+        .expect("host program should compile");
+
+        assert_eq!(
+            plan_host_program(typed).err(),
+            Some(PlanError::HostProviderLink {
+                package: "application".into(),
+                module: "missing".into(),
+                function: "native".into(),
+                reason: Box::new(HostProviderLinkReason::MissingModule),
+            }),
+        );
+    }
+
+    #[test]
+    fn missing_provider_module_reports_the_lexically_first_function() {
+        let provider = HostProviderModule::<StatelessHostProfile>::new("application", "missing")
+            .expect("provider module should be valid")
+            .with_function("zeta", BigInt::default)
+            .expect("provider function should be valid")
+            .with_function("alpha", BigInt::default)
+            .expect("provider function should be valid");
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<EcoString>::new(),
+                [ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    "pub fn main() { 1 }",
+                )],
+            )],
+            HostProviderSet::with_providers(Vec::<HostModule>::new(), [provider])
+                .expect("provider module should be unique"),
+        )
+        .expect("host program should compile");
+
+        assert_eq!(
+            plan_host_program(typed).err(),
+            Some(PlanError::HostProviderLink {
+                package: "application".into(),
+                module: "missing".into(),
+                function: "alpha".into(),
+                reason: Box::new(HostProviderLinkReason::MissingModule),
+            }),
+        );
+    }
+
+    #[test]
+    fn provider_function_must_link_to_a_source_declaration() {
+        let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
+            .expect("provider module should be valid")
+            .with_function("native", BigInt::default)
+            .expect("provider function should be valid");
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<EcoString>::new(),
+                [ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    "pub fn main() { 1 }",
+                )],
+            )],
+            HostProviderSet::with_providers(Vec::<HostModule>::new(), [provider])
+                .expect("provider module should be unique"),
+        )
+        .expect("host program should compile");
+
+        assert_eq!(
+            plan_host_program(typed).err(),
+            Some(PlanError::HostProviderLink {
+                package: "application".into(),
+                module: "main".into(),
+                function: "native".into(),
+                reason: Box::new(HostProviderLinkReason::MissingDeclaration),
+            }),
+        );
+    }
+
+    #[test]
+    fn missing_provider_declaration_reports_the_lexically_first_function() {
+        let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
+            .expect("provider module should be valid")
+            .with_function("zeta", BigInt::default)
+            .expect("provider function should be valid")
+            .with_function("alpha", BigInt::default)
+            .expect("provider function should be valid");
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<EcoString>::new(),
+                [ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    "pub fn main() { 1 }",
+                )],
+            )],
+            HostProviderSet::with_providers(Vec::<HostModule>::new(), [provider])
+                .expect("provider module should be unique"),
+        )
+        .expect("host program should compile");
+
+        assert_eq!(
+            plan_host_program(typed).err(),
+            Some(PlanError::HostProviderLink {
+                package: "application".into(),
+                module: "main".into(),
+                function: "alpha".into(),
+                reason: Box::new(HostProviderLinkReason::MissingDeclaration),
+            }),
+        );
+    }
+
+    #[test]
+    fn provider_function_cannot_override_an_ordinary_gleam_body() {
+        let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
+            .expect("provider module should be valid")
+            .with_function("native", BigInt::default)
+            .expect("provider function should be valid");
+        let source = r#"
+fn native() {
+  1
+}
+
+pub fn main() {
+  native()
+}
+"#;
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<EcoString>::new(),
+                [ModuleSource::new("main", "main.gleam", source)],
+            )],
+            HostProviderSet::with_providers(Vec::<HostModule>::new(), [provider])
+                .expect("provider module should be unique"),
+        )
+        .expect("host program should compile");
+
+        assert_eq!(
+            plan_host_program(typed).err(),
+            Some(PlanError::HostProviderLink {
+                package: "application".into(),
+                module: "main".into(),
+                function: "native".into(),
+                reason: Box::new(HostProviderLinkReason::NonExternalFunction),
+            }),
+        );
+    }
+
+    #[test]
+    fn provider_function_scheme_must_exactly_match_the_external_declaration() {
+        let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
+            .expect("provider module should be valid")
+            .with_function("native", |value: BigInt| value)
+            .expect("provider function should be valid");
+        let source = r#"
+@external(erlang, "host", "native")
+fn native(value: Bool) -> Bool
+
+pub fn main() {
+  native(True)
+}
+"#;
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<EcoString>::new(),
+                [ModuleSource::new("main", "main.gleam", source)],
+            )],
+            HostProviderSet::with_providers(Vec::<HostModule>::new(), [provider])
+                .expect("provider module should be unique"),
+        )
+        .expect("host program should compile");
+
+        assert_eq!(
+            plan_host_program(typed).err(),
+            Some(PlanError::HostProviderLink {
+                package: "application".into(),
+                module: "main".into(),
+                function: "native".into(),
+                reason: Box::new(HostProviderLinkReason::SchemeMismatch {
+                    expected_scheme: crate::plan::TypeScheme::new(0),
+                    expected_type: FunctionType::new(vec![ValueType::Bool], ValueType::Bool,),
+                    actual_scheme: crate::plan::TypeScheme::new(0),
+                    actual_type: FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                }),
             }),
         );
     }

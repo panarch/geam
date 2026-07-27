@@ -52,14 +52,14 @@ impl HostParameterLayout {
 }
 
 #[cfg(test)]
-pub(in crate::host::function) struct CallArguments {
+pub(in crate::host) struct CallArguments {
     ints: Vec<BigInt>,
     bools: Vec<bool>,
 }
 
 #[cfg(test)]
 impl CallArguments {
-    pub(in crate::host::function) fn new(ints: Vec<BigInt>, bools: Vec<bool>) -> Self {
+    pub(in crate::host) fn new(ints: Vec<BigInt>, bools: Vec<bool>) -> Self {
         Self { ints, bools }
     }
 }

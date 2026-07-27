@@ -1,5 +1,5 @@
 use geam::{
-    HostModule, HostModules, HostedExecution, ModuleSource, PackageSource, Value,
+    HostModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource, Value,
     compile_typed_host_program, plan_host_program,
 };
 use num_bigint::BigInt;
@@ -14,7 +14,7 @@ fn executes_package_qualified_rust_host_functions() {
         .expect("host function should be valid")
         .with_function("unused", |left: BigInt, right: BigInt| left + right)
         .expect("host function should be valid");
-    let hosts = HostModules::new([math]).expect("host modules should be unique");
+    let hosts = HostProviderSet::new([math]).expect("host modules should be unique");
     let source = r#"
 import host/math.{add, subtract}
 
@@ -59,11 +59,15 @@ pub fn main() {
     let plan = plan_host_program(typed).expect("host program should plan");
     assert_eq!(
         plan.modules()[0]
-            .host()
-            .expect("dependency should remain a host module")
             .functions()
             .iter()
-            .map(|function| function.name().as_str())
+            .map(|function| {
+                function
+                    .host_template()
+                    .expect("dependency should retain host functions")
+                    .name()
+                    .as_str()
+            })
             .collect::<Vec<_>>(),
         ["subtract", "add", "unused"],
     );
@@ -81,7 +85,10 @@ pub fn main() {
     ]);
 
     let mut first_echoes = Vec::new();
-    assert_eq!(execution.run_main(&mut first_echoes), Ok(expected.clone()));
+    assert_eq!(
+        execution.run_main(&mut (), &mut first_echoes),
+        Ok(expected.clone()),
+    );
     assert_eq!(
         first_echoes
             .iter()
@@ -91,7 +98,10 @@ pub fn main() {
     );
 
     let mut second_echoes = Vec::new();
-    assert_eq!(execution.run_main(&mut second_echoes), Ok(expected));
+    assert_eq!(
+        execution.run_main(&mut (), &mut second_echoes),
+        Ok(expected),
+    );
     assert_eq!(
         second_echoes
             .iter()

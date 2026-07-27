@@ -46,18 +46,21 @@ pub(super) fn stored_expr(
             ));
             Representability::Inhabited(DraftFlow::value(cursor, value))
         }
-        E::Call { function, args } => {
-            call_args(args, cursor, graph, context).and_then(|flow| match flow {
-                DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
-                DraftFlow::Value {
-                    cursor,
-                    value: args,
-                } => direct_call(shape, function, args, cursor, graph, context),
-            })
-        }
+        E::Call {
+            function,
+            args,
+            site,
+        } => call_args(args, cursor, graph, context).and_then(|flow| match flow {
+            DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
+            DraftFlow::Value {
+                cursor,
+                value: args,
+            } => direct_call(shape, function, args, site, cursor, graph, context),
+        }),
         E::FunctionCall {
             function: value,
             args,
+            site,
         } => {
             let function_shape = context.concrete_function_shape(&value.shape());
             lower_function_call(
@@ -79,7 +82,7 @@ pub(super) fn stored_expr(
                     function::evaluated_generic_function_expr(value, cursor, graph, context)
                 },
                 |cursor, function, args, graph, context| {
-                    function_call(shape, function, args, cursor, graph, context)
+                    function_call(shape, function, args, site, cursor, graph, context)
                 },
             )
         }
@@ -185,6 +188,7 @@ fn direct_call(
     shape: &StoredValueShape,
     function: &module::FunctionInstantiation,
     args: Vec<DraftValueRef>,
+    site: &crate::plan::HostCallSite,
     mut cursor: DraftCursor,
     graph: &mut DraftGraph,
     context: &mut super::super::LoweringContext,
@@ -193,7 +197,11 @@ fn direct_call(
         StoredValueShape::Int => context.int_function_id(function).map(|function| {
             let value = graph.int_instruction(
                 &mut cursor,
-                super::super::instruction::DraftIntInstruction::Call { function, args },
+                super::super::instruction::DraftIntInstruction::Call {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
             );
             DraftFlow::value(cursor, value.erase())
         }),
@@ -243,7 +251,11 @@ fn direct_call(
         StoredValueShape::Bool => context.bool_function_id(function).map(|function| {
             let value = graph.bool_instruction(
                 &mut cursor,
-                super::super::instruction::DraftBoolInstruction::Call { function, args },
+                super::super::instruction::DraftBoolInstruction::Call {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
             );
             DraftFlow::value(cursor, value.erase())
         }),
@@ -288,6 +300,7 @@ fn function_call(
     shape: &StoredValueShape,
     function: super::super::DraftFunction,
     args: Vec<DraftValueRef>,
+    site: &crate::plan::HostCallSite,
     mut cursor: DraftCursor,
     graph: &mut DraftGraph,
     context: &mut super::super::LoweringContext,
@@ -296,7 +309,11 @@ fn function_call(
         StoredValueShape::Int => {
             let value = graph.int_instruction(
                 &mut cursor,
-                super::super::instruction::DraftIntInstruction::FunctionCall { function, args },
+                super::super::instruction::DraftIntInstruction::FunctionCall {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
             );
             DraftFlow::value(cursor, value.erase())
         }
@@ -345,7 +362,11 @@ fn function_call(
         StoredValueShape::Bool => {
             let value = graph.bool_instruction(
                 &mut cursor,
-                super::super::instruction::DraftBoolInstruction::FunctionCall { function, args },
+                super::super::instruction::DraftBoolInstruction::FunctionCall {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
             );
             DraftFlow::value(cursor, value.erase())
         }
@@ -693,7 +714,7 @@ pub(in crate::plan::execution::lowering) fn never_expr(
 
     match expression.kind() {
         E::LocalGet { .. } | E::ListIndex { .. } => Representability::Uninhabited,
-        E::Call { function, args } => {
+        E::Call { function, args, .. } => {
             call_args(args, cursor, graph, context).and_then(|flow| match flow {
                 DraftFlow::Diverged => Representability::Inhabited(()),
                 DraftFlow::Value {
@@ -707,6 +728,7 @@ pub(in crate::plan::execution::lowering) fn never_expr(
         E::FunctionCall {
             function: value,
             args,
+            ..
         } => {
             let shape = context.concrete_function_shape(&value.shape());
             function::generic_never_function_expr(value, &shape, cursor, graph, context).and_then(

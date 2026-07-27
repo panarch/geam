@@ -3,11 +3,11 @@ use crate::plan::execution::function::NilFunctionId;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::graph::RetainedValues;
-use crate::runtime::state::RuntimeState;
+use crate::runtime::state::RuntimeStateFor;
 
-pub(in crate::runtime) fn run_nil(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(in crate::runtime) fn run_nil<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     function: NilFunctionId,
     inputs: RetainedValues,
 ) -> ExecutionResult<()> {

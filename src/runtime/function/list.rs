@@ -11,13 +11,13 @@ use crate::runtime::graph::RetainedValues;
 use crate::runtime::state::{
     BitArrayListValueId, BoolListValueId, CustomListValueId, FloatListValueId, FunctionListValueId,
     IntListValueId, ListListValueId, ListValueId, NilListValueId, ParameterListListValueId,
-    ParameterListValueId, RuntimeState, StringListValueId, TupleListValueId,
+    ParameterListValueId, RuntimeStateFor, StringListValueId, TupleListValueId,
     UtfCodepointListValueId,
 };
 
-pub(in crate::runtime) fn run_parameter_list(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(in crate::runtime) fn run_parameter_list<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     function: ParameterListFunctionId,
     inputs: RetainedValues,
 ) -> ExecutionResult<ParameterListValueId> {
@@ -38,9 +38,9 @@ pub(in crate::runtime) fn run_parameter_list(
     )
 }
 
-pub(in crate::runtime) fn run_parameter_list_list(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(in crate::runtime) fn run_parameter_list_list<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     function: ParameterListListFunctionId,
     inputs: RetainedValues,
 ) -> ExecutionResult<ParameterListListValueId> {
@@ -61,9 +61,9 @@ pub(in crate::runtime) fn run_parameter_list_list(
     )
 }
 
-pub(in crate::runtime) fn run_int_list(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(in crate::runtime) fn run_int_list<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     function: IntListFunctionId,
     inputs: RetainedValues,
 ) -> ExecutionResult<IntListValueId> {
@@ -84,9 +84,9 @@ pub(in crate::runtime) fn run_int_list(
     )
 }
 
-pub(in crate::runtime) fn run_string_list(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(in crate::runtime) fn run_string_list<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     function: StringListFunctionId,
     inputs: RetainedValues,
 ) -> ExecutionResult<StringListValueId> {
@@ -107,9 +107,9 @@ pub(in crate::runtime) fn run_string_list(
     )
 }
 
-pub(in crate::runtime) fn run_bit_array_list(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(in crate::runtime) fn run_bit_array_list<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     function: BitArrayListFunctionId,
     inputs: RetainedValues,
 ) -> ExecutionResult<BitArrayListValueId> {
@@ -130,9 +130,9 @@ pub(in crate::runtime) fn run_bit_array_list(
     )
 }
 
-pub(in crate::runtime) fn run_utf_codepoint_list(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(in crate::runtime) fn run_utf_codepoint_list<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     function: UtfCodepointListFunctionId,
     inputs: RetainedValues,
 ) -> ExecutionResult<UtfCodepointListValueId> {
@@ -153,9 +153,9 @@ pub(in crate::runtime) fn run_utf_codepoint_list(
     )
 }
 
-pub(in crate::runtime) fn run_custom_list(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(in crate::runtime) fn run_custom_list<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     function: CustomListFunctionId,
     inputs: RetainedValues,
 ) -> ExecutionResult<CustomListValueId> {
@@ -176,9 +176,9 @@ pub(in crate::runtime) fn run_custom_list(
     )
 }
 
-pub(in crate::runtime) fn run_float_list(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(in crate::runtime) fn run_float_list<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     function: FloatListFunctionId,
     inputs: RetainedValues,
 ) -> ExecutionResult<FloatListValueId> {
@@ -199,9 +199,9 @@ pub(in crate::runtime) fn run_float_list(
     )
 }
 
-pub(in crate::runtime) fn run_bool_list(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(in crate::runtime) fn run_bool_list<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     function: BoolListFunctionId,
     inputs: RetainedValues,
 ) -> ExecutionResult<BoolListValueId> {
@@ -222,9 +222,9 @@ pub(in crate::runtime) fn run_bool_list(
     )
 }
 
-pub(in crate::runtime) fn run_nil_list(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(in crate::runtime) fn run_nil_list<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     function: NilListFunctionId,
     inputs: RetainedValues,
 ) -> ExecutionResult<NilListValueId> {
@@ -245,9 +245,9 @@ pub(in crate::runtime) fn run_nil_list(
     )
 }
 
-pub(in crate::runtime) fn run_tuple_list(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(in crate::runtime) fn run_tuple_list<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     function: TupleListFunctionId,
     inputs: RetainedValues,
 ) -> ExecutionResult<TupleListValueId> {
@@ -268,9 +268,9 @@ pub(in crate::runtime) fn run_tuple_list(
     )
 }
 
-pub(in crate::runtime) fn run_list_list(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(in crate::runtime) fn run_list_list<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     function: ListListFunctionId,
     inputs: RetainedValues,
 ) -> ExecutionResult<ListListValueId> {
@@ -291,9 +291,9 @@ pub(in crate::runtime) fn run_list_list(
     )
 }
 
-pub(in crate::runtime) fn run_function_list(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(in crate::runtime) fn run_function_list<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     function: FunctionListFunctionId,
     inputs: RetainedValues,
 ) -> ExecutionResult<FunctionListValueId> {
@@ -314,9 +314,9 @@ pub(in crate::runtime) fn run_function_list(
     )
 }
 
-pub(in crate::runtime) fn run_list(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(in crate::runtime) fn run_list<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     function: ListFunctionId,
     inputs: RetainedValues,
 ) -> ExecutionResult<ListValueId> {

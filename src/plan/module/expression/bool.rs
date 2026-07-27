@@ -3,7 +3,7 @@ use super::{
     IntExpr, ListExpr, PanicExpr, StringExpr, TupleExpr,
 };
 use crate::plan::{BitArrayExpr, BitArrayPattern, CustomPattern};
-use crate::plan::{BoolLocalId, ConstantBoolReference, FunctionInstantiation, Step};
+use crate::plan::{BoolLocalId, ConstantBoolReference, FunctionInstantiation, HostCallSite, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -23,10 +23,12 @@ pub(crate) enum BoolExprKind {
     Call {
         function: FunctionInstantiation,
         args: Vec<CallArg>,
+        site: HostCallSite,
     },
     FunctionCall {
         function: Box<BoolFunctionExpr>,
         args: Vec<CallArg>,
+        site: HostCallSite,
     },
     TupleIndex {
         tuple: Box<TupleExpr>,
@@ -152,17 +154,40 @@ impl BoolExpr {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn call(function: FunctionInstantiation, args: Vec<CallArg>) -> Self {
+        Self::call_at(function, args, HostCallSite::unknown())
+    }
+
+    pub(crate) fn call_at(
+        function: FunctionInstantiation,
+        args: Vec<CallArg>,
+        site: HostCallSite,
+    ) -> Self {
         Self {
-            kind: BoolExprKind::Call { function, args },
+            kind: BoolExprKind::Call {
+                function,
+                args,
+                site,
+            },
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn function_call(function: BoolFunctionExpr, args: Vec<CallArg>) -> Self {
+        Self::function_call_at(function, args, HostCallSite::unknown())
+    }
+
+    pub(crate) fn function_call_at(
+        function: BoolFunctionExpr,
+        args: Vec<CallArg>,
+        site: HostCallSite,
+    ) -> Self {
         Self {
             kind: BoolExprKind::FunctionCall {
                 function: Box::new(function),
                 args,
+                site,
             },
         }
     }
@@ -447,6 +472,7 @@ mod tests {
             &BoolExprKind::Call {
                 function: function_instantiation(),
                 args: Vec::new(),
+                site: crate::plan::HostCallSite::unknown(),
             },
         );
         assert_eq!(
@@ -454,6 +480,7 @@ mod tests {
             &BoolExprKind::FunctionCall {
                 function: Box::new(function_expr()),
                 args: Vec::new(),
+                site: crate::plan::HostCallSite::unknown(),
             },
         );
         assert_eq!(

@@ -11,11 +11,12 @@ use crate::planner::error::{
 };
 use crate::planner::expression::record_constructor::ResolvedRecordConstructor;
 use ecow::EcoString;
-use gleam_core::ast::{CallArg as GleamCallArg, TypedExpr};
+use gleam_core::ast::{CallArg as GleamCallArg, SrcSpan, TypedExpr};
 use gleam_core::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
 use std::sync::Arc;
 
 pub(super) fn plan_call(
+    location: SrcSpan,
     type_: Arc<Type>,
     fun: TypedExpr,
     arguments: Vec<GleamCallArg<TypedExpr>>,
@@ -29,7 +30,7 @@ pub(super) fn plan_call(
         });
     }
 
-    plan_call_expression(type_, fun, arguments, context, None)
+    plan_call_expression(location, type_, fun, arguments, context, None)
 }
 
 pub(super) fn plan_use_call(
@@ -41,21 +42,23 @@ pub(super) fn plan_use_call(
 }
 
 pub(super) fn plan_pipeline_direct_call(
+    location: SrcSpan,
     type_: Arc<Type>,
     fun: TypedExpr,
     arguments: Vec<GleamCallArg<TypedExpr>>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    implicit::plan_pipeline_direct_call(type_, fun, arguments, context)
+    implicit::plan_pipeline_direct_call(location, type_, fun, arguments, context)
 }
 
 pub(super) fn plan_pipeline_hole_call(
+    location: SrcSpan,
     type_: Arc<Type>,
     fun: TypedExpr,
     arguments: Vec<GleamCallArg<TypedExpr>>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    implicit::plan_pipeline_hole_call(type_, fun, arguments, context)
+    implicit::plan_pipeline_hole_call(location, type_, fun, arguments, context)
 }
 
 struct CaptureSubstitution {
@@ -85,6 +88,7 @@ fn is_capture_local(expression: &TypedExpr, capture_name: &EcoString) -> bool {
 }
 
 fn plan_call_expression(
+    location: SrcSpan,
     type_: Arc<Type>,
     fun: TypedExpr,
     arguments: Vec<GleamCallArg<TypedExpr>>,
@@ -141,10 +145,10 @@ fn plan_call_expression(
                     name.clone(),
                     external_erlang.is_some() || external_javascript.is_some(),
                 )
-                .validate_external()?;
+                .validate_external(context)?;
                 let function = context.module_function(&target)?;
                 return direct::plan_direct_function_call(
-                    type_, function, arguments, context, capture,
+                    location, type_, function, arguments, context, capture,
                 );
             }
             ValueConstructorVariant::ModuleConstant { .. } => {}
@@ -178,10 +182,10 @@ fn plan_call_expression(
                     name.clone(),
                     external_erlang.is_some() || external_javascript.is_some(),
                 )?
-                .validate_external()?;
+                .validate_external(context)?;
                 let function = context.module_function(&target)?;
                 return direct::plan_direct_function_call(
-                    type_, function, arguments, context, capture,
+                    location, type_, function, arguments, context, capture,
                 );
             }
             ModuleValueConstructor::Record {
@@ -207,7 +211,7 @@ fn plan_call_expression(
         }
     }
 
-    function_value::plan_function_value_call(type_, fun, arguments, context, capture)
+    function_value::plan_function_value_call(location, type_, fun, arguments, context, capture)
 }
 
 fn plan_custom_constructor_call(
@@ -314,6 +318,8 @@ pub fn main() {
 mod tests {
     use super::super::{module_returning_typed_expr, typed_prelude_constructor, typed_string_expr};
     use super::support::{expect_call_statement_mut, expect_var_constructor_mut};
+    use crate::plan::{ConstantTemplates, IntExpr, IntReturn, ReturnExpr};
+    use crate::planner::dsl::{host_call_site, int, int_function_call_arg};
     use crate::planner::support::{compile, dummy_span};
     use crate::planner::{
         InvalidCallShapeReason, InvalidCustomTypeReason, InvalidModuleReferenceReason,
@@ -350,51 +356,74 @@ fn add_one(value: Int) {
 
 pub const operation = add_one
 "#;
-        let qualified = compile_typed_program(
-            "main",
-            [
-                ModuleSource::new("operation", "operation.gleam", dependency),
-                ModuleSource::new(
-                    "main",
-                    "main.gleam",
-                    r#"
+        let qualified_source = r#"
 import operation
 
 pub fn main() {
   operation.operation(41)
 }
-"#,
-                ),
+"#;
+        let qualified = compile_typed_program(
+            "main",
+            [
+                ModuleSource::new("operation", "operation.gleam", dependency),
+                ModuleSource::new("main", "main.gleam", qualified_source),
             ],
         )
         .expect("qualified function constant program should compile");
         let qualified =
             plan_program(qualified).expect("qualified function constant call should plan");
-        let unqualified = compile_typed_program(
-            "main",
-            [
-                ModuleSource::new("operation", "operation.gleam", dependency),
-                ModuleSource::new(
-                    "main",
-                    "main.gleam",
-                    r#"
+        let unqualified_source = r#"
 import operation.{operation}
 
 pub fn main() {
   operation(41)
 }
-"#,
-                ),
+"#;
+        let unqualified = compile_typed_program(
+            "main",
+            [
+                ModuleSource::new("operation", "operation.gleam", dependency),
+                ModuleSource::new("main", "main.gleam", unqualified_source),
             ],
         )
         .expect("unqualified function constant program should compile");
         let unqualified =
             plan_program(unqualified).expect("unqualified function constant call should plan");
 
-        assert_eq!(
-            qualified.main_function().return_(),
-            unqualified.main_function().return_(),
-        );
+        let qualified_instantiation = qualified.modules()[0].constants()[0]
+            .signature()
+            .try_instantiate(Vec::new())
+            .expect("qualified constant signature should instantiate");
+        let qualified_function = ConstantTemplates::reference(qualified_instantiation)
+            .into_function()
+            .expect("qualified constant should remain a function")
+            .into_int()
+            .expect("qualified constant function should return Int");
+        let qualified_expected = ReturnExpr::int_body(IntReturn::expr(IntExpr::function_call_at(
+            qualified_function,
+            vec![int_function_call_arg(int(41))],
+            host_call_site(qualified_source, "main", "operation.operation(41)"),
+        )));
+
+        let unqualified_instantiation = unqualified.modules()[0].constants()[0]
+            .signature()
+            .try_instantiate(Vec::new())
+            .expect("unqualified constant signature should instantiate");
+        let unqualified_function = ConstantTemplates::reference(unqualified_instantiation)
+            .into_function()
+            .expect("unqualified constant should remain a function")
+            .into_int()
+            .expect("unqualified constant function should return Int");
+        let unqualified_expected =
+            ReturnExpr::int_body(IntReturn::expr(IntExpr::function_call_at(
+                unqualified_function,
+                vec![int_function_call_arg(int(41))],
+                host_call_site(unqualified_source, "main", "operation(41)"),
+            )));
+
+        assert_eq!(qualified.main_function().return_(), &qualified_expected);
+        assert_eq!(unqualified.main_function().return_(), &unqualified_expected);
     }
 
     #[test]

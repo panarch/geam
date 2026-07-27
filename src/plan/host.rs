@@ -3,33 +3,34 @@ mod implementation;
 mod module;
 
 use super::{FunctionTemplateId, ModuleId};
+use crate::host::HostProfile;
 
 pub use function::HostFunctionTemplate;
 pub(crate) use function::{HostParameter, HostReturnFamily};
 pub(crate) use implementation::HostFunctionImplementation;
-pub(crate) use module::HostedPlannedModuleKind;
-pub use module::{HostedPlannedModule, PlannedHostModule};
+pub(crate) use module::HostedPlannedModuleParts;
+pub use module::{HostedFunctionTemplate, HostedPlannedModule};
 
-pub struct HostedModulePlan {
+pub struct HostedModulePlan<Profile: HostProfile> {
     root: ModuleId,
     entry: FunctionTemplateId,
     modules: Vec<HostedPlannedModule>,
-    implementations: Vec<HostFunctionImplementation>,
+    implementations: Vec<HostFunctionImplementation<Profile>>,
 }
 
-pub(crate) struct HostedModulePlanParts {
+pub(crate) struct HostedModulePlanParts<Profile: HostProfile> {
     pub(crate) root: ModuleId,
     pub(crate) entry: FunctionTemplateId,
     pub(crate) modules: Vec<HostedPlannedModule>,
-    pub(crate) implementations: Vec<HostFunctionImplementation>,
+    pub(crate) implementations: Vec<HostFunctionImplementation<Profile>>,
 }
 
-impl HostedModulePlan {
+impl<Profile: HostProfile> HostedModulePlan<Profile> {
     pub(crate) fn new(
         root: ModuleId,
         entry: FunctionTemplateId,
         modules: Vec<HostedPlannedModule>,
-        implementations: Vec<HostFunctionImplementation>,
+        implementations: Vec<HostFunctionImplementation<Profile>>,
     ) -> Self {
         Self {
             root,
@@ -51,7 +52,7 @@ impl HostedModulePlan {
         &self.modules
     }
 
-    pub(crate) fn into_parts(self) -> HostedModulePlanParts {
+    pub(crate) fn into_parts(self) -> HostedModulePlanParts<Profile> {
         HostedModulePlanParts {
             root: self.root,
             entry: self.entry,

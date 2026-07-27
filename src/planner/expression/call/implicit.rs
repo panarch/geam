@@ -18,19 +18,21 @@ pub(super) fn plan_use_call(
 ) -> Result<Expr, PlanError> {
     match call {
         TypedExpr::Call {
+            location,
             type_,
             fun,
             arguments,
             ..
         } => {
             let arguments = normalize_use_call_arguments(arguments, use_assignment_count)?;
-            super::plan_call_expression(type_, *fun, arguments, context, None)
+            super::plan_call_expression(location, type_, *fun, arguments, context, None)
         }
         _ => Err(super::invalid_use_shape(InvalidUseShapeReason::NonCallRhs)),
     }
 }
 
 pub(super) fn plan_pipeline_direct_call(
+    location: gleam_core::ast::SrcSpan,
     type_: std::sync::Arc<gleam_core::type_::Type>,
     fun: TypedExpr,
     arguments: Vec<GleamCallArg<TypedExpr>>,
@@ -38,10 +40,11 @@ pub(super) fn plan_pipeline_direct_call(
 ) -> Result<Expr, PlanError> {
     pipe_argument(&arguments)?;
 
-    super::plan_call_expression(type_, fun, arguments, context, None)
+    super::plan_call_expression(location, type_, fun, arguments, context, None)
 }
 
 pub(super) fn plan_pipeline_hole_call(
+    _location: gleam_core::ast::SrcSpan,
     type_: std::sync::Arc<gleam_core::type_::Type>,
     fun: TypedExpr,
     arguments: Vec<GleamCallArg<TypedExpr>>,
@@ -60,7 +63,11 @@ pub(super) fn plan_pipeline_hole_call(
     };
 
     let mut body = body.into_iter();
-    let (fun, arguments) = pipeline_hole_body_call(body.next())?;
+    let PipelineHoleBodyCall {
+        location: call_location,
+        fun,
+        arguments,
+    } = pipeline_hole_body_call(body.next())?;
     if body.next().is_some() {
         return Err(invalid_hole_capture());
     }
@@ -76,6 +83,7 @@ pub(super) fn plan_pipeline_hole_call(
     }
 
     super::plan_call_expression(
+        call_location,
         type_,
         *fun,
         arguments,
@@ -109,11 +117,26 @@ fn single_capture_argument(capture_args: &[TypedArg]) -> Result<&TypedArg, PlanE
     }
 }
 
+struct PipelineHoleBodyCall {
+    location: gleam_core::ast::SrcSpan,
+    fun: Box<TypedExpr>,
+    arguments: Vec<GleamCallArg<TypedExpr>>,
+}
+
 fn pipeline_hole_body_call(
     statement: Option<TypedStatement>,
-) -> Result<(Box<TypedExpr>, Vec<GleamCallArg<TypedExpr>>), PlanError> {
+) -> Result<PipelineHoleBodyCall, PlanError> {
     match statement {
-        Some(Statement::Expression(TypedExpr::Call { fun, arguments, .. })) => Ok((fun, arguments)),
+        Some(Statement::Expression(TypedExpr::Call {
+            location,
+            fun,
+            arguments,
+            ..
+        })) => Ok(PipelineHoleBodyCall {
+            location,
+            fun,
+            arguments,
+        }),
         _ => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::PipelineShape {
                 reason: InvalidPipelineShapeReason::NonCallStep,

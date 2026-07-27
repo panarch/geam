@@ -39,11 +39,12 @@ pub(super) fn plan_expr(
             constructor, name, ..
         } => var::plan_var(name, constructor, shape.clone(), context),
         TypedExpr::Call {
+            location,
             type_,
             fun,
             arguments,
             ..
-        } => call::plan_call(type_, *fun, arguments, context),
+        } => call::plan_call(location, type_, *fun, arguments, context),
         TypedExpr::BinOp {
             operator,
             left,

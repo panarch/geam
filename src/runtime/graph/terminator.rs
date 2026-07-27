@@ -9,7 +9,7 @@ use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::ExecutionError;
 use crate::runtime::error::{ExecutionResult, PanicKind};
 use crate::runtime::evaluated::EvaluatedNeverFunction;
-use crate::runtime::state::RuntimeState;
+use crate::runtime::state::RuntimeStateFor;
 
 pub(super) enum GraphAction {
     Continue {
@@ -28,9 +28,9 @@ pub(super) enum NeverCall {
     Value(EvaluatedNeverFunction),
 }
 
-pub(super) fn terminator_action(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn terminator_action<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &BlockEnvironment,
     terminator: &Terminator,
 ) -> ExecutionResult<GraphAction> {

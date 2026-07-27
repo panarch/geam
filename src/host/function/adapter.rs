@@ -1,15 +1,28 @@
 use super::HostValueType;
 use super::argument::{HostArgument, HostParameter, HostParameterLayout};
 use super::return_::{HostFunctionImplementation, HostReturn};
+use crate::host::{HostCall, HostCallError, HostFailure, HostProfile, HostProvider};
 
 pub trait HostFunction<Arguments, Return>: Send + Sync + 'static {
-    fn register(self) -> HostFunctionRegistration;
+    fn register<Profile: HostProfile>(self) -> HostFunctionRegistration<Profile>;
 }
 
-pub struct HostFunctionRegistration {
+pub trait FallibleHostFunction<Arguments, Return>: Send + Sync + 'static {
+    fn register<Profile: HostProfile>(self) -> HostFunctionRegistration<Profile>;
+}
+
+pub trait ScopedHostFunction<Profile, Provider, Arguments, Return>: Send + Sync + 'static
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+{
+    fn register(self) -> HostFunctionRegistration<Profile>;
+}
+
+pub struct HostFunctionRegistration<Profile: HostProfile> {
     pub(super) parameters: Box<[HostParameter]>,
     pub(super) return_: HostValueType,
-    pub(super) implementation: HostFunctionImplementation,
+    pub(super) implementation: HostFunctionImplementation<Profile>,
 }
 
 macro_rules! host_function {
@@ -19,11 +32,51 @@ macro_rules! host_function {
             Function: Fn() -> Return + Send + Sync + 'static,
             Return: HostReturn,
         {
-            fn register(self) -> HostFunctionRegistration {
+            fn register<Profile: HostProfile>(self) -> HostFunctionRegistration<Profile> {
                 HostFunctionRegistration {
                     parameters: Box::new([]),
                     return_: Return::type_(),
-                    implementation: Return::implementation(move |_| self()),
+                    implementation: Return::implementation(move |_, _| Ok(self())),
+                }
+            }
+        }
+
+        impl<Function, Return> FallibleHostFunction<(), Return> for Function
+        where
+            Function: Fn() -> Result<Return, HostFailure> + Send + Sync + 'static,
+            Return: HostReturn,
+        {
+            fn register<Profile: HostProfile>(self) -> HostFunctionRegistration<Profile> {
+                HostFunctionRegistration {
+                    parameters: Box::new([]),
+                    return_: Return::type_(),
+                    implementation: Return::implementation(move |_, _| {
+                        self().map_err(HostCallError::from)
+                    }),
+                }
+            }
+        }
+
+        impl<Profile, Provider, Function, Return>
+            ScopedHostFunction<Profile, Provider, (), Return> for Function
+        where
+            Profile: HostProfile,
+            Provider: HostProvider<Profile>,
+            Function: for<'call> Fn(
+                    &mut HostCall<'call, Profile, Provider>,
+                ) -> Result<Return, HostCallError>
+                + Send
+                + Sync
+                + 'static,
+            Return: HostReturn,
+        {
+            fn register(self) -> HostFunctionRegistration<Profile> {
+                HostFunctionRegistration {
+                    parameters: Box::new([]),
+                    return_: Return::type_(),
+                    implementation: Return::implementation(move |state, _| {
+                        self(&mut HostCall::new(state))
+                    }),
                 }
             }
         }
@@ -35,11 +88,64 @@ macro_rules! host_function {
             Return: HostReturn,
             $($argument: HostArgument,)*
         {
-            fn register(self) -> HostFunctionRegistration {
+            fn register<Profile: HostProfile>(self) -> HostFunctionRegistration<Profile> {
                 let mut layout = HostParameterLayout::default();
                 $(let $slot = layout.register::<$argument>();)*
-                let implementation = Return::implementation(move |arguments| {
-                    self($($argument::read(arguments, $slot)),*)
+                let implementation = Return::implementation(move |_, arguments| {
+                    Ok(self($($argument::read(arguments, $slot)),*))
+                });
+                HostFunctionRegistration {
+                    parameters: layout.finish(),
+                    return_: Return::type_(),
+                    implementation,
+                }
+            }
+        }
+
+        impl<Function, Return, $($argument,)*>
+            FallibleHostFunction<($($argument,)*), Return> for Function
+        where
+            Function: Fn($($argument),*) -> Result<Return, HostFailure> + Send + Sync + 'static,
+            Return: HostReturn,
+            $($argument: HostArgument,)*
+        {
+            fn register<Profile: HostProfile>(self) -> HostFunctionRegistration<Profile> {
+                let mut layout = HostParameterLayout::default();
+                $(let $slot = layout.register::<$argument>();)*
+                let implementation = Return::implementation(move |_, arguments| {
+                    self($($argument::read(arguments, $slot)),*).map_err(HostCallError::from)
+                });
+                HostFunctionRegistration {
+                    parameters: layout.finish(),
+                    return_: Return::type_(),
+                    implementation,
+                }
+            }
+        }
+
+        impl<Profile, Provider, Function, Return, $($argument,)*>
+            ScopedHostFunction<Profile, Provider, ($($argument,)*), Return> for Function
+        where
+            Profile: HostProfile,
+            Provider: HostProvider<Profile>,
+            Function: for<'call> Fn(
+                    &mut HostCall<'call, Profile, Provider>,
+                    $($argument),*
+                ) -> Result<Return, HostCallError>
+                + Send
+                + Sync
+                + 'static,
+            Return: HostReturn,
+            $($argument: HostArgument,)*
+        {
+            fn register(self) -> HostFunctionRegistration<Profile> {
+                let mut layout = HostParameterLayout::default();
+                $(let $slot = layout.register::<$argument>();)*
+                let implementation = Return::implementation(move |state, arguments| {
+                    self(
+                        &mut HostCall::new(state),
+                        $($argument::read(arguments, $slot)),*
+                    )
                 });
                 HostFunctionRegistration {
                     parameters: layout.finish(),
@@ -70,12 +176,31 @@ host_function!(
 
 #[cfg(test)]
 mod tests {
-    use super::HostFunction;
+    use super::{FallibleHostFunction, HostFunction, ScopedHostFunction};
     use crate::host::function::argument::{
-        HostBoolArgumentSlot, HostCallArguments, HostIntArgumentSlot,
+        CallArguments, HostBoolArgumentSlot, HostCallArguments, HostIntArgumentSlot,
     };
-    use crate::host::function::{HostFunctionImplementation, HostParameter, HostValueType};
+    use crate::host::function::{
+        HostFunctionImplementation, HostIntFunction, HostParameter, HostValueType,
+    };
+    use crate::host::{HostCall, HostFailure, HostProfile, HostProvider, StatelessHostProfile};
     use num_bigint::BigInt;
+
+    struct Profile;
+
+    struct Counter;
+
+    impl HostProfile for Profile {
+        type RunState = usize;
+    }
+
+    impl HostProvider<Profile> for Counter {
+        type State = usize;
+
+        fn project(state: &mut usize) -> &mut Self::State {
+            state
+        }
+    }
 
     struct Arguments {
         ints: Vec<BigInt>,
@@ -102,6 +227,45 @@ mod tests {
             call_int(registration.implementation, Vec::new(), Vec::new()),
             BigInt::from(7),
         );
+    }
+
+    #[test]
+    fn supports_zero_argument_fallible_functions() {
+        let registration =
+            <_ as FallibleHostFunction<(), BigInt>>::register::<StatelessHostProfile>(|| {
+                Err(HostFailure::new("unavailable"))
+            });
+        let implementation = int_function(registration.implementation);
+
+        assert_eq!(registration.parameters.as_ref(), []);
+        assert_eq!(registration.return_, HostValueType::Int);
+        assert_eq!(
+            implementation
+                .call(&mut (), &CallArguments::new(Vec::new(), Vec::new()))
+                .expect_err("fallible function should preserve its failure")
+                .to_string(),
+            "unavailable",
+        );
+    }
+
+    #[test]
+    fn supports_zero_argument_scoped_functions() {
+        let registration = <_ as ScopedHostFunction<Profile, Counter, (), BigInt>>::register(
+            |call: &mut HostCall<'_, Profile, Counter>| {
+                *call.state() += 1;
+                Ok(BigInt::from(*call.state()))
+            },
+        );
+        let implementation = int_function(registration.implementation);
+        let mut state = 41;
+
+        assert_eq!(registration.parameters.as_ref(), []);
+        assert_eq!(registration.return_, HostValueType::Int);
+        assert_eq!(
+            implementation.call(&mut state, &CallArguments::new(Vec::new(), Vec::new())),
+            Ok(BigInt::from(42)),
+        );
+        assert_eq!(state, 42);
     }
 
     #[test]
@@ -304,24 +468,34 @@ mod tests {
     }
 
     fn call_int(
-        implementation: HostFunctionImplementation,
+        implementation: HostFunctionImplementation<crate::host::StatelessHostProfile>,
         ints: Vec<BigInt>,
         bools: Vec<bool>,
     ) -> BigInt {
-        let HostFunctionImplementation::Int(implementation) = implementation else {
-            panic!("test function should return Int");
-        };
-        implementation.call(&Arguments { ints, bools })
+        int_function(implementation)
+            .call(&mut (), &Arguments { ints, bools })
+            .expect("test host function should succeed")
     }
 
     fn call_bool(
-        implementation: HostFunctionImplementation,
+        implementation: HostFunctionImplementation<crate::host::StatelessHostProfile>,
         ints: Vec<BigInt>,
         bools: Vec<bool>,
     ) -> bool {
         let HostFunctionImplementation::Bool(implementation) = implementation else {
             panic!("test function should return Bool");
         };
-        implementation.call(&Arguments { ints, bools })
+        implementation
+            .call(&mut (), &Arguments { ints, bools })
+            .expect("test host function should succeed")
+    }
+
+    fn int_function<Profile: HostProfile>(
+        implementation: HostFunctionImplementation<Profile>,
+    ) -> HostIntFunction<Profile> {
+        let HostFunctionImplementation::Int(implementation) = implementation else {
+            panic!("test function should return Int");
+        };
+        implementation
     }
 }

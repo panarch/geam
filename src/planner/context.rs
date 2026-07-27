@@ -31,6 +31,7 @@ pub(super) struct FunctionInfo {
     pub(super) type_parameters: super::type_parameter::TypeParameterScope,
     pub(super) return_shape: ValueShape,
     pub(super) params: Vec<FunctionParam>,
+    pub(super) definition_span: crate::plan::SourceSpan,
 }
 
 pub(super) struct ModuleFunctionTarget {
@@ -105,8 +106,11 @@ impl ModuleFunctionTarget {
         })
     }
 
-    pub(super) fn validate_external(self) -> Result<ValidatedModuleFunctionTarget, PlanError> {
-        if self.external {
+    pub(super) fn validate_external(
+        self,
+        context: &PlanContext<'_>,
+    ) -> Result<ValidatedModuleFunctionTarget, PlanError> {
+        if self.external && !context.executable_external(&self.module, &self.name) {
             return Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ModuleReference {
                     module: self.module,
@@ -569,6 +573,14 @@ pub(super) enum FunctionLocalBinding {
 }
 
 impl<'a> PlanContext<'a> {
+    fn executable_external(&self, module: &EcoString, name: &EcoString) -> bool {
+        match self.registry {
+            RegistryAccess::Program { registry } => registry.executable_external(module, name),
+            #[cfg(test)]
+            RegistryAccess::Local { .. } => false,
+        }
+    }
+
     #[cfg(test)]
     pub(super) fn new(
         module_name: &'a EcoString,
@@ -694,6 +706,17 @@ impl<'a> PlanContext<'a> {
 
     pub(super) fn echo_site(&self, location: gleam_core::ast::SrcSpan) -> crate::plan::EchoSite {
         crate::plan::EchoSite::new(
+            self.module_name.clone(),
+            self.current_function.clone(),
+            location.into(),
+        )
+    }
+
+    pub(super) fn host_call_site(
+        &self,
+        location: gleam_core::ast::SrcSpan,
+    ) -> crate::plan::HostCallSite {
+        crate::plan::HostCallSite::new(
             self.module_name.clone(),
             self.current_function.clone(),
             location.into(),
@@ -2950,6 +2973,7 @@ impl AnonymousFunctions {
             type_parameters,
             return_shape,
             params,
+            definition_span: crate::plan::SourceSpan::new(0, 0),
         };
         self.next_function_index += 1;
         (name, info)
@@ -3069,7 +3093,7 @@ mod tests {
             context
                 .module_function(
                     &ModuleFunctionTarget::direct(module.clone(), "present".into(), false)
-                        .validate_external()
+                        .validate_external(&context)
                         .expect("local function target should validate"),
                 )
                 .map(function_template_id),
@@ -3079,7 +3103,7 @@ mod tests {
             context
                 .module_function(
                     &ModuleFunctionTarget::direct(module.clone(), "missing".into(), false)
-                        .validate_external()
+                        .validate_external(&context)
                         .expect("local function target should validate"),
                 )
                 .map(function_template_id),
@@ -3160,7 +3184,7 @@ mod tests {
                 "run".into(),
                 true,
             )
-            .and_then(ModuleFunctionTarget::validate_external)
+            .and_then(|target| target.validate_external(&context))
             .map(|_| ()),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ModuleReference {
@@ -3182,8 +3206,10 @@ mod tests {
             Vec::new(),
             Default::default(),
         );
-        let target = ModuleFunctionTarget::direct(module, "run".into(), false)
-            .validate_external()
+        let functions = HashMap::from([(EcoString::from("run"), function.clone())]);
+        let context = PlanContext::new(&module, &functions, &mut anonymous);
+        let target = ModuleFunctionTarget::direct(module.clone(), "run".into(), false)
+            .validate_external(&context)
             .expect("local function target should validate");
 
         assert_eq!(

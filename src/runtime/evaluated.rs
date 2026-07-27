@@ -1002,7 +1002,7 @@ impl EvaluatedCapture {
 
 pub(in crate::runtime) fn values_equal(
     plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
-    state: &RuntimeState,
+    state: &RuntimeState<'_, impl Sized>,
     left: &EvaluatedValue,
     right: &EvaluatedValue,
 ) -> bool {
@@ -1042,7 +1042,7 @@ pub(in crate::runtime) fn values_equal(
 
 fn lists_equal(
     plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
-    state: &RuntimeState,
+    state: &RuntimeState<'_, impl Sized>,
     left: &ListValueId,
     right: &ListValueId,
 ) -> bool {

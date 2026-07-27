@@ -6,11 +6,11 @@ use super::environment::BlockEnvironment;
 use crate::plan::execution::graph::{Instruction, InstructionKind};
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::ExecutionResult;
-use crate::runtime::state::RuntimeState;
+use crate::runtime::state::RuntimeStateFor;
 
-pub(super) fn execute(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn execute<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &mut BlockEnvironment,
     instruction: &Instruction,
 ) -> ExecutionResult<()> {

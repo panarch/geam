@@ -3,11 +3,11 @@ use crate::plan::execution::function::UtfCodepointFunctionId;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::graph::RetainedValues;
-use crate::runtime::state::RuntimeState;
+use crate::runtime::state::RuntimeStateFor;
 
-pub(in crate::runtime) fn run_utf_codepoint(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(in crate::runtime) fn run_utf_codepoint<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     function: UtfCodepointFunctionId,
     inputs: RetainedValues,
 ) -> ExecutionResult<char> {

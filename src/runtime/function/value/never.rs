@@ -4,12 +4,12 @@ use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::evaluated::EvaluatedNeverFunction;
 use crate::runtime::graph::RetainedValues;
-use crate::runtime::state::RuntimeState;
+use crate::runtime::state::RuntimeStateFor;
 use std::convert::Infallible;
 
-pub(in crate::runtime) fn run_never(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(in crate::runtime) fn run_never<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     function: NeverFunctionId,
     inputs: RetainedValues,
 ) -> ExecutionResult<Infallible> {
@@ -25,9 +25,9 @@ pub(in crate::runtime) fn run_never(
     )
 }
 
-pub(in crate::runtime) fn run_never_value(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(in crate::runtime) fn run_never_value<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     function: EvaluatedNeverFunction,
     mut inputs: RetainedValues,
 ) -> ExecutionResult<Infallible> {

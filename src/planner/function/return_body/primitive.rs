@@ -15,9 +15,14 @@ pub(super) fn custom_return(
 
 pub(super) fn generic_return(expression: GenericExpr) -> GenericReturn {
     match expression.kind() {
-        GenericExprKind::Call { function, args } => {
-            ReturnBody::tail_call(function.clone(), args.clone())
-        }
+        GenericExprKind::Call {
+            function,
+            args,
+            site,
+        } => ReturnBody::tail_call(
+            crate::plan::FunctionCallTarget::new(function.clone(), site.clone()),
+            args.clone(),
+        ),
         GenericExprKind::BoolCase {
             subject,
             true_,
@@ -75,9 +80,14 @@ use crate::plan::{ListExpr, ListReturn};
 
 pub(super) fn int_return(expression: IntExpr) -> IntReturn {
     match expression.kind() {
-        IntExprKind::Call { function, args } => {
-            ReturnBody::tail_call(function.clone(), args.clone())
-        }
+        IntExprKind::Call {
+            function,
+            args,
+            site,
+        } => ReturnBody::tail_call(
+            crate::plan::FunctionCallTarget::new(function.clone(), site.clone()),
+            args.clone(),
+        ),
         IntExprKind::BoolCase {
             subject,
             true_,
@@ -303,9 +313,14 @@ pub(super) fn utf_codepoint_return(expression: UtfCodepointExpr) -> UtfCodepoint
 
 pub(super) fn bool_return(expression: BoolExpr) -> BoolReturn {
     match expression.kind() {
-        BoolExprKind::Call { function, args } => {
-            ReturnBody::tail_call(function.clone(), args.clone())
-        }
+        BoolExprKind::Call {
+            function,
+            args,
+            site,
+        } => ReturnBody::tail_call(
+            crate::plan::FunctionCallTarget::new(function.clone(), site.clone()),
+            args.clone(),
+        ),
         BoolExprKind::BoolCase {
             subject,
             true_,

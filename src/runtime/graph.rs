@@ -13,7 +13,7 @@ use self::terminator::{GraphAction, NeverCall, terminator_action};
 use crate::plan::execution::graph::{BlockGraph, BlockGraphExitId, ParamLocal};
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::ExecutionResult;
-use crate::runtime::state::RuntimeState;
+use crate::runtime::state::{RuntimeState, RuntimeStateFor};
 
 pub(super) struct CompletedGraph {
     exit: BlockGraphExitId,
@@ -25,9 +25,9 @@ impl CompletedGraph {
         self.exit
     }
 
-    pub(super) fn into_value<Value>(
+    pub(super) fn into_value<Value, State>(
         self,
-        state: &mut RuntimeState,
+        state: &mut RuntimeState<'_, State>,
         value: &Value,
     ) -> Value::Evaluated
     where
@@ -39,9 +39,9 @@ impl CompletedGraph {
         value
     }
 
-    pub(super) fn into_retained(
+    pub(super) fn into_retained<State>(
         self,
-        state: &mut RuntimeState,
+        state: &mut RuntimeState<'_, State>,
         values: &[ParamLocal],
     ) -> RetainedValues {
         let retained = self.environment.retain(values);
@@ -51,9 +51,9 @@ impl CompletedGraph {
     }
 }
 
-pub(super) fn execute(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn execute<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     graph: &BlockGraph,
     inputs: RetainedValues,
 ) -> ExecutionResult<CompletedGraph> {

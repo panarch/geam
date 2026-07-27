@@ -260,18 +260,27 @@ impl Expr {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn call(function: crate::plan::FunctionInstantiation, args: Vec<CallArg>) -> Self {
+        Self::call_at(function, args, crate::plan::HostCallSite::unknown())
+    }
+
+    pub(crate) fn call_at(
+        function: crate::plan::FunctionInstantiation,
+        args: Vec<CallArg>,
+        site: crate::plan::HostCallSite,
+    ) -> Self {
         match function.shape().return_shape().clone() {
             ValueShape::Parameter(parameter) => {
-                Self::generic(GenericExpr::call(parameter, function, args))
+                Self::generic(GenericExpr::call_at(parameter, function, args, site))
             }
-            ValueShape::Int => Self::int(IntExpr::call(function, args)),
+            ValueShape::Int => Self::int(IntExpr::call_at(function, args, site)),
             ValueShape::String => Self::string(StringExpr::call(function, args)),
             ValueShape::BitArray => Self::bit_array(BitArrayExpr::call(function, args)),
             ValueShape::UtfCodepoint => Self::utf_codepoint(UtfCodepointExpr::call(function, args)),
             ValueShape::Custom(shape) => Self::custom(CustomExpr::call(function, args, shape)),
             ValueShape::Float => Self::float(FloatExpr::call(function, args)),
-            ValueShape::Bool => Self::bool(BoolExpr::call(function, args)),
+            ValueShape::Bool => Self::bool(BoolExpr::call_at(function, args, site)),
             ValueShape::Nil => Self::nil(NilExpr::call(function, args)),
             ValueShape::Tuple(shape) => {
                 let expression = TupleExpr::call(

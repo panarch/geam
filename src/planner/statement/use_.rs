@@ -57,9 +57,9 @@ mod tests {
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
-        call_int_function, capture_int, function, int, int_arg, int_function_arg,
-        int_function_call_arg, int_function_closure, int_return_tail_call, let_list_step,
-        let_tuple_step, local_int, local_int_function, local_list, local_tuple,
+        call_int_function_at, capture_int, function, host_call_site, int, int_arg,
+        int_function_arg, int_function_call_arg, int_function_closure, int_return_tail_call_at,
+        let_list_step, let_tuple_step, local_int, local_int_function, local_list, local_tuple,
         module_with_anonymous, tuple, tuple_arg,
     };
     use crate::planner::plan_module;
@@ -79,8 +79,7 @@ mod tests {
 
     #[test]
     fn plan_use_syntax() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 pub fn main() {
   use <- pair
   1
@@ -89,27 +88,28 @@ pub fn main() {
 fn pair(callback: fn() -> Int) {
   callback()
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module_with_anonymous(
             "main",
             function(
                 "main",
-                int_return_tail_call(
+                int_return_tail_call_at(
                     1,
                     [int_function_arg(int_function_closure(
                         2,
                         Vec::<LocalId>::new(),
                         [],
                     ))],
+                    host_call_site(source, "main", "use <- pair\n  1"),
                 ),
             ),
             [function(
                 "pair",
-                call_int_function(
+                call_int_function_at(
                     local_int_function(0, "callback", Vec::<ValueType>::new()),
                     [],
+                    host_call_site(source, "pair", "callback()"),
                 ),
             )
             .param_int_function(0, "callback", Vec::<ValueType>::new())],
@@ -121,8 +121,7 @@ fn pair(callback: fn() -> Int) {
 
     #[test]
     fn plan_use_syntax_with_discard_assignment() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn with_value(continue: fn(Int) -> Int) {
   continue(1)
 }
@@ -131,27 +130,28 @@ pub fn main() {
   use _ <- with_value
   42
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module_with_anonymous(
             "main",
             function(
                 "main",
-                int_return_tail_call(
+                int_return_tail_call_at(
                     1,
                     [int_function_arg(int_function_closure(
                         2,
                         [LocalId::Int(IntLocalId(0))],
                         [],
                     ))],
+                    host_call_site(source, "main", "use _ <- with_value\n  42"),
                 ),
             ),
             [function(
                 "with_value",
-                call_int_function(
+                call_int_function_at(
                     local_int_function(0, "continue", [ValueType::Int]),
                     [int_function_call_arg(int(1))],
+                    host_call_site(source, "with_value", "continue(1)"),
                 ),
             )
             .param_int_function(0, "continue", [ValueType::Int])],
@@ -185,8 +185,7 @@ pub fn main() {
 
     #[test]
     fn plan_use_syntax_with_assignment_and_capture() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn with_value(continue: fn(Int) -> Int) {
   continue(32)
 }
@@ -196,22 +195,26 @@ pub fn main() {
   use value <- with_value
   value + base
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let callback = int_function_closure(2, [LocalId::Int(IntLocalId(0))], [capture_int(0)]);
         let expected = module_with_anonymous(
             "main",
             function(
                 "main",
-                int_return_tail_call(1, [int_function_arg(callback)]),
+                int_return_tail_call_at(
+                    1,
+                    [int_function_arg(callback)],
+                    host_call_site(source, "main", "use value <- with_value\n  value + base"),
+                ),
             )
             .let_int(0, "base", int(10)),
             [function(
                 "with_value",
-                call_int_function(
+                call_int_function_at(
                     local_int_function(0, "continue", [ValueType::Int]),
                     [int_function_call_arg(int(32))],
+                    host_call_site(source, "with_value", "continue(32)"),
                 ),
             )
             .param_int_function(0, "continue", [ValueType::Int])],
@@ -230,8 +233,7 @@ pub fn main() {
 
     #[test]
     fn plan_use_syntax_with_labelled_provider_argument() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn with_value(value value: Int, continue continue: fn(Int) -> Int) {
   continue(value)
 }
@@ -240,14 +242,13 @@ pub fn main() {
   use value <- with_value(value: 41)
   value + 1
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module_with_anonymous(
             "main",
             function(
                 "main",
-                int_return_tail_call(
+                int_return_tail_call_at(
                     1,
                     [
                         int_arg(int(41)),
@@ -257,13 +258,19 @@ pub fn main() {
                             [],
                         )),
                     ],
+                    host_call_site(
+                        source,
+                        "main",
+                        "use value <- with_value(value: 41)\n  value + 1",
+                    ),
                 ),
             ),
             [function(
                 "with_value",
-                call_int_function(
+                call_int_function_at(
                     local_int_function(0, "continue", [ValueType::Int]),
                     [int_function_call_arg(local_int(0, "value"))],
+                    host_call_site(source, "with_value", "continue(value)"),
                 ),
             )
             .param_int(0, "value")
@@ -279,8 +286,7 @@ pub fn main() {
 
     #[test]
     fn plan_use_syntax_with_tuple_assignment() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn with_pair(continue: fn(#(Int, Int)) -> Int) {
   continue(#(1, 2))
 }
@@ -289,9 +295,8 @@ pub fn main() {
   use #(one, two) <- with_pair
   one + two
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let type_ = [ValueType::Int, ValueType::Int];
         let tuple_type = ValueType::Tuple(type_.to_vec());
         let anonymous_ref =
@@ -301,13 +306,18 @@ pub fn main() {
             "main",
             function(
                 "main",
-                int_return_tail_call(1, [int_function_arg(anonymous_ref)]),
+                int_return_tail_call_at(
+                    1,
+                    [int_function_arg(anonymous_ref)],
+                    host_call_site(source, "main", "use #(one, two) <- with_pair\n  one + two"),
+                ),
             ),
             [function(
                 "with_pair",
-                call_int_function(
+                call_int_function_at(
                     local_int_function(0, "continue", [tuple_type.clone()]),
                     [tuple_arg(tuple([int(1), int(2)]))],
+                    host_call_site(source, "with_pair", "continue(#(1, 2))"),
                 ),
             )
             .param_int_function(0, "continue", [tuple_type])],
@@ -376,8 +386,7 @@ pub fn main() {
 
     #[test]
     fn plan_use_syntax_with_pattern_alias_assignment() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn with_value(continue: fn(Int) -> Int) {
   continue(1)
 }
@@ -386,27 +395,28 @@ pub fn main() {
   use value as alias <- with_value
   alias
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module_with_anonymous(
             "main",
             function(
                 "main",
-                int_return_tail_call(
+                int_return_tail_call_at(
                     1,
                     [int_function_arg(int_function_closure(
                         2,
                         [LocalId::Int(IntLocalId(0))],
                         [],
                     ))],
+                    host_call_site(source, "main", "use value as alias <- with_value\n  alias"),
                 ),
             ),
             [function(
                 "with_value",
-                call_int_function(
+                call_int_function_at(
                     local_int_function(0, "continue", [ValueType::Int]),
                     [int_function_call_arg(int(1))],
+                    host_call_site(source, "with_value", "continue(1)"),
                 ),
             )
             .param_int_function(0, "continue", [ValueType::Int])],
@@ -421,8 +431,7 @@ pub fn main() {
 
     #[test]
     fn plan_use_syntax_with_nested_tuple_alias_assignment() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn with_pair(continue: fn(#(Int, #(Int, Int))) -> Int) {
   continue(#(1, #(2, 3)))
 }
@@ -431,9 +440,8 @@ pub fn main() {
   use #(one, #(two, _) as inner) as pair <- with_pair
   one + two + inner.0 + pair.0
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let inner_type = [ValueType::Int, ValueType::Int];
         let outer_type = [
             ValueType::Int,
@@ -447,23 +455,29 @@ pub fn main() {
             "main",
             function(
                 "main",
-                int_return_tail_call(
+                int_return_tail_call_at(
                     1,
                     [int_function_arg(int_function_closure(
                         2,
                         [ParamLocal::tuple(TupleLocalId(0), outer_type.to_vec())],
                         [],
                     ))],
+                    host_call_site(
+                        source,
+                        "main",
+                        "use #(one, #(two, _) as inner) as pair <- with_pair\n  one + two + inner.0 + pair.0",
+                    ),
                 ),
             ),
             [function(
                 "with_pair",
-                call_int_function(
+                call_int_function_at(
                     local_int_function(0, "continue", [outer_value_type.clone()]),
                     [tuple_arg(tuple([
                         Expr::from(int(1)),
                         Expr::from(tuple([Expr::from(int(2)), Expr::from(int(3))])),
                     ]))],
+                    host_call_site(source, "with_pair", "continue(#(1, #(2, 3)))"),
                 ),
             )
             .param_int_function(0, "continue", [outer_value_type])],

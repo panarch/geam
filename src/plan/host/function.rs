@@ -1,9 +1,7 @@
 mod parameter;
 mod return_;
 
-use crate::plan::{
-    FunctionShape, FunctionTemplateId, FunctionTemplateSignature, FunctionType, TypeScheme,
-};
+use crate::plan::{FunctionTemplateId, FunctionTemplateSignature, FunctionType, TypeScheme};
 use ecow::EcoString;
 
 pub(crate) use parameter::HostParameter;
@@ -13,38 +11,25 @@ pub(crate) use return_::HostReturnFamily;
 pub struct HostFunctionTemplate {
     signature: FunctionTemplateSignature,
     package: EcoString,
-    module: EcoString,
-    name: EcoString,
+    site: crate::plan::HostCallSite,
     parameters: Box<[HostParameter]>,
     return_family: HostReturnFamily,
     type_: FunctionType,
 }
 
 impl HostFunctionTemplate {
-    pub(crate) fn new(
-        id: FunctionTemplateId,
+    pub(crate) fn from_signature(
+        signature: FunctionTemplateSignature,
         package: EcoString,
-        module: EcoString,
-        name: EcoString,
+        site: crate::plan::HostCallSite,
         parameters: Vec<HostParameter>,
         return_family: HostReturnFamily,
         type_: FunctionType,
     ) -> Self {
         Self {
-            signature: FunctionTemplateSignature::new(
-                id,
-                TypeScheme::new(0),
-                FunctionShape::new(
-                    parameters
-                        .iter()
-                        .map(|parameter| parameter.shape())
-                        .collect(),
-                    return_family.shape(),
-                ),
-            ),
+            signature,
             package,
-            module,
-            name,
+            site,
             parameters: parameters.into_boxed_slice(),
             return_family,
             type_,
@@ -60,11 +45,15 @@ impl HostFunctionTemplate {
     }
 
     pub fn module(&self) -> &EcoString {
-        &self.module
+        self.site.module()
     }
 
     pub fn name(&self) -> &EcoString {
-        &self.name
+        self.site.function()
+    }
+
+    pub(crate) fn site(&self) -> &crate::plan::HostCallSite {
+        &self.site
     }
 
     pub fn scheme(&self) -> &TypeScheme {
