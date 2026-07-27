@@ -19,6 +19,20 @@ Published:  2026-06-02
 The baseline is release-based rather than `main`-based so typed AST and
 compiler-boundary behavior are compared against a published Gleam toolchain.
 
+The official standard library has an independent baseline:
+
+```text
+Repository: https://github.com/gleam-lang/stdlib
+Hex package: gleam_stdlib
+Release:     v1.0.3
+```
+
+Geam does not bundle or patch that source. A dedicated integration test uses
+Gleam CLI `v1.17.0` to download the locked package, then executes selected
+official pure-Gleam modules through Geam's normal resolved-project pipeline.
+Each tracked module locks its public names, argument labels, and signatures
+while allowing private implementation and declaration-order changes.
+
 ## Used Gleam Areas
 
 The first compiler-boundary milestone depends on `gleam-core` pinned to the
@@ -61,7 +75,11 @@ Geam intentionally does not define a source AST or source-language compiler. Its
 current boundary is:
 
 ```text
-module sources -> Gleam TypedProgram -> Geam ModulePlan -> Geam ExecutionPlan -> Geam runtime Value
+resolved project or module sources
+-> Gleam TypedProgram
+-> Geam ModulePlan
+-> Geam ExecutionPlan
+-> Geam runtime Value
 ```
 
 Geam-specific profile validation belongs in planning from Gleam's typed AST
@@ -92,7 +110,26 @@ pub fn compile_typed_program(
     root_module: impl Into<ecow::EcoString>,
     modules: impl IntoIterator<Item = geam::ModuleSource>,
 ) -> Result<geam::TypedProgram, geam::frontend::FrontendError>
+
+pub fn compile_typed_package_program(
+    root_package: impl Into<ecow::EcoString>,
+    root_module: impl Into<ecow::EcoString>,
+    packages: impl IntoIterator<Item = geam::PackageSource>,
+) -> Result<geam::TypedProgram, geam::frontend::FrontendError>
+
+pub fn compile_typed_project(
+    project_root: impl Into<camino::Utf8PathBuf>,
+    root_module: impl Into<ecow::EcoString>,
+) -> Result<geam::TypedProgram, geam::ProjectError>
 ```
+
+`compile_typed_project` is a read-only loader for a Gleam project whose
+dependencies have already been resolved. It reads `gleam.toml`,
+`manifest.toml`, root sources, and resolved Hex/Git/Local package sources.
+It never runs Gleam CLI, downloads dependencies, or modifies project files.
+The loader follows production dependencies and selects the
+`Target::Erlang` import closure rooted at the requested module. Every selected
+module body is then analysed and planned in full.
 
 The current public execution APIs are:
 
@@ -139,8 +176,8 @@ milestone:
 - LSP node lookup helpers.
 - Erlang and JavaScript target metadata.
 - Code generation metadata.
-- Filesystem project compilation, package resolution, package dependency
-  loading, and artifact writing.
+- Package resolution, dependency download, package cache mutation, and artifact
+  writing.
 - Backend external modules, host bindings, broader Gleam profile support, and
   CLI behavior.
 
@@ -156,6 +193,7 @@ When updating Geam to a newer Gleam baseline, record:
 
 - Old and new Gleam release tags.
 - Old and new commit hashes.
+- Old and new `gleam_stdlib` integration releases when that baseline changes.
 - Compiler-boundary files compared.
 - Geam compiler-boundary wrapper or lowering changes made.
 - Profile/lowering fixture changes.

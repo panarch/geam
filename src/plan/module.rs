@@ -141,6 +141,7 @@ pub struct ModulePlan {
 #[derive(Debug, PartialEq)]
 pub struct PlannedModule {
     id: ModuleId,
+    package: EcoString,
     module: EcoString,
     source_context: Option<SourceContext>,
     custom_types: Vec<CustomTypeDefinition>,
@@ -181,6 +182,7 @@ impl ModulePlan {
             entry,
             modules: vec![PlannedModule {
                 id: root,
+                package: "geam".into(),
                 module,
                 source_context: None,
                 custom_types: Vec::new(),
@@ -290,17 +292,18 @@ impl ModulePlan {
 }
 
 impl PlannedModule {
-    pub(crate) fn new(
-        id: ModuleId,
-        module: EcoString,
-        source_context: Option<SourceContext>,
-        custom_types: Vec<CustomTypeDefinition>,
-        constants: ConstantTemplates,
-        functions: Vec<FunctionTemplate>,
-        anonymous_functions: Vec<FunctionTemplate>,
-    ) -> Self {
+    pub(crate) fn new(id: ModuleId, package: EcoString, parts: PlannedModuleParts) -> Self {
+        let PlannedModuleParts {
+            module,
+            source_context,
+            custom_types,
+            constants,
+            functions,
+            anonymous_functions,
+        } = parts;
         Self {
             id,
+            package,
             module,
             source_context,
             custom_types,
@@ -312,6 +315,10 @@ impl PlannedModule {
 
     pub fn id(&self) -> ModuleId {
         self.id
+    }
+
+    pub fn package(&self) -> &EcoString {
+        &self.package
     }
 
     pub fn module(&self) -> &EcoString {
@@ -372,6 +379,7 @@ mod tests {
             )]));
 
         assert_eq!(plan.module(), "main");
+        assert_eq!(plan.modules()[0].package(), "geam");
         assert_eq!(plan.main_function().name(), "main");
         assert_eq!(plan.functions().len(), 1);
         assert_eq!(plan.functions()[0].name(), "helper");
