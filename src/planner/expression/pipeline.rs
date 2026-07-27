@@ -130,7 +130,8 @@ mod tests {
         int_return_expr, int_return_tail_call_at, let_bool_step, let_int_function_step,
         let_int_step, let_nil_step, let_string_step, local_bool, local_int, local_int_function,
         local_nil, local_string, module, module_with_anonymous, nil, nil_arg, nil_return_block,
-        nil_return_tail_call, string, string_arg, string_return_block, string_return_tail_call,
+        nil_return_tail_call_at, string, string_arg, string_return_block,
+        string_return_tail_call_at,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span, expect_plan_error};
@@ -623,7 +624,11 @@ fn identity_nil(value: Nil) {
                 "main",
                 string_return_block(
                     [let_string_step(0, "_pipe", string("geam"))],
-                    string_return_tail_call(1, [string_arg(local_string(0, "_pipe"))]),
+                    string_return_tail_call_at(
+                        1,
+                        [string_arg(local_string(0, "_pipe"))],
+                        host_call_site(source, "main", "identity_string"),
+                    ),
                 ),
             ),
             [
@@ -645,7 +650,11 @@ fn identity_nil(value: Nil) {
                     "nil_main",
                     nil_return_block(
                         [let_nil_step(0, "_pipe", nil())],
-                        nil_return_tail_call(4, [nil_arg(local_nil(0, "_pipe"))]),
+                        nil_return_tail_call_at(
+                            4,
+                            [nil_arg(local_nil(0, "_pipe"))],
+                            host_call_site(source, "nil_main", "identity_nil"),
+                        ),
                     ),
                 ),
             ],

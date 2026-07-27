@@ -88,10 +88,12 @@ pub(in crate::plan::execution::lowering) enum DraftFloatInstruction {
     Call {
         function: crate::plan::execution::function::FloatFunctionId,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: DraftFunction,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: DraftTuple,
@@ -129,10 +131,12 @@ pub(in crate::plan::execution::lowering) enum DraftStringInstruction {
     Call {
         function: StringFunctionId,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: DraftFunction,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: DraftTuple,
@@ -211,10 +215,12 @@ pub(in crate::plan::execution::lowering) enum DraftBitArrayInstruction {
     Call {
         function: BitArrayFunctionId,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: DraftFunction,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: DraftTuple,
@@ -234,10 +240,12 @@ pub(in crate::plan::execution::lowering) enum DraftUtfCodepointInstruction {
     Call {
         function: UtfCodepointFunctionId,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: DraftFunction,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: DraftTuple,
@@ -367,10 +375,12 @@ pub(in crate::plan::execution::lowering) enum DraftNilInstruction {
     Call {
         function: NilFunctionId,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: DraftFunction,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: DraftTuple,
@@ -790,7 +800,7 @@ impl DraftUtfCodepointInstruction {
     ) {
         match self {
             Self::Call { args, .. } => push_operands(args, values),
-            Self::FunctionCall { function, args } => {
+            Self::FunctionCall { function, args, .. } => {
                 function.push_operand(values);
                 push_operands(args, values);
             }
@@ -810,7 +820,7 @@ impl DraftCustomInstruction {
             Self::Construct { fields, .. } => push_operands(fields, values),
             Self::Constant(_) => {}
             Self::Call { args, .. } => push_operands(args, values),
-            Self::FunctionCall { function, args } => {
+            Self::FunctionCall { function, args, .. } => {
                 function.push_operand(values);
                 push_operands(args, values);
             }
@@ -871,7 +881,7 @@ impl DraftNilInstruction {
         match self {
             Self::Value | Self::Constant(_) => {}
             Self::Call { args, .. } => push_operands(args, values),
-            Self::FunctionCall { function, args } => {
+            Self::FunctionCall { function, args, .. } => {
                 function.push_operand(values);
                 push_operands(args, values);
             }

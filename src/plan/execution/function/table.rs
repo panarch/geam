@@ -22,22 +22,24 @@ use super::{
     UtfCodepointFunctionFunctionBody, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
     UtfCodepointListFunctionBody, UtfCodepointListFunctionId,
 };
-use super::{ExecutableFunction, FunctionFunctionTables, ListFunctionTables, ValueFunctionTables};
+use super::{
+    ExecutableFunction, ExecutionFunction, ExecutionProfile, FunctionFunctionTables,
+    ListFunctionTables, ValueFunctionTables,
+};
 use crate::plan::execution::explain::{Explain, ExplainContext, FunctionLabel};
 use crate::plan::execution::function::{FunctionBodyOwner, TailCallLabelIndex};
 use crate::plan::execution::graph::LocalLabel;
+use std::convert::Infallible;
 
 pub(in crate::plan::execution) use host::HostedFunctionTablesExplanation;
 
-pub(in crate::plan::execution) struct FunctionTables<IntFunction, BoolFunction> {
-    pub(in crate::plan::execution) value_returns: ValueFunctionTables<IntFunction, BoolFunction>,
-    pub(in crate::plan::execution) list_returns: ListFunctionTables,
-    pub(in crate::plan::execution) function_returns: FunctionFunctionTables,
+pub(in crate::plan::execution) struct FunctionTables<Profile: ExecutionProfile> {
+    pub(in crate::plan::execution) value_returns: ValueFunctionTables<Profile>,
+    pub(in crate::plan::execution) list_returns: ListFunctionTables<Profile>,
+    pub(in crate::plan::execution) function_returns: FunctionFunctionTables<Profile>,
 }
 
-impl Explain
-    for FunctionTables<ExecutableFunction<IntFunctionBody>, ExecutableFunction<BoolFunctionBody>>
-{
+impl Explain for FunctionTables<Infallible> {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
         context.write(&self.value_returns);
         context.write(&self.list_returns);
@@ -139,25 +141,25 @@ pub fn main() {
     }
 }
 
-impl<IntFunction, BoolFunction> FunctionTables<IntFunction, BoolFunction> {
+impl<Profile: ExecutionProfile> FunctionTables<Profile> {
     pub(in crate::plan::execution) fn never_function(
         &self,
         id: NeverFunctionId,
-    ) -> &ExecutableFunction<NeverFunctionBody> {
+    ) -> &ExecutionFunction<Profile, NeverFunctionBody> {
         &self.value_returns.never_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn parameter_list_function(
         &self,
         id: ParameterListFunctionId,
-    ) -> &ExecutableFunction<ParameterListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ParameterListFunctionBody> {
         &self.list_returns.parameter_list_functions[id.index()].1
     }
 
     pub(in crate::plan::execution) fn parameter_list_list_function(
         &self,
         id: ParameterListListFunctionId,
-    ) -> &ExecutableFunction<ParameterListListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ParameterListListFunctionBody> {
         &self.list_returns.parameter_list_list_functions[id.index()].1
     }
 
@@ -265,42 +267,45 @@ impl<IntFunction, BoolFunction> FunctionTables<IntFunction, BoolFunction> {
         self.list_returns.function_list_functions[index].0
     }
 
-    pub(in crate::plan::execution) fn int_function(&self, id: IntFunctionId) -> &IntFunction {
+    pub(in crate::plan::execution) fn int_function(
+        &self,
+        id: IntFunctionId,
+    ) -> &ExecutionFunction<Profile, IntFunctionBody> {
         &self.value_returns.int_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn float_function(
         &self,
         id: FloatFunctionId,
-    ) -> &ExecutableFunction<FloatFunctionBody> {
+    ) -> &ExecutionFunction<Profile, FloatFunctionBody> {
         &self.value_returns.float_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn string_function(
         &self,
         id: StringFunctionId,
-    ) -> &ExecutableFunction<StringFunctionBody> {
+    ) -> &ExecutionFunction<Profile, StringFunctionBody> {
         &self.value_returns.string_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn bit_array_function(
         &self,
         id: BitArrayFunctionId,
-    ) -> &ExecutableFunction<BitArrayFunctionBody> {
+    ) -> &ExecutionFunction<Profile, BitArrayFunctionBody> {
         &self.value_returns.bit_array_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn utf_codepoint_function(
         &self,
         id: UtfCodepointFunctionId,
-    ) -> &ExecutableFunction<UtfCodepointFunctionBody> {
+    ) -> &ExecutionFunction<Profile, UtfCodepointFunctionBody> {
         &self.value_returns.utf_codepoint_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn custom_function(
         &self,
         id: CustomFunctionId,
-    ) -> &ExecutableFunction<CustomFunctionBody> {
+    ) -> &ExecutionFunction<Profile, CustomFunctionBody> {
         &self.value_returns.custom_functions[id.index()]
     }
 
@@ -308,146 +313,149 @@ impl<IntFunction, BoolFunction> FunctionTables<IntFunction, BoolFunction> {
     pub(in crate::plan::execution) fn custom_function_id(&self, index: usize) -> CustomFunctionId {
         CustomFunctionId::new(
             index,
-            *self.value_returns.custom_functions[index]
+            *super::graph_function::<Profile, _>(&self.value_returns.custom_functions[index])
                 .body()
                 .signature_shape(),
         )
     }
 
-    pub(in crate::plan::execution) fn bool_function(&self, id: BoolFunctionId) -> &BoolFunction {
+    pub(in crate::plan::execution) fn bool_function(
+        &self,
+        id: BoolFunctionId,
+    ) -> &ExecutionFunction<Profile, BoolFunctionBody> {
         &self.value_returns.bool_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn nil_function(
         &self,
         id: NilFunctionId,
-    ) -> &ExecutableFunction<NilFunctionBody> {
+    ) -> &ExecutionFunction<Profile, NilFunctionBody> {
         &self.value_returns.nil_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn tuple_function(
         &self,
         id: TupleFunctionId,
-    ) -> &ExecutableFunction<TupleFunctionBody> {
+    ) -> &ExecutionFunction<Profile, TupleFunctionBody> {
         &self.value_returns.tuple_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn int_list_function(
         &self,
         id: IntListFunctionId,
-    ) -> &ExecutableFunction<IntListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, IntListFunctionBody> {
         &self.list_returns.int_list_functions[id.index()].1
     }
 
     pub(in crate::plan::execution) fn string_list_function(
         &self,
         id: StringListFunctionId,
-    ) -> &ExecutableFunction<StringListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, StringListFunctionBody> {
         &self.list_returns.string_list_functions[id.index()].1
     }
 
     pub(in crate::plan::execution) fn bit_array_list_function(
         &self,
         id: BitArrayListFunctionId,
-    ) -> &ExecutableFunction<BitArrayListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, BitArrayListFunctionBody> {
         &self.list_returns.bit_array_list_functions[id.index()].1
     }
 
     pub(in crate::plan::execution) fn utf_codepoint_list_function(
         &self,
         id: UtfCodepointListFunctionId,
-    ) -> &ExecutableFunction<UtfCodepointListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, UtfCodepointListFunctionBody> {
         &self.list_returns.utf_codepoint_list_functions[id.index()].1
     }
 
     pub(in crate::plan::execution) fn custom_list_function(
         &self,
         id: CustomListFunctionId,
-    ) -> &ExecutableFunction<CustomListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, CustomListFunctionBody> {
         &self.list_returns.custom_list_functions[id.index()].1
     }
 
     pub(in crate::plan::execution) fn float_list_function(
         &self,
         id: FloatListFunctionId,
-    ) -> &ExecutableFunction<FloatListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, FloatListFunctionBody> {
         &self.list_returns.float_list_functions[id.index()].1
     }
 
     pub(in crate::plan::execution) fn bool_list_function(
         &self,
         id: BoolListFunctionId,
-    ) -> &ExecutableFunction<BoolListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, BoolListFunctionBody> {
         &self.list_returns.bool_list_functions[id.index()].1
     }
 
     pub(in crate::plan::execution) fn nil_list_function(
         &self,
         id: NilListFunctionId,
-    ) -> &ExecutableFunction<NilListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, NilListFunctionBody> {
         &self.list_returns.nil_list_functions[id.index()].1
     }
 
     pub(in crate::plan::execution) fn tuple_list_function(
         &self,
         id: TupleListFunctionId,
-    ) -> &ExecutableFunction<TupleListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, TupleListFunctionBody> {
         &self.list_returns.tuple_list_functions[id.index()].1
     }
 
     pub(in crate::plan::execution) fn list_list_function(
         &self,
         id: ListListFunctionId,
-    ) -> &ExecutableFunction<ListListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ListListFunctionBody> {
         &self.list_returns.list_list_functions[id.index()].1
     }
 
     pub(in crate::plan::execution) fn function_list_function(
         &self,
         id: FunctionListFunctionId,
-    ) -> &ExecutableFunction<FunctionListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, FunctionListFunctionBody> {
         &self.list_returns.function_list_functions[id.index()].1
     }
 
     pub(in crate::plan::execution) fn int_function_function(
         &self,
         id: IntFunctionFunctionId,
-    ) -> &ExecutableFunction<IntFunctionFunctionBody> {
+    ) -> &ExecutionFunction<Profile, IntFunctionFunctionBody> {
         &self.function_returns.int_function_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn float_function_function(
         &self,
         id: FloatFunctionFunctionId,
-    ) -> &ExecutableFunction<FloatFunctionFunctionBody> {
+    ) -> &ExecutionFunction<Profile, FloatFunctionFunctionBody> {
         &self.function_returns.float_function_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn string_function_function(
         &self,
         id: StringFunctionFunctionId,
-    ) -> &ExecutableFunction<StringFunctionFunctionBody> {
+    ) -> &ExecutionFunction<Profile, StringFunctionFunctionBody> {
         &self.function_returns.string_function_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn bit_array_function_function(
         &self,
         id: BitArrayFunctionFunctionId,
-    ) -> &ExecutableFunction<BitArrayFunctionFunctionBody> {
+    ) -> &ExecutionFunction<Profile, BitArrayFunctionFunctionBody> {
         &self.function_returns.bit_array_function_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn utf_codepoint_function_function(
         &self,
         id: UtfCodepointFunctionFunctionId,
-    ) -> &ExecutableFunction<UtfCodepointFunctionFunctionBody> {
+    ) -> &ExecutionFunction<Profile, UtfCodepointFunctionFunctionBody> {
         &self.function_returns.utf_codepoint_function_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn custom_function_function(
         &self,
         id: &CustomFunctionFunctionId,
-    ) -> &ExecutableFunction<CustomFunctionFunctionBody> {
+    ) -> &ExecutionFunction<Profile, CustomFunctionFunctionBody> {
         &self.function_returns.custom_function_functions[id.index()]
     }
 
@@ -458,52 +466,54 @@ impl<IntFunction, BoolFunction> FunctionTables<IntFunction, BoolFunction> {
     ) -> FunctionFunctionFunctionId {
         FunctionFunctionFunctionId::new(
             index,
-            self.function_returns.function_function_functions[index]
-                .body()
-                .type_()
-                .clone(),
+            super::graph_function::<Profile, _>(
+                &self.function_returns.function_function_functions[index],
+            )
+            .body()
+            .type_()
+            .clone(),
         )
     }
 
     pub(in crate::plan::execution) fn bool_function_function(
         &self,
         id: BoolFunctionFunctionId,
-    ) -> &ExecutableFunction<BoolFunctionFunctionBody> {
+    ) -> &ExecutionFunction<Profile, BoolFunctionFunctionBody> {
         &self.function_returns.bool_function_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn nil_function_function(
         &self,
         id: NilFunctionFunctionId,
-    ) -> &ExecutableFunction<NilFunctionFunctionBody> {
+    ) -> &ExecutionFunction<Profile, NilFunctionFunctionBody> {
         &self.function_returns.nil_function_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn tuple_function_function(
         &self,
         id: TupleFunctionFunctionId,
-    ) -> &ExecutableFunction<TupleFunctionFunctionBody> {
+    ) -> &ExecutionFunction<Profile, TupleFunctionFunctionBody> {
         &self.function_returns.tuple_function_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn generic_function_function(
         &self,
         id: &GenericFunctionFunctionId,
-    ) -> &ExecutableFunction<GenericFunctionFunctionBody> {
+    ) -> &ExecutionFunction<Profile, GenericFunctionFunctionBody> {
         &self.function_returns.generic_function_functions[id.index()]
     }
 
     pub(in crate::plan::execution) fn never_function_function(
         &self,
         id: &NeverFunctionFunctionId,
-    ) -> &ExecutableFunction<NeverFunctionFunctionBody> {
+    ) -> &ExecutionFunction<Profile, NeverFunctionFunctionBody> {
         &self.function_returns.never_function_functions[id.index()]
     }
 
     pub(in crate::plan::execution) fn list_function_function(
         &self,
         id: &ListFunctionFunctionId,
-    ) -> &ExecutableFunction<ListFunctionFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ListFunctionFunctionBody> {
         match id {
             ListFunctionFunctionId::Parameter { id, .. } => {
                 &self.function_returns.parameter_list_function_functions[id.0]
@@ -550,7 +560,7 @@ impl<IntFunction, BoolFunction> FunctionTables<IntFunction, BoolFunction> {
     pub(in crate::plan::execution) fn function_function_function(
         &self,
         id: &FunctionFunctionFunctionId,
-    ) -> &ExecutableFunction<FunctionFunctionFunctionBody> {
+    ) -> &ExecutionFunction<Profile, FunctionFunctionFunctionBody> {
         &self.function_returns.function_function_functions[id.index()]
     }
 }

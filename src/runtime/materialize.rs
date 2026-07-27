@@ -8,11 +8,11 @@ use super::evaluated::{
 };
 use super::state::{ListValueId, RuntimeState};
 use super::{
-    BitArrayFunctionValue, BitArrayValue, BoolFunctionValue, CaptureListValue, CaptureValue,
-    CustomFieldValue, CustomFunctionValue, CustomFunctionValueTarget, CustomValue,
-    FloatFunctionValue, FunctionFunctionValue, FunctionValue, FunctionValueKind,
-    GenericFunctionValue, IntFunctionValue, ListFunctionValue, ListValue, NeverFunctionValue,
-    NilFunctionValue, StringFunctionValue, TupleFunctionValue, UtfCodepointFunctionValue, Value,
+    BitArrayFunctionValue, BoolFunctionValue, CaptureListValue, CaptureValue, CustomFieldValue,
+    CustomFunctionValue, CustomFunctionValueTarget, CustomValue, FloatFunctionValue,
+    FunctionFunctionValue, FunctionValue, FunctionValueKind, GenericFunctionValue,
+    IntFunctionValue, ListFunctionValue, ListValue, NeverFunctionValue, NilFunctionValue,
+    StringFunctionValue, TupleFunctionValue, UtfCodepointFunctionValue, Value,
 };
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
 
@@ -25,9 +25,7 @@ pub(super) fn value(
         EvaluatedValue::Int(value) => Value::Int(value),
         EvaluatedValue::Float(value) => Value::Float(value),
         EvaluatedValue::String(value) => Value::String(value),
-        EvaluatedValue::BitArray(value) => {
-            Value::BitArray(BitArrayValue::from_evaluated(value.bits()))
-        }
+        EvaluatedValue::BitArray(value) => Value::BitArray(value.value()),
         EvaluatedValue::UtfCodepoint(value) => Value::UtfCodepoint(value),
         EvaluatedValue::Custom(value) => Value::Custom(custom(plan, state, value)),
         EvaluatedValue::Bool(value) => Value::Bool(value),
@@ -58,7 +56,7 @@ fn list(
             state
                 .bit_array_values(value)
                 .iter()
-                .map(|value| BitArrayValue::from_evaluated(value.bits()))
+                .map(|value| value.value())
                 .collect(),
         ),
         ListValueId::UtfCodepoint(value) => {
@@ -407,7 +405,7 @@ fn capture(
             CaptureValue::string(*local, value.clone())
         }
         EvaluatedCaptureKind::BitArray { local, value } => {
-            CaptureValue::bit_array(*local, BitArrayValue::from_evaluated(value.bits()))
+            CaptureValue::bit_array(*local, value.value())
         }
         EvaluatedCaptureKind::UtfCodepoint { local, value } => {
             CaptureValue::utf_codepoint(*local, *value)
@@ -496,7 +494,7 @@ fn list_capture(
             value: state
                 .bit_array_values(value)
                 .iter()
-                .map(|value| BitArrayValue::from_evaluated(value.bits()))
+                .map(|value| value.value())
                 .collect(),
         },
         EvaluatedListCapture::UtfCodepoint { local, value } => CaptureListValue::UtfCodepoint {

@@ -275,13 +275,15 @@ impl Expr {
                 Self::generic(GenericExpr::call_at(parameter, function, args, site))
             }
             ValueShape::Int => Self::int(IntExpr::call_at(function, args, site)),
-            ValueShape::String => Self::string(StringExpr::call(function, args)),
-            ValueShape::BitArray => Self::bit_array(BitArrayExpr::call(function, args)),
-            ValueShape::UtfCodepoint => Self::utf_codepoint(UtfCodepointExpr::call(function, args)),
+            ValueShape::String => Self::string(StringExpr::call_at(function, args, site)),
+            ValueShape::BitArray => Self::bit_array(BitArrayExpr::call_at(function, args, site)),
+            ValueShape::UtfCodepoint => {
+                Self::utf_codepoint(UtfCodepointExpr::call_at(function, args, site))
+            }
             ValueShape::Custom(shape) => Self::custom(CustomExpr::call(function, args, shape)),
-            ValueShape::Float => Self::float(FloatExpr::call(function, args)),
+            ValueShape::Float => Self::float(FloatExpr::call_at(function, args, site)),
             ValueShape::Bool => Self::bool(BoolExpr::call_at(function, args, site)),
-            ValueShape::Nil => Self::nil(NilExpr::call(function, args)),
+            ValueShape::Nil => Self::nil(NilExpr::call_at(function, args, site)),
             ValueShape::Tuple(shape) => {
                 let expression = TupleExpr::call(
                     function,

@@ -103,20 +103,20 @@ fn function_call_expr_at(
             None => Err(function_call_return_type_mismatch()),
         },
         ValueShape::String => match function.into_string() {
-            Some(function) => Ok(Expr::string(crate::plan::StringExpr::function_call(
-                function, args,
+            Some(function) => Ok(Expr::string(crate::plan::StringExpr::function_call_at(
+                function, args, site,
             ))),
             None => Err(function_call_return_type_mismatch()),
         },
         ValueShape::BitArray => match function.into_bit_array() {
-            Some(function) => Ok(Expr::bit_array(crate::plan::BitArrayExpr::function_call(
-                function, args,
-            ))),
+            Some(function) => Ok(Expr::bit_array(
+                crate::plan::BitArrayExpr::function_call_at(function, args, site),
+            )),
             None => Err(function_call_return_type_mismatch()),
         },
         ValueShape::UtfCodepoint => match function.into_utf_codepoint() {
             Some(function) => Ok(Expr::utf_codepoint(
-                crate::plan::UtfCodepointExpr::function_call(function, args),
+                crate::plan::UtfCodepointExpr::function_call_at(function, args, site),
             )),
             None => Err(function_call_return_type_mismatch()),
         },
@@ -131,8 +131,8 @@ fn function_call_expr_at(
             None => Err(function_call_return_type_mismatch()),
         },
         ValueShape::Float => match function.into_float() {
-            Some(function) => Ok(Expr::float(crate::plan::FloatExpr::function_call(
-                function, args,
+            Some(function) => Ok(Expr::float(crate::plan::FloatExpr::function_call_at(
+                function, args, site,
             ))),
             None => Err(function_call_return_type_mismatch()),
         },
@@ -143,8 +143,8 @@ fn function_call_expr_at(
             None => Err(function_call_return_type_mismatch()),
         },
         ValueShape::Nil => match function.into_nil() {
-            Some(function) => Ok(Expr::nil(crate::plan::NilExpr::function_call(
-                function, args,
+            Some(function) => Ok(Expr::nil(crate::plan::NilExpr::function_call_at(
+                function, args, site,
             ))),
             None => Err(function_call_return_type_mismatch()),
         },

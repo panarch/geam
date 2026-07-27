@@ -14,14 +14,18 @@ use std::convert::Infallible;
 pub(crate) type IntFunctionBody =
     FunctionBody<IntLocalId, crate::plan::FunctionCallTarget<IntFunctionId>>;
 pub(crate) type NeverFunctionBody = FunctionBody<Infallible, NeverFunctionId>;
-pub(crate) type FloatFunctionBody = FunctionBody<FloatLocalId, FloatFunctionId>;
-pub(crate) type StringFunctionBody = FunctionBody<StringLocalId, StringFunctionId>;
-pub(crate) type BitArrayFunctionBody = FunctionBody<BitArrayLocalId, BitArrayFunctionId>;
+pub(crate) type FloatFunctionBody =
+    FunctionBody<FloatLocalId, crate::plan::FunctionCallTarget<FloatFunctionId>>;
+pub(crate) type StringFunctionBody =
+    FunctionBody<StringLocalId, crate::plan::FunctionCallTarget<StringFunctionId>>;
+pub(crate) type BitArrayFunctionBody =
+    FunctionBody<BitArrayLocalId, crate::plan::FunctionCallTarget<BitArrayFunctionId>>;
 pub(crate) type UtfCodepointFunctionBody =
-    FunctionBody<UtfCodepointLocalId, UtfCodepointFunctionId>;
+    FunctionBody<UtfCodepointLocalId, crate::plan::FunctionCallTarget<UtfCodepointFunctionId>>;
 pub(crate) type BoolFunctionBody =
     FunctionBody<BoolLocalId, crate::plan::FunctionCallTarget<BoolFunctionId>>;
-pub(crate) type NilFunctionBody = FunctionBody<NilLocalId, NilFunctionId>;
+pub(crate) type NilFunctionBody =
+    FunctionBody<NilLocalId, crate::plan::FunctionCallTarget<NilFunctionId>>;
 pub(crate) type TupleFunctionBody = FunctionBody<TupleLocalId, TupleFunctionId>;
 
 pub(crate) struct CustomFunctionBody {

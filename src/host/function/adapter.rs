@@ -177,13 +177,14 @@ host_function!(
 #[cfg(test)]
 mod tests {
     use super::{FallibleHostFunction, HostFunction, ScopedHostFunction};
-    use crate::host::function::argument::{
-        CallArguments, HostBoolArgumentSlot, HostCallArguments, HostIntArgumentSlot,
-    };
+    use crate::BitArrayValue;
+    use crate::host::function::argument::CallArguments;
     use crate::host::function::{
-        HostFunctionImplementation, HostIntFunction, HostParameter, HostValueType,
+        HostFunctionImplementation, HostIntFunction, HostParameter, HostStringFunction,
+        HostValueType,
     };
     use crate::host::{HostCall, HostFailure, HostProfile, HostProvider, StatelessHostProfile};
+    use ecow::EcoString;
     use num_bigint::BigInt;
 
     struct Profile;
@@ -199,21 +200,6 @@ mod tests {
 
         fn project(state: &mut usize) -> &mut Self::State {
             state
-        }
-    }
-
-    struct Arguments {
-        ints: Vec<BigInt>,
-        bools: Vec<bool>,
-    }
-
-    impl HostCallArguments for Arguments {
-        fn int(&self, slot: HostIntArgumentSlot) -> BigInt {
-            self.ints[slot.index()].clone()
-        }
-
-        fn bool(&self, slot: HostBoolArgumentSlot) -> bool {
-            self.bools[slot.index()]
         }
     }
 
@@ -401,7 +387,7 @@ mod tests {
         let registration = <_ as HostFunction<
             (BigInt, bool, BigInt, bool, BigInt, bool, BigInt),
             BigInt,
-        >>::register(
+        >>::register::<StatelessHostProfile>(
             |a: BigInt, b: bool, c: BigInt, d: bool, e: BigInt, f: bool, g: BigInt| {
                 let c = if b { c } else { BigInt::from(0) };
                 let e = if d { e } else { BigInt::from(0) };
@@ -441,6 +427,55 @@ mod tests {
     }
 
     #[test]
+    fn supports_every_scalar_argument_family_in_one_sealed_layout() {
+        let registration = <_ as HostFunction<
+            (BigInt, f64, EcoString, BitArrayValue, char, bool, ()),
+            EcoString,
+        >>::register::<StatelessHostProfile>(
+            |int: BigInt,
+             float: f64,
+             string: EcoString,
+             bits: BitArrayValue,
+             codepoint: char,
+             bool_: bool,
+             (): ()| {
+                format!(
+                    "{int}:{float}:{string}:{}:{codepoint}:{bool_}",
+                    bits.bit_len(),
+                )
+                .into()
+            },
+        );
+
+        assert_eq!(
+            parameter_types(&registration.parameters),
+            [
+                HostValueType::Int,
+                HostValueType::Float,
+                HostValueType::String,
+                HostValueType::BitArray,
+                HostValueType::UtfCodepoint,
+                HostValueType::Bool,
+                HostValueType::Nil,
+            ],
+        );
+        assert_eq!(registration.return_, HostValueType::String);
+        let implementation = string_implementation(registration.implementation);
+        let arguments = CallArguments::new(vec![1.into()], vec![true]).with_scalar_values(
+            vec![1.5],
+            vec!["one".into()],
+            vec![BitArrayValue::from_bytes(vec![0xff])],
+            vec!['A'],
+            1,
+        );
+
+        assert_eq!(
+            implementation.call(&mut (), &arguments),
+            Ok(EcoString::from("1:1.5:one:8:A:true")),
+        );
+    }
+
+    #[test]
     #[should_panic(expected = "test function should return Int")]
     fn int_return_shape_guard_is_visible() {
         call_int(
@@ -460,6 +495,14 @@ mod tests {
         );
     }
 
+    #[test]
+    #[should_panic(expected = "all-scalar test function should return String")]
+    fn string_return_shape_guard_is_visible() {
+        string_implementation(
+            <_ as HostFunction<(), BigInt>>::register(<BigInt as Default>::default).implementation,
+        );
+    }
+
     fn parameter_types(parameters: &[HostParameter]) -> Vec<HostValueType> {
         parameters
             .iter()
@@ -473,7 +516,7 @@ mod tests {
         bools: Vec<bool>,
     ) -> BigInt {
         int_function(implementation)
-            .call(&mut (), &Arguments { ints, bools })
+            .call(&mut (), &CallArguments::new(ints, bools))
             .expect("test host function should succeed")
     }
 
@@ -486,8 +529,17 @@ mod tests {
             panic!("test function should return Bool");
         };
         implementation
-            .call(&mut (), &Arguments { ints, bools })
+            .call(&mut (), &CallArguments::new(ints, bools))
             .expect("test host function should succeed")
+    }
+
+    fn string_implementation(
+        implementation: HostFunctionImplementation<StatelessHostProfile>,
+    ) -> HostStringFunction<StatelessHostProfile> {
+        let HostFunctionImplementation::String(implementation) = implementation else {
+            panic!("all-scalar test function should return String");
+        };
+        implementation
     }
 
     fn int_function<Profile: HostProfile>(

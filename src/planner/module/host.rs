@@ -612,14 +612,34 @@ fn host_function_layout(
             RegisteredHostParameter::Int(slot) => {
                 PlannedHostParameter::Int(IntLocalId(slot.index()))
             }
+            RegisteredHostParameter::Float(slot) => {
+                PlannedHostParameter::Float(crate::plan::FloatLocalId(slot.index()))
+            }
+            RegisteredHostParameter::String(slot) => {
+                PlannedHostParameter::String(crate::plan::StringLocalId(slot.index()))
+            }
+            RegisteredHostParameter::BitArray(slot) => {
+                PlannedHostParameter::BitArray(crate::plan::BitArrayLocalId(slot.index()))
+            }
+            RegisteredHostParameter::UtfCodepoint(slot) => {
+                PlannedHostParameter::UtfCodepoint(crate::plan::UtfCodepointLocalId(slot.index()))
+            }
             RegisteredHostParameter::Bool(slot) => {
                 PlannedHostParameter::Bool(BoolLocalId(slot.index()))
+            }
+            RegisteredHostParameter::Nil(slot) => {
+                PlannedHostParameter::Nil(crate::plan::NilLocalId(slot.index()))
             }
         });
     }
     let return_family = match schema.return_type() {
         HostValueType::Int => HostReturnFamily::Int,
+        HostValueType::Float => HostReturnFamily::Float,
+        HostValueType::String => HostReturnFamily::String,
+        HostValueType::BitArray => HostReturnFamily::BitArray,
+        HostValueType::UtfCodepoint => HostReturnFamily::UtfCodepoint,
         HostValueType::Bool => HostReturnFamily::Bool,
+        HostValueType::Nil => HostReturnFamily::Nil,
     };
     let registered_shape = crate::plan::FunctionShape::new(
         template_params
@@ -638,7 +658,12 @@ fn host_function_info(template: &HostFunctionTemplate) -> FunctionInfo {
         .map(|parameter| {
             let local = match parameter {
                 PlannedHostParameter::Int(local) => ParamLocal::int(*local),
+                PlannedHostParameter::Float(local) => ParamLocal::float(*local),
+                PlannedHostParameter::String(local) => ParamLocal::string(*local),
+                PlannedHostParameter::BitArray(local) => ParamLocal::bit_array(*local),
+                PlannedHostParameter::UtfCodepoint(local) => ParamLocal::utf_codepoint(*local),
                 PlannedHostParameter::Bool(local) => ParamLocal::bool(*local),
+                PlannedHostParameter::Nil(local) => ParamLocal::nil(*local),
             };
             FunctionParam::new(local, parameter.shape(), ParamBinding::Discard, None)
         })
@@ -658,8 +683,9 @@ mod tests {
     use crate::frontend::{ModuleSource, PackageSource, compile_typed_host_program};
     use crate::host::{HostModule, HostProviderModule, HostProviderSet, StatelessHostProfile};
     use crate::plan::{
-        BoolLocalId, FunctionShape, FunctionTemplateId, FunctionType, HostParameter,
-        HostReturnFamily, IntLocalId, ModuleId, ValueShape, ValueType,
+        BitArrayLocalId, BoolLocalId, FloatLocalId, FunctionShape, FunctionTemplateId,
+        FunctionType, HostParameter, HostReturnFamily, IntLocalId, ModuleId, NilLocalId,
+        StringLocalId, UtfCodepointLocalId, ValueShape, ValueType,
     };
     use crate::planner::{HostProviderLinkReason, PlanError, UnsupportedFunctionReason};
     use ecow::EcoString;
@@ -694,6 +720,17 @@ mod tests {
             .with_function("choose", choose)
             .expect("host function should be valid")
             .with_function("all", all)
+            .expect("host function should be valid")
+            .with_function(
+                "consume",
+                |_: BigInt,
+                 _: f64,
+                 _: EcoString,
+                 _: crate::BitArrayValue,
+                 _: char,
+                 _: bool,
+                 (): ()| (),
+            )
             .expect("host function should be valid")])
         .expect("host modules should be unique");
         let typed = compile_typed_host_program(
@@ -737,7 +774,7 @@ pub fn main() {
         assert!(plan.modules()[1].source_context().is_some());
         let host = &plan.modules()[0];
         assert_eq!(host.id(), ModuleId::new(0));
-        assert_eq!(host.functions().len(), 5);
+        assert_eq!(host.functions().len(), 6);
         let functions = host
             .functions()
             .iter()
@@ -820,6 +857,50 @@ pub fn main() {
         assert_eq!(
             functions[4].type_(),
             &FunctionType::new(vec![ValueType::Bool; 7], ValueType::Bool),
+        );
+        assert_eq!(functions[5].name(), "consume");
+        assert_eq!(
+            functions[5].parameters(),
+            [
+                HostParameter::Int(IntLocalId(0)),
+                HostParameter::Float(FloatLocalId(0)),
+                HostParameter::String(StringLocalId(0)),
+                HostParameter::BitArray(BitArrayLocalId(0)),
+                HostParameter::UtfCodepoint(UtfCodepointLocalId(0)),
+                HostParameter::Bool(BoolLocalId(0)),
+                HostParameter::Nil(NilLocalId(0)),
+            ],
+        );
+        assert_eq!(functions[5].return_family(), HostReturnFamily::Nil);
+        assert_eq!(
+            functions[5].signature().shape(),
+            &FunctionShape::new(
+                vec![
+                    ValueShape::Int,
+                    ValueShape::Float,
+                    ValueShape::String,
+                    ValueShape::BitArray,
+                    ValueShape::UtfCodepoint,
+                    ValueShape::Bool,
+                    ValueShape::Nil,
+                ],
+                ValueShape::Nil,
+            ),
+        );
+        assert_eq!(
+            functions[5].type_(),
+            &FunctionType::new(
+                vec![
+                    ValueType::Int,
+                    ValueType::Float,
+                    ValueType::String,
+                    ValueType::BitArray,
+                    ValueType::UtfCodepoint,
+                    ValueType::Bool,
+                    ValueType::Nil,
+                ],
+                ValueType::Nil,
+            ),
         );
         let source = plan.modules()[1].functions()[0]
             .gleam_body()

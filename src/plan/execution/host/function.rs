@@ -1,12 +1,22 @@
+mod bit_array;
 mod bool;
+mod float;
 mod int;
+mod nil;
+mod string;
+mod utf_codepoint;
 
 use crate::plan::execution::graph::ParamLocal;
 use crate::plan::execution::type_::FunctionType;
 use ecow::EcoString;
 
+pub(crate) use bit_array::{HostBitArrayFunctionId, HostedBitArrayFunction};
 pub(crate) use bool::{HostBoolFunctionId, HostedBoolFunction};
+pub(crate) use float::{HostFloatFunctionId, HostedFloatFunction};
 pub(crate) use int::{HostIntFunctionId, HostedIntFunction};
+pub(crate) use nil::{HostNilFunctionId, HostedNilFunction};
+pub(crate) use string::{HostStringFunctionId, HostedStringFunction};
+pub(crate) use utf_codepoint::{HostUtfCodepointFunctionId, HostedUtfCodepointFunction};
 
 pub(crate) struct HostedFunction<Implementation> {
     metadata: HostedFunctionMetadata,

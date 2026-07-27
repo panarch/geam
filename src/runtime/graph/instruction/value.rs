@@ -116,15 +116,28 @@ pub(super) fn float<Plan: ExecutableRuntimePlan>(
     match instruction {
         I::Value(value) => Ok(*value),
         I::Constant(id) => constant(plan, state, *id),
-        I::Call { function, args } => {
-            crate::runtime::function::run_float(plan, state, *function, environment.retain(args))
-        }
-        I::FunctionCall { function, args } => {
+        I::Call {
+            function,
+            args,
+            site,
+        } => crate::runtime::function::run_float(
+            plan,
+            state,
+            *function,
+            crate::runtime::error::HostCallOrigin::source(site.clone()),
+            environment.retain(args),
+        ),
+        I::FunctionCall {
+            function,
+            args,
+            site,
+        } => {
             let function = environment.float_function(*function);
             crate::runtime::function::run_float(
                 plan,
                 state,
                 function.runtime_id(),
+                crate::runtime::error::HostCallOrigin::source(site.clone()),
                 inputs_with_captures(environment, args, function.captures()),
             )
         }
@@ -182,15 +195,28 @@ pub(super) fn string<Plan: ExecutableRuntimePlan>(
     match instruction {
         I::Value(value) => Ok(value.clone()),
         I::Constant(id) => constant(plan, state, *id),
-        I::Call { function, args } => {
-            crate::runtime::function::run_string(plan, state, *function, environment.retain(args))
-        }
-        I::FunctionCall { function, args } => {
+        I::Call {
+            function,
+            args,
+            site,
+        } => crate::runtime::function::run_string(
+            plan,
+            state,
+            *function,
+            crate::runtime::error::HostCallOrigin::source(site.clone()),
+            environment.retain(args),
+        ),
+        I::FunctionCall {
+            function,
+            args,
+            site,
+        } => {
             let function = environment.string_function(*function);
             crate::runtime::function::run_string(
                 plan,
                 state,
                 function.runtime_id(),
+                crate::runtime::error::HostCallOrigin::source(site.clone()),
                 inputs_with_captures(environment, args, function.captures()),
             )
         }
@@ -247,18 +273,28 @@ pub(super) fn bit_array<Plan: ExecutableRuntimePlan>(
     match instruction {
         I::Value(segments) => super::super::bit_array::evaluate(plan, environment, segments),
         I::Constant(id) => constant(plan, state, *id),
-        I::Call { function, args } => crate::runtime::function::run_bit_array(
+        I::Call {
+            function,
+            args,
+            site,
+        } => crate::runtime::function::run_bit_array(
             plan,
             state,
             *function,
+            crate::runtime::error::HostCallOrigin::source(site.clone()),
             environment.retain(args),
         ),
-        I::FunctionCall { function, args } => {
+        I::FunctionCall {
+            function,
+            args,
+            site,
+        } => {
             let function = environment.bit_array_function(*function);
             crate::runtime::function::run_bit_array(
                 plan,
                 state,
                 function.runtime_id(),
+                crate::runtime::error::HostCallOrigin::source(site.clone()),
                 inputs_with_captures(environment, args, function.captures()),
             )
         }
@@ -303,18 +339,28 @@ pub(super) fn utf_codepoint<Plan: ExecutableRuntimePlan>(
     use UtfCodepointInstruction as I;
 
     match instruction {
-        I::Call { function, args } => crate::runtime::function::run_utf_codepoint(
+        I::Call {
+            function,
+            args,
+            site,
+        } => crate::runtime::function::run_utf_codepoint(
             plan,
             state,
             *function,
+            crate::runtime::error::HostCallOrigin::source(site.clone()),
             environment.retain(args),
         ),
-        I::FunctionCall { function, args } => {
+        I::FunctionCall {
+            function,
+            args,
+            site,
+        } => {
             let function = environment.utf_codepoint_function(*function);
             crate::runtime::function::run_utf_codepoint(
                 plan,
                 state,
                 function.runtime_id(),
+                crate::runtime::error::HostCallOrigin::source(site.clone()),
                 inputs_with_captures(environment, args, function.captures()),
             )
         }
@@ -530,15 +576,28 @@ pub(super) fn nil<Plan: ExecutableRuntimePlan>(
     match instruction {
         I::Value => Ok(()),
         I::Constant(id) => constant(plan, state, *id),
-        I::Call { function, args } => {
-            crate::runtime::function::run_nil(plan, state, *function, environment.retain(args))
-        }
-        I::FunctionCall { function, args } => {
+        I::Call {
+            function,
+            args,
+            site,
+        } => crate::runtime::function::run_nil(
+            plan,
+            state,
+            *function,
+            crate::runtime::error::HostCallOrigin::source(site.clone()),
+            environment.retain(args),
+        ),
+        I::FunctionCall {
+            function,
+            args,
+            site,
+        } => {
             let function = environment.nil_function(*function);
             crate::runtime::function::run_nil(
                 plan,
                 state,
                 function.runtime_id(),
+                crate::runtime::error::HostCallOrigin::source(site.clone()),
                 inputs_with_captures(environment, args, function.captures()),
             )
         }

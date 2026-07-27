@@ -16,10 +16,12 @@ pub(crate) enum StringInstruction {
     Call {
         function: StringFunctionId,
         args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: StringFunctionLocalId,
         args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: TupleLocalId,
@@ -51,10 +53,10 @@ impl Explain for StringInstruction {
                 write_literal(output, "string.value", &format!("{value:?}"));
             }
             StringInstruction::Constant(id) => write_constant(output, "string", *id),
-            StringInstruction::Call { function, args } => {
+            StringInstruction::Call { function, args, .. } => {
                 write_call(output, "string.call", function, args);
             }
-            StringInstruction::FunctionCall { function, args } => {
+            StringInstruction::FunctionCall { function, args, .. } => {
                 write_function_call(output, "string.function_call", function, args);
             }
             StringInstruction::TupleIndex { tuple, index } => {

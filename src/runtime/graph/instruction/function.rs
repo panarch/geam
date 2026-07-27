@@ -10,7 +10,6 @@ use crate::runtime::evaluated::{
     EvaluatedCapture, EvaluatedCustomFunction, EvaluatedFunction, EvaluatedFunctionValue,
     EvaluatedListCapture, FunctionReferenceId,
 };
-use crate::runtime::function::{RuntimeBoolFunction as _, RuntimeIntFunction as _};
 use crate::runtime::state::RuntimeStateFor;
 use crate::runtime::{ExecutableRuntimePlan, ExecutionError, InvariantError};
 
@@ -184,31 +183,30 @@ fn target_params(plan: &impl ExecutableRuntimePlan, target: &FunctionTarget) -> 
             let function = plan.never_function(*function);
             graph_params(function.entry(), function.body())
         }
-        FunctionTarget::Int(function) => plan.int_function(*function).parameter_locals(plan),
+        FunctionTarget::Int(function) => {
+            crate::runtime::function::int_parameter_locals(plan, *function)
+        }
         FunctionTarget::Float(function) => {
-            let function = plan.float_function(*function);
-            graph_params(function.entry(), function.body())
+            crate::runtime::function::float_parameter_locals(plan, *function)
         }
         FunctionTarget::String(function) => {
-            let function = plan.string_function(*function);
-            graph_params(function.entry(), function.body())
+            crate::runtime::function::string_parameter_locals(plan, *function)
         }
         FunctionTarget::BitArray(function) => {
-            let function = plan.bit_array_function(*function);
-            graph_params(function.entry(), function.body())
+            crate::runtime::function::bit_array_parameter_locals(plan, *function)
         }
         FunctionTarget::UtfCodepoint(function) => {
-            let function = plan.utf_codepoint_function(*function);
-            graph_params(function.entry(), function.body())
+            crate::runtime::function::utf_codepoint_parameter_locals(plan, *function)
         }
         FunctionTarget::Custom(function) => {
             let function = plan.custom_function(*function);
             graph_params(function.entry(), function.body().function_body())
         }
-        FunctionTarget::Bool(function) => plan.bool_function(*function).parameter_locals(plan),
+        FunctionTarget::Bool(function) => {
+            crate::runtime::function::bool_parameter_locals(plan, *function)
+        }
         FunctionTarget::Nil(function) => {
-            let function = plan.nil_function(*function);
-            graph_params(function.entry(), function.body())
+            crate::runtime::function::nil_parameter_locals(plan, *function)
         }
         FunctionTarget::Tuple(function) => {
             let function = plan.tuple_function(*function);

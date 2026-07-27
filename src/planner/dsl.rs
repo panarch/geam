@@ -45,7 +45,7 @@ pub(crate) fn host_call_site_in(
 
 pub(crate) use expression::{
     bit_array, bit_array_function_ref, block_function, block_int, block_int_function, bool_,
-    bool_arg, bool_case_int_function, bool_function_ref, call_bool_at, call_float, call_int_at,
+    bool_arg, bool_case_int_function, bool_function_ref, call_bool_at, call_float_at, call_int_at,
     call_int_function_at, call_int_returning_function, call_list, capture_int, capture_tuple,
     equal, evaluate_step, float, float_arg, float_function_ref, function_function_closure,
     function_function_ref, function_ref, int, int_arg, int_case_int_function, int_function_arg,
@@ -75,13 +75,13 @@ pub(crate) use function::{
     nil_function_return_bool_case, nil_function_return_expr, nil_function_return_int_case,
     nil_function_return_string_case, nil_function_return_tail_call, nil_return_block,
     nil_return_bool_case, nil_return_expr, nil_return_float_case, nil_return_int_case,
-    nil_return_string_case, nil_return_tail_call, return_bool_function, return_function_function,
-    return_int_function, return_list, return_nil_function, return_string_function,
-    string_function_return_block, string_function_return_bool_case, string_function_return_expr,
-    string_function_return_int_case, string_function_return_string_case,
-    string_function_return_tail_call, string_return_block, string_return_bool_case,
-    string_return_expr, string_return_float_case, string_return_int_case,
-    string_return_string_case, string_return_tail_call, utf_codepoint_return_block,
+    nil_return_string_case, nil_return_tail_call_at, return_bool_function,
+    return_function_function, return_int_function, return_list, return_nil_function,
+    return_string_function, string_function_return_block, string_function_return_bool_case,
+    string_function_return_expr, string_function_return_int_case,
+    string_function_return_string_case, string_function_return_tail_call, string_return_block,
+    string_return_bool_case, string_return_expr, string_return_float_case, string_return_int_case,
+    string_return_string_case, string_return_tail_call_at, utf_codepoint_return_block,
     utf_codepoint_return_expr,
 };
 pub(crate) use module::{module, module_with_anonymous};

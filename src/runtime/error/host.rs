@@ -5,6 +5,7 @@ use ecow::EcoString;
 use miette::NamedSource;
 use std::fmt;
 
+#[derive(Clone)]
 pub(crate) enum HostCallOrigin {
     Entry,
     Source(HostCallSite),

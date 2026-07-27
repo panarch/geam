@@ -251,6 +251,21 @@ pub(crate) fn string_return_tail_call(
     )
 }
 
+pub(crate) fn string_return_tail_call_at(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+    site: crate::plan::HostCallSite,
+) -> StringReturn {
+    let args = args.into_iter().collect::<Vec<_>>();
+    ReturnBody::tail_call(
+        crate::plan::FunctionCallTarget::new(
+            tail_call_instantiation(function, &args, ValueShape::String),
+            site,
+        ),
+        args,
+    )
+}
+
 pub(crate) fn string_return_expr(expression: String) -> StringReturn {
     ReturnBody::expr(expression.into())
 }
@@ -462,6 +477,21 @@ pub(crate) fn nil_return_tail_call(
     let args = args.into_iter().collect::<Vec<_>>();
     ReturnBody::tail_call(
         tail_call_instantiation(function, &args, ValueShape::Nil),
+        args,
+    )
+}
+
+pub(crate) fn nil_return_tail_call_at(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+    site: crate::plan::HostCallSite,
+) -> NilReturn {
+    let args = args.into_iter().collect::<Vec<_>>();
+    ReturnBody::tail_call(
+        crate::plan::FunctionCallTarget::new(
+            tail_call_instantiation(function, &args, ValueShape::Nil),
+            site,
+        ),
         args,
     )
 }

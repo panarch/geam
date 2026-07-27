@@ -27,7 +27,7 @@ pub(crate) enum FunctionExit<Return, TailCall> {
     },
 }
 
-pub(in crate::plan::execution::function) trait FunctionBodyOwner {
+pub(crate) trait FunctionBodyOwner {
     type Return;
     type TailCall;
 

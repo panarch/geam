@@ -5,44 +5,45 @@ use super::function::{
     BoolFunctionFunctionBody, BoolFunctionFunctionId, BoolFunctionId, BoolListFunctionBody,
     BoolListFunctionId, CustomFunctionBody, CustomFunctionFunctionBody, CustomFunctionFunctionId,
     CustomFunctionId, CustomListFunctionBody, CustomListFunctionId, ExecutableFunction,
-    FloatFunctionBody, FloatFunctionFunctionBody, FloatFunctionFunctionId, FloatFunctionId,
-    FloatListFunctionBody, FloatListFunctionId, FunctionFunctionFunctionBody,
-    FunctionFunctionFunctionId, FunctionListFunctionBody, FunctionListFunctionId,
-    GenericFunctionFunctionBody, GenericFunctionFunctionId, IntFunctionBody,
-    IntFunctionFunctionBody, IntFunctionFunctionId, IntFunctionId, IntListFunctionBody,
-    IntListFunctionId, ListFunctionFunctionBody, ListFunctionFunctionId, ListListFunctionBody,
-    ListListFunctionId, NeverFunctionBody, NeverFunctionFunctionBody, NeverFunctionFunctionId,
-    NeverFunctionId, NilFunctionBody, NilFunctionFunctionBody, NilFunctionFunctionId,
-    NilFunctionId, NilListFunctionBody, NilListFunctionId, ParameterListFunctionBody,
-    ParameterListFunctionId, ParameterListListFunctionBody, ParameterListListFunctionId,
-    RuntimeFunctionId, StringFunctionBody, StringFunctionFunctionBody, StringFunctionFunctionId,
-    StringFunctionId, StringListFunctionBody, StringListFunctionId, TupleFunctionBody,
-    TupleFunctionFunctionBody, TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionBody,
-    TupleListFunctionId, UtfCodepointFunctionBody, UtfCodepointFunctionFunctionBody,
-    UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, UtfCodepointListFunctionBody,
-    UtfCodepointListFunctionId, ValueFunctionEntry,
+    ExecutionFunction, ExecutionProfile, FloatFunctionBody, FloatFunctionFunctionBody,
+    FloatFunctionFunctionId, FloatFunctionId, FloatListFunctionBody, FloatListFunctionId,
+    FunctionFunctionFunctionBody, FunctionFunctionFunctionId, FunctionListFunctionBody,
+    FunctionListFunctionId, GenericFunctionFunctionBody, GenericFunctionFunctionId,
+    IntFunctionBody, IntFunctionFunctionBody, IntFunctionFunctionId, IntFunctionId,
+    IntListFunctionBody, IntListFunctionId, ListFunctionFunctionBody, ListFunctionFunctionId,
+    ListListFunctionBody, ListListFunctionId, NeverFunctionBody, NeverFunctionFunctionBody,
+    NeverFunctionFunctionId, NeverFunctionId, NilFunctionBody, NilFunctionFunctionBody,
+    NilFunctionFunctionId, NilFunctionId, NilListFunctionBody, NilListFunctionId,
+    ParameterListFunctionBody, ParameterListFunctionId, ParameterListListFunctionBody,
+    ParameterListListFunctionId, RuntimeFunctionId, StringFunctionBody, StringFunctionFunctionBody,
+    StringFunctionFunctionId, StringFunctionId, StringListFunctionBody, StringListFunctionId,
+    TupleFunctionBody, TupleFunctionFunctionBody, TupleFunctionFunctionId, TupleFunctionId,
+    TupleListFunctionBody, TupleListFunctionId, UtfCodepointFunctionBody,
+    UtfCodepointFunctionFunctionBody, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+    UtfCodepointListFunctionBody, UtfCodepointListFunctionId, graph_function,
 };
-use super::host::{HostBoolFunctionId, HostIntFunctionId, HostedExecutionHost};
 use super::type_::{
     CustomConstructorId, CustomTypeId, FunctionListTypeId, FunctionType, ListListTypeId,
     ListTypeId, TupleListTypeId, ValueShapeId, ValueType,
 };
-use super::{ExecutionHost, ExecutionPlan, ExecutionProgram, HostedExecution};
+use super::{ExecutionPlan, ExecutionProgram, HostedExecution};
 use crate::host::HostProfile;
 use crate::plan::SourceContext;
 use ecow::EcoString;
 use std::convert::Infallible;
 
 pub(crate) trait RuntimeExecutionPlan: Sized {
-    type Host: ExecutionHost;
+    type Profile: ExecutionProfile;
     type RunState;
-    type IntFunction;
-    type BoolFunction;
 
-    fn program(&self) -> &ExecutionProgram<Self::Host>;
+    fn program(&self) -> &ExecutionProgram<Self::Profile>;
 
-    fn int_function(&self, id: IntFunctionId) -> &Self::IntFunction;
-    fn bool_function(&self, id: BoolFunctionId) -> &Self::BoolFunction;
+    fn int_function(&self, id: IntFunctionId)
+    -> &ExecutionFunction<Self::Profile, IntFunctionBody>;
+    fn bool_function(
+        &self,
+        id: BoolFunctionId,
+    ) -> &ExecutionFunction<Self::Profile, BoolFunctionBody>;
 
     fn source_context_for(&self, module: &EcoString) -> Option<&SourceContext> {
         self.program()
@@ -119,254 +120,275 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
     }
 
     fn never_function(&self, id: NeverFunctionId) -> &ExecutableFunction<NeverFunctionBody> {
-        self.program().functions.never_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.never_function(id))
     }
 
-    fn float_function(&self, id: FloatFunctionId) -> &ExecutableFunction<FloatFunctionBody> {
+    fn float_function(
+        &self,
+        id: FloatFunctionId,
+    ) -> &ExecutionFunction<Self::Profile, FloatFunctionBody> {
         self.program().functions.float_function(id)
     }
 
-    fn string_function(&self, id: StringFunctionId) -> &ExecutableFunction<StringFunctionBody> {
+    fn string_function(
+        &self,
+        id: StringFunctionId,
+    ) -> &ExecutionFunction<Self::Profile, StringFunctionBody> {
         self.program().functions.string_function(id)
     }
 
     fn bit_array_function(
         &self,
         id: BitArrayFunctionId,
-    ) -> &ExecutableFunction<BitArrayFunctionBody> {
+    ) -> &ExecutionFunction<Self::Profile, BitArrayFunctionBody> {
         self.program().functions.bit_array_function(id)
     }
 
     fn utf_codepoint_function(
         &self,
         id: UtfCodepointFunctionId,
-    ) -> &ExecutableFunction<UtfCodepointFunctionBody> {
+    ) -> &ExecutionFunction<Self::Profile, UtfCodepointFunctionBody> {
         self.program().functions.utf_codepoint_function(id)
     }
 
     fn custom_function(&self, id: CustomFunctionId) -> &ExecutableFunction<CustomFunctionBody> {
-        self.program().functions.custom_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.custom_function(id))
     }
 
-    fn nil_function(&self, id: NilFunctionId) -> &ExecutableFunction<NilFunctionBody> {
+    fn nil_function(
+        &self,
+        id: NilFunctionId,
+    ) -> &ExecutionFunction<Self::Profile, NilFunctionBody> {
         self.program().functions.nil_function(id)
     }
 
     fn tuple_function(&self, id: TupleFunctionId) -> &ExecutableFunction<TupleFunctionBody> {
-        self.program().functions.tuple_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.tuple_function(id))
     }
 
     fn parameter_list_function(
         &self,
         id: ParameterListFunctionId,
     ) -> &ExecutableFunction<ParameterListFunctionBody> {
-        self.program().functions.parameter_list_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.parameter_list_function(id))
     }
 
     fn parameter_list_list_function(
         &self,
         id: ParameterListListFunctionId,
     ) -> &ExecutableFunction<ParameterListListFunctionBody> {
-        self.program().functions.parameter_list_list_function(id)
+        graph_function::<Self::Profile, _>(
+            self.program().functions.parameter_list_list_function(id),
+        )
     }
 
     fn int_list_function(&self, id: IntListFunctionId) -> &ExecutableFunction<IntListFunctionBody> {
-        self.program().functions.int_list_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.int_list_function(id))
     }
 
     fn string_list_function(
         &self,
         id: StringListFunctionId,
     ) -> &ExecutableFunction<StringListFunctionBody> {
-        self.program().functions.string_list_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.string_list_function(id))
     }
 
     fn bit_array_list_function(
         &self,
         id: BitArrayListFunctionId,
     ) -> &ExecutableFunction<BitArrayListFunctionBody> {
-        self.program().functions.bit_array_list_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.bit_array_list_function(id))
     }
 
     fn utf_codepoint_list_function(
         &self,
         id: UtfCodepointListFunctionId,
     ) -> &ExecutableFunction<UtfCodepointListFunctionBody> {
-        self.program().functions.utf_codepoint_list_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.utf_codepoint_list_function(id))
     }
 
     fn custom_list_function(
         &self,
         id: CustomListFunctionId,
     ) -> &ExecutableFunction<CustomListFunctionBody> {
-        self.program().functions.custom_list_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.custom_list_function(id))
     }
 
     fn float_list_function(
         &self,
         id: FloatListFunctionId,
     ) -> &ExecutableFunction<FloatListFunctionBody> {
-        self.program().functions.float_list_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.float_list_function(id))
     }
 
     fn bool_list_function(
         &self,
         id: BoolListFunctionId,
     ) -> &ExecutableFunction<BoolListFunctionBody> {
-        self.program().functions.bool_list_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.bool_list_function(id))
     }
 
     fn nil_list_function(&self, id: NilListFunctionId) -> &ExecutableFunction<NilListFunctionBody> {
-        self.program().functions.nil_list_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.nil_list_function(id))
     }
 
     fn tuple_list_function(
         &self,
         id: TupleListFunctionId,
     ) -> &ExecutableFunction<TupleListFunctionBody> {
-        self.program().functions.tuple_list_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.tuple_list_function(id))
     }
 
     fn list_list_function(
         &self,
         id: ListListFunctionId,
     ) -> &ExecutableFunction<ListListFunctionBody> {
-        self.program().functions.list_list_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.list_list_function(id))
     }
 
     fn function_list_function(
         &self,
         id: FunctionListFunctionId,
     ) -> &ExecutableFunction<FunctionListFunctionBody> {
-        self.program().functions.function_list_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.function_list_function(id))
     }
 
     fn int_function_function(
         &self,
         id: IntFunctionFunctionId,
     ) -> &ExecutableFunction<IntFunctionFunctionBody> {
-        self.program().functions.int_function_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.int_function_function(id))
     }
 
     fn float_function_function(
         &self,
         id: FloatFunctionFunctionId,
     ) -> &ExecutableFunction<FloatFunctionFunctionBody> {
-        self.program().functions.float_function_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.float_function_function(id))
     }
 
     fn string_function_function(
         &self,
         id: StringFunctionFunctionId,
     ) -> &ExecutableFunction<StringFunctionFunctionBody> {
-        self.program().functions.string_function_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.string_function_function(id))
     }
 
     fn bit_array_function_function(
         &self,
         id: BitArrayFunctionFunctionId,
     ) -> &ExecutableFunction<BitArrayFunctionFunctionBody> {
-        self.program().functions.bit_array_function_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.bit_array_function_function(id))
     }
 
     fn utf_codepoint_function_function(
         &self,
         id: UtfCodepointFunctionFunctionId,
     ) -> &ExecutableFunction<UtfCodepointFunctionFunctionBody> {
-        self.program().functions.utf_codepoint_function_function(id)
+        graph_function::<Self::Profile, _>(
+            self.program().functions.utf_codepoint_function_function(id),
+        )
     }
 
     fn custom_function_function(
         &self,
         id: &CustomFunctionFunctionId,
     ) -> &ExecutableFunction<CustomFunctionFunctionBody> {
-        self.program().functions.custom_function_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.custom_function_function(id))
     }
 
     fn generic_function_function(
         &self,
         id: &GenericFunctionFunctionId,
     ) -> &ExecutableFunction<GenericFunctionFunctionBody> {
-        self.program().functions.generic_function_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.generic_function_function(id))
     }
 
     fn never_function_function(
         &self,
         id: &NeverFunctionFunctionId,
     ) -> &ExecutableFunction<NeverFunctionFunctionBody> {
-        self.program().functions.never_function_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.never_function_function(id))
     }
 
     fn bool_function_function(
         &self,
         id: BoolFunctionFunctionId,
     ) -> &ExecutableFunction<BoolFunctionFunctionBody> {
-        self.program().functions.bool_function_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.bool_function_function(id))
     }
 
     fn nil_function_function(
         &self,
         id: NilFunctionFunctionId,
     ) -> &ExecutableFunction<NilFunctionFunctionBody> {
-        self.program().functions.nil_function_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.nil_function_function(id))
     }
 
     fn tuple_function_function(
         &self,
         id: TupleFunctionFunctionId,
     ) -> &ExecutableFunction<TupleFunctionFunctionBody> {
-        self.program().functions.tuple_function_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.tuple_function_function(id))
     }
 
     fn list_function_function(
         &self,
         id: &ListFunctionFunctionId,
     ) -> &ExecutableFunction<ListFunctionFunctionBody> {
-        self.program().functions.list_function_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.list_function_function(id))
     }
 
     fn function_function_function(
         &self,
         id: &FunctionFunctionFunctionId,
     ) -> &ExecutableFunction<FunctionFunctionFunctionBody> {
-        self.program().functions.function_function_function(id)
+        graph_function::<Self::Profile, _>(self.program().functions.function_function_function(id))
     }
 }
 
 impl RuntimeExecutionPlan for ExecutionPlan {
-    type Host = Infallible;
+    type Profile = Infallible;
     type RunState = ();
-    type IntFunction = ExecutableFunction<IntFunctionBody>;
-    type BoolFunction = ExecutableFunction<BoolFunctionBody>;
 
-    fn program(&self) -> &ExecutionProgram<Self::Host> {
+    fn program(&self) -> &ExecutionProgram<Self::Profile> {
         &self.program
     }
 
-    fn int_function(&self, id: IntFunctionId) -> &Self::IntFunction {
+    fn int_function(
+        &self,
+        id: IntFunctionId,
+    ) -> &ExecutionFunction<Self::Profile, IntFunctionBody> {
         self.program.functions.int_function(id)
     }
 
-    fn bool_function(&self, id: BoolFunctionId) -> &Self::BoolFunction {
+    fn bool_function(
+        &self,
+        id: BoolFunctionId,
+    ) -> &ExecutionFunction<Self::Profile, BoolFunctionBody> {
         self.program.functions.bool_function(id)
     }
 }
 
 impl<Profile: HostProfile> RuntimeExecutionPlan for HostedExecution<Profile> {
-    type Host = HostedExecutionHost<Profile>;
+    type Profile = super::host::HostedExecutionProfile<Profile>;
     type RunState = Profile::RunState;
-    type IntFunction = ValueFunctionEntry<IntFunctionBody, HostIntFunctionId>;
-    type BoolFunction = ValueFunctionEntry<BoolFunctionBody, HostBoolFunctionId>;
 
-    fn program(&self) -> &ExecutionProgram<Self::Host> {
+    fn program(&self) -> &ExecutionProgram<Self::Profile> {
         &self.program
     }
 
-    fn int_function(&self, id: IntFunctionId) -> &Self::IntFunction {
+    fn int_function(
+        &self,
+        id: IntFunctionId,
+    ) -> &ExecutionFunction<Self::Profile, IntFunctionBody> {
         self.program.functions.int_function(id)
     }
 
-    fn bool_function(&self, id: BoolFunctionId) -> &Self::BoolFunction {
+    fn bool_function(
+        &self,
+        id: BoolFunctionId,
+    ) -> &ExecutionFunction<Self::Profile, BoolFunctionBody> {
         self.program.functions.bool_function(id)
     }
 }

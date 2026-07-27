@@ -14,7 +14,8 @@ use gleam_core::parse;
 use gleam_core::type_::error::VariableOrigin;
 use gleam_core::type_::{
     Deprecation, ModuleInterface, PRELUDE_MODULE_NAME, References, ValueConstructor,
-    ValueConstructorVariant, bool as bool_type, build_prelude, fn_, int,
+    ValueConstructorVariant, bit_array, bool as bool_type, build_prelude, float, fn_, int, nil,
+    string, utf_codepoint,
 };
 use gleam_core::uid::UniqueIdGenerator;
 use gleam_core::warning::{TypeWarningEmitter, WarningEmitter};
@@ -578,7 +579,12 @@ fn host_value_constructor(
 fn host_type(type_: HostValueType) -> std::sync::Arc<gleam_core::type_::Type> {
     match type_ {
         HostValueType::Int => int(),
+        HostValueType::Float => float(),
+        HostValueType::String => string(),
+        HostValueType::BitArray => bit_array(),
+        HostValueType::UtfCodepoint => utf_codepoint(),
         HostValueType::Bool => bool_type(),
+        HostValueType::Nil => nil(),
     }
 }
 
@@ -689,8 +695,8 @@ mod tests {
     use gleam_core::ast::{Publicity, SrcSpan};
     use gleam_core::type_::error::VariableOrigin;
     use gleam_core::type_::{
-        Deprecation, ValueConstructor, ValueConstructorVariant, bool as bool_type, build_prelude,
-        fn_, int,
+        Deprecation, ValueConstructor, ValueConstructorVariant, bit_array, bool as bool_type,
+        build_prelude, float, fn_, int, nil, string, utf_codepoint,
     };
     use gleam_core::uid::UniqueIdGenerator;
     use num_bigint::BigInt;
@@ -722,6 +728,17 @@ mod tests {
             .with_function("choose", choose)
             .expect("host function should be valid")
             .with_function("all", all)
+            .expect("host function should be valid")
+            .with_function(
+                "consume",
+                |_: BigInt,
+                 _: f64,
+                 _: EcoString,
+                 _: crate::BitArrayValue,
+                 _: char,
+                 _: bool,
+                 (): ()| (),
+            )
             .expect("host function should be valid")])
         .expect("host modules should be unique");
         let (mut modules, providers, _) = hosts.into_registered();
@@ -767,7 +784,7 @@ mod tests {
         assert!(!interface.is_internal);
         assert!(interface.types.is_empty());
         assert!(interface.types_value_constructors.is_empty());
-        assert_eq!(interface.values.len(), 4);
+        assert_eq!(interface.values.len(), 5);
         assert!(interface.accessors.is_empty());
         assert!(interface.warnings.is_empty());
         assert!(interface.type_aliases.is_empty());
@@ -803,6 +820,36 @@ mod tests {
                 field_map: None,
                 module: "host/math".into(),
                 arity: 3,
+                location: SrcSpan::new(0, 0),
+                documentation: None,
+                implementations: expected_metadata.variant.implementations(),
+                external_erlang: None,
+                external_javascript: None,
+                purity: expected_metadata.called_function_purity(),
+            },
+        );
+        assert_eq!(
+            interface.values["consume"].type_,
+            fn_(
+                vec![
+                    int(),
+                    float(),
+                    string(),
+                    bit_array(),
+                    utf_codepoint(),
+                    bool_type(),
+                    nil(),
+                ],
+                nil(),
+            ),
+        );
+        assert_eq!(
+            &interface.values["consume"].variant,
+            &ValueConstructorVariant::ModuleFn {
+                name: "consume".into(),
+                field_map: None,
+                module: "host/math".into(),
+                arity: 7,
                 location: SrcSpan::new(0, 0),
                 documentation: None,
                 implementations: expected_metadata.variant.implementations(),

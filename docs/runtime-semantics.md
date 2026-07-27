@@ -94,21 +94,25 @@ model. Qualified and unqualified references to one host function compare
 equal; Rust closure addresses and captures do not participate in language
 equality.
 
-The current host boundary accepts infallible Rust closures with zero through
-seven `BigInt` or `bool` arguments and a `BigInt` or `bool` return. Seven is an
+The direct host boundary accepts infallible and fallible Rust closures with
+zero through seven arguments. Each argument and return is one of `BigInt`,
+`f64`, `EcoString`, `BitArrayValue`, `char`, `bool`, or `()`. Seven is an
 intentional profile limit aligned with Clippy's default
 `too_many_arguments` threshold. Registration derives the public schema,
 family-local parameter slots, and callback adapter together; unsupported Rust
 types and arities have no `HostFunction` implementation.
 
-Runtime receives the sealed Int/Bool slots and calls the matching typed
+One execution profile maps every return-family function body to either a
+graph-only entry or a typed graph-or-host entry. Plain execution uses
+`Infallible` as its uninhabited host target; it is not a source-visible host
+value. Runtime receives the sealed scalar slots and calls the matching typed
 function family without a `Value` downcast, signature check, string lookup,
-panic translation, or runtime fallback selection. Each `HostProfile` defines a
-caller-owned `RunState`; a scoped callback can project only its declared
+panic translation, or runtime fallback selection. Each `HostProfile` defines
+a caller-owned `RunState`; a scoped callback can project only its declared
 `HostProvider::State` through the active `HostCall`. An owned `HostFailure`
 becomes `ExecutionError::Host` with the failed provider identity, concrete
-signature, and preserved source call site. Broader value families remain
-separate work.
+signature, and preserved source call site. Compound values and callbacks
+remain separate work.
 
 ## Generic Values
 

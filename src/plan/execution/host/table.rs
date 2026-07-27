@@ -1,19 +1,39 @@
-use super::{HostBoolFunctionId, HostIntFunctionId, HostedBoolFunction, HostedIntFunction};
+use super::{
+    HostBitArrayFunctionId, HostBoolFunctionId, HostFloatFunctionId, HostIntFunctionId,
+    HostNilFunctionId, HostStringFunctionId, HostUtfCodepointFunctionId, HostedBitArrayFunction,
+    HostedBoolFunction, HostedFloatFunction, HostedIntFunction, HostedNilFunction,
+    HostedStringFunction, HostedUtfCodepointFunction,
+};
 use crate::host::HostProfile;
 
 pub(crate) struct HostFunctionTables<Profile: HostProfile> {
     int_functions: Box<[HostedIntFunction<Profile>]>,
+    float_functions: Box<[HostedFloatFunction<Profile>]>,
+    string_functions: Box<[HostedStringFunction<Profile>]>,
+    bit_array_functions: Box<[HostedBitArrayFunction<Profile>]>,
+    utf_codepoint_functions: Box<[HostedUtfCodepointFunction<Profile>]>,
     bool_functions: Box<[HostedBoolFunction<Profile>]>,
+    nil_functions: Box<[HostedNilFunction<Profile>]>,
 }
 
 impl<Profile: HostProfile> HostFunctionTables<Profile> {
     pub(in crate::plan::execution) fn new(
         int_functions: Box<[HostedIntFunction<Profile>]>,
+        float_functions: Box<[HostedFloatFunction<Profile>]>,
+        string_functions: Box<[HostedStringFunction<Profile>]>,
+        bit_array_functions: Box<[HostedBitArrayFunction<Profile>]>,
+        utf_codepoint_functions: Box<[HostedUtfCodepointFunction<Profile>]>,
         bool_functions: Box<[HostedBoolFunction<Profile>]>,
+        nil_functions: Box<[HostedNilFunction<Profile>]>,
     ) -> Self {
         Self {
             int_functions,
+            float_functions,
+            string_functions,
+            bit_array_functions,
+            utf_codepoint_functions,
             bool_functions,
+            nil_functions,
         }
     }
 
@@ -21,8 +41,31 @@ impl<Profile: HostProfile> HostFunctionTables<Profile> {
         &self.int_functions[id.index()]
     }
 
+    pub(crate) fn float(&self, id: HostFloatFunctionId) -> &HostedFloatFunction<Profile> {
+        &self.float_functions[id.index()]
+    }
+
+    pub(crate) fn string(&self, id: HostStringFunctionId) -> &HostedStringFunction<Profile> {
+        &self.string_functions[id.index()]
+    }
+
+    pub(crate) fn bit_array(&self, id: HostBitArrayFunctionId) -> &HostedBitArrayFunction<Profile> {
+        &self.bit_array_functions[id.index()]
+    }
+
+    pub(crate) fn utf_codepoint(
+        &self,
+        id: HostUtfCodepointFunctionId,
+    ) -> &HostedUtfCodepointFunction<Profile> {
+        &self.utf_codepoint_functions[id.index()]
+    }
+
     pub(crate) fn bool(&self, id: HostBoolFunctionId) -> &HostedBoolFunction<Profile> {
         &self.bool_functions[id.index()]
+    }
+
+    pub(crate) fn nil(&self, id: HostNilFunctionId) -> &HostedNilFunction<Profile> {
+        &self.nil_functions[id.index()]
     }
 
     #[cfg(test)]

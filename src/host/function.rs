@@ -11,9 +11,14 @@ use std::fmt;
 #[cfg(test)]
 pub(in crate::host) use argument::CallArguments;
 pub(crate) use argument::{
-    HostBoolArgumentSlot, HostCallArguments, HostIntArgumentSlot, HostParameter,
+    HostBitArrayArgumentSlot, HostBoolArgumentSlot, HostCallArguments, HostFloatArgumentSlot,
+    HostIntArgumentSlot, HostNilArgumentSlot, HostParameter, HostStringArgumentSlot,
+    HostUtfCodepointArgumentSlot,
 };
-pub(crate) use return_::{HostBoolFunction, HostFunctionImplementation, HostIntFunction};
+pub(crate) use return_::{
+    HostBitArrayFunction, HostBoolFunction, HostFloatFunction, HostFunctionImplementation,
+    HostIntFunction, HostNilFunction, HostStringFunction, HostUtfCodepointFunction,
+};
 pub(crate) use type_::HostValueType;
 
 #[derive(Clone, PartialEq, Eq)]
@@ -26,8 +31,9 @@ pub struct HostFunctionSchema {
 
 /// A Rust function that can be registered as a Geam host function.
 ///
-/// Host functions accept zero through seven `BigInt` or `bool` arguments and
-/// return either `BigInt` or `bool`.
+/// Host functions accept zero through seven scalar arguments. Supported Rust
+/// values are `BigInt`, `f64`, `EcoString`, `BitArrayValue`, `char`, `bool`,
+/// and `()`. A host function returns one value from the same set.
 ///
 /// ```compile_fail
 /// use geam::HostModule;
@@ -47,6 +53,14 @@ pub struct HostFunctionSchema {
 ///          _: BigInt|
 ///          -> BigInt { 0.into() },
 ///     );
+/// ```
+///
+/// ```compile_fail
+/// use geam::HostModule;
+///
+/// let _ = HostModule::new("host_support", "host/math")
+///     .unwrap()
+///     .with_function("unsupported", |value: i64| value);
 /// ```
 pub trait HostFunction<Arguments, Return>:
     adapter::HostFunction<Arguments, Return> + Send + Sync + 'static
@@ -193,28 +207,13 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
 mod tests {
     use super::{
         HostBoolFunction, HostFunctionDefinition, HostFunctionImplementation, HostIntFunction,
-        HostValueType,
+        HostNilFunction, HostValueType,
     };
-    use crate::host::function::argument::{
-        HostBoolArgumentSlot, HostCallArguments, HostIntArgumentSlot,
-    };
+    use crate::BitArrayValue;
+    use crate::host::function::argument::CallArguments;
     use crate::plan::ValueType;
+    use ecow::EcoString;
     use num_bigint::BigInt;
-
-    struct Arguments {
-        ints: Vec<BigInt>,
-        bools: Vec<bool>,
-    }
-
-    impl HostCallArguments for Arguments {
-        fn int(&self, slot: HostIntArgumentSlot) -> BigInt {
-            self.ints[slot.index()].clone()
-        }
-
-        fn bool(&self, slot: HostBoolArgumentSlot) -> bool {
-            self.bools[slot.index()]
-        }
-    }
 
     #[test]
     fn definition_assembles_schema_and_int_implementation_together() {
@@ -238,20 +237,14 @@ mod tests {
         assert_eq!(
             implementation.call(
                 &mut (),
-                &Arguments {
-                    ints: vec![10.into(), 20.into()],
-                    bools: vec![false],
-                },
+                &CallArguments::new(vec![10.into(), 20.into()], vec![false]),
             ),
             Ok(BigInt::from(20)),
         );
         assert_eq!(
             implementation.call(
                 &mut (),
-                &Arguments {
-                    ints: vec![10.into(), 20.into()],
-                    bools: vec![true],
-                },
+                &CallArguments::new(vec![10.into(), 20.into()], vec![true]),
             ),
             Ok(BigInt::from(10)),
         );
@@ -272,15 +265,45 @@ mod tests {
 
         let (_, implementation) = definition.into_parts();
         assert_eq!(
-            bool_implementation(implementation).call(
-                &mut (),
-                &Arguments {
-                    ints: vec![1.into()],
-                    bools: Vec::new(),
-                },
-            ),
+            bool_implementation(implementation)
+                .call(&mut (), &CallArguments::new(vec![1.into()], Vec::new()),),
             Ok(true),
         );
+    }
+
+    #[test]
+    fn definition_assembles_every_scalar_parameter_from_one_layout() {
+        let definition: HostFunctionDefinition<crate::host::StatelessHostProfile> =
+            HostFunctionDefinition::new(
+                "consume".into(),
+                |_: BigInt, _: f64, _: EcoString, _: BitArrayValue, _: char, _: bool, (): ()| (),
+            );
+
+        assert_eq!(
+            definition.schema().type_().argument_types(),
+            [
+                ValueType::Int,
+                ValueType::Float,
+                ValueType::String,
+                ValueType::BitArray,
+                ValueType::UtfCodepoint,
+                ValueType::Bool,
+                ValueType::Nil,
+            ],
+        );
+        assert_eq!(definition.schema().type_().return_(), &ValueType::Nil);
+        assert_eq!(definition.schema().return_type(), HostValueType::Nil);
+
+        let (_, implementation) = definition.into_parts();
+        let implementation = nil_implementation(implementation);
+        let arguments = CallArguments::new(vec![1.into()], vec![true]).with_scalar_values(
+            vec![1.5],
+            vec!["one".into()],
+            vec![BitArrayValue::from_bytes(vec![1])],
+            vec!['A'],
+            1,
+        );
+        assert_eq!(implementation.call(&mut (), &arguments), Ok(()));
     }
 
     #[test]
@@ -316,6 +339,14 @@ mod tests {
         bool_implementation(implementation);
     }
 
+    #[test]
+    #[should_panic(expected = "consume should retain a Nil implementation")]
+    fn nil_definition_shape_guard_is_visible() {
+        let definition = HostFunctionDefinition::new("consume".into(), || true);
+        let (_, implementation) = definition.into_parts();
+        nil_implementation(implementation);
+    }
+
     fn int_implementation(
         implementation: HostFunctionImplementation<crate::host::StatelessHostProfile>,
     ) -> HostIntFunction<crate::host::StatelessHostProfile> {
@@ -330,6 +361,15 @@ mod tests {
     ) -> HostBoolFunction<crate::host::StatelessHostProfile> {
         let HostFunctionImplementation::Bool(implementation) = implementation else {
             panic!("is_positive should retain a Bool implementation");
+        };
+        implementation
+    }
+
+    fn nil_implementation(
+        implementation: HostFunctionImplementation<crate::host::StatelessHostProfile>,
+    ) -> HostNilFunction<crate::host::StatelessHostProfile> {
+        let HostFunctionImplementation::Nil(implementation) = implementation else {
+            panic!("consume should retain a Nil implementation");
         };
         implementation
     }

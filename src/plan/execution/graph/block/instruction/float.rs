@@ -14,10 +14,12 @@ pub(crate) enum FloatInstruction {
     Call {
         function: FloatFunctionId,
         args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: FloatFunctionLocalId,
         args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: TupleLocalId,
@@ -57,10 +59,10 @@ impl Explain for FloatInstruction {
                 write_literal(output, "float.value", &format!("{value:?}"));
             }
             FloatInstruction::Constant(id) => write_constant(output, "float", *id),
-            FloatInstruction::Call { function, args } => {
+            FloatInstruction::Call { function, args, .. } => {
                 write_call(output, "float.call", function, args);
             }
-            FloatInstruction::FunctionCall { function, args } => {
+            FloatInstruction::FunctionCall { function, args, .. } => {
                 write_function_call(output, "float.function_call", function, args);
             }
             FloatInstruction::TupleIndex { tuple, index } => {

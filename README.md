@@ -49,11 +49,11 @@ projects. The official `gleam_stdlib` package is not built in: compatible
 imported modules are compiled from the package sources resolved by Gleam.
 Package-qualified source-less Rust host modules and source-backed external
 function providers can supply functions with zero through seven
-`BigInt`/`bool` arguments and a `BigInt`/`bool` return through a separate
-hosted pipeline. Unsupported Rust types and arities are rejected by trait
-resolution rather than at runtime. Provider linkage selects an exact external
-declaration or its Gleam fallback during planning; ordinary Gleam functions
-cannot be overridden.
+`BigInt`, `f64`, `EcoString`, `BitArrayValue`, `char`, `bool`, or `()`
+arguments and returns through a separate hosted pipeline. Unsupported Rust
+types and arities are rejected by trait resolution rather than at runtime.
+Provider linkage selects an exact external declaration or its Gleam fallback
+during planning; ordinary Gleam functions cannot be overridden.
 
 The main public entry points are:
 

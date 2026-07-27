@@ -208,21 +208,33 @@ fn direct_call(
         StoredValueShape::Float => context.float_function_id(function).map(|function| {
             let value = graph.float_instruction(
                 &mut cursor,
-                super::super::instruction::DraftFloatInstruction::Call { function, args },
+                super::super::instruction::DraftFloatInstruction::Call {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
             );
             DraftFlow::value(cursor, value.erase())
         }),
         StoredValueShape::String => context.string_function_id(function).map(|function| {
             let value = graph.string_instruction(
                 &mut cursor,
-                super::super::instruction::DraftStringInstruction::Call { function, args },
+                super::super::instruction::DraftStringInstruction::Call {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
             );
             DraftFlow::value(cursor, value.erase())
         }),
         StoredValueShape::BitArray => context.bit_array_function_id(function).map(|function| {
             let value = graph.bit_array_instruction(
                 &mut cursor,
-                super::super::instruction::DraftBitArrayInstruction::Call { function, args },
+                super::super::instruction::DraftBitArrayInstruction::Call {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
             );
             DraftFlow::value(cursor, value.erase())
         }),
@@ -233,6 +245,7 @@ fn direct_call(
                     super::super::instruction::DraftUtfCodepointInstruction::Call {
                         function,
                         args,
+                        site: site.clone(),
                     },
                 );
                 DraftFlow::value(cursor, value.erase())
@@ -262,7 +275,11 @@ fn direct_call(
         StoredValueShape::Nil => context.nil_function_id(function).map(|function| {
             let value = graph.nil_instruction(
                 &mut cursor,
-                super::super::instruction::DraftNilInstruction::Call { function, args },
+                super::super::instruction::DraftNilInstruction::Call {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
             );
             DraftFlow::value(cursor, value.erase())
         }),
@@ -320,14 +337,22 @@ fn function_call(
         StoredValueShape::Float => {
             let value = graph.float_instruction(
                 &mut cursor,
-                super::super::instruction::DraftFloatInstruction::FunctionCall { function, args },
+                super::super::instruction::DraftFloatInstruction::FunctionCall {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
             );
             DraftFlow::value(cursor, value.erase())
         }
         StoredValueShape::String => {
             let value = graph.string_instruction(
                 &mut cursor,
-                super::super::instruction::DraftStringInstruction::FunctionCall { function, args },
+                super::super::instruction::DraftStringInstruction::FunctionCall {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
             );
             DraftFlow::value(cursor, value.erase())
         }
@@ -337,6 +362,7 @@ fn function_call(
                 super::super::instruction::DraftBitArrayInstruction::FunctionCall {
                     function,
                     args,
+                    site: site.clone(),
                 },
             );
             DraftFlow::value(cursor, value.erase())
@@ -347,6 +373,7 @@ fn function_call(
                 super::super::instruction::DraftUtfCodepointInstruction::FunctionCall {
                     function,
                     args,
+                    site: site.clone(),
                 },
             );
             DraftFlow::value(cursor, value.erase())
@@ -373,7 +400,11 @@ fn function_call(
         StoredValueShape::Nil => {
             let value = graph.nil_instruction(
                 &mut cursor,
-                super::super::instruction::DraftNilInstruction::FunctionCall { function, args },
+                super::super::instruction::DraftNilInstruction::FunctionCall {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
             );
             DraftFlow::value(cursor, value.erase())
         }

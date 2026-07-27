@@ -186,12 +186,12 @@ mod tests {
         local_string, module, module_with_anonymous, nil, nil_arg, nil_function_ref,
         nil_function_return_block, nil_function_return_bool_case, nil_function_return_expr,
         nil_function_return_int_case, nil_function_return_string_case,
-        nil_function_return_tail_call, nil_return_tail_call, return_bool_function,
+        nil_function_return_tail_call, nil_return_tail_call_at, return_bool_function,
         return_function_function, return_int_function, return_nil_function, return_string_function,
         string, string_arg, string_function_ref, string_function_return_block,
         string_function_return_bool_case, string_function_return_expr,
         string_function_return_int_case, string_function_return_string_case,
-        string_function_return_tail_call, string_return_tail_call,
+        string_function_return_tail_call, string_return_tail_call_at,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, expect_plan_error};
@@ -1380,7 +1380,11 @@ pub fn nil_main() {
             "main",
             function(
                 "main",
-                string_return_tail_call(1, [string_arg(string("geam"))]),
+                string_return_tail_call_at(
+                    1,
+                    [string_arg(string("geam"))],
+                    host_call_site(source, "main", "string_id(\"geam\")"),
+                ),
             ),
             [
                 function("string_id", local_string(0, "value")).param_string(0, "value"),
@@ -1394,7 +1398,14 @@ pub fn nil_main() {
                         host_call_site(source, "bool_main", "bool_id(True)"),
                     ),
                 ),
-                function("nil_main", nil_return_tail_call(3, [nil_arg(nil())])),
+                function(
+                    "nil_main",
+                    nil_return_tail_call_at(
+                        3,
+                        [nil_arg(nil())],
+                        host_call_site(source, "nil_main", "nil_id(Nil)"),
+                    ),
+                ),
             ],
         );
 

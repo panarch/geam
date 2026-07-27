@@ -62,7 +62,13 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 body,
                 context,
                 graph::float_expr,
-                |function, context| context.float_function_id(function),
+                |target, context| {
+                    context
+                        .float_function_id(target.function())
+                        .map(|function| {
+                            crate::plan::FunctionCallTarget::new(function, target.site().clone())
+                        })
+                },
             );
             functions
                 .float_functions
@@ -74,7 +80,13 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 body,
                 context,
                 graph::string_expr,
-                |function, context| context.string_function_id(function),
+                |target, context| {
+                    context
+                        .string_function_id(target.function())
+                        .map(|function| {
+                            crate::plan::FunctionCallTarget::new(function, target.site().clone())
+                        })
+                },
             );
             functions
                 .string_functions
@@ -86,7 +98,13 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 body,
                 context,
                 graph::bit_array_expr,
-                |function, context| context.bit_array_function_id(function),
+                |target, context| {
+                    context
+                        .bit_array_function_id(target.function())
+                        .map(|function| {
+                            crate::plan::FunctionCallTarget::new(function, target.site().clone())
+                        })
+                },
             );
             functions
                 .bit_array_functions
@@ -98,7 +116,13 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 body,
                 context,
                 graph::utf_codepoint_expr,
-                |function, context| context.utf_codepoint_function_id(function),
+                |target, context| {
+                    context
+                        .utf_codepoint_function_id(target.function())
+                        .map(|function| {
+                            crate::plan::FunctionCallTarget::new(function, target.site().clone())
+                        })
+                },
             );
             functions
                 .utf_codepoint_functions
@@ -129,7 +153,11 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 body,
                 context,
                 graph::nil_expr,
-                |function, context| context.nil_function_id(function),
+                |target, context| {
+                    context.nil_function_id(target.function()).map(|function| {
+                        crate::plan::FunctionCallTarget::new(function, target.site().clone())
+                    })
+                },
             );
             functions
                 .nil_functions
@@ -525,7 +553,13 @@ fn lower_generic_value(
                         graph::DraftFloat::from_owned,
                     )
                 },
-                |target, context| context.float_function_id(target.function()),
+                |target, context| {
+                    context
+                        .float_function_id(target.function())
+                        .map(|function| {
+                            crate::plan::FunctionCallTarget::new(function, target.site().clone())
+                        })
+                },
             );
             functions
                 .float_functions
@@ -545,7 +579,13 @@ fn lower_generic_value(
                         graph::DraftString::from_owned,
                     )
                 },
-                |target, context| context.string_function_id(target.function()),
+                |target, context| {
+                    context
+                        .string_function_id(target.function())
+                        .map(|function| {
+                            crate::plan::FunctionCallTarget::new(function, target.site().clone())
+                        })
+                },
             );
             functions
                 .string_functions
@@ -565,7 +605,13 @@ fn lower_generic_value(
                         graph::DraftBitArray::from_owned,
                     )
                 },
-                |target, context| context.bit_array_function_id(target.function()),
+                |target, context| {
+                    context
+                        .bit_array_function_id(target.function())
+                        .map(|function| {
+                            crate::plan::FunctionCallTarget::new(function, target.site().clone())
+                        })
+                },
             );
             functions
                 .bit_array_functions
@@ -585,7 +631,13 @@ fn lower_generic_value(
                         graph::DraftUtfCodepoint::from_owned,
                     )
                 },
-                |target, context| context.utf_codepoint_function_id(target.function()),
+                |target, context| {
+                    context
+                        .utf_codepoint_function_id(target.function())
+                        .map(|function| {
+                            crate::plan::FunctionCallTarget::new(function, target.site().clone())
+                        })
+                },
             );
             functions
                 .utf_codepoint_functions
@@ -663,7 +715,11 @@ fn lower_generic_value(
                         graph::DraftNil::from_owned,
                     )
                 },
-                |target, context| context.nil_function_id(target.function()),
+                |target, context| {
+                    context.nil_function_id(target.function()).map(|function| {
+                        crate::plan::FunctionCallTarget::new(function, target.site().clone())
+                    })
+                },
             );
             functions
                 .nil_functions

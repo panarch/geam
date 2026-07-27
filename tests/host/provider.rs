@@ -1,7 +1,8 @@
+use ecow::EcoString;
 use geam::{
-    ExecutionError, HostCall, HostFailure, HostLocation, HostModule, HostProfile, HostProvider,
-    HostProviderModule, HostProviderSet, HostedExecution, InvariantError, ModuleSource,
-    PackageSource, Value, ValueType, compile_typed_host_program, plan_host_program,
+    BitArrayValue, ExecutionError, HostCall, HostFailure, HostLocation, HostModule, HostProfile,
+    HostProvider, HostProviderModule, HostProviderSet, HostedExecution, InvariantError,
+    ModuleSource, PackageSource, Value, ValueType, compile_typed_host_program, plan_host_program,
 };
 use num_bigint::BigInt;
 
@@ -29,19 +30,43 @@ impl HostProvider<StatefulProfile> for Counter {
 fn source_less_modules_use_the_same_stateful_profile_registration() {
     let module = HostModule::<StatefulProfile>::new_for_profile("host_support", "host/state")
         .expect("host module should be valid")
-        .with_function("ready", bool::default)
+        .with_function("int", std::convert::identity::<BigInt>)
+        .expect("host function should be valid")
+        .with_function("float", std::convert::identity::<f64>)
+        .expect("host function should be valid")
+        .with_function("string", std::convert::identity::<EcoString>)
+        .expect("host function should be valid")
+        .with_function("bit_array", std::convert::identity::<BitArrayValue>)
+        .expect("host function should be valid")
+        .with_function("utf_codepoint", std::convert::identity::<char>)
+        .expect("host function should be valid")
+        .with_function("bool", std::convert::identity::<bool>)
+        .expect("host function should be valid")
+        .with_function("nil", std::convert::identity::<()>)
         .expect("host function should be valid");
+    let source = r#"
+import host/state
+
+pub fn main() {
+  let assert <<codepoint:utf8_codepoint>> = <<"A":utf8>>
+  #(
+    state.int(1),
+    state.float(2.5),
+    state.string("three"),
+    state.bit_array(<<4>>),
+    state.utf_codepoint(codepoint),
+    state.bool(True),
+    state.nil(Nil),
+  )
+}
+"#;
     let typed = compile_typed_host_program(
         "application",
         "main",
         [PackageSource::new(
             "application",
-            Vec::<String>::new(),
-            [ModuleSource::new(
-                "main",
-                "src/main.gleam",
-                "pub fn main() { 1 }",
-            )],
+            ["host_support"],
+            [ModuleSource::new("main", "src/main.gleam", source)],
         )],
         HostProviderSet::new([module]).expect("host module should be unique"),
     )
@@ -55,7 +80,28 @@ fn source_less_modules_use_the_same_stateful_profile_registration() {
             .collect::<Vec<_>>(),
         [("host_support", "host/state"), ("application", "main")],
     );
-    assert!(plan.modules()[0].functions()[0].host_template().is_some(),);
+    assert!(
+        plan.modules()[0]
+            .functions()
+            .iter()
+            .all(|function| function.host_template().is_some()),
+    );
+    let execution = HostedExecution::from_module_plan(plan);
+    let mut state = RunState {
+        total: BigInt::from(0),
+    };
+    assert_eq!(
+        execution.run_main(&mut state, &mut Vec::new()),
+        Ok(Value::Tuple(vec![
+            Value::Int(1.into()),
+            Value::Float(2.5),
+            Value::String("three".into()),
+            Value::BitArray(BitArrayValue::from_bytes(vec![4])),
+            Value::UtfCodepoint('A'),
+            Value::Bool(true),
+            Value::Nil,
+        ])),
+    );
 }
 
 #[test]

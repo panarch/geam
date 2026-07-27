@@ -142,9 +142,14 @@ pub(super) fn int_return(expression: IntExpr) -> IntReturn {
 
 pub(super) fn string_return(expression: StringExpr) -> StringReturn {
     match expression.kind() {
-        StringExprKind::Call { function, args } => {
-            ReturnBody::tail_call(function.clone(), args.clone())
-        }
+        StringExprKind::Call {
+            function,
+            args,
+            site,
+        } => ReturnBody::tail_call(
+            crate::plan::FunctionCallTarget::new(function.clone(), site.clone()),
+            args.clone(),
+        ),
         StringExprKind::BoolCase {
             subject,
             true_,
@@ -199,9 +204,14 @@ pub(super) fn string_return(expression: StringExpr) -> StringReturn {
 
 pub(super) fn bit_array_return(expression: BitArrayExpr) -> BitArrayReturn {
     match expression.kind() {
-        BitArrayExprKind::Call { function, args } => {
-            ReturnBody::tail_call(function.clone(), args.clone())
-        }
+        BitArrayExprKind::Call {
+            function,
+            args,
+            site,
+        } => ReturnBody::tail_call(
+            crate::plan::FunctionCallTarget::new(function.clone(), site.clone()),
+            args.clone(),
+        ),
         BitArrayExprKind::BoolCase {
             subject,
             true_,
@@ -256,9 +266,14 @@ pub(super) fn bit_array_return(expression: BitArrayExpr) -> BitArrayReturn {
 
 pub(super) fn utf_codepoint_return(expression: UtfCodepointExpr) -> UtfCodepointReturn {
     match expression.kind() {
-        UtfCodepointExprKind::Call { function, args } => {
-            ReturnBody::tail_call(function.clone(), args.clone())
-        }
+        UtfCodepointExprKind::Call {
+            function,
+            args,
+            site,
+        } => ReturnBody::tail_call(
+            crate::plan::FunctionCallTarget::new(function.clone(), site.clone()),
+            args.clone(),
+        ),
         UtfCodepointExprKind::BoolCase {
             subject,
             true_,
@@ -375,9 +390,14 @@ pub(super) fn bool_return(expression: BoolExpr) -> BoolReturn {
 
 pub(super) fn nil_return(expression: NilExpr) -> NilReturn {
     match expression.kind() {
-        NilExprKind::Call { function, args } => {
-            ReturnBody::tail_call(function.clone(), args.clone())
-        }
+        NilExprKind::Call {
+            function,
+            args,
+            site,
+        } => ReturnBody::tail_call(
+            crate::plan::FunctionCallTarget::new(function.clone(), site.clone()),
+            args.clone(),
+        ),
         NilExprKind::BoolCase {
             subject,
             true_,
@@ -432,9 +452,14 @@ pub(super) fn nil_return(expression: NilExpr) -> NilReturn {
 
 pub(super) fn float_return(expression: FloatExpr) -> FloatReturn {
     match expression.kind() {
-        FloatExprKind::Call { function, args } => {
-            ReturnBody::tail_call(function.clone(), args.clone())
-        }
+        FloatExprKind::Call {
+            function,
+            args,
+            site,
+        } => ReturnBody::tail_call(
+            crate::plan::FunctionCallTarget::new(function.clone(), site.clone()),
+            args.clone(),
+        ),
         FloatExprKind::BoolCase {
             subject,
             true_,

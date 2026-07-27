@@ -146,10 +146,11 @@ bodies. Host provenance and Rust implementations remain Geam-owned data and
 are not interpreted as pure Gleam definitions.
 
 `HostModule::with_function` accepts infallible Rust closures with zero through
-seven `BigInt` or `bool` arguments and a `BigInt` or `bool` return. The arity
-limit follows Clippy's default `too_many_arguments` threshold. Unsupported
-types and arities fail Rust trait resolution; the hosted runtime performs no
-signature validation or generic value downcast.
+seven arguments and a return drawn from `BigInt`, `f64`, `EcoString`,
+`BitArrayValue`, `char`, `bool`, and `()`. The arity limit follows Clippy's
+default `too_many_arguments` threshold. Unsupported types and arities fail
+Rust trait resolution; the hosted runtime performs no signature validation or
+generic value downcast.
 
 `HostModule::with_fallible_function` maps an owned `HostFailure` into a
 source-located host execution error. `with_scoped_function` receives a typed

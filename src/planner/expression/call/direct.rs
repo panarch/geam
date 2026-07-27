@@ -89,7 +89,7 @@ mod tests {
     use super::function_instantiation_mismatch;
     use crate::plan::{Expr, FunctionType, IntLocalId, LocalId, Step, ValueType};
     use crate::planner::dsl::{
-        call_float, call_int_function_at, call_list, float, float_arg, function, host_call_site,
+        call_float_at, call_int_function_at, call_list, float, float_arg, function, host_call_site,
         int, int_arg, int_function_arg, int_function_call_arg, int_function_ref,
         int_return_tail_call_at, let_float_step, let_int_function_step, let_list_step, list,
         list_return_expr, local_float, local_int, local_int_function, local_list, module,
@@ -295,8 +295,7 @@ pub fn main() {
 
     #[test]
     fn plan_float_and_list_direct_call_shapes() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn half(value: Float) {
   value /. 2.0
 }
@@ -310,9 +309,8 @@ pub fn main() {
   let values = singleton(1)
   values
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
@@ -322,7 +320,11 @@ pub fn main() {
             .step(let_float_step(
                 0,
                 "half_value",
-                call_float(1, [float_arg(float(3.0))]),
+                call_float_at(
+                    1,
+                    [float_arg(float(3.0))],
+                    host_call_site(source, "main", "half(3.0)"),
+                ),
             ))
             .step(let_list_step(
                 0,

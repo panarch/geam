@@ -122,10 +122,14 @@ pub(crate) type GenericReturn =
     ReturnBody<super::GenericExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
 pub(crate) type IntReturn =
     ReturnBody<IntExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
-pub(crate) type FloatReturn = ReturnBody<FloatExpr, FunctionInstantiation>;
-pub(crate) type StringReturn = ReturnBody<StringExpr, FunctionInstantiation>;
-pub(crate) type BitArrayReturn = ReturnBody<BitArrayExpr, FunctionInstantiation>;
-pub(crate) type UtfCodepointReturn = ReturnBody<UtfCodepointExpr, FunctionInstantiation>;
+pub(crate) type FloatReturn =
+    ReturnBody<FloatExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
+pub(crate) type StringReturn =
+    ReturnBody<StringExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
+pub(crate) type BitArrayReturn =
+    ReturnBody<BitArrayExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
+pub(crate) type UtfCodepointReturn =
+    ReturnBody<UtfCodepointExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct CustomReturn {
     signature_shape: crate::plan::CustomValueShape,
@@ -134,7 +138,8 @@ pub(crate) struct CustomReturn {
 }
 pub(crate) type BoolReturn =
     ReturnBody<BoolExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
-pub(crate) type NilReturn = ReturnBody<NilExpr, FunctionInstantiation>;
+pub(crate) type NilReturn =
+    ReturnBody<NilExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
 pub(crate) type TupleReturn = ReturnBody<TupleExpr, FunctionInstantiation>;
 pub(crate) type GenericListReturn = ReturnBody<super::GenericListExpr, FunctionInstantiation>;
 pub(crate) type ParameterListListReturn =

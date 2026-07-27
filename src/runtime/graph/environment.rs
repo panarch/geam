@@ -1,4 +1,7 @@
-use crate::host::{HostBoolArgumentSlot, HostCallArguments, HostIntArgumentSlot};
+use crate::host::{
+    HostBitArrayArgumentSlot, HostBoolArgumentSlot, HostCallArguments, HostFloatArgumentSlot,
+    HostIntArgumentSlot, HostNilArgumentSlot, HostStringArgumentSlot, HostUtfCodepointArgumentSlot,
+};
 use crate::plan::execution::graph::{
     BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
     BoolListLocalId, BoolLocalId, CustomFunctionLocal, CustomListLocalId, CustomLocal,
@@ -748,9 +751,27 @@ impl HostCallArguments for RetainedValues {
         self.values.ints[slot.index()].clone()
     }
 
+    fn float(&self, slot: HostFloatArgumentSlot) -> f64 {
+        self.values.floats[slot.index()]
+    }
+
+    fn string(&self, slot: HostStringArgumentSlot) -> EcoString {
+        self.values.strings[slot.index()].clone()
+    }
+
+    fn bit_array(&self, slot: HostBitArrayArgumentSlot) -> crate::BitArrayValue {
+        self.values.bit_arrays[slot.index()].value()
+    }
+
+    fn utf_codepoint(&self, slot: HostUtfCodepointArgumentSlot) -> char {
+        self.values.utf_codepoints[slot.index()]
+    }
+
     fn bool(&self, slot: HostBoolArgumentSlot) -> bool {
         self.values.bools[slot.index()]
     }
+
+    fn nil(&self, _slot: HostNilArgumentSlot) {}
 }
 
 impl BlockValues {

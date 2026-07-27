@@ -11,6 +11,8 @@ use self::constant::ConstantTable;
 #[cfg(test)]
 use self::constant::{ConstantId, ConstantProgram, ConstantValue};
 #[cfg(test)]
+use self::function::ExecutableFunction;
+#[cfg(test)]
 use self::function::{
     BitArrayFunctionBody, BitArrayFunctionFunctionBody, BitArrayFunctionFunctionId,
     BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionBody, BoolFunctionFunctionBody,
@@ -18,18 +20,17 @@ use self::function::{
     CustomFunctionFunctionBody, CustomFunctionFunctionId, CustomFunctionId, CustomListFunctionId,
     FloatFunctionFunctionBody, FloatFunctionFunctionId, FloatListFunctionId,
     FunctionFunctionFunctionBody, FunctionFunctionFunctionId, FunctionListFunctionId,
-    GenericFunctionFunctionBody, GenericFunctionFunctionId, IntFunctionFunctionBody,
-    IntFunctionFunctionId, IntFunctionId, IntListFunctionId, ListFunctionFunctionBody,
-    ListFunctionFunctionId, ListListFunctionId, NeverFunctionFunctionBody, NeverFunctionFunctionId,
-    NilFunctionBody, NilFunctionFunctionBody, NilFunctionFunctionId, NilFunctionId,
-    NilListFunctionId, ParameterListFunctionId, ParameterListListFunctionId,
-    StringFunctionFunctionBody, StringFunctionFunctionId, StringListFunctionId, TupleFunctionBody,
-    TupleFunctionFunctionBody, TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionId,
-    UtfCodepointFunctionFunctionBody, UtfCodepointFunctionFunctionId, UtfCodepointListFunctionId,
+    GenericFunctionFunctionBody, GenericFunctionFunctionId, IntFunctionBody,
+    IntFunctionFunctionBody, IntFunctionFunctionId, IntFunctionId, IntListFunctionId,
+    ListFunctionFunctionBody, ListFunctionFunctionId, ListListFunctionId,
+    NeverFunctionFunctionBody, NeverFunctionFunctionId, NilFunctionBody, NilFunctionFunctionBody,
+    NilFunctionFunctionId, NilFunctionId, NilListFunctionId, ParameterListFunctionId,
+    ParameterListListFunctionId, StringFunctionFunctionBody, StringFunctionFunctionId,
+    StringListFunctionId, TupleFunctionBody, TupleFunctionFunctionBody, TupleFunctionFunctionId,
+    TupleFunctionId, TupleListFunctionId, UtfCodepointFunctionFunctionBody,
+    UtfCodepointFunctionFunctionId, UtfCodepointListFunctionId,
 };
-use self::function::{
-    ExecutableFunction, FunctionLabelSource, FunctionTables, IntFunctionBody, RuntimeFunctionId,
-};
+use self::function::{ExecutionProfile, FunctionLabelSource, FunctionTables, RuntimeFunctionId};
 #[cfg(test)]
 use self::type_::{
     CustomConstructorId, CustomConstructorRefinement, CustomTypeId, CustomValueShape,
@@ -48,32 +49,13 @@ pub struct ExecutionPlan {
 }
 
 pub struct HostedExecution<Profile: HostProfile> {
-    program: ExecutionProgram<host::HostedExecutionHost<Profile>>,
+    program: ExecutionProgram<host::HostedExecutionProfile<Profile>>,
     host_functions: host::HostFunctionTables<Profile>,
 }
 
-pub(crate) trait ExecutionHost {
-    type RunState;
-    type IntFunction;
-    type BoolFunction;
-}
-
-impl ExecutionHost for Infallible {
-    type RunState = ();
-    type IntFunction = ExecutableFunction<IntFunctionBody>;
-    type BoolFunction = ExecutableFunction<function::BoolFunctionBody>;
-}
-
-impl<Profile: HostProfile> ExecutionHost for host::HostedExecutionHost<Profile> {
-    type RunState = Profile::RunState;
-    type IntFunction = function::ValueFunctionEntry<IntFunctionBody, host::HostIntFunctionId>;
-    type BoolFunction =
-        function::ValueFunctionEntry<function::BoolFunctionBody, host::HostBoolFunctionId>;
-}
-
-pub(crate) struct ExecutionProgram<Host: ExecutionHost> {
+pub(crate) struct ExecutionProgram<Profile: ExecutionProfile> {
     common: ExecutionProgramCommon,
-    functions: FunctionTables<Host::IntFunction, Host::BoolFunction>,
+    functions: FunctionTables<Profile>,
 }
 
 struct ExecutionProgramCommon {
@@ -560,11 +542,46 @@ impl<Profile: HostProfile> HostedExecution<Profile> {
         self.host_functions.int(id)
     }
 
+    pub(crate) fn host_float_function(
+        &self,
+        id: host::HostFloatFunctionId,
+    ) -> &host::HostedFloatFunction<Profile> {
+        self.host_functions.float(id)
+    }
+
+    pub(crate) fn host_string_function(
+        &self,
+        id: host::HostStringFunctionId,
+    ) -> &host::HostedStringFunction<Profile> {
+        self.host_functions.string(id)
+    }
+
+    pub(crate) fn host_bit_array_function(
+        &self,
+        id: host::HostBitArrayFunctionId,
+    ) -> &host::HostedBitArrayFunction<Profile> {
+        self.host_functions.bit_array(id)
+    }
+
+    pub(crate) fn host_utf_codepoint_function(
+        &self,
+        id: host::HostUtfCodepointFunctionId,
+    ) -> &host::HostedUtfCodepointFunction<Profile> {
+        self.host_functions.utf_codepoint(id)
+    }
+
     pub(crate) fn host_bool_function(
         &self,
         id: host::HostBoolFunctionId,
     ) -> &host::HostedBoolFunction<Profile> {
         self.host_functions.bool(id)
+    }
+
+    pub(crate) fn host_nil_function(
+        &self,
+        id: host::HostNilFunctionId,
+    ) -> &host::HostedNilFunction<Profile> {
+        self.host_functions.nil(id)
     }
 }
 

@@ -49,6 +49,19 @@ pub(crate) fn call_float(function: usize, args: impl IntoIterator<Item = CallArg
     ))
 }
 
+pub(crate) fn call_float_at(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+    site: crate::plan::HostCallSite,
+) -> Float {
+    let args = args.into_iter().collect::<Vec<_>>();
+    Float(FloatExpr::call_at(
+        instantiation(function, &args, ValueShape::Float),
+        args,
+        site,
+    ))
+}
+
 pub(crate) fn call_bool(function: usize, args: impl IntoIterator<Item = CallArg>) -> Bool {
     let args = args.into_iter().collect::<Vec<_>>();
     Bool(BoolExpr::call(

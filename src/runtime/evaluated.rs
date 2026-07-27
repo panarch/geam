@@ -3,6 +3,7 @@ use bitvec::vec::BitVec;
 use ecow::EcoString;
 use num_bigint::BigInt;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use super::state::{ListValueId, RuntimeState};
 use crate::plan::ValueType;
@@ -22,7 +23,7 @@ use crate::plan::execution::type_::{CustomConstructorId, CustomTypeId, FunctionT
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::runtime) struct EvaluatedBitArray {
-    bits: Rc<BitVec<u8, Msb0>>,
+    value: crate::BitArrayValue,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -60,12 +61,20 @@ impl EvaluatedBitArray {
         bits.force_align();
         bits.set_uninitialized(false);
         Self {
-            bits: Rc::new(bits),
+            value: crate::BitArrayValue::from_evaluated(Arc::new(bits)),
         }
     }
 
     pub(in crate::runtime) fn bits(&self) -> &bitvec::slice::BitSlice<u8, Msb0> {
-        &self.bits
+        self.value.bits()
+    }
+
+    pub(in crate::runtime) fn value(&self) -> crate::BitArrayValue {
+        self.value.clone()
+    }
+
+    pub(in crate::runtime) fn from_value(value: crate::BitArrayValue) -> Self {
+        Self { value }
     }
 }
 
@@ -1198,8 +1207,8 @@ pub fn main() {
         let source = [0x77u8];
         let value = EvaluatedBitArray::new(source.view_bits::<Msb0>()[4..6].to_bitvec());
 
-        assert_eq!(value.bits.as_raw_slice(), &[0b0100_0000]);
-        assert_eq!(value.bits.len(), 2);
+        assert_eq!(value.bits(), &[0b0100_0000u8].view_bits::<Msb0>()[..2],);
+        assert_eq!(value.bits().len(), 2);
     }
 
     #[test]

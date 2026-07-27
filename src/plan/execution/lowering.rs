@@ -8,6 +8,7 @@ mod value_type;
 
 use super::type_::{CustomTypeTable, ListTypeTable, ValueShapeTable};
 use super::{ExecutionProgram, ExecutionProgramCommon};
+use crate::plan::execution::function::ExecutionProfile;
 use crate::plan::{ModulePlan, ValueShape};
 use specialization::{
     RepresentationContext, SpecializationKey, SpecializedCustomConstructor,
@@ -37,9 +38,9 @@ struct SpecializationState {
     erased_specializations: HashSet<SpecializationKey>,
 }
 
-struct LoweredExecution<IntFunction, BoolFunction> {
+struct LoweredExecution<Profile: ExecutionProfile> {
     constants: super::constant::ConstantTable,
-    functions: super::function::FunctionTables<IntFunction, BoolFunction>,
+    functions: super::function::FunctionTables<Profile>,
     list_types: ListTypeTable,
     custom_types: CustomTypeTable,
     value_shapes: ValueShapeTable,
@@ -50,14 +51,12 @@ enum SpecializationOutcome<T> {
     RequiresErasure(HashSet<SpecializationKey>),
 }
 
-type PlainIntFunction = super::function::ExecutableFunction<super::function::IntFunctionBody>;
-type PlainBoolFunction = super::function::ExecutableFunction<super::function::BoolFunctionBody>;
 type LoweringCompletion<Execution> = (
     ProgramConstantTemplates,
     RepresentationContext,
     SpecializationOutcome<Box<Execution>>,
 );
-type PlainLoweredExecution = LoweredExecution<PlainIntFunction, PlainBoolFunction>;
+type PlainLoweredExecution = LoweredExecution<Infallible>;
 
 pub(super) use host::lower_hosted;
 
