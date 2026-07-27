@@ -62,6 +62,38 @@ module-qualified function template target. Equal local indices in different
 modules are distinct references, while qualified and unqualified imports of
 the same target share one identity.
 
+## Rust Host Functions
+
+Rust host functions enter through package-qualified source-less host modules.
+The ordinary `ExecutionPlan` has an uninhabited host target and remains
+host-free. Hosted source instead follows this separate pipeline:
+
+```text
+HostModules + PackageSource[]
+-> HostedTypedProgram
+-> HostedModulePlan
+-> HostedExecution
+```
+
+Registration seals a callable schema and implementation together, so missing
+implementations and signature mismatches cannot become runtime states. The
+plan retains only package, module, function, scheme, shape, and callable target
+metadata. Rust callback objects are carried separately and retained only for
+host functions reached by execution specialization.
+
+Host calls use the same family-specific runtime function IDs as Gleam
+functions. Direct calls, tail calls, function-value calls, and top-level
+reference equality therefore do not introduce a parallel dispatch or identity
+model. Qualified and unqualified references to one host function compare
+equal; Rust closure addresses and captures do not participate in language
+equality.
+
+The current host signature is the infallible
+`fn(BigInt, BigInt) -> BigInt` Rust boundary corresponding to Gleam
+`fn(Int, Int) -> Int`. It performs no `Value` downcast, string lookup, panic
+translation, provider fallback, or mutable per-run host state. Source
+`@external` provider binding and broader value families are separate work.
+
 ## Generic Values
 
 A bare type parameter has no successful runtime value representation. A

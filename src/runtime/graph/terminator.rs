@@ -1,11 +1,11 @@
 use super::environment::{BlockEnvironment, RetainedValues};
 use super::pattern;
-use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::function::NeverFunctionId;
 use crate::plan::execution::graph::{
     BlockGraphExitId, BlockId, Edge, MatchEdge, MatchEdgeArgument, NeverCallTarget, SourceStopKind,
     Terminator,
 };
+use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::ExecutionError;
 use crate::runtime::error::{ExecutionResult, PanicKind};
 use crate::runtime::evaluated::EvaluatedNeverFunction;
@@ -29,7 +29,7 @@ pub(super) enum NeverCall {
 }
 
 pub(super) fn terminator_action(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     environment: &BlockEnvironment,
     terminator: &Terminator,

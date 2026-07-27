@@ -1,7 +1,6 @@
 use super::super::environment::BlockEnvironment;
 use super::value::{constant, custom_projection, list_element, tuple_projection};
 use crate::plan::ValueType;
-use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::function::{FunctionBody, FunctionEntry, ListFunctionId};
 use crate::plan::execution::graph::{
     FunctionCapture, FunctionInstruction, FunctionInstructionKind, FunctionTarget, ParamLocal,
@@ -11,8 +10,9 @@ use crate::runtime::evaluated::{
     EvaluatedCapture, EvaluatedCustomFunction, EvaluatedFunction, EvaluatedFunctionValue,
     EvaluatedListCapture, FunctionReferenceId,
 };
+use crate::runtime::function::RuntimeIntFunction as _;
 use crate::runtime::state::RuntimeState;
-use crate::runtime::{ExecutionError, InvariantError};
+use crate::runtime::{ExecutableRuntimePlan, ExecutionError, InvariantError};
 
 #[derive(Clone, Copy)]
 enum FunctionIdentity {
@@ -21,7 +21,7 @@ enum FunctionIdentity {
 }
 
 pub(super) fn evaluate(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     environment: &BlockEnvironment,
     instruction: &FunctionInstruction,
@@ -111,7 +111,7 @@ pub(super) fn push(environment: &mut BlockEnvironment, value: EvaluatedFunctionV
 }
 
 fn target_value(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     target: &FunctionTarget,
     captures: Vec<EvaluatedCapture>,
     type_: crate::plan::execution::type_::FunctionType,
@@ -177,17 +177,14 @@ fn evaluated_function<Id: Clone + FunctionReferenceId>(
     }
 }
 
-fn target_params(plan: &ExecutionPlan, target: &FunctionTarget) -> Vec<ParamLocal> {
+fn target_params(plan: &impl ExecutableRuntimePlan, target: &FunctionTarget) -> Vec<ParamLocal> {
     match target {
         FunctionTarget::Generic(_) => Vec::new(),
         FunctionTarget::Never(function) => {
             let function = plan.never_function(*function);
             graph_params(function.entry(), function.body())
         }
-        FunctionTarget::Int(function) => {
-            let function = plan.int_function(*function);
-            graph_params(function.entry(), function.body())
-        }
+        FunctionTarget::Int(function) => plan.int_function(*function).parameter_locals(plan),
         FunctionTarget::Float(function) => {
             let function = plan.float_function(*function);
             graph_params(function.entry(), function.body())
@@ -225,7 +222,10 @@ fn target_params(plan: &ExecutionPlan, target: &FunctionTarget) -> Vec<ParamLoca
     }
 }
 
-fn list_target_params(plan: &ExecutionPlan, function: &ListFunctionId) -> Vec<ParamLocal> {
+fn list_target_params(
+    plan: &impl ExecutableRuntimePlan,
+    function: &ListFunctionId,
+) -> Vec<ParamLocal> {
     match function {
         ListFunctionId::Parameter(function) => {
             let function = plan.parameter_list_function(*function);
@@ -283,7 +283,7 @@ fn list_target_params(plan: &ExecutionPlan, function: &ListFunctionId) -> Vec<Pa
 }
 
 fn function_target_params(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     function: &crate::plan::execution::function::FunctionFunctionId,
 ) -> Vec<ParamLocal> {
     use crate::plan::execution::function::FunctionFunctionId as F;

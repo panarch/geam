@@ -2,53 +2,77 @@ pub(crate) mod constant;
 mod explain;
 pub(crate) mod function;
 pub(crate) mod graph;
+pub(crate) mod host;
 mod lowering;
+pub(crate) mod runtime;
 pub(crate) mod type_;
 
-use self::constant::{ConstantId, ConstantProgram, ConstantTable, ConstantValue};
+use self::constant::ConstantTable;
+#[cfg(test)]
+use self::constant::{ConstantId, ConstantProgram, ConstantValue};
+#[cfg(test)]
 use self::function::{
     BitArrayFunctionBody, BitArrayFunctionFunctionBody, BitArrayFunctionFunctionId,
-    BitArrayFunctionId, BitArrayListFunctionBody, BitArrayListFunctionId, BoolFunctionBody,
-    BoolFunctionFunctionBody, BoolFunctionFunctionId, BoolFunctionId, BoolListFunctionBody,
-    BoolListFunctionId, CustomFunctionBody, CustomFunctionFunctionBody, CustomFunctionFunctionId,
-    CustomFunctionId, CustomListFunctionBody, CustomListFunctionId, ExecutableFunction,
-    FloatFunctionBody, FloatFunctionFunctionBody, FloatFunctionFunctionId, FloatFunctionId,
-    FloatListFunctionBody, FloatListFunctionId, FunctionFunctionFunctionBody,
-    FunctionFunctionFunctionId, FunctionLabelSource, FunctionListFunctionBody,
-    FunctionListFunctionId, FunctionTables, GenericFunctionFunctionBody, GenericFunctionFunctionId,
-    IntFunctionBody, IntFunctionFunctionBody, IntFunctionFunctionId, IntFunctionId,
-    IntListFunctionBody, IntListFunctionId, ListFunctionFunctionBody, ListFunctionFunctionId,
-    ListListFunctionBody, ListListFunctionId, NeverFunctionBody, NeverFunctionFunctionBody,
-    NeverFunctionFunctionId, NeverFunctionId, NilFunctionBody, NilFunctionFunctionBody,
-    NilFunctionFunctionId, NilFunctionId, NilListFunctionBody, NilListFunctionId,
-    ParameterListFunctionBody, ParameterListFunctionId, ParameterListListFunctionBody,
-    ParameterListListFunctionId, RuntimeFunctionId, StringFunctionBody, StringFunctionFunctionBody,
-    StringFunctionFunctionId, StringFunctionId, StringListFunctionBody, StringListFunctionId,
-    TupleFunctionBody, TupleFunctionFunctionBody, TupleFunctionFunctionId, TupleFunctionId,
-    TupleListFunctionBody, TupleListFunctionId, UtfCodepointFunctionBody,
-    UtfCodepointFunctionFunctionBody, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
-    UtfCodepointListFunctionBody, UtfCodepointListFunctionId,
+    BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionBody, BoolFunctionFunctionBody,
+    BoolFunctionFunctionId, BoolFunctionId, BoolListFunctionId, CustomFunctionBody,
+    CustomFunctionFunctionBody, CustomFunctionFunctionId, CustomFunctionId, CustomListFunctionId,
+    FloatFunctionFunctionBody, FloatFunctionFunctionId, FloatListFunctionId,
+    FunctionFunctionFunctionBody, FunctionFunctionFunctionId, FunctionListFunctionId,
+    GenericFunctionFunctionBody, GenericFunctionFunctionId, IntFunctionFunctionBody,
+    IntFunctionFunctionId, IntFunctionId, IntListFunctionId, ListFunctionFunctionBody,
+    ListFunctionFunctionId, ListListFunctionId, NeverFunctionFunctionBody, NeverFunctionFunctionId,
+    NilFunctionBody, NilFunctionFunctionBody, NilFunctionFunctionId, NilFunctionId,
+    NilListFunctionId, ParameterListFunctionId, ParameterListListFunctionId,
+    StringFunctionFunctionBody, StringFunctionFunctionId, StringListFunctionId, TupleFunctionBody,
+    TupleFunctionFunctionBody, TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionId,
+    UtfCodepointFunctionFunctionBody, UtfCodepointFunctionFunctionId, UtfCodepointListFunctionId,
 };
-use self::type_::{
-    CustomConstructorId, CustomTypeId, CustomTypeTable, FunctionListTypeId, FunctionType,
-    ListListTypeId, ListTypeId, ListTypeTable, TupleListTypeId, ValueShapeId, ValueShapeTable,
-    ValueType,
+use self::function::{
+    ExecutableFunction, FunctionLabelSource, FunctionTables, IntFunctionBody, RuntimeFunctionId,
 };
 #[cfg(test)]
 use self::type_::{
-    CustomConstructorRefinement, CustomValueShape, CustomValueShapeId, ListStorageTypeId,
-    ValueShapeDescriptor,
+    CustomConstructorId, CustomConstructorRefinement, CustomTypeId, CustomValueShape,
+    CustomValueShapeId, FunctionListTypeId, FunctionType, ListListTypeId, ListStorageTypeId,
+    ListTypeId, TupleListTypeId, ValueShapeDescriptor, ValueShapeId, ValueType,
 };
-use crate::plan::{ModuleId, ModulePlan, SourceContext};
+use self::type_::{CustomTypeTable, ListTypeTable, ValueShapeTable};
+use crate::plan::{HostedModulePlan, ModuleId, ModulePlan, SourceContext};
 use ecow::EcoString;
 pub use explain::ExecutionPlanExplanation;
+use std::convert::Infallible;
 
 pub struct ExecutionPlan {
+    program: ExecutionProgram<Infallible>,
+}
+
+pub struct HostedExecution {
+    program: ExecutionProgram<host::HostIntFunctionId>,
+    host_functions: Box<[host::HostedIntFunction]>,
+}
+
+pub(crate) trait ExecutionHost {
+    type IntFunction;
+}
+
+impl ExecutionHost for Infallible {
+    type IntFunction = ExecutableFunction<IntFunctionBody>;
+}
+
+impl ExecutionHost for host::HostIntFunctionId {
+    type IntFunction = function::IntFunctionEntry<host::HostIntFunctionId>;
+}
+
+pub(crate) struct ExecutionProgram<Host: ExecutionHost> {
+    common: ExecutionProgramCommon,
+    functions: FunctionTables<Host::IntFunction>,
+}
+
+struct ExecutionProgramCommon {
     root: ModuleId,
     modules: Box<[ExecutionModuleContext]>,
     main: RuntimeFunctionId,
     constants: ConstantTable,
-    functions: FunctionTables,
     list_types: ListTypeTable,
     custom_types: CustomTypeTable,
     value_shapes: ValueShapeTable,
@@ -73,28 +97,58 @@ impl explain::Explain for ExecutionPlan {
         context.push_str("module ");
         context.push_str(self.module());
         context.push_str("\nmain ");
-        self.main.function_label().write(context.output());
+        self.program
+            .common
+            .main
+            .function_label()
+            .write(context.output());
         context.push('\n');
-        context.write(&self.functions);
-        context.write(&self.constants);
+        context.write(&self.program.functions);
+        context.write(&self.program.common.constants);
+    }
+}
+
+impl explain::Explain for HostedExecution {
+    fn write_explanation(&self, context: &mut explain::ExplainContext<'_, '_>) {
+        context.push_str("module ");
+        context.push_str(&self.program.common.modules[self.program.common.root.index()].module);
+        context.push_str("\nmain ");
+        self.program
+            .common
+            .main
+            .function_label()
+            .write(context.output());
+        context.push('\n');
+        context.write(&function::HostedFunctionTablesExplanation::new(
+            &self.program.functions,
+            &self.host_functions,
+        ));
+        context.write(&self.program.common.constants);
     }
 }
 
 impl ExecutionPlan {
     pub fn from_module_plan(module_plan: ModulePlan) -> Self {
-        lowering::lower(module_plan)
+        Self {
+            program: lowering::lower(module_plan),
+        }
     }
 
     pub fn module(&self) -> &EcoString {
-        &self.modules[self.root.index()].module
+        &self.program.common.modules[self.program.common.root.index()].module
     }
 
     pub fn source_context(&self) -> Option<&SourceContext> {
-        self.modules[self.root.index()].source_context.as_ref()
+        self.program.common.modules[self.program.common.root.index()]
+            .source_context
+            .as_ref()
     }
 
+    #[cfg(test)]
     pub(crate) fn source_context_for(&self, module: &EcoString) -> Option<&SourceContext> {
-        self.modules
+        self.program
+            .common
+            .modules
             .iter()
             .find(|context| &context.module == module)
             .and_then(|context| context.source_context.as_ref())
@@ -103,53 +157,66 @@ impl ExecutionPlan {
     pub fn explain(&self) -> ExecutionPlanExplanation<'_> {
         ExecutionPlanExplanation::new(self)
     }
+}
 
+#[cfg(test)]
+impl ExecutionPlan {
     pub(crate) fn main_runtime(&self) -> RuntimeFunctionId {
-        self.main.clone()
+        self.program.common.main.clone()
     }
 
     pub(crate) fn constant<Return: ConstantValue>(
         &self,
         id: ConstantId<Return>,
     ) -> &ConstantProgram<Return> {
-        self.constants.get(id)
+        self.program.common.constants.get(id)
     }
 
     pub(crate) fn list_value_type(&self, id: ListTypeId) -> crate::plan::ValueType {
-        self.list_types.list_value_type(id, &self.custom_types)
+        self.program
+            .common
+            .list_types
+            .list_value_type(id, &self.program.common.custom_types)
     }
 
     #[cfg(test)]
     pub(crate) fn list_storage_type(&self, id: ListTypeId) -> ListStorageTypeId {
-        self.list_types.storage_type(id)
+        self.program.common.list_types.storage_type(id)
     }
 
     pub(crate) fn tuple_list_item_type(&self, id: TupleListTypeId) -> Vec<crate::plan::ValueType> {
-        self.list_types.tuple_item_type(id, &self.custom_types)
+        self.program
+            .common
+            .list_types
+            .tuple_item_type(id, &self.program.common.custom_types)
     }
 
     pub(crate) fn nested_list_item_type(&self, id: ListListTypeId) -> crate::plan::ValueType {
-        self.list_types
-            .nested_list_item_type(id, &self.custom_types)
+        self.program
+            .common
+            .list_types
+            .nested_list_item_type(id, &self.program.common.custom_types)
     }
 
     pub(crate) fn function_list_item_type(
         &self,
         id: FunctionListTypeId,
     ) -> crate::plan::FunctionType {
-        self.list_types.function_item_type(id, &self.custom_types)
-    }
-
-    pub(crate) fn value_type(&self, type_: &ValueType) -> crate::plan::ValueType {
-        self.list_types.value_type(type_, &self.custom_types)
+        self.program
+            .common
+            .list_types
+            .function_item_type(id, &self.program.common.custom_types)
     }
 
     pub(crate) fn function_type(&self, type_: &FunctionType) -> crate::plan::FunctionType {
-        self.list_types.function_type(type_, &self.custom_types)
+        self.program
+            .common
+            .list_types
+            .function_type(type_, &self.program.common.custom_types)
     }
 
     pub(crate) fn custom_value_type(&self, id: CustomTypeId) -> crate::plan::CustomType {
-        self.custom_types.value_type(id)
+        self.program.common.custom_types.value_type(id)
     }
 
     #[cfg(test)]
@@ -157,7 +224,11 @@ impl ExecutionPlan {
         &self,
         shape: &CustomValueShape,
     ) -> CustomConstructorRefinement {
-        self.value_shapes.custom(shape.shape_id()).constructor()
+        self.program
+            .common
+            .value_shapes
+            .custom(shape.shape_id())
+            .constructor()
     }
 
     #[cfg(test)]
@@ -170,8 +241,8 @@ impl ExecutionPlan {
 
     #[cfg(test)]
     fn custom_shape_type(&self, id: CustomValueShapeId) -> crate::plan::CustomType {
-        let shape = self.value_shapes.custom(id);
-        let nominal = self.custom_types.value_type(shape.type_id());
+        let shape = self.program.common.value_shapes.custom(id);
+        let nominal = self.program.common.custom_types.value_type(shape.type_id());
         crate::plan::CustomType::new(
             nominal.type_name().clone(),
             shape
@@ -184,7 +255,7 @@ impl ExecutionPlan {
 
     #[cfg(test)]
     fn value_shape_type(&self, id: ValueShapeId) -> crate::plan::ValueType {
-        match self.value_shapes.get(id) {
+        match self.program.common.value_shapes.get(id) {
             ValueShapeDescriptor::Parameter(parameter) => {
                 crate::plan::ValueType::Parameter(*parameter)
             }
@@ -220,14 +291,14 @@ impl ExecutionPlan {
     }
 
     pub(crate) fn shape_value_type(&self, id: ValueShapeId) -> ValueType {
-        self.value_shapes.value_type(id).clone()
+        self.program.common.value_shapes.value_type(id).clone()
     }
 
     pub(crate) fn custom_constructor(
         &self,
         id: CustomConstructorId,
     ) -> &type_::CustomConstructorDescriptor {
-        self.custom_types.constructor(id)
+        self.program.common.custom_types.constructor(id)
     }
 
     #[cfg(test)]
@@ -236,103 +307,56 @@ impl ExecutionPlan {
         type_index: usize,
         constructor_index: usize,
     ) -> CustomConstructorId {
-        self.custom_types
+        self.program
+            .common
+            .custom_types
             .constructor_id(type_index, constructor_index)
     }
 
     pub(crate) fn int_function(&self, id: IntFunctionId) -> &ExecutableFunction<IntFunctionBody> {
-        self.functions.int_function(id)
-    }
-
-    pub(crate) fn never_function(
-        &self,
-        id: NeverFunctionId,
-    ) -> &ExecutableFunction<NeverFunctionBody> {
-        self.functions.never_function(id)
-    }
-
-    pub(crate) fn float_function(
-        &self,
-        id: FloatFunctionId,
-    ) -> &ExecutableFunction<FloatFunctionBody> {
-        self.functions.float_function(id)
-    }
-
-    pub(crate) fn string_function(
-        &self,
-        id: StringFunctionId,
-    ) -> &ExecutableFunction<StringFunctionBody> {
-        self.functions.string_function(id)
+        self.program.functions.int_function(id)
     }
 
     pub(crate) fn bit_array_function(
         &self,
         id: BitArrayFunctionId,
     ) -> &ExecutableFunction<BitArrayFunctionBody> {
-        self.functions.bit_array_function(id)
-    }
-
-    pub(crate) fn utf_codepoint_function(
-        &self,
-        id: UtfCodepointFunctionId,
-    ) -> &ExecutableFunction<UtfCodepointFunctionBody> {
-        self.functions.utf_codepoint_function(id)
+        self.program.functions.bit_array_function(id)
     }
 
     pub(crate) fn custom_function(
         &self,
         id: CustomFunctionId,
     ) -> &ExecutableFunction<CustomFunctionBody> {
-        self.functions.custom_function(id)
+        self.program.functions.custom_function(id)
     }
 
     #[cfg(test)]
     pub(crate) fn custom_function_id(&self, index: usize) -> CustomFunctionId {
-        self.functions.custom_function_id(index)
+        self.program.functions.custom_function_id(index)
     }
 
     pub(crate) fn bool_function(
         &self,
         id: BoolFunctionId,
     ) -> &ExecutableFunction<BoolFunctionBody> {
-        self.functions.bool_function(id)
+        self.program.functions.bool_function(id)
     }
 
     pub(crate) fn nil_function(&self, id: NilFunctionId) -> &ExecutableFunction<NilFunctionBody> {
-        self.functions.nil_function(id)
+        self.program.functions.nil_function(id)
     }
 
     pub(crate) fn tuple_function(
         &self,
         id: TupleFunctionId,
     ) -> &ExecutableFunction<TupleFunctionBody> {
-        self.functions.tuple_function(id)
-    }
-
-    pub(crate) fn int_list_function(
-        &self,
-        id: IntListFunctionId,
-    ) -> &ExecutableFunction<IntListFunctionBody> {
-        self.functions.int_list_function(id)
-    }
-
-    pub(crate) fn parameter_list_function(
-        &self,
-        id: ParameterListFunctionId,
-    ) -> &ExecutableFunction<ParameterListFunctionBody> {
-        self.functions.parameter_list_function(id)
-    }
-
-    pub(crate) fn parameter_list_list_function(
-        &self,
-        id: ParameterListListFunctionId,
-    ) -> &ExecutableFunction<ParameterListListFunctionBody> {
-        self.functions.parameter_list_list_function(id)
+        self.program.functions.tuple_function(id)
     }
 
     #[cfg(test)]
     pub(crate) fn parameter_list_function_id(&self, index: usize) -> ParameterListFunctionId {
-        self.functions.parameter_list_function_id(index)
+        self.program.functions.parameter_list_function_id(index)
     }
 
     #[cfg(test)]
@@ -340,22 +364,24 @@ impl ExecutionPlan {
         &self,
         index: usize,
     ) -> ParameterListListFunctionId {
-        self.functions.parameter_list_list_function_id(index)
+        self.program
+            .functions
+            .parameter_list_list_function_id(index)
     }
 
     #[cfg(test)]
     pub(crate) fn int_list_function_id(&self, index: usize) -> IntListFunctionId {
-        self.functions.int_list_function_id(index)
+        self.program.functions.int_list_function_id(index)
     }
 
     #[cfg(test)]
     pub(crate) fn string_list_function_id(&self, index: usize) -> StringListFunctionId {
-        self.functions.string_list_function_id(index)
+        self.program.functions.string_list_function_id(index)
     }
 
     #[cfg(test)]
     pub(crate) fn bit_array_list_function_id(&self, index: usize) -> BitArrayListFunctionId {
-        self.functions.bit_array_list_function_id(index)
+        self.program.functions.bit_array_list_function_id(index)
     }
 
     #[cfg(test)]
@@ -363,214 +389,244 @@ impl ExecutionPlan {
         &self,
         index: usize,
     ) -> UtfCodepointListFunctionId {
-        self.functions.utf_codepoint_list_function_id(index)
+        self.program.functions.utf_codepoint_list_function_id(index)
     }
 
     #[cfg(test)]
     pub(crate) fn custom_list_function_id(&self, index: usize) -> CustomListFunctionId {
-        self.functions.custom_list_function_id(index)
+        self.program.functions.custom_list_function_id(index)
     }
 
     #[cfg(test)]
     pub(crate) fn float_list_function_id(&self, index: usize) -> FloatListFunctionId {
-        self.functions.float_list_function_id(index)
+        self.program.functions.float_list_function_id(index)
     }
 
     #[cfg(test)]
     pub(crate) fn bool_list_function_id(&self, index: usize) -> BoolListFunctionId {
-        self.functions.bool_list_function_id(index)
+        self.program.functions.bool_list_function_id(index)
     }
 
     #[cfg(test)]
     pub(crate) fn nil_list_function_id(&self, index: usize) -> NilListFunctionId {
-        self.functions.nil_list_function_id(index)
+        self.program.functions.nil_list_function_id(index)
     }
 
     #[cfg(test)]
     pub(crate) fn tuple_list_function_id(&self, index: usize) -> TupleListFunctionId {
-        self.functions.tuple_list_function_id(index)
+        self.program.functions.tuple_list_function_id(index)
     }
 
     #[cfg(test)]
     pub(crate) fn list_list_function_id(&self, index: usize) -> ListListFunctionId {
-        self.functions.list_list_function_id(index)
+        self.program.functions.list_list_function_id(index)
     }
 
     #[cfg(test)]
     pub(crate) fn function_list_function_id(&self, index: usize) -> FunctionListFunctionId {
-        self.functions.function_list_function_id(index)
-    }
-
-    pub(crate) fn string_list_function(
-        &self,
-        id: StringListFunctionId,
-    ) -> &ExecutableFunction<StringListFunctionBody> {
-        self.functions.string_list_function(id)
-    }
-
-    pub(crate) fn bit_array_list_function(
-        &self,
-        id: BitArrayListFunctionId,
-    ) -> &ExecutableFunction<BitArrayListFunctionBody> {
-        self.functions.bit_array_list_function(id)
-    }
-
-    pub(crate) fn utf_codepoint_list_function(
-        &self,
-        id: UtfCodepointListFunctionId,
-    ) -> &ExecutableFunction<UtfCodepointListFunctionBody> {
-        self.functions.utf_codepoint_list_function(id)
-    }
-
-    pub(crate) fn custom_list_function(
-        &self,
-        id: CustomListFunctionId,
-    ) -> &ExecutableFunction<CustomListFunctionBody> {
-        self.functions.custom_list_function(id)
-    }
-
-    pub(crate) fn float_list_function(
-        &self,
-        id: FloatListFunctionId,
-    ) -> &ExecutableFunction<FloatListFunctionBody> {
-        self.functions.float_list_function(id)
-    }
-
-    pub(crate) fn bool_list_function(
-        &self,
-        id: BoolListFunctionId,
-    ) -> &ExecutableFunction<BoolListFunctionBody> {
-        self.functions.bool_list_function(id)
-    }
-
-    pub(crate) fn nil_list_function(
-        &self,
-        id: NilListFunctionId,
-    ) -> &ExecutableFunction<NilListFunctionBody> {
-        self.functions.nil_list_function(id)
-    }
-
-    pub(crate) fn tuple_list_function(
-        &self,
-        id: TupleListFunctionId,
-    ) -> &ExecutableFunction<TupleListFunctionBody> {
-        self.functions.tuple_list_function(id)
-    }
-
-    pub(crate) fn list_list_function(
-        &self,
-        id: ListListFunctionId,
-    ) -> &ExecutableFunction<ListListFunctionBody> {
-        self.functions.list_list_function(id)
-    }
-
-    pub(crate) fn function_list_function(
-        &self,
-        id: FunctionListFunctionId,
-    ) -> &ExecutableFunction<FunctionListFunctionBody> {
-        self.functions.function_list_function(id)
+        self.program.functions.function_list_function_id(index)
     }
 
     pub(crate) fn int_function_function(
         &self,
         id: IntFunctionFunctionId,
     ) -> &ExecutableFunction<IntFunctionFunctionBody> {
-        self.functions.int_function_function(id)
+        self.program.functions.int_function_function(id)
     }
 
     pub(crate) fn float_function_function(
         &self,
         id: FloatFunctionFunctionId,
     ) -> &ExecutableFunction<FloatFunctionFunctionBody> {
-        self.functions.float_function_function(id)
+        self.program.functions.float_function_function(id)
     }
 
     pub(crate) fn string_function_function(
         &self,
         id: StringFunctionFunctionId,
     ) -> &ExecutableFunction<StringFunctionFunctionBody> {
-        self.functions.string_function_function(id)
+        self.program.functions.string_function_function(id)
     }
 
     pub(crate) fn bit_array_function_function(
         &self,
         id: BitArrayFunctionFunctionId,
     ) -> &ExecutableFunction<BitArrayFunctionFunctionBody> {
-        self.functions.bit_array_function_function(id)
+        self.program.functions.bit_array_function_function(id)
     }
 
     pub(crate) fn utf_codepoint_function_function(
         &self,
         id: UtfCodepointFunctionFunctionId,
     ) -> &ExecutableFunction<UtfCodepointFunctionFunctionBody> {
-        self.functions.utf_codepoint_function_function(id)
+        self.program.functions.utf_codepoint_function_function(id)
     }
 
     pub(crate) fn custom_function_function(
         &self,
         id: &CustomFunctionFunctionId,
     ) -> &ExecutableFunction<CustomFunctionFunctionBody> {
-        self.functions.custom_function_function(id)
+        self.program.functions.custom_function_function(id)
     }
 
     pub(crate) fn generic_function_function(
         &self,
         id: &GenericFunctionFunctionId,
     ) -> &ExecutableFunction<GenericFunctionFunctionBody> {
-        self.functions.generic_function_function(id)
+        self.program.functions.generic_function_function(id)
     }
 
     pub(crate) fn never_function_function(
         &self,
         id: &NeverFunctionFunctionId,
     ) -> &ExecutableFunction<NeverFunctionFunctionBody> {
-        self.functions.never_function_function(id)
+        self.program.functions.never_function_function(id)
     }
 
     pub(crate) fn bool_function_function(
         &self,
         id: BoolFunctionFunctionId,
     ) -> &ExecutableFunction<BoolFunctionFunctionBody> {
-        self.functions.bool_function_function(id)
+        self.program.functions.bool_function_function(id)
     }
 
     pub(crate) fn nil_function_function(
         &self,
         id: NilFunctionFunctionId,
     ) -> &ExecutableFunction<NilFunctionFunctionBody> {
-        self.functions.nil_function_function(id)
+        self.program.functions.nil_function_function(id)
     }
 
     pub(crate) fn tuple_function_function(
         &self,
         id: TupleFunctionFunctionId,
     ) -> &ExecutableFunction<TupleFunctionFunctionBody> {
-        self.functions.tuple_function_function(id)
+        self.program.functions.tuple_function_function(id)
     }
 
     pub(crate) fn list_function_function(
         &self,
         id: &ListFunctionFunctionId,
     ) -> &ExecutableFunction<ListFunctionFunctionBody> {
-        self.functions.list_function_function(id)
+        self.program.functions.list_function_function(id)
     }
 
     pub(crate) fn function_function_function(
         &self,
         id: &FunctionFunctionFunctionId,
     ) -> &ExecutableFunction<FunctionFunctionFunctionBody> {
-        self.functions.function_function_function(id)
+        self.program.functions.function_function_function(id)
     }
 
     #[cfg(test)]
     pub(crate) fn function_function_function_id(&self, index: usize) -> FunctionFunctionFunctionId {
-        self.functions.function_function_function_id(index)
+        self.program.functions.function_function_function_id(index)
+    }
+}
+
+impl HostedExecution {
+    pub fn from_module_plan(module_plan: HostedModulePlan) -> Self {
+        let (program, host_functions) = lowering::lower_hosted(module_plan);
+        Self {
+            program,
+            host_functions,
+        }
+    }
+
+    pub fn run_main(
+        &self,
+        echo: &mut dyn crate::EchoSink,
+    ) -> Result<crate::Value, crate::ExecutionError> {
+        crate::runtime::run_hosted_main(self, echo)
+    }
+
+    pub fn explain(&self) -> ExecutionPlanExplanation<'_> {
+        ExecutionPlanExplanation::new_hosted(self)
+    }
+
+    pub(crate) fn host_int_function(
+        &self,
+        id: host::HostIntFunctionId,
+    ) -> &host::HostedIntFunction {
+        &self.host_functions[id.index()]
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::HostedExecution;
     use crate::plan::execution::explain;
+    use crate::plan::execution::function::{IntFunctionEntry, IntFunctionId};
+    use crate::plan::execution::host::{HostIntFunctionId, HostedIntFunction};
+    use crate::{
+        HostModule, HostModules, ModuleSource, PackageSource, compile_typed_host_program,
+        compile_typed_module, plan_host_program, plan_module,
+    };
+    use num_bigint::BigInt;
+
+    #[test]
+    fn plain_execution_program_keeps_host_targets_uninhabited() {
+        let typed = compile_typed_module("main", "main.gleam", "pub fn main() { 1 }")
+            .expect("source should compile");
+        let plan = plan_module(typed).expect("source should plan");
+        let execution = super::ExecutionPlan::from_module_plan(plan);
+        let function: &super::ExecutableFunction<super::IntFunctionBody> =
+            execution.program.functions.int_function(IntFunctionId(0));
+
+        assert_eq!(function.body().block_graph().blocks().len(), 1);
+    }
+
+    #[test]
+    fn hosted_execution_program_seals_graph_and_host_int_targets() {
+        let math = HostModule::new("host_support", "host/math")
+            .expect("host module should be valid")
+            .with_function("add", <BigInt as std::ops::Add>::add)
+            .expect("host function should be valid");
+        let hosts = HostModules::new([math]).expect("host modules should be unique");
+        let source = r#"
+import host/math
+
+pub fn main() {
+  let call = fn(left, right) { math.add(left, right) }
+  call(1, 2)
+}
+"#;
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                ["host_support"],
+                [ModuleSource::new("main", "main.gleam", source)],
+            )],
+            hosts,
+        )
+        .expect("host source should compile");
+        let plan = plan_host_program(typed).expect("host source should plan");
+        let execution = HostedExecution::from_module_plan(plan);
+        let graph: &IntFunctionEntry<HostIntFunctionId> =
+            execution.program.functions.int_function(IntFunctionId(0));
+        let host: &IntFunctionEntry<HostIntFunctionId> =
+            execution.program.functions.int_function(IntFunctionId(2));
+
+        assert_eq!(
+            [graph, host].map(|function| match function {
+                IntFunctionEntry::Graph(_) => "graph",
+                IntFunctionEntry::Host(_) => "host",
+            }),
+            ["graph", "host"],
+        );
+        assert!(matches!(
+            host,
+            IntFunctionEntry::Host(target) if *target == HostIntFunctionId::new(0)
+        ));
+        let implementation: &HostedIntFunction = &execution.host_functions[0];
+        assert_eq!(implementation.name(), "add");
+        assert_eq!(
+            execution.run_main(&mut Vec::new()),
+            Ok(crate::Value::Int(3.into())),
+        );
+    }
 
     #[test]
     fn writes_the_complete_execution_plan() {
@@ -590,6 +646,43 @@ mod tests {
             let mut context = explain::ExplainContext::new(plan, output);
             context.write(plan);
         });
+    }
+
+    #[test]
+    fn writes_the_complete_hosted_execution_plan() {
+        let math = HostModule::new("host_support", "host/math")
+            .expect("host module should be valid")
+            .with_function("add", <BigInt as std::ops::Add>::add)
+            .expect("host function should be valid");
+        let hosts = HostModules::new([math]).expect("host modules should be unique");
+        let source = "import host/math\npub fn main() { math.add(1, 2) }";
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                ["host_support"],
+                [ModuleSource::new("main", "main.gleam", source)],
+            )],
+            hosts,
+        )
+        .expect("host source should compile");
+        let plan = plan_host_program(typed).expect("host source should plan");
+        let execution = HostedExecution::from_module_plan(plan);
+        let expected = concat!(
+            "module main\n",
+            "main int#0\n",
+            "\nfunction int#0\n",
+            "  entry b0 params=[] captures=[]\n",
+            "  block b0 params=[]\n",
+            "    %int#0:shape#0(Int) = int.value 1\n",
+            "    %int#1:shape#0(Int) = int.value 2\n",
+            "    tail int#1 args=[%int#0, %int#1]\n",
+            "\nfunction int#1\n",
+            "  host host_support::host/math.add signature=fn(Int, Int) -> Int\n",
+        );
+
+        assert_eq!(execution.explain().to_string(), expected);
     }
 
     #[test]
@@ -682,9 +775,33 @@ pub fn main() {
         let module = crate::plan_program(typed).expect("generic module program should plan");
         let execution = super::ExecutionPlan::from_module_plan(module);
 
-        assert_eq!(execution.functions.value_returns.int_functions.len(), 1);
-        assert_eq!(execution.functions.value_returns.string_functions.len(), 1);
-        assert_eq!(execution.functions.value_returns.tuple_functions.len(), 1);
+        assert_eq!(
+            execution
+                .program
+                .functions
+                .value_returns
+                .int_functions
+                .len(),
+            1
+        );
+        assert_eq!(
+            execution
+                .program
+                .functions
+                .value_returns
+                .string_functions
+                .len(),
+            1
+        );
+        assert_eq!(
+            execution
+                .program
+                .functions
+                .value_returns
+                .tuple_functions
+                .len(),
+            1
+        );
         assert_eq!(
             crate::run_main(&execution, &mut Vec::new()),
             Ok(crate::Value::Tuple(vec![

@@ -46,7 +46,9 @@ pub(crate) use list_return::{
 };
 pub(crate) use runtime::{FunctionReturnFamily, GenericCallableId, RuntimeFunctionId};
 pub(super) use table::FunctionTables;
+pub(in crate::plan::execution) use table::HostedFunctionTablesExplanation;
 pub(in crate::plan::execution::function) use table::write_table;
+pub(crate) use value_return::IntFunctionEntry;
 pub(in crate::plan::execution) use value_return::ValueFunctionTables;
 pub(crate) use value_return::{
     BitArrayFunctionBody, BitArrayFunctionId, BoolFunctionBody, BoolFunctionId, CustomFunctionBody,

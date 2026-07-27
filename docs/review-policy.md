@@ -186,6 +186,23 @@ shape instead of weakening it into a wider internal representation.
 Target-specific externals or backend-dependent behavior must be rejected until
 Geam has an explicit compatibility rule for that surface.
 
+## Host Boundary Rules
+
+Keep host schemas, executable targets, and implementation objects under
+distinct owners. Canonical planner and execution graph nodes may retain
+package-qualified schemas and sealed targets, but must not retain Rust
+callbacks, mutable host state, runtime registries, or implementation-derived
+identity. A hosted pipeline wrapper may carry callbacks between phases only as
+a private sidecar outside those canonical nodes.
+
+Plain execution must make host targets uninhabited. Hosted execution must bind
+every target before runtime construction; missing providers and signature
+mismatches must not become runtime lookup, downcast, fallback, or error paths.
+
+Host calls should join the existing typed call, tail-call, and function-value
+paths. Do not add string dispatch or a parallel identity model solely for host
+implementations.
+
 ## Panic Rules
 
 Production Geam logic must not use explicit panic paths for control flow,

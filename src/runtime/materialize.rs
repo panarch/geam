@@ -14,9 +14,13 @@ use super::{
     GenericFunctionValue, IntFunctionValue, ListFunctionValue, ListValue, NeverFunctionValue,
     NilFunctionValue, StringFunctionValue, TupleFunctionValue, UtfCodepointFunctionValue, Value,
 };
-use crate::plan::execution::ExecutionPlan;
+use crate::plan::execution::runtime::RuntimeExecutionPlan;
 
-pub(super) fn value(plan: &ExecutionPlan, state: &RuntimeState, value: EvaluatedValue) -> Value {
+pub(super) fn value(
+    plan: &impl RuntimeExecutionPlan,
+    state: &RuntimeState,
+    value: EvaluatedValue,
+) -> Value {
     match value {
         EvaluatedValue::Int(value) => Value::Int(value),
         EvaluatedValue::Float(value) => Value::Float(value),
@@ -39,7 +43,7 @@ pub(super) fn value(plan: &ExecutionPlan, state: &RuntimeState, value: Evaluated
     }
 }
 
-fn list(plan: &ExecutionPlan, state: &RuntimeState, value: &ListValueId) -> ListValue {
+fn list(plan: &impl RuntimeExecutionPlan, state: &RuntimeState, value: &ListValueId) -> ListValue {
     match value {
         ListValueId::Parameter(value) => {
             ListValue::empty(crate::plan::ValueType::Parameter(value.type_id().item()))
@@ -112,7 +116,7 @@ fn list(plan: &ExecutionPlan, state: &RuntimeState, value: &ListValueId) -> List
 }
 
 fn function(
-    plan: &ExecutionPlan,
+    plan: &impl RuntimeExecutionPlan,
     state: &RuntimeState,
     value: EvaluatedFunctionValue,
 ) -> FunctionValue {
@@ -160,7 +164,11 @@ fn function(
     FunctionValue::from_kind(kind)
 }
 
-fn custom(plan: &ExecutionPlan, state: &RuntimeState, value: EvaluatedCustomValue) -> CustomValue {
+fn custom(
+    plan: &impl RuntimeExecutionPlan,
+    state: &RuntimeState,
+    value: EvaluatedCustomValue,
+) -> CustomValue {
     let constructor = plan.custom_constructor(value.constructor());
     let fields = value
         .fields()
@@ -182,7 +190,7 @@ fn custom(plan: &ExecutionPlan, state: &RuntimeState, value: EvaluatedCustomValu
 }
 
 fn int_function(
-    plan: &ExecutionPlan,
+    plan: &impl RuntimeExecutionPlan,
     state: &RuntimeState,
     value: &EvaluatedIntFunction,
 ) -> IntFunctionValue {
@@ -195,7 +203,7 @@ fn int_function(
 }
 
 fn generic_function(
-    plan: &ExecutionPlan,
+    plan: &impl RuntimeExecutionPlan,
     state: &RuntimeState,
     value: &EvaluatedGenericFunction,
 ) -> GenericFunctionValue {
@@ -208,7 +216,7 @@ fn generic_function(
 }
 
 fn never_function(
-    plan: &ExecutionPlan,
+    plan: &impl RuntimeExecutionPlan,
     state: &RuntimeState,
     value: &EvaluatedNeverFunction,
 ) -> NeverFunctionValue {
@@ -221,7 +229,7 @@ fn never_function(
 }
 
 fn float_function(
-    plan: &ExecutionPlan,
+    plan: &impl RuntimeExecutionPlan,
     state: &RuntimeState,
     value: &EvaluatedFloatFunction,
 ) -> FloatFunctionValue {
@@ -234,7 +242,7 @@ fn float_function(
 }
 
 fn string_function(
-    plan: &ExecutionPlan,
+    plan: &impl RuntimeExecutionPlan,
     state: &RuntimeState,
     value: &EvaluatedStringFunction,
 ) -> StringFunctionValue {
@@ -247,7 +255,7 @@ fn string_function(
 }
 
 fn bit_array_function(
-    plan: &ExecutionPlan,
+    plan: &impl RuntimeExecutionPlan,
     state: &RuntimeState,
     value: &EvaluatedBitArrayFunction,
 ) -> BitArrayFunctionValue {
@@ -260,7 +268,7 @@ fn bit_array_function(
 }
 
 fn utf_codepoint_function(
-    plan: &ExecutionPlan,
+    plan: &impl RuntimeExecutionPlan,
     state: &RuntimeState,
     value: &EvaluatedUtfCodepointFunction,
 ) -> UtfCodepointFunctionValue {
@@ -273,7 +281,7 @@ fn utf_codepoint_function(
 }
 
 fn custom_function(
-    plan: &ExecutionPlan,
+    plan: &impl RuntimeExecutionPlan,
     state: &RuntimeState,
     value: &EvaluatedCustomFunction,
 ) -> CustomFunctionValue {
@@ -294,7 +302,7 @@ fn custom_function(
 }
 
 fn bool_function(
-    plan: &ExecutionPlan,
+    plan: &impl RuntimeExecutionPlan,
     state: &RuntimeState,
     value: &EvaluatedBoolFunction,
 ) -> BoolFunctionValue {
@@ -307,7 +315,7 @@ fn bool_function(
 }
 
 fn nil_function(
-    plan: &ExecutionPlan,
+    plan: &impl RuntimeExecutionPlan,
     state: &RuntimeState,
     value: &EvaluatedNilFunction,
 ) -> NilFunctionValue {
@@ -320,7 +328,7 @@ fn nil_function(
 }
 
 fn tuple_function(
-    plan: &ExecutionPlan,
+    plan: &impl RuntimeExecutionPlan,
     state: &RuntimeState,
     value: &EvaluatedTupleFunction,
 ) -> TupleFunctionValue {
@@ -333,7 +341,7 @@ fn tuple_function(
 }
 
 fn list_function(
-    plan: &ExecutionPlan,
+    plan: &impl RuntimeExecutionPlan,
     state: &RuntimeState,
     value: &EvaluatedListFunction,
 ) -> ListFunctionValue {
@@ -346,7 +354,7 @@ fn list_function(
 }
 
 fn function_function(
-    plan: &ExecutionPlan,
+    plan: &impl RuntimeExecutionPlan,
     state: &RuntimeState,
     value: &EvaluatedFunctionFunction,
 ) -> FunctionFunctionValue {
@@ -359,7 +367,7 @@ fn function_function(
 }
 
 fn nested_list_values(
-    plan: &ExecutionPlan,
+    plan: &impl RuntimeExecutionPlan,
     state: &RuntimeState,
     value: &super::state::ListListValueId,
 ) -> Vec<ListValue> {
@@ -373,7 +381,7 @@ fn nested_list_values(
 }
 
 fn captures(
-    plan: &ExecutionPlan,
+    plan: &impl RuntimeExecutionPlan,
     state: &RuntimeState,
     values: &[EvaluatedCapture],
 ) -> Vec<CaptureValue> {
@@ -383,7 +391,11 @@ fn captures(
         .collect()
 }
 
-fn capture(plan: &ExecutionPlan, state: &RuntimeState, value: &EvaluatedCapture) -> CaptureValue {
+fn capture(
+    plan: &impl RuntimeExecutionPlan,
+    state: &RuntimeState,
+    value: &EvaluatedCapture,
+) -> CaptureValue {
     match value.kind() {
         EvaluatedCaptureKind::Int { local, value } => CaptureValue::int(*local, value.clone()),
         EvaluatedCaptureKind::Float { local, value } => CaptureValue::float(*local, *value),
@@ -453,7 +465,7 @@ fn capture(plan: &ExecutionPlan, state: &RuntimeState, value: &EvaluatedCapture)
 }
 
 fn list_capture(
-    plan: &ExecutionPlan,
+    plan: &impl RuntimeExecutionPlan,
     state: &RuntimeState,
     value: &EvaluatedListCapture,
 ) -> CaptureListValue {

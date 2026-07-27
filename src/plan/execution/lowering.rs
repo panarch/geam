@@ -5,18 +5,31 @@ mod local;
 mod specialization;
 mod value_type;
 
-use super::ExecutionPlan;
 use super::type_::{CustomTypeTable, ListTypeTable, ValueShapeTable};
-use crate::plan::{ModulePlan, ValueShape};
+use super::{ExecutionProgram, ExecutionProgramCommon};
+use crate::plan::{
+    HostFunctionTemplate, HostedModulePlan, HostedModulePlanParts, HostedPlannedModuleKind,
+    ModulePlan, ValueShape,
+};
 use specialization::{
     RepresentationContext, SpecializationKey, SpecializedCustomConstructor,
     SpecializedCustomValueShape, SpecializedFunctionShape, SpecializedTypeSubstitution,
     SpecializedValueShape,
 };
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::convert::Infallible;
 
 struct FunctionTemplates {
     templates: Vec<Vec<crate::plan::FunctionTemplate>>,
+}
+
+struct HostedFunctionTemplates {
+    templates: Vec<Vec<HostedFunctionTemplate>>,
+}
+
+enum HostedFunctionTemplate {
+    Source(Box<crate::plan::FunctionTemplate>),
+    Host(HostFunctionTemplate),
 }
 
 struct ProgramConstantTemplates {
@@ -35,9 +48,9 @@ struct SpecializationState {
     erased_specializations: HashSet<SpecializationKey>,
 }
 
-struct LoweredExecution {
+struct LoweredExecution<IntFunction> {
     constants: super::constant::ConstantTable,
-    functions: super::function::FunctionTables,
+    functions: super::function::FunctionTables<IntFunction>,
     list_types: ListTypeTable,
     custom_types: CustomTypeTable,
     value_shapes: ValueShapeTable,
@@ -143,17 +156,11 @@ impl StoredTargetLocal {
 
 impl LoweringContext {
     fn new(
-        templates: &FunctionTemplates,
+        entry_templates: HashMap<crate::plan::FunctionTemplateId, local::FunctionEntryTemplate>,
         representations: RepresentationContext,
         constant_templates: ProgramConstantTemplates,
         erased_specializations: HashSet<SpecializationKey>,
     ) -> Self {
-        let entry_templates = templates
-            .templates
-            .iter()
-            .flatten()
-            .map(|template| (template.id(), local::FunctionEntryTemplate::new(template)))
-            .collect::<HashMap<_, _>>();
         Self {
             constant_templates,
             constants: constant::ConstantLowering::default(),
@@ -1022,7 +1029,13 @@ impl LoweringContext {
     ) -> (
         ProgramConstantTemplates,
         RepresentationContext,
-        SpecializationOutcome<Box<LoweredExecution>>,
+        SpecializationOutcome<
+            Box<
+                LoweredExecution<
+                    super::function::ExecutableFunction<super::function::IntFunctionBody>,
+                >,
+            >,
+        >,
     ) {
         let Self {
             constant_templates,
@@ -1048,9 +1061,51 @@ impl LoweringContext {
             .include_prior_erasure(erased_specializations);
         (constant_templates, representations, outcome)
     }
+
+    fn finish_hosted(
+        self,
+        host_functions: Vec<(
+            usize,
+            function::LoweredSpecialization<
+                super::function::IntFunctionEntry<super::host::HostIntFunctionId>,
+            >,
+        )>,
+    ) -> (
+        ProgramConstantTemplates,
+        RepresentationContext,
+        SpecializationOutcome<
+            Box<
+                LoweredExecution<super::function::IntFunctionEntry<super::host::HostIntFunctionId>>,
+            >,
+        >,
+    ) {
+        let Self {
+            constant_templates,
+            constants,
+            types,
+            representations,
+            functions,
+            erased_specializations,
+            ..
+        } = self;
+        let outcome = functions
+            .finish_hosted(host_functions)
+            .map(|functions| {
+                let (list_types, custom_types, value_shapes) = types.into_tables();
+                Box::new(LoweredExecution {
+                    constants: constants.finish(),
+                    functions: *functions,
+                    list_types,
+                    custom_types,
+                    value_shapes,
+                })
+            })
+            .include_prior_erasure(erased_specializations);
+        (constant_templates, representations, outcome)
+    }
 }
 
-pub(super) fn lower(module_plan: ModulePlan) -> ExecutionPlan {
+pub(super) fn lower(module_plan: ModulePlan) -> ExecutionProgram<Infallible> {
     let parts = module_plan.into_parts();
     let root = parts.root;
     let entry = parts.entry;
@@ -1102,7 +1157,7 @@ pub(super) fn lower(module_plan: ModulePlan) -> ExecutionPlan {
         );
         let main_return_shape = representations.inhabitation(&main_value_shape);
         let mut context = LoweringContext::new(
-            &templates,
+            templates.entry_templates(),
             representations,
             constant_templates,
             erased_specializations,
@@ -1126,16 +1181,175 @@ pub(super) fn lower(module_plan: ModulePlan) -> ExecutionPlan {
             })
     });
 
-    ExecutionPlan {
-        root,
-        modules: module_contexts.into_boxed_slice(),
-        main,
-        constants: lowered.constants,
+    ExecutionProgram {
+        common: ExecutionProgramCommon {
+            root,
+            modules: module_contexts.into_boxed_slice(),
+            main,
+            constants: lowered.constants,
+            list_types: lowered.list_types,
+            custom_types: lowered.custom_types,
+            value_shapes: lowered.value_shapes,
+        },
         functions: lowered.functions,
-        list_types: lowered.list_types,
-        custom_types: lowered.custom_types,
-        value_shapes: lowered.value_shapes,
     }
+}
+
+pub(super) fn lower_hosted(
+    module_plan: HostedModulePlan,
+) -> (
+    ExecutionProgram<super::host::HostIntFunctionId>,
+    Box<[super::host::HostedIntFunction]>,
+) {
+    let HostedModulePlanParts {
+        root,
+        entry,
+        modules,
+        implementations,
+    } = module_plan.into_parts();
+    let implementations = implementations
+        .into_iter()
+        .map(crate::plan::HostFunctionImplementation::into_parts)
+        .collect::<HashMap<_, _>>();
+    let mut module_contexts = Vec::with_capacity(modules.len());
+    let mut module_templates = Vec::with_capacity(modules.len());
+    let mut constant_templates = Vec::with_capacity(modules.len());
+    let mut custom_types = Vec::new();
+
+    for module in modules {
+        match module.into_kind() {
+            HostedPlannedModuleKind::Source(module) => {
+                let module = *module;
+                let parts = module.into_parts();
+                module_contexts.push(super::ExecutionModuleContext::new(
+                    parts.module,
+                    parts.source_context,
+                ));
+                custom_types.extend(parts.custom_types);
+                constant_templates.push(parts.constants);
+                let mut templates = parts
+                    .functions
+                    .into_iter()
+                    .map(|template| HostedFunctionTemplate::Source(Box::new(template)))
+                    .collect::<Vec<_>>();
+                templates.extend(
+                    parts
+                        .anonymous_functions
+                        .into_iter()
+                        .map(|template| HostedFunctionTemplate::Source(Box::new(template))),
+                );
+                templates.sort_by_key(HostedFunctionTemplate::index);
+                module_templates.push(templates);
+            }
+            HostedPlannedModuleKind::Host(module) => {
+                let module_id = module.id();
+                module_contexts.push(super::ExecutionModuleContext::new(
+                    module.module().clone(),
+                    None,
+                ));
+                constant_templates.push(crate::plan::ConstantTemplates::from_module_entries(
+                    module_id,
+                    Vec::new(),
+                ));
+                let mut templates = module
+                    .functions()
+                    .iter()
+                    .cloned()
+                    .map(HostedFunctionTemplate::Host)
+                    .collect::<Vec<_>>();
+                templates.sort_by_key(HostedFunctionTemplate::index);
+                module_templates.push(templates);
+            }
+        }
+    }
+
+    let templates = HostedFunctionTemplates {
+        templates: module_templates,
+    };
+    let main_return_shape = templates
+        .get(entry)
+        .signature()
+        .shape()
+        .return_shape()
+        .clone();
+    let main_key = SpecializationKey::monomorphic(entry);
+    let initial = SpecializationState {
+        constant_templates: ProgramConstantTemplates {
+            modules: constant_templates,
+        },
+        representations: RepresentationContext::new(custom_types),
+        erased_specializations: HashSet::new(),
+    };
+
+    let (main, lowered, host_functions) = resolve_specialization_fixed_point(initial, |state| {
+        let SpecializationState {
+            constant_templates,
+            representations,
+            erased_specializations,
+        } = state;
+        let main_value_shape = specialization::SpecializedValueShape::instantiate(
+            &main_return_shape,
+            main_key.substitution(),
+        );
+        let main_return_shape = representations.inhabitation(&main_value_shape);
+        let mut context = LoweringContext::new(
+            templates.entry_templates(),
+            representations,
+            constant_templates,
+            erased_specializations,
+        );
+        let main = context.reserve_main(main_key.clone(), main_return_shape);
+        let mut host_functions = Vec::new();
+        let mut lowered_host_functions = Vec::new();
+
+        while let Some(key) = context.pending.pop_front() {
+            context.begin(&key);
+            match templates.get(key.template()) {
+                HostedFunctionTemplate::Source(template) => {
+                    function::lower_specialized(template, &key, &mut context);
+                }
+                HostedFunctionTemplate::Host(template) => {
+                    let index = context.specialization_index(&key);
+                    let target = super::host::HostIntFunctionId::new(host_functions.len());
+                    host_functions.push(super::host::HostedIntFunction::new(
+                        template.package().clone(),
+                        template.module().clone(),
+                        template.name().clone(),
+                        implementations[&template.id()].clone(),
+                    ));
+                    lowered_host_functions
+                        .push((index, function::lowered_host_int_function(&key, target)));
+                }
+            }
+        }
+
+        let (constant_templates, representations, outcome) =
+            context.finish_hosted(lowered_host_functions);
+        let erased_specializations = outcome.erased_specializations();
+        outcome
+            .map(|lowered| (main, lowered, host_functions))
+            .into_fixed_point(SpecializationState {
+                constant_templates,
+                representations,
+                erased_specializations,
+            })
+    });
+
+    (
+        ExecutionProgram {
+            common: ExecutionProgramCommon {
+                root,
+                modules: module_contexts.into_boxed_slice(),
+                main,
+                constants: lowered.constants,
+                list_types: lowered.list_types,
+                custom_types: lowered.custom_types,
+                value_shapes: lowered.value_shapes,
+            },
+            functions: lowered.functions,
+        },
+        host_functions.into_boxed_slice(),
+    )
 }
 
 impl FunctionTemplates {
@@ -1145,6 +1359,63 @@ impl FunctionTemplates {
 
     fn get(&self, id: crate::plan::FunctionTemplateId) -> &crate::plan::FunctionTemplate {
         &self.templates[id.module().index()][id.index()]
+    }
+
+    fn entry_templates(
+        &self,
+    ) -> HashMap<crate::plan::FunctionTemplateId, local::FunctionEntryTemplate> {
+        self.templates
+            .iter()
+            .flatten()
+            .map(|template| (template.id(), local::FunctionEntryTemplate::new(template)))
+            .collect()
+    }
+}
+
+impl HostedFunctionTemplates {
+    fn get(&self, id: crate::plan::FunctionTemplateId) -> &HostedFunctionTemplate {
+        &self.templates[id.module().index()][id.index()]
+    }
+
+    fn entry_templates(
+        &self,
+    ) -> HashMap<crate::plan::FunctionTemplateId, local::FunctionEntryTemplate> {
+        self.templates
+            .iter()
+            .flatten()
+            .map(|template| {
+                (
+                    template.id(),
+                    match template {
+                        HostedFunctionTemplate::Source(template) => {
+                            local::FunctionEntryTemplate::new(template)
+                        }
+                        HostedFunctionTemplate::Host(template) => {
+                            local::FunctionEntryTemplate::from_shapes(
+                                template.signature().shape().argument_shapes().to_vec(),
+                            )
+                        }
+                    },
+                )
+            })
+            .collect()
+    }
+}
+
+impl HostedFunctionTemplate {
+    fn signature(&self) -> &crate::plan::FunctionTemplateSignature {
+        match self {
+            Self::Source(template) => template.signature(),
+            Self::Host(template) => template.signature(),
+        }
+    }
+
+    fn id(&self) -> crate::plan::FunctionTemplateId {
+        self.signature().id()
+    }
+
+    fn index(&self) -> usize {
+        self.id().index()
     }
 }
 
@@ -1203,7 +1474,7 @@ pub(super) mod test_support {
         let templates = FunctionTemplates::new(vec![vec![main, capture_target]]);
 
         LoweringContext::new(
-            &templates,
+            templates.entry_templates(),
             RepresentationContext::new(custom_types),
             ProgramConstantTemplates {
                 modules: vec![crate::plan::ConstantTemplates::from_entries(Vec::new())],

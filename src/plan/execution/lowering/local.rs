@@ -190,6 +190,13 @@ impl FunctionEntryTemplate {
         }
     }
 
+    pub(super) fn from_shapes(params: Vec<crate::plan::ValueShape>) -> Self {
+        Self {
+            params: params.into_boxed_slice(),
+            captures: Vec::new().into_boxed_slice(),
+        }
+    }
+
     pub(super) fn capture_target(
         &self,
         position: module::CapturePosition,

@@ -7,12 +7,12 @@ use super::{
     FloatFunctionFunctionBody, FloatFunctionFunctionId, FloatFunctionId, FloatListFunctionBody,
     FloatListFunctionId, FunctionFunctionFunctionBody, FunctionFunctionFunctionId,
     FunctionListFunctionBody, FunctionListFunctionId, GenericFunctionFunctionBody,
-    GenericFunctionFunctionId, IntFunctionBody, IntFunctionFunctionBody, IntFunctionFunctionId,
-    IntFunctionId, IntListFunctionBody, IntListFunctionId, ListFunctionFunctionBody,
-    ListFunctionFunctionId, ListListFunctionBody, ListListFunctionId, NeverFunctionBody,
-    NeverFunctionFunctionBody, NeverFunctionFunctionId, NeverFunctionId, NilFunctionBody,
-    NilFunctionFunctionBody, NilFunctionFunctionId, NilFunctionId, NilListFunctionBody,
-    NilListFunctionId, ParameterListFunctionBody, ParameterListFunctionId,
+    GenericFunctionFunctionId, IntFunctionBody, IntFunctionEntry, IntFunctionFunctionBody,
+    IntFunctionFunctionId, IntFunctionId, IntListFunctionBody, IntListFunctionId,
+    ListFunctionFunctionBody, ListFunctionFunctionId, ListListFunctionBody, ListListFunctionId,
+    NeverFunctionBody, NeverFunctionFunctionBody, NeverFunctionFunctionId, NeverFunctionId,
+    NilFunctionBody, NilFunctionFunctionBody, NilFunctionFunctionId, NilFunctionId,
+    NilListFunctionBody, NilListFunctionId, ParameterListFunctionBody, ParameterListFunctionId,
     ParameterListListFunctionBody, ParameterListListFunctionId, StringFunctionBody,
     StringFunctionFunctionBody, StringFunctionFunctionId, StringFunctionId, StringListFunctionBody,
     StringListFunctionId, TupleFunctionBody, TupleFunctionFunctionBody, TupleFunctionFunctionId,
@@ -24,18 +24,87 @@ use super::{ExecutableFunction, FunctionFunctionTables, ListFunctionTables, Valu
 use crate::plan::execution::explain::{Explain, ExplainContext, FunctionLabel};
 use crate::plan::execution::function::{FunctionBodyOwner, TailCallLabelIndex};
 use crate::plan::execution::graph::LocalLabel;
+use crate::plan::execution::host::{HostIntFunctionId, HostedIntFunction};
 
-pub(in crate::plan::execution) struct FunctionTables {
-    pub(in crate::plan::execution) value_returns: ValueFunctionTables,
+pub(in crate::plan::execution) struct FunctionTables<IntFunction> {
+    pub(in crate::plan::execution) value_returns: ValueFunctionTables<IntFunction>,
     pub(in crate::plan::execution) list_returns: ListFunctionTables,
     pub(in crate::plan::execution) function_returns: FunctionFunctionTables,
 }
 
-impl Explain for FunctionTables {
+impl Explain for FunctionTables<ExecutableFunction<IntFunctionBody>> {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
         context.write(&self.value_returns);
         context.write(&self.list_returns);
         context.write(&self.function_returns);
+    }
+}
+
+pub(in crate::plan::execution) struct HostedFunctionTablesExplanation<'a> {
+    tables: &'a FunctionTables<IntFunctionEntry<HostIntFunctionId>>,
+    host_functions: &'a [HostedIntFunction],
+}
+
+impl<'a> HostedFunctionTablesExplanation<'a> {
+    pub(in crate::plan::execution) fn new(
+        tables: &'a FunctionTables<IntFunctionEntry<HostIntFunctionId>>,
+        host_functions: &'a [HostedIntFunction],
+    ) -> Self {
+        Self {
+            tables,
+            host_functions,
+        }
+    }
+}
+
+impl Explain for HostedFunctionTablesExplanation<'_> {
+    fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
+        write_table(context, "never", &self.tables.value_returns.never_functions);
+        for (index, function) in self.tables.value_returns.int_functions.iter().enumerate() {
+            match function {
+                IntFunctionEntry::Graph(function) => {
+                    write_function(context, "int", index, function);
+                }
+                IntFunctionEntry::Host(target) => {
+                    context.push_str("\nfunction ");
+                    FunctionLabel::new("int", index).write(context.output());
+                    context.push_str("\n  host ");
+                    let function = &self.host_functions[target.index()];
+                    context.push_str(function.package());
+                    context.push_str("::");
+                    context.push_str(function.module());
+                    context.push('.');
+                    context.push_str(function.name());
+                    context.push_str(" signature=fn(Int, Int) -> Int\n");
+                }
+            }
+        }
+        write_table(context, "float", &self.tables.value_returns.float_functions);
+        write_table(
+            context,
+            "string",
+            &self.tables.value_returns.string_functions,
+        );
+        write_table(
+            context,
+            "bit_array",
+            &self.tables.value_returns.bit_array_functions,
+        );
+        write_table(
+            context,
+            "utf_codepoint",
+            &self.tables.value_returns.utf_codepoint_functions,
+        );
+        write_table(
+            context,
+            "custom",
+            &self.tables.value_returns.custom_functions,
+        );
+        write_table(context, "bool", &self.tables.value_returns.bool_functions);
+        write_table(context, "nil", &self.tables.value_returns.nil_functions);
+        write_table(context, "tuple", &self.tables.value_returns.tuple_functions);
+        context.write(&self.tables.list_returns);
+        context.write(&self.tables.function_returns);
     }
 }
 
@@ -50,22 +119,41 @@ pub(in crate::plan::execution::function) fn write_table<'a, Body, Functions>(
     Functions: IntoIterator<Item = &'a ExecutableFunction<Body>>,
 {
     for (index, function) in functions.into_iter().enumerate() {
-        context.push_str("\nfunction ");
-        FunctionLabel::new(family, index).write(context.output());
-        context.push('\n');
-        let body = function.body().function_body();
-        body.write_explanation(
-            context,
-            family,
-            function.entry().params(body),
-            function.entry().captures(body),
-        );
+        write_function(context, family, index, function);
     }
+}
+
+fn write_function<Body>(
+    context: &mut ExplainContext<'_, '_>,
+    family: &'static str,
+    index: usize,
+    function: &ExecutableFunction<Body>,
+) where
+    Body: FunctionBodyOwner,
+    Body::Return: LocalLabel,
+    Body::TailCall: TailCallLabelIndex,
+{
+    context.push_str("\nfunction ");
+    FunctionLabel::new(family, index).write(context.output());
+    context.push('\n');
+    let body = function.body().function_body();
+    body.write_explanation(
+        context,
+        family,
+        function.entry().params(body),
+        function.entry().captures(body),
+    );
 }
 
 #[cfg(test)]
 mod explain_tests {
+    use super::HostedFunctionTablesExplanation;
     use crate::plan::execution::explain;
+    use crate::{
+        HostModule, HostModules, HostedExecution, ModuleSource, PackageSource,
+        compile_typed_host_program, plan_host_program,
+    };
+    use num_bigint::BigInt;
 
     #[test]
     fn writes_value_list_and_function_return_groups_in_order() {
@@ -112,15 +200,56 @@ pub fn main() {
         assert_explanation(source, expected);
     }
 
+    #[test]
+    fn writes_hosted_int_targets_in_first_use_order() {
+        let math = HostModule::new("host_support", "host/math")
+            .expect("host module should be valid")
+            .with_function("add", <BigInt as std::ops::Add>::add)
+            .expect("host function should be valid");
+        let hosts = HostModules::new([math]).expect("host modules should be unique");
+        let source = "import host/math\npub fn main() { math.add(1, 2) }";
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                ["host_support"],
+                [ModuleSource::new("main", "main.gleam", source)],
+            )],
+            hosts,
+        )
+        .expect("host source should compile");
+        let plan = plan_host_program(typed).expect("host source should plan");
+        let execution = HostedExecution::from_module_plan(plan);
+        let expected = concat!(
+            "\nfunction int#0\n",
+            "  entry b0 params=[] captures=[]\n",
+            "  block b0 params=[]\n",
+            "    %int#0:shape#0(Int) = int.value 1\n",
+            "    %int#1:shape#0(Int) = int.value 2\n",
+            "    tail int#1 args=[%int#0, %int#1]\n",
+            "\nfunction int#1\n",
+            "  host host_support::host/math.add signature=fn(Int, Int) -> Int\n",
+        );
+        let mut actual = String::new();
+        let mut context = explain::ExplainContext::new_hosted(&execution, &mut actual);
+        context.write(&HostedFunctionTablesExplanation::new(
+            &execution.program.functions,
+            &execution.host_functions,
+        ));
+
+        assert_eq!(actual, expected);
+    }
+
     fn assert_explanation(source: &str, expected: &str) {
         explain::assert_rendered(source, expected, |plan, output| {
             let mut context = explain::ExplainContext::new(plan, output);
-            context.write(&plan.functions);
+            context.write(&plan.program.functions);
         });
     }
 }
 
-impl FunctionTables {
+impl<IntFunction> FunctionTables<IntFunction> {
     pub(in crate::plan::execution) fn never_function(
         &self,
         id: NeverFunctionId,
@@ -246,10 +375,7 @@ impl FunctionTables {
         self.list_returns.function_list_functions[index].0
     }
 
-    pub(in crate::plan::execution) fn int_function(
-        &self,
-        id: IntFunctionId,
-    ) -> &ExecutableFunction<IntFunctionBody> {
+    pub(in crate::plan::execution) fn int_function(&self, id: IntFunctionId) -> &IntFunction {
         &self.value_returns.int_functions[id.0]
     }
 

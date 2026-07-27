@@ -7,9 +7,9 @@ use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::ExecutableFunction;
 use crate::plan::execution::function::write_table;
 
-pub(in crate::plan::execution) struct ValueFunctionTables {
+pub(in crate::plan::execution) struct ValueFunctionTables<IntFunction> {
     pub(in crate::plan::execution) never_functions: Vec<ExecutableFunction<NeverFunctionBody>>,
-    pub(in crate::plan::execution) int_functions: Vec<ExecutableFunction<IntFunctionBody>>,
+    pub(in crate::plan::execution) int_functions: Vec<IntFunction>,
     pub(in crate::plan::execution) float_functions: Vec<ExecutableFunction<FloatFunctionBody>>,
     pub(in crate::plan::execution) string_functions: Vec<ExecutableFunction<StringFunctionBody>>,
     pub(in crate::plan::execution) bit_array_functions:
@@ -22,7 +22,7 @@ pub(in crate::plan::execution) struct ValueFunctionTables {
     pub(in crate::plan::execution) tuple_functions: Vec<ExecutableFunction<TupleFunctionBody>>,
 }
 
-impl Explain for ValueFunctionTables {
+impl Explain for ValueFunctionTables<ExecutableFunction<IntFunctionBody>> {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
         write_table(context, "never", &self.never_functions);
         write_table(context, "int", &self.int_functions);
@@ -70,7 +70,7 @@ pub fn main() {
     fn assert_explanation(source: &str, expected: &str) {
         explain::assert_rendered(source, expected, |plan, output| {
             let mut context = explain::ExplainContext::new(plan, output);
-            context.write(&plan.functions.value_returns);
+            context.write(&plan.program.functions.value_returns);
         });
     }
 }

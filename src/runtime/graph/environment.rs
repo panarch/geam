@@ -583,6 +583,10 @@ impl RetainedValues {
         }
     }
 
+    pub(in crate::runtime) fn int_argument(&self, index: usize) -> BigInt {
+        self.values.ints[index].clone()
+    }
+
     pub(in crate::runtime) fn push_evaluated(&mut self, value: EvaluatedValue) {
         match value {
             EvaluatedValue::Int(value) => self.values.ints.push(value),

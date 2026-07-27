@@ -18,7 +18,7 @@ pub use error::{
     UnsupportedBitArraySegmentReason, UnsupportedCaseReason, UnsupportedExpressionKind,
     UnsupportedFunctionReason, UnsupportedPatternKind, UnsupportedTopLevelKind,
 };
-pub use module::{plan_module, plan_module_with_source, plan_program};
+pub use module::{plan_host_program, plan_module, plan_module_with_source, plan_program};
 
 #[cfg(test)]
 mod support {

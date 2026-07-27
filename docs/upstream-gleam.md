@@ -121,6 +121,13 @@ pub fn compile_typed_project(
     project_root: impl Into<camino::Utf8PathBuf>,
     root_module: impl Into<ecow::EcoString>,
 ) -> Result<geam::TypedProgram, geam::ProjectError>
+
+pub fn compile_typed_host_program(
+    root_package: impl Into<ecow::EcoString>,
+    root_module: impl Into<ecow::EcoString>,
+    packages: impl IntoIterator<Item = geam::PackageSource>,
+    hosts: geam::HostModules,
+) -> Result<geam::HostedTypedProgram, geam::FrontendError>
 ```
 
 `compile_typed_project` is a read-only loader for a Gleam project whose
@@ -130,6 +137,12 @@ It never runs Gleam CLI, downloads dependencies, or modifies project files.
 The loader follows production dependencies and selects the
 `Target::Erlang` import closure rooted at the requested module. Every selected
 module body is then analysed and planned in full.
+
+`compile_typed_host_program` adds package-qualified source-less module
+interfaces to the same in-memory analysis graph. The adapter presents their
+declared functions to Gleam's analyzer without generating fake Gleam bodies.
+Host provenance and Rust implementations remain Geam-owned data and are not
+interpreted as pure Gleam definitions.
 
 The current public execution APIs are:
 
@@ -147,12 +160,27 @@ pub fn plan_program(
     program: geam::TypedProgram,
 ) -> Result<geam::ModulePlan, geam::PlanError>
 
+pub fn plan_host_program(
+    program: geam::HostedTypedProgram,
+) -> Result<geam::HostedModulePlan, geam::PlanError>
+
 pub fn run_main(
     plan: &geam::ExecutionPlan,
     echo: &mut dyn geam::EchoSink,
 ) -> Result<geam::Value, geam::ExecutionError>
 
 impl geam::ExecutionPlan {
+    pub fn explain(&self) -> geam::ExecutionPlanExplanation<'_>
+}
+
+impl geam::HostedExecution {
+    pub fn from_module_plan(plan: geam::HostedModulePlan) -> Self
+
+    pub fn run_main(
+        &self,
+        echo: &mut dyn geam::EchoSink,
+    ) -> Result<geam::Value, geam::ExecutionError>
+
     pub fn explain(&self) -> geam::ExecutionPlanExplanation<'_>
 }
 ```
@@ -163,6 +191,12 @@ execution nodes remain opaque, while `ExecutionPlan::explain()` provides a
 human-readable view of lowered functions, constant programs, typed values,
 instructions, block parameters, and control-flow edges. Its text is not a
 machine-stable serialization format.
+
+The hosted pipeline is intentionally a separate type-level boundary. A
+`HostedModulePlan` exposes source templates and host schemas while carrying
+registered callbacks in a private sidecar. `HostedExecution` retains only the
+implementations selected by lowering, pairs them with first-use host targets,
+and cannot be passed to the plain `run_main` function.
 
 The caller supplies the `EchoSink` used by `run_main`. Each emitted
 `EchoOutput` owns its materialized value, optional message, and compact source
@@ -178,8 +212,8 @@ milestone:
 - Code generation metadata.
 - Package resolution, dependency download, package cache mutation, and artifact
   writing.
-- Backend external modules, host bindings, broader Gleam profile support, and
-  CLI behavior.
+- Source-declared backend external providers, provider fallback, broader host
+  signatures, host state, and CLI behavior.
 
 ## Current Source Boundary
 

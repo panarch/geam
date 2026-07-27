@@ -1,13 +1,18 @@
 use super::{FrontendError, ModuleSource, PackageSource};
+use crate::host::{HostFunctionSchema, HostModules, RegisteredHostModule};
 use camino::Utf8PathBuf;
 use ecow::EcoString;
 use gleam_core::analyse::{ModuleAnalyzerConstructor, TargetSupport};
-use gleam_core::ast::{TypedModule, UntypedModule};
+use gleam_core::ast::{Publicity, SrcSpan, TypedModule, UntypedModule};
 use gleam_core::build::{Origin, Target};
 use gleam_core::config::PackageConfig;
 use gleam_core::line_numbers::LineNumbers;
 use gleam_core::parse;
-use gleam_core::type_::{PRELUDE_MODULE_NAME, build_prelude};
+use gleam_core::type_::error::VariableOrigin;
+use gleam_core::type_::{
+    Deprecation, ModuleInterface, PRELUDE_MODULE_NAME, References, ValueConstructor,
+    ValueConstructorVariant, build_prelude, fn_, int,
+};
 use gleam_core::uid::UniqueIdGenerator;
 use gleam_core::warning::{TypeWarningEmitter, WarningEmitter};
 use im::HashMap as ImHashMap;
@@ -23,11 +28,23 @@ pub struct TypedProgram {
     modules: Vec<TypedProgramModule>,
 }
 
+pub struct HostedTypedProgram {
+    root_package: EcoString,
+    root_module: EcoString,
+    root_index: usize,
+    modules: Vec<HostedTypedProgramModule>,
+}
+
 #[derive(Debug)]
 pub(crate) struct TypedProgramModule {
     pub(crate) module: TypedModule,
     pub(crate) path: Utf8PathBuf,
     pub(crate) source: String,
+}
+
+pub(crate) enum HostedTypedProgramModule {
+    Source(Box<TypedProgramModule>),
+    Host(RegisteredHostModule),
 }
 
 impl TypedProgram {
@@ -44,6 +61,20 @@ impl TypedProgram {
     }
 
     pub(crate) fn into_parts(self) -> (usize, Vec<TypedProgramModule>) {
+        (self.root_index, self.modules)
+    }
+}
+
+impl HostedTypedProgram {
+    pub fn root_package(&self) -> &EcoString {
+        &self.root_package
+    }
+
+    pub fn root_module(&self) -> &EcoString {
+        &self.root_module
+    }
+
+    pub(crate) fn into_parts(self) -> (usize, Vec<HostedTypedProgramModule>) {
         (self.root_index, self.modules)
     }
 }
@@ -91,11 +122,54 @@ pub fn compile_typed_package_program(
     )
 }
 
+pub fn compile_typed_host_program(
+    root_package: impl Into<EcoString>,
+    root_module: impl Into<EcoString>,
+    packages: impl IntoIterator<Item = PackageSource>,
+    hosts: HostModules,
+) -> Result<HostedTypedProgram, FrontendError> {
+    compile_host_package_sources(
+        root_package.into(),
+        root_module.into(),
+        packages.into_iter().collect(),
+        hosts.into_registered(),
+    )
+}
+
 fn compile_package_sources(
     root_package: EcoString,
     root_module: EcoString,
     packages: Vec<PackageSource>,
 ) -> Result<TypedProgram, FrontendError> {
+    let warnings = WarningEmitter::null();
+    let parsed_modules = parse_package_sources(&root_package, packages, &warnings)?;
+
+    compile_parsed_package_program(root_package, root_module, parsed_modules, warnings)
+}
+
+fn compile_host_package_sources(
+    root_package: EcoString,
+    root_module: EcoString,
+    packages: Vec<PackageSource>,
+    host_modules: Vec<RegisteredHostModule>,
+) -> Result<HostedTypedProgram, FrontendError> {
+    let warnings = WarningEmitter::null();
+    let parsed_modules = parse_package_sources(&root_package, packages, &warnings)?;
+
+    compile_parsed_host_program(
+        root_package,
+        root_module,
+        parsed_modules,
+        host_modules,
+        warnings,
+    )
+}
+
+fn parse_package_sources(
+    root_package: &EcoString,
+    packages: Vec<PackageSource>,
+    warnings: &WarningEmitter,
+) -> Result<Vec<ParsedModule>, FrontendError> {
     let mut package_names = BTreeSet::new();
     for package in &packages {
         if !package_names.insert(package.package().clone()) {
@@ -104,13 +178,12 @@ fn compile_package_sources(
             });
         }
     }
-    if !package_names.contains(&root_package) {
+    if !package_names.contains(root_package) {
         return Err(FrontendError::MissingRootPackage {
-            package: root_package,
+            package: root_package.clone(),
         });
     }
 
-    let warnings = WarningEmitter::null();
     let mut parsed_modules = Vec::new();
     for package in packages {
         let (package, direct_dependencies, modules) = package.into_parts();
@@ -119,12 +192,11 @@ fn compile_package_sources(
                 package.clone(),
                 direct_dependencies.clone(),
                 source,
-                &warnings,
+                warnings,
             )?);
         }
     }
-
-    compile_parsed_package_program(root_package, root_module, parsed_modules, warnings)
+    Ok(parsed_modules)
 }
 
 pub(super) fn parse_module(
@@ -157,33 +229,10 @@ pub(super) fn compile_parsed_package_program(
     mut parsed_modules: Vec<ParsedModule>,
     warnings: WarningEmitter,
 ) -> Result<TypedProgram, FrontendError> {
-    let mut module_owners = BTreeMap::new();
-    for parsed in &parsed_modules {
-        if let Some((first_package, first_path)) = module_owners.insert(
-            parsed.module.name.clone(),
-            (parsed.package.clone(), parsed.path.clone()),
-        ) {
-            return Err(FrontendError::DuplicateModule {
-                module: parsed.module.name.clone(),
-                first_package,
-                first_path,
-                second_package: parsed.package.clone(),
-                second_path: parsed.path.clone(),
-            });
-        }
-    }
+    source_module_owners(&parsed_modules)?;
+    ensure_root_source_module(&parsed_modules, &root_package, &root_module)?;
 
-    if !parsed_modules
-        .iter()
-        .any(|module| module.package == root_package && module.module.name == root_module)
-    {
-        return Err(FrontendError::MissingRootModule {
-            package: root_package,
-            module: root_module,
-        });
-    }
-
-    let order = dependency_order(&parsed_modules)?;
+    let order = dependency_order(&parsed_modules, &[])?;
     let positions = order
         .iter()
         .enumerate()
@@ -196,7 +245,7 @@ pub(super) fn compile_parsed_package_program(
         .take_while(|module| *module != &root_module)
         .count();
     let ids = UniqueIdGenerator::new();
-    let mut importable_modules = ImHashMap::new();
+    let mut importable_modules = ImHashMap::<EcoString, ModuleInterface>::new();
     importable_modules.insert(PRELUDE_MODULE_NAME.into(), build_prelude(&ids));
     let dev_dependencies = HashSet::new();
     let mut typed_modules = Vec::with_capacity(order.len());
@@ -251,6 +300,162 @@ pub(super) fn compile_parsed_package_program(
     })
 }
 
+fn compile_parsed_host_program(
+    root_package: EcoString,
+    root_module: EcoString,
+    mut parsed_modules: Vec<ParsedModule>,
+    host_modules: Vec<RegisteredHostModule>,
+    warnings: WarningEmitter,
+) -> Result<HostedTypedProgram, FrontendError> {
+    let module_owners = source_module_owners(&parsed_modules)?;
+    for host in &host_modules {
+        if let Some((source_package, source_path)) = module_owners.get(host.module()) {
+            return Err(FrontendError::SourceHostModuleCollision {
+                module: host.module().clone(),
+                source_package: source_package.clone(),
+                source_path: source_path.clone(),
+                host_package: host.package().clone(),
+            });
+        }
+    }
+
+    ensure_root_source_module(&parsed_modules, &root_package, &root_module)?;
+
+    let order = dependency_order(&parsed_modules, &host_modules)?;
+    let positions = order
+        .iter()
+        .enumerate()
+        .map(|(index, module)| (module.clone(), index))
+        .collect::<BTreeMap<_, _>>();
+    parsed_modules.sort_by_key(|module| positions[&module.module.name]);
+    let mut modules = parsed_modules
+        .into_iter()
+        .map(|module| HostedParsedModule::Source(Box::new(module)))
+        .chain(host_modules.into_iter().map(HostedParsedModule::Host))
+        .collect::<Vec<_>>();
+    modules.sort_by_key(|module| positions[module.module()]);
+
+    let root_index = order
+        .iter()
+        .take_while(|module| *module != &root_module)
+        .count();
+    let ids = UniqueIdGenerator::new();
+    let prelude = build_prelude(&ids);
+    let mut importable_modules = ImHashMap::<EcoString, ModuleInterface>::new();
+    importable_modules.insert(PRELUDE_MODULE_NAME.into(), prelude.clone());
+    let dev_dependencies = HashSet::new();
+    let mut typed_modules = Vec::with_capacity(order.len());
+
+    for module in modules {
+        match module {
+            HostedParsedModule::Source(parsed) => {
+                let parsed = *parsed;
+                let direct_dependencies = parsed
+                    .direct_dependencies
+                    .iter()
+                    .cloned()
+                    .map(|package| (package, ()))
+                    .collect::<HashMap<_, _>>();
+                let visible_modules = importable_modules
+                    .iter()
+                    .filter(|(name, interface)| {
+                        name.as_str() == PRELUDE_MODULE_NAME
+                            || interface.package == parsed.package
+                            || direct_dependencies.contains_key(&interface.package)
+                    })
+                    .map(|(name, interface)| (name.clone(), interface.clone()))
+                    .collect::<ImHashMap<_, _>>();
+                let config = PackageConfig {
+                    name: parsed.package,
+                    ..PackageConfig::default()
+                };
+                let path = parsed.path;
+                let source = parsed.source;
+                let module = ModuleAnalyzerConstructor::<()> {
+                    target: Target::Erlang,
+                    ids: &ids,
+                    origin: Origin::Src,
+                    importable_modules: &visible_modules,
+                    warnings: &TypeWarningEmitter::new(
+                        path.clone(),
+                        source.clone().into(),
+                        warnings.clone(),
+                    ),
+                    direct_dependencies: &direct_dependencies,
+                    dev_dependencies: &dev_dependencies,
+                    target_support: TargetSupport::Enforced,
+                    package_config: &config,
+                }
+                .infer_module(parsed.module, LineNumbers::new(&source), path.clone())
+                .into_result()
+                .map_err(|errors| FrontendError::Analyse {
+                    errors: errors.into_iter().collect(),
+                })?;
+
+                importable_modules.insert(module.name.clone(), module.type_info.clone());
+                typed_modules.push(HostedTypedProgramModule::Source(Box::new(
+                    TypedProgramModule {
+                        module,
+                        path,
+                        source,
+                    },
+                )));
+            }
+            HostedParsedModule::Host(host) => {
+                let interface = host_module_interface(&host, &prelude);
+                importable_modules.insert(host.module().clone(), interface);
+                typed_modules.push(HostedTypedProgramModule::Host(host));
+            }
+        }
+    }
+
+    Ok(HostedTypedProgram {
+        root_package,
+        root_module,
+        root_index,
+        modules: typed_modules,
+    })
+}
+
+fn source_module_owners(
+    modules: &[ParsedModule],
+) -> Result<BTreeMap<EcoString, (EcoString, Utf8PathBuf)>, FrontendError> {
+    let mut owners = BTreeMap::new();
+    for parsed in modules {
+        if let Some((first_package, first_path)) = owners.insert(
+            parsed.module.name.clone(),
+            (parsed.package.clone(), parsed.path.clone()),
+        ) {
+            return Err(FrontendError::DuplicateModule {
+                module: parsed.module.name.clone(),
+                first_package,
+                first_path,
+                second_package: parsed.package.clone(),
+                second_path: parsed.path.clone(),
+            });
+        }
+    }
+    Ok(owners)
+}
+
+fn ensure_root_source_module(
+    modules: &[ParsedModule],
+    root_package: &EcoString,
+    root_module: &EcoString,
+) -> Result<(), FrontendError> {
+    if modules
+        .iter()
+        .any(|module| &module.package == root_package && &module.module.name == root_module)
+    {
+        return Ok(());
+    }
+
+    Err(FrontendError::MissingRootModule {
+        package: root_package.clone(),
+        module: root_module.clone(),
+    })
+}
+
 pub(super) struct ParsedModule {
     pub(super) package: EcoString,
     pub(super) direct_dependencies: Box<[EcoString]>,
@@ -259,7 +464,83 @@ pub(super) struct ParsedModule {
     pub(super) module: UntypedModule,
 }
 
-fn dependency_order(modules: &[ParsedModule]) -> Result<Vec<EcoString>, FrontendError> {
+enum HostedParsedModule {
+    Source(Box<ParsedModule>),
+    Host(RegisteredHostModule),
+}
+
+impl HostedParsedModule {
+    fn module(&self) -> &EcoString {
+        match self {
+            Self::Source(module) => &module.module.name,
+            Self::Host(module) => module.module(),
+        }
+    }
+}
+
+fn host_module_interface(
+    module: &RegisteredHostModule,
+    prelude: &ModuleInterface,
+) -> ModuleInterface {
+    let mut interface = prelude.clone();
+    interface.name = module.module().clone();
+    interface.package = module.package().clone();
+    interface.types.clear();
+    interface.types_value_constructors.clear();
+    interface.values = module
+        .functions()
+        .map(|schema| host_value_constructor(module.module(), schema))
+        .collect();
+    interface.accessors.clear();
+    interface.line_numbers = LineNumbers::new("");
+    interface.src_path = Utf8PathBuf::new();
+    interface.warnings.clear();
+    interface.type_aliases.clear();
+    interface.documentation.clear();
+    interface.contains_echo = false;
+    interface.references = References::default();
+    interface.inline_functions.clear();
+    interface
+}
+
+fn host_value_constructor(
+    module: &EcoString,
+    schema: &HostFunctionSchema,
+) -> (EcoString, ValueConstructor) {
+    let type_ = fn_(vec![int(), int()], int());
+    // Gleam keeps these metadata types crate-private, but exposes their
+    // canonical values through ValueConstructor accessors.
+    let frontend_metadata = ValueConstructor::local_variable(
+        SrcSpan::new(0, 0),
+        VariableOrigin::generated(),
+        type_.clone(),
+    );
+    (
+        schema.name().clone(),
+        ValueConstructor {
+            publicity: Publicity::Public,
+            deprecation: Deprecation::NotDeprecated,
+            variant: ValueConstructorVariant::ModuleFn {
+                name: schema.name().clone(),
+                field_map: None,
+                module: module.clone(),
+                arity: 2,
+                location: SrcSpan::new(0, 0),
+                documentation: None,
+                implementations: frontend_metadata.variant.implementations(),
+                external_erlang: None,
+                external_javascript: None,
+                purity: frontend_metadata.called_function_purity(),
+            },
+            type_,
+        },
+    )
+}
+
+fn dependency_order(
+    modules: &[ParsedModule],
+    hosts: &[RegisteredHostModule],
+) -> Result<Vec<EcoString>, FrontendError> {
     #[derive(Clone, Copy)]
     enum Visit {
         Visiting(usize),
@@ -297,17 +578,26 @@ fn dependency_order(modules: &[ParsedModule]) -> Result<Vec<EcoString>, Frontend
     let supplied = modules
         .iter()
         .map(|module| module.module.name.clone())
+        .chain(hosts.iter().map(|module| module.module().clone()))
         .collect::<BTreeSet<_>>();
-    let package_modules = modules.iter().fold(
-        BTreeMap::<EcoString, BTreeSet<EcoString>>::new(),
-        |mut packages, module| {
-            packages
-                .entry(module.package.clone())
-                .or_default()
-                .insert(module.module.name.clone());
-            packages
-        },
-    );
+    let package_modules = modules
+        .iter()
+        .map(|module| (&module.package, &module.module.name))
+        .chain(
+            hosts
+                .iter()
+                .map(|module| (module.package(), module.module())),
+        )
+        .fold(
+            BTreeMap::<EcoString, BTreeSet<EcoString>>::new(),
+            |mut packages, (package, module)| {
+                packages
+                    .entry(package.clone())
+                    .or_default()
+                    .insert(module.clone());
+                packages
+            },
+        );
     let dependencies = modules
         .iter()
         .map(|module| {
@@ -325,6 +615,11 @@ fn dependency_order(modules: &[ParsedModule]) -> Result<Vec<EcoString>, Frontend
             }
             (module.module.name.clone(), internal)
         })
+        .chain(
+            hosts
+                .iter()
+                .map(|module| (module.module().clone(), BTreeSet::new())),
+        )
         .collect::<BTreeMap<_, _>>();
     let mut order = Vec::with_capacity(modules.len());
     let mut visits = BTreeMap::new();
@@ -338,10 +633,526 @@ fn dependency_order(modules: &[ParsedModule]) -> Result<Vec<EcoString>, Frontend
 #[cfg(test)]
 mod tests {
     use super::{
-        ModuleSource, PackageSource, compile_typed_module, compile_typed_package_program,
-        compile_typed_program,
+        FrontendError, HostedTypedProgramModule, ModuleSource, PackageSource,
+        compile_typed_host_program, compile_typed_module, compile_typed_package_program,
+        compile_typed_program, host_module_interface,
     };
+    use crate::host::{HostModule, HostModules};
+    use crate::plan_host_program;
+    use crate::planner::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
     use ecow::EcoString;
+    use gleam_core::ast::{Publicity, SrcSpan};
+    use gleam_core::type_::error::VariableOrigin;
+    use gleam_core::type_::{
+        Deprecation, ValueConstructor, ValueConstructorVariant, build_prelude, fn_, int,
+    };
+    use gleam_core::uid::UniqueIdGenerator;
+    use num_bigint::BigInt;
+
+    #[test]
+    fn builds_exact_source_less_host_function_interfaces() {
+        let hosts = HostModules::new([HostModule::new("host_support", "host/math")
+            .expect("host module should be valid")
+            .with_function("add", <BigInt as std::ops::Add>::add)
+            .expect("host function should be valid")])
+        .expect("host modules should be unique");
+        let host = hosts
+            .into_registered()
+            .pop()
+            .expect("host module should exist");
+        let ids = UniqueIdGenerator::new();
+        let prelude = build_prelude(&ids);
+        let next_id = ids.next();
+        let interface = host_module_interface(&host, &prelude);
+        let constructor = &interface.values["add"];
+        let expected_type = fn_(vec![int(), int()], int());
+        let expected_metadata = ValueConstructor::local_variable(
+            SrcSpan::new(0, 0),
+            VariableOrigin::generated(),
+            expected_type.clone(),
+        );
+        let expected_constructor = ValueConstructor {
+            publicity: Publicity::Public,
+            deprecation: Deprecation::NotDeprecated,
+            variant: ValueConstructorVariant::ModuleFn {
+                name: "add".into(),
+                field_map: None,
+                module: "host/math".into(),
+                arity: 2,
+                location: SrcSpan::new(0, 0),
+                documentation: None,
+                implementations: expected_metadata.variant.implementations(),
+                external_erlang: None,
+                external_javascript: None,
+                purity: expected_metadata.called_function_purity(),
+            },
+            type_: expected_type,
+        };
+
+        assert_eq!(ids.next(), next_id + 1);
+        assert_eq!(interface.name, "host/math");
+        assert_eq!(interface.package, "host_support");
+        assert_eq!(interface.origin, prelude.origin);
+        assert_eq!(
+            interface.minimum_required_version,
+            prelude.minimum_required_version,
+        );
+        assert!(!interface.is_internal);
+        assert!(interface.types.is_empty());
+        assert!(interface.types_value_constructors.is_empty());
+        assert_eq!(interface.values.len(), 1);
+        assert!(interface.accessors.is_empty());
+        assert!(interface.warnings.is_empty());
+        assert!(interface.type_aliases.is_empty());
+        assert!(interface.documentation.is_empty());
+        assert!(!interface.contains_echo);
+        assert_eq!(interface.references, Default::default());
+        assert!(interface.inline_functions.is_empty());
+        assert_eq!(constructor, &expected_constructor);
+        let implementations = constructor.variant.implementations();
+        assert!(implementations.gleam);
+        assert!(implementations.can_run_on_erlang);
+        assert!(implementations.can_run_on_javascript);
+        assert!(!implementations.uses_erlang_externals);
+        assert!(!implementations.uses_javascript_externals);
+        assert_eq!(
+            format!("{:?}", constructor.called_function_purity()),
+            "Unknown",
+        );
+    }
+
+    #[test]
+    fn compiles_same_package_host_imports_without_source_bodies() {
+        let hosts = HostModules::new([HostModule::new("application", "host/math")
+            .expect("host module should be valid")
+            .with_function("add", <BigInt as std::ops::Add>::add)
+            .expect("host function should be valid")])
+        .expect("host modules should be unique");
+        let program = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<EcoString>::new(),
+                [ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    r#"
+import host/math.{add}
+
+pub fn main() {
+  math.add(1, add(2, 3))
+}
+"#,
+                )],
+            )],
+            hosts,
+        )
+        .expect("host imports should compile");
+
+        assert_eq!(program.root_package(), "application");
+        assert_eq!(program.root_module(), "main");
+        assert_eq!(
+            program
+                .modules
+                .iter()
+                .map(|module| match module {
+                    HostedTypedProgramModule::Source(module) => (
+                        module.module.type_info.package.as_str(),
+                        module.module.name.as_str(),
+                    ),
+                    HostedTypedProgramModule::Host(module) => {
+                        (module.package().as_str(), module.module().as_str())
+                    }
+                })
+                .collect::<Vec<_>>(),
+            [("application", "host/math"), ("application", "main")],
+        );
+        let root = program
+            .modules
+            .iter()
+            .find_map(|module| match module {
+                HostedTypedProgramModule::Source(module) if module.module.name == "main" => {
+                    Some(module)
+                }
+                HostedTypedProgramModule::Source(_) | HostedTypedProgramModule::Host(_) => None,
+            })
+            .expect("root source module should exist");
+        assert_eq!(root.module.definitions.imports[0].package, "application");
+    }
+
+    #[test]
+    fn compiles_direct_dependency_host_imports_in_dependency_order() {
+        let hosts = HostModules::new([HostModule::new("host_support", "host/math")
+            .expect("host module should be valid")
+            .with_function("add", <BigInt as std::ops::Add>::add)
+            .expect("host function should be valid")])
+        .expect("host modules should be unique");
+        let program = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                ["host_support"],
+                [ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    "import host/math\npub fn main() { math.add(1, 2) }",
+                )],
+            )],
+            hosts,
+        )
+        .expect("declared host dependency should compile");
+
+        assert_eq!(
+            program
+                .modules
+                .iter()
+                .map(|module| match module {
+                    HostedTypedProgramModule::Source(module) => (
+                        module.module.type_info.package.as_str(),
+                        module.module.name.as_str(),
+                    ),
+                    HostedTypedProgramModule::Host(module) => {
+                        (module.package().as_str(), module.module().as_str())
+                    }
+                })
+                .collect::<Vec<_>>(),
+            [("host_support", "host/math"), ("application", "main")],
+        );
+    }
+
+    #[test]
+    fn orders_host_modules_deterministically_before_dependent_source_modules() {
+        let hosts = HostModules::new([
+            HostModule::new("host_support", "host/zeta").expect("host module should be valid"),
+            HostModule::new("host_support", "host/alpha").expect("host module should be valid"),
+        ])
+        .expect("host modules should be unique");
+        let program = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                ["host_support"],
+                [ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    "pub fn main() { 1 }",
+                )],
+            )],
+            hosts,
+        )
+        .expect("host modules should compile in dependency order");
+
+        assert_eq!(
+            program
+                .modules
+                .iter()
+                .map(|module| match module {
+                    HostedTypedProgramModule::Source(module) => (
+                        module.module.type_info.package.as_str(),
+                        module.module.name.as_str(),
+                    ),
+                    HostedTypedProgramModule::Host(module) => {
+                        (module.package().as_str(), module.module().as_str())
+                    }
+                })
+                .collect::<Vec<_>>(),
+            [
+                ("host_support", "host/alpha"),
+                ("host_support", "host/zeta"),
+                ("application", "main"),
+            ],
+        );
+    }
+
+    #[test]
+    fn leaves_undeclared_and_unknown_host_imports_to_gleam_analysis() {
+        let undeclared_hosts = HostModules::new([HostModule::new("host_support", "host/math")
+            .expect("host module should be valid")
+            .with_function("add", <BigInt as std::ops::Add>::add)
+            .expect("host function should be valid")])
+        .expect("host modules should be unique");
+        let undeclared = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<EcoString>::new(),
+                [ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    "import host/math\npub fn main() { 1 }",
+                )],
+            )],
+            undeclared_hosts,
+        )
+        .err()
+        .expect("undeclared package should fail analysis");
+        let unknown_hosts =
+            HostModules::new(Vec::<HostModule>::new()).expect("empty host modules should be valid");
+        let unknown = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                ["host_support"],
+                [ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    "import host/math\npub fn main() { 1 }",
+                )],
+            )],
+            unknown_hosts,
+        )
+        .err()
+        .expect("unknown host module should fail analysis");
+
+        assert!(matches!(
+            &undeclared,
+            FrontendError::Analyse { errors }
+                if matches!(
+                    errors.as_slice(),
+                    [gleam_core::type_::Error::UnknownModule { name, .. }]
+                        if name == "host/math"
+                )
+        ));
+        assert!(matches!(
+            &unknown,
+            FrontendError::Analyse { errors }
+                if matches!(
+                    errors.as_slice(),
+                    [gleam_core::type_::Error::UnknownModule { name, .. }]
+                        if name == "host/math"
+                )
+        ));
+    }
+
+    #[test]
+    fn rejects_source_and_host_module_identity_collisions() {
+        let hosts = HostModules::new([HostModule::new("host_support", "host/math")
+            .expect("host module should be valid")
+            .with_function("add", <BigInt as std::ops::Add>::add)
+            .expect("host function should be valid")])
+        .expect("host modules should be unique");
+        let error = compile_typed_host_program(
+            "application",
+            "main",
+            [
+                PackageSource::new(
+                    "application",
+                    ["host_support"],
+                    [ModuleSource::new(
+                        "main",
+                        "main.gleam",
+                        "pub fn main() { 1 }",
+                    )],
+                ),
+                PackageSource::new(
+                    "source_support",
+                    Vec::<EcoString>::new(),
+                    [ModuleSource::new(
+                        "host/math",
+                        "host/math.gleam",
+                        "pub fn add(left, right) { left + right }",
+                    )],
+                ),
+            ],
+            hosts,
+        )
+        .err()
+        .expect("source and host modules should not share an identity");
+
+        assert_eq!(
+            format!("{error:?}"),
+            "SourceHostModuleCollision { module: \"host/math\", source_package: \"source_support\", source_path: \"host/math.gleam\", host_package: \"host_support\" }",
+        );
+    }
+
+    #[test]
+    fn rejects_host_modules_as_root_source() {
+        let hosts = HostModules::new([HostModule::new("application", "main")
+            .expect("host module should be valid")
+            .with_function("add", <BigInt as std::ops::Add>::add)
+            .expect("host function should be valid")])
+        .expect("host modules should be unique");
+        let error = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<EcoString>::new(),
+                [ModuleSource::new(
+                    "support",
+                    "support.gleam",
+                    "pub fn value() { 1 }",
+                )],
+            )],
+            hosts,
+        )
+        .err()
+        .expect("host module should not satisfy the source root");
+
+        assert_eq!(
+            format!("{error:?}"),
+            "MissingRootModule { package: \"application\", module: \"main\" }",
+        );
+    }
+
+    #[test]
+    fn hosted_program_preserves_shared_frontend_error_ownership() {
+        let duplicate_package = compile_typed_host_program(
+            "application",
+            "main",
+            [
+                PackageSource::new(
+                    "application",
+                    Vec::<EcoString>::new(),
+                    [ModuleSource::new(
+                        "main",
+                        "main.gleam",
+                        "pub fn main() { 1 }",
+                    )],
+                ),
+                PackageSource::new(
+                    "application",
+                    Vec::<EcoString>::new(),
+                    Vec::<ModuleSource>::new(),
+                ),
+            ],
+            HostModules::new(Vec::<HostModule>::new()).expect("empty host modules should be valid"),
+        )
+        .err()
+        .expect("duplicate package should fail");
+        assert_eq!(
+            format!("{duplicate_package:?}"),
+            "DuplicatePackage { package: \"application\" }",
+        );
+
+        let duplicate_module = compile_typed_host_program(
+            "application",
+            "main",
+            [
+                PackageSource::new(
+                    "application",
+                    ["library"],
+                    [ModuleSource::new(
+                        "main",
+                        "first.gleam",
+                        "pub fn main() { 1 }",
+                    )],
+                ),
+                PackageSource::new(
+                    "library",
+                    Vec::<EcoString>::new(),
+                    [ModuleSource::new(
+                        "main",
+                        "second.gleam",
+                        "pub fn other() { 2 }",
+                    )],
+                ),
+            ],
+            HostModules::new(Vec::<HostModule>::new()).expect("empty host modules should be valid"),
+        )
+        .err()
+        .expect("duplicate module should fail");
+        assert_eq!(
+            format!("{duplicate_module:?}"),
+            "DuplicateModule { module: \"main\", first_package: \"application\", first_path: \"first.gleam\", second_package: \"library\", second_path: \"second.gleam\" }",
+        );
+
+        let missing_root = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<EcoString>::new(),
+                [ModuleSource::new(
+                    "support",
+                    "support.gleam",
+                    "pub fn value() { 1 }",
+                )],
+            )],
+            HostModules::new(Vec::<HostModule>::new()).expect("empty host modules should be valid"),
+        )
+        .err()
+        .expect("missing root module should fail");
+        assert_eq!(
+            format!("{missing_root:?}"),
+            "MissingRootModule { package: \"application\", module: \"main\" }",
+        );
+
+        let import_cycle = compile_typed_host_program(
+            "application",
+            "one",
+            [PackageSource::new(
+                "application",
+                Vec::<EcoString>::new(),
+                [
+                    ModuleSource::new(
+                        "one",
+                        "one.gleam",
+                        "import two\npub fn value() { two.value() }",
+                    ),
+                    ModuleSource::new(
+                        "two",
+                        "two.gleam",
+                        "import one\npub fn value() { one.value() }",
+                    ),
+                ],
+            )],
+            HostModules::new(Vec::<HostModule>::new()).expect("empty host modules should be valid"),
+        )
+        .err()
+        .expect("import cycle should fail");
+        assert_eq!(
+            format!("{import_cycle:?}"),
+            "ImportCycle { modules: [\"one\", \"two\", \"one\"] }",
+        );
+    }
+
+    #[test]
+    fn reject_margin_hosted_typed_program_invalid_constant_shape() {
+        let hosts = HostModules::new([HostModule::new("host_support", "host/math")
+            .expect("host module should be valid")
+            .with_function("add", <BigInt as std::ops::Add>::add)
+            .expect("host function should be valid")])
+        .expect("host modules should be unique");
+        let mut program = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                ["host_support"],
+                [ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    "const value = 1\npub fn main() { value }",
+                )],
+            )],
+            hosts,
+        )
+        .expect("host program should compile");
+        let source_module = program
+            .modules
+            .iter_mut()
+            .find_map(|module| match module {
+                HostedTypedProgramModule::Source(module) => Some(module),
+                HostedTypedProgramModule::Host(_) => None,
+            })
+            .expect("source module should exist");
+        source_module.module.definitions.constants[0].type_ = gleam_core::type_::generic_var(0);
+
+        assert_eq!(
+            plan_host_program(program).err(),
+            Some(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::Invalid,
+                },
+            }),
+        );
+    }
 
     #[test]
     fn compiles_single_modules_through_the_default_package() {

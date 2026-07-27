@@ -197,7 +197,7 @@ pub fn main() -> fn() -> Bool {
     fn assert_explanation(source: &str, expected: &str) {
         explain::assert_rendered(source, expected, |plan, output| {
             let mut context = explain::ExplainContext::new(plan, output);
-            context.write(&plan.functions.function_returns);
+            context.write(&plan.program.functions.function_returns);
         });
     }
 }

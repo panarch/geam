@@ -184,7 +184,7 @@ pub fn main() -> List(String) {
     fn assert_explanation(source: &str, expected: &str) {
         explain::assert_rendered(source, expected, |plan, output| {
             let mut context = explain::ExplainContext::new(plan, output);
-            context.write(&plan.functions.list_returns);
+            context.write(&plan.program.functions.list_returns);
         });
     }
 }

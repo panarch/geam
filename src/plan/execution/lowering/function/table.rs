@@ -8,18 +8,18 @@ use crate::plan::execution::function::{
     CustomListFunctionId, FloatFunctionBody, FloatFunctionFunctionBody, FloatFunctionFunctionId,
     FloatFunctionId, FloatListFunctionBody, FloatListFunctionId, FunctionFunctionFunctionBody,
     FunctionFunctionId, FunctionListFunctionBody, FunctionListFunctionId,
-    GenericFunctionFunctionBody, IntFunctionBody, IntFunctionFunctionBody, IntFunctionFunctionId,
-    IntFunctionId, IntListFunctionBody, IntListFunctionId, ListFunctionFunctionBody,
-    ListFunctionFunctionId, ListFunctionId, ListListFunctionBody, ListListFunctionId,
-    NeverFunctionBody, NeverFunctionFunctionBody, NilFunctionBody, NilFunctionFunctionBody,
-    NilFunctionFunctionId, NilFunctionId, NilListFunctionBody, NilListFunctionId,
-    ParameterListFunctionBody, ParameterListFunctionId, ParameterListListFunctionBody,
-    ParameterListListFunctionId, RuntimeFunctionId, StringFunctionBody, StringFunctionFunctionBody,
-    StringFunctionFunctionId, StringFunctionId, StringListFunctionBody, StringListFunctionId,
-    TupleFunctionBody, TupleFunctionFunctionBody, TupleFunctionFunctionId, TupleFunctionId,
-    TupleListFunctionBody, TupleListFunctionId, UtfCodepointFunctionBody,
-    UtfCodepointFunctionFunctionBody, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
-    UtfCodepointListFunctionBody, UtfCodepointListFunctionId,
+    GenericFunctionFunctionBody, IntFunctionBody, IntFunctionEntry, IntFunctionFunctionBody,
+    IntFunctionFunctionId, IntFunctionId, IntListFunctionBody, IntListFunctionId,
+    ListFunctionFunctionBody, ListFunctionFunctionId, ListFunctionId, ListListFunctionBody,
+    ListListFunctionId, NeverFunctionBody, NeverFunctionFunctionBody, NilFunctionBody,
+    NilFunctionFunctionBody, NilFunctionFunctionId, NilFunctionId, NilListFunctionBody,
+    NilListFunctionId, ParameterListFunctionBody, ParameterListFunctionId,
+    ParameterListListFunctionBody, ParameterListListFunctionId, RuntimeFunctionId,
+    StringFunctionBody, StringFunctionFunctionBody, StringFunctionFunctionId, StringFunctionId,
+    StringListFunctionBody, StringListFunctionId, TupleFunctionBody, TupleFunctionFunctionBody,
+    TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionBody, TupleListFunctionId,
+    UtfCodepointFunctionBody, UtfCodepointFunctionFunctionBody, UtfCodepointFunctionFunctionId,
+    UtfCodepointFunctionId, UtfCodepointListFunctionBody, UtfCodepointListFunctionId,
 };
 use crate::plan::execution::function::{
     ExecutableFunction, FunctionFunctionTables, ListFunctionTables, ValueFunctionTables,
@@ -31,7 +31,7 @@ use crate::plan::execution::lowering::specialization::{
 };
 use std::collections::HashSet;
 
-pub(super) struct LoweredSpecialization<Value> {
+pub(in crate::plan::execution::lowering) struct LoweredSpecialization<Value> {
     specialization: SpecializationKey,
     value: Representability<Value>,
 }
@@ -45,6 +45,16 @@ pub(super) fn lowered_function<Return>(
     LoweredSpecialization {
         specialization: specialization.clone(),
         value: graph.map(|graph| ExecutableFunction::new(graph.parameter_count, graph.body)),
+    }
+}
+
+pub(in crate::plan::execution::lowering) fn lowered_host_int_function<Host>(
+    specialization: &SpecializationKey,
+    target: Host,
+) -> LoweredSpecialization<IntFunctionEntry<Host>> {
+    LoweredSpecialization {
+        specialization: specialization.clone(),
+        value: Representability::Inhabited(IntFunctionEntry::host(target)),
     }
 }
 
@@ -194,13 +204,44 @@ pub(in crate::plan::execution::lowering) struct FunctionTableBuilder {
 
 impl FunctionTableBuilder {
     pub(in crate::plan::execution::lowering) fn finish(
+        mut self,
+    ) -> SpecializationOutcome<Box<FunctionTables<ExecutableFunction<IntFunctionBody>>>> {
+        let int_functions = std::mem::take(&mut self.int_functions);
+        self.finish_with_int_functions(int_functions)
+    }
+
+    pub(in crate::plan::execution::lowering) fn finish_hosted<Host>(
+        mut self,
+        host_functions: Vec<(usize, LoweredSpecialization<IntFunctionEntry<Host>>)>,
+    ) -> SpecializationOutcome<Box<FunctionTables<IntFunctionEntry<Host>>>> {
+        let int_functions = std::mem::take(&mut self.int_functions)
+            .into_iter()
+            .map(|(index, function)| {
+                (
+                    index,
+                    LoweredSpecialization {
+                        specialization: function.specialization,
+                        value: function.value.map(IntFunctionEntry::graph),
+                    },
+                )
+            })
+            .chain(host_functions)
+            .collect();
+        self.finish_with_int_functions(int_functions)
+    }
+
+    fn finish_with_int_functions<IntFunction>(
         self,
-    ) -> SpecializationOutcome<Box<FunctionTables>> {
+        int_functions: Vec<(usize, LoweredSpecialization<IntFunction>)>,
+    ) -> SpecializationOutcome<Box<FunctionTables<IntFunction>>> {
         let mut erased = HashSet::new();
         let tables = FunctionTables {
             value_returns: ValueFunctionTables {
                 never_functions: sort_functions(self.never_functions, &mut erased),
-                int_functions: sort_functions(self.int_functions, &mut erased),
+                int_functions: sort_inhabited(int_functions, |index| *index, &mut erased)
+                    .into_iter()
+                    .map(|(_, function)| function)
+                    .collect(),
                 float_functions: sort_functions(self.float_functions, &mut erased),
                 string_functions: sort_functions(self.string_functions, &mut erased),
                 bit_array_functions: sort_functions(self.bit_array_functions, &mut erased),
