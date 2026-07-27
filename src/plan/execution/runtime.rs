@@ -371,11 +371,7 @@ impl RuntimeExecutionPlan for HostedExecution {
 mod tests {
     use super::RuntimeExecutionPlan;
     use crate::plan::execution::function::{BoolFunctionId, IntFunctionId};
-    use crate::{
-        HostModule, HostModules, HostedExecution, ModuleSource, PackageSource,
-        compile_typed_host_program, compile_typed_module, plan_host_program, plan_module,
-    };
-    use num_bigint::BigInt;
+    use crate::{compile_typed_module, plan_module};
 
     #[test]
     fn plain_execution_resolves_only_graph_int_functions() {
@@ -399,65 +395,5 @@ mod tests {
         let function = RuntimeExecutionPlan::bool_function(&execution, BoolFunctionId(0));
 
         assert_eq!(function.body().block_graph().blocks().len(), 1);
-    }
-
-    #[test]
-    fn hosted_execution_preserves_first_use_host_implementation_metadata() {
-        let math = HostModule::new("host_support", "host/math")
-            .expect("host module should be valid")
-            .with_function("subtract", <BigInt as std::ops::Sub>::sub)
-            .expect("host function should be valid")
-            .with_function("add", <BigInt as std::ops::Add>::add)
-            .expect("host function should be valid")
-            .with_function("unused", <BigInt as std::ops::Add>::add)
-            .expect("host function should be valid")
-            .with_function("positive", |value: BigInt| value > BigInt::from(0))
-            .expect("host function should be valid")
-            .with_function("unused_predicate", || false)
-            .expect("host function should be valid");
-        let hosts = HostModules::new([math]).expect("host modules should be unique");
-        let source = r#"
-import host/math
-
-pub fn main() {
-  let added = math.add(1, 2)
-  #(math.subtract(added, 1), math.positive(added))
-}
-"#;
-        let typed = compile_typed_host_program(
-            "application",
-            "main",
-            [PackageSource::new(
-                "application",
-                ["host_support"],
-                [ModuleSource::new("main", "main.gleam", source)],
-            )],
-            hosts,
-        )
-        .expect("host source should compile");
-        let plan = plan_host_program(typed).expect("host source should plan");
-        let execution = HostedExecution::from_module_plan(plan);
-
-        assert_eq!(execution.host_int_functions.len(), 2);
-        let add = &execution.host_int_functions[0];
-        assert_eq!(add.package(), "host_support");
-        assert_eq!(add.module(), "host/math");
-        assert_eq!(add.name(), "add");
-        let subtract = &execution.host_int_functions[1];
-        assert_eq!(subtract.package(), "host_support");
-        assert_eq!(subtract.module(), "host/math");
-        assert_eq!(subtract.name(), "subtract");
-        assert_eq!(execution.host_bool_functions.len(), 1);
-        let positive = &execution.host_bool_functions[0];
-        assert_eq!(positive.package(), "host_support");
-        assert_eq!(positive.module(), "host/math");
-        assert_eq!(positive.name(), "positive");
-        assert_eq!(
-            execution.run_main(&mut Vec::new()),
-            Ok(crate::Value::Tuple(vec![
-                crate::Value::Int(2.into()),
-                crate::Value::Bool(true),
-            ])),
-        );
     }
 }

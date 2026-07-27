@@ -1,16 +1,14 @@
 mod constant;
 mod function;
 mod graph;
+mod host;
 mod local;
 mod specialization;
 mod value_type;
 
 use super::type_::{CustomTypeTable, ListTypeTable, ValueShapeTable};
 use super::{ExecutionProgram, ExecutionProgramCommon};
-use crate::plan::{
-    HostFunctionTemplate, HostedModulePlan, HostedModulePlanParts, HostedPlannedModuleKind,
-    ModulePlan, ValueShape,
-};
+use crate::plan::{ModulePlan, ValueShape};
 use specialization::{
     RepresentationContext, SpecializationKey, SpecializedCustomConstructor,
     SpecializedCustomValueShape, SpecializedFunctionShape, SpecializedTypeSubstitution,
@@ -21,15 +19,6 @@ use std::convert::Infallible;
 
 struct FunctionTemplates {
     templates: Vec<Vec<crate::plan::FunctionTemplate>>,
-}
-
-struct HostedFunctionTemplates {
-    templates: Vec<Vec<HostedFunctionTemplate>>,
-}
-
-enum HostedFunctionTemplate {
-    Source(Box<crate::plan::FunctionTemplate>),
-    Host(HostFunctionTemplate),
 }
 
 struct ProgramConstantTemplates {
@@ -63,23 +52,14 @@ enum SpecializationOutcome<T> {
 
 type PlainIntFunction = super::function::ExecutableFunction<super::function::IntFunctionBody>;
 type PlainBoolFunction = super::function::ExecutableFunction<super::function::BoolFunctionBody>;
-type HostedIntFunctionEntry = super::function::ValueFunctionEntry<
-    super::function::IntFunctionBody,
-    super::host::HostIntFunctionId,
->;
-type HostedBoolFunctionEntry = super::function::ValueFunctionEntry<
-    super::function::BoolFunctionBody,
-    super::host::HostBoolFunctionId,
->;
-type LoweredHostedIntFunction = function::LoweredSpecialization<HostedIntFunctionEntry>;
-type LoweredHostedBoolFunction = function::LoweredSpecialization<HostedBoolFunctionEntry>;
 type LoweringCompletion<Execution> = (
     ProgramConstantTemplates,
     RepresentationContext,
     SpecializationOutcome<Box<Execution>>,
 );
 type PlainLoweredExecution = LoweredExecution<PlainIntFunction, PlainBoolFunction>;
-type HostedLoweredExecution = LoweredExecution<HostedIntFunctionEntry, HostedBoolFunctionEntry>;
+
+pub(super) use host::lower_hosted;
 
 #[derive(Debug, PartialEq, Eq)]
 enum FixedPointStep<State, Output> {
@@ -1069,36 +1049,6 @@ impl LoweringContext {
             .include_prior_erasure(erased_specializations);
         (constant_templates, representations, outcome)
     }
-
-    fn finish_hosted(
-        self,
-        host_int_functions: Vec<(usize, LoweredHostedIntFunction)>,
-        host_bool_functions: Vec<(usize, LoweredHostedBoolFunction)>,
-    ) -> LoweringCompletion<HostedLoweredExecution> {
-        let Self {
-            constant_templates,
-            constants,
-            types,
-            representations,
-            functions,
-            erased_specializations,
-            ..
-        } = self;
-        let outcome = functions
-            .finish_hosted(host_int_functions, host_bool_functions)
-            .map(|functions| {
-                let (list_types, custom_types, value_shapes) = types.into_tables();
-                Box::new(LoweredExecution {
-                    constants: constants.finish(),
-                    functions: *functions,
-                    list_types,
-                    custom_types,
-                    value_shapes,
-                })
-            })
-            .include_prior_erasure(erased_specializations);
-        (constant_templates, representations, outcome)
-    }
 }
 
 pub(super) fn lower(module_plan: ModulePlan) -> ExecutionProgram<Infallible> {
@@ -1191,222 +1141,6 @@ pub(super) fn lower(module_plan: ModulePlan) -> ExecutionProgram<Infallible> {
     }
 }
 
-pub(super) fn lower_hosted(
-    module_plan: HostedModulePlan,
-) -> (
-    ExecutionProgram<super::host::HostedExecutionHost>,
-    Box<[super::host::HostedIntFunction]>,
-    Box<[super::host::HostedBoolFunction]>,
-) {
-    let HostedModulePlanParts {
-        root,
-        entry,
-        modules,
-        implementations,
-    } = module_plan.into_parts();
-    let mut int_implementations = HashMap::new();
-    let mut bool_implementations = HashMap::new();
-    for implementation in implementations {
-        let (template, implementation) = implementation.into_parts();
-        match implementation {
-            crate::host::HostFunctionImplementation::Int(function) => {
-                int_implementations.insert(template, function);
-            }
-            crate::host::HostFunctionImplementation::Bool(function) => {
-                bool_implementations.insert(template, function);
-            }
-        }
-    }
-    let mut module_contexts = Vec::with_capacity(modules.len());
-    let mut module_templates = Vec::with_capacity(modules.len());
-    let mut constant_templates = Vec::with_capacity(modules.len());
-    let mut custom_types = Vec::new();
-
-    for module in modules {
-        match module.into_kind() {
-            HostedPlannedModuleKind::Source(module) => {
-                let module = *module;
-                let parts = module.into_parts();
-                module_contexts.push(super::ExecutionModuleContext::new(
-                    parts.module,
-                    parts.source_context,
-                ));
-                custom_types.extend(parts.custom_types);
-                constant_templates.push(parts.constants);
-                let mut templates = parts
-                    .functions
-                    .into_iter()
-                    .map(|template| HostedFunctionTemplate::Source(Box::new(template)))
-                    .collect::<Vec<_>>();
-                templates.extend(
-                    parts
-                        .anonymous_functions
-                        .into_iter()
-                        .map(|template| HostedFunctionTemplate::Source(Box::new(template))),
-                );
-                templates.sort_by_key(HostedFunctionTemplate::index);
-                module_templates.push(templates);
-            }
-            HostedPlannedModuleKind::Host(module) => {
-                let (module_id, _, module_name, functions) = module.into_parts();
-                module_contexts.push(super::ExecutionModuleContext::new(module_name, None));
-                constant_templates.push(crate::plan::ConstantTemplates::from_module_entries(
-                    module_id,
-                    Vec::new(),
-                ));
-                let mut templates = functions
-                    .into_iter()
-                    .map(HostedFunctionTemplate::Host)
-                    .collect::<Vec<_>>();
-                templates.sort_by_key(HostedFunctionTemplate::index);
-                module_templates.push(templates);
-            }
-        }
-    }
-
-    let templates = HostedFunctionTemplates {
-        templates: module_templates,
-    };
-    let main_return_shape = templates
-        .get(entry)
-        .signature()
-        .shape()
-        .return_shape()
-        .clone();
-    let main_key = SpecializationKey::monomorphic(entry);
-    let initial = SpecializationState {
-        constant_templates: ProgramConstantTemplates {
-            modules: constant_templates,
-        },
-        representations: RepresentationContext::new(custom_types),
-        erased_specializations: HashSet::new(),
-    };
-
-    let (main, lowered, host_int_functions, host_bool_functions) =
-        resolve_specialization_fixed_point(initial, |state| {
-            let SpecializationState {
-                constant_templates,
-                representations,
-                erased_specializations,
-            } = state;
-            let main_value_shape = specialization::SpecializedValueShape::instantiate(
-                &main_return_shape,
-                main_key.substitution(),
-            );
-            let main_return_shape = representations.inhabitation(&main_value_shape);
-            let mut context = LoweringContext::new(
-                templates.entry_templates(),
-                representations,
-                constant_templates,
-                erased_specializations,
-            );
-            let main = context.reserve_main(main_key.clone(), main_return_shape);
-            let mut host_int_functions = Vec::new();
-            let mut host_bool_functions = Vec::new();
-            let mut lowered_host_int_functions = Vec::new();
-            let mut lowered_host_bool_functions = Vec::new();
-
-            while let Some(key) = context.pending.pop_front() {
-                context.begin(&key);
-                match templates.get(key.template()) {
-                    HostedFunctionTemplate::Source(template) => {
-                        function::lower_specialized(template, &key, &mut context);
-                    }
-                    HostedFunctionTemplate::Host(template) => {
-                        let index = context.specialization_index(&key);
-                        let parameters = template
-                            .parameters()
-                            .iter()
-                            .map(|parameter| match parameter {
-                                crate::plan::HostParameter::Int(local) => {
-                                    super::graph::ParamLocal::Int(super::graph::IntLocalId(local.0))
-                                }
-                                crate::plan::HostParameter::Bool(local) => {
-                                    super::graph::ParamLocal::Bool(super::graph::BoolLocalId(
-                                        local.0,
-                                    ))
-                                }
-                            })
-                            .collect();
-                        let shape = SpecializedFunctionShape::instantiate(
-                            template.signature().shape(),
-                            key.substitution(),
-                        );
-                        let type_ = context.lower_concrete_function_type(&shape);
-                        match template.return_family() {
-                            crate::plan::HostReturnFamily::Int => {
-                                let target =
-                                    super::host::HostIntFunctionId::new(host_int_functions.len());
-                                host_int_functions.push(super::host::HostedIntFunction::new(
-                                    template.package().clone(),
-                                    template.module().clone(),
-                                    template.name().clone(),
-                                    parameters,
-                                    type_,
-                                    int_implementations[&template.id()].clone(),
-                                ));
-                                lowered_host_int_functions.push((
-                                    index,
-                                    function::lowered_host_function::<
-                                        super::function::IntFunctionBody,
-                                        _,
-                                    >(&key, target),
-                                ));
-                            }
-                            crate::plan::HostReturnFamily::Bool => {
-                                let target =
-                                    super::host::HostBoolFunctionId::new(host_bool_functions.len());
-                                host_bool_functions.push(super::host::HostedBoolFunction::new(
-                                    template.package().clone(),
-                                    template.module().clone(),
-                                    template.name().clone(),
-                                    parameters,
-                                    type_,
-                                    bool_implementations[&template.id()].clone(),
-                                ));
-                                lowered_host_bool_functions.push((
-                                    index,
-                                    function::lowered_host_function::<
-                                        super::function::BoolFunctionBody,
-                                        _,
-                                    >(&key, target),
-                                ));
-                            }
-                        }
-                    }
-                }
-            }
-
-            let (constant_templates, representations, outcome) =
-                context.finish_hosted(lowered_host_int_functions, lowered_host_bool_functions);
-            let erased_specializations = outcome.erased_specializations();
-            outcome
-                .map(|lowered| (main, lowered, host_int_functions, host_bool_functions))
-                .into_fixed_point(SpecializationState {
-                    constant_templates,
-                    representations,
-                    erased_specializations,
-                })
-        });
-
-    (
-        ExecutionProgram {
-            common: ExecutionProgramCommon {
-                root,
-                modules: module_contexts.into_boxed_slice(),
-                main,
-                constants: lowered.constants,
-                list_types: lowered.list_types,
-                custom_types: lowered.custom_types,
-                value_shapes: lowered.value_shapes,
-            },
-            functions: lowered.functions,
-        },
-        host_int_functions.into_boxed_slice(),
-        host_bool_functions.into_boxed_slice(),
-    )
-}
-
 impl FunctionTemplates {
     fn new(templates: Vec<Vec<crate::plan::FunctionTemplate>>) -> Self {
         Self { templates }
@@ -1424,53 +1158,6 @@ impl FunctionTemplates {
             .flatten()
             .map(|template| (template.id(), local::FunctionEntryTemplate::new(template)))
             .collect()
-    }
-}
-
-impl HostedFunctionTemplates {
-    fn get(&self, id: crate::plan::FunctionTemplateId) -> &HostedFunctionTemplate {
-        &self.templates[id.module().index()][id.index()]
-    }
-
-    fn entry_templates(
-        &self,
-    ) -> HashMap<crate::plan::FunctionTemplateId, local::FunctionEntryTemplate> {
-        self.templates
-            .iter()
-            .flatten()
-            .map(|template| {
-                (
-                    template.id(),
-                    match template {
-                        HostedFunctionTemplate::Source(template) => {
-                            local::FunctionEntryTemplate::new(template)
-                        }
-                        HostedFunctionTemplate::Host(template) => {
-                            local::FunctionEntryTemplate::from_shapes(
-                                template.signature().shape().argument_shapes().to_vec(),
-                            )
-                        }
-                    },
-                )
-            })
-            .collect()
-    }
-}
-
-impl HostedFunctionTemplate {
-    fn signature(&self) -> &crate::plan::FunctionTemplateSignature {
-        match self {
-            Self::Source(template) => template.signature(),
-            Self::Host(template) => template.signature(),
-        }
-    }
-
-    fn id(&self) -> crate::plan::FunctionTemplateId {
-        self.signature().id()
-    }
-
-    fn index(&self) -> usize {
-        self.id().index()
     }
 }
 

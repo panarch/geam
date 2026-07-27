@@ -48,8 +48,7 @@ pub struct ExecutionPlan {
 
 pub struct HostedExecution {
     program: ExecutionProgram<host::HostedExecutionHost>,
-    host_int_functions: Box<[host::HostedIntFunction]>,
-    host_bool_functions: Box<[host::HostedBoolFunction]>,
+    host_functions: host::HostFunctionTables,
 }
 
 pub(crate) trait ExecutionHost {
@@ -126,8 +125,7 @@ impl explain::Explain for HostedExecution {
         context.push('\n');
         context.write(&function::HostedFunctionTablesExplanation::new(
             &self.program.functions,
-            &self.host_int_functions,
-            &self.host_bool_functions,
+            &self.host_functions,
         ));
         context.write(&self.program.common.constants);
     }
@@ -532,12 +530,10 @@ impl ExecutionPlan {
 
 impl HostedExecution {
     pub fn from_module_plan(module_plan: HostedModulePlan) -> Self {
-        let (program, host_int_functions, host_bool_functions) =
-            lowering::lower_hosted(module_plan);
+        let (program, host_functions) = lowering::lower_hosted(module_plan);
         Self {
             program,
-            host_int_functions,
-            host_bool_functions,
+            host_functions,
         }
     }
 
@@ -556,14 +552,14 @@ impl HostedExecution {
         &self,
         id: host::HostIntFunctionId,
     ) -> &host::HostedIntFunction {
-        &self.host_int_functions[id.index()]
+        self.host_functions.int(id)
     }
 
     pub(crate) fn host_bool_function(
         &self,
         id: host::HostBoolFunctionId,
     ) -> &host::HostedBoolFunction {
-        &self.host_bool_functions[id.index()]
+        self.host_functions.bool(id)
     }
 }
 
@@ -639,7 +635,7 @@ pub fn main() {
             host,
             ValueFunctionEntry::Host(target) if *target == HostIntFunctionId::new(0)
         ));
-        let implementation: &HostedIntFunction = &execution.host_int_functions[0];
+        let implementation: &HostedIntFunction = &execution.host_functions.int_functions()[0];
         assert_eq!(implementation.name(), "add");
         assert_eq!(
             execution.run_main(&mut Vec::new()),
@@ -696,7 +692,7 @@ pub fn main() {
             host,
             ValueFunctionEntry::Host(target) if *target == HostBoolFunctionId::new(0)
         ));
-        let implementation: &HostedBoolFunction = &execution.host_bool_functions[0];
+        let implementation: &HostedBoolFunction = &execution.host_functions.bool_functions()[0];
         assert_eq!(implementation.name(), "is_positive");
         assert_eq!(
             execution.run_main(&mut Vec::new()),
