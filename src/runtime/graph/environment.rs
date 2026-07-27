@@ -1,3 +1,4 @@
+use crate::host::{HostBoolArgumentSlot, HostCallArguments, HostIntArgumentSlot};
 use crate::plan::execution::graph::{
     BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
     BoolListLocalId, BoolLocalId, CustomFunctionLocal, CustomListLocalId, CustomLocal,
@@ -742,6 +743,16 @@ impl RetainedValues {
     }
 }
 
+impl HostCallArguments for RetainedValues {
+    fn int(&self, slot: HostIntArgumentSlot) -> BigInt {
+        self.values.ints[slot.index()].clone()
+    }
+
+    fn bool(&self, slot: HostBoolArgumentSlot) -> bool {
+        self.values.bools[slot.index()]
+    }
+}
+
 impl BlockValues {
     fn push_list_function(&mut self, value: EvaluatedListFunction) {
         use crate::plan::execution::function::ListFunctionId as F;
@@ -767,8 +778,10 @@ impl BlockValues {
 #[cfg(test)]
 mod tests {
     use super::{BlockEnvironment, RetainedValues};
+    use crate::host::{HostFunctionDefinition, HostFunctionImplementation, HostIntFunction};
     use crate::plan::execution::graph::{IntLocalId, ParamLocal};
     use crate::runtime::{EvaluatedValue, ListValue, Value};
+    use num_bigint::BigInt;
 
     #[test]
     fn edge_retention_preserves_argument_order_and_omits_unselected_values() {
@@ -871,5 +884,45 @@ pub fn main() {
             crate::runtime::run_src(source),
             Value::Tuple(vec![Value::Bool(true); 13]),
         );
+    }
+
+    #[test]
+    fn retained_values_supply_family_local_host_arguments() {
+        let definition = HostFunctionDefinition::new(
+            "choose".into(),
+            |condition: bool, left: BigInt, right: BigInt| {
+                if condition { left } else { right }
+            },
+        );
+        let (_, implementation) = definition.into_parts();
+        let mut arguments = RetainedValues::empty();
+        arguments.push_evaluated(EvaluatedValue::Int(10.into()));
+        arguments.push_evaluated(EvaluatedValue::Bool(false));
+        arguments.push_evaluated(EvaluatedValue::Int(20.into()));
+
+        let implementation = int_implementation(implementation);
+        assert_eq!(implementation.call(&arguments), BigInt::from(20));
+
+        let mut arguments = RetainedValues::empty();
+        arguments.push_evaluated(EvaluatedValue::Int(10.into()));
+        arguments.push_evaluated(EvaluatedValue::Bool(true));
+        arguments.push_evaluated(EvaluatedValue::Int(20.into()));
+
+        assert_eq!(implementation.call(&arguments), BigInt::from(10));
+    }
+
+    #[test]
+    #[should_panic(expected = "choose should retain an Int implementation")]
+    fn retained_host_argument_shape_guard_is_visible() {
+        let definition = HostFunctionDefinition::new("choose".into(), || true);
+        let (_, implementation) = definition.into_parts();
+        int_implementation(implementation);
+    }
+
+    fn int_implementation(implementation: HostFunctionImplementation) -> HostIntFunction {
+        let HostFunctionImplementation::Int(implementation) = implementation else {
+            panic!("choose should retain an Int implementation");
+        };
+        implementation
     }
 }

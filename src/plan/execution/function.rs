@@ -46,6 +46,7 @@ pub(crate) use list_return::{
 };
 pub(crate) use runtime::{FunctionReturnFamily, GenericCallableId, RuntimeFunctionId};
 pub(super) use table::FunctionTables;
+pub(in crate::plan::execution) use table::HostedFunctionTablesExplanation;
 pub(in crate::plan::execution::function) use table::write_table;
 pub(in crate::plan::execution) use value_return::ValueFunctionTables;
 pub(crate) use value_return::{
@@ -53,7 +54,7 @@ pub(crate) use value_return::{
     CustomFunctionId, FloatFunctionBody, FloatFunctionId, IntFunctionBody, IntFunctionId,
     NeverFunctionBody, NeverFunctionId, NilFunctionBody, NilFunctionId, StringFunctionBody,
     StringFunctionId, TupleFunctionBody, TupleFunctionId, UtfCodepointFunctionBody,
-    UtfCodepointFunctionId,
+    UtfCodepointFunctionId, ValueFunctionEntry,
 };
 
 pub(crate) struct ExecutableFunction<Body> {

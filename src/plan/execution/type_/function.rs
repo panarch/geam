@@ -1,4 +1,5 @@
 use super::{CustomValueShape, FunctionShape, ValueShapeId, ValueType};
+use crate::plan::execution::explain::{Explain, ExplainContext};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct FunctionType {
@@ -40,6 +41,20 @@ impl FunctionType {
 
     pub(crate) fn argument_types(&self) -> &[ValueType] {
         &self.arguments
+    }
+}
+
+impl Explain for FunctionType {
+    fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
+        context.push_str("fn(");
+        for (index, argument) in self.argument_types().iter().enumerate() {
+            if index > 0 {
+                context.push_str(", ");
+            }
+            context.write(argument);
+        }
+        context.push_str(") -> ");
+        context.write(self.return_());
     }
 }
 
@@ -87,5 +102,27 @@ impl FunctionFunctionType {
     #[cfg(test)]
     pub(crate) fn return_shape(&self) -> &FunctionShape {
         &self.return_
+    }
+}
+
+#[cfg(test)]
+mod explain_tests {
+    use super::FunctionType;
+    use crate::plan::execution::explain;
+    use crate::plan::execution::type_::ValueType;
+
+    #[test]
+    fn writes_function_argument_and_return_types() {
+        let source = "pub fn main() { 1 }";
+        let type_ = FunctionType::new(
+            vec![ValueType::Bool, ValueType::Int, ValueType::Bool],
+            ValueType::Int,
+        );
+        let expected = "fn(Bool, Int, Bool) -> Int";
+
+        explain::assert_rendered(source, expected, |plan, output| {
+            let mut context = explain::ExplainContext::new(plan, output);
+            context.write(&type_);
+        });
     }
 }

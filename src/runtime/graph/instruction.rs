@@ -3,13 +3,13 @@ mod list;
 mod value;
 
 use super::environment::BlockEnvironment;
-use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::graph::{Instruction, InstructionKind};
+use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::state::RuntimeState;
 
 pub(super) fn execute(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     environment: &mut BlockEnvironment,
     instruction: &Instruction,

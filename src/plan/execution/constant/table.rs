@@ -353,7 +353,7 @@ pub fn main() { #(one, enabled) }
     fn assert_explanation(source: &str, expected: &str) {
         explain::assert_rendered(source, expected, |plan, output| {
             let mut context = explain::ExplainContext::new(plan, output);
-            context.write(&plan.constants);
+            context.write(&plan.program.common.constants);
         });
     }
 }

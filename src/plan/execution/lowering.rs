@@ -1,12 +1,13 @@
 mod constant;
 mod function;
 mod graph;
+mod host;
 mod local;
 mod specialization;
 mod value_type;
 
-use super::ExecutionPlan;
 use super::type_::{CustomTypeTable, ListTypeTable, ValueShapeTable};
+use super::{ExecutionProgram, ExecutionProgramCommon};
 use crate::plan::{ModulePlan, ValueShape};
 use specialization::{
     RepresentationContext, SpecializationKey, SpecializedCustomConstructor,
@@ -14,6 +15,7 @@ use specialization::{
     SpecializedValueShape,
 };
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::convert::Infallible;
 
 struct FunctionTemplates {
     templates: Vec<Vec<crate::plan::FunctionTemplate>>,
@@ -35,9 +37,9 @@ struct SpecializationState {
     erased_specializations: HashSet<SpecializationKey>,
 }
 
-struct LoweredExecution {
+struct LoweredExecution<IntFunction, BoolFunction> {
     constants: super::constant::ConstantTable,
-    functions: super::function::FunctionTables,
+    functions: super::function::FunctionTables<IntFunction, BoolFunction>,
     list_types: ListTypeTable,
     custom_types: CustomTypeTable,
     value_shapes: ValueShapeTable,
@@ -47,6 +49,17 @@ enum SpecializationOutcome<T> {
     Complete(T),
     RequiresErasure(HashSet<SpecializationKey>),
 }
+
+type PlainIntFunction = super::function::ExecutableFunction<super::function::IntFunctionBody>;
+type PlainBoolFunction = super::function::ExecutableFunction<super::function::BoolFunctionBody>;
+type LoweringCompletion<Execution> = (
+    ProgramConstantTemplates,
+    RepresentationContext,
+    SpecializationOutcome<Box<Execution>>,
+);
+type PlainLoweredExecution = LoweredExecution<PlainIntFunction, PlainBoolFunction>;
+
+pub(super) use host::lower_hosted;
 
 #[derive(Debug, PartialEq, Eq)]
 enum FixedPointStep<State, Output> {
@@ -143,17 +156,11 @@ impl StoredTargetLocal {
 
 impl LoweringContext {
     fn new(
-        templates: &FunctionTemplates,
+        entry_templates: HashMap<crate::plan::FunctionTemplateId, local::FunctionEntryTemplate>,
         representations: RepresentationContext,
         constant_templates: ProgramConstantTemplates,
         erased_specializations: HashSet<SpecializationKey>,
     ) -> Self {
-        let entry_templates = templates
-            .templates
-            .iter()
-            .flatten()
-            .map(|template| (template.id(), local::FunctionEntryTemplate::new(template)))
-            .collect::<HashMap<_, _>>();
         Self {
             constant_templates,
             constants: constant::ConstantLowering::default(),
@@ -1017,13 +1024,7 @@ impl LoweringContext {
         self.provisional_specializations[key].index
     }
 
-    fn finish(
-        self,
-    ) -> (
-        ProgramConstantTemplates,
-        RepresentationContext,
-        SpecializationOutcome<Box<LoweredExecution>>,
-    ) {
+    fn finish(self) -> LoweringCompletion<PlainLoweredExecution> {
         let Self {
             constant_templates,
             constants,
@@ -1050,7 +1051,7 @@ impl LoweringContext {
     }
 }
 
-pub(super) fn lower(module_plan: ModulePlan) -> ExecutionPlan {
+pub(super) fn lower(module_plan: ModulePlan) -> ExecutionProgram<Infallible> {
     let parts = module_plan.into_parts();
     let root = parts.root;
     let entry = parts.entry;
@@ -1102,7 +1103,7 @@ pub(super) fn lower(module_plan: ModulePlan) -> ExecutionPlan {
         );
         let main_return_shape = representations.inhabitation(&main_value_shape);
         let mut context = LoweringContext::new(
-            &templates,
+            templates.entry_templates(),
             representations,
             constant_templates,
             erased_specializations,
@@ -1126,15 +1127,17 @@ pub(super) fn lower(module_plan: ModulePlan) -> ExecutionPlan {
             })
     });
 
-    ExecutionPlan {
-        root,
-        modules: module_contexts.into_boxed_slice(),
-        main,
-        constants: lowered.constants,
+    ExecutionProgram {
+        common: ExecutionProgramCommon {
+            root,
+            modules: module_contexts.into_boxed_slice(),
+            main,
+            constants: lowered.constants,
+            list_types: lowered.list_types,
+            custom_types: lowered.custom_types,
+            value_shapes: lowered.value_shapes,
+        },
         functions: lowered.functions,
-        list_types: lowered.list_types,
-        custom_types: lowered.custom_types,
-        value_shapes: lowered.value_shapes,
     }
 }
 
@@ -1145,6 +1148,16 @@ impl FunctionTemplates {
 
     fn get(&self, id: crate::plan::FunctionTemplateId) -> &crate::plan::FunctionTemplate {
         &self.templates[id.module().index()][id.index()]
+    }
+
+    fn entry_templates(
+        &self,
+    ) -> HashMap<crate::plan::FunctionTemplateId, local::FunctionEntryTemplate> {
+        self.templates
+            .iter()
+            .flatten()
+            .map(|template| (template.id(), local::FunctionEntryTemplate::new(template)))
+            .collect()
     }
 }
 
@@ -1203,7 +1216,7 @@ pub(super) mod test_support {
         let templates = FunctionTemplates::new(vec![vec![main, capture_target]]);
 
         LoweringContext::new(
-            &templates,
+            templates.entry_templates(),
             RepresentationContext::new(custom_types),
             ProgramConstantTemplates {
                 modules: vec![crate::plan::ConstantTemplates::from_entries(Vec::new())],

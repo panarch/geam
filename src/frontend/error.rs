@@ -29,6 +29,16 @@ pub enum FrontendError {
         second_path: Utf8PathBuf,
     },
 
+    #[error(
+        "module {module} was supplied as source by package {source_package} and as a host module by package {host_package}"
+    )]
+    SourceHostModuleCollision {
+        module: EcoString,
+        source_package: EcoString,
+        source_path: Utf8PathBuf,
+        host_package: EcoString,
+    },
+
     #[error("root package {package} was not supplied")]
     MissingRootPackage { package: EcoString },
 

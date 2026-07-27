@@ -47,7 +47,12 @@ the core Gleam value families, custom types, generics, patterns, records,
 functions, constants, imports, and read-only loading of already resolved Gleam
 projects. The official `gleam_stdlib` package is not built in: compatible
 imported modules are compiled from the package sources resolved by Gleam.
-Backend external functions or types are not runtime linkage surfaces.
+Package-qualified source-less Rust host modules can provide infallible
+functions with zero through seven `BigInt`/`bool` arguments and a
+`BigInt`/`bool` return through a separate hosted pipeline. Unsupported Rust
+types and arities are rejected by trait resolution rather than at runtime.
+Source-declared backend external functions or types are not provider linkage
+surfaces.
 
 The main public entry points are:
 
@@ -55,15 +60,26 @@ The main public entry points are:
 - `compile_typed_program`
 - `compile_typed_package_program`
 - `compile_typed_project`
+- `compile_typed_host_program`
 - `plan_module`
 - `plan_program`
+- `plan_host_program`
 - `ExecutionPlan::explain`
+- `HostedExecution::explain`
 - `Value::inspect`
 - `run_main`
+- `HostedExecution::run_main`
 
 `run_main` takes a caller-owned `EchoSink`; Geam never selects stdout, stderr,
 or a hidden output destination for the host. Ordinary and pipeline Echo both
 emit through that boundary and continue with their original value.
+
+The existing `TypedProgram -> ModulePlan -> ExecutionPlan -> run_main` path is
+host-free. Rust callbacks enter only through
+`HostedTypedProgram -> HostedModulePlan -> HostedExecution`; the hosted plan
+nodes store callable schemas and targets, while the hosted wrapper carries
+implementations as a private sidecar until `HostedExecution` retains only the
+callbacks selected by specialization.
 
 ## Upstream
 

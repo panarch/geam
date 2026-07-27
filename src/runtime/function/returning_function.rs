@@ -1,5 +1,4 @@
 use super::{evaluate, run_tail};
-use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::function::{
     BitArrayFunctionFunctionId, BoolFunctionFunctionId, CustomFunctionFunctionId,
     FloatFunctionFunctionId, FunctionFunctionFunctionId, FunctionFunctionId,
@@ -7,6 +6,7 @@ use crate::plan::execution::function::{
     NeverFunctionFunctionId, NilFunctionFunctionId, StringFunctionFunctionId,
     TupleFunctionFunctionId, UtfCodepointFunctionFunctionId,
 };
+use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::evaluated::{
     EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCustomFunction,
@@ -19,7 +19,7 @@ use crate::runtime::graph::RetainedValues;
 use crate::runtime::state::RuntimeState;
 
 pub(in crate::runtime) fn run_int_function(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     function: IntFunctionFunctionId,
     inputs: RetainedValues,
@@ -42,7 +42,7 @@ pub(in crate::runtime) fn run_int_function(
 }
 
 pub(in crate::runtime) fn run_float_function(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     function: FloatFunctionFunctionId,
     inputs: RetainedValues,
@@ -67,7 +67,7 @@ pub(in crate::runtime) fn run_float_function(
 }
 
 pub(in crate::runtime) fn run_string_function(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     function: StringFunctionFunctionId,
     inputs: RetainedValues,
@@ -92,7 +92,7 @@ pub(in crate::runtime) fn run_string_function(
 }
 
 pub(in crate::runtime) fn run_bit_array_function(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     function: BitArrayFunctionFunctionId,
     inputs: RetainedValues,
@@ -117,7 +117,7 @@ pub(in crate::runtime) fn run_bit_array_function(
 }
 
 pub(in crate::runtime) fn run_utf_codepoint_function(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     function: UtfCodepointFunctionFunctionId,
     inputs: RetainedValues,
@@ -142,7 +142,7 @@ pub(in crate::runtime) fn run_utf_codepoint_function(
 }
 
 pub(in crate::runtime) fn run_generic_function(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     function: GenericFunctionFunctionId,
     inputs: RetainedValues,
@@ -167,7 +167,7 @@ pub(in crate::runtime) fn run_generic_function(
 }
 
 pub(in crate::runtime) fn run_never_function(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     function: NeverFunctionFunctionId,
     inputs: RetainedValues,
@@ -192,7 +192,7 @@ pub(in crate::runtime) fn run_never_function(
 }
 
 pub(in crate::runtime) fn run_custom_function(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     function: CustomFunctionFunctionId,
     inputs: RetainedValues,
@@ -221,7 +221,7 @@ pub(in crate::runtime) fn run_custom_function(
 }
 
 pub(in crate::runtime) fn run_bool_function(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     function: BoolFunctionFunctionId,
     inputs: RetainedValues,
@@ -246,7 +246,7 @@ pub(in crate::runtime) fn run_bool_function(
 }
 
 pub(in crate::runtime) fn run_nil_function(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     function: NilFunctionFunctionId,
     inputs: RetainedValues,
@@ -269,7 +269,7 @@ pub(in crate::runtime) fn run_nil_function(
 }
 
 pub(in crate::runtime) fn run_tuple_function(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     function: TupleFunctionFunctionId,
     inputs: RetainedValues,
@@ -294,7 +294,7 @@ pub(in crate::runtime) fn run_tuple_function(
 }
 
 pub(in crate::runtime) fn run_list_function(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     function: ListFunctionFunctionId,
     inputs: RetainedValues,
@@ -317,7 +317,7 @@ pub(in crate::runtime) fn run_list_function(
 }
 
 pub(in crate::runtime) fn run_function_function(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     function: FunctionFunctionFunctionId,
     inputs: RetainedValues,
@@ -346,7 +346,7 @@ pub(in crate::runtime) fn run_function_function(
 }
 
 pub(in crate::runtime) fn run_function(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     function: FunctionFunctionId,
     inputs: RetainedValues,

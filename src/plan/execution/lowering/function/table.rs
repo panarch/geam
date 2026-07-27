@@ -1,3 +1,5 @@
+mod host;
+
 use crate::plan::execution;
 use crate::plan::execution::function::FunctionTables;
 use crate::plan::execution::function::{
@@ -31,12 +33,14 @@ use crate::plan::execution::lowering::specialization::{
 };
 use std::collections::HashSet;
 
-pub(super) struct LoweredSpecialization<Value> {
+pub(in crate::plan::execution::lowering) struct LoweredSpecialization<Value> {
     specialization: SpecializationKey,
     value: Representability<Value>,
 }
 
 pub(super) type LoweredFunction<Return> = LoweredSpecialization<ExecutableFunction<Return>>;
+
+pub(in crate::plan::execution::lowering) use host::lowered_host_function;
 
 pub(super) fn lowered_function<Return>(
     specialization: &SpecializationKey,
@@ -194,19 +198,42 @@ pub(in crate::plan::execution::lowering) struct FunctionTableBuilder {
 
 impl FunctionTableBuilder {
     pub(in crate::plan::execution::lowering) fn finish(
+        mut self,
+    ) -> SpecializationOutcome<
+        Box<
+            FunctionTables<
+                ExecutableFunction<IntFunctionBody>,
+                ExecutableFunction<BoolFunctionBody>,
+            >,
+        >,
+    > {
+        let int_functions = std::mem::take(&mut self.int_functions);
+        let bool_functions = std::mem::take(&mut self.bool_functions);
+        self.finish_with_value_functions(int_functions, bool_functions)
+    }
+
+    fn finish_with_value_functions<IntFunction, BoolFunction>(
         self,
-    ) -> SpecializationOutcome<Box<FunctionTables>> {
+        int_functions: Vec<(usize, LoweredSpecialization<IntFunction>)>,
+        bool_functions: Vec<(usize, LoweredSpecialization<BoolFunction>)>,
+    ) -> SpecializationOutcome<Box<FunctionTables<IntFunction, BoolFunction>>> {
         let mut erased = HashSet::new();
         let tables = FunctionTables {
             value_returns: ValueFunctionTables {
                 never_functions: sort_functions(self.never_functions, &mut erased),
-                int_functions: sort_functions(self.int_functions, &mut erased),
+                int_functions: sort_inhabited(int_functions, |index| *index, &mut erased)
+                    .into_iter()
+                    .map(|(_, function)| function)
+                    .collect(),
                 float_functions: sort_functions(self.float_functions, &mut erased),
                 string_functions: sort_functions(self.string_functions, &mut erased),
                 bit_array_functions: sort_functions(self.bit_array_functions, &mut erased),
                 utf_codepoint_functions: sort_functions(self.utf_codepoint_functions, &mut erased),
                 custom_functions: sort_functions(self.custom_functions, &mut erased),
-                bool_functions: sort_functions(self.bool_functions, &mut erased),
+                bool_functions: sort_inhabited(bool_functions, |index| *index, &mut erased)
+                    .into_iter()
+                    .map(|(_, function)| function)
+                    .collect(),
                 nil_functions: sort_functions(self.nil_functions, &mut erased),
                 tuple_functions: sort_functions(self.tuple_functions, &mut erased),
             },

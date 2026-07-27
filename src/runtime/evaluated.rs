@@ -608,7 +608,10 @@ pub(in crate::runtime) enum EvaluatedListCapture {
 }
 
 impl EvaluatedValue {
-    pub(in crate::runtime) fn value_type(&self, plan: &crate::ExecutionPlan) -> ValueType {
+    pub(in crate::runtime) fn value_type(
+        &self,
+        plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
+    ) -> ValueType {
         match self {
             Self::Int(_) => ValueType::Int,
             Self::Float(_) => ValueType::Float,
@@ -998,7 +1001,7 @@ impl EvaluatedCapture {
 }
 
 pub(in crate::runtime) fn values_equal(
-    plan: &crate::ExecutionPlan,
+    plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
     state: &RuntimeState,
     left: &EvaluatedValue,
     right: &EvaluatedValue,
@@ -1038,7 +1041,7 @@ pub(in crate::runtime) fn values_equal(
 }
 
 fn lists_equal(
-    plan: &crate::ExecutionPlan,
+    plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
     state: &RuntimeState,
     left: &ListValueId,
     right: &ListValueId,

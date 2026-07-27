@@ -17,6 +17,8 @@ use std::collections::HashMap;
 use constant::{ConstantBodies, plan_constant_bodies, reserve_constants};
 use registry::{ModuleRegistry, ProgramRegistry};
 
+pub use host::plan_host_program;
+
 pub fn plan_module(module: TypedModule) -> Result<ModulePlan, PlanError> {
     plan_modules(
         0,
@@ -2078,4 +2080,5 @@ pub fn main() { 1 }
 }
 mod constant;
 mod custom_type;
+mod host;
 pub(in crate::planner) mod registry;

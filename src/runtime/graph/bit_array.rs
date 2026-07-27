@@ -5,16 +5,16 @@ use bitvec::view::BitView;
 use num_bigint::BigInt;
 
 use super::environment::BlockEnvironment;
-use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::graph::{
     BitArrayBitsSize, BitArrayEvaluatedSize, BitArraySegment, Endianness, FloatBitSize, Signedness,
     StringEncoding,
 };
+use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::evaluated::EvaluatedBitArray;
 use crate::runtime::{BitArraySegmentPanicReason, ExecutionError};
 
 pub(super) fn evaluate(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     environment: &BlockEnvironment,
     segments: &[BitArraySegment],
 ) -> Result<EvaluatedBitArray, ExecutionError> {
@@ -26,7 +26,7 @@ pub(super) fn evaluate(
 }
 
 fn append_segment(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     environment: &BlockEnvironment,
     output: &mut BitVec<u8, Msb0>,
     segment: &BitArraySegment,
@@ -107,7 +107,7 @@ fn append_segment(
 }
 
 fn evaluate_size(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     environment: &BlockEnvironment,
     size: &BitArrayEvaluatedSize,
     site: &crate::plan::PanicSite,

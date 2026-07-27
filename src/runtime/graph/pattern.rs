@@ -4,12 +4,12 @@ use std::collections::HashMap;
 
 use super::bit_array;
 use super::environment::BlockEnvironment;
-use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::graph::{
     BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
     BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, MatchIntBindingId,
     MatchPattern, MatchPatternBinding, MatchPatternListTail,
 };
+use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedValue};
 use crate::runtime::state::RuntimeState;
@@ -47,7 +47,7 @@ impl MatchBindings {
 }
 
 pub(super) fn match_pattern(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     environment: &BlockEnvironment,
     pattern: &MatchPattern,
@@ -62,7 +62,7 @@ pub(super) fn match_pattern(
 }
 
 fn matches(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     environment: &BlockEnvironment,
     pattern: &MatchPattern,

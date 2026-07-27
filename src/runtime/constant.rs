@@ -1,11 +1,11 @@
-use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::constant::ConstantProgram;
+use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::graph::{self, GraphValue, RetainedValues};
 use crate::runtime::state::RuntimeState;
 
 pub(super) fn evaluate<Return>(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     program: &ConstantProgram<Return>,
 ) -> ExecutionResult<Return::Evaluated>

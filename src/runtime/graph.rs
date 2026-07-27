@@ -10,8 +10,8 @@ pub(super) use value::GraphValue;
 
 use self::environment::BlockEnvironment;
 use self::terminator::{GraphAction, NeverCall, terminator_action};
-use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::graph::{BlockGraph, BlockGraphExitId, ParamLocal};
+use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::state::RuntimeState;
 
@@ -52,7 +52,7 @@ impl CompletedGraph {
 }
 
 pub(super) fn execute(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     graph: &BlockGraph,
     inputs: RetainedValues,

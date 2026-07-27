@@ -1,9 +1,15 @@
 pub mod execution;
+mod host;
 pub mod module;
 mod source;
 mod value_shape;
 mod value_type;
 
+pub(crate) use host::{
+    HostFunctionImplementation, HostParameter, HostReturnFamily, HostedModulePlanParts,
+    HostedPlannedModuleKind,
+};
+pub use host::{HostFunctionTemplate, HostedModulePlan, HostedPlannedModule, PlannedHostModule};
 pub(crate) use module::{
     AssertBinding, AssertPattern, AssertSubject, BitArrayBindingPattern, BitArrayBitsSize,
     BitArrayEvaluatedSize, BitArrayExprKind, BitArrayFunctionExprKind, BitArrayFunctionReference,

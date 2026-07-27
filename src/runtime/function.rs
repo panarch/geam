@@ -8,13 +8,14 @@ pub(in crate::runtime) use list::{
     run_parameter_list_list, run_string_list, run_tuple_list, run_utf_codepoint_list,
 };
 pub(in crate::runtime) use returning_function::run_function;
+pub(in crate::runtime) use value::{RuntimeBoolFunction, RuntimeIntFunction};
 pub(in crate::runtime) use value::{
     run_bit_array, run_bool, run_custom, run_float, run_int, run_never, run_never_value, run_nil,
     run_string, run_tuple, run_utf_codepoint,
 };
 
-use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::function::{FunctionBody, FunctionExit};
+use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::graph::{self, GraphValue, RetainedValues};
 use crate::runtime::state::RuntimeState;
@@ -28,7 +29,7 @@ pub(super) enum EvaluatedFunctionExit<Return, TailCall> {
 }
 
 pub(super) fn evaluate<Return, TailCall>(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     function: &FunctionBody<Return, TailCall>,
     inputs: RetainedValues,
@@ -52,19 +53,22 @@ where
     })
 }
 
-fn run_tail<Id, Return, TailCall>(
-    plan: &ExecutionPlan,
+fn run_tail<Plan, Id, Return, TailCall>(
+    plan: &Plan,
     state: &mut RuntimeState,
     mut function: Id,
     mut inputs: RetainedValues,
     execute: impl Fn(
-        &ExecutionPlan,
+        &Plan,
         &mut RuntimeState,
         &Id,
         RetainedValues,
     ) -> ExecutionResult<EvaluatedFunctionExit<Return, TailCall>>,
-    next: impl Fn(&ExecutionPlan, &Id, TailCall) -> Id,
-) -> ExecutionResult<Return> {
+    next: impl Fn(&Plan, &Id, TailCall) -> Id,
+) -> ExecutionResult<Return>
+where
+    Plan: ExecutableRuntimePlan,
+{
     loop {
         match execute(plan, state, &function, inputs)? {
             EvaluatedFunctionExit::Return(value) => return Ok(value),

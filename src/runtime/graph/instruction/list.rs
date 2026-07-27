@@ -1,7 +1,6 @@
 use super::super::environment::{BlockEnvironment, RetainedValues};
 use super::value::{constant, custom_projection, ensure_list_index, tuple_projection};
 use crate::plan::ValueType;
-use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::function::{
     BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId, FloatListFunctionId,
     FunctionListFunctionId, IntListFunctionId, ListFunctionId, ListListFunctionId,
@@ -19,6 +18,7 @@ use crate::plan::execution::type_::{
     IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId, ParameterListTypeId,
     StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
 };
+use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomValue, EvaluatedFunctionValue, EvaluatedListFunction,
@@ -35,7 +35,7 @@ use ecow::EcoString;
 use num_bigint::BigInt;
 
 pub(super) fn execute(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     environment: &mut BlockEnvironment,
     instruction: &ListInstruction,
@@ -123,7 +123,7 @@ pub(super) fn execute(
 }
 
 fn parameter(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     environment: &BlockEnvironment,
     type_id: ParameterListTypeId,
@@ -200,13 +200,13 @@ trait RuntimeTypedList {
         values: Vec<Self::Element>,
     ) -> Self::Handle;
     fn run_direct(
-        plan: &ExecutionPlan,
+        plan: &impl ExecutableRuntimePlan,
         state: &mut RuntimeState,
         function: Self::Function,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle>;
     fn run_value(
-        plan: &ExecutionPlan,
+        plan: &impl ExecutableRuntimePlan,
         state: &mut RuntimeState,
         function: EvaluatedListFunction,
         inputs: RetainedValues,
@@ -216,7 +216,7 @@ trait RuntimeTypedList {
 }
 
 fn typed<Family: RuntimeTypedList>(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     environment: &BlockEnvironment,
     type_id: Family::TypeId,
@@ -354,7 +354,7 @@ macro_rules! vector_family {
             }
 
             fn run_direct(
-                plan: &ExecutionPlan,
+                plan: &impl ExecutableRuntimePlan,
                 state: &mut RuntimeState,
                 function: Self::Function,
                 inputs: RetainedValues,
@@ -363,7 +363,7 @@ macro_rules! vector_family {
             }
 
             fn run_value(
-                plan: &ExecutionPlan,
+                plan: &impl ExecutableRuntimePlan,
                 state: &mut RuntimeState,
                 function: EvaluatedListFunction,
                 inputs: RetainedValues,
@@ -534,7 +534,7 @@ impl RuntimeTypedList for CustomFamily {
     }
 
     fn run_direct(
-        plan: &ExecutionPlan,
+        plan: &impl ExecutableRuntimePlan,
         state: &mut RuntimeState,
         function: Self::Function,
         inputs: RetainedValues,
@@ -543,7 +543,7 @@ impl RuntimeTypedList for CustomFamily {
     }
 
     fn run_value(
-        plan: &ExecutionPlan,
+        plan: &impl ExecutableRuntimePlan,
         state: &mut RuntimeState,
         function: EvaluatedListFunction,
         inputs: RetainedValues,
@@ -599,7 +599,7 @@ impl RuntimeTypedList for NilFamily {
     }
 
     fn run_direct(
-        plan: &ExecutionPlan,
+        plan: &impl ExecutableRuntimePlan,
         state: &mut RuntimeState,
         function: Self::Function,
         inputs: RetainedValues,
@@ -608,7 +608,7 @@ impl RuntimeTypedList for NilFamily {
     }
 
     fn run_value(
-        plan: &ExecutionPlan,
+        plan: &impl ExecutableRuntimePlan,
         state: &mut RuntimeState,
         function: EvaluatedListFunction,
         inputs: RetainedValues,
@@ -667,7 +667,7 @@ impl RuntimeTypedList for ParameterListFamily {
     }
 
     fn run_direct(
-        plan: &ExecutionPlan,
+        plan: &impl ExecutableRuntimePlan,
         state: &mut RuntimeState,
         function: Self::Function,
         inputs: RetainedValues,
@@ -676,7 +676,7 @@ impl RuntimeTypedList for ParameterListFamily {
     }
 
     fn run_value(
-        plan: &ExecutionPlan,
+        plan: &impl ExecutableRuntimePlan,
         state: &mut RuntimeState,
         function: EvaluatedListFunction,
         inputs: RetainedValues,
@@ -732,7 +732,7 @@ impl RuntimeTypedList for ListFamily {
     }
 
     fn run_direct(
-        plan: &ExecutionPlan,
+        plan: &impl ExecutableRuntimePlan,
         state: &mut RuntimeState,
         function: Self::Function,
         inputs: RetainedValues,
@@ -741,7 +741,7 @@ impl RuntimeTypedList for ListFamily {
     }
 
     fn run_value(
-        plan: &ExecutionPlan,
+        plan: &impl ExecutableRuntimePlan,
         state: &mut RuntimeState,
         function: EvaluatedListFunction,
         inputs: RetainedValues,
@@ -797,7 +797,7 @@ impl RuntimeTypedList for FunctionFamily {
     }
 
     fn run_direct(
-        plan: &ExecutionPlan,
+        plan: &impl ExecutableRuntimePlan,
         state: &mut RuntimeState,
         function: Self::Function,
         inputs: RetainedValues,
@@ -806,7 +806,7 @@ impl RuntimeTypedList for FunctionFamily {
     }
 
     fn run_value(
-        plan: &ExecutionPlan,
+        plan: &impl ExecutableRuntimePlan,
         state: &mut RuntimeState,
         function: EvaluatedListFunction,
         inputs: RetainedValues,

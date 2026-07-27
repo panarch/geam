@@ -1,3 +1,5 @@
+mod host;
+
 use super::{
     BitArrayFunctionBody, BitArrayFunctionFunctionBody, BitArrayFunctionFunctionId,
     BitArrayFunctionId, BitArrayListFunctionBody, BitArrayListFunctionId, BoolFunctionBody,
@@ -25,13 +27,17 @@ use crate::plan::execution::explain::{Explain, ExplainContext, FunctionLabel};
 use crate::plan::execution::function::{FunctionBodyOwner, TailCallLabelIndex};
 use crate::plan::execution::graph::LocalLabel;
 
-pub(in crate::plan::execution) struct FunctionTables {
-    pub(in crate::plan::execution) value_returns: ValueFunctionTables,
+pub(in crate::plan::execution) use host::HostedFunctionTablesExplanation;
+
+pub(in crate::plan::execution) struct FunctionTables<IntFunction, BoolFunction> {
+    pub(in crate::plan::execution) value_returns: ValueFunctionTables<IntFunction, BoolFunction>,
     pub(in crate::plan::execution) list_returns: ListFunctionTables,
     pub(in crate::plan::execution) function_returns: FunctionFunctionTables,
 }
 
-impl Explain for FunctionTables {
+impl Explain
+    for FunctionTables<ExecutableFunction<IntFunctionBody>, ExecutableFunction<BoolFunctionBody>>
+{
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
         context.write(&self.value_returns);
         context.write(&self.list_returns);
@@ -50,17 +56,30 @@ pub(in crate::plan::execution::function) fn write_table<'a, Body, Functions>(
     Functions: IntoIterator<Item = &'a ExecutableFunction<Body>>,
 {
     for (index, function) in functions.into_iter().enumerate() {
-        context.push_str("\nfunction ");
-        FunctionLabel::new(family, index).write(context.output());
-        context.push('\n');
-        let body = function.body().function_body();
-        body.write_explanation(
-            context,
-            family,
-            function.entry().params(body),
-            function.entry().captures(body),
-        );
+        write_function(context, family, index, function);
     }
+}
+
+fn write_function<Body>(
+    context: &mut ExplainContext<'_, '_>,
+    family: &'static str,
+    index: usize,
+    function: &ExecutableFunction<Body>,
+) where
+    Body: FunctionBodyOwner,
+    Body::Return: LocalLabel,
+    Body::TailCall: TailCallLabelIndex,
+{
+    context.push_str("\nfunction ");
+    FunctionLabel::new(family, index).write(context.output());
+    context.push('\n');
+    let body = function.body().function_body();
+    body.write_explanation(
+        context,
+        family,
+        function.entry().params(body),
+        function.entry().captures(body),
+    );
 }
 
 #[cfg(test)]
@@ -115,12 +134,12 @@ pub fn main() {
     fn assert_explanation(source: &str, expected: &str) {
         explain::assert_rendered(source, expected, |plan, output| {
             let mut context = explain::ExplainContext::new(plan, output);
-            context.write(&plan.functions);
+            context.write(&plan.program.functions);
         });
     }
 }
 
-impl FunctionTables {
+impl<IntFunction, BoolFunction> FunctionTables<IntFunction, BoolFunction> {
     pub(in crate::plan::execution) fn never_function(
         &self,
         id: NeverFunctionId,
@@ -246,10 +265,7 @@ impl FunctionTables {
         self.list_returns.function_list_functions[index].0
     }
 
-    pub(in crate::plan::execution) fn int_function(
-        &self,
-        id: IntFunctionId,
-    ) -> &ExecutableFunction<IntFunctionBody> {
+    pub(in crate::plan::execution) fn int_function(&self, id: IntFunctionId) -> &IntFunction {
         &self.value_returns.int_functions[id.0]
     }
 
@@ -298,10 +314,7 @@ impl FunctionTables {
         )
     }
 
-    pub(in crate::plan::execution) fn bool_function(
-        &self,
-        id: BoolFunctionId,
-    ) -> &ExecutableFunction<BoolFunctionBody> {
+    pub(in crate::plan::execution) fn bool_function(&self, id: BoolFunctionId) -> &BoolFunction {
         &self.value_returns.bool_functions[id.0]
     }
 

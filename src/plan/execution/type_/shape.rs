@@ -213,7 +213,7 @@ pub fn main() {
 "#,
         );
         assert_eq!(
-            plan.value_shapes.shapes,
+            plan.program.common.value_shapes.shapes,
             vec![
                 ValueShapeDescriptor::Custom(CustomValueShapeId::new(0)),
                 ValueShapeDescriptor::Custom(CustomValueShapeId::new(1)),
@@ -254,7 +254,7 @@ pub fn main() {
             ],
         );
         assert_eq!(
-            plan.value_shapes.custom_shapes,
+            plan.program.common.value_shapes.custom_shapes,
             vec![
                 CustomValueShapeDescriptor::new(
                     CustomTypeId::new(2),
@@ -325,7 +325,7 @@ pub fn main() {
 "#,
         );
         assert_eq!(
-            plan.value_shapes.shapes,
+            plan.program.common.value_shapes.shapes,
             vec![
                 ValueShapeDescriptor::Custom(CustomValueShapeId::new(0)),
                 ValueShapeDescriptor::Tuple(vec![ValueShapeId::new(0); 6].into_boxed_slice(),),
@@ -362,7 +362,7 @@ pub fn main() {
             ],
         );
         assert_eq!(
-            plan.value_shapes.custom_shapes,
+            plan.program.common.value_shapes.custom_shapes,
             vec![
                 CustomValueShapeDescriptor::new(
                     CustomTypeId::new(1),
@@ -412,11 +412,16 @@ pub fn main() { Boxed(fn() { fn() { First(1) } }).value }
         let type_ = main.type_();
         assert_eq!(type_.argument_shapes(), []);
         let returned = type_.return_shape();
-        let (arguments, return_) = function_shape(&plan.value_shapes, returned.shape_id());
+        let (arguments, return_) =
+            function_shape(&plan.program.common.value_shapes, returned.shape_id());
         assert_eq!(arguments, &[]);
-        let custom = custom_shape(&plan.value_shapes, return_);
+        let custom = custom_shape(&plan.program.common.value_shapes, return_);
         assert_eq!(
-            plan.value_shapes.custom(custom).constructor(),
+            plan.program
+                .common
+                .value_shapes
+                .custom(custom)
+                .constructor(),
             CustomConstructorRefinement::Exact(0),
         );
     }
@@ -544,8 +549,10 @@ pub fn main() { Phantom }
 "#,
         );
         let shape_id = main_custom_shape(&plan);
-        let shape =
-            super::CustomValueShape::new(plan.value_shapes.custom(shape_id).type_id(), shape_id);
+        let shape = super::CustomValueShape::new(
+            plan.program.common.value_shapes.custom(shape_id).type_id(),
+            shape_id,
+        );
 
         assert_eq!(
             plan.custom_shape_value_type(&shape),
@@ -595,7 +602,7 @@ pub fn main() { Phantom }
         expected: Option<usize>,
         context: &str,
     ) {
-        let constructor = plan.value_shapes.custom(shape).constructor();
+        let constructor = plan.program.common.value_shapes.custom(shape).constructor();
         assert_eq!(
             constructor,
             expected.map_or(

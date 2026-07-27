@@ -1,7 +1,6 @@
 use super::super::GraphValue;
 use super::super::environment::BlockEnvironment;
 use crate::plan::ValueType;
-use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::constant::{ConstantId, ConstantValue};
 use crate::plan::execution::graph::{
     BitArrayInstruction, BoolInstruction, CustomInstruction, FloatInstruction, IntInstruction,
@@ -13,12 +12,12 @@ use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedValue, values_equal,
 };
 use crate::runtime::state::RuntimeState;
-use crate::runtime::{ExecutionError, InvariantError};
+use crate::runtime::{ExecutableRuntimePlan, ExecutionError, InvariantError};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
 pub(super) fn int(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     environment: &BlockEnvironment,
     instruction: &IntInstruction,
@@ -93,7 +92,7 @@ pub(super) fn int(
 }
 
 pub(super) fn float(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     environment: &BlockEnvironment,
     instruction: &FloatInstruction,
@@ -159,7 +158,7 @@ pub(super) fn float(
 }
 
 pub(super) fn string(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     environment: &BlockEnvironment,
     instruction: &StringInstruction,
@@ -224,7 +223,7 @@ pub(super) fn string(
 }
 
 pub(super) fn bit_array(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     environment: &BlockEnvironment,
     instruction: &BitArrayInstruction,
@@ -282,7 +281,7 @@ pub(super) fn bit_array(
 }
 
 pub(super) fn utf_codepoint(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     environment: &BlockEnvironment,
     instruction: &UtfCodepointInstruction,
@@ -338,7 +337,7 @@ pub(super) fn utf_codepoint(
 }
 
 pub(super) fn custom(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     environment: &BlockEnvironment,
     instruction: &CustomInstruction,
@@ -409,7 +408,7 @@ pub(super) fn custom(
 }
 
 pub(super) fn bool(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     environment: &BlockEnvironment,
     instruction: &BoolInstruction,
@@ -494,7 +493,7 @@ pub(super) fn bool(
 }
 
 pub(super) fn nil(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     environment: &BlockEnvironment,
     instruction: &NilInstruction,
@@ -535,7 +534,7 @@ pub(super) fn nil(
 }
 
 pub(super) fn tuple(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     environment: &BlockEnvironment,
     instruction: &TupleInstruction,
@@ -590,7 +589,7 @@ pub(super) fn tuple(
 }
 
 pub(super) fn constant<Value>(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     state: &mut RuntimeState,
     id: ConstantId<Value>,
 ) -> ExecutionResult<Value::Evaluated>
@@ -601,7 +600,7 @@ where
 }
 
 pub(super) fn tuple_projection<Value>(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     environment: &BlockEnvironment,
     tuple: crate::plan::execution::graph::TupleLocalId,
     index: usize,
@@ -635,7 +634,7 @@ pub(super) fn tuple_projection<Value>(
 }
 
 pub(super) fn custom_projection<Value>(
-    plan: &ExecutionPlan,
+    plan: &impl ExecutableRuntimePlan,
     environment: &BlockEnvironment,
     source: &crate::plan::execution::graph::CustomLocal,
     index: usize,
@@ -665,7 +664,7 @@ pub(super) fn custom_projection<Value>(
 }
 
 pub(super) fn list_element<Value: Clone>(
-    _plan: &ExecutionPlan,
+    _plan: &impl ExecutableRuntimePlan,
     item_type: &ValueType,
     index: usize,
     values: &[Value],

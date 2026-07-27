@@ -544,6 +544,8 @@ pub fn main() {
         let module_plan = crate::plan_module(typed).expect("source should plan");
         let plan = ExecutionPlan::from_module_plan(module_plan);
         let entries = plan
+            .program
+            .common
             .list_types
             .entries()
             .map(|(id, _)| (id.index(), plan.list_value_type(id)))
@@ -761,7 +763,7 @@ pub fn main() -> Grow(Int) {
         let module_plan = crate::plan_module(typed).expect("source should plan");
         let plan = ExecutionPlan::from_module_plan(module_plan);
 
-        assert_eq!(plan.custom_types.len(), 2);
+        assert_eq!(plan.program.common.custom_types.len(), 2);
         assert_eq!(
             plan.custom_value_type(CustomTypeId::new(0)),
             CustomType::new(

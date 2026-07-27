@@ -1,4 +1,5 @@
-use super::ExecutionPlan;
+use super::{ExecutionPlan, HostedExecution};
+use crate::plan::execution::type_::{ValueShapeId, ValueShapeTable, ValueType};
 use std::fmt;
 
 pub(in crate::plan::execution) trait Explain {
@@ -24,7 +25,7 @@ impl FunctionLabel {
 }
 
 pub(in crate::plan::execution) struct ExplainContext<'plan, 'output> {
-    plan: &'plan ExecutionPlan,
+    value_shapes: &'plan ValueShapeTable,
     output: &'output mut String,
 }
 
@@ -33,11 +34,24 @@ impl<'plan, 'output> ExplainContext<'plan, 'output> {
         plan: &'plan ExecutionPlan,
         output: &'output mut String,
     ) -> Self {
-        Self { plan, output }
+        Self {
+            value_shapes: &plan.program.common.value_shapes,
+            output,
+        }
     }
 
-    pub(in crate::plan::execution) fn plan(&self) -> &'plan ExecutionPlan {
-        self.plan
+    pub(in crate::plan::execution) fn new_hosted(
+        execution: &'plan HostedExecution,
+        output: &'output mut String,
+    ) -> Self {
+        Self {
+            value_shapes: &execution.program.common.value_shapes,
+            output,
+        }
+    }
+
+    pub(in crate::plan::execution) fn shape_value_type(&self, id: ValueShapeId) -> ValueType {
+        self.value_shapes.value_type(id).clone()
     }
 
     pub(in crate::plan::execution) fn output(&mut self) -> &mut String {
@@ -76,20 +90,41 @@ impl<'plan, 'output> ExplainContext<'plan, 'output> {
 }
 
 pub struct ExecutionPlanExplanation<'a> {
-    plan: &'a ExecutionPlan,
+    execution: ExplainedExecution<'a>,
+}
+
+enum ExplainedExecution<'a> {
+    Plain(&'a ExecutionPlan),
+    Hosted(&'a HostedExecution),
 }
 
 impl<'a> ExecutionPlanExplanation<'a> {
     pub(super) fn new(plan: &'a ExecutionPlan) -> Self {
-        Self { plan }
+        Self {
+            execution: ExplainedExecution::Plain(plan),
+        }
+    }
+
+    pub(super) fn new_hosted(execution: &'a HostedExecution) -> Self {
+        Self {
+            execution: ExplainedExecution::Hosted(execution),
+        }
     }
 }
 
 impl fmt::Display for ExecutionPlanExplanation<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut output = String::new();
-        let mut context = ExplainContext::new(self.plan, &mut output);
-        context.write(self.plan);
+        match self.execution {
+            ExplainedExecution::Plain(plan) => {
+                let mut context = ExplainContext::new(plan, &mut output);
+                context.write(plan);
+            }
+            ExplainedExecution::Hosted(execution) => {
+                let mut context = ExplainContext::new_hosted(execution, &mut output);
+                context.write(execution);
+            }
+        }
         formatter.write_str(&output)
     }
 }

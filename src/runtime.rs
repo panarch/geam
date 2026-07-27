@@ -35,10 +35,41 @@ pub use value::{
 
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::function::RuntimeFunctionId;
+use crate::plan::execution::runtime::RuntimeExecutionPlan;
 use crate::runtime::graph::RetainedValues;
 use crate::runtime::state::RuntimeState;
 
+pub(in crate::runtime) trait ExecutableRuntimePlan:
+    RuntimeExecutionPlan<
+        IntFunction: function::RuntimeIntFunction<Self>,
+        BoolFunction: function::RuntimeBoolFunction<Self>,
+    >
+{
+}
+
+impl<Plan> ExecutableRuntimePlan for Plan
+where
+    Plan: RuntimeExecutionPlan,
+    Plan::IntFunction: function::RuntimeIntFunction<Plan>,
+    Plan::BoolFunction: function::RuntimeBoolFunction<Plan>,
+{
+}
+
 pub fn run_main(plan: &ExecutionPlan, echo: &mut dyn EchoSink) -> Result<Value, ExecutionError> {
+    run_program(plan, echo)
+}
+
+pub(crate) fn run_hosted_main(
+    plan: &crate::plan::execution::HostedExecution,
+    echo: &mut dyn EchoSink,
+) -> Result<Value, ExecutionError> {
+    run_program(plan, echo)
+}
+
+fn run_program(
+    plan: &impl ExecutableRuntimePlan,
+    echo: &mut dyn EchoSink,
+) -> Result<Value, ExecutionError> {
     let mut state = RuntimeState::new(echo);
     let inputs = RetainedValues::empty();
     let value = match plan.main_runtime() {

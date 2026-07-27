@@ -89,7 +89,7 @@ impl Explain for ParamSlot {
         context.push_str(":shape#");
         context.push_str(&self.shape().index().to_string());
         context.push('(');
-        let type_ = context.plan().shape_value_type(self.shape());
+        let type_ = context.shape_value_type(self.shape());
         context.write(&type_);
         context.push(')');
     }
