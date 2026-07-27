@@ -40,7 +40,10 @@ use crate::runtime::graph::RetainedValues;
 use crate::runtime::state::RuntimeState;
 
 pub(in crate::runtime) trait ExecutableRuntimePlan:
-    RuntimeExecutionPlan<IntFunction: function::RuntimeIntFunction<Self>>
+    RuntimeExecutionPlan<
+        IntFunction: function::RuntimeIntFunction<Self>,
+        BoolFunction: function::RuntimeBoolFunction<Self>,
+    >
 {
 }
 
@@ -48,6 +51,7 @@ impl<Plan> ExecutableRuntimePlan for Plan
 where
     Plan: RuntimeExecutionPlan,
     Plan::IntFunction: function::RuntimeIntFunction<Plan>,
+    Plan::BoolFunction: function::RuntimeBoolFunction<Plan>,
 {
 }
 

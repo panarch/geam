@@ -1,17 +1,16 @@
-use super::IntFunctionBody;
 use crate::plan::execution::function::ExecutableFunction;
 
-pub(crate) enum IntFunctionEntry<Host> {
-    Graph(ExecutableFunction<IntFunctionBody>),
-    Host(Host),
+pub(crate) enum ValueFunctionEntry<Body, HostTarget> {
+    Graph(ExecutableFunction<Body>),
+    Host(HostTarget),
 }
 
-impl<Host> IntFunctionEntry<Host> {
-    pub(in crate::plan::execution) fn graph(function: ExecutableFunction<IntFunctionBody>) -> Self {
+impl<Body, HostTarget> ValueFunctionEntry<Body, HostTarget> {
+    pub(in crate::plan::execution) fn graph(function: ExecutableFunction<Body>) -> Self {
         Self::Graph(function)
     }
 
-    pub(in crate::plan::execution) fn host(target: Host) -> Self {
+    pub(in crate::plan::execution) fn host(target: HostTarget) -> Self {
         Self::Host(target)
     }
 }

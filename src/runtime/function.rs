@@ -8,7 +8,7 @@ pub(in crate::runtime) use list::{
     run_parameter_list_list, run_string_list, run_tuple_list, run_utf_codepoint_list,
 };
 pub(in crate::runtime) use returning_function::run_function;
-pub(in crate::runtime) use value::RuntimeIntFunction;
+pub(in crate::runtime) use value::{RuntimeBoolFunction, RuntimeIntFunction};
 pub(in crate::runtime) use value::{
     run_bit_array, run_bool, run_custom, run_float, run_int, run_never, run_never_value, run_nil,
     run_string, run_tuple, run_utf_codepoint,

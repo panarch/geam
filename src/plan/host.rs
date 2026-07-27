@@ -1,8 +1,8 @@
 use super::{
-    FunctionShape, FunctionTemplateId, FunctionTemplateSignature, FunctionType, ModuleId,
-    PlannedModule, TypeScheme, ValueShape, ValueType,
+    BoolLocalId, FunctionShape, FunctionTemplateId, FunctionTemplateSignature, FunctionType,
+    IntLocalId, ModuleId, PlannedModule, TypeScheme, ValueShape,
 };
-use crate::host::HostIntFunction;
+use crate::host::HostFunctionImplementation as RegisteredHostFunctionImplementation;
 use ecow::EcoString;
 
 pub struct HostedModulePlan {
@@ -34,12 +34,26 @@ pub struct HostFunctionTemplate {
     package: EcoString,
     module: EcoString,
     name: EcoString,
+    parameters: Box<[HostParameter]>,
+    return_family: HostReturnFamily,
     type_: FunctionType,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HostParameter {
+    Int(IntLocalId),
+    Bool(BoolLocalId),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HostReturnFamily {
+    Int,
+    Bool,
 }
 
 pub(crate) struct HostFunctionImplementation {
     template: FunctionTemplateId,
-    function: HostIntFunction,
+    implementation: RegisteredHostFunctionImplementation,
 }
 
 pub(crate) struct HostedModulePlanParts {
@@ -169,25 +183,40 @@ impl PlannedHostModule {
     pub fn functions(&self) -> &[HostFunctionTemplate] {
         &self.functions
     }
+
+    pub(crate) fn into_parts(self) -> (ModuleId, EcoString, EcoString, Vec<HostFunctionTemplate>) {
+        (self.id, self.package, self.module, self.functions)
+    }
 }
 
 impl HostFunctionTemplate {
-    pub(crate) fn int_binary(
+    pub(crate) fn new(
         id: FunctionTemplateId,
         package: EcoString,
         module: EcoString,
         name: EcoString,
+        parameters: Vec<HostParameter>,
+        return_family: HostReturnFamily,
+        type_: FunctionType,
     ) -> Self {
         Self {
             signature: FunctionTemplateSignature::new(
                 id,
                 TypeScheme::new(0),
-                FunctionShape::new(vec![ValueShape::Int, ValueShape::Int], ValueShape::Int),
+                FunctionShape::new(
+                    parameters
+                        .iter()
+                        .map(|parameter| parameter.shape())
+                        .collect(),
+                    return_family.shape(),
+                ),
             ),
             package,
             module,
             name,
-            type_: FunctionType::new(vec![ValueType::Int, ValueType::Int], ValueType::Int),
+            parameters: parameters.into_boxed_slice(),
+            return_family,
+            type_,
         }
     }
 
@@ -215,17 +244,49 @@ impl HostFunctionTemplate {
         &self.type_
     }
 
+    pub(crate) fn parameters(&self) -> &[HostParameter] {
+        &self.parameters
+    }
+
+    pub(crate) fn return_family(&self) -> HostReturnFamily {
+        self.return_family
+    }
+
     pub(crate) fn signature(&self) -> &FunctionTemplateSignature {
         &self.signature
     }
 }
 
+impl HostParameter {
+    fn shape(self) -> ValueShape {
+        match self {
+            Self::Int(_) => ValueShape::Int,
+            Self::Bool(_) => ValueShape::Bool,
+        }
+    }
+}
+
+impl HostReturnFamily {
+    pub(crate) fn shape(self) -> ValueShape {
+        match self {
+            Self::Int => ValueShape::Int,
+            Self::Bool => ValueShape::Bool,
+        }
+    }
+}
+
 impl HostFunctionImplementation {
-    pub(crate) fn new(template: FunctionTemplateId, function: HostIntFunction) -> Self {
-        Self { template, function }
+    pub(crate) fn new(
+        template: FunctionTemplateId,
+        implementation: RegisteredHostFunctionImplementation,
+    ) -> Self {
+        Self {
+            template,
+            implementation,
+        }
     }
 
-    pub(crate) fn into_parts(self) -> (FunctionTemplateId, HostIntFunction) {
-        (self.template, self.function)
+    pub(crate) fn into_parts(self) -> (FunctionTemplateId, RegisteredHostFunctionImplementation) {
+        (self.template, self.implementation)
     }
 }

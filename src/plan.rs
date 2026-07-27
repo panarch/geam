@@ -5,7 +5,10 @@ mod source;
 mod value_shape;
 mod value_type;
 
-pub(crate) use host::{HostFunctionImplementation, HostedModulePlanParts, HostedPlannedModuleKind};
+pub(crate) use host::{
+    HostFunctionImplementation, HostParameter, HostReturnFamily, HostedModulePlanParts,
+    HostedPlannedModuleKind,
+};
 pub use host::{HostFunctionTemplate, HostedModulePlan, HostedPlannedModule, PlannedHostModule};
 pub(crate) use module::{
     AssertBinding, AssertPattern, AssertSubject, BitArrayBindingPattern, BitArrayBitsSize,

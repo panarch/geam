@@ -144,6 +144,12 @@ declared functions to Gleam's analyzer without generating fake Gleam bodies.
 Host provenance and Rust implementations remain Geam-owned data and are not
 interpreted as pure Gleam definitions.
 
+`HostModule::with_function` accepts infallible Rust closures with zero through
+seven `BigInt` or `bool` arguments and a `BigInt` or `bool` return. The arity
+limit follows Clippy's default `too_many_arguments` threshold. Unsupported
+types and arities fail Rust trait resolution; the hosted runtime performs no
+signature validation or generic value downcast.
+
 The current public execution APIs are:
 
 ```rust
@@ -213,7 +219,7 @@ milestone:
 - Package resolution, dependency download, package cache mutation, and artifact
   writing.
 - Source-declared backend external providers, provider fallback, broader host
-  signatures, host state, and CLI behavior.
+  value families, host state, and CLI behavior.
 
 ## Current Source Boundary
 

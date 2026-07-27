@@ -47,15 +47,7 @@ impl Explain for ValueType {
                 context.push_str(&id.index().to_string());
             }
             Self::Function(type_) => {
-                context.push_str("fn(");
-                for (index, argument) in type_.argument_types().iter().enumerate() {
-                    if index > 0 {
-                        context.push_str(", ");
-                    }
-                    context.write(argument);
-                }
-                context.push_str(") -> ");
-                context.write(type_.return_());
+                context.write(type_.as_ref());
             }
             Self::Custom(id) => {
                 context.push_str("custom_type#");

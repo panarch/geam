@@ -1,7 +1,10 @@
 use crate::frontend::{HostedTypedProgram, HostedTypedProgramModule, TypedProgram};
-use crate::host::HostFunctionDefinition;
+use crate::host::{
+    HostFunctionDefinition, HostParameter as RegisteredHostParameter, HostValueType,
+};
 use crate::plan::{
-    FunctionFunctionLocalId, FunctionTemplateId, HostFunctionImplementation, HostFunctionTemplate,
+    BoolLocalId, FunctionFunctionLocalId, FunctionTemplateId, HostFunctionImplementation,
+    HostFunctionTemplate, HostParameter as PlannedHostParameter, HostReturnFamily,
     HostedModulePlan, HostedPlannedModule, IntFunctionLocalId, IntLocalId, ModuleId, ModulePlan,
     ParamBinding, ParamLocal, PlannedHostModule, PlannedModule, SourceContext, ValueShape,
 };
@@ -135,32 +138,56 @@ pub fn plan_host_program(program: HostedTypedProgram) -> Result<HostedModulePlan
                 for (function_index, definition) in functions.into_iter().enumerate() {
                     let (schema, implementation) = definition.into_parts();
                     let id = FunctionTemplateId::in_module(id, function_index);
-                    let template = HostFunctionTemplate::int_binary(
+                    let mut template_params = Vec::with_capacity(schema.parameters().len());
+                    let mut function_params = Vec::with_capacity(schema.parameters().len());
+                    for parameter in schema.parameters() {
+                        let (local, shape, template_param) = match parameter {
+                            RegisteredHostParameter::Int(slot) => {
+                                let local = IntLocalId(slot.index());
+                                (
+                                    ParamLocal::int(local),
+                                    ValueShape::Int,
+                                    PlannedHostParameter::Int(local),
+                                )
+                            }
+                            RegisteredHostParameter::Bool(slot) => {
+                                let local = BoolLocalId(slot.index());
+                                (
+                                    ParamLocal::bool(local),
+                                    ValueShape::Bool,
+                                    PlannedHostParameter::Bool(local),
+                                )
+                            }
+                        };
+                        template_params.push(template_param);
+                        function_params.push(FunctionParam::new(
+                            local,
+                            shape,
+                            ParamBinding::Discard,
+                            None,
+                        ));
+                    }
+                    let return_family = match schema.return_type() {
+                        HostValueType::Int => HostReturnFamily::Int,
+                        HostValueType::Bool => HostReturnFamily::Bool,
+                    };
+                    let return_shape = return_family.shape();
+                    let template = HostFunctionTemplate::new(
                         id,
                         package.clone(),
                         module_name.clone(),
                         schema.name().clone(),
+                        template_params,
+                        return_family,
+                        schema.type_().clone(),
                     );
                     functions_by_name.insert(
                         schema.name().clone(),
                         FunctionInfo {
                             signature: template.signature().clone(),
                             type_parameters: TypeParameterScope::default(),
-                            return_shape: ValueShape::Int,
-                            params: vec![
-                                FunctionParam::new(
-                                    ParamLocal::int(IntLocalId(0)),
-                                    ValueShape::Int,
-                                    ParamBinding::Discard,
-                                    None,
-                                ),
-                                FunctionParam::new(
-                                    ParamLocal::int(IntLocalId(1)),
-                                    ValueShape::Int,
-                                    ParamBinding::Discard,
-                                    None,
-                                ),
-                            ],
+                            return_shape,
+                            params: function_params,
                         },
                     );
                     implementations.push(HostFunctionImplementation::new(id, implementation));
@@ -972,18 +999,18 @@ mod tests {
     use crate::host::{HostModule, HostModules};
     use crate::plan::module::{ReturnBodyKind, ReturnExprKind};
     use crate::plan::{
-        BitArrayListLocalId, BoolListLocalId, ConstantTemplate, ConstantTemplateId,
+        BitArrayListLocalId, BoolListLocalId, BoolLocalId, ConstantTemplate, ConstantTemplateId,
         ConstantTemplateSignature, ConstantTemplates, ConstantValue, CustomConstructorDefinition,
         CustomFieldDefinition, CustomLocalId, CustomType, CustomTypeDefinition, CustomTypeName,
         CustomTypePublicity, CustomTypeTemplate, Expr, ExprKind, FloatListLocalId,
         FunctionExprKind, FunctionFunctionId, FunctionListLocalId, FunctionShape,
         FunctionTemplateId, FunctionType, GenericExpr, GenericFunctionLocal,
         GenericFunctionLocalId, GenericFunctionType, GenericListLocalId, GenericLocal,
-        GenericLocalId, IntExprKind, IntFunctionExprKind, IntFunctionFunctionId, IntFunctionId,
-        IntListLocalId, IntLocalId, ListListLocalId, ListLocal, LocalId, ModuleId, NilListLocalId,
-        PanicExpr, PanicSite, Param, ParamLocal, ReturnBody, ReturnExpr, RuntimeFunctionId,
-        SourceSpan, StringListLocalId, TupleExprKind, TupleListLocalId, TypeParameterId,
-        TypeScheme, ValueShape, ValueType,
+        GenericLocalId, HostParameter, HostReturnFamily, IntExprKind, IntFunctionExprKind,
+        IntFunctionFunctionId, IntFunctionId, IntListLocalId, IntLocalId, ListListLocalId,
+        ListLocal, LocalId, ModuleId, NilListLocalId, PanicExpr, PanicSite, Param, ParamLocal,
+        ReturnBody, ReturnExpr, RuntimeFunctionId, SourceSpan, StringListLocalId, TupleExprKind,
+        TupleListLocalId, TypeParameterId, TypeScheme, ValueShape, ValueType,
     };
     use crate::planner::dsl::{
         call_int, call_int_returning_function, function, function_ref, int, int_arg,
@@ -999,11 +1026,33 @@ mod tests {
 
     #[test]
     fn plan_host_program_bodyless_templates_with_module_qualified_ids() {
+        let choose = |condition: bool, left: BigInt, right: BigInt| {
+            if condition { left } else { right }
+        };
+        assert_eq!(
+            choose(false, BigInt::from(10), BigInt::from(20)),
+            BigInt::from(20),
+        );
+        assert_eq!(
+            choose(true, BigInt::from(10), BigInt::from(20)),
+            BigInt::from(10),
+        );
+        let all = |a: bool, b: bool, c: bool, d: bool, e: bool, f: bool, g: bool| {
+            a && b && c && d && e && f && g
+        };
+        assert!(all(true, true, true, true, true, true, true));
+
         let hosts = HostModules::new([HostModule::new("host_support", "host/math")
             .expect("host module should be valid")
             .with_function("add", <BigInt as std::ops::Add>::add)
             .expect("host function should be valid")
             .with_function("subtract", <BigInt as std::ops::Sub>::sub)
+            .expect("host function should be valid")
+            .with_function("ready", <bool as Default>::default)
+            .expect("host function should be valid")
+            .with_function("choose", choose)
+            .expect("host function should be valid")
+            .with_function("all", all)
             .expect("host function should be valid")])
         .expect("host modules should be unique");
         let typed = compile_typed_host_program(
@@ -1049,7 +1098,7 @@ pub fn main() {
             .host()
             .expect("host module should retain host templates");
         assert_eq!(host.id(), ModuleId::new(0));
-        assert_eq!(host.functions().len(), 2);
+        assert_eq!(host.functions().len(), 5);
         assert_eq!(host.functions()[0].name(), "add");
         assert_eq!(
             host.functions()[0].id(),
@@ -1067,6 +1116,63 @@ pub fn main() {
             &FunctionType::new(vec![ValueType::Int, ValueType::Int], ValueType::Int),
         );
         assert_eq!(host.functions()[1].name(), "subtract");
+        assert_eq!(host.functions()[2].name(), "ready");
+        assert_eq!(host.functions()[2].parameters(), &[]);
+        assert_eq!(host.functions()[2].return_family(), HostReturnFamily::Bool,);
+        assert_eq!(
+            host.functions()[2].signature().shape(),
+            &FunctionShape::new(Vec::new(), ValueShape::Bool),
+        );
+        assert_eq!(
+            host.functions()[2].type_(),
+            &FunctionType::new(Vec::new(), ValueType::Bool),
+        );
+        assert_eq!(host.functions()[3].name(), "choose");
+        assert_eq!(
+            host.functions()[3].parameters(),
+            [
+                HostParameter::Bool(BoolLocalId(0)),
+                HostParameter::Int(IntLocalId(0)),
+                HostParameter::Int(IntLocalId(1)),
+            ],
+        );
+        assert_eq!(host.functions()[3].return_family(), HostReturnFamily::Int,);
+        assert_eq!(
+            host.functions()[3].signature().shape(),
+            &FunctionShape::new(
+                vec![ValueShape::Bool, ValueShape::Int, ValueShape::Int],
+                ValueShape::Int,
+            ),
+        );
+        assert_eq!(
+            host.functions()[3].type_(),
+            &FunctionType::new(
+                vec![ValueType::Bool, ValueType::Int, ValueType::Int],
+                ValueType::Int,
+            ),
+        );
+        assert_eq!(host.functions()[4].name(), "all");
+        assert_eq!(
+            host.functions()[4].parameters(),
+            [
+                HostParameter::Bool(BoolLocalId(0)),
+                HostParameter::Bool(BoolLocalId(1)),
+                HostParameter::Bool(BoolLocalId(2)),
+                HostParameter::Bool(BoolLocalId(3)),
+                HostParameter::Bool(BoolLocalId(4)),
+                HostParameter::Bool(BoolLocalId(5)),
+                HostParameter::Bool(BoolLocalId(6)),
+            ],
+        );
+        assert_eq!(host.functions()[4].return_family(), HostReturnFamily::Bool);
+        assert_eq!(
+            host.functions()[4].signature().shape(),
+            &FunctionShape::new(vec![ValueShape::Bool; 7], ValueShape::Bool),
+        );
+        assert_eq!(
+            host.functions()[4].type_(),
+            &FunctionType::new(vec![ValueType::Bool; 7], ValueType::Bool),
+        );
         let source = plan.modules()[1]
             .source()
             .expect("root module should retain its source plan");

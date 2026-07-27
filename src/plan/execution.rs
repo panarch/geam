@@ -47,25 +47,30 @@ pub struct ExecutionPlan {
 }
 
 pub struct HostedExecution {
-    program: ExecutionProgram<host::HostIntFunctionId>,
-    host_functions: Box<[host::HostedIntFunction]>,
+    program: ExecutionProgram<host::HostedExecutionHost>,
+    host_int_functions: Box<[host::HostedIntFunction]>,
+    host_bool_functions: Box<[host::HostedBoolFunction]>,
 }
 
 pub(crate) trait ExecutionHost {
     type IntFunction;
+    type BoolFunction;
 }
 
 impl ExecutionHost for Infallible {
     type IntFunction = ExecutableFunction<IntFunctionBody>;
+    type BoolFunction = ExecutableFunction<function::BoolFunctionBody>;
 }
 
-impl ExecutionHost for host::HostIntFunctionId {
-    type IntFunction = function::IntFunctionEntry<host::HostIntFunctionId>;
+impl ExecutionHost for host::HostedExecutionHost {
+    type IntFunction = function::ValueFunctionEntry<IntFunctionBody, host::HostIntFunctionId>;
+    type BoolFunction =
+        function::ValueFunctionEntry<function::BoolFunctionBody, host::HostBoolFunctionId>;
 }
 
 pub(crate) struct ExecutionProgram<Host: ExecutionHost> {
     common: ExecutionProgramCommon,
-    functions: FunctionTables<Host::IntFunction>,
+    functions: FunctionTables<Host::IntFunction, Host::BoolFunction>,
 }
 
 struct ExecutionProgramCommon {
@@ -121,7 +126,8 @@ impl explain::Explain for HostedExecution {
         context.push('\n');
         context.write(&function::HostedFunctionTablesExplanation::new(
             &self.program.functions,
-            &self.host_functions,
+            &self.host_int_functions,
+            &self.host_bool_functions,
         ));
         context.write(&self.program.common.constants);
     }
@@ -526,10 +532,12 @@ impl ExecutionPlan {
 
 impl HostedExecution {
     pub fn from_module_plan(module_plan: HostedModulePlan) -> Self {
-        let (program, host_functions) = lowering::lower_hosted(module_plan);
+        let (program, host_int_functions, host_bool_functions) =
+            lowering::lower_hosted(module_plan);
         Self {
             program,
-            host_functions,
+            host_int_functions,
+            host_bool_functions,
         }
     }
 
@@ -548,7 +556,14 @@ impl HostedExecution {
         &self,
         id: host::HostIntFunctionId,
     ) -> &host::HostedIntFunction {
-        &self.host_functions[id.index()]
+        &self.host_int_functions[id.index()]
+    }
+
+    pub(crate) fn host_bool_function(
+        &self,
+        id: host::HostBoolFunctionId,
+    ) -> &host::HostedBoolFunction {
+        &self.host_bool_functions[id.index()]
     }
 }
 
@@ -556,8 +571,12 @@ impl HostedExecution {
 mod tests {
     use super::HostedExecution;
     use crate::plan::execution::explain;
-    use crate::plan::execution::function::{IntFunctionEntry, IntFunctionId};
-    use crate::plan::execution::host::{HostIntFunctionId, HostedIntFunction};
+    use crate::plan::execution::function::{
+        BoolFunctionBody, BoolFunctionId, IntFunctionBody, IntFunctionId, ValueFunctionEntry,
+    };
+    use crate::plan::execution::host::{
+        HostBoolFunctionId, HostIntFunctionId, HostedBoolFunction, HostedIntFunction,
+    };
     use crate::{
         HostModule, HostModules, ModuleSource, PackageSource, compile_typed_host_program,
         compile_typed_module, plan_host_program, plan_module,
@@ -604,27 +623,84 @@ pub fn main() {
         .expect("host source should compile");
         let plan = plan_host_program(typed).expect("host source should plan");
         let execution = HostedExecution::from_module_plan(plan);
-        let graph: &IntFunctionEntry<HostIntFunctionId> =
+        let graph: &ValueFunctionEntry<IntFunctionBody, HostIntFunctionId> =
             execution.program.functions.int_function(IntFunctionId(0));
-        let host: &IntFunctionEntry<HostIntFunctionId> =
+        let host: &ValueFunctionEntry<IntFunctionBody, HostIntFunctionId> =
             execution.program.functions.int_function(IntFunctionId(2));
 
         assert_eq!(
             [graph, host].map(|function| match function {
-                IntFunctionEntry::Graph(_) => "graph",
-                IntFunctionEntry::Host(_) => "host",
+                ValueFunctionEntry::Graph(_) => "graph",
+                ValueFunctionEntry::Host(_) => "host",
             }),
             ["graph", "host"],
         );
         assert!(matches!(
             host,
-            IntFunctionEntry::Host(target) if *target == HostIntFunctionId::new(0)
+            ValueFunctionEntry::Host(target) if *target == HostIntFunctionId::new(0)
         ));
-        let implementation: &HostedIntFunction = &execution.host_functions[0];
+        let implementation: &HostedIntFunction = &execution.host_int_functions[0];
         assert_eq!(implementation.name(), "add");
         assert_eq!(
             execution.run_main(&mut Vec::new()),
             Ok(crate::Value::Int(3.into())),
+        );
+    }
+
+    #[test]
+    fn hosted_execution_program_seals_graph_and_host_bool_targets() {
+        let predicates = HostModule::new("host_support", "host/predicates")
+            .expect("host module should be valid")
+            .with_function("is_positive", |value: BigInt| value > BigInt::from(0))
+            .expect("host function should be valid");
+        let hosts = HostModules::new([predicates]).expect("host modules should be unique");
+        let source = r#"
+import host/predicates
+
+fn identity(value: Bool) {
+  value
+}
+
+pub fn main() {
+  identity(predicates.is_positive(1))
+}
+"#;
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                ["host_support"],
+                [ModuleSource::new("main", "main.gleam", source)],
+            )],
+            hosts,
+        )
+        .expect("host source should compile");
+        let plan = plan_host_program(typed).expect("host source should plan");
+        let execution = HostedExecution::from_module_plan(plan);
+        let main: &ValueFunctionEntry<BoolFunctionBody, HostBoolFunctionId> =
+            execution.program.functions.bool_function(BoolFunctionId(0));
+        let host: &ValueFunctionEntry<BoolFunctionBody, HostBoolFunctionId> =
+            execution.program.functions.bool_function(BoolFunctionId(1));
+        let identity: &ValueFunctionEntry<BoolFunctionBody, HostBoolFunctionId> =
+            execution.program.functions.bool_function(BoolFunctionId(2));
+
+        assert_eq!(
+            [main, host, identity].map(|function| match function {
+                ValueFunctionEntry::Graph(_) => "graph",
+                ValueFunctionEntry::Host(_) => "host",
+            }),
+            ["graph", "host", "graph"],
+        );
+        assert!(matches!(
+            host,
+            ValueFunctionEntry::Host(target) if *target == HostBoolFunctionId::new(0)
+        ));
+        let implementation: &HostedBoolFunction = &execution.host_bool_functions[0];
+        assert_eq!(implementation.name(), "is_positive");
+        assert_eq!(
+            execution.run_main(&mut Vec::new()),
+            Ok(crate::Value::Bool(true)),
         );
     }
 

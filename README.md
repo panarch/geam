@@ -47,8 +47,10 @@ the core Gleam value families, custom types, generics, patterns, records,
 functions, constants, imports, and read-only loading of already resolved Gleam
 projects. The official `gleam_stdlib` package is not built in: compatible
 imported modules are compiled from the package sources resolved by Gleam.
-Package-qualified source-less Rust host modules can provide the current
-`fn(Int, Int) -> Int` host signature through a separate hosted pipeline.
+Package-qualified source-less Rust host modules can provide infallible
+functions with zero through seven `BigInt`/`bool` arguments and a
+`BigInt`/`bool` return through a separate hosted pipeline. Unsupported Rust
+types and arities are rejected by trait resolution rather than at runtime.
 Source-declared backend external functions or types are not provider linkage
 surfaces.
 

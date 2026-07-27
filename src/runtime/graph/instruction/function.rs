@@ -10,7 +10,7 @@ use crate::runtime::evaluated::{
     EvaluatedCapture, EvaluatedCustomFunction, EvaluatedFunction, EvaluatedFunctionValue,
     EvaluatedListCapture, FunctionReferenceId,
 };
-use crate::runtime::function::RuntimeIntFunction as _;
+use crate::runtime::function::{RuntimeBoolFunction as _, RuntimeIntFunction as _};
 use crate::runtime::state::RuntimeState;
 use crate::runtime::{ExecutableRuntimePlan, ExecutionError, InvariantError};
 
@@ -205,10 +205,7 @@ fn target_params(plan: &impl ExecutableRuntimePlan, target: &FunctionTarget) -> 
             let function = plan.custom_function(*function);
             graph_params(function.entry(), function.body().function_body())
         }
-        FunctionTarget::Bool(function) => {
-            let function = plan.bool_function(*function);
-            graph_params(function.entry(), function.body())
-        }
+        FunctionTarget::Bool(function) => plan.bool_function(*function).parameter_locals(plan),
         FunctionTarget::Nil(function) => {
             let function = plan.nil_function(*function);
             graph_params(function.entry(), function.body())

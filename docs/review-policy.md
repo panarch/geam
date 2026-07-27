@@ -203,6 +203,11 @@ Host calls should join the existing typed call, tail-call, and function-value
 paths. Do not add string dispatch or a parallel identity model solely for host
 implementations.
 
+One sealed registration owner must derive a host function's schema,
+family-local parameter layout, and callback adapter together. Planner and
+runtime phases may consume that layout, but must not independently infer the
+same signature or parameter indexing.
+
 ## Panic Rules
 
 Production Geam logic must not use explicit panic paths for control flow,

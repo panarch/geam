@@ -88,10 +88,16 @@ model. Qualified and unqualified references to one host function compare
 equal; Rust closure addresses and captures do not participate in language
 equality.
 
-The current host signature is the infallible
-`fn(BigInt, BigInt) -> BigInt` Rust boundary corresponding to Gleam
-`fn(Int, Int) -> Int`. It performs no `Value` downcast, string lookup, panic
-translation, provider fallback, or mutable per-run host state. Source
+The current host boundary accepts infallible Rust closures with zero through
+seven `BigInt` or `bool` arguments and a `BigInt` or `bool` return. Seven is an
+intentional profile limit aligned with Clippy's default
+`too_many_arguments` threshold. Registration derives the public schema,
+family-local parameter slots, and callback adapter together; unsupported Rust
+types and arities have no `HostFunction` implementation.
+
+Runtime receives the sealed Int/Bool slots and calls the matching typed
+function family without a `Value` downcast, signature check, string lookup,
+panic translation, provider fallback, or mutable per-run host state. Source
 `@external` provider binding and broader value families are separate work.
 
 ## Generic Values

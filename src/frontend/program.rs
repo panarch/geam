@@ -1,5 +1,5 @@
 use super::{FrontendError, ModuleSource, PackageSource};
-use crate::host::{HostFunctionSchema, HostModules, RegisteredHostModule};
+use crate::host::{HostFunctionSchema, HostModules, HostValueType, RegisteredHostModule};
 use camino::Utf8PathBuf;
 use ecow::EcoString;
 use gleam_core::analyse::{ModuleAnalyzerConstructor, TargetSupport};
@@ -11,7 +11,7 @@ use gleam_core::parse;
 use gleam_core::type_::error::VariableOrigin;
 use gleam_core::type_::{
     Deprecation, ModuleInterface, PRELUDE_MODULE_NAME, References, ValueConstructor,
-    ValueConstructorVariant, build_prelude, fn_, int,
+    ValueConstructorVariant, bool as bool_type, build_prelude, fn_, int,
 };
 use gleam_core::uid::UniqueIdGenerator;
 use gleam_core::warning::{TypeWarningEmitter, WarningEmitter};
@@ -507,7 +507,14 @@ fn host_value_constructor(
     module: &EcoString,
     schema: &HostFunctionSchema,
 ) -> (EcoString, ValueConstructor) {
-    let type_ = fn_(vec![int(), int()], int());
+    let type_ = fn_(
+        schema
+            .parameters()
+            .iter()
+            .map(|parameter| host_type(parameter.type_()))
+            .collect(),
+        host_type(schema.return_type()),
+    );
     // Gleam keeps these metadata types crate-private, but exposes their
     // canonical values through ValueConstructor accessors.
     let frontend_metadata = ValueConstructor::local_variable(
@@ -524,7 +531,7 @@ fn host_value_constructor(
                 name: schema.name().clone(),
                 field_map: None,
                 module: module.clone(),
-                arity: 2,
+                arity: schema.parameters().len(),
                 location: SrcSpan::new(0, 0),
                 documentation: None,
                 implementations: frontend_metadata.variant.implementations(),
@@ -535,6 +542,13 @@ fn host_value_constructor(
             type_,
         },
     )
+}
+
+fn host_type(type_: HostValueType) -> std::sync::Arc<gleam_core::type_::Type> {
+    match type_ {
+        HostValueType::Int => int(),
+        HostValueType::Bool => bool_type(),
+    }
 }
 
 fn dependency_order(
@@ -644,16 +658,39 @@ mod tests {
     use gleam_core::ast::{Publicity, SrcSpan};
     use gleam_core::type_::error::VariableOrigin;
     use gleam_core::type_::{
-        Deprecation, ValueConstructor, ValueConstructorVariant, build_prelude, fn_, int,
+        Deprecation, ValueConstructor, ValueConstructorVariant, bool as bool_type, build_prelude,
+        fn_, int,
     };
     use gleam_core::uid::UniqueIdGenerator;
     use num_bigint::BigInt;
 
     #[test]
     fn builds_exact_source_less_host_function_interfaces() {
+        let choose = |condition: bool, left: BigInt, right: BigInt| {
+            if condition { left } else { right }
+        };
+        assert_eq!(
+            choose(false, BigInt::from(10), BigInt::from(20)),
+            BigInt::from(20),
+        );
+        assert_eq!(
+            choose(true, BigInt::from(10), BigInt::from(20)),
+            BigInt::from(10),
+        );
+        let all = |a: bool, b: bool, c: bool, d: bool, e: bool, f: bool, g: bool| {
+            a && b && c && d && e && f && g
+        };
+        assert!(all(true, true, true, true, true, true, true));
+
         let hosts = HostModules::new([HostModule::new("host_support", "host/math")
             .expect("host module should be valid")
             .with_function("add", <BigInt as std::ops::Add>::add)
+            .expect("host function should be valid")
+            .with_function("ready", <bool as Default>::default)
+            .expect("host function should be valid")
+            .with_function("choose", choose)
+            .expect("host function should be valid")
+            .with_function("all", all)
             .expect("host function should be valid")])
         .expect("host modules should be unique");
         let host = hosts
@@ -700,7 +737,7 @@ mod tests {
         assert!(!interface.is_internal);
         assert!(interface.types.is_empty());
         assert!(interface.types_value_constructors.is_empty());
-        assert_eq!(interface.values.len(), 1);
+        assert_eq!(interface.values.len(), 4);
         assert!(interface.accessors.is_empty());
         assert!(interface.warnings.is_empty());
         assert!(interface.type_aliases.is_empty());
@@ -709,6 +746,71 @@ mod tests {
         assert_eq!(interface.references, Default::default());
         assert!(interface.inline_functions.is_empty());
         assert_eq!(constructor, &expected_constructor);
+        assert_eq!(interface.values["ready"].type_, fn_(vec![], bool_type()));
+        assert_eq!(
+            &interface.values["ready"].variant,
+            &ValueConstructorVariant::ModuleFn {
+                name: "ready".into(),
+                field_map: None,
+                module: "host/math".into(),
+                arity: 0,
+                location: SrcSpan::new(0, 0),
+                documentation: None,
+                implementations: expected_metadata.variant.implementations(),
+                external_erlang: None,
+                external_javascript: None,
+                purity: expected_metadata.called_function_purity(),
+            },
+        );
+        assert_eq!(
+            interface.values["choose"].type_,
+            fn_(vec![bool_type(), int(), int()], int()),
+        );
+        assert_eq!(
+            &interface.values["choose"].variant,
+            &ValueConstructorVariant::ModuleFn {
+                name: "choose".into(),
+                field_map: None,
+                module: "host/math".into(),
+                arity: 3,
+                location: SrcSpan::new(0, 0),
+                documentation: None,
+                implementations: expected_metadata.variant.implementations(),
+                external_erlang: None,
+                external_javascript: None,
+                purity: expected_metadata.called_function_purity(),
+            },
+        );
+        assert_eq!(
+            interface.values["all"].type_,
+            fn_(
+                vec![
+                    bool_type(),
+                    bool_type(),
+                    bool_type(),
+                    bool_type(),
+                    bool_type(),
+                    bool_type(),
+                    bool_type(),
+                ],
+                bool_type(),
+            ),
+        );
+        assert_eq!(
+            &interface.values["all"].variant,
+            &ValueConstructorVariant::ModuleFn {
+                name: "all".into(),
+                field_map: None,
+                module: "host/math".into(),
+                arity: 7,
+                location: SrcSpan::new(0, 0),
+                documentation: None,
+                implementations: expected_metadata.variant.implementations(),
+                external_erlang: None,
+                external_javascript: None,
+                purity: expected_metadata.called_function_purity(),
+            },
+        );
         let implementations = constructor.variant.implementations();
         assert!(implementations.gleam);
         assert!(implementations.can_run_on_erlang);

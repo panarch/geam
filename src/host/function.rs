@@ -1,32 +1,67 @@
+mod adapter;
+mod argument;
+mod return_;
+
 use crate::plan::{FunctionType, ValueType};
 use ecow::EcoString;
-use num_bigint::BigInt;
-use std::sync::Arc;
+use std::fmt;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) use argument::{
+    HostBoolArgumentSlot, HostCallArguments, HostIntArgumentSlot, HostParameter,
+};
+pub(crate) use return_::{HostBoolFunction, HostFunctionImplementation, HostIntFunction};
+
+#[derive(Clone, PartialEq, Eq)]
 pub struct HostFunctionSchema {
     name: EcoString,
+    parameters: Box<[HostParameter]>,
+    return_: HostValueType,
     type_: FunctionType,
 }
 
+/// A Rust function that can be registered as a Geam host function.
+///
+/// Host functions accept zero through seven `BigInt` or `bool` arguments and
+/// return either `BigInt` or `bool`.
+///
+/// ```compile_fail
+/// use geam::HostModule;
+/// use num_bigint::BigInt;
+///
+/// let _ = HostModule::new("host_support", "host/math")
+///     .unwrap()
+///     .with_function(
+///         "too_many",
+///         |_: BigInt,
+///          _: BigInt,
+///          _: BigInt,
+///          _: BigInt,
+///          _: BigInt,
+///          _: BigInt,
+///          _: BigInt,
+///          _: BigInt|
+///          -> BigInt { 0.into() },
+///     );
+/// ```
 pub trait HostFunction<Arguments, Return>:
-    private::HostFunction<Arguments, Return> + Send + Sync + 'static
+    adapter::HostFunction<Arguments, Return> + Send + Sync + 'static
 {
 }
 
 impl<Function, Arguments, Return> HostFunction<Arguments, Return> for Function where
-    Function: private::HostFunction<Arguments, Return> + Send + Sync + 'static
+    Function: adapter::HostFunction<Arguments, Return> + Send + Sync + 'static
 {
 }
 
 pub(crate) struct HostFunctionDefinition {
     schema: HostFunctionSchema,
-    implementation: HostIntFunction,
+    implementation: HostFunctionImplementation,
 }
 
-#[derive(Clone)]
-pub struct HostIntFunction {
-    implementation: Arc<dyn Fn(BigInt, BigInt) -> BigInt + Send + Sync>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HostValueType {
+    Int,
+    Bool,
 }
 
 impl HostFunctionSchema {
@@ -37,6 +72,24 @@ impl HostFunctionSchema {
     pub fn type_(&self) -> &FunctionType {
         &self.type_
     }
+
+    pub(crate) fn parameters(&self) -> &[HostParameter] {
+        &self.parameters
+    }
+
+    pub(crate) fn return_type(&self) -> HostValueType {
+        self.return_
+    }
+}
+
+impl fmt::Debug for HostFunctionSchema {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("HostFunctionSchema")
+            .field("name", &self.name)
+            .field("type_", &self.type_)
+            .finish()
+    }
 }
 
 impl HostFunctionDefinition {
@@ -44,13 +97,22 @@ impl HostFunctionDefinition {
     where
         Function: HostFunction<Arguments, Return>,
     {
+        let registration =
+            <Function as adapter::HostFunction<Arguments, Return>>::register(function);
+        let argument_types = registration
+            .parameters
+            .iter()
+            .map(|parameter| parameter.type_().value_type())
+            .collect();
+        let return_type = registration.return_.value_type();
         Self {
             schema: HostFunctionSchema {
                 name,
-                type_: <Function as private::HostFunction<Arguments, Return>>::function_type(),
+                parameters: registration.parameters,
+                return_: registration.return_,
+                type_: FunctionType::new(argument_types, return_type),
             },
-            implementation:
-                <Function as private::HostFunction<Arguments, Return>>::into_int_function(function),
+            implementation: registration.implementation,
         }
     }
 
@@ -58,66 +120,145 @@ impl HostFunctionDefinition {
         &self.schema
     }
 
-    pub(crate) fn into_parts(self) -> (HostFunctionSchema, HostIntFunction) {
+    pub(crate) fn into_parts(self) -> (HostFunctionSchema, HostFunctionImplementation) {
         (self.schema, self.implementation)
     }
 }
 
-impl HostIntFunction {
-    pub(crate) fn call(&self, left: BigInt, right: BigInt) -> BigInt {
-        (self.implementation)(left, right)
-    }
-}
-
-mod private {
-    use super::{FunctionType, HostIntFunction, ValueType};
-    use num_bigint::BigInt;
-    use std::sync::Arc;
-
-    pub trait HostFunction<Arguments, Return> {
-        fn function_type() -> FunctionType;
-        fn into_int_function(self) -> HostIntFunction;
-    }
-
-    impl<Function> HostFunction<(BigInt, BigInt), BigInt> for Function
-    where
-        Function: Fn(BigInt, BigInt) -> BigInt + Send + Sync + 'static,
-    {
-        fn function_type() -> FunctionType {
-            FunctionType::new(vec![ValueType::Int, ValueType::Int], ValueType::Int)
-        }
-
-        fn into_int_function(self) -> HostIntFunction {
-            HostIntFunction {
-                implementation: Arc::new(self),
-            }
+impl HostValueType {
+    pub(crate) fn value_type(self) -> ValueType {
+        match self {
+            Self::Int => ValueType::Int,
+            Self::Bool => ValueType::Bool,
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{HostFunctionDefinition, ValueType};
+    use super::{
+        HostBoolFunction, HostFunctionDefinition, HostFunctionImplementation, HostIntFunction,
+        HostValueType,
+    };
+    use crate::host::function::argument::{
+        HostBoolArgumentSlot, HostCallArguments, HostIntArgumentSlot,
+    };
+    use crate::plan::ValueType;
     use num_bigint::BigInt;
 
-    #[test]
-    fn int_binary_host_functions_own_exact_schema_and_implementation() {
-        let definition =
-            HostFunctionDefinition::new("subtract".into(), |left: BigInt, right: BigInt| {
-                left - right
-            });
+    struct Arguments {
+        ints: Vec<BigInt>,
+        bools: Vec<bool>,
+    }
 
-        assert_eq!(definition.schema().name(), "subtract");
+    impl HostCallArguments for Arguments {
+        fn int(&self, slot: HostIntArgumentSlot) -> BigInt {
+            self.ints[slot.index()].clone()
+        }
+
+        fn bool(&self, slot: HostBoolArgumentSlot) -> bool {
+            self.bools[slot.index()]
+        }
+    }
+
+    #[test]
+    fn definition_assembles_schema_and_int_implementation_together() {
+        let definition = HostFunctionDefinition::new(
+            "choose".into(),
+            |condition: bool, left: BigInt, right: BigInt| {
+                if condition { left } else { right }
+            },
+        );
+
+        assert_eq!(definition.schema().name(), "choose");
         assert_eq!(
             definition.schema().type_().argument_types(),
-            [ValueType::Int, ValueType::Int],
+            [ValueType::Bool, ValueType::Int, ValueType::Int],
         );
         assert_eq!(definition.schema().type_().return_(), &ValueType::Int);
+        assert_eq!(definition.schema().return_type(), HostValueType::Int);
 
         let (_, implementation) = definition.into_parts();
+        let implementation = int_implementation(implementation);
         assert_eq!(
-            implementation.call(BigInt::from(10), BigInt::from(3)),
-            BigInt::from(7),
+            implementation.call(&Arguments {
+                ints: vec![10.into(), 20.into()],
+                bools: vec![false],
+            }),
+            BigInt::from(20),
         );
+        assert_eq!(
+            implementation.call(&Arguments {
+                ints: vec![10.into(), 20.into()],
+                bools: vec![true],
+            }),
+            BigInt::from(10),
+        );
+    }
+
+    #[test]
+    fn definition_assembles_schema_and_bool_implementation_together() {
+        let definition =
+            HostFunctionDefinition::new("is_positive".into(), |value: BigInt| value > 0.into());
+
+        assert_eq!(definition.schema().name(), "is_positive");
+        assert_eq!(
+            definition.schema().type_().argument_types(),
+            [ValueType::Int],
+        );
+        assert_eq!(definition.schema().type_().return_(), &ValueType::Bool);
+        assert_eq!(definition.schema().return_type(), HostValueType::Bool);
+
+        let (_, implementation) = definition.into_parts();
+        assert!(bool_implementation(implementation).call(&Arguments {
+            ints: vec![1.into()],
+            bools: Vec::new(),
+        }));
+    }
+
+    #[test]
+    fn schema_clone_contains_only_the_registered_signature() {
+        let definition = HostFunctionDefinition::new("negate".into(), <bool as std::ops::Not>::not);
+        let schema = definition.schema().clone();
+
+        assert_eq!(schema, *definition.schema());
+        assert_eq!(schema.name(), "negate");
+        assert_eq!(schema.type_().argument_types(), [ValueType::Bool],);
+        assert_eq!(schema.type_().return_(), &ValueType::Bool);
+        assert_eq!(
+            format!("{schema:?}"),
+            r#"HostFunctionSchema { name: "negate", type_: FunctionType { arguments: [Bool], return_: Bool } }"#,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "choose should retain an Int implementation")]
+    fn int_definition_shape_guard_is_visible() {
+        let definition = HostFunctionDefinition::new("choose".into(), || true);
+        let (_, implementation) = definition.into_parts();
+        int_implementation(implementation);
+    }
+
+    #[test]
+    #[should_panic(expected = "is_positive should retain a Bool implementation")]
+    fn bool_definition_shape_guard_is_visible() {
+        let definition =
+            HostFunctionDefinition::new("is_positive".into(), <BigInt as Default>::default);
+        let (_, implementation) = definition.into_parts();
+        bool_implementation(implementation);
+    }
+
+    fn int_implementation(implementation: HostFunctionImplementation) -> HostIntFunction {
+        let HostFunctionImplementation::Int(implementation) = implementation else {
+            panic!("choose should retain an Int implementation");
+        };
+        implementation
+    }
+
+    fn bool_implementation(implementation: HostFunctionImplementation) -> HostBoolFunction {
+        let HostFunctionImplementation::Bool(implementation) = implementation else {
+            panic!("is_positive should retain a Bool implementation");
+        };
+        implementation
     }
 }

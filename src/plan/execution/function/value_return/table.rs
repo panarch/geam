@@ -7,7 +7,7 @@ use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::ExecutableFunction;
 use crate::plan::execution::function::write_table;
 
-pub(in crate::plan::execution) struct ValueFunctionTables<IntFunction> {
+pub(in crate::plan::execution) struct ValueFunctionTables<IntFunction, BoolFunction> {
     pub(in crate::plan::execution) never_functions: Vec<ExecutableFunction<NeverFunctionBody>>,
     pub(in crate::plan::execution) int_functions: Vec<IntFunction>,
     pub(in crate::plan::execution) float_functions: Vec<ExecutableFunction<FloatFunctionBody>>,
@@ -17,12 +17,17 @@ pub(in crate::plan::execution) struct ValueFunctionTables<IntFunction> {
     pub(in crate::plan::execution) utf_codepoint_functions:
         Vec<ExecutableFunction<UtfCodepointFunctionBody>>,
     pub(in crate::plan::execution) custom_functions: Vec<ExecutableFunction<CustomFunctionBody>>,
-    pub(in crate::plan::execution) bool_functions: Vec<ExecutableFunction<BoolFunctionBody>>,
+    pub(in crate::plan::execution) bool_functions: Vec<BoolFunction>,
     pub(in crate::plan::execution) nil_functions: Vec<ExecutableFunction<NilFunctionBody>>,
     pub(in crate::plan::execution) tuple_functions: Vec<ExecutableFunction<TupleFunctionBody>>,
 }
 
-impl Explain for ValueFunctionTables<ExecutableFunction<IntFunctionBody>> {
+impl Explain
+    for ValueFunctionTables<
+        ExecutableFunction<IntFunctionBody>,
+        ExecutableFunction<BoolFunctionBody>,
+    >
+{
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
         write_table(context, "never", &self.never_functions);
         write_table(context, "int", &self.int_functions);

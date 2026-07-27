@@ -8,7 +8,7 @@ use super::function::{
     FloatFunctionBody, FloatFunctionFunctionBody, FloatFunctionFunctionId, FloatFunctionId,
     FloatListFunctionBody, FloatListFunctionId, FunctionFunctionFunctionBody,
     FunctionFunctionFunctionId, FunctionListFunctionBody, FunctionListFunctionId,
-    GenericFunctionFunctionBody, GenericFunctionFunctionId, IntFunctionBody, IntFunctionEntry,
+    GenericFunctionFunctionBody, GenericFunctionFunctionId, IntFunctionBody,
     IntFunctionFunctionBody, IntFunctionFunctionId, IntFunctionId, IntListFunctionBody,
     IntListFunctionId, ListFunctionFunctionBody, ListFunctionFunctionId, ListListFunctionBody,
     ListListFunctionId, NeverFunctionBody, NeverFunctionFunctionBody, NeverFunctionFunctionId,
@@ -20,9 +20,9 @@ use super::function::{
     TupleFunctionFunctionBody, TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionBody,
     TupleListFunctionId, UtfCodepointFunctionBody, UtfCodepointFunctionFunctionBody,
     UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, UtfCodepointListFunctionBody,
-    UtfCodepointListFunctionId,
+    UtfCodepointListFunctionId, ValueFunctionEntry,
 };
-use super::host::HostIntFunctionId;
+use super::host::{HostBoolFunctionId, HostIntFunctionId, HostedExecutionHost};
 use super::type_::{
     CustomConstructorId, CustomTypeId, FunctionListTypeId, FunctionType, ListListTypeId,
     ListTypeId, TupleListTypeId, ValueShapeId, ValueType,
@@ -33,12 +33,14 @@ use ecow::EcoString;
 use std::convert::Infallible;
 
 pub(crate) trait RuntimeExecutionPlan: Sized {
-    type HostIntTarget: ExecutionHost;
+    type Host: ExecutionHost;
     type IntFunction;
+    type BoolFunction;
 
-    fn program(&self) -> &ExecutionProgram<Self::HostIntTarget>;
+    fn program(&self) -> &ExecutionProgram<Self::Host>;
 
     fn int_function(&self, id: IntFunctionId) -> &Self::IntFunction;
+    fn bool_function(&self, id: BoolFunctionId) -> &Self::BoolFunction;
 
     fn source_context_for(&self, module: &EcoString) -> Option<&SourceContext> {
         self.program()
@@ -142,10 +144,6 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
 
     fn custom_function(&self, id: CustomFunctionId) -> &ExecutableFunction<CustomFunctionBody> {
         self.program().functions.custom_function(id)
-    }
-
-    fn bool_function(&self, id: BoolFunctionId) -> &ExecutableFunction<BoolFunctionBody> {
-        self.program().functions.bool_function(id)
     }
 
     fn nil_function(&self, id: NilFunctionId) -> &ExecutableFunction<NilFunctionBody> {
@@ -334,35 +332,45 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
 }
 
 impl RuntimeExecutionPlan for ExecutionPlan {
-    type HostIntTarget = Infallible;
+    type Host = Infallible;
     type IntFunction = ExecutableFunction<IntFunctionBody>;
+    type BoolFunction = ExecutableFunction<BoolFunctionBody>;
 
-    fn program(&self) -> &ExecutionProgram<Self::HostIntTarget> {
+    fn program(&self) -> &ExecutionProgram<Self::Host> {
         &self.program
     }
 
     fn int_function(&self, id: IntFunctionId) -> &Self::IntFunction {
         self.program.functions.int_function(id)
+    }
+
+    fn bool_function(&self, id: BoolFunctionId) -> &Self::BoolFunction {
+        self.program.functions.bool_function(id)
     }
 }
 
 impl RuntimeExecutionPlan for HostedExecution {
-    type HostIntTarget = HostIntFunctionId;
-    type IntFunction = IntFunctionEntry<HostIntFunctionId>;
+    type Host = HostedExecutionHost;
+    type IntFunction = ValueFunctionEntry<IntFunctionBody, HostIntFunctionId>;
+    type BoolFunction = ValueFunctionEntry<BoolFunctionBody, HostBoolFunctionId>;
 
-    fn program(&self) -> &ExecutionProgram<Self::HostIntTarget> {
+    fn program(&self) -> &ExecutionProgram<Self::Host> {
         &self.program
     }
 
     fn int_function(&self, id: IntFunctionId) -> &Self::IntFunction {
         self.program.functions.int_function(id)
+    }
+
+    fn bool_function(&self, id: BoolFunctionId) -> &Self::BoolFunction {
+        self.program.functions.bool_function(id)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::RuntimeExecutionPlan;
-    use crate::plan::execution::function::IntFunctionId;
+    use crate::plan::execution::function::{BoolFunctionId, IntFunctionId};
     use crate::{
         HostModule, HostModules, HostedExecution, ModuleSource, PackageSource,
         compile_typed_host_program, compile_typed_module, plan_host_program, plan_module,
@@ -382,6 +390,18 @@ mod tests {
     }
 
     #[test]
+    fn plain_execution_resolves_only_graph_bool_functions() {
+        let typed = compile_typed_module("main", "main.gleam", "pub fn main() { True }")
+            .expect("source should compile");
+        let plan = plan_module(typed).expect("source should plan");
+        let execution = crate::ExecutionPlan::from_module_plan(plan);
+
+        let function = RuntimeExecutionPlan::bool_function(&execution, BoolFunctionId(0));
+
+        assert_eq!(function.body().block_graph().blocks().len(), 1);
+    }
+
+    #[test]
     fn hosted_execution_preserves_first_use_host_implementation_metadata() {
         let math = HostModule::new("host_support", "host/math")
             .expect("host module should be valid")
@@ -390,6 +410,10 @@ mod tests {
             .with_function("add", <BigInt as std::ops::Add>::add)
             .expect("host function should be valid")
             .with_function("unused", <BigInt as std::ops::Add>::add)
+            .expect("host function should be valid")
+            .with_function("positive", |value: BigInt| value > BigInt::from(0))
+            .expect("host function should be valid")
+            .with_function("unused_predicate", || false)
             .expect("host function should be valid");
         let hosts = HostModules::new([math]).expect("host modules should be unique");
         let source = r#"
@@ -397,7 +421,7 @@ import host/math
 
 pub fn main() {
   let added = math.add(1, 2)
-  math.subtract(added, 1)
+  #(math.subtract(added, 1), math.positive(added))
 }
 "#;
         let typed = compile_typed_host_program(
@@ -414,20 +438,26 @@ pub fn main() {
         let plan = plan_host_program(typed).expect("host source should plan");
         let execution = HostedExecution::from_module_plan(plan);
 
-        assert_eq!(execution.host_functions.len(), 2);
-        let add = &execution.host_functions[0];
+        assert_eq!(execution.host_int_functions.len(), 2);
+        let add = &execution.host_int_functions[0];
         assert_eq!(add.package(), "host_support");
         assert_eq!(add.module(), "host/math");
         assert_eq!(add.name(), "add");
-        assert_eq!(add.call(2.into(), 3.into()), BigInt::from(5));
-        let subtract = &execution.host_functions[1];
+        let subtract = &execution.host_int_functions[1];
         assert_eq!(subtract.package(), "host_support");
         assert_eq!(subtract.module(), "host/math");
         assert_eq!(subtract.name(), "subtract");
-        assert_eq!(subtract.call(5.into(), 3.into()), BigInt::from(2));
+        assert_eq!(execution.host_bool_functions.len(), 1);
+        let positive = &execution.host_bool_functions[0];
+        assert_eq!(positive.package(), "host_support");
+        assert_eq!(positive.module(), "host/math");
+        assert_eq!(positive.name(), "positive");
         assert_eq!(
             execution.run_main(&mut Vec::new()),
-            Ok(crate::Value::Int(2.into())),
+            Ok(crate::Value::Tuple(vec![
+                crate::Value::Int(2.into()),
+                crate::Value::Bool(true),
+            ])),
         );
     }
 }
