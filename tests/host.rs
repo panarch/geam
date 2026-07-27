@@ -207,6 +207,7 @@ function tuple#0
 
 #[test]
 fn executes_zero_through_seven_mixed_int_and_bool_signatures() {
+    let threshold = BigInt::from(0);
     let math = HostModule::new("host_support", "host/math")
         .expect("host module should be valid")
         .with_function("ready", || true)
@@ -218,7 +219,7 @@ fn executes_zero_through_seven_mixed_int_and_bool_signatures() {
             },
         )
         .expect("host function should be valid")
-        .with_function("is_positive", |value: BigInt| value > BigInt::from(0))
+        .with_function("is_positive", move |value: BigInt| value > threshold)
         .expect("host function should be valid")
         .with_function(
             "all",
