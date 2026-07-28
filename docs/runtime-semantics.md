@@ -107,14 +107,44 @@ implementation.
 One execution profile maps every return-family function body to either a
 graph-only entry or a typed graph-or-host entry. A non-returning provider with
 a concrete result context enters that concrete function family; an unresolved
-result enters the Never family. Neither path fabricates a success value.
-Runtime receives the sealed scalar slots and calls the matching typed function
-family without a `Value` downcast, signature check, string lookup, panic
-translation, or runtime fallback selection. Each `HostProfile` defines a
-caller-owned `RunState`; a scoped callback can project only its declared
-`HostProvider::State` through the active `HostCall`. An owned `HostFailure`
-becomes `ExecutionError::Host` with the failed provider identity, concrete
-signature, and preserved source call site. Compound values and callbacks
+result enters the Never family. Neither path fabricates a success value. Plain
+execution uses `Infallible` only as its uninhabited host target; it is not a
+source-visible host value. Runtime receives the sealed scalar slots and calls
+the matching typed function family without a `Value` downcast, signature
+check, string lookup, panic translation, or runtime fallback selection. Each
+`HostProfile` defines a caller-owned `RunState`; a scoped callback can
+project only its declared `HostProvider::State` through the active `HostCall`.
+An owned `HostFailure` becomes `ExecutionError::Host` with the failed provider
+identity, concrete signature, and preserved source call site.
+
+Scoped providers describe compound values through `HostListType`,
+`HostTupleType`, and `HostCustomType`. Lists, tuples, and ordinary custom
+values cross one invocation as typed handles rather than materialized
+`Value`s. A provider can inspect those handles through `HostCall` and can
+construct a return only through the return-family-specific call builder.
+Tuple element types use a recursive `HostTypeList`, so tuple size is
+independent of the zero-through-seven Rust function argument boundary.
+
+An ordinary custom schema supplies its package, module, type parameters, and
+an ordered type-level constructor list. Each constructor owns an ordered
+type-level field list with exact labels and recursive field types. Constructor
+handles select a position from that sealed list, so the runtime receives the
+same index and fields that planning validated. Planning compares every
+referenced custom schema exactly with the selected source definition before
+execution lowering. Source-backed providers retain public, same-package
+internal, and same-module private visibility; source-less public host surfaces
+accept only public non-opaque custom types. Opaque custom representations
+remain available only to source-backed providers in their defining module,
+regardless of declaration publicity.
+
+A generic provider registers one source `TypeScheme`; first-use
+specialization derives concrete parameter locals, return-family storage, and
+host targets. `HostedModulePlan` owns the linked generic program;
+`HostedExecution::try_from_module_plan` seals only entry-reachable
+specializations. A reachable value-producing specialization whose successful
+return storage remains unresolved returns `HostSpecializationError`; an
+unused declaration does not. The runtime therefore performs no generic type
+lookup or shape validation. Typed Gleam callable invocation and host re-entry
 remain separate work.
 
 ## Generic Values

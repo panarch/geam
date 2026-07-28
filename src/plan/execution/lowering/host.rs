@@ -1,33 +1,33 @@
 use super::function;
 use super::local;
 use super::specialization::{
-    FunctionRepresentation, RepresentationContext, SpecializationKey, SpecializedFunctionShape,
-    SpecializedValueShape,
+    RepresentationContext, SpecializationKey, SpecializedFunctionShape, SpecializedValueShape,
+    StoredValueShape, ValueInhabitation,
 };
 use super::{
     LoweredExecution, LoweringCompletion, LoweringContext, ProgramConstantTemplates,
-    SpecializationState, resolve_specialization_fixed_point,
+    SpecializationState, try_resolve_specialization_fixed_point,
 };
-use crate::host::{HostFunctionImplementation, HostProfile, HostValueFunctionImplementation};
+use crate::host::{
+    HostFunctionImplementation as RegisteredHostFunctionImplementation, HostProfile,
+};
 use crate::plan::execution::function as execution_function;
 use crate::plan::execution::graph as execution_graph;
 use crate::plan::execution::graph::ParamLocal;
 use crate::plan::execution::host::{
-    HostBitArrayFunctionId, HostBoolFunctionId, HostFloatFunctionId, HostFunctionTables,
-    HostIntFunctionId, HostNeverFunctionId, HostNilFunctionId, HostStringFunctionId,
-    HostUtfCodepointFunctionId, HostValueFunctionTables, HostedBitArrayFunction,
-    HostedBoolFunction, HostedExecutionProfile, HostedFloatFunction, HostedFunction,
-    HostedFunctionTarget, HostedIntFunction, HostedNeverFunction, HostedNilFunction,
-    HostedStringFunction, HostedUtfCodepointFunction,
+    HostCallParameter, HostFunctionId, HostFunctionTables, HostNeverFunctionId,
+    HostSpecializationError, HostedExecutionProfile, HostedFunction, HostedFunctionTarget,
+    HostedNeverFunction, HostedValueFunction,
 };
 use crate::plan::execution::{ExecutionModuleContext, ExecutionProgram, ExecutionProgramCommon};
 use crate::plan::{
     FunctionTemplate, FunctionTemplateId, FunctionTemplateSignature,
-    HostFunctionTemplate as PlannedHostFunctionTemplate, HostParameter,
+    HostFunctionTemplate as PlannedHostFunctionTemplate, HostImplementationBinding,
     HostedFunctionTemplate as PlannedHostedFunctionTemplate, HostedModulePlan,
     HostedModulePlanParts,
 };
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 type HostedLoweredExecution<Profile> = LoweredExecution<HostedExecutionProfile<Profile>>;
 
@@ -41,34 +41,31 @@ enum HostedFunctionTemplate {
 }
 
 struct RegisteredHostFunctions<Profile: HostProfile> {
-    functions: HashMap<FunctionTemplateId, HostFunctionImplementation<Profile>>,
+    functions: HashMap<FunctionTemplateId, Arc<RegisteredHostFunctionImplementation<Profile>>>,
 }
 
 struct LoweredHostFunctions<Profile: HostProfile> {
-    int: Vec<HostedIntFunction<Profile>>,
-    float: Vec<HostedFloatFunction<Profile>>,
-    string: Vec<HostedStringFunction<Profile>>,
-    bit_array: Vec<HostedBitArrayFunction<Profile>>,
-    utf_codepoint: Vec<HostedUtfCodepointFunction<Profile>>,
-    bool: Vec<HostedBoolFunction<Profile>>,
-    nil: Vec<HostedNilFunction<Profile>>,
-    never: Vec<HostedNeverFunction<Profile>>,
+    value_functions: Vec<HostedValueFunction<Profile>>,
+    never_functions: Vec<HostedNeverFunction<Profile>>,
     additional: function::AdditionalFunctions<HostedExecutionProfile<Profile>>,
 }
 
 pub(in crate::plan::execution) fn lower_hosted<Profile: HostProfile>(
     module_plan: HostedModulePlan<Profile>,
-) -> (
-    ExecutionProgram<HostedExecutionProfile<Profile>>,
-    HostFunctionTables<Profile>,
-) {
+) -> Result<
+    (
+        ExecutionProgram<HostedExecutionProfile<Profile>>,
+        HostFunctionTables<Profile>,
+    ),
+    HostSpecializationError,
+> {
     let HostedModulePlanParts {
         root,
         entry,
         modules,
-        implementations,
+        implementation_bindings,
     } = module_plan.into_parts();
-    let implementations = RegisteredHostFunctions::new(implementations);
+    let implementations = RegisteredHostFunctions::new(implementation_bindings);
     let mut module_contexts = Vec::with_capacity(modules.len());
     let mut module_templates = Vec::with_capacity(modules.len());
     let mut constant_templates = Vec::with_capacity(modules.len());
@@ -90,7 +87,7 @@ pub(in crate::plan::execution) fn lower_hosted<Profile: HostProfile>(
                     HostedFunctionTemplate::Source(template)
                 }
                 PlannedHostedFunctionTemplate::HostTemplate(template) => {
-                    HostedFunctionTemplate::Host(Box::new(template))
+                    HostedFunctionTemplate::Host(template)
                 }
             })
             .collect::<Vec<_>>();
@@ -122,262 +119,134 @@ pub(in crate::plan::execution) fn lower_hosted<Profile: HostProfile>(
         erased_specializations: HashSet::new(),
     };
 
-    let (main, lowered, host_functions) = resolve_specialization_fixed_point(initial, |state| {
-        let SpecializationState {
-            constant_templates,
-            representations,
-            erased_specializations,
-        } = state;
-        let main_value_shape =
-            SpecializedValueShape::instantiate(&main_return_shape, main_key.substitution());
-        let main_return_shape = representations.inhabitation(&main_value_shape);
-        let mut context = LoweringContext::new(
-            templates.entry_templates(),
-            representations,
-            constant_templates,
-            erased_specializations,
-        );
-        let main = context.reserve_main(main_key.clone(), main_return_shape);
-        let mut host_functions = LoweredHostFunctions::new();
+    let (main, lowered, host_functions) =
+        try_resolve_specialization_fixed_point(initial, |state| {
+            let SpecializationState {
+                constant_templates,
+                representations,
+                erased_specializations,
+            } = state;
+            let main_value_shape =
+                SpecializedValueShape::instantiate(&main_return_shape, main_key.substitution());
+            let main_return_shape = representations.inhabitation(&main_value_shape);
+            let mut context = LoweringContext::new(
+                templates.entry_templates(),
+                representations,
+                constant_templates,
+                erased_specializations,
+            );
+            let main = context.reserve_main(main_key.clone(), main_return_shape);
+            let mut host_functions = LoweredHostFunctions::new();
 
-        while let Some(key) = context.pending.pop_front() {
-            context.begin(&key);
-            match templates.get(key.template()) {
-                HostedFunctionTemplate::Source(template) => {
-                    function::lower_specialized(template, &key, &mut context);
-                }
-                HostedFunctionTemplate::Host(template) => {
-                    let index = context.specialization_index(&key);
-                    let shape = SpecializedFunctionShape::instantiate(
-                        template.signature().shape(),
-                        key.substitution(),
-                    );
-                    let parameters = template.parameters().iter().map(host_parameter).collect();
-                    let signature = shape.to_module_shape().type_();
-                    let type_ = context.lower_concrete_function_type(&shape);
-                    match implementations.functions[&template.id()].clone() {
-                        HostFunctionImplementation::Value(
-                            HostValueFunctionImplementation::Int(implementation),
-                        ) => {
-                            let target = HostIntFunctionId::new(host_functions.int.len());
-                            host_functions.int.push(HostedFunction::new(
-                                template.package().clone(),
-                                template.site().clone(),
-                                signature,
-                                parameters,
-                                type_,
-                                implementation,
-                            ));
-                            host_functions.additional.int.push((
-                                index,
-                                function::lowered_host_function(
+            while let Some(key) = context.pending.pop_front() {
+                context.begin(&key);
+                match templates.get(key.template()) {
+                    HostedFunctionTemplate::Source(template) => {
+                        function::lower_specialized(template, &key, &mut context);
+                    }
+                    HostedFunctionTemplate::Host(template) => {
+                        let index = context.specialization_index(&key);
+                        let shape = SpecializedFunctionShape::instantiate(
+                            template.signature().shape(),
+                            key.substitution(),
+                        );
+                        let parameters = context.specialization_parameters(&key).to_vec();
+                        let implementation = Arc::clone(&implementations.functions[&template.id()]);
+                        let return_ = context.representations.inhabitation(shape.return_());
+                        match implementation.as_ref() {
+                            RegisteredHostFunctionImplementation::Value(implementation) => {
+                                let ValueInhabitation::Inhabited(return_) = return_ else {
+                                    return Err(HostSpecializationError::new(
+                                        template.package().clone(),
+                                        template.site().module().clone(),
+                                        template.site().function().clone(),
+                                        shape.to_module_shape().type_(),
+                                    ));
+                                };
+                                let parameters =
+                                    host_parameters(&parameters, template.layout(), &mut context);
+                                let type_ = context.lower_concrete_function_type(&shape);
+                                let host_index = host_functions.value_functions.len();
+                                host_functions.value_functions.push(HostedFunction::new(
+                                    template.package().clone(),
+                                    template.site().clone(),
+                                    shape.to_module_shape().type_(),
+                                    parameters.entry,
+                                    parameters.call,
+                                    type_,
+                                    implementation.clone(),
+                                ));
+                                lower_host_return(
+                                    index,
                                     &key,
-                                    HostedFunctionTarget::value(target),
-                                ),
-                            ));
-                        }
-                        HostFunctionImplementation::Value(
-                            HostValueFunctionImplementation::Float(implementation),
-                        ) => {
-                            let target = HostFloatFunctionId::new(host_functions.float.len());
-                            host_functions.float.push(HostedFunction::new(
-                                template.package().clone(),
-                                template.site().clone(),
-                                signature,
-                                parameters,
-                                type_,
-                                implementation,
-                            ));
-                            host_functions.additional.float.push((
-                                index,
-                                function::lowered_host_function(
-                                    &key,
-                                    HostedFunctionTarget::value(target),
-                                ),
-                            ));
-                        }
-                        HostFunctionImplementation::Value(
-                            HostValueFunctionImplementation::String(implementation),
-                        ) => {
-                            let target = HostStringFunctionId::new(host_functions.string.len());
-                            host_functions.string.push(HostedFunction::new(
-                                template.package().clone(),
-                                template.site().clone(),
-                                signature,
-                                parameters,
-                                type_,
-                                implementation,
-                            ));
-                            host_functions.additional.string.push((
-                                index,
-                                function::lowered_host_function(
-                                    &key,
-                                    HostedFunctionTarget::value(target),
-                                ),
-                            ));
-                        }
-                        HostFunctionImplementation::Value(
-                            HostValueFunctionImplementation::BitArray(implementation),
-                        ) => {
-                            let target =
-                                HostBitArrayFunctionId::new(host_functions.bit_array.len());
-                            host_functions.bit_array.push(HostedFunction::new(
-                                template.package().clone(),
-                                template.site().clone(),
-                                signature,
-                                parameters,
-                                type_,
-                                implementation,
-                            ));
-                            host_functions.additional.bit_array.push((
-                                index,
-                                function::lowered_host_function(
-                                    &key,
-                                    HostedFunctionTarget::value(target),
-                                ),
-                            ));
-                        }
-                        HostFunctionImplementation::Value(
-                            HostValueFunctionImplementation::UtfCodepoint(implementation),
-                        ) => {
-                            let target =
-                                HostUtfCodepointFunctionId::new(host_functions.utf_codepoint.len());
-                            host_functions.utf_codepoint.push(HostedFunction::new(
-                                template.package().clone(),
-                                template.site().clone(),
-                                signature,
-                                parameters,
-                                type_,
-                                implementation,
-                            ));
-                            host_functions.additional.utf_codepoint.push((
-                                index,
-                                function::lowered_host_function(
-                                    &key,
-                                    HostedFunctionTarget::value(target),
-                                ),
-                            ));
-                        }
-                        HostFunctionImplementation::Value(
-                            HostValueFunctionImplementation::Bool(implementation),
-                        ) => {
-                            let target = HostBoolFunctionId::new(host_functions.bool.len());
-                            host_functions.bool.push(HostedFunction::new(
-                                template.package().clone(),
-                                template.site().clone(),
-                                signature,
-                                parameters,
-                                type_,
-                                implementation,
-                            ));
-                            host_functions.additional.bool.push((
-                                index,
-                                function::lowered_host_function(
-                                    &key,
-                                    HostedFunctionTarget::value(target),
-                                ),
-                            ));
-                        }
-                        HostFunctionImplementation::Value(
-                            HostValueFunctionImplementation::Nil(implementation),
-                        ) => {
-                            let target = HostNilFunctionId::new(host_functions.nil.len());
-                            host_functions.nil.push(HostedFunction::new(
-                                template.package().clone(),
-                                template.site().clone(),
-                                signature,
-                                parameters,
-                                type_,
-                                implementation,
-                            ));
-                            host_functions.additional.nil.push((
-                                index,
-                                function::lowered_host_function(
-                                    &key,
-                                    HostedFunctionTarget::value(target),
-                                ),
-                            ));
-                        }
-                        HostFunctionImplementation::Never(implementation) => {
-                            let target = HostNeverFunctionId::new(host_functions.never.len());
-                            host_functions.never.push(HostedNeverFunction::new(
-                                template.package().clone(),
-                                template.site().clone(),
-                                signature,
-                                parameters,
-                                type_,
-                                implementation,
-                            ));
-                            match shape.representation(&context.representations) {
-                                FunctionRepresentation::Executable(return_) => {
-                                    let function = function::function_id(
-                                        &return_,
-                                        index,
-                                        &mut context.types,
-                                        &context.representations,
-                                    );
-                                    host_functions
-                                        .additional
-                                        .push_never_host_function(index, &key, function, target);
-                                }
-                                FunctionRepresentation::Never(_)
-                                | FunctionRepresentation::Symbolic => {
-                                    host_functions.additional.push_never_host_function(
+                                    return_,
+                                    HostSpecialization::Value(host_index),
+                                    &mut host_functions.additional,
+                                    &mut context,
+                                );
+                            }
+                            RegisteredHostFunctionImplementation::Never(implementation) => {
+                                let parameters =
+                                    host_parameters(&parameters, template.layout(), &mut context);
+                                let type_ = context.lower_concrete_function_type(&shape);
+                                let host_index = host_functions.never_functions.len();
+                                host_functions.never_functions.push(HostedFunction::new(
+                                    template.package().clone(),
+                                    template.site().clone(),
+                                    shape.to_module_shape().type_(),
+                                    parameters.entry,
+                                    parameters.call,
+                                    type_,
+                                    implementation.clone(),
+                                ));
+                                match return_ {
+                                    ValueInhabitation::Inhabited(return_) => lower_host_return(
                                         index,
                                         &key,
-                                        execution_function::RuntimeFunctionId::Never(
-                                            execution_function::NeverFunctionId(index),
-                                        ),
-                                        target,
-                                    );
+                                        return_,
+                                        HostSpecialization::Never(host_index),
+                                        &mut host_functions.additional,
+                                        &mut context,
+                                    ),
+                                    ValueInhabitation::Uninhabited(_) => {
+                                        host_functions.additional.never.push((
+                                            index,
+                                            lowered_never_host_target(&key, host_index),
+                                        ));
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
-        }
 
-        let LoweredHostFunctions {
-            int,
-            float,
-            string,
-            bit_array,
-            utf_codepoint,
-            bool,
-            nil,
-            never,
-            additional,
-        } = host_functions;
-        let (constant_templates, representations, outcome) = context.finish_hosted(additional);
-        let erased_specializations = outcome.erased_specializations();
-        outcome
-            .map(|lowered| {
-                (
-                    main,
-                    lowered,
-                    HostFunctionTables::new(
-                        HostValueFunctionTables::new(
-                            int.into_boxed_slice(),
-                            float.into_boxed_slice(),
-                            string.into_boxed_slice(),
-                            bit_array.into_boxed_slice(),
-                            utf_codepoint.into_boxed_slice(),
-                            bool.into_boxed_slice(),
-                            nil.into_boxed_slice(),
+            let LoweredHostFunctions {
+                value_functions,
+                never_functions,
+                additional,
+            } = host_functions;
+            let (constant_templates, representations, outcome) = context.finish_hosted(additional);
+            let erased_specializations = outcome.erased_specializations();
+            Ok(outcome
+                .map(|lowered| {
+                    (
+                        main,
+                        lowered,
+                        HostFunctionTables::new(
+                            value_functions.into_boxed_slice(),
+                            never_functions.into_boxed_slice(),
                         ),
-                        never.into_boxed_slice(),
-                    ),
-                )
-            })
-            .into_fixed_point(SpecializationState {
-                constant_templates,
-                representations,
-                erased_specializations,
-            })
-    });
+                    )
+                })
+                .into_fixed_point(SpecializationState {
+                    constant_templates,
+                    representations,
+                    erased_specializations,
+                }))
+        })?;
 
-    (
+    Ok((
         ExecutionProgram {
             common: ExecutionProgramCommon {
                 root,
@@ -391,48 +260,573 @@ pub(in crate::plan::execution) fn lower_hosted<Profile: HostProfile>(
             functions: lowered.functions,
         },
         host_functions,
-    )
+    ))
 }
 
-fn host_parameter(parameter: &HostParameter) -> ParamLocal {
-    match parameter {
-        HostParameter::Int(local) => ParamLocal::Int(execution_graph::IntLocalId(local.0)),
-        HostParameter::Float(local) => ParamLocal::Float(execution_graph::FloatLocalId(local.0)),
-        HostParameter::String(local) => ParamLocal::String(execution_graph::StringLocalId(local.0)),
-        HostParameter::BitArray(local) => {
-            ParamLocal::BitArray(execution_graph::BitArrayLocalId(local.0))
-        }
-        HostParameter::UtfCodepoint(local) => {
-            ParamLocal::UtfCodepoint(execution_graph::UtfCodepointLocalId(local.0))
-        }
-        HostParameter::Bool(local) => ParamLocal::Bool(execution_graph::BoolLocalId(local.0)),
-        HostParameter::Nil(local) => ParamLocal::Nil(execution_graph::NilLocalId(local.0)),
+#[derive(Clone, Copy)]
+enum HostSpecialization {
+    Value(usize),
+    Never(usize),
+}
+
+fn host_parameters(
+    shapes: &[StoredValueShape],
+    layout: &[crate::host::HostParameter],
+    context: &mut LoweringContext,
+) -> HostParameters {
+    let mut prefix = local::ParameterPrefix::default();
+    let parameters = shapes
+        .iter()
+        .enumerate()
+        .map(|(position, shape)| {
+            let (index, stored) = prefix.allocate_stored(shape.clone(), &context.representations);
+            let entry = local::stored_value_local_at(&stored, index, context);
+            let generic = matches!(layout[position], crate::host::HostParameter::Value(_));
+            let call = host_call_parameter(&stored, index, generic, context);
+            (entry, call)
+        })
+        .collect::<Vec<_>>();
+    let (entry, call) = parameters.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
+    HostParameters {
+        entry: entry.into_boxed_slice(),
+        call: call.into_boxed_slice(),
     }
 }
 
-impl<Profile: HostProfile> RegisteredHostFunctions<Profile> {
-    fn new(implementations: Vec<crate::plan::HostFunctionImplementation<Profile>>) -> Self {
-        let mut functions = HashMap::new();
-        for implementation in implementations {
-            let (template, implementation) = implementation.into_parts();
-            functions.insert(template, implementation);
+struct HostParameters {
+    entry: Box<[ParamLocal]>,
+    call: Box<[HostCallParameter]>,
+}
+
+fn host_call_parameter(
+    shape: &StoredValueShape,
+    index: usize,
+    generic: bool,
+    context: &mut LoweringContext,
+) -> HostCallParameter {
+    match shape {
+        StoredValueShape::Function(_) => {
+            HostCallParameter::Value(local::stored_value_local_at(shape, index, context))
         }
-        Self { functions }
+        _ if generic => {
+            HostCallParameter::Value(local::stored_value_local_at(shape, index, context))
+        }
+        StoredValueShape::Int => HostCallParameter::Int(execution_graph::IntLocalId(index)),
+        StoredValueShape::Float => HostCallParameter::Float(execution_graph::FloatLocalId(index)),
+        StoredValueShape::String => {
+            HostCallParameter::String(execution_graph::StringLocalId(index))
+        }
+        StoredValueShape::BitArray => {
+            HostCallParameter::BitArray(execution_graph::BitArrayLocalId(index))
+        }
+        StoredValueShape::UtfCodepoint => {
+            HostCallParameter::UtfCodepoint(execution_graph::UtfCodepointLocalId(index))
+        }
+        StoredValueShape::Custom(shape) => {
+            HostCallParameter::Custom(execution_graph::CustomLocal::new(
+                execution_graph::CustomLocalId(index),
+                context.lower_concrete_custom_shape(shape),
+            ))
+        }
+        StoredValueShape::Bool => HostCallParameter::Bool(execution_graph::BoolLocalId(index)),
+        StoredValueShape::Nil => HostCallParameter::Nil(execution_graph::NilLocalId(index)),
+        StoredValueShape::Tuple(_) => {
+            HostCallParameter::Tuple(local::stored_value_local_at(shape, index, context))
+        }
+        StoredValueShape::List(item) => {
+            HostCallParameter::List(local::list_local_at(item, index, context))
+        }
+    }
+}
+
+fn lower_host_return<Profile: HostProfile>(
+    index: usize,
+    key: &SpecializationKey,
+    return_: StoredValueShape,
+    specialization: HostSpecialization,
+    functions: &mut function::AdditionalFunctions<HostedExecutionProfile<Profile>>,
+    context: &mut LoweringContext,
+) {
+    use execution_function::ListFunctionId as L;
+
+    match return_ {
+        StoredValueShape::Int => {
+            let return_ = execution_graph::IntLocalId(0);
+            functions.int.push((
+                index,
+                lowered_host_target::<execution_function::IntFunctionBody>(
+                    key,
+                    specialization,
+                    return_,
+                ),
+            ));
+        }
+        StoredValueShape::Float => {
+            let return_ = execution_graph::FloatLocalId(0);
+            functions.float.push((
+                index,
+                lowered_host_target::<execution_function::FloatFunctionBody>(
+                    key,
+                    specialization,
+                    return_,
+                ),
+            ));
+        }
+        StoredValueShape::String => {
+            let return_ = execution_graph::StringLocalId(0);
+            functions.string.push((
+                index,
+                lowered_host_target::<execution_function::StringFunctionBody>(
+                    key,
+                    specialization,
+                    return_,
+                ),
+            ));
+        }
+        StoredValueShape::BitArray => {
+            let return_ = execution_graph::BitArrayLocalId(0);
+            functions.bit_array.push((
+                index,
+                lowered_host_target::<execution_function::BitArrayFunctionBody>(
+                    key,
+                    specialization,
+                    return_,
+                ),
+            ));
+        }
+        StoredValueShape::UtfCodepoint => {
+            let return_ = execution_graph::UtfCodepointLocalId(0);
+            functions.utf_codepoint.push((
+                index,
+                lowered_host_target::<execution_function::UtfCodepointFunctionBody>(
+                    key,
+                    specialization,
+                    return_,
+                ),
+            ));
+        }
+        StoredValueShape::Custom(shape) => {
+            let return_ = execution_graph::CustomLocal::new(
+                execution_graph::CustomLocalId(0),
+                context.lower_concrete_custom_shape(&shape),
+            );
+            functions.custom.push((
+                index,
+                lowered_host_target::<execution_function::CustomFunctionBody>(
+                    key,
+                    specialization,
+                    return_,
+                ),
+            ));
+        }
+        StoredValueShape::Bool => {
+            let return_ = execution_graph::BoolLocalId(0);
+            functions.bool.push((
+                index,
+                lowered_host_target::<execution_function::BoolFunctionBody>(
+                    key,
+                    specialization,
+                    return_,
+                ),
+            ));
+        }
+        StoredValueShape::Nil => {
+            let return_ = execution_graph::NilLocalId(0);
+            functions.nil.push((
+                index,
+                lowered_host_target::<execution_function::NilFunctionBody>(
+                    key,
+                    specialization,
+                    return_,
+                ),
+            ));
+        }
+        StoredValueShape::Tuple(_) => {
+            let return_ = execution_graph::TupleLocalId(0);
+            functions.tuple.push((
+                index,
+                lowered_host_target::<execution_function::TupleFunctionBody>(
+                    key,
+                    specialization,
+                    return_,
+                ),
+            ));
+        }
+        StoredValueShape::List(item) => {
+            match function::list_function_id(&item, index, &mut context.types) {
+                L::Parameter(id) => functions.parameter_list.push((
+                    id,
+                    lowered_host_target::<execution_function::ParameterListFunctionBody>(
+                        key,
+                        specialization,
+                        execution_graph::ParameterListLocalId(0),
+                    ),
+                )),
+                L::ParameterList(id) => functions.parameter_list_list.push((
+                    id,
+                    lowered_host_target::<execution_function::ParameterListListFunctionBody>(
+                        key,
+                        specialization,
+                        execution_graph::ParameterListListLocalId(0),
+                    ),
+                )),
+                L::Int(id) => functions.int_list.push((
+                    id,
+                    lowered_host_target::<execution_function::IntListFunctionBody>(
+                        key,
+                        specialization,
+                        execution_graph::IntListLocalId(0),
+                    ),
+                )),
+                L::String(id) => functions.string_list.push((
+                    id,
+                    lowered_host_target::<execution_function::StringListFunctionBody>(
+                        key,
+                        specialization,
+                        execution_graph::StringListLocalId(0),
+                    ),
+                )),
+                L::BitArray(id) => functions.bit_array_list.push((
+                    id,
+                    lowered_host_target::<execution_function::BitArrayListFunctionBody>(
+                        key,
+                        specialization,
+                        execution_graph::BitArrayListLocalId(0),
+                    ),
+                )),
+                L::UtfCodepoint(id) => functions.utf_codepoint_list.push((
+                    id,
+                    lowered_host_target::<execution_function::UtfCodepointListFunctionBody>(
+                        key,
+                        specialization,
+                        execution_graph::UtfCodepointListLocalId(0),
+                    ),
+                )),
+                L::Custom(id) => functions.custom_list.push((
+                    id,
+                    lowered_host_target::<execution_function::CustomListFunctionBody>(
+                        key,
+                        specialization,
+                        execution_graph::CustomListLocalId(0),
+                    ),
+                )),
+                L::Float(id) => functions.float_list.push((
+                    id,
+                    lowered_host_target::<execution_function::FloatListFunctionBody>(
+                        key,
+                        specialization,
+                        execution_graph::FloatListLocalId(0),
+                    ),
+                )),
+                L::Bool(id) => functions.bool_list.push((
+                    id,
+                    lowered_host_target::<execution_function::BoolListFunctionBody>(
+                        key,
+                        specialization,
+                        execution_graph::BoolListLocalId(0),
+                    ),
+                )),
+                L::Nil(id) => functions.nil_list.push((
+                    id,
+                    lowered_host_target::<execution_function::NilListFunctionBody>(
+                        key,
+                        specialization,
+                        execution_graph::NilListLocalId(0),
+                    ),
+                )),
+                L::Tuple(id) => functions.tuple_list.push((
+                    id,
+                    lowered_host_target::<execution_function::TupleListFunctionBody>(
+                        key,
+                        specialization,
+                        execution_graph::TupleListLocalId(0),
+                    ),
+                )),
+                L::List(id) => functions.list_list.push((
+                    id,
+                    lowered_host_target::<execution_function::ListListFunctionBody>(
+                        key,
+                        specialization,
+                        execution_graph::ListListLocalId(0),
+                    ),
+                )),
+                L::Function(id) => functions.function_list.push((
+                    id,
+                    lowered_host_target::<execution_function::FunctionListFunctionBody>(
+                        key,
+                        specialization,
+                        execution_graph::FunctionListLocalId(0),
+                    ),
+                )),
+            }
+        }
+        StoredValueShape::Function(function) => {
+            lower_host_function_return(index, key, &function, specialization, functions, context)
+        }
+    }
+}
+
+fn lower_host_function_return<Profile: HostProfile>(
+    index: usize,
+    key: &SpecializationKey,
+    function: &SpecializedFunctionShape,
+    specialization: HostSpecialization,
+    functions: &mut function::AdditionalFunctions<HostedExecutionProfile<Profile>>,
+    context: &mut LoweringContext,
+) {
+    use local::SpecializedFunctionLocal as F;
+
+    match local::function_local_at(function, 0, context) {
+        F::Generic(return_) => functions.generic_function_functions.push((
+            index,
+            lowered_host_target::<execution_function::GenericFunctionFunctionBody>(
+                key,
+                specialization,
+                return_,
+            ),
+        )),
+        F::Never(return_) => functions.never_function_functions.push((
+            index,
+            lowered_host_target::<execution_function::NeverFunctionFunctionBody>(
+                key,
+                specialization,
+                return_,
+            ),
+        )),
+        F::Int { local: return_, .. } => functions.int_function_functions.push((
+            index,
+            lowered_host_target::<execution_function::IntFunctionFunctionBody>(
+                key,
+                specialization,
+                return_,
+            ),
+        )),
+        F::Float { local: return_, .. } => functions.float_function_functions.push((
+            index,
+            lowered_host_target::<execution_function::FloatFunctionFunctionBody>(
+                key,
+                specialization,
+                return_,
+            ),
+        )),
+        F::String { local: return_, .. } => functions.string_function_functions.push((
+            index,
+            lowered_host_target::<execution_function::StringFunctionFunctionBody>(
+                key,
+                specialization,
+                return_,
+            ),
+        )),
+        F::BitArray { local: return_, .. } => functions.bit_array_function_functions.push((
+            index,
+            lowered_host_target::<execution_function::BitArrayFunctionFunctionBody>(
+                key,
+                specialization,
+                return_,
+            ),
+        )),
+        F::UtfCodepoint { local: return_, .. } => {
+            functions.utf_codepoint_function_functions.push((
+                index,
+                lowered_host_target::<execution_function::UtfCodepointFunctionFunctionBody>(
+                    key,
+                    specialization,
+                    return_,
+                ),
+            ));
+        }
+        F::Custom(return_) => functions.custom_function_functions.push((
+            index,
+            lowered_host_target::<execution_function::CustomFunctionFunctionBody>(
+                key,
+                specialization,
+                return_,
+            ),
+        )),
+        F::Bool { local: return_, .. } => functions.bool_function_functions.push((
+            index,
+            lowered_host_target::<execution_function::BoolFunctionFunctionBody>(
+                key,
+                specialization,
+                return_,
+            ),
+        )),
+        F::Nil { local: return_, .. } => functions.nil_function_functions.push((
+            index,
+            lowered_host_target::<execution_function::NilFunctionFunctionBody>(
+                key,
+                specialization,
+                return_,
+            ),
+        )),
+        F::Tuple { local: return_, .. } => functions.tuple_function_functions.push((
+            index,
+            lowered_host_target::<execution_function::TupleFunctionFunctionBody>(
+                key,
+                specialization,
+                return_,
+            ),
+        )),
+        F::List(return_) => {
+            use execution_graph::ListFunctionLocal as L;
+
+            let lowered = lowered_host_target::<execution_function::ListFunctionFunctionBody>(
+                key,
+                specialization,
+                return_.clone(),
+            );
+            match return_ {
+                L::Parameter { .. } => functions
+                    .parameter_list_function_functions
+                    .push((index, lowered)),
+                L::ParameterList { .. } => functions
+                    .parameter_list_list_function_functions
+                    .push((index, lowered)),
+                L::Int { .. } => functions.int_list_function_functions.push((index, lowered)),
+                L::String { .. } => functions
+                    .string_list_function_functions
+                    .push((index, lowered)),
+                L::BitArray { .. } => functions
+                    .bit_array_list_function_functions
+                    .push((index, lowered)),
+                L::UtfCodepoint { .. } => functions
+                    .utf_codepoint_list_function_functions
+                    .push((index, lowered)),
+                L::Custom { .. } => functions
+                    .custom_list_function_functions
+                    .push((index, lowered)),
+                L::Float { .. } => functions
+                    .float_list_function_functions
+                    .push((index, lowered)),
+                L::Bool { .. } => functions
+                    .bool_list_function_functions
+                    .push((index, lowered)),
+                L::Nil { .. } => functions.nil_list_function_functions.push((index, lowered)),
+                L::Tuple { .. } => functions
+                    .tuple_list_function_functions
+                    .push((index, lowered)),
+                L::List { .. } => functions
+                    .list_list_function_functions
+                    .push((index, lowered)),
+                L::Function { .. } => functions
+                    .function_list_function_functions
+                    .push((index, lowered)),
+            }
+        }
+        F::Function(return_) => functions.function_function_functions.push((
+            index,
+            lowered_host_target::<execution_function::FunctionFunctionFunctionBody>(
+                key,
+                specialization,
+                return_,
+            ),
+        )),
+    }
+}
+
+fn lowered_host_target<Body>(
+    key: &SpecializationKey,
+    specialization: HostSpecialization,
+    return_: Body::Return,
+) -> function::LoweredSpecialization<
+    execution_function::ValueFunctionEntry<Body, HostedFunctionTarget<Body>>,
+>
+where
+    Body: execution_function::ExecutionFunctionBody,
+{
+    match specialization {
+        HostSpecialization::Value(index) => function::lowered_host_function(
+            key,
+            HostedFunctionTarget::value(HostFunctionId::<Body>::new(index, return_)),
+        ),
+        HostSpecialization::Never(index) => function::lowered_host_function(
+            key,
+            HostedFunctionTarget::never(HostNeverFunctionId::new(index)),
+        ),
+    }
+}
+
+fn lowered_never_host_target(
+    key: &SpecializationKey,
+    index: usize,
+) -> function::LoweredSpecialization<
+    execution_function::ValueFunctionEntry<
+        execution_function::NeverFunctionBody,
+        HostedFunctionTarget<execution_function::NeverFunctionBody>,
+    >,
+> {
+    function::lowered_host_function(
+        key,
+        HostedFunctionTarget::never(HostNeverFunctionId::new(index)),
+    )
+}
+
+impl<Profile: HostProfile> RegisteredHostFunctions<Profile> {
+    fn new(implementation_bindings: Vec<HostImplementationBinding<Profile>>) -> Self {
+        Self {
+            functions: implementation_bindings
+                .into_iter()
+                .map(HostImplementationBinding::into_parts)
+                .collect(),
+        }
     }
 }
 
 impl<Profile: HostProfile> LoweredHostFunctions<Profile> {
     fn new() -> Self {
         Self {
-            int: Vec::new(),
-            float: Vec::new(),
-            string: Vec::new(),
-            bit_array: Vec::new(),
-            utf_codepoint: Vec::new(),
-            bool: Vec::new(),
-            nil: Vec::new(),
-            never: Vec::new(),
-            additional: function::AdditionalFunctions::empty(),
+            value_functions: Vec::new(),
+            never_functions: Vec::new(),
+            additional: function::AdditionalFunctions {
+                never: Vec::new(),
+                custom: Vec::new(),
+                int: Vec::new(),
+                float: Vec::new(),
+                string: Vec::new(),
+                bit_array: Vec::new(),
+                utf_codepoint: Vec::new(),
+                bool: Vec::new(),
+                nil: Vec::new(),
+                tuple: Vec::new(),
+                parameter_list: Vec::new(),
+                int_list: Vec::new(),
+                string_list: Vec::new(),
+                bit_array_list: Vec::new(),
+                utf_codepoint_list: Vec::new(),
+                custom_list: Vec::new(),
+                float_list: Vec::new(),
+                bool_list: Vec::new(),
+                nil_list: Vec::new(),
+                tuple_list: Vec::new(),
+                parameter_list_list: Vec::new(),
+                list_list: Vec::new(),
+                function_list: Vec::new(),
+                int_function_functions: Vec::new(),
+                float_function_functions: Vec::new(),
+                string_function_functions: Vec::new(),
+                bit_array_function_functions: Vec::new(),
+                utf_codepoint_function_functions: Vec::new(),
+                custom_function_functions: Vec::new(),
+                bool_function_functions: Vec::new(),
+                nil_function_functions: Vec::new(),
+                tuple_function_functions: Vec::new(),
+                generic_function_functions: Vec::new(),
+                never_function_functions: Vec::new(),
+                parameter_list_function_functions: Vec::new(),
+                parameter_list_list_function_functions: Vec::new(),
+                int_list_function_functions: Vec::new(),
+                string_list_function_functions: Vec::new(),
+                bit_array_list_function_functions: Vec::new(),
+                utf_codepoint_list_function_functions: Vec::new(),
+                custom_list_function_functions: Vec::new(),
+                float_list_function_functions: Vec::new(),
+                bool_list_function_functions: Vec::new(),
+                nil_list_function_functions: Vec::new(),
+                tuple_list_function_functions: Vec::new(),
+                list_list_function_functions: Vec::new(),
+                function_list_function_functions: Vec::new(),
+                function_function_functions: Vec::new(),
+            },
         }
     }
 }

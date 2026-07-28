@@ -10,6 +10,7 @@ use gleam_core::parse::lexer::string_to_keyword;
 use gleam_core::type_::PRELUDE_MODULE_NAME;
 use gleam_core::type_::error::Named;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 pub struct HostModule<Profile: HostProfile = StatelessHostProfile> {
     identity: HostModuleIdentity,
@@ -52,7 +53,7 @@ pub(crate) struct RegisteredHostFunction {
 pub(crate) struct RegisteredHostImplementationId(usize);
 
 pub(crate) struct RegisteredHostImplementations<Profile: HostProfile> {
-    functions: Vec<HostFunctionImplementation<Profile>>,
+    functions: Vec<Arc<HostFunctionImplementation<Profile>>>,
 }
 
 struct RegisteredFunctions<Profile: HostProfile> {
@@ -88,10 +89,9 @@ impl<Profile: HostProfile> HostModule<Profile> {
         Function: HostFunction<Arguments, Return>,
     {
         self.functions
-            .register(
-                &self.identity.module,
-                HostFunctionDefinition::new(name.into(), function),
-            )
+            .register(&self.identity.module, name.into(), |name| {
+                HostFunctionDefinition::new(name, function)
+            })
             .map(|()| self)
     }
 
@@ -104,10 +104,9 @@ impl<Profile: HostProfile> HostModule<Profile> {
         Function: FallibleHostFunction<Arguments, Return>,
     {
         self.functions
-            .register(
-                &self.identity.module,
-                HostFunctionDefinition::new_fallible(name.into(), function),
-            )
+            .register(&self.identity.module, name.into(), |name| {
+                HostFunctionDefinition::new_fallible(name, function)
+            })
             .map(|()| self)
     }
 
@@ -121,10 +120,9 @@ impl<Profile: HostProfile> HostModule<Profile> {
         Function: ScopedHostFunction<Profile, Provider, Arguments, Return>,
     {
         self.functions
-            .register(
-                &self.identity.module,
-                HostFunctionDefinition::new_scoped::<Provider, _, _, _>(name.into(), function),
-            )
+            .register(&self.identity.module, name.into(), |name| {
+                HostFunctionDefinition::new_scoped::<Provider, _, _, _>(name, function)
+            })
             .map(|()| self)
     }
 
@@ -161,10 +159,9 @@ impl<Profile: HostProfile> HostProviderModule<Profile> {
         Function: HostFunction<Arguments, Return>,
     {
         self.functions
-            .register(
-                &self.identity.module,
-                HostFunctionDefinition::new(name.into(), function),
-            )
+            .register(&self.identity.module, name.into(), |name| {
+                HostFunctionDefinition::new(name, function)
+            })
             .map(|()| self)
     }
 
@@ -177,10 +174,9 @@ impl<Profile: HostProfile> HostProviderModule<Profile> {
         Function: FallibleHostFunction<Arguments, Return>,
     {
         self.functions
-            .register(
-                &self.identity.module,
-                HostFunctionDefinition::new_fallible(name.into(), function),
-            )
+            .register(&self.identity.module, name.into(), |name| {
+                HostFunctionDefinition::new_fallible(name, function)
+            })
             .map(|()| self)
     }
 
@@ -194,10 +190,9 @@ impl<Profile: HostProfile> HostProviderModule<Profile> {
         Function: ScopedHostFunction<Profile, Provider, Arguments, Return>,
     {
         self.functions
-            .register(
-                &self.identity.module,
-                HostFunctionDefinition::new_scoped::<Provider, _, _, _>(name.into(), function),
-            )
+            .register(&self.identity.module, name.into(), |name| {
+                HostFunctionDefinition::new_scoped::<Provider, _, _, _>(name, function)
+            })
             .map(|()| self)
     }
 
@@ -308,9 +303,12 @@ impl<Profile: HostProfile> RegisteredFunctions<Profile> {
     fn register(
         &mut self,
         module: &EcoString,
-        function: HostFunctionDefinition<Profile>,
+        name: EcoString,
+        definition: impl FnOnce(
+            EcoString,
+        )
+            -> Result<HostFunctionDefinition<Profile>, HostRegistrationError>,
     ) -> Result<(), HostRegistrationError> {
-        let name = function.schema().name().clone();
         if string_to_keyword(&name).is_some()
             || check_name_case(SrcSpan::new(0, 0), &name, Named::Function).is_err()
         {
@@ -329,7 +327,8 @@ impl<Profile: HostProfile> RegisteredFunctions<Profile> {
                 function: name,
             });
         }
-        self.functions.push(function);
+        let definition = definition(name)?;
+        self.functions.push(definition);
         Ok(())
     }
 
@@ -393,7 +392,7 @@ impl<Profile: HostProfile> RegisteredHostImplementations<Profile> {
     fn register(&mut self, definition: HostFunctionDefinition<Profile>) -> RegisteredHostFunction {
         let (schema, implementation) = definition.into_parts();
         let id = RegisteredHostImplementationId(self.functions.len());
-        self.functions.push(implementation);
+        self.functions.push(Arc::new(implementation));
         RegisteredHostFunction {
             schema,
             implementation: id,
@@ -403,8 +402,8 @@ impl<Profile: HostProfile> RegisteredHostImplementations<Profile> {
     pub(crate) fn implementation(
         &self,
         id: RegisteredHostImplementationId,
-    ) -> HostFunctionImplementation<Profile> {
-        self.functions[id.0].clone()
+    ) -> Arc<HostFunctionImplementation<Profile>> {
+        Arc::clone(&self.functions[id.0])
     }
 }
 
@@ -432,29 +431,35 @@ fn validate_module_name(module: &EcoString) -> Result<(), HostRegistrationError>
 
 #[cfg(test)]
 mod tests {
-    use super::{HostModule, HostProviderModule, HostProviderSet};
+    use super::{HostModule, HostProviderModule, HostProviderSet, RegisteredFunctions};
     use crate::host::function::CallArguments;
+    use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{
-        HostCall, HostFailure, HostFunctionImplementation, HostIntFunction, HostProfile,
-        HostProvider, HostRegistrationError, StatelessHostProfile,
+        HostCall, HostCallCompletion, HostCallError, HostFailure, HostFunctionDefinition,
+        HostProvider, HostRegistrationError, HostScopedValue, StatelessHostProfile,
+        expect_value_implementation,
     };
     use crate::plan::ValueType;
+    use ecow::EcoString;
     use num_bigint::BigInt;
-
-    struct Profile;
+    use std::cell::Cell;
 
     struct Counter;
 
-    impl HostProfile for Profile {
-        type RunState = usize;
-    }
-
-    impl HostProvider<Profile> for Counter {
+    impl HostProvider<TestHostProfile> for Counter {
         type State = usize;
 
-        fn project(state: &mut usize) -> &mut Self::State {
-            state
+        fn project(state: &mut TestRunState) -> &mut Self::State {
+            &mut state.counter
         }
+    }
+
+    fn increment<'call>(
+        mut call: HostCall<'call, TestHostProfile, Counter, BigInt>,
+    ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+        *call.state() += 1;
+        let value = BigInt::from(*call.state());
+        Ok(call.return_value(value))
     }
 
     #[test]
@@ -491,20 +496,15 @@ mod tests {
 
     #[test]
     fn scoped_registration_projects_provider_state() {
-        let provider = HostProviderModule::<Profile>::new("application", "main")
+        let provider = HostProviderModule::<TestHostProfile>::new("application", "main")
             .expect("provider module should be valid")
-            .with_scoped_function::<Counter, _, _, _>(
-                "increment",
-                |call: &mut HostCall<'_, Profile, Counter>| {
-                    *call.state() += 1;
-                    Ok(BigInt::from(*call.state()))
-                },
-            )
+            .with_scoped_function::<Counter, _, _, _>("increment", increment)
             .expect("scoped function should be valid");
 
         assert_eq!(provider.functions().len(), 1);
-        let hosts = HostProviderSet::with_providers(Vec::<HostModule<Profile>>::new(), [provider])
-            .expect("provider module should be unique");
+        let hosts =
+            HostProviderSet::with_providers(Vec::<HostModule<TestHostProfile>>::new(), [provider])
+                .expect("provider module should be unique");
         let (_, mut providers, implementations) = hosts.into_registered();
         let (_, _, mut definitions) = providers
             .pop()
@@ -514,31 +514,33 @@ mod tests {
             .pop()
             .expect("scoped function should be registered")
             .into_parts();
-        let implementation = int_function(implementations.implementation(implementation));
-        let mut state = 41;
+        let registered_implementation = implementations.implementation(implementation);
+        let implementation = expect_value_implementation(registered_implementation.as_ref());
+        let mut state = TestRunState {
+            counter: 41,
+            unrelated: true,
+        };
+        let arguments = CallArguments::new(Vec::new(), Vec::new());
+        let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
 
-        assert_eq!(
-            implementation.call(&mut state, &CallArguments::new(Vec::new(), Vec::new()),),
-            Ok(BigInt::from(42)),
-        );
-        assert_eq!(state, 42);
+        let token = implementation
+            .call(&mut runtime)
+            .expect("scoped function should succeed");
+        assert_eq!(token.family, crate::host::HostValueFamily::Int);
+        drop(runtime);
+        assert_eq!(state.counter, 42);
+        assert!(state.unrelated);
     }
 
     #[test]
     fn source_less_profile_registration_invokes_fallible_and_scoped_callbacks() {
-        let module = HostModule::<Profile>::new_for_profile("host_support", "host/state")
+        let module = HostModule::<TestHostProfile>::new_for_profile("host_support", "host/state")
             .expect("module should be valid")
             .with_fallible_function("checked", || {
                 Result::<BigInt, HostFailure>::Ok(BigInt::from(7))
             })
             .expect("fallible function should be valid")
-            .with_scoped_function::<Counter, _, _, _>(
-                "increment",
-                |call: &mut HostCall<'_, Profile, Counter>| {
-                    *call.state() += 1;
-                    Ok(BigInt::from(*call.state()))
-                },
-            )
+            .with_scoped_function::<Counter, _, _, _>("increment", increment)
             .expect("scoped function should be valid");
         let hosts = HostProviderSet::new([module]).expect("host module should be unique");
         let (mut modules, _, implementations) = hosts.into_registered();
@@ -546,60 +548,63 @@ mod tests {
             .pop()
             .expect("host module should be registered")
             .into_parts();
-        let arguments = CallArguments::new(Vec::new(), Vec::new());
         let mut definitions = definitions.into_iter();
         let (_, checked) = definitions
             .next()
             .expect("fallible function should be registered")
             .into_parts();
-        let checked = int_function(implementations.implementation(checked));
+        let checked_implementation = implementations.implementation(checked);
+        let checked = expect_value_implementation(checked_implementation.as_ref());
         let (_, increment) = definitions
             .next()
             .expect("scoped function should be registered")
             .into_parts();
-        let increment = int_function(implementations.implementation(increment));
-        let mut state = 9;
+        let increment_implementation = implementations.implementation(increment);
+        let increment = expect_value_implementation(increment_implementation.as_ref());
+        let mut state = TestRunState {
+            counter: 9,
+            unrelated: true,
+        };
 
-        assert_eq!(checked.call(&mut state, &arguments), Ok(BigInt::from(7)));
-        assert_eq!(increment.call(&mut state, &arguments), Ok(BigInt::from(10)),);
-        assert_eq!(state, 10);
-    }
-
-    #[test]
-    #[should_panic(expected = "registered function should return Int")]
-    fn registered_int_function_shape_guard_is_visible() {
-        let module = HostModule::<Profile>::new_for_profile("host_support", "host/state")
-            .expect("module should be valid")
-            .with_function("ready", || true)
-            .expect("function should be valid");
-        let hosts = HostProviderSet::new([module]).expect("host module should be unique");
-        let (mut modules, _, implementations) = hosts.into_registered();
-        let (_, _, mut definitions) = modules
-            .pop()
-            .expect("host module should be registered")
-            .into_parts();
-        let (_, implementation) = definitions
-            .pop()
-            .expect("function should be registered")
-            .into_parts();
-
-        int_function(implementations.implementation(implementation));
+        let mut runtime =
+            TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
+        assert_eq!(
+            checked
+                .call(&mut runtime)
+                .expect("fallible function should succeed")
+                .family,
+            crate::host::HostValueFamily::Int,
+        );
+        assert_eq!(
+            runtime.completed(),
+            Some(&HostScopedValue::Int(BigInt::from(7))),
+        );
+        drop(runtime);
+        let mut runtime =
+            TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
+        let token = increment
+            .call(&mut runtime)
+            .expect("scoped function should succeed");
+        assert_eq!(token.family, crate::host::HostValueFamily::Int);
+        drop(runtime);
+        assert_eq!(state.counter, 10);
+        assert!(state.unrelated);
     }
 
     #[test]
     fn rejects_invalid_module_and_function_names() {
         assert_eq!(
-            HostModule::<Profile>::new_for_profile("host_support", "").err(),
+            HostModule::<TestHostProfile>::new_for_profile("host_support", "").err(),
             Some(HostRegistrationError::InvalidModuleName { module: "".into() }),
         );
         assert_eq!(
-            HostProviderModule::<Profile>::new("host_support", "gleam").err(),
+            HostProviderModule::<TestHostProfile>::new("host_support", "gleam").err(),
             Some(HostRegistrationError::InvalidModuleName {
                 module: "gleam".into(),
             }),
         );
         assert_eq!(
-            HostModule::<Profile>::new_for_profile("host_support", "host/math")
+            HostModule::<TestHostProfile>::new_for_profile("host_support", "host/math")
                 .expect("module should be valid")
                 .with_function("Add", <BigInt as std::ops::Add>::add)
                 .err(),
@@ -633,7 +638,7 @@ mod tests {
     #[test]
     fn rejects_duplicate_functions_and_module_identities() {
         assert_eq!(
-            HostModule::<Profile>::new_for_profile("host_support", "host/math")
+            HostModule::<TestHostProfile>::new_for_profile("host_support", "host/math")
                 .expect("module should be valid")
                 .with_function("add", <BigInt as std::ops::Add>::add)
                 .expect("function should be valid")
@@ -671,15 +676,59 @@ mod tests {
         );
     }
 
-    fn int_function<Host: HostProfile>(
-        implementation: HostFunctionImplementation<Host>,
-    ) -> HostIntFunction<Host> {
-        let HostFunctionImplementation::Value(crate::host::HostValueFunctionImplementation::Int(
-            implementation,
-        )) = implementation
-        else {
-            panic!("registered function should return Int");
+    #[test]
+    fn function_name_and_duplicate_validation_precede_definition_assembly() {
+        let module = EcoString::from("host/generic");
+        let mut functions = RegisteredFunctions::<TestHostProfile>::new();
+        let assembly_count = Cell::new(0);
+        let assemble = |name| {
+            assembly_count.set(assembly_count.get() + 1);
+            if name == "sparse" {
+                Err(HostRegistrationError::NonContiguousTypeParameters {
+                    function: name,
+                    parameters: vec![2].into_boxed_slice(),
+                })
+            } else {
+                HostFunctionDefinition::new(name, || true)
+            }
         };
-        implementation
+
+        let invalid_name = functions.register(&module, "case".into(), assemble).err();
+        assert_eq!(assembly_count.get(), 0);
+
+        functions
+            .register(&module, "identity".into(), assemble)
+            .expect("the first valid definition should be assembled");
+        assert_eq!(assembly_count.get(), 1);
+
+        let duplicate = functions
+            .register(&module, "identity".into(), assemble)
+            .err();
+        assert_eq!(assembly_count.get(), 1);
+
+        let definition_error = functions.register(&module, "sparse".into(), assemble).err();
+        assert_eq!(assembly_count.get(), 2);
+
+        assert_eq!(
+            invalid_name,
+            Some(HostRegistrationError::InvalidFunctionName {
+                module: "host/generic".into(),
+                function: "case".into(),
+            }),
+        );
+        assert_eq!(
+            duplicate,
+            Some(HostRegistrationError::DuplicateFunction {
+                module: "host/generic".into(),
+                function: "identity".into(),
+            }),
+        );
+        assert_eq!(
+            definition_error,
+            Some(HostRegistrationError::NonContiguousTypeParameters {
+                function: "sparse".into(),
+                parameters: vec![2].into_boxed_slice(),
+            }),
+        );
     }
 }

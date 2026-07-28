@@ -31,20 +31,15 @@ impl ExecutionError {
         source_context: Option<&SourceContext>,
         error: crate::HostCallError,
     ) -> Self {
-        match error.into_kind() {
-            crate::host::HostCallErrorKind::Failure(failure) => {
-                Self::Host(Box::new(HostError::new(
-                    function.package().clone(),
-                    function.module().clone(),
-                    function.name().clone(),
-                    function.signature().clone(),
-                    failure,
-                    site,
-                    source_context,
-                )))
-            }
-            crate::host::HostCallErrorKind::Execution(error) => error,
-        }
+        Self::Host(Box::new(HostError::new(
+            function.package().clone(),
+            function.module().clone(),
+            function.name().clone(),
+            function.signature().clone(),
+            error.into_failure(),
+            site,
+            source_context,
+        )))
     }
 
     pub(crate) fn source_panic(

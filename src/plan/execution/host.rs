@@ -1,16 +1,14 @@
+mod error;
 mod function;
 mod table;
 use crate::host::HostProfile;
 use std::marker::PhantomData;
 
 pub(crate) use function::{
-    HostBitArrayFunctionId, HostBoolFunctionId, HostFloatFunctionId, HostIntFunctionId,
-    HostNeverFunctionId, HostNilFunctionId, HostStringFunctionId, HostUtfCodepointFunctionId,
-    HostedBitArrayFunction, HostedBoolFunction, HostedFloatFunction, HostedFunction,
-    HostedFunctionMetadata, HostedFunctionTarget, HostedIntFunction, HostedNeverFunction,
-    HostedNilFunction, HostedStringFunction, HostedUtfCodepointFunction,
+    HostCallParameter, HostFunctionId, HostNeverFunctionId, HostedFunction, HostedFunctionMetadata,
+    HostedFunctionTarget, HostedNeverFunction, HostedValueFunction,
 };
-pub(in crate::plan::execution) use table::HostValueFunctionTables;
-pub(crate) use table::{HostFunctionTables, HostValueFunctionTarget};
+pub(crate) use table::HostFunctionTables;
 
 pub(crate) struct HostedExecutionProfile<Profile: HostProfile>(PhantomData<Profile>);
+pub use error::HostSpecializationError;

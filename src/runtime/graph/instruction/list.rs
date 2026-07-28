@@ -27,9 +27,8 @@ use crate::runtime::evaluated::{
 use crate::runtime::state::{
     BitArrayListValueId, BoolListValueId, CustomListAllocation, CustomListValueId,
     FloatListValueId, FunctionListValueId, IntListValueId, ListHandleCore, ListListValueId,
-    ListValueId, NilListValueId, ParameterListListValueId, ParameterListValueId, RuntimeState,
-    RuntimeStateFor, StoredListValueId, StringListValueId, TupleListValueId,
-    UtfCodepointListValueId,
+    NilListValueId, ParameterListListValueId, ParameterListValueId, RuntimeState, RuntimeStateFor,
+    StoredListValueId, StringListValueId, TupleListValueId, UtfCodepointListValueId,
 };
 use crate::runtime::{ExecutionError, InvariantError};
 use ecow::EcoString;
@@ -199,7 +198,7 @@ fn parameter<Plan: ExecutableRuntimePlan>(
             *index,
             expected,
             |value| match value {
-                EvaluatedValue::List(ListValueId::Parameter(value)) => Some(*value),
+                EvaluatedValue::ParameterList(value) => Some(*value),
                 _ => None,
             },
         ),
@@ -210,12 +209,14 @@ fn parameter<Plan: ExecutableRuntimePlan>(
             *index,
             expected,
             |value| match value {
-                EvaluatedValue::List(ListValueId::Parameter(value)) => Some(*value),
+                EvaluatedValue::ParameterList(value) => Some(*value),
                 _ => None,
             },
         ),
         I::ListIndex { list, index } => {
-            let length = state.parameter_list_list_len(&environment.parameter_list_list(*list));
+            let length = state
+                .values()
+                .parameter_list_list_len(&environment.parameter_list_list(*list));
             ensure_list_index(expected, *index, length).map(|()| ParameterListValueId::new(type_id))
         }
     }
@@ -253,7 +254,7 @@ trait RuntimeTypedList {
         origin: HostCallOrigin,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle>;
-    fn projected(value: &ListValueId) -> Option<Self::Handle>;
+    fn projected(value: &StoredListValueId) -> Option<Self::Handle>;
     fn from_core(type_id: Self::TypeId, core: ListHandleCore) -> Self::Handle;
 }
 
@@ -336,7 +337,7 @@ fn typed<Family: RuntimeTypedList, Plan: ExecutableRuntimePlan>(
         ),
         I::ListIndex { list, index } => {
             let list = environment.list_list(*list);
-            let values = state.list_values(&list);
+            let values = state.values().list_values(&list);
             match values.get(*index) {
                 Some(value) => Ok(Family::from_core(type_id, value.clone().into_core())),
                 None => Err(ExecutionError::Invariant(
@@ -405,7 +406,7 @@ macro_rules! vector_family {
                 state: &RuntimeState<'_, State>,
                 value: &Self::Handle,
             ) -> Vec<Self::Element> {
-                state.$values_method(value).to_vec()
+                state.values().$values_method(value).to_vec()
             }
 
             fn allocate<State>(
@@ -413,7 +414,7 @@ macro_rules! vector_family {
                 type_id: Self::TypeId,
                 values: Vec<Self::Element>,
             ) -> Self::Handle {
-                state.$allocate_method(type_id, values)
+                state.values_mut().$allocate_method(type_id, values)
             }
 
             fn run_direct<Plan: ExecutableRuntimePlan>(
@@ -441,9 +442,9 @@ macro_rules! vector_family {
                 }
             }
 
-            fn projected(value: &ListValueId) -> Option<Self::Handle> {
+            fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
                 match value {
-                    ListValueId::$list_variant(value) => Some(value.clone()),
+                    StoredListValueId::$list_variant(value) => Some(value.clone()),
                     _ => None,
                 }
             }
@@ -587,7 +588,7 @@ impl RuntimeTypedList for CustomFamily {
     }
 
     fn values<State>(state: &RuntimeState<'_, State>, value: &Self::Handle) -> Vec<Self::Element> {
-        state.custom_values(value).to_vec()
+        state.values().custom_values(value).to_vec()
     }
 
     fn allocate<State>(
@@ -595,7 +596,9 @@ impl RuntimeTypedList for CustomFamily {
         type_id: Self::TypeId,
         values: Vec<Self::Element>,
     ) -> Self::Handle {
-        state.custom(CustomListAllocation::new(type_id, values))
+        state
+            .values_mut()
+            .custom(CustomListAllocation::new(type_id, values))
     }
 
     fn run_direct<Plan: ExecutableRuntimePlan>(
@@ -623,9 +626,9 @@ impl RuntimeTypedList for CustomFamily {
         }
     }
 
-    fn projected(value: &ListValueId) -> Option<Self::Handle> {
+    fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
         match value {
-            ListValueId::Custom(value) => Some(value.clone()),
+            StoredListValueId::Custom(value) => Some(value.clone()),
             _ => None,
         }
     }
@@ -654,7 +657,7 @@ impl RuntimeTypedList for NilFamily {
     }
 
     fn values<State>(state: &RuntimeState<'_, State>, value: &Self::Handle) -> Vec<Self::Element> {
-        vec![(); state.nil_len(value)]
+        vec![(); state.values().nil_len(value)]
     }
 
     fn allocate<State>(
@@ -662,7 +665,7 @@ impl RuntimeTypedList for NilFamily {
         type_id: Self::TypeId,
         values: Vec<Self::Element>,
     ) -> Self::Handle {
-        state.nil(type_id, values.len())
+        state.values_mut().nil(type_id, values.len())
     }
 
     fn run_direct<Plan: ExecutableRuntimePlan>(
@@ -690,9 +693,9 @@ impl RuntimeTypedList for NilFamily {
         }
     }
 
-    fn projected(value: &ListValueId) -> Option<Self::Handle> {
+    fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
         match value {
-            ListValueId::Nil(value) => Some(value.clone()),
+            StoredListValueId::Nil(value) => Some(value.clone()),
             _ => None,
         }
     }
@@ -723,7 +726,7 @@ impl RuntimeTypedList for ParameterListFamily {
     fn values<State>(state: &RuntimeState<'_, State>, value: &Self::Handle) -> Vec<Self::Element> {
         vec![
             ParameterListValueId::new(value.type_id().item_type());
-            state.parameter_list_list_len(value)
+            state.values().parameter_list_list_len(value)
         ]
     }
 
@@ -732,7 +735,9 @@ impl RuntimeTypedList for ParameterListFamily {
         type_id: Self::TypeId,
         values: Vec<Self::Element>,
     ) -> Self::Handle {
-        state.parameter_list_list(type_id, values.len())
+        state
+            .values_mut()
+            .parameter_list_list(type_id, values.len())
     }
 
     fn run_direct<Plan: ExecutableRuntimePlan>(
@@ -762,9 +767,9 @@ impl RuntimeTypedList for ParameterListFamily {
         }
     }
 
-    fn projected(value: &ListValueId) -> Option<Self::Handle> {
+    fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
         match value {
-            ListValueId::ParameterList(value) => Some(value.clone()),
+            StoredListValueId::ParameterList(value) => Some(value.clone()),
             _ => None,
         }
     }
@@ -793,7 +798,7 @@ impl RuntimeTypedList for ListFamily {
     }
 
     fn values<State>(state: &RuntimeState<'_, State>, value: &Self::Handle) -> Vec<Self::Element> {
-        state.list_values(value).to_vec()
+        state.values().list_values(value).to_vec()
     }
 
     fn allocate<State>(
@@ -801,7 +806,7 @@ impl RuntimeTypedList for ListFamily {
         type_id: Self::TypeId,
         values: Vec<Self::Element>,
     ) -> Self::Handle {
-        state.list(type_id, values)
+        state.values_mut().list(type_id, values)
     }
 
     fn run_direct<Plan: ExecutableRuntimePlan>(
@@ -829,9 +834,9 @@ impl RuntimeTypedList for ListFamily {
         }
     }
 
-    fn projected(value: &ListValueId) -> Option<Self::Handle> {
+    fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
         match value {
-            ListValueId::List(value) => Some(value.clone()),
+            StoredListValueId::List(value) => Some(value.clone()),
             _ => None,
         }
     }
@@ -860,7 +865,7 @@ impl RuntimeTypedList for FunctionFamily {
     }
 
     fn values<State>(state: &RuntimeState<'_, State>, value: &Self::Handle) -> Vec<Self::Element> {
-        state.function_values(value).to_vec()
+        state.values().function_values(value).to_vec()
     }
 
     fn allocate<State>(
@@ -868,7 +873,7 @@ impl RuntimeTypedList for FunctionFamily {
         type_id: Self::TypeId,
         values: Vec<Self::Element>,
     ) -> Self::Handle {
-        state.function(type_id, values)
+        state.values_mut().function(type_id, values)
     }
 
     fn run_direct<Plan: ExecutableRuntimePlan>(
@@ -896,9 +901,9 @@ impl RuntimeTypedList for FunctionFamily {
         }
     }
 
-    fn projected(value: &ListValueId) -> Option<Self::Handle> {
+    fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
         match value {
-            ListValueId::Function(value) => Some(value.clone()),
+            StoredListValueId::Function(value) => Some(value.clone()),
             _ => None,
         }
     }
@@ -1404,14 +1409,15 @@ pub fn main() {
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
         let wrong_list = wrong_list(&mut state, context);
-        let actual = context.plan.list_value_type(wrong_list.list_type());
+        let wrong_value = EvaluatedValue::from(wrong_list);
+        let actual = wrong_value.value_type(context.plan);
 
         assert_tuple_projection_error::<Family>(
             context,
             &mut state,
             type_id,
             &expected,
-            EvaluatedValue::List(wrong_list.clone()),
+            wrong_value.clone(),
             actual.clone(),
         );
         assert_custom_projection_error::<Family>(
@@ -1419,7 +1425,7 @@ pub fn main() {
             &mut state,
             type_id,
             &expected,
-            EvaluatedValue::List(wrong_list),
+            wrong_value,
             actual,
         );
         assert_tuple_projection_error::<Family>(
@@ -1441,23 +1447,25 @@ pub fn main() {
     }
 
     fn wrong_int_list(state: &mut RuntimeState, context: &ProjectionContext<'_>) -> ListValueId {
-        state.int(context.int_type, Vec::new()).into()
+        state.values_mut().int(context.int_type, Vec::new()).into()
     }
 
     fn wrong_string_list(state: &mut RuntimeState, context: &ProjectionContext<'_>) -> ListValueId {
-        state.string(context.string_type, Vec::new()).into()
+        state
+            .values_mut()
+            .string(context.string_type, Vec::new())
+            .into()
     }
 
     fn assert_parameter_list_projection_mismatches(context: &ProjectionContext<'_>) {
         let expected = ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(0))));
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
-        let wrong: ListValueId = state.int(context.int_type, Vec::new()).into();
-        let actual = context.plan.list_value_type(wrong.list_type());
+        let wrong: ListValueId = state.values_mut().int(context.int_type, Vec::new()).into();
+        let wrong_value = EvaluatedValue::from(wrong);
+        let actual = wrong_value.value_type(context.plan);
         let mut tuple_values = RetainedValues::empty();
-        tuple_values.push_evaluated(EvaluatedValue::Tuple(vec![EvaluatedValue::List(
-            wrong.clone(),
-        )]));
+        tuple_values.push_evaluated(EvaluatedValue::Tuple(vec![wrong_value.clone()]));
         let tuple_environment = BlockEnvironment::from_retained(tuple_values);
 
         assert_eq!(
@@ -1482,7 +1490,7 @@ pub fn main() {
 
         let custom = EvaluatedCustomValue::from_fields(
             context.constructor,
-            vec![EvaluatedValue::List(wrong)].into_boxed_slice(),
+            vec![wrong_value].into_boxed_slice(),
         );
         let mut custom_values = RetainedValues::empty();
         custom_values.push_evaluated(EvaluatedValue::Custom(custom));
@@ -1510,10 +1518,11 @@ pub fn main() {
             )),
         );
 
-        let empty =
-            state.parameter_list_list(context.plan.parameter_list_list_function_id(0).type_id(), 0);
+        let empty = state
+            .values_mut()
+            .parameter_list_list(context.plan.parameter_list_list_function_id(0).type_id(), 0);
         let mut list_values = RetainedValues::empty();
-        list_values.push_evaluated(EvaluatedValue::List(ListValueId::ParameterList(empty)));
+        list_values.push_evaluated(EvaluatedValue::from(ListValueId::ParameterList(empty)));
         let list_environment = BlockEnvironment::from_retained(list_values);
         assert_eq!(
             parameter(
@@ -1665,7 +1674,7 @@ pub fn main() {
     {
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
-        let parent = state.list(parent_type, Vec::new());
+        let parent = state.values_mut().list(parent_type, Vec::new());
         let mut values = RetainedValues::empty();
         values.push_evaluated(EvaluatedValue::List(parent.into()));
         let environment = BlockEnvironment::from_retained(values);

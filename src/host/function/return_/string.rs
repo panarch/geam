@@ -1,13 +1,9 @@
-use super::{
-    HostCallback, HostFunctionImplementation, HostReturn, HostValueFunctionImplementation,
-};
-use crate::host::function::HostValueType;
-use crate::host::function::argument::HostCallArguments;
-use crate::host::{HostCallError, HostProfile};
+use super::{HostCallback, HostFunctionImplementation, HostReturn, HostValueFunction};
+use crate::host::{HostAbiType, HostCallArguments, HostCallError, HostCallRuntime, HostProfile};
 use ecow::EcoString;
 use std::sync::Arc;
 
-pub(crate) struct HostStringFunction<Profile: HostProfile> {
+pub(super) struct HostStringFunction<Profile: HostProfile> {
     implementation: Arc<HostCallback<Profile, EcoString>>,
 }
 
@@ -20,18 +16,18 @@ impl<Profile: HostProfile> Clone for HostStringFunction<Profile> {
 }
 
 impl<Profile: HostProfile> HostStringFunction<Profile> {
-    pub(crate) fn call(
+    pub(super) fn call(
         &self,
-        state: &mut Profile::RunState,
-        arguments: &dyn HostCallArguments,
+        runtime: &mut dyn HostCallRuntime<Profile>,
     ) -> Result<EcoString, HostCallError> {
+        let (state, arguments) = runtime.scalar_context();
         (self.implementation)(state, arguments)
     }
 }
 
 impl HostReturn for EcoString {
-    fn type_() -> HostValueType {
-        HostValueType::String
+    fn descriptor() -> crate::host::HostTypeDescriptor {
+        <Self as HostAbiType>::descriptor()
     }
 
     fn implementation<Profile: HostProfile>(
@@ -40,32 +36,30 @@ impl HostReturn for EcoString {
         + Sync
         + 'static,
     ) -> HostFunctionImplementation<Profile> {
-        HostFunctionImplementation::Value(HostValueFunctionImplementation::String(
-            HostStringFunction {
-                implementation: Arc::new(function),
-            },
-        ))
+        HostFunctionImplementation::Value(HostValueFunction::string(HostStringFunction {
+            implementation: Arc::new(function),
+        }))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        HostFunctionImplementation, HostReturn, HostStringFunction, HostValueFunctionImplementation,
+    use super::HostReturn;
+    use crate::host::function::argument::{CallArguments, HostParameterLayout};
+    use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
+    use crate::host::{
+        HostScopedValue, HostTypeDescriptor, HostValueFamily, expect_value_implementation,
     };
-    use crate::host::StatelessHostProfile;
-    use crate::host::function::HostValueType;
-    use crate::host::function::argument::{CallArguments, HostCallArguments, HostParameterLayout};
     use ecow::EcoString;
 
     #[test]
     fn string_return_owns_typed_callback_and_family() {
         let mut layout = HostParameterLayout::default();
         let slot = layout.register::<EcoString>();
-        assert_eq!(<EcoString as HostReturn>::type_(), HostValueType::String,);
-        let implementation = <EcoString as HostReturn>::implementation::<StatelessHostProfile>(
-            move |(), arguments| Ok(format!("{}!", arguments.string(slot)).into()),
-        );
+        let implementation =
+            <EcoString as HostReturn>::implementation::<TestHostProfile>(move |_, arguments| {
+                Ok(format!("{}!", arguments.string(slot)).into())
+            });
         let arguments = CallArguments::new(Vec::new(), Vec::new()).with_scalar_values(
             Vec::new(),
             vec!["hello".into()],
@@ -74,29 +68,22 @@ mod tests {
             0,
         );
 
+        let mut state = TestRunState::default();
+        let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
+
         assert_eq!(
-            string_implementation(implementation).call(&mut (), &arguments),
-            Ok(EcoString::from("hello!")),
+            <EcoString as HostReturn>::descriptor(),
+            HostTypeDescriptor::String,
         );
-    }
-
-    #[test]
-    #[should_panic(expected = "EcoString return should create a String implementation")]
-    fn string_return_shape_guard_is_visible() {
-        let callback = |(): &mut (), _: &dyn HostCallArguments| Ok(true);
-        let implementation = <bool as HostReturn>::implementation::<StatelessHostProfile>(callback);
-        string_implementation(implementation);
-    }
-
-    fn string_implementation(
-        implementation: HostFunctionImplementation<StatelessHostProfile>,
-    ) -> HostStringFunction<StatelessHostProfile> {
-        let HostFunctionImplementation::Value(HostValueFunctionImplementation::String(
-            implementation,
-        )) = implementation
-        else {
-            panic!("EcoString return should create a String implementation");
-        };
-        implementation
+        assert_eq!(
+            expect_value_implementation(&implementation)
+                .call(&mut runtime)
+                .map(|token| token.family),
+            Ok(HostValueFamily::String),
+        );
+        assert_eq!(
+            runtime.completed(),
+            Some(&HostScopedValue::String("hello!".into())),
+        );
     }
 }

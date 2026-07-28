@@ -6,8 +6,7 @@ use crate::plan::execution::function::{
 };
 use crate::plan::execution::graph::LocalLabel;
 use crate::plan::execution::host::{
-    HostFunctionTables, HostValueFunctionTarget, HostedExecutionProfile, HostedFunctionMetadata,
-    HostedFunctionTarget,
+    HostFunctionTables, HostedExecutionProfile, HostedFunction, HostedFunctionTarget,
 };
 
 pub(in crate::plan::execution) struct HostedFunctionTablesExplanation<'a, Profile: HostProfile> {
@@ -398,12 +397,9 @@ fn write_hosted_table<'a, Profile, Body, Functions>(
 ) where
     Profile: HostProfile,
     Body: ExecutionFunctionBody + 'a,
-    Body::HostValueTarget: HostValueFunctionTarget<Profile>,
     Body::Return: LocalLabel,
     Body::TailCall: TailCallLabelIndex,
-    Functions: IntoIterator<
-        Item = &'a ValueFunctionEntry<Body, HostedFunctionTarget<Body::HostValueTarget>>,
-    >,
+    Functions: IntoIterator<Item = &'a ValueFunctionEntry<Body, HostedFunctionTarget<Body>>>,
 {
     for (index, function) in functions.into_iter().enumerate() {
         match function {
@@ -412,24 +408,21 @@ fn write_hosted_table<'a, Profile, Body, Functions>(
             }
             ValueFunctionEntry::Host(target) => match target {
                 HostedFunctionTarget::Value(target) => {
-                    write_hosted_function(context, family, index, target.metadata(host_functions))
+                    write_hosted_function(context, family, index, host_functions.value(target))
                 }
-                HostedFunctionTarget::Never(target) => write_hosted_function(
-                    context,
-                    family,
-                    index,
-                    host_functions.never(*target).metadata(),
-                ),
+                HostedFunctionTarget::Never(target) => {
+                    write_hosted_function(context, family, index, host_functions.never(*target))
+                }
             },
         }
     }
 }
 
-fn write_hosted_function(
+fn write_hosted_function<Implementation>(
     context: &mut ExplainContext<'_, '_>,
     family: &'static str,
     index: usize,
-    function: &HostedFunctionMetadata,
+    function: &HostedFunction<Implementation>,
 ) {
     context.push_str("\nfunction ");
     FunctionLabel::new(family, index).write(context.output());
@@ -447,14 +440,14 @@ fn write_hosted_function(
 #[cfg(test)]
 mod tests {
     use super::HostedFunctionTablesExplanation;
+    use crate::host::test::{StatelessTestProvider, TestTypeParameter, stateless_identity};
     use crate::plan::execution::explain;
     use crate::{
-        BitArrayValue, ExecutionError, HostFailure, HostModule, HostProviderSet, HostedExecution,
-        ModuleSource, PackageSource, compile_typed_host_program, plan_host_program,
+        BitArrayValue, HostModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
+        compile_typed_host_program, plan_host_program,
     };
     use ecow::EcoString;
     use num_bigint::BigInt;
-    use std::convert::Infallible;
 
     #[test]
     fn writes_every_scalar_host_target_in_family_order() {
@@ -502,7 +495,8 @@ pub fn main() {
         )
         .expect("host source should compile");
         let plan = plan_host_program(typed).expect("host source should plan");
-        let execution = HostedExecution::from_module_plan(plan);
+        let execution =
+            HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         let expected = r#"
 function int#0
   host host_support::host/scalars.int signature=fn() -> Int
@@ -550,28 +544,35 @@ function tuple#0
     }
 
     #[test]
-    fn writes_generic_never_and_concrete_non_returning_host_targets() {
-        fn stop() -> Result<Infallible, HostFailure> {
-            Err(HostFailure::new("stopped"))
-        }
-
-        let control = HostModule::new("host_support", "host/control")
+    fn writes_compound_host_targets_in_their_exact_family_tables() {
+        let generic = HostModule::new("host_support", "host/generic")
             .expect("host module should be valid")
-            .with_fallible_function(
-                "generic_stop",
-                stop as fn() -> Result<Infallible, HostFailure>,
-            )
-            .expect("host function should be valid")
-            .with_fallible_function("int_stop", stop as fn() -> Result<Infallible, HostFailure>)
+            .with_scoped_function::<
+                StatelessTestProvider,
+                (TestTypeParameter,),
+                TestTypeParameter,
+                _,
+            >("identity", stateless_identity)
             .expect("host function should be valid");
-        let hosts = HostProviderSet::new([control]).expect("host modules should be unique");
+        let hosts = HostProviderSet::new([generic]).expect("host modules should be unique");
         let source = r#"
-import host/control
+import host/generic
+
+pub type Marker {
+  Marker(Int)
+}
+
+fn increment(value: Int) {
+  value + 1
+}
 
 pub fn main() {
-  let int_stop: fn() -> Int = control.int_stop
-  let _ = int_stop == int_stop
-  control.generic_stop()
+  #(
+    generic.identity(Marker(1)),
+    generic.identity(#(2, True)),
+    generic.identity([3]),
+    generic.identity(increment),
+  )
 }
 "#;
         let typed = compile_typed_host_program(
@@ -586,20 +587,45 @@ pub fn main() {
         )
         .expect("host source should compile");
         let plan = plan_host_program(typed).expect("host source should plan");
-        let execution = HostedExecution::from_module_plan(plan);
+        let execution =
+            HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         let expected = r#"
-function never#0
+function int#0
+  entry b0 params=[%int#0:shape#0(Int)] captures=[]
+  block b0 params=[%int#0:shape#0(Int)]
+    %int#1:shape#0(Int) = int.value 1
+    %int#2:shape#0(Int) = int.add %int#0 %int#1
+    return %int#2
+
+function custom#0
+  host host_support::host/generic.identity signature=fn(custom_type#0) -> custom_type#0
+
+function tuple#0
   entry b0 params=[] captures=[]
   block b0 params=[]
-    %function.int#0:shape#1(fn() -> Int) = function[Int] reference int#0
-    %bool#0:shape#2(Bool) = bool.equal %function.int#0 %function.int#0
-    tail never#1 args=[]
+    %int#0:shape#0(Int) = int.value 1
+    %custom#0:shape#1(custom_type#0) = custom.construct custom_type#0.constructor#0 fields=[%int#0]
+    %custom#1:shape#2(custom_type#0) = custom.call custom#0 args=[%custom#0]
+    %int#1:shape#0(Int) = int.value 2
+    %bool#0:shape#3(Bool) = bool.value True
+    %tuple#0:shape#4(#(Int, Bool)) = tuple.value elements=[%int#1, %bool#0]
+    %tuple#1:shape#4(#(Int, Bool)) = tuple.call tuple#1 args=[%tuple#0]
+    %int#2:shape#0(Int) = int.value 3
+    %list.int#0:shape#5(list_type#0) = list.int[type#0] value elements=[%int#2]
+    %list.int#1:shape#5(list_type#0) = list.int[type#0] call list.int#0 args=[%list.int#0]
+    %function.int#0:shape#6(fn(Int) -> Int) = function[Int] reference int#0
+    %function.int#1:shape#6(fn(Int) -> Int) = function[Int] call function.int#0 args=[%function.int#0]
+    %tuple#2:shape#7(#(custom_type#0, #(Int, Bool), list_type#0, fn(Int) -> Int)) = tuple.value elements=[%custom#1, %tuple#1, %list.int#1, %function.int#1]
+    return %tuple#2
 
-function never#1
-  host host_support::host/control.generic_stop signature=fn() -> param#0
+function tuple#1
+  host host_support::host/generic.identity signature=fn(#(Int, Bool)) -> #(Int, Bool)
 
-function int#0
-  host host_support::host/control.int_stop signature=fn() -> Int
+function list.int#0
+  host host_support::host/generic.identity signature=fn(list_type#0) -> list_type#0
+
+function function.int#0
+  host host_support::host/generic.identity signature=fn(fn(Int) -> Int) -> fn(Int) -> Int
 "#;
         let mut actual = String::new();
         let mut context = explain::ExplainContext::new_hosted(&execution, &mut actual);
@@ -609,9 +635,5 @@ function int#0
         ));
 
         assert_eq!(actual, expected);
-        assert!(matches!(
-            execution.run_main(&mut (), &mut Vec::new()),
-            Err(ExecutionError::Host(error)) if error.failure().message() == "stopped"
-        ));
     }
 }

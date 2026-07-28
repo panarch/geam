@@ -158,6 +158,25 @@ source-located host execution error. `with_scoped_function` receives a typed
 `HostCall` and projects only its declared `HostProvider::State` from the
 caller-owned `HostProfile::RunState`.
 
+Scoped functions use `HostTypeParameter<N>`, `HostListType`,
+`HostTupleType`, and `HostCustomType` as their public type language.
+`HostList`, `HostTuple`, and `HostCustom` are invocation-scoped handles, not
+materialized `Value` arguments. Compound returns are explicitly constructed
+through `HostCall`; tuple element sequences are recursive and have no tuple
+arity limit. `HostTypeParameter<N>` indices start at zero and must be
+contiguous across one registered signature.
+
+Ordinary custom schemas provide the exact source identity and an ordered
+type-level list of constructors and labelled fields. Constructor handles can
+only select a definition at its declared list position. Planning recursively
+validates every referenced custom definition and rejects a missing or
+mismatched definition before lowering. Source-backed providers retain source
+visibility and can inspect opaque representations only in their defining
+module; source-less public host surfaces accept only public non-opaque custom
+types. A generic provider is registered once with its source scheme and
+execution specialization produces deterministic concrete host targets, so
+users do not register one Rust function per Gleam specialization.
+
 The current public execution APIs are:
 
 ```rust
@@ -188,7 +207,9 @@ impl geam::ExecutionPlan {
 }
 
 impl<Profile: geam::HostProfile> geam::HostedExecution<Profile> {
-    pub fn from_module_plan(plan: geam::HostedModulePlan<Profile>) -> Self
+    pub fn try_from_module_plan(
+        plan: geam::HostedModulePlan<Profile>,
+    ) -> Result<Self, geam::HostSpecializationError>
 
     pub fn run_main(
         &self,
@@ -211,11 +232,16 @@ The hosted pipeline is intentionally a separate type-level boundary. A
 `HostedModulePlan` exposes source templates and host schemas while carrying
 registered callbacks in a private sidecar. `HostedExecution` retains only the
 implementations selected by lowering, pairs them with first-use host targets,
-and cannot be passed to the plain `run_main` function. Source external
-providers are selected before body planning: an exact provider wins, a
-provider-less declaration with a Gleam body uses that fallback, and a
-bodyless declaration without a provider is rejected. Provider state remains
-owned by the caller and is borrowed only for `HostedExecution::run_main`.
+and cannot be passed to the plain `run_main` function.
+`HostedExecution::try_from_module_plan` seals entry-reachable generic
+specializations into concrete runtime storage. It returns
+`HostSpecializationError` only when a reachable value-producing host
+specialization has no representable successful return storage; unused
+providers do not block execution. Source external providers are selected
+before body planning: an exact provider wins, a provider-less declaration
+with a Gleam body uses that fallback, and a bodyless declaration without a
+provider is rejected. Provider state remains owned by the caller and is
+borrowed only for `HostedExecution::run_main`.
 
 The caller supplies the `EchoSink` used by `run_main`. Each emitted
 `EchoOutput` owns its materialized value, optional message, and compact source

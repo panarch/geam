@@ -217,6 +217,12 @@ exact external scheme, preserve a declared Gleam fallback when no provider is
 selected, reject missing providers for bodyless externals, and never defer
 selection or ordinary-function override decisions to runtime.
 
+Keep compound host values call-scoped and typed. Registration owns recursive
+type descriptors, planning validates ordinary-custom schemas exactly, and
+execution specialization seals concrete locals and return storage. Do not
+replace these boundaries with materialized public values, per-specialization
+user registration, or runtime shape validation.
+
 ## Panic Rules
 
 Production Geam logic must not use explicit panic paths for control flow,
@@ -226,6 +232,10 @@ profile validation, or recoverable invariant handling. Do not use
 Boundary failures must become structured errors before runtime execution. If a
 case can be reached from valid Gleam source, reject it as a profile error. If it
 requires a synthetic or mutated typed AST shape, reject it as `InvalidTypedAst`.
+If a valid hosted plan reaches a value-producing specialization whose return
+storage cannot be represented, reject that specialization while sealing
+`HostedExecution`; do not reinterpret it as either source rejection or a
+runtime error.
 
 `#[cfg(test)]` helpers may use panic paths only to assert fixture shape. Keep
 those panics local, visible, and covered by explicit panic tests.
@@ -236,6 +246,8 @@ Errors make boundaries visible:
 
 - Use `Unsupported*` errors for valid Gleam source outside the Geam profile.
 - Use `InvalidTypedAst` errors for typed AST margin cases.
+- Use `HostSpecializationError` only for a valid hosted plan whose reachable
+  ABI specialization cannot be sealed into executable storage.
 - Avoid free-form static string reasons for stable planner errors.
 - Keep dynamic values, such as function and local names, as structured fields.
 - Do not merge unsupported profile cases and invalid typed AST cases into one

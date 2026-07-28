@@ -1,16 +1,14 @@
-mod parameter;
-
+use crate::host::HostParameter;
 use crate::plan::{FunctionTemplateId, FunctionTemplateSignature, FunctionType, TypeScheme};
 use ecow::EcoString;
-
-pub(crate) use parameter::HostParameter;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HostFunctionTemplate {
     signature: FunctionTemplateSignature,
     package: EcoString,
     site: crate::plan::HostCallSite,
-    parameters: Box<[HostParameter]>,
+    layout: Box<[HostParameter]>,
+    custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
     type_: FunctionType,
 }
 
@@ -19,14 +17,16 @@ impl HostFunctionTemplate {
         signature: FunctionTemplateSignature,
         package: EcoString,
         site: crate::plan::HostCallSite,
-        parameters: Vec<HostParameter>,
+        layout: Box<[HostParameter]>,
+        custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
         type_: FunctionType,
     ) -> Self {
         Self {
             signature,
             package,
             site,
-            parameters: parameters.into_boxed_slice(),
+            layout,
+            custom_schemas,
             type_,
         }
     }
@@ -51,16 +51,20 @@ impl HostFunctionTemplate {
         &self.site
     }
 
+    pub(crate) fn layout(&self) -> &[HostParameter] {
+        &self.layout
+    }
+
+    pub(crate) fn custom_schemas(&self) -> &[crate::host::HostCustomTypeSchema] {
+        &self.custom_schemas
+    }
+
     pub fn scheme(&self) -> &TypeScheme {
         self.signature.scheme()
     }
 
     pub fn type_(&self) -> &FunctionType {
         &self.type_
-    }
-
-    pub(crate) fn parameters(&self) -> &[HostParameter] {
-        &self.parameters
     }
 
     pub(crate) fn signature(&self) -> &FunctionTemplateSignature {

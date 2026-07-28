@@ -1,3 +1,5 @@
+#[path = "host/compound.rs"]
+mod compound;
 #[path = "host/execution.rs"]
 mod execution;
 #[path = "host/non_returning.rs"]
@@ -8,3 +10,5 @@ mod provider;
 mod registration;
 #[path = "host/signature.rs"]
 mod signature;
+#[path = "host/state.rs"]
+mod state;

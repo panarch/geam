@@ -6,8 +6,7 @@ use super::{FunctionTemplateId, ModuleId};
 use crate::host::HostProfile;
 
 pub use function::HostFunctionTemplate;
-pub(crate) use function::HostParameter;
-pub(crate) use implementation::HostFunctionImplementation;
+pub(crate) use implementation::HostImplementationBinding;
 pub(crate) use module::HostedPlannedModuleParts;
 pub use module::{HostedFunctionTemplate, HostedPlannedModule};
 
@@ -15,14 +14,14 @@ pub struct HostedModulePlan<Profile: HostProfile> {
     root: ModuleId,
     entry: FunctionTemplateId,
     modules: Vec<HostedPlannedModule>,
-    implementations: Vec<HostFunctionImplementation<Profile>>,
+    implementation_bindings: Vec<HostImplementationBinding<Profile>>,
 }
 
 pub(crate) struct HostedModulePlanParts<Profile: HostProfile> {
     pub(crate) root: ModuleId,
     pub(crate) entry: FunctionTemplateId,
     pub(crate) modules: Vec<HostedPlannedModule>,
-    pub(crate) implementations: Vec<HostFunctionImplementation<Profile>>,
+    pub(crate) implementation_bindings: Vec<HostImplementationBinding<Profile>>,
 }
 
 impl<Profile: HostProfile> HostedModulePlan<Profile> {
@@ -30,13 +29,13 @@ impl<Profile: HostProfile> HostedModulePlan<Profile> {
         root: ModuleId,
         entry: FunctionTemplateId,
         modules: Vec<HostedPlannedModule>,
-        implementations: Vec<HostFunctionImplementation<Profile>>,
+        implementation_bindings: Vec<HostImplementationBinding<Profile>>,
     ) -> Self {
         Self {
             root,
             entry,
             modules,
-            implementations,
+            implementation_bindings,
         }
     }
 
@@ -57,7 +56,7 @@ impl<Profile: HostProfile> HostedModulePlan<Profile> {
             root: self.root,
             entry: self.entry,
             modules: self.modules,
-            implementations: self.implementations,
+            implementation_bindings: self.implementation_bindings,
         }
     }
 }

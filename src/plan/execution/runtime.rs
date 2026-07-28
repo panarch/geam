@@ -69,6 +69,21 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
             .list_value_type(id, &self.program().common.custom_types)
     }
 
+    fn list_storage_type(&self, id: ListTypeId) -> super::type_::ListStorageTypeId {
+        self.program().common.list_types.storage_type(id)
+    }
+
+    fn custom_constructor_id(
+        &self,
+        type_id: CustomTypeId,
+        constructor_index: usize,
+    ) -> CustomConstructorId {
+        self.program()
+            .common
+            .custom_types
+            .constructor_id_for_type(type_id, constructor_index)
+    }
+
     fn tuple_list_item_type(&self, id: TupleListTypeId) -> Vec<crate::plan::ValueType> {
         self.program()
             .common

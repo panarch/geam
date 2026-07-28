@@ -1,12 +1,8 @@
-use super::{
-    HostCallback, HostFunctionImplementation, HostReturn, HostValueFunctionImplementation,
-};
-use crate::host::function::HostValueType;
-use crate::host::function::argument::HostCallArguments;
-use crate::host::{HostCallError, HostProfile};
+use super::{HostCallback, HostFunctionImplementation, HostReturn, HostValueFunction};
+use crate::host::{HostAbiType, HostCallArguments, HostCallError, HostCallRuntime, HostProfile};
 use std::sync::Arc;
 
-pub(crate) struct HostNilFunction<Profile: HostProfile> {
+pub(super) struct HostNilFunction<Profile: HostProfile> {
     implementation: Arc<HostCallback<Profile, ()>>,
 }
 
@@ -19,18 +15,18 @@ impl<Profile: HostProfile> Clone for HostNilFunction<Profile> {
 }
 
 impl<Profile: HostProfile> HostNilFunction<Profile> {
-    pub(crate) fn call(
+    pub(super) fn call(
         &self,
-        state: &mut Profile::RunState,
-        arguments: &dyn HostCallArguments,
+        runtime: &mut dyn HostCallRuntime<Profile>,
     ) -> Result<(), HostCallError> {
+        let (state, arguments) = runtime.scalar_context();
         (self.implementation)(state, arguments)
     }
 }
 
 impl HostReturn for () {
-    fn type_() -> HostValueType {
-        HostValueType::Nil
+    fn descriptor() -> crate::host::HostTypeDescriptor {
+        <Self as HostAbiType>::descriptor()
     }
 
     fn implementation<Profile: HostProfile>(
@@ -39,7 +35,7 @@ impl HostReturn for () {
         + Sync
         + 'static,
     ) -> HostFunctionImplementation<Profile> {
-        HostFunctionImplementation::Value(HostValueFunctionImplementation::Nil(HostNilFunction {
+        HostFunctionImplementation::Value(HostValueFunction::nil(HostNilFunction {
             implementation: Arc::new(function),
         }))
     }
@@ -47,20 +43,19 @@ impl HostReturn for () {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        HostFunctionImplementation, HostNilFunction, HostReturn, HostValueFunctionImplementation,
+    use super::HostReturn;
+    use crate::host::function::argument::{CallArguments, HostParameterLayout};
+    use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
+    use crate::host::{
+        HostScopedValue, HostTypeDescriptor, HostValueFamily, expect_value_implementation,
     };
-    use crate::host::StatelessHostProfile;
-    use crate::host::function::HostValueType;
-    use crate::host::function::argument::{CallArguments, HostCallArguments, HostParameterLayout};
 
     #[test]
     fn nil_return_owns_typed_callback_and_family() {
         let mut layout = HostParameterLayout::default();
         let slot = layout.register::<()>();
-        assert_eq!(<() as HostReturn>::type_(), HostValueType::Nil);
         let implementation =
-            <() as HostReturn>::implementation::<StatelessHostProfile>(move |(), arguments| {
+            <() as HostReturn>::implementation::<TestHostProfile>(move |_, arguments| {
                 arguments.nil(slot);
                 Ok(())
             });
@@ -72,28 +67,16 @@ mod tests {
             1,
         );
 
+        let mut state = TestRunState::default();
+        let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
+
+        assert_eq!(<() as HostReturn>::descriptor(), HostTypeDescriptor::Nil);
         assert_eq!(
-            nil_implementation(implementation).call(&mut (), &arguments),
-            Ok(()),
+            expect_value_implementation(&implementation)
+                .call(&mut runtime)
+                .map(|token| token.family),
+            Ok(HostValueFamily::Nil),
         );
-    }
-
-    #[test]
-    #[should_panic(expected = "() return should create a Nil implementation")]
-    fn nil_return_shape_guard_is_visible() {
-        let callback = |(): &mut (), _: &dyn HostCallArguments| Ok(true);
-        let implementation = <bool as HostReturn>::implementation::<StatelessHostProfile>(callback);
-        nil_implementation(implementation);
-    }
-
-    fn nil_implementation(
-        implementation: HostFunctionImplementation<StatelessHostProfile>,
-    ) -> HostNilFunction<StatelessHostProfile> {
-        let HostFunctionImplementation::Value(HostValueFunctionImplementation::Nil(implementation)) =
-            implementation
-        else {
-            panic!("() return should create a Nil implementation");
-        };
-        implementation
+        assert_eq!(runtime.completed(), Some(&HostScopedValue::Nil));
     }
 }

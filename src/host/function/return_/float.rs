@@ -1,12 +1,8 @@
-use super::{
-    HostCallback, HostFunctionImplementation, HostReturn, HostValueFunctionImplementation,
-};
-use crate::host::function::HostValueType;
-use crate::host::function::argument::HostCallArguments;
-use crate::host::{HostCallError, HostProfile};
+use super::{HostCallback, HostFunctionImplementation, HostReturn, HostValueFunction};
+use crate::host::{HostAbiType, HostCallArguments, HostCallError, HostCallRuntime, HostProfile};
 use std::sync::Arc;
 
-pub(crate) struct HostFloatFunction<Profile: HostProfile> {
+pub(super) struct HostFloatFunction<Profile: HostProfile> {
     implementation: Arc<HostCallback<Profile, f64>>,
 }
 
@@ -19,18 +15,18 @@ impl<Profile: HostProfile> Clone for HostFloatFunction<Profile> {
 }
 
 impl<Profile: HostProfile> HostFloatFunction<Profile> {
-    pub(crate) fn call(
+    pub(super) fn call(
         &self,
-        state: &mut Profile::RunState,
-        arguments: &dyn HostCallArguments,
+        runtime: &mut dyn HostCallRuntime<Profile>,
     ) -> Result<f64, HostCallError> {
+        let (state, arguments) = runtime.scalar_context();
         (self.implementation)(state, arguments)
     }
 }
 
 impl HostReturn for f64 {
-    fn type_() -> HostValueType {
-        HostValueType::Float
+    fn descriptor() -> crate::host::HostTypeDescriptor {
+        <Self as HostAbiType>::descriptor()
     }
 
     fn implementation<Profile: HostProfile>(
@@ -39,30 +35,27 @@ impl HostReturn for f64 {
         + Sync
         + 'static,
     ) -> HostFunctionImplementation<Profile> {
-        HostFunctionImplementation::Value(HostValueFunctionImplementation::Float(
-            HostFloatFunction {
-                implementation: Arc::new(function),
-            },
-        ))
+        HostFunctionImplementation::Value(HostValueFunction::float(HostFloatFunction {
+            implementation: Arc::new(function),
+        }))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        HostFloatFunction, HostFunctionImplementation, HostReturn, HostValueFunctionImplementation,
+    use super::HostReturn;
+    use crate::host::function::argument::{CallArguments, HostParameterLayout};
+    use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
+    use crate::host::{
+        HostScopedValue, HostTypeDescriptor, HostValueFamily, expect_value_implementation,
     };
-    use crate::host::StatelessHostProfile;
-    use crate::host::function::HostValueType;
-    use crate::host::function::argument::{CallArguments, HostCallArguments, HostParameterLayout};
 
     #[test]
     fn float_return_owns_typed_callback_and_family() {
         let mut layout = HostParameterLayout::default();
         let slot = layout.register::<f64>();
-        assert_eq!(<f64 as HostReturn>::type_(), HostValueType::Float);
         let implementation =
-            <f64 as HostReturn>::implementation::<StatelessHostProfile>(move |(), arguments| {
+            <f64 as HostReturn>::implementation::<TestHostProfile>(move |_, arguments| {
                 Ok(arguments.float(slot) + 0.5)
             });
         let arguments = CallArguments::new(Vec::new(), Vec::new()).with_scalar_values(
@@ -73,29 +66,16 @@ mod tests {
             0,
         );
 
+        let mut state = TestRunState::default();
+        let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
+
+        assert_eq!(<f64 as HostReturn>::descriptor(), HostTypeDescriptor::Float);
         assert_eq!(
-            float_implementation(implementation).call(&mut (), &arguments),
-            Ok(1.5),
+            expect_value_implementation(&implementation)
+                .call(&mut runtime)
+                .map(|token| token.family),
+            Ok(HostValueFamily::Float),
         );
-    }
-
-    #[test]
-    #[should_panic(expected = "f64 return should create a Float implementation")]
-    fn float_return_shape_guard_is_visible() {
-        let callback = |(): &mut (), _: &dyn HostCallArguments| Ok(true);
-        let implementation = <bool as HostReturn>::implementation::<StatelessHostProfile>(callback);
-        float_implementation(implementation);
-    }
-
-    fn float_implementation(
-        implementation: HostFunctionImplementation<StatelessHostProfile>,
-    ) -> HostFloatFunction<StatelessHostProfile> {
-        let HostFunctionImplementation::Value(HostValueFunctionImplementation::Float(
-            implementation,
-        )) = implementation
-        else {
-            panic!("f64 return should create a Float implementation");
-        };
-        implementation
+        assert_eq!(runtime.completed(), Some(&HostScopedValue::Float(1.5)));
     }
 }

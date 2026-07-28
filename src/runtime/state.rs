@@ -234,10 +234,9 @@ pub(super) enum ListValueId {
     Function(FunctionListValueId),
 }
 
-impl ListValueId {
+impl StoredListValueId {
     pub(super) fn list_type(&self) -> ListTypeId {
         match self {
-            Self::Parameter(value) => value.type_id().list_type(),
             Self::Int(value) => value.type_id().list_type(),
             Self::String(value) => value.type_id().list_type(),
             Self::BitArray(value) => value.type_id().list_type(),
@@ -252,9 +251,7 @@ impl ListValueId {
             Self::Function(value) => value.type_id().list_type(),
         }
     }
-}
 
-impl StoredListValueId {
     pub(super) fn into_value(self) -> ListValueId {
         match self {
             Self::Int(value) => ListValueId::Int(value),
@@ -319,14 +316,30 @@ impl<Value: Default> ListPool<Value> {
     }
 }
 
-enum HostRunState<'run, State> {
-    Owned(State),
-    Borrowed(&'run mut State),
+pub(in crate::runtime) trait RuntimeHostState {
+    type State;
+
+    fn state(&mut self) -> &mut Self::State;
 }
 
-pub(in crate::runtime) struct RuntimeState<'run, State = ()> {
-    echo: &'run mut dyn crate::runtime::EchoSink,
-    host: HostRunState<'run, State>,
+impl RuntimeHostState for () {
+    type State = ();
+
+    fn state(&mut self) -> &mut Self::State {
+        self
+    }
+}
+
+impl<State> RuntimeHostState for &mut State {
+    type State = State;
+
+    fn state(&mut self) -> &mut Self::State {
+        self
+    }
+}
+
+#[derive(Default)]
+pub(in crate::runtime) struct RuntimeValueStorage {
     releases: Rc<RefCell<Vec<ListStorageKey>>>,
     ints: ListPool<Vec<BigInt>>,
     strings: ListPool<Vec<EcoString>>,
@@ -342,50 +355,31 @@ pub(in crate::runtime) struct RuntimeState<'run, State = ()> {
     functions: ListPool<Vec<EvaluatedFunctionValue>>,
 }
 
+pub(in crate::runtime) struct RuntimeState<'run, Host = ()> {
+    echo: &'run mut dyn crate::runtime::EchoSink,
+    host: Host,
+    values: RuntimeValueStorage,
+}
+
 pub(in crate::runtime) type RuntimeStateFor<'run, Plan> =
-    RuntimeState<'run, <Plan as crate::plan::execution::runtime::RuntimeExecutionPlan>::RunState>;
+    RuntimeState<'run, <Plan as crate::runtime::ExecutableRuntimePlan>::RuntimeHost<'run>>;
 
 impl<'run> RuntimeState<'run, ()> {
     pub(super) fn new(echo: &'run mut dyn crate::runtime::EchoSink) -> Self {
-        Self::with_storage(echo, HostRunState::Owned(()))
+        Self::with_storage(echo, ())
     }
 }
 
-impl<'run, State> RuntimeState<'run, State> {
-    pub(super) fn with_host(
-        echo: &'run mut dyn crate::runtime::EchoSink,
-        state: &'run mut State,
-    ) -> Self {
-        Self::with_storage(echo, HostRunState::Borrowed(state))
+impl<'run, Host> RuntimeState<'run, Host> {
+    pub(super) fn with_host(echo: &'run mut dyn crate::runtime::EchoSink, host: Host) -> Self {
+        Self::with_storage(echo, host)
     }
 
-    fn with_storage(
-        echo: &'run mut dyn crate::runtime::EchoSink,
-        host: HostRunState<'run, State>,
-    ) -> Self {
+    fn with_storage(echo: &'run mut dyn crate::runtime::EchoSink, host: Host) -> Self {
         Self {
             echo,
             host,
-            releases: Rc::new(RefCell::new(Vec::new())),
-            ints: ListPool::default(),
-            strings: ListPool::default(),
-            bit_arrays: ListPool::default(),
-            utf_codepoints: ListPool::default(),
-            customs: ListPool::default(),
-            floats: ListPool::default(),
-            bools: ListPool::default(),
-            nils: ListPool::default(),
-            tuples: ListPool::default(),
-            parameter_list_lists: ListPool::default(),
-            lists: ListPool::default(),
-            functions: ListPool::default(),
-        }
-    }
-
-    pub(super) fn host_state(&mut self) -> &mut State {
-        match &mut self.host {
-            HostRunState::Owned(state) => state,
-            HostRunState::Borrowed(state) => state,
+            values: RuntimeValueStorage::default(),
         }
     }
 
@@ -393,6 +387,22 @@ impl<'run, State> RuntimeState<'run, State> {
         self.echo.emit(output);
     }
 
+    pub(super) fn values(&self) -> &RuntimeValueStorage {
+        &self.values
+    }
+
+    pub(super) fn values_mut(&mut self) -> &mut RuntimeValueStorage {
+        &mut self.values
+    }
+}
+
+impl<Host: RuntimeHostState> RuntimeState<'_, Host> {
+    pub(super) fn host_state(&mut self) -> &mut Host::State {
+        self.host.state()
+    }
+}
+
+impl RuntimeValueStorage {
     pub(super) fn drain_releases(&mut self) {
         loop {
             let key = { self.releases.borrow_mut().pop() };
@@ -603,74 +613,72 @@ impl<'run, State> RuntimeState<'run, State> {
         }
     }
 
-    pub(super) fn evaluated_values(&self, value: &ListValueId) -> Vec<EvaluatedValue> {
+    pub(super) fn evaluated_values(&self, value: &StoredListValueId) -> Vec<EvaluatedValue> {
         match value {
-            ListValueId::Parameter(_) => Vec::new(),
-            ListValueId::Int(value) => self
+            StoredListValueId::Int(value) => self
                 .int_values(value)
                 .iter()
                 .cloned()
                 .map(EvaluatedValue::Int)
                 .collect(),
-            ListValueId::String(value) => self
+            StoredListValueId::String(value) => self
                 .string_values(value)
                 .iter()
                 .cloned()
                 .map(EvaluatedValue::String)
                 .collect(),
-            ListValueId::BitArray(value) => self
+            StoredListValueId::BitArray(value) => self
                 .bit_array_values(value)
                 .iter()
                 .cloned()
                 .map(EvaluatedValue::BitArray)
                 .collect(),
-            ListValueId::UtfCodepoint(value) => self
+            StoredListValueId::UtfCodepoint(value) => self
                 .utf_codepoint_values(value)
                 .iter()
                 .copied()
                 .map(EvaluatedValue::UtfCodepoint)
                 .collect(),
-            ListValueId::Custom(value) => self
+            StoredListValueId::Custom(value) => self
                 .custom_values(value)
                 .iter()
                 .cloned()
                 .map(EvaluatedValue::Custom)
                 .collect(),
-            ListValueId::Float(value) => self
+            StoredListValueId::Float(value) => self
                 .float_values(value)
                 .iter()
                 .copied()
                 .map(EvaluatedValue::Float)
                 .collect(),
-            ListValueId::Bool(value) => self
+            StoredListValueId::Bool(value) => self
                 .bool_values(value)
                 .iter()
                 .copied()
                 .map(EvaluatedValue::Bool)
                 .collect(),
-            ListValueId::Nil(value) => vec![EvaluatedValue::Nil; self.nil_len(value)],
-            ListValueId::Tuple(value) => self
+            StoredListValueId::Nil(value) => vec![EvaluatedValue::Nil; self.nil_len(value)],
+            StoredListValueId::Tuple(value) => self
                 .tuple_values(value)
                 .iter()
                 .cloned()
                 .map(EvaluatedValue::Tuple)
                 .collect(),
-            ListValueId::ParameterList(value) => {
+            StoredListValueId::ParameterList(value) => {
                 vec![
-                    EvaluatedValue::List(ListValueId::Parameter(ParameterListValueId::new(
+                    EvaluatedValue::ParameterList(ParameterListValueId::new(
                         value.type_id().item_type(),
-                    )));
+                    ));
                     self.parameter_list_list_len(value)
                 ]
             }
-            ListValueId::List(value) => self
+            StoredListValueId::List(value) => self
                 .list_values(value)
                 .iter()
                 .cloned()
-                .map(StoredListValueId::into_value)
-                .map(EvaluatedValue::List)
+                .map(EvaluatedValue::from)
                 .collect(),
-            ListValueId::Function(value) => self
+            StoredListValueId::Function(value) => self
                 .function_values(value)
                 .iter()
                 .cloned()
@@ -679,64 +687,132 @@ impl<'run, State> RuntimeState<'run, State> {
         }
     }
 
-    pub(super) fn drop_first(&mut self, value: &ListValueId, count: usize) -> ListValueId {
+    pub(super) fn evaluated_value_at(
+        &self,
+        value: &ListValueId,
+        index: usize,
+    ) -> Option<EvaluatedValue> {
         match value {
-            ListValueId::Parameter(value) => ListValueId::Parameter(*value),
-            ListValueId::Int(value) => {
+            ListValueId::Parameter(_) => None,
+            ListValueId::Int(value) => self
+                .int_values(value)
+                .get(index)
+                .cloned()
+                .map(EvaluatedValue::Int),
+            ListValueId::String(value) => self
+                .string_values(value)
+                .get(index)
+                .cloned()
+                .map(EvaluatedValue::String),
+            ListValueId::BitArray(value) => self
+                .bit_array_values(value)
+                .get(index)
+                .cloned()
+                .map(EvaluatedValue::BitArray),
+            ListValueId::UtfCodepoint(value) => self
+                .utf_codepoint_values(value)
+                .get(index)
+                .copied()
+                .map(EvaluatedValue::UtfCodepoint),
+            ListValueId::Custom(value) => self
+                .custom_values(value)
+                .get(index)
+                .cloned()
+                .map(EvaluatedValue::Custom),
+            ListValueId::Float(value) => self
+                .float_values(value)
+                .get(index)
+                .copied()
+                .map(EvaluatedValue::Float),
+            ListValueId::Bool(value) => self
+                .bool_values(value)
+                .get(index)
+                .copied()
+                .map(EvaluatedValue::Bool),
+            ListValueId::Nil(value) => (index < self.nil_len(value)).then_some(EvaluatedValue::Nil),
+            ListValueId::Tuple(value) => self
+                .tuple_values(value)
+                .get(index)
+                .cloned()
+                .map(EvaluatedValue::Tuple),
+            ListValueId::ParameterList(value) => (index < self.parameter_list_list_len(value))
+                .then_some(EvaluatedValue::ParameterList(ParameterListValueId::new(
+                    value.type_id().item_type(),
+                ))),
+            ListValueId::List(value) => self
+                .list_values(value)
+                .get(index)
+                .cloned()
+                .map(EvaluatedValue::from),
+            ListValueId::Function(value) => self
+                .function_values(value)
+                .get(index)
+                .cloned()
+                .map(EvaluatedValue::Function),
+        }
+    }
+
+    pub(super) fn drop_first(
+        &mut self,
+        value: &StoredListValueId,
+        count: usize,
+    ) -> StoredListValueId {
+        match value {
+            StoredListValueId::Int(value) => {
                 let values = self.int_values(value);
                 let values = values[count.min(values.len())..].to_vec();
                 self.int(value.type_id(), values).into()
             }
-            ListValueId::String(value) => {
+            StoredListValueId::String(value) => {
                 let values = self.string_values(value);
                 let values = values[count.min(values.len())..].to_vec();
                 self.string(value.type_id(), values).into()
             }
-            ListValueId::BitArray(value) => {
+            StoredListValueId::BitArray(value) => {
                 let values = self.bit_array_values(value);
                 let values = values[count.min(values.len())..].to_vec();
                 self.bit_array(value.type_id(), values).into()
             }
-            ListValueId::UtfCodepoint(value) => {
+            StoredListValueId::UtfCodepoint(value) => {
                 let values = self.utf_codepoint_values(value);
                 let values = values[count.min(values.len())..].to_vec();
                 self.utf_codepoint(value.type_id(), values).into()
             }
-            ListValueId::Custom(value) => {
+            StoredListValueId::Custom(value) => {
                 let values = self.custom_values(value);
                 let values = values[count.min(values.len())..].to_vec();
                 self.custom(CustomListAllocation::from_value(value, values))
                     .into()
             }
-            ListValueId::Float(value) => {
+            StoredListValueId::Float(value) => {
                 let values = self.float_values(value);
                 let values = values[count.min(values.len())..].to_vec();
                 self.float(value.type_id(), values).into()
             }
-            ListValueId::Bool(value) => {
+            StoredListValueId::Bool(value) => {
                 let values = self.bool_values(value);
                 let values = values[count.min(values.len())..].to_vec();
                 self.bool(value.type_id(), values).into()
             }
-            ListValueId::Nil(value) => {
+            StoredListValueId::Nil(value) => {
                 let len = self.nil_len(value).saturating_sub(count);
                 self.nil(value.type_id(), len).into()
             }
-            ListValueId::Tuple(value) => {
+            StoredListValueId::Tuple(value) => {
                 let values = self.tuple_values(value);
                 let values = values[count.min(values.len())..].to_vec();
                 self.tuple(value.type_id(), values).into()
             }
-            ListValueId::ParameterList(value) => {
+            StoredListValueId::ParameterList(value) => {
                 let len = self.parameter_list_list_len(value).saturating_sub(count);
                 self.parameter_list_list(value.type_id(), len).into()
             }
-            ListValueId::List(value) => {
+            StoredListValueId::List(value) => {
                 let values = self.list_values(value);
                 let values = values[count.min(values.len())..].to_vec();
                 self.list(value.type_id(), values).into()
             }
-            ListValueId::Function(value) => {
+            StoredListValueId::Function(value) => {
                 let values = self.function_values(value);
                 let values = values[count.min(values.len())..].to_vec();
                 self.function(value.type_id(), values).into()
@@ -751,6 +827,7 @@ mod tests {
         CustomListAllocation, ListListTypeId, ListValueId, ParameterListValueId, RuntimeState,
         StoredListValueId,
     };
+    use crate::host::test::StatelessTestProvider;
     use crate::plan::execution::function::{ListFunctionId, RuntimeFunctionId};
     use crate::plan::execution::type_::ListStorageTypeId;
     use crate::runtime::graph::RetainedValues;
@@ -758,6 +835,25 @@ mod tests {
         EvaluatedBitArray, EvaluatedCapture, EvaluatedCustomValue, EvaluatedFunctionValue,
         EvaluatedIntFunction, EvaluatedValue,
     };
+    use crate::{
+        HostCall, HostCallCompletion, HostCallError, HostFailure, HostList, HostListType,
+        StatelessHostProfile,
+    };
+    use num_bigint::BigInt;
+
+    fn return_host_list<'call>(
+        call: HostCall<'call, StatelessHostProfile, StatelessTestProvider, HostListType<BigInt>>,
+        value: BigInt,
+    ) -> Result<HostCallCompletion<'call, HostListType<BigInt>>, HostCallError> {
+        Ok(call.return_list([value]))
+    }
+
+    fn fail_with_host_list<'call>(
+        _call: HostCall<'call, StatelessHostProfile, StatelessTestProvider, BigInt>,
+        _values: HostList<'call, BigInt>,
+    ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+        Err(HostFailure::new("stop").into())
+    }
 
     fn int_main(plan: &crate::ExecutionPlan) -> crate::plan::execution::function::IntFunctionId {
         match plan.main_runtime() {
@@ -817,12 +913,15 @@ pub fn main() {
 
         assert_eq!(plain.host_state(), &mut ());
 
-        let mut host = 41;
+        let mut host = (num_bigint::BigInt::from(41), true);
         let mut echo = Vec::new();
         let mut hosted = RuntimeState::with_host(&mut echo, &mut host);
-        *hosted.host_state() += 1;
+        hosted.host_state().0 += 1;
 
-        assert_eq!(hosted.host_state(), &mut 42);
+        assert!(hosted.host_state().1);
+
+        drop(hosted);
+        assert_eq!(host, (num_bigint::BigInt::from(42), true));
     }
 
     #[test]
@@ -831,20 +930,20 @@ pub fn main() {
         let type_id = plan.int_list_function_id(0).type_id();
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
-        let value = state.int(type_id, vec![1.into()]);
+        let value = state.values_mut().int(type_id, vec![1.into()]);
         let slot = value.core.slot();
         let retained = value.clone();
 
         drop(value);
-        assert_eq!(state.releases.borrow().as_slice(), &[]);
+        assert_eq!(state.values.releases.borrow().as_slice(), &[]);
         drop(retained);
-        assert_eq!(state.releases.borrow().len(), 1);
+        assert_eq!(state.values.releases.borrow().len(), 1);
 
-        state.drain_releases();
-        assert_eq!(state.ints.free, vec![slot]);
-        let reused = state.int(type_id, vec![2.into()]);
+        state.values_mut().drain_releases();
+        assert_eq!(state.values.ints.free, vec![slot]);
+        let reused = state.values_mut().int(type_id, vec![2.into()]);
         assert_eq!(reused.core.slot(), slot);
-        assert_eq!(state.int_values(&reused), &[2.into()]);
+        assert_eq!(state.values().int_values(&reused), &[2.into()]);
     }
 
     #[test]
@@ -853,7 +952,7 @@ pub fn main() {
         let type_id = plan.bit_array_list_function_id(0).type_id();
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
-        let first = state.bit_array(
+        let first = state.values_mut().bit_array(
             type_id,
             vec![crate::runtime::EvaluatedBitArray::new(
                 bitvec::vec::BitVec::from_vec(vec![1]),
@@ -862,22 +961,24 @@ pub fn main() {
         let slot = first.core.slot();
 
         assert_eq!(first.type_id(), type_id);
-        assert_eq!(state.bit_array_values(&first)[0].bits().len(), 8);
+        assert_eq!(state.values().bit_array_values(&first)[0].bits().len(), 8);
         drop(first);
-        state.drain_releases();
+        state.values_mut().drain_releases();
 
-        let second = state.bit_array(type_id, Vec::new());
+        let second = state.values_mut().bit_array(type_id, Vec::new());
         assert_eq!(second.core.slot(), slot);
-        assert_eq!(state.bit_array_values(&second), &[]);
+        assert_eq!(state.values().bit_array_values(&second), &[]);
 
         let value = ListValueId::BitArray(second.clone());
-        assert_eq!(state.list_len(&value), 0);
+        assert_eq!(state.values().list_len(&value), 0);
         assert_eq!(
             StoredListValueId::from(second.clone()).into_value(),
             ListValueId::BitArray(second.clone()),
         );
-        let dropped = state.drop_first(&ListValueId::BitArray(second), 0);
-        assert_eq!(state.list_len(&dropped), 0);
+        let dropped = state
+            .values_mut()
+            .drop_first(&StoredListValueId::BitArray(second), 0);
+        assert_eq!(state.values().list_len(&dropped.clone().into_value()), 0);
     }
 
     #[test]
@@ -888,14 +989,100 @@ pub fn main() {
         let mut state = RuntimeState::new(&mut echo);
 
         for value in 0..10_000 {
-            let list = state.int(type_id, vec![value.into()]);
+            let list = state.values_mut().int(type_id, vec![value.into()]);
             drop(list);
-            state.drain_releases();
+            state.values_mut().drain_releases();
         }
 
-        assert_eq!(state.ints.slots.len(), 1);
-        assert_eq!(state.ints.free, vec![0]);
-        assert_eq!(state.releases.borrow().as_slice(), &[]);
+        assert_eq!(state.values.ints.slots.len(), 1);
+        assert_eq!(state.values.ints.free, vec![0]);
+        assert_eq!(state.values.releases.borrow().as_slice(), &[]);
+    }
+
+    #[test]
+    fn host_calls_release_scoped_list_leases_after_success_and_failure() {
+        let returned = crate::HostModule::new("host_support", "host/lists")
+            .expect("host module should be valid")
+            .with_scoped_function::<StatelessTestProvider, (BigInt,), HostListType<BigInt>, _>(
+                "wrap",
+                return_host_list,
+            )
+            .expect("host function should be valid");
+        let source = r#"
+import host/lists
+
+pub fn main() {
+  let _ = lists.wrap(1)
+  0
+}
+"#;
+        let typed = crate::compile_typed_host_program(
+            "application",
+            "main",
+            [crate::PackageSource::new(
+                "application",
+                ["host_support"],
+                [crate::ModuleSource::new("main", "src/main.gleam", source)],
+            )],
+            crate::HostProviderSet::new([returned]).expect("host module should be unique"),
+        )
+        .expect("host source should compile");
+        let plan = crate::plan_host_program(typed).expect("host source should plan");
+        let execution = crate::HostedExecution::try_from_module_plan(plan)
+            .expect("hosted execution should seal");
+        let mut host = ();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::with_host(&mut echo, &mut host);
+
+        assert_eq!(
+            crate::runtime::run_program(&execution, &mut state),
+            Ok(crate::Value::Int(BigInt::from(0))),
+        );
+        assert_eq!(state.values.ints.slots.len(), 1);
+        assert_eq!(state.values.ints.free, [0]);
+        assert!(state.values.releases.borrow().is_empty());
+
+        let failed = crate::HostModule::new("host_support", "host/lists")
+            .expect("host module should be valid")
+            .with_scoped_function::<StatelessTestProvider, (HostListType<BigInt>,), BigInt, _>(
+                "fail",
+                fail_with_host_list,
+            )
+            .expect("host function should be valid");
+        let source = r#"
+import host/lists
+
+pub fn main() {
+  lists.fail([1])
+}
+"#;
+        let typed = crate::compile_typed_host_program(
+            "application",
+            "main",
+            [crate::PackageSource::new(
+                "application",
+                ["host_support"],
+                [crate::ModuleSource::new("main", "src/main.gleam", source)],
+            )],
+            crate::HostProviderSet::new([failed]).expect("host module should be unique"),
+        )
+        .expect("host source should compile");
+        let plan = crate::plan_host_program(typed).expect("host source should plan");
+        let execution = crate::HostedExecution::try_from_module_plan(plan)
+            .expect("hosted execution should seal");
+        let mut host = ();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::with_host(&mut echo, &mut host);
+
+        let error = crate::runtime::run_program(&execution, &mut state)
+            .expect_err("the host callback should fail");
+        assert_eq!(
+            error.to_string(),
+            "host function host_support::host/lists.fail failed: stop",
+        );
+        assert_eq!(state.values.ints.slots.len(), 1);
+        assert_eq!(state.values.ints.free, [0]);
+        assert!(state.values.releases.borrow().is_empty());
     }
 
     #[test]
@@ -920,13 +1107,13 @@ pub fn main() {
         )
         .expect("tail-recursive list graph should return");
 
-        assert_eq!(state.int_values(&value), &[1.into()]);
-        assert_eq!(state.ints.slots.len(), 1);
-        assert_eq!(state.ints.free.len(), 0);
+        assert_eq!(state.values().int_values(&value), &[1.into()]);
+        assert_eq!(state.values.ints.slots.len(), 1);
+        assert_eq!(state.values.ints.free.len(), 0);
         drop(value);
-        state.drain_releases();
-        assert_eq!(state.ints.free.len(), 1);
-        assert_eq!(state.releases.borrow().as_slice(), &[]);
+        state.values_mut().drain_releases();
+        assert_eq!(state.values.ints.free.len(), 1);
+        assert_eq!(state.values.releases.borrow().as_slice(), &[]);
     }
 
     #[test]
@@ -959,9 +1146,9 @@ pub fn main() -> Int {
             panic.message(),
             &crate::runtime::PanicMessage::Explicit("stop".into()),
         );
-        assert_eq!(state.ints.slots.len(), 1);
-        assert_eq!(state.ints.free, vec![0]);
-        assert_eq!(state.releases.borrow().as_slice(), &[]);
+        assert_eq!(state.values.ints.slots.len(), 1);
+        assert_eq!(state.values.ints.free, vec![0]);
+        assert_eq!(state.values.releases.borrow().as_slice(), &[]);
     }
 
     #[test]
@@ -992,9 +1179,9 @@ pub fn main() -> Int {
             panic.message(),
             &crate::runtime::PanicMessage::Explicit("non-empty".into()),
         );
-        assert_eq!(state.ints.slots.len(), 1);
-        assert_eq!(state.ints.free, vec![0]);
-        assert_eq!(state.releases.borrow().as_slice(), &[]);
+        assert_eq!(state.values.ints.slots.len(), 1);
+        assert_eq!(state.values.ints.free, vec![0]);
+        assert_eq!(state.values.releases.borrow().as_slice(), &[]);
     }
 
     #[test]
@@ -1017,11 +1204,11 @@ pub fn main() -> Int {
         let type_id = plan.int_list_function_id(0).type_id();
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
-        let value = state.int(type_id, vec![1.into()]);
+        let value = state.values_mut().int(type_id, vec![1.into()]);
         let clone = value.clone();
         let mut other_echo = Vec::new();
         let mut other_state = RuntimeState::new(&mut other_echo);
-        let other = other_state.int(type_id, vec![1.into()]);
+        let other = other_state.values_mut().int(type_id, vec![1.into()]);
 
         assert_eq!(value, clone);
         assert_ne!(value, other);
@@ -1051,44 +1238,58 @@ pub fn main() -> Int {
                 crate::plan::execution::type_::ValueType::Int,
             ),
         );
-        let int = state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
-        let string = state.string(
+        let int = state
+            .values_mut()
+            .int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
+        let string = state.values_mut().string(
             plan.string_list_function_id(0).type_id(),
             vec!["one".into()],
         );
-        let bit_array = state.bit_array(
+        let bit_array = state.values_mut().bit_array(
             plan.bit_array_list_function_id(0).type_id(),
             vec![EvaluatedBitArray::new(bitvec::vec::BitVec::from_vec(vec![
                 1,
             ]))],
         );
-        let utf_codepoint = state.utf_codepoint(
+        let utf_codepoint = state.values_mut().utf_codepoint(
             plan.utf_codepoint_list_function_id(0).type_id(),
             vec!['\u{10ffff}'],
         );
         let custom_constructor = plan.custom_constructor_id(0, 0);
-        let custom = state.custom(CustomListAllocation::new(
+        let custom = state.values_mut().custom(CustomListAllocation::new(
             plan.custom_list_function_id(0).type_id(),
             vec![EvaluatedCustomValue::from_fields(
                 custom_constructor,
                 vec![EvaluatedValue::Int(1.into())].into_boxed_slice(),
             )],
         ));
-        let float = state.float(plan.float_list_function_id(0).type_id(), vec![1.5]);
-        let bool_ = state.bool(plan.bool_list_function_id(0).type_id(), vec![true]);
-        let nil = state.nil(plan.nil_list_function_id(0).type_id(), 1);
-        let tuple = state.tuple(
+        let float = state
+            .values_mut()
+            .float(plan.float_list_function_id(0).type_id(), vec![1.5]);
+        let bool_ = state
+            .values_mut()
+            .bool(plan.bool_list_function_id(0).type_id(), vec![true]);
+        let nil = state
+            .values_mut()
+            .nil(plan.nil_list_function_id(0).type_id(), 1);
+        let tuple = state.values_mut().tuple(
             plan.tuple_list_function_id(0).type_id(),
             vec![vec![EvaluatedValue::Int(1.into())]],
         );
         let parameter = ParameterListValueId::new(plan.parameter_list_function_id(0).type_id());
-        let parameter_list =
-            state.parameter_list_list(plan.parameter_list_list_function_id(0).type_id(), 1);
-        let child = state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
-        let list = state.list(plan.list_list_function_id(0).type_id(), vec![child.into()]);
-        let function = state.function(
+        let parameter_list = state
+            .values_mut()
+            .parameter_list_list(plan.parameter_list_list_function_id(0).type_id(), 1);
+        let child = state
+            .values_mut()
+            .int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
+        let list = state.values_mut().list(
+            plan.list_list_function_id(0).type_id(),
+            vec![child.clone().into()],
+        );
+        let function = state.values_mut().function(
             plan.function_list_function_id(0).type_id(),
-            vec![EvaluatedFunctionValue::from(int_function)],
+            vec![EvaluatedFunctionValue::from(int_function.clone())],
         );
         let values = [
             (
@@ -1145,44 +1346,145 @@ pub fn main() -> Int {
             assert_eq!(stored.into_value(), value);
         }
 
+        let expected_custom = EvaluatedCustomValue::from_fields(
+            custom_constructor,
+            vec![EvaluatedValue::Int(1.into())].into_boxed_slice(),
+        );
+        let expected_child = EvaluatedValue::from(StoredListValueId::from(child.clone()));
+
+        assert_eq!(
+            state
+                .values()
+                .evaluated_value_at(&ListValueId::Parameter(parameter), 0),
+            None,
+        );
+        assert_eq!(
+            state
+                .values()
+                .evaluated_value_at(&ListValueId::Int(int.clone()), 0),
+            Some(EvaluatedValue::Int(1.into())),
+        );
+        assert_eq!(
+            state
+                .values()
+                .evaluated_value_at(&ListValueId::String(string.clone()), 0),
+            Some(EvaluatedValue::String("one".into())),
+        );
+        assert_eq!(
+            state
+                .values()
+                .evaluated_value_at(&ListValueId::BitArray(bit_array.clone()), 0),
+            Some(EvaluatedValue::BitArray(EvaluatedBitArray::new(
+                bitvec::vec::BitVec::from_vec(vec![1]),
+            ))),
+        );
+        assert_eq!(
+            state
+                .values()
+                .evaluated_value_at(&ListValueId::UtfCodepoint(utf_codepoint.clone()), 0),
+            Some(EvaluatedValue::UtfCodepoint('\u{10ffff}')),
+        );
+        assert_eq!(
+            state
+                .values()
+                .evaluated_value_at(&ListValueId::Custom(custom.clone()), 0),
+            Some(EvaluatedValue::Custom(expected_custom)),
+        );
+        assert_eq!(
+            state
+                .values()
+                .evaluated_value_at(&ListValueId::Float(float.clone()), 0),
+            Some(EvaluatedValue::Float(1.5)),
+        );
+        assert_eq!(
+            state
+                .values()
+                .evaluated_value_at(&ListValueId::Bool(bool_.clone()), 0),
+            Some(EvaluatedValue::Bool(true)),
+        );
+        assert_eq!(
+            state
+                .values()
+                .evaluated_value_at(&ListValueId::Nil(nil.clone()), 0),
+            Some(EvaluatedValue::Nil),
+        );
+        assert_eq!(
+            state
+                .values()
+                .evaluated_value_at(&ListValueId::Tuple(tuple.clone()), 0),
+            Some(EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())])),
+        );
+        assert_eq!(
+            state
+                .values()
+                .evaluated_value_at(&ListValueId::ParameterList(parameter_list.clone()), 0),
+            Some(EvaluatedValue::ParameterList(ParameterListValueId::new(
+                parameter_list.type_id().item_type(),
+            ))),
+        );
+        assert_eq!(
+            state
+                .values()
+                .evaluated_value_at(&ListValueId::List(list.clone()), 0),
+            Some(expected_child),
+        );
+        assert_eq!(
+            state
+                .values()
+                .evaluated_value_at(&ListValueId::Function(function.clone()), 0),
+            Some(EvaluatedValue::Function(EvaluatedFunctionValue::from(
+                int_function,
+            ))),
+        );
+        assert_eq!(
+            state
+                .values()
+                .evaluated_value_at(&ListValueId::Int(int.clone()), 1),
+            None,
+        );
+
         let stored_lists = [
-            ListValueId::Int(int),
-            ListValueId::String(string),
-            ListValueId::BitArray(bit_array),
-            ListValueId::UtfCodepoint(utf_codepoint),
-            ListValueId::Custom(custom),
-            ListValueId::Float(float),
-            ListValueId::Bool(bool_),
-            ListValueId::Nil(nil),
-            ListValueId::Tuple(tuple),
-            ListValueId::ParameterList(parameter_list.clone()),
-            ListValueId::List(list),
-            ListValueId::Function(function),
+            StoredListValueId::Int(int),
+            StoredListValueId::String(string),
+            StoredListValueId::BitArray(bit_array),
+            StoredListValueId::UtfCodepoint(utf_codepoint),
+            StoredListValueId::Custom(custom),
+            StoredListValueId::Float(float),
+            StoredListValueId::Bool(bool_),
+            StoredListValueId::Nil(nil),
+            StoredListValueId::Tuple(tuple),
+            StoredListValueId::ParameterList(parameter_list.clone()),
+            StoredListValueId::List(list),
+            StoredListValueId::Function(function),
         ];
         for value in stored_lists {
             let list_type = value.list_type();
-            assert_eq!(state.list_len(&value), 1);
+            assert_eq!(state.values().list_len(&value.clone().into_value()), 1);
 
-            let dropped = state.drop_first(&value, 1);
+            let dropped = state.values_mut().drop_first(&value, 1);
             assert_eq!(dropped.list_type(), list_type);
-            assert_eq!(state.list_len(&dropped), 0);
+            assert_eq!(state.values().list_len(&dropped.into_value()), 0);
         }
 
         assert_eq!(
             StoredListValueId::from(parameter_list.clone()).into_core(),
             parameter_list.clone().into_core(),
         );
-        assert_eq!(state.list_len(&ListValueId::Parameter(parameter)), 0);
         assert_eq!(
-            state.drop_first(&ListValueId::Parameter(parameter), usize::MAX),
-            ListValueId::Parameter(parameter),
+            state.values().list_len(&ListValueId::Parameter(parameter)),
+            0
         );
         assert_eq!(
-            state.list_len(&ListValueId::ParameterList(parameter_list.clone())),
+            state
+                .values()
+                .list_len(&ListValueId::ParameterList(parameter_list.clone())),
             1
         );
-        let dropped = state.drop_first(&ListValueId::ParameterList(parameter_list), usize::MAX);
-        assert_eq!(state.list_len(&dropped), 0);
+        let dropped = state.values_mut().drop_first(
+            &StoredListValueId::ParameterList(parameter_list),
+            usize::MAX,
+        );
+        assert_eq!(state.values().list_len(&dropped.clone().into_value()), 0);
         assert_eq!(
             dropped.list_type(),
             plan.parameter_list_list_function_id(0)
@@ -1201,19 +1503,21 @@ pub fn main() -> Int {
         assert_eq!(parent_type.item_type(), child_type.list_type());
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
-        let child = state.int(child_type, vec![1.into()]);
+        let child = state.values_mut().int(child_type, vec![1.into()]);
         let child_slot = child.core.slot();
-        let parent = state.list(parent_type, vec![child.clone().into()]);
+        let parent = state
+            .values_mut()
+            .list(parent_type, vec![child.clone().into()]);
 
         drop(parent);
-        state.drain_releases();
-        assert_eq!(state.lists.free.len(), 1);
-        assert_eq!(state.ints.free, Vec::<usize>::new());
-        assert_eq!(state.int_values(&child), &[1.into()]);
+        state.values_mut().drain_releases();
+        assert_eq!(state.values.lists.free.len(), 1);
+        assert_eq!(state.values.ints.free, Vec::<usize>::new());
+        assert_eq!(state.values().int_values(&child), &[1.into()]);
 
         drop(child);
-        state.drain_releases();
-        assert_eq!(state.ints.free, vec![child_slot]);
+        state.values_mut().drain_releases();
+        assert_eq!(state.values.ints.free, vec![child_slot]);
     }
 
     #[test]
@@ -1241,17 +1545,18 @@ pub fn main() -> Int {
 
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
-        let mut value: StoredListValueId = state.int(child_type, vec![1.into()]).into();
+        let mut value: StoredListValueId =
+            state.values_mut().int(child_type, vec![1.into()]).into();
         for parent in parents.into_iter().rev() {
-            value = state.list(parent, vec![value]).into();
+            value = state.values_mut().list(parent, vec![value]).into();
         }
-        let allocated_list_slots = state.lists.slots.len();
+        let allocated_list_slots = state.values.lists.slots.len();
 
         drop(value);
-        state.drain_releases();
-        assert_eq!(state.ints.free.len(), 1);
-        assert_eq!(state.lists.free.len(), allocated_list_slots);
-        assert_eq!(state.releases.borrow().as_slice(), &[]);
+        state.values_mut().drain_releases();
+        assert_eq!(state.values.ints.free.len(), 1);
+        assert_eq!(state.values.lists.free.len(), allocated_list_slots);
+        assert_eq!(state.values.releases.borrow().as_slice(), &[]);
     }
 
     #[test]
@@ -1262,7 +1567,7 @@ pub fn main() -> Int {
         let type_id = plan.int_list_function_id(0).type_id();
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
-        let value = state.int(type_id, vec![1.into()]);
+        let value = state.values_mut().int(type_id, vec![1.into()]);
         let slot = value.core.slot();
         let closure = EvaluatedIntFunction::reference(
             crate::plan::execution::function::IntFunctionId(0),
@@ -1280,11 +1585,11 @@ pub fn main() -> Int {
         );
 
         drop(value);
-        state.drain_releases();
-        assert_eq!(state.ints.free, Vec::<usize>::new());
+        state.values_mut().drain_releases();
+        assert_eq!(state.values.ints.free, Vec::<usize>::new());
         drop(closure);
-        state.drain_releases();
-        assert_eq!(state.ints.free, vec![slot]);
+        state.values_mut().drain_releases();
+        assert_eq!(state.values.ints.free, vec![slot]);
     }
 
     fn nested_list_storage(storage: ListStorageTypeId) -> Option<ListListTypeId> {

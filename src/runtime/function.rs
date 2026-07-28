@@ -23,7 +23,6 @@ use crate::plan::execution::graph::ParamLocal;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::graph::{self, GraphValue, RetainedValues};
-use crate::runtime::host::HostFunctionRuntime;
 use crate::runtime::state::RuntimeStateFor;
 
 pub(super) enum EvaluatedFunctionExit<Return, TailCall> {
@@ -74,7 +73,6 @@ pub(super) fn evaluate_entry<Plan, Body>(
 >
 where
     Plan: ExecutableRuntimePlan,
-    Plan: HostFunctionRuntime<Body>,
     Body: ExecutionFunctionBody,
     Body::Return: GraphValue,
     Body::TailCall: Clone,
@@ -83,10 +81,9 @@ where
         ExecutionFunctionRef::Graph(function) => {
             evaluate(plan, state, function.body().function_body(), inputs)
         }
-        ExecutionFunctionRef::Host(target) => {
-            HostFunctionRuntime::call_host(plan, state, origin, target, inputs)
-                .map(EvaluatedFunctionExit::Return)
-        }
+        ExecutionFunctionRef::Host(target) => plan
+            .call_host(state, origin, target, inputs)
+            .map(EvaluatedFunctionExit::Return),
     }
 }
 
@@ -96,9 +93,7 @@ pub(super) fn parameter_locals<Plan, Body>(
 ) -> Vec<ParamLocal>
 where
     Plan: ExecutableRuntimePlan,
-    Plan: HostFunctionRuntime<Body>,
     Body: ExecutionFunctionBody,
-    Body::Return: GraphValue,
 {
     match function.as_ref() {
         ExecutionFunctionRef::Graph(function) => function
@@ -107,9 +102,7 @@ where
             .iter()
             .map(|slot| slot.local().clone())
             .collect(),
-        ExecutionFunctionRef::Host(target) => {
-            HostFunctionRuntime::host_parameters(plan, target).to_vec()
-        }
+        ExecutionFunctionRef::Host(target) => plan.host_parameters(target).to_vec(),
     }
 }
 

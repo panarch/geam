@@ -1,13 +1,9 @@
-use super::{
-    HostCallback, HostFunctionImplementation, HostReturn, HostValueFunctionImplementation,
-};
+use super::{HostCallback, HostFunctionImplementation, HostReturn, HostValueFunction};
 use crate::BitArrayValue;
-use crate::host::function::HostValueType;
-use crate::host::function::argument::HostCallArguments;
-use crate::host::{HostCallError, HostProfile};
+use crate::host::{HostAbiType, HostCallArguments, HostCallError, HostCallRuntime, HostProfile};
 use std::sync::Arc;
 
-pub(crate) struct HostBitArrayFunction<Profile: HostProfile> {
+pub(super) struct HostBitArrayFunction<Profile: HostProfile> {
     implementation: Arc<HostCallback<Profile, BitArrayValue>>,
 }
 
@@ -20,18 +16,18 @@ impl<Profile: HostProfile> Clone for HostBitArrayFunction<Profile> {
 }
 
 impl<Profile: HostProfile> HostBitArrayFunction<Profile> {
-    pub(crate) fn call(
+    pub(super) fn call(
         &self,
-        state: &mut Profile::RunState,
-        arguments: &dyn HostCallArguments,
+        runtime: &mut dyn HostCallRuntime<Profile>,
     ) -> Result<BitArrayValue, HostCallError> {
+        let (state, arguments) = runtime.scalar_context();
         (self.implementation)(state, arguments)
     }
 }
 
 impl HostReturn for BitArrayValue {
-    fn type_() -> HostValueType {
-        HostValueType::BitArray
+    fn descriptor() -> crate::host::HostTypeDescriptor {
+        <Self as HostAbiType>::descriptor()
     }
 
     fn implementation<Profile: HostProfile>(
@@ -40,35 +36,28 @@ impl HostReturn for BitArrayValue {
         + Sync
         + 'static,
     ) -> HostFunctionImplementation<Profile> {
-        HostFunctionImplementation::Value(HostValueFunctionImplementation::BitArray(
-            HostBitArrayFunction {
-                implementation: Arc::new(function),
-            },
-        ))
+        HostFunctionImplementation::Value(HostValueFunction::bit_array(HostBitArrayFunction {
+            implementation: Arc::new(function),
+        }))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        HostBitArrayFunction, HostFunctionImplementation, HostReturn,
-        HostValueFunctionImplementation,
-    };
+    use super::HostReturn;
     use crate::BitArrayValue;
-    use crate::host::StatelessHostProfile;
-    use crate::host::function::HostValueType;
-    use crate::host::function::argument::{CallArguments, HostCallArguments, HostParameterLayout};
+    use crate::host::function::argument::{CallArguments, HostParameterLayout};
+    use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
+    use crate::host::{
+        HostScopedValue, HostTypeDescriptor, HostValueFamily, expect_value_implementation,
+    };
 
     #[test]
     fn bit_array_return_owns_typed_callback_and_family() {
         let mut layout = HostParameterLayout::default();
         let slot = layout.register::<BitArrayValue>();
-        assert_eq!(
-            <BitArrayValue as HostReturn>::type_(),
-            HostValueType::BitArray,
-        );
-        let implementation = <BitArrayValue as HostReturn>::implementation::<StatelessHostProfile>(
-            move |(), arguments| Ok(arguments.bit_array(slot)),
+        let implementation = <BitArrayValue as HostReturn>::implementation::<TestHostProfile>(
+            move |_, arguments| Ok(arguments.bit_array(slot)),
         );
         let arguments = CallArguments::new(Vec::new(), Vec::new()).with_scalar_values(
             Vec::new(),
@@ -78,29 +67,24 @@ mod tests {
             0,
         );
 
+        let mut state = TestRunState::default();
+        let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
+
         assert_eq!(
-            bit_array_implementation(implementation).call(&mut (), &arguments),
-            Ok(BitArrayValue::from_bytes(vec![0xa5])),
+            <BitArrayValue as HostReturn>::descriptor(),
+            HostTypeDescriptor::BitArray,
         );
-    }
-
-    #[test]
-    #[should_panic(expected = "BitArrayValue return should create a BitArray implementation")]
-    fn bit_array_return_shape_guard_is_visible() {
-        let callback = |(): &mut (), _: &dyn HostCallArguments| Ok(true);
-        let implementation = <bool as HostReturn>::implementation::<StatelessHostProfile>(callback);
-        bit_array_implementation(implementation);
-    }
-
-    fn bit_array_implementation(
-        implementation: HostFunctionImplementation<StatelessHostProfile>,
-    ) -> HostBitArrayFunction<StatelessHostProfile> {
-        let HostFunctionImplementation::Value(HostValueFunctionImplementation::BitArray(
-            implementation,
-        )) = implementation
-        else {
-            panic!("BitArrayValue return should create a BitArray implementation");
-        };
-        implementation
+        assert_eq!(
+            expect_value_implementation(&implementation)
+                .call(&mut runtime)
+                .map(|token| token.family),
+            Ok(HostValueFamily::BitArray),
+        );
+        assert_eq!(
+            runtime.completed(),
+            Some(&HostScopedValue::BitArray(BitArrayValue::from_bytes(vec![
+                0xa5,
+            ]))),
+        );
     }
 }

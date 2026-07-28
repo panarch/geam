@@ -542,25 +542,16 @@ impl<Profile: ExecutionProfile> FunctionTables<Profile> {
 #[cfg(test)]
 impl FunctionTables<Infallible> {
     pub(in crate::plan::execution) fn custom_function_id(&self, index: usize) -> CustomFunctionId {
-        CustomFunctionId::new(
-            index,
-            *self.value_returns.custom_functions[index]
-                .body()
-                .signature_shape(),
-        )
+        let function = &self.value_returns.custom_functions[index];
+        CustomFunctionId::new(index, *function.body().signature_shape())
     }
 
     pub(in crate::plan::execution) fn function_function_function_id(
         &self,
         index: usize,
     ) -> FunctionFunctionFunctionId {
-        FunctionFunctionFunctionId::new(
-            index,
-            self.function_returns.function_function_functions[index]
-                .body()
-                .type_()
-                .clone(),
-        )
+        let function = &self.function_returns.function_function_functions[index];
+        FunctionFunctionFunctionId::new(index, function.body().type_().clone())
     }
 }
 

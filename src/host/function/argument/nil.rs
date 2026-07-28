@@ -3,6 +3,7 @@ use super::{HostArgument, HostCallArguments, HostParameter, HostParameterLayout}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct HostNilArgumentSlot(pub(super) usize);
 
+#[cfg(test)]
 impl HostNilArgumentSlot {
     pub(crate) fn index(self) -> usize {
         self.0

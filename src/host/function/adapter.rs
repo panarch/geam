@@ -1,7 +1,9 @@
-use super::HostValueType;
-use super::argument::{HostArgument, HostParameter, HostParameterLayout};
+use super::argument::{HostArgument, HostParameter, HostParameterLayout, HostScopedArgument};
 use super::return_::{HostFunctionImplementation, HostReturn};
-use crate::host::{HostCall, HostCallError, HostFailure, HostProfile, HostProvider};
+use crate::host::{
+    HostAbiType, HostCall, HostCallCompletion, HostCallError, HostFailure, HostProfile,
+    HostProvider, HostTypeDescriptor,
+};
 
 pub trait HostFunction<Arguments, Return>: Send + Sync + 'static {
     fn register<Profile: HostProfile>(self) -> HostFunctionRegistration<Profile>;
@@ -21,7 +23,9 @@ where
 
 pub struct HostFunctionRegistration<Profile: HostProfile> {
     pub(super) parameters: Box<[HostParameter]>,
-    pub(super) return_: HostValueType,
+    pub(super) parameter_types: Box<[HostTypeDescriptor]>,
+    pub(super) return_type: HostTypeDescriptor,
+    pub(super) custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
     pub(super) implementation: HostFunctionImplementation<Profile>,
 }
 
@@ -35,7 +39,9 @@ macro_rules! host_function {
             fn register<Profile: HostProfile>(self) -> HostFunctionRegistration<Profile> {
                 HostFunctionRegistration {
                     parameters: Box::new([]),
-                    return_: Return::type_(),
+                    parameter_types: Box::new([]),
+                    return_type: <Return as HostReturn>::descriptor(),
+                    custom_schemas: Box::new([]),
                     implementation: Return::implementation(move |_, _| Ok(self())),
                 }
             }
@@ -49,7 +55,9 @@ macro_rules! host_function {
             fn register<Profile: HostProfile>(self) -> HostFunctionRegistration<Profile> {
                 HostFunctionRegistration {
                     parameters: Box::new([]),
-                    return_: Return::type_(),
+                    parameter_types: Box::new([]),
+                    return_type: <Return as HostReturn>::descriptor(),
+                    custom_schemas: Box::new([]),
                     implementation: Return::implementation(move |_, _| {
                         self().map_err(HostCallError::from)
                     }),
@@ -63,19 +71,27 @@ macro_rules! host_function {
             Profile: HostProfile,
             Provider: HostProvider<Profile>,
             Function: for<'call> Fn(
-                    &mut HostCall<'call, Profile, Provider>,
-                ) -> Result<Return, HostCallError>
+                    HostCall<'call, Profile, Provider, Return>,
+                ) -> Result<HostCallCompletion<'call, Return>, HostCallError>
                 + Send
                 + Sync
                 + 'static,
-            Return: HostReturn,
+            Return: HostAbiType,
         {
             fn register(self) -> HostFunctionRegistration<Profile> {
+                let mut custom_schemas = Vec::new();
+                let mut visited = std::collections::HashSet::new();
+                <Return as HostAbiType>::collect_custom_schemas(
+                    &mut custom_schemas,
+                    &mut visited,
+                );
                 HostFunctionRegistration {
                     parameters: Box::new([]),
-                    return_: Return::type_(),
-                    implementation: Return::implementation(move |state, _| {
-                        self(&mut HostCall::new(state))
+                    parameter_types: Box::new([]),
+                    return_type: <Return as HostAbiType>::descriptor(),
+                    custom_schemas: custom_schemas.into_boxed_slice(),
+                    implementation: HostFunctionImplementation::scoped(move |runtime| {
+                        self(HostCall::new(runtime)).map(|completion| completion.token)
                     }),
                 }
             }
@@ -96,7 +112,9 @@ macro_rules! host_function {
                 });
                 HostFunctionRegistration {
                     parameters: layout.finish(),
-                    return_: Return::type_(),
+                    parameter_types: vec![$(<$argument as HostAbiType>::descriptor()),*].into_boxed_slice(),
+                    return_type: <Return as HostReturn>::descriptor(),
+                    custom_schemas: Box::new([]),
                     implementation,
                 }
             }
@@ -117,7 +135,9 @@ macro_rules! host_function {
                 });
                 HostFunctionRegistration {
                     parameters: layout.finish(),
-                    return_: Return::type_(),
+                    parameter_types: vec![$(<$argument as HostAbiType>::descriptor()),*].into_boxed_slice(),
+                    return_type: <Return as HostReturn>::descriptor(),
+                    custom_schemas: Box::new([]),
                     implementation,
                 }
             }
@@ -129,27 +149,42 @@ macro_rules! host_function {
             Profile: HostProfile,
             Provider: HostProvider<Profile>,
             Function: for<'call> Fn(
-                    &mut HostCall<'call, Profile, Provider>,
-                    $($argument),*
-                ) -> Result<Return, HostCallError>
+                HostCall<'call, Profile, Provider, Return>,
+                    $(<$argument as crate::host::HostType>::Value<'call>),*
+                ) -> Result<HostCallCompletion<'call, Return>, HostCallError>
                 + Send
                 + Sync
                 + 'static,
-            Return: HostReturn,
-            $($argument: HostArgument,)*
+            Return: HostAbiType,
+            $($argument: HostScopedArgument,)*
         {
             fn register(self) -> HostFunctionRegistration<Profile> {
                 let mut layout = HostParameterLayout::default();
-                $(let $slot = layout.register::<$argument>();)*
-                let implementation = Return::implementation(move |state, arguments| {
+                $(let $slot = <$argument as HostScopedArgument>::register(&mut layout);)*
+                let mut custom_schemas = Vec::new();
+                let mut visited = std::collections::HashSet::new();
+                $(<$argument as HostAbiType>::collect_custom_schemas(
+                    &mut custom_schemas,
+                    &mut visited,
+                );)*
+                <Return as HostAbiType>::collect_custom_schemas(
+                    &mut custom_schemas,
+                    &mut visited,
+                );
+                let implementation = HostFunctionImplementation::scoped(move |runtime| {
+                    let call = HostCall::new(runtime);
+                    $(let $slot = <$argument as HostScopedArgument>::read(&call, $slot);)*
                     self(
-                        &mut HostCall::new(state),
-                        $($argument::read(arguments, $slot)),*
+                        call,
+                        $($slot),*
                     )
+                    .map(|completion| completion.token)
                 });
                 HostFunctionRegistration {
                     parameters: layout.finish(),
-                    return_: Return::type_(),
+                    parameter_types: vec![$(<$argument as HostAbiType>::descriptor()),*].into_boxed_slice(),
+                    return_type: <Return as HostAbiType>::descriptor(),
+                    custom_schemas: custom_schemas.into_boxed_slice(),
                     implementation,
                 }
             }
@@ -178,29 +213,76 @@ host_function!(
 mod tests {
     use super::{FallibleHostFunction, HostFunction, ScopedHostFunction};
     use crate::BitArrayValue;
+    use crate::host::function::HostFunctionImplementation;
     use crate::host::function::argument::CallArguments;
-    use crate::host::function::{
-        HostFunctionImplementation, HostIntFunction, HostParameter, HostStringFunction,
-        HostValueFunctionImplementation, HostValueType,
+    use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
+    use crate::host::{
+        HostCall, HostCallCompletion, HostCallError, HostFailure, HostProvider, HostScopedValue,
+        HostTypeDescriptor, expect_value_implementation,
     };
-    use crate::host::{HostCall, HostFailure, HostProfile, HostProvider, StatelessHostProfile};
     use ecow::EcoString;
     use num_bigint::BigInt;
-    use std::convert::Infallible;
 
-    struct Profile;
+    struct ScopedProvider;
 
-    struct Counter;
+    type Scoped0 = for<'call> fn(
+        HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+    ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError>;
+    type Scoped1 = for<'call> fn(
+        HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+        (),
+    ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError>;
+    type Scoped2 = for<'call> fn(
+        HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+        (),
+        (),
+    ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError>;
+    type Scoped3 = for<'call> fn(
+        HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+        (),
+        (),
+        (),
+    ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError>;
+    type Scoped4 = for<'call> fn(
+        HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+        (),
+        (),
+        (),
+        (),
+    ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError>;
+    type Scoped5 = for<'call> fn(
+        HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+        (),
+        (),
+        (),
+        (),
+        (),
+    ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError>;
+    type Scoped6 = for<'call> fn(
+        HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+        (),
+        (),
+        (),
+        (),
+        (),
+        (),
+    ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError>;
+    type Scoped7 = for<'call> fn(
+        HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+        (),
+        (),
+        (),
+        (),
+        (),
+        (),
+        (),
+    ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError>;
 
-    impl HostProfile for Profile {
-        type RunState = usize;
-    }
-
-    impl HostProvider<Profile> for Counter {
+    impl HostProvider<TestHostProfile> for ScopedProvider {
         type State = usize;
 
-        fn project(state: &mut usize) -> &mut Self::State {
-            state
+        fn project(state: &mut TestRunState) -> &mut Self::State {
+            &mut state.counter
         }
     }
 
@@ -209,9 +291,9 @@ mod tests {
         let registration = <_ as HostFunction<(), BigInt>>::register(|| BigInt::from(7));
 
         assert_eq!(registration.parameters.as_ref(), []);
-        assert_eq!(registration.return_, HostValueType::Int);
+        assert_eq!(registration.return_type, HostTypeDescriptor::Int);
         assert_eq!(
-            call_int(registration.implementation, Vec::new(), Vec::new()),
+            call_int(&registration.implementation, Vec::new(), Vec::new()),
             BigInt::from(7),
         );
     }
@@ -219,16 +301,19 @@ mod tests {
     #[test]
     fn supports_zero_argument_fallible_functions() {
         let registration =
-            <_ as FallibleHostFunction<(), BigInt>>::register::<StatelessHostProfile>(|| {
+            <_ as FallibleHostFunction<(), BigInt>>::register::<TestHostProfile>(|| {
                 Err(HostFailure::new("unavailable"))
             });
-        let implementation = int_function(registration.implementation);
+        let implementation = expect_value_implementation(&registration.implementation);
 
         assert_eq!(registration.parameters.as_ref(), []);
-        assert_eq!(registration.return_, HostValueType::Int);
+        assert_eq!(registration.return_type, HostTypeDescriptor::Int);
+        let mut state = TestRunState::default();
+        let mut runtime =
+            TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
         assert_eq!(
             implementation
-                .call(&mut (), &CallArguments::new(Vec::new(), Vec::new()))
+                .call(&mut runtime)
                 .expect_err("fallible function should preserve its failure")
                 .to_string(),
             "unavailable",
@@ -236,83 +321,147 @@ mod tests {
     }
 
     #[test]
-    fn supports_infallible_return_without_a_runtime_value() {
-        let registration = <_ as HostFunction<(), Infallible>>::register::<StatelessHostProfile>(
-            never_returns as fn() -> Infallible,
-        );
+    fn supports_every_fallible_argument_arity() {
+        let registrations = vec![
+            <_ as FallibleHostFunction<(), BigInt>>::register::<TestHostProfile>(|| {
+                Ok::<_, HostFailure>(BigInt::from(0))
+            }),
+            <_ as FallibleHostFunction<((),), BigInt>>::register::<TestHostProfile>(|_: ()| {
+                Ok::<_, HostFailure>(BigInt::from(1))
+            }),
+            <_ as FallibleHostFunction<((), ()), BigInt>>::register::<TestHostProfile>(
+                |_: (), _: ()| Ok::<_, HostFailure>(BigInt::from(2)),
+            ),
+            <_ as FallibleHostFunction<((), (), ()), BigInt>>::register::<TestHostProfile>(
+                |_: (), _: (), _: ()| Ok::<_, HostFailure>(BigInt::from(3)),
+            ),
+            <_ as FallibleHostFunction<((), (), (), ()), BigInt>>::register::<TestHostProfile>(
+                |_: (), _: (), _: (), _: ()| Ok::<_, HostFailure>(BigInt::from(4)),
+            ),
+            <_ as FallibleHostFunction<((), (), (), (), ()), BigInt>>::register::<TestHostProfile>(
+                |_: (), _: (), _: (), _: (), _: ()| Ok::<_, HostFailure>(BigInt::from(5)),
+            ),
+            <_ as FallibleHostFunction<((), (), (), (), (), ()), BigInt>>::register::<
+                TestHostProfile,
+            >(|_: (), _: (), _: (), _: (), _: (), _: ()| {
+                Ok::<_, HostFailure>(BigInt::from(6))
+            }),
+            <_ as FallibleHostFunction<((), (), (), (), (), (), ()), BigInt>>::register::<
+                TestHostProfile,
+            >(|_: (), _: (), _: (), _: (), _: (), _: (), _: ()| {
+                Ok::<_, HostFailure>(BigInt::from(7))
+            }),
+        ];
 
-        assert_eq!(registration.parameters.as_ref(), []);
-        assert_eq!(
-            registration.return_,
-            HostValueType::Parameter(crate::plan::TypeParameterId(0)),
-        );
-        let _implementation = never_function(registration.implementation);
-    }
-
-    #[test]
-    #[should_panic(expected = "infallible callback was invoked")]
-    fn invokes_infallible_return_callback() {
-        let registration = <_ as HostFunction<(), Infallible>>::register::<StatelessHostProfile>(
-            never_returns as fn() -> Infallible,
-        );
-        let implementation = never_function(registration.implementation);
-
-        let _result = implementation.call(&mut (), &CallArguments::new(Vec::new(), Vec::new()));
-    }
-
-    #[test]
-    fn supports_fallible_infallible_return_with_arguments() {
-        let registration =
-            <_ as FallibleHostFunction<(BigInt,), Infallible>>::register::<StatelessHostProfile>(
-                |value: BigInt| Err(HostFailure::new(format!("stopped at {value}"))),
+        for (arity, registration) in registrations.into_iter().enumerate() {
+            assert_eq!(
+                registration.parameter_types.as_ref(),
+                vec![HostTypeDescriptor::Nil; arity],
             );
-
-        assert_eq!(
-            parameter_types(&registration.parameters),
-            [HostValueType::Int],
-        );
-        assert_eq!(
-            registration.return_,
-            HostValueType::Parameter(crate::plan::TypeParameterId(0)),
-        );
-        assert_eq!(
-            never_function(registration.implementation)
-                .call(
-                    &mut (),
-                    &CallArguments::new(vec![BigInt::from(7)], Vec::new()),
-                )
-                .expect_err("fallible Infallible callback should fail")
-                .to_string(),
-            "stopped at 7",
-        );
+            let arguments = CallArguments::new(Vec::new(), Vec::new()).with_scalar_values(
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                arity,
+            );
+            let mut state = TestRunState::default();
+            let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
+            expect_value_implementation(&registration.implementation)
+                .call(&mut runtime)
+                .expect("fallible callback should succeed");
+            assert_eq!(
+                runtime.completed(),
+                Some(&HostScopedValue::Int(BigInt::from(arity))),
+            );
+        }
     }
 
     #[test]
-    #[should_panic(expected = "test function should return Never")]
-    fn never_function_shape_guard_is_visible() {
-        let registration =
-            <_ as HostFunction<(), BigInt>>::register::<StatelessHostProfile>(BigInt::default);
-        never_function(registration.implementation);
-    }
+    fn supports_every_scoped_argument_arity() {
+        let zero: Scoped0 = |mut call| {
+            *call.state() += 1;
+            Ok(call.return_value(BigInt::from(0)))
+        };
+        let one: Scoped1 = |call, _| Ok(call.return_value(BigInt::from(1)));
+        let two: Scoped2 = |call, _, _| Ok(call.return_value(BigInt::from(2)));
+        let three: Scoped3 = |call, _, _, _| Ok(call.return_value(BigInt::from(3)));
+        let four: Scoped4 = |call, _, _, _, _| Ok(call.return_value(BigInt::from(4)));
+        let five: Scoped5 = |call, _, _, _, _, _| Ok(call.return_value(BigInt::from(5)));
+        let six: Scoped6 = |call, _, _, _, _, _, _| Ok(call.return_value(BigInt::from(6)));
+        let seven: Scoped7 = |call, _, _, _, _, _, _, _| Ok(call.return_value(BigInt::from(7)));
+        let registrations = vec![
+            <_ as ScopedHostFunction<TestHostProfile, ScopedProvider, (), BigInt>>::register(
+                zero,
+            ),
+            <_ as ScopedHostFunction<
+                TestHostProfile,
+                ScopedProvider,
+                ((),),
+                BigInt,
+            >>::register(one),
+            <_ as ScopedHostFunction<
+                TestHostProfile,
+                ScopedProvider,
+                ((), ()),
+                BigInt,
+            >>::register(two),
+            <_ as ScopedHostFunction<
+                TestHostProfile,
+                ScopedProvider,
+                ((), (), ()),
+                BigInt,
+            >>::register(three),
+            <_ as ScopedHostFunction<
+                TestHostProfile,
+                ScopedProvider,
+                ((), (), (), ()),
+                BigInt,
+            >>::register(four),
+            <_ as ScopedHostFunction<
+                TestHostProfile,
+                ScopedProvider,
+                ((), (), (), (), ()),
+                BigInt,
+            >>::register(five),
+            <_ as ScopedHostFunction<
+                TestHostProfile,
+                ScopedProvider,
+                ((), (), (), (), (), ()),
+                BigInt,
+            >>::register(six),
+            <_ as ScopedHostFunction<
+                TestHostProfile,
+                ScopedProvider,
+                ((), (), (), (), (), (), ()),
+                BigInt,
+            >>::register(seven),
+        ];
 
-    #[test]
-    fn supports_zero_argument_scoped_functions() {
-        let registration = <_ as ScopedHostFunction<Profile, Counter, (), BigInt>>::register(
-            |call: &mut HostCall<'_, Profile, Counter>| {
-                *call.state() += 1;
-                Ok(BigInt::from(*call.state()))
-            },
-        );
-        let implementation = int_function(registration.implementation);
-        let mut state = 41;
-
-        assert_eq!(registration.parameters.as_ref(), []);
-        assert_eq!(registration.return_, HostValueType::Int);
-        assert_eq!(
-            implementation.call(&mut state, &CallArguments::new(Vec::new(), Vec::new())),
-            Ok(BigInt::from(42)),
-        );
-        assert_eq!(state, 42);
+        for (arity, registration) in registrations.into_iter().enumerate() {
+            assert_eq!(
+                registration.parameter_types.as_ref(),
+                vec![HostTypeDescriptor::Nil; arity],
+            );
+            let arguments = CallArguments::new(Vec::new(), Vec::new()).with_scalar_values(
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                arity,
+            );
+            let mut state = TestRunState::default();
+            let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
+            expect_value_implementation(&registration.implementation)
+                .call(&mut runtime)
+                .expect("scoped callback should succeed");
+            assert_eq!(
+                runtime.completed(),
+                Some(&HostScopedValue::Int(BigInt::from(arity))),
+            );
+            drop(runtime);
+            assert_eq!(state.counter, usize::from(arity == 0));
+        }
     }
 
     #[test]
@@ -320,11 +469,11 @@ mod tests {
         let registration = <_ as HostFunction<(BigInt,), BigInt>>::register(|a: BigInt| a + 1);
 
         assert_eq!(
-            parameter_types(&registration.parameters),
-            [HostValueType::Int]
+            registration.parameter_types.as_ref(),
+            [HostTypeDescriptor::Int],
         );
         assert_eq!(
-            call_int(registration.implementation, vec![1.into()], Vec::new()),
+            call_int(&registration.implementation, vec![1.into()], Vec::new()),
             BigInt::from(2),
         );
     }
@@ -335,12 +484,12 @@ mod tests {
             <_ as HostFunction<(BigInt, BigInt), BigInt>>::register(|a: BigInt, b: BigInt| a - b);
 
         assert_eq!(
-            parameter_types(&registration.parameters),
-            [HostValueType::Int, HostValueType::Int],
+            registration.parameter_types.as_ref(),
+            [HostTypeDescriptor::Int, HostTypeDescriptor::Int],
         );
         assert_eq!(
             call_int(
-                registration.implementation,
+                &registration.implementation,
                 vec![10.into(), 3.into()],
                 Vec::new(),
             ),
@@ -357,12 +506,16 @@ mod tests {
         );
 
         assert_eq!(
-            parameter_types(&registration.parameters),
-            [HostValueType::Bool, HostValueType::Int, HostValueType::Int],
+            registration.parameter_types.as_ref(),
+            [
+                HostTypeDescriptor::Bool,
+                HostTypeDescriptor::Int,
+                HostTypeDescriptor::Int,
+            ],
         );
         assert_eq!(
             call_int(
-                registration.implementation.clone(),
+                &registration.implementation,
                 vec![10.into(), 20.into()],
                 vec![false],
             ),
@@ -370,7 +523,7 @@ mod tests {
         );
         assert_eq!(
             call_int(
-                registration.implementation,
+                &registration.implementation,
                 vec![10.into(), 20.into()],
                 vec![true],
             ),
@@ -387,12 +540,12 @@ mod tests {
         );
 
         assert_eq!(
-            parameter_types(&registration.parameters),
+            registration.parameter_types.as_ref(),
             [
-                HostValueType::Int,
-                HostValueType::Bool,
-                HostValueType::Int,
-                HostValueType::Bool,
+                HostTypeDescriptor::Int,
+                HostTypeDescriptor::Bool,
+                HostTypeDescriptor::Int,
+                HostTypeDescriptor::Bool,
             ],
         );
         assert!(call_bool(
@@ -410,12 +563,18 @@ mod tests {
             );
 
         assert_eq!(
-            parameter_types(&registration.parameters),
-            [HostValueType::Int; 5],
+            registration.parameter_types.as_ref(),
+            [
+                HostTypeDescriptor::Int,
+                HostTypeDescriptor::Int,
+                HostTypeDescriptor::Int,
+                HostTypeDescriptor::Int,
+                HostTypeDescriptor::Int,
+            ],
         );
         assert_eq!(
             call_int(
-                registration.implementation,
+                &registration.implementation,
                 vec![1.into(), 2.into(), 3.into(), 4.into(), 5.into()],
                 Vec::new(),
             ),
@@ -433,8 +592,15 @@ mod tests {
             );
 
         assert_eq!(
-            parameter_types(&registration.parameters),
-            [HostValueType::Bool; 6],
+            registration.parameter_types.as_ref(),
+            [
+                HostTypeDescriptor::Bool,
+                HostTypeDescriptor::Bool,
+                HostTypeDescriptor::Bool,
+                HostTypeDescriptor::Bool,
+                HostTypeDescriptor::Bool,
+                HostTypeDescriptor::Bool,
+            ],
         );
         assert!(call_bool(
             registration.implementation,
@@ -448,7 +614,7 @@ mod tests {
         let registration = <_ as HostFunction<
             (BigInt, bool, BigInt, bool, BigInt, bool, BigInt),
             BigInt,
-        >>::register::<StatelessHostProfile>(
+        >>::register::<TestHostProfile>(
             |a: BigInt, b: bool, c: BigInt, d: bool, e: BigInt, f: bool, g: BigInt| {
                 let c = if b { c } else { BigInt::from(0) };
                 let e = if d { e } else { BigInt::from(0) };
@@ -458,20 +624,20 @@ mod tests {
         );
 
         assert_eq!(
-            parameter_types(&registration.parameters),
+            registration.parameter_types.as_ref(),
             [
-                HostValueType::Int,
-                HostValueType::Bool,
-                HostValueType::Int,
-                HostValueType::Bool,
-                HostValueType::Int,
-                HostValueType::Bool,
-                HostValueType::Int,
+                HostTypeDescriptor::Int,
+                HostTypeDescriptor::Bool,
+                HostTypeDescriptor::Int,
+                HostTypeDescriptor::Bool,
+                HostTypeDescriptor::Int,
+                HostTypeDescriptor::Bool,
+                HostTypeDescriptor::Int,
             ],
         );
         assert_eq!(
             call_int(
-                registration.implementation.clone(),
+                &registration.implementation,
                 vec![1.into(), 2.into(), 4.into(), 8.into()],
                 vec![true, false, true],
             ),
@@ -479,7 +645,7 @@ mod tests {
         );
         assert_eq!(
             call_int(
-                registration.implementation,
+                &registration.implementation,
                 vec![1.into(), 2.into(), 4.into(), 8.into()],
                 vec![false, true, false],
             ),
@@ -492,7 +658,7 @@ mod tests {
         let registration = <_ as HostFunction<
             (BigInt, f64, EcoString, BitArrayValue, char, bool, ()),
             EcoString,
-        >>::register::<StatelessHostProfile>(
+        >>::register::<TestHostProfile>(
             |int: BigInt,
              float: f64,
              string: EcoString,
@@ -509,19 +675,18 @@ mod tests {
         );
 
         assert_eq!(
-            parameter_types(&registration.parameters),
+            registration.parameter_types.as_ref(),
             [
-                HostValueType::Int,
-                HostValueType::Float,
-                HostValueType::String,
-                HostValueType::BitArray,
-                HostValueType::UtfCodepoint,
-                HostValueType::Bool,
-                HostValueType::Nil,
+                HostTypeDescriptor::Int,
+                HostTypeDescriptor::Float,
+                HostTypeDescriptor::String,
+                HostTypeDescriptor::BitArray,
+                HostTypeDescriptor::UtfCodepoint,
+                HostTypeDescriptor::Bool,
+                HostTypeDescriptor::Nil,
             ],
         );
-        assert_eq!(registration.return_, HostValueType::String);
-        let implementation = string_implementation(registration.implementation);
+        assert_eq!(registration.return_type, HostTypeDescriptor::String);
         let arguments = CallArguments::new(vec![1.into()], vec![true]).with_scalar_values(
             vec![1.5],
             vec!["one".into()],
@@ -531,19 +696,16 @@ mod tests {
         );
 
         assert_eq!(
-            implementation.call(&mut (), &arguments),
-            Ok(EcoString::from("1:1.5:one:8:A:true")),
+            call_string(registration.implementation, arguments),
+            EcoString::from("1:1.5:one:8:A:true"),
         );
     }
 
     #[test]
     #[should_panic(expected = "test function should return Int")]
     fn int_return_shape_guard_is_visible() {
-        call_int(
-            <_ as HostFunction<(), bool>>::register(<bool as Default>::default).implementation,
-            Vec::new(),
-            Vec::new(),
-        );
+        let registration = <_ as HostFunction<(), bool>>::register(<bool as Default>::default);
+        call_int(&registration.implementation, Vec::new(), Vec::new());
     }
 
     #[test]
@@ -559,77 +721,61 @@ mod tests {
     #[test]
     #[should_panic(expected = "all-scalar test function should return String")]
     fn string_return_shape_guard_is_visible() {
-        string_implementation(
+        call_string(
             <_ as HostFunction<(), BigInt>>::register(<BigInt as Default>::default).implementation,
+            CallArguments::new(Vec::new(), Vec::new()),
         );
     }
 
-    fn parameter_types(parameters: &[HostParameter]) -> Vec<HostValueType> {
-        parameters
-            .iter()
-            .map(|parameter| parameter.type_())
-            .collect()
-    }
-
     fn call_int(
-        implementation: HostFunctionImplementation<crate::host::StatelessHostProfile>,
+        implementation: &HostFunctionImplementation<TestHostProfile>,
         ints: Vec<BigInt>,
         bools: Vec<bool>,
     ) -> BigInt {
-        int_function(implementation)
-            .call(&mut (), &CallArguments::new(ints, bools))
-            .expect("test host function should succeed")
+        let implementation = expect_value_implementation(implementation);
+        let arguments = CallArguments::new(ints, bools);
+        let mut state = TestRunState::default();
+        let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
+        implementation
+            .call(&mut runtime)
+            .expect("test host function should succeed");
+        let Some(HostScopedValue::Int(value)) = runtime.completed() else {
+            panic!("test function should return Int");
+        };
+        value.clone()
     }
 
     fn call_bool(
-        implementation: HostFunctionImplementation<crate::host::StatelessHostProfile>,
+        implementation: HostFunctionImplementation<TestHostProfile>,
         ints: Vec<BigInt>,
         bools: Vec<bool>,
     ) -> bool {
-        let HostFunctionImplementation::Value(HostValueFunctionImplementation::Bool(
-            implementation,
-        )) = implementation
-        else {
+        let implementation = expect_value_implementation(&implementation);
+        let arguments = CallArguments::new(ints, bools);
+        let mut state = TestRunState::default();
+        let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
+        implementation
+            .call(&mut runtime)
+            .expect("test host function should succeed");
+        let Some(HostScopedValue::Bool(value)) = runtime.completed() else {
             panic!("test function should return Bool");
         };
-        implementation
-            .call(&mut (), &CallArguments::new(ints, bools))
-            .expect("test host function should succeed")
+        *value
     }
 
-    fn string_implementation(
-        implementation: HostFunctionImplementation<StatelessHostProfile>,
-    ) -> HostStringFunction<StatelessHostProfile> {
-        let HostFunctionImplementation::Value(HostValueFunctionImplementation::String(
-            implementation,
-        )) = implementation
-        else {
+    fn call_string(
+        implementation: HostFunctionImplementation<TestHostProfile>,
+        arguments: CallArguments,
+    ) -> EcoString {
+        let implementation = expect_value_implementation(&implementation);
+        let mut state = TestRunState::default();
+        let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
+        implementation
+            .call(&mut runtime)
+            .expect("test host function should succeed");
+        let Some(HostScopedValue::String(value)) = runtime.completed() else {
             panic!("all-scalar test function should return String");
         };
-        implementation
-    }
-
-    fn int_function<Profile: HostProfile>(
-        implementation: HostFunctionImplementation<Profile>,
-    ) -> HostIntFunction<Profile> {
-        let HostFunctionImplementation::Value(HostValueFunctionImplementation::Int(implementation)) =
-            implementation
-        else {
-            panic!("test function should return Int");
-        };
-        implementation
-    }
-
-    fn never_function<Profile: HostProfile>(
-        implementation: HostFunctionImplementation<Profile>,
-    ) -> crate::host::HostNeverFunction<Profile> {
-        let HostFunctionImplementation::Never(implementation) = implementation else {
-            panic!("test function should return Never");
-        };
-        implementation
-    }
-
-    fn never_returns() -> Infallible {
-        panic!("infallible callback was invoked")
+        value.clone()
     }
 }

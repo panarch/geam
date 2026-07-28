@@ -394,7 +394,7 @@ pub(in crate::plan::execution::lowering) struct AdditionalFunctions<Profile: Exe
 }
 
 impl<Profile: ExecutionProfile> AdditionalFunctions<Profile> {
-    pub(in crate::plan::execution::lowering) fn empty() -> Self {
+    fn empty() -> Self {
         Self {
             never: Vec::new(),
             custom: Vec::new(),

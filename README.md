@@ -85,6 +85,13 @@ callbacks selected by specialization. A `HostProfile` defines caller-owned
 run state, and `HostedExecution::run_main` borrows that state explicitly for
 one run.
 
+Owned scalar closures use `BigInt`, `f64`, `EcoString`, `BitArrayValue`,
+`char`, `bool`, and `()`. Scoped providers use `HostCall` with typed
+`HostList`, `HostTuple`, and ordinary-custom handles; these handles cannot
+escape their invocation, and compound returns are built explicitly through
+the same call. Generic providers register one Gleam type scheme and are
+specialized into concrete execution targets when used.
+
 ## Upstream
 
 Current Gleam compiler baseline: `v1.17.0`.

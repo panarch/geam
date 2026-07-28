@@ -17,7 +17,7 @@ pub struct HostedPlannedModule {
 
 pub enum HostedFunctionTemplate {
     GleamBody(Box<FunctionTemplate>),
-    HostTemplate(HostFunctionTemplate),
+    HostTemplate(Box<HostFunctionTemplate>),
 }
 
 pub(crate) struct HostedPlannedModuleParts {
@@ -90,7 +90,7 @@ impl HostedFunctionTemplate {
     pub fn host_template(&self) -> Option<&HostFunctionTemplate> {
         match self {
             Self::GleamBody(_) => None,
-            Self::HostTemplate(function) => Some(function),
+            Self::HostTemplate(function) => Some(function.as_ref()),
         }
     }
 }

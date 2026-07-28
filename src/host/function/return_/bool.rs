@@ -1,12 +1,8 @@
-use super::{
-    HostCallback, HostFunctionImplementation, HostReturn, HostValueFunctionImplementation,
-};
-use crate::host::function::HostValueType;
-use crate::host::function::argument::HostCallArguments;
-use crate::host::{HostCallError, HostProfile};
+use super::{HostCallback, HostFunctionImplementation, HostReturn, HostValueFunction};
+use crate::host::{HostAbiType, HostCallArguments, HostCallError, HostCallRuntime, HostProfile};
 use std::sync::Arc;
 
-pub(crate) struct HostBoolFunction<Profile: HostProfile> {
+pub(super) struct HostBoolFunction<Profile: HostProfile> {
     implementation: Arc<HostCallback<Profile, bool>>,
 }
 
@@ -19,18 +15,18 @@ impl<Profile: HostProfile> Clone for HostBoolFunction<Profile> {
 }
 
 impl<Profile: HostProfile> HostBoolFunction<Profile> {
-    pub(crate) fn call(
+    pub(super) fn call(
         &self,
-        state: &mut Profile::RunState,
-        arguments: &dyn HostCallArguments,
+        runtime: &mut dyn HostCallRuntime<Profile>,
     ) -> Result<bool, HostCallError> {
+        let (state, arguments) = runtime.scalar_context();
         (self.implementation)(state, arguments)
     }
 }
 
 impl HostReturn for bool {
-    fn type_() -> HostValueType {
-        HostValueType::Bool
+    fn descriptor() -> crate::host::HostTypeDescriptor {
+        <Self as HostAbiType>::descriptor()
     }
 
     fn implementation<Profile: HostProfile>(
@@ -39,7 +35,7 @@ impl HostReturn for bool {
         + Sync
         + 'static,
     ) -> HostFunctionImplementation<Profile> {
-        HostFunctionImplementation::Value(HostValueFunctionImplementation::Bool(HostBoolFunction {
+        HostFunctionImplementation::Value(HostValueFunction::bool_(HostBoolFunction {
             implementation: Arc::new(function),
         }))
     }
@@ -47,51 +43,32 @@ impl HostReturn for bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        HostBoolFunction, HostFunctionImplementation, HostReturn, HostValueFunctionImplementation,
+    use super::HostReturn;
+    use crate::host::function::argument::{CallArguments, HostParameterLayout};
+    use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
+    use crate::host::{
+        HostScopedValue, HostTypeDescriptor, HostValueFamily, expect_value_implementation,
     };
-    use crate::host::StatelessHostProfile;
-    use crate::host::function::HostValueType;
-    use crate::host::function::argument::{CallArguments, HostCallArguments, HostParameterLayout};
-    use num_bigint::BigInt;
 
     #[test]
     fn bool_return_owns_typed_callback_and_family() {
         let mut layout = HostParameterLayout::default();
         let slot = layout.register::<bool>();
-        assert_eq!(<bool as HostReturn>::type_(), HostValueType::Bool);
         let implementation =
-            <bool as HostReturn>::implementation::<StatelessHostProfile>(move |(), arguments| {
+            <bool as HostReturn>::implementation::<TestHostProfile>(move |_, arguments| {
                 Ok(!arguments.bool(slot))
             });
         let arguments = CallArguments::new(Vec::new(), vec![false]);
+        let mut state = TestRunState::default();
+        let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
 
+        assert_eq!(<bool as HostReturn>::descriptor(), HostTypeDescriptor::Bool);
         assert_eq!(
-            bool_implementation(implementation).call(&mut (), &arguments),
-            Ok(true),
+            expect_value_implementation(&implementation)
+                .call(&mut runtime)
+                .map(|token| token.family),
+            Ok(HostValueFamily::Bool),
         );
-    }
-
-    #[test]
-    #[should_panic(expected = "bool return should create a Bool implementation")]
-    fn bool_return_shape_guard_is_visible() {
-        let callback = |(): &mut (), _: &dyn HostCallArguments| Ok(BigInt::from(1));
-        let arguments = CallArguments::new(Vec::new(), Vec::new());
-        assert_eq!(callback(&mut (), &arguments), Ok(BigInt::from(1)));
-        let implementation =
-            <BigInt as HostReturn>::implementation::<StatelessHostProfile>(callback);
-        bool_implementation(implementation);
-    }
-
-    fn bool_implementation(
-        implementation: HostFunctionImplementation<StatelessHostProfile>,
-    ) -> HostBoolFunction<StatelessHostProfile> {
-        let HostFunctionImplementation::Value(HostValueFunctionImplementation::Bool(
-            implementation,
-        )) = implementation
-        else {
-            panic!("bool return should create a Bool implementation");
-        };
-        implementation
+        assert_eq!(runtime.completed(), Some(&HostScopedValue::Bool(true)));
     }
 }

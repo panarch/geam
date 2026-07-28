@@ -10,11 +10,19 @@ pub use frontend::{
     compile_typed_program, compile_typed_project,
 };
 pub use host::{
-    FallibleHostFunction, HostCall, HostCallError, HostFailure, HostFunction, HostFunctionSchema,
-    HostModule, HostProfile, HostProvider, HostProviderModule, HostProviderSet,
-    HostRegistrationError, ScopedHostFunction, StatelessHostProfile,
+    FallibleHostFunction, HostCall, HostCallCompletion, HostCallError, HostCustom,
+    HostCustomConstructor, HostCustomConstructorAt, HostCustomConstructorDefinition,
+    HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomConstructorSchema,
+    HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomFieldSchema,
+    HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType, HostCustomTypeSchema,
+    HostFailure, HostFunction, HostFunctionSchema, HostList, HostListType, HostModule, HostProfile,
+    HostProvider, HostProviderModule, HostProviderSet, HostRegistrationError, HostSchemaType,
+    HostTuple, HostTupleType, HostType, HostTypeList, HostTypeListEnd, HostTypeParameter,
+    HostTypeSequence, HostValue, ScopedHostFunction, StatelessHostProfile,
 };
-pub use plan::execution::{ExecutionPlan, ExecutionPlanExplanation, HostedExecution};
+pub use plan::execution::{
+    ExecutionPlan, ExecutionPlanExplanation, HostSpecializationError, HostedExecution,
+};
 pub use plan::{
     BitArrayExpr, BitArrayLocalId, BoolExpr, BoolLocalId, CustomType, CustomTypeName, EchoSite,
     Expr, FunctionTemplate, FunctionTemplateId, FunctionType, HostCallSite, HostFunctionTemplate,

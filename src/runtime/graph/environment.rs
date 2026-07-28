@@ -119,7 +119,7 @@ impl BlockEnvironment {
                 EvaluatedValue::Nil
             }
             ParamLocal::Tuple { local, .. } => EvaluatedValue::Tuple(self.tuple(*local)),
-            ParamLocal::List(local) => EvaluatedValue::List(self.list(local)),
+            ParamLocal::List(local) => EvaluatedValue::from(self.list(local)),
             ParamLocal::IntFunction { local, .. } => {
                 EvaluatedValue::Function(self.int_function(*local).into())
             }
@@ -598,9 +598,44 @@ impl RetainedValues {
             EvaluatedValue::Bool(value) => self.values.bools.push(value),
             EvaluatedValue::Nil => {}
             EvaluatedValue::Tuple(value) => self.values.tuples.push(value),
-            EvaluatedValue::List(value) => self.push_list(value),
+            EvaluatedValue::ParameterList(value) => self.values.parameter_lists.push(value),
+            EvaluatedValue::List(value) => self.push_list(value.into_value()),
             EvaluatedValue::Function(value) => self.push_function(value),
         }
+    }
+
+    pub(in crate::runtime) fn push_int(&mut self, value: BigInt) {
+        self.values.ints.push(value);
+    }
+
+    pub(in crate::runtime) fn push_float(&mut self, value: f64) {
+        self.values.floats.push(value);
+    }
+
+    pub(in crate::runtime) fn push_string(&mut self, value: EcoString) {
+        self.values.strings.push(value);
+    }
+
+    pub(in crate::runtime) fn push_bit_array(&mut self, value: EvaluatedBitArray) {
+        self.values.bit_arrays.push(value);
+    }
+
+    pub(in crate::runtime) fn push_utf_codepoint(&mut self, value: char) {
+        self.values.utf_codepoints.push(value);
+    }
+
+    pub(in crate::runtime) fn push_custom(&mut self, value: EvaluatedCustomValue) {
+        self.values.customs.push(value);
+    }
+
+    pub(in crate::runtime) fn push_bool(&mut self, value: bool) {
+        self.values.bools.push(value);
+    }
+
+    pub(in crate::runtime) fn push_nil(&mut self) {}
+
+    pub(in crate::runtime) fn push_tuple(&mut self, value: Vec<EvaluatedValue>) {
+        self.values.tuples.push(value);
     }
 
     pub(in crate::runtime) fn append_captures(&mut self, captures: &[EvaluatedCapture]) {
@@ -671,7 +706,7 @@ impl RetainedValues {
         self.push_evaluated(environment.value(local));
     }
 
-    fn push_list(&mut self, value: ListValueId) {
+    pub(in crate::runtime) fn push_list(&mut self, value: ListValueId) {
         match value {
             ListValueId::Parameter(value) => self.values.parameter_lists.push(value),
             ListValueId::Int(value) => self.values.int_lists.push(value),
@@ -689,7 +724,7 @@ impl RetainedValues {
         }
     }
 
-    fn push_function(&mut self, value: EvaluatedFunctionValue) {
+    pub(in crate::runtime) fn push_function(&mut self, value: EvaluatedFunctionValue) {
         use crate::runtime::EvaluatedFunctionValueKind as F;
 
         match value.kind() {
@@ -799,7 +834,10 @@ impl BlockValues {
 #[cfg(test)]
 mod tests {
     use super::{BlockEnvironment, RetainedValues};
-    use crate::host::{HostFunctionDefinition, HostFunctionImplementation, HostIntFunction};
+    use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
+    use crate::host::{
+        HostFunctionDefinition, HostScopedValue, HostValueFamily, expect_value_implementation,
+    };
     use crate::plan::execution::graph::{IntLocalId, ParamLocal};
     use crate::runtime::{EvaluatedValue, ListValue, Value};
     use num_bigint::BigInt;
@@ -909,22 +947,32 @@ pub fn main() {
 
     #[test]
     fn retained_values_supply_family_local_host_arguments() {
-        let definition = HostFunctionDefinition::new(
+        let definition: HostFunctionDefinition<TestHostProfile> = HostFunctionDefinition::new(
             "choose".into(),
             |condition: bool, left: BigInt, right: BigInt| {
                 if condition { left } else { right }
             },
-        );
+        )
+        .expect("monomorphic function should register");
         let (_, implementation) = definition.into_parts();
         let mut arguments = RetainedValues::empty();
         arguments.push_evaluated(EvaluatedValue::Int(10.into()));
         arguments.push_evaluated(EvaluatedValue::Bool(false));
         arguments.push_evaluated(EvaluatedValue::Int(20.into()));
 
-        let implementation = int_implementation(implementation);
+        let implementation = expect_value_implementation(&implementation);
+        let mut state = TestRunState::default();
+        let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
         assert_eq!(
-            implementation.call(&mut (), &arguments),
-            Ok(BigInt::from(20))
+            implementation
+                .call(&mut runtime)
+                .expect("host function should succeed")
+                .family,
+            HostValueFamily::Int,
+        );
+        assert_eq!(
+            runtime.completed(),
+            Some(&HostScopedValue::Int(BigInt::from(20))),
         );
 
         let mut arguments = RetainedValues::empty();
@@ -932,29 +980,17 @@ pub fn main() {
         arguments.push_evaluated(EvaluatedValue::Bool(true));
         arguments.push_evaluated(EvaluatedValue::Int(20.into()));
 
+        let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
         assert_eq!(
-            implementation.call(&mut (), &arguments),
-            Ok(BigInt::from(10))
+            implementation
+                .call(&mut runtime)
+                .expect("host function should succeed")
+                .family,
+            HostValueFamily::Int,
         );
-    }
-
-    #[test]
-    #[should_panic(expected = "choose should retain an Int implementation")]
-    fn retained_host_argument_shape_guard_is_visible() {
-        let definition = HostFunctionDefinition::new("choose".into(), || true);
-        let (_, implementation) = definition.into_parts();
-        int_implementation(implementation);
-    }
-
-    fn int_implementation(
-        implementation: HostFunctionImplementation<crate::host::StatelessHostProfile>,
-    ) -> HostIntFunction<crate::host::StatelessHostProfile> {
-        let HostFunctionImplementation::Value(crate::host::HostValueFunctionImplementation::Int(
-            implementation,
-        )) = implementation
-        else {
-            panic!("choose should retain an Int implementation");
-        };
-        implementation
+        assert_eq!(
+            runtime.completed(),
+            Some(&HostScopedValue::Int(BigInt::from(10))),
+        );
     }
 }

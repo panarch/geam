@@ -1,31 +1,25 @@
-mod bit_array;
-mod bool;
-mod float;
-mod int;
-mod nil;
-mod string;
-mod utf_codepoint;
-
-use crate::host::{HostCallArguments, HostCallError, HostNeverFunction, HostProfile};
-use crate::plan::execution::graph::ParamLocal;
+use crate::host::{HostNeverFunction, HostValueFunction};
+use crate::plan::execution::function::{ExecutionFunctionBody, FunctionBodyOwner};
+use crate::plan::execution::graph::{
+    BitArrayLocalId, BoolLocalId, CustomLocal, FloatLocalId, IntLocalId, ListLocal, NilLocalId,
+    ParamLocal, StringLocalId, UtfCodepointLocalId,
+};
 use crate::plan::execution::type_::FunctionType;
 use ecow::EcoString;
-use std::convert::Infallible;
+use std::marker::PhantomData;
 
-pub(crate) use bit_array::{HostBitArrayFunctionId, HostedBitArrayFunction};
-pub(crate) use bool::{HostBoolFunctionId, HostedBoolFunction};
-pub(crate) use float::{HostFloatFunctionId, HostedFloatFunction};
-pub(crate) use int::{HostIntFunctionId, HostedIntFunction};
-pub(crate) use nil::{HostNilFunctionId, HostedNilFunction};
-pub(crate) use string::{HostStringFunctionId, HostedStringFunction};
-pub(crate) use utf_codepoint::{HostUtfCodepointFunctionId, HostedUtfCodepointFunction};
+#[derive(Debug)]
+pub(crate) struct HostFunctionId<Body: FunctionBodyOwner> {
+    index: usize,
+    return_: Body::Return,
+    body: PhantomData<fn() -> Body>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct HostNeverFunctionId(usize);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum HostedFunctionTarget<ValueTarget> {
-    Value(ValueTarget),
+pub(crate) enum HostedFunctionTarget<Body: FunctionBodyOwner> {
+    Value(HostFunctionId<Body>),
     Never(HostNeverFunctionId),
 }
 
@@ -34,6 +28,7 @@ pub(crate) struct HostedFunction<Implementation> {
     implementation: Implementation,
 }
 
+pub(crate) type HostedValueFunction<Profile> = HostedFunction<HostValueFunction<Profile>>;
 pub(crate) type HostedNeverFunction<Profile> = HostedFunction<HostNeverFunction<Profile>>;
 
 pub(crate) struct HostedFunctionMetadata {
@@ -41,7 +36,120 @@ pub(crate) struct HostedFunctionMetadata {
     site: crate::plan::HostCallSite,
     signature: crate::plan::FunctionType,
     parameters: Box<[ParamLocal]>,
+    call_parameters: Box<[HostCallParameter]>,
     type_: FunctionType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum HostCallParameter {
+    Int(IntLocalId),
+    Float(FloatLocalId),
+    String(StringLocalId),
+    BitArray(BitArrayLocalId),
+    UtfCodepoint(UtfCodepointLocalId),
+    Bool(BoolLocalId),
+    Nil(NilLocalId),
+    Value(ParamLocal),
+    List(ListLocal),
+    Tuple(ParamLocal),
+    Custom(CustomLocal),
+}
+
+impl<Body> Clone for HostFunctionId<Body>
+where
+    Body: FunctionBodyOwner,
+    Body::Return: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            index: self.index,
+            return_: self.return_.clone(),
+            body: PhantomData,
+        }
+    }
+}
+
+impl<Body> Copy for HostFunctionId<Body>
+where
+    Body: FunctionBodyOwner,
+    Body::Return: Copy,
+{
+}
+
+impl<Body> PartialEq for HostFunctionId<Body>
+where
+    Body: FunctionBodyOwner,
+    Body::Return: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.index == other.index && self.return_ == other.return_
+    }
+}
+
+impl<Body> Eq for HostFunctionId<Body>
+where
+    Body: FunctionBodyOwner,
+    Body::Return: Eq,
+{
+}
+
+impl<Body> Clone for HostedFunctionTarget<Body>
+where
+    Body: FunctionBodyOwner,
+    HostFunctionId<Body>: Clone,
+{
+    fn clone(&self) -> Self {
+        match self {
+            Self::Value(target) => Self::Value(target.clone()),
+            Self::Never(target) => Self::Never(*target),
+        }
+    }
+}
+
+impl<Body> Copy for HostedFunctionTarget<Body>
+where
+    Body: FunctionBodyOwner,
+    HostFunctionId<Body>: Copy,
+{
+}
+
+impl<Body> PartialEq for HostedFunctionTarget<Body>
+where
+    Body: FunctionBodyOwner,
+    HostFunctionId<Body>: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Value(left), Self::Value(right)) => left == right,
+            (Self::Never(left), Self::Never(right)) => left == right,
+            (Self::Value(_), Self::Never(_)) | (Self::Never(_), Self::Value(_)) => false,
+        }
+    }
+}
+
+impl<Body> Eq for HostedFunctionTarget<Body>
+where
+    Body: FunctionBodyOwner,
+    HostFunctionId<Body>: Eq,
+{
+}
+
+impl<Body: ExecutionFunctionBody> HostFunctionId<Body> {
+    pub(in crate::plan::execution) fn new(index: usize, return_: Body::Return) -> Self {
+        Self {
+            index,
+            return_,
+            body: PhantomData,
+        }
+    }
+
+    pub(crate) fn index(&self) -> usize {
+        self.index
+    }
+
+    pub(crate) fn return_(&self) -> &Body::Return {
+        &self.return_
+    }
 }
 
 impl HostNeverFunctionId {
@@ -54,8 +162,8 @@ impl HostNeverFunctionId {
     }
 }
 
-impl<ValueTarget> HostedFunctionTarget<ValueTarget> {
-    pub(in crate::plan::execution) fn value(target: ValueTarget) -> Self {
+impl<Body: ExecutionFunctionBody> HostedFunctionTarget<Body> {
+    pub(in crate::plan::execution) fn value(target: HostFunctionId<Body>) -> Self {
         Self::Value(target)
     }
 
@@ -70,6 +178,7 @@ impl<Implementation> HostedFunction<Implementation> {
         site: crate::plan::HostCallSite,
         signature: crate::plan::FunctionType,
         parameters: Box<[ParamLocal]>,
+        call_parameters: Box<[HostCallParameter]>,
         type_: FunctionType,
         implementation: Implementation,
     ) -> Self {
@@ -79,28 +188,47 @@ impl<Implementation> HostedFunction<Implementation> {
                 site,
                 signature,
                 parameters,
+                call_parameters,
                 type_,
             },
             implementation,
         }
     }
 
+    pub(crate) fn package(&self) -> &EcoString {
+        self.metadata.package()
+    }
+
+    pub(crate) fn module(&self) -> &EcoString {
+        self.metadata.module()
+    }
+
+    pub(crate) fn name(&self) -> &EcoString {
+        self.metadata.name()
+    }
+
+    pub(crate) fn site(&self) -> &crate::plan::HostCallSite {
+        self.metadata.site()
+    }
+
     pub(crate) fn parameters(&self) -> &[ParamLocal] {
         self.metadata.parameters()
+    }
+
+    pub(crate) fn call_parameters(&self) -> &[HostCallParameter] {
+        self.metadata.call_parameters()
+    }
+
+    pub(crate) fn type_(&self) -> &FunctionType {
+        self.metadata.type_()
     }
 
     pub(crate) fn metadata(&self) -> &HostedFunctionMetadata {
         &self.metadata
     }
-}
 
-impl<Profile: HostProfile> HostedNeverFunction<Profile> {
-    pub(crate) fn call(
-        &self,
-        state: &mut Profile::RunState,
-        arguments: &dyn HostCallArguments,
-    ) -> Result<Infallible, HostCallError> {
-        self.implementation.call(state, arguments)
+    pub(crate) fn implementation(&self) -> &Implementation {
+        &self.implementation
     }
 }
 
@@ -125,11 +253,152 @@ impl HostedFunctionMetadata {
         &self.signature
     }
 
-    pub(crate) fn parameters(&self) -> &[ParamLocal] {
+    fn parameters(&self) -> &[ParamLocal] {
         &self.parameters
     }
 
-    pub(crate) fn type_(&self) -> &FunctionType {
+    fn call_parameters(&self) -> &[HostCallParameter] {
+        &self.call_parameters
+    }
+
+    fn type_(&self) -> &FunctionType {
         &self.type_
+    }
+}
+
+impl HostCallParameter {
+    pub(crate) fn local(&self) -> ParamLocal {
+        match self {
+            Self::Int(local) => ParamLocal::Int(*local),
+            Self::Float(local) => ParamLocal::Float(*local),
+            Self::String(local) => ParamLocal::String(*local),
+            Self::BitArray(local) => ParamLocal::BitArray(*local),
+            Self::UtfCodepoint(local) => ParamLocal::UtfCodepoint(*local),
+            Self::Bool(local) => ParamLocal::Bool(*local),
+            Self::Nil(local) => ParamLocal::Nil(*local),
+            Self::Value(local) => local.clone(),
+            Self::List(local) => ParamLocal::List(local.clone()),
+            Self::Tuple(local) => local.clone(),
+            Self::Custom(local) => ParamLocal::Custom(*local),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{HostCallParameter, HostFunctionId, HostNeverFunctionId, HostedFunctionTarget};
+    use crate::plan::execution::function::GenericFunctionFunctionBody;
+    use crate::plan::execution::graph::{
+        BitArrayLocalId, BoolLocalId, CustomLocal, CustomLocalId, FloatLocalId,
+        GenericFunctionLocal, GenericFunctionLocalId, IntListLocalId, IntLocalId, ListLocal,
+        NilLocalId, ParamLocal, StringLocalId, TupleLocalId, UtfCodepointLocalId,
+    };
+    use crate::plan::execution::type_::{
+        CustomTypeId, CustomValueShape, CustomValueShapeId, FunctionShape, FunctionType,
+        GenericFunctionType, IntListTypeId, ListTypeId, ValueShapeId, ValueType,
+    };
+
+    #[test]
+    fn host_function_ids_clone_and_compare_the_exact_return_local() {
+        let first =
+            HostFunctionId::<GenericFunctionFunctionBody>::new(3, generic_function_local(5));
+        let same = Clone::clone(&first);
+        let other_return =
+            HostFunctionId::<GenericFunctionFunctionBody>::new(3, generic_function_local(6));
+        let other_index =
+            HostFunctionId::<GenericFunctionFunctionBody>::new(4, generic_function_local(5));
+
+        assert!(first == same);
+        assert!(first != other_return);
+        assert!(first != other_index);
+    }
+
+    #[test]
+    fn hosted_function_targets_preserve_value_and_never_identity() {
+        let value = HostedFunctionTarget::<GenericFunctionFunctionBody>::value(
+            HostFunctionId::new(2, generic_function_local(7)),
+        );
+        let same_value = Clone::clone(&value);
+        let never =
+            HostedFunctionTarget::<GenericFunctionFunctionBody>::never(HostNeverFunctionId::new(2));
+        let same_never = Clone::clone(&never);
+
+        assert!(value == same_value);
+        assert!(never == same_never);
+        assert!(value != never);
+        assert!(never != value);
+    }
+
+    #[test]
+    fn host_call_parameters_expose_their_exact_typed_local() {
+        let custom = CustomLocal::new(
+            CustomLocalId(8),
+            CustomValueShape::new(CustomTypeId::new(0), CustomValueShapeId::new(1)),
+        );
+        let list = ListLocal::Int {
+            local: IntListLocalId(9),
+            type_id: IntListTypeId::new(ListTypeId::new(2)),
+        };
+        let value_tuple = ParamLocal::Tuple {
+            local: TupleLocalId(7),
+            type_: vec![ValueType::Int],
+        };
+        let tuple = ParamLocal::Tuple {
+            local: TupleLocalId(10),
+            type_: vec![ValueType::Bool],
+        };
+        let cases = [
+            (
+                HostCallParameter::Int(IntLocalId(0)),
+                ParamLocal::Int(IntLocalId(0)),
+            ),
+            (
+                HostCallParameter::Float(FloatLocalId(1)),
+                ParamLocal::Float(FloatLocalId(1)),
+            ),
+            (
+                HostCallParameter::String(StringLocalId(2)),
+                ParamLocal::String(StringLocalId(2)),
+            ),
+            (
+                HostCallParameter::BitArray(BitArrayLocalId(3)),
+                ParamLocal::BitArray(BitArrayLocalId(3)),
+            ),
+            (
+                HostCallParameter::UtfCodepoint(UtfCodepointLocalId(4)),
+                ParamLocal::UtfCodepoint(UtfCodepointLocalId(4)),
+            ),
+            (
+                HostCallParameter::Bool(BoolLocalId(5)),
+                ParamLocal::Bool(BoolLocalId(5)),
+            ),
+            (
+                HostCallParameter::Nil(NilLocalId(6)),
+                ParamLocal::Nil(NilLocalId(6)),
+            ),
+            (HostCallParameter::Value(value_tuple.clone()), value_tuple),
+            (
+                HostCallParameter::List(list.clone()),
+                ParamLocal::List(list),
+            ),
+            (HostCallParameter::Tuple(tuple.clone()), tuple),
+            (
+                HostCallParameter::Custom(custom),
+                ParamLocal::Custom(custom),
+            ),
+        ];
+
+        for (parameter, expected) in cases {
+            assert_eq!(parameter.local(), expected);
+        }
+    }
+
+    fn generic_function_local(index: usize) -> GenericFunctionLocal {
+        let type_ = FunctionType::new(Vec::new(), ValueType::Int);
+        let shape = FunctionShape::new(ValueShapeId::new(0), type_.clone());
+        GenericFunctionLocal::new(
+            GenericFunctionLocalId(index),
+            GenericFunctionType::from_shapes(type_, shape),
+        )
     }
 }

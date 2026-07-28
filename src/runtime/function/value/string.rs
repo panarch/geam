@@ -103,7 +103,8 @@ pub fn main() {
         )
         .expect("host source should compile");
         let plan = plan_host_program(typed).expect("host source should plan");
-        let execution = HostedExecution::from_module_plan(plan);
+        let execution =
+            HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         assert_eq!(
             string_parameter_locals(&execution, StringFunctionId(2)),
             [ParamLocal::String(StringLocalId(0))],

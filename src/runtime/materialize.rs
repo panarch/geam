@@ -6,7 +6,7 @@ use super::evaluated::{
     EvaluatedNeverFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
     EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
-use super::state::{ListValueId, RuntimeState};
+use super::state::{ParameterListValueId, RuntimeState, StoredListValueId};
 use super::{
     BitArrayFunctionValue, BoolFunctionValue, CaptureListValue, CaptureValue, CustomFieldValue,
     CustomFunctionValue, CustomFunctionValueTarget, CustomValue, FloatFunctionValue,
@@ -36,6 +36,7 @@ pub(super) fn value(
                 .map(|value| self::value(plan, state, value))
                 .collect(),
         ),
+        EvaluatedValue::ParameterList(value) => Value::List(parameter_list(value)),
         EvaluatedValue::List(value) => Value::List(list(plan, state, &value)),
         EvaluatedValue::Function(value) => Value::Function(function(plan, state, value)),
     }
@@ -44,39 +45,45 @@ pub(super) fn value(
 fn list(
     plan: &impl RuntimeExecutionPlan,
     state: &RuntimeState<'_, impl Sized>,
-    value: &ListValueId,
+    value: &StoredListValueId,
 ) -> ListValue {
     match value {
-        ListValueId::Parameter(value) => {
-            ListValue::empty(crate::plan::ValueType::Parameter(value.type_id().item()))
+        StoredListValueId::Int(value) => ListValue::int(state.values().int_values(value).to_vec()),
+        StoredListValueId::String(value) => {
+            ListValue::string(state.values().string_values(value).to_vec())
         }
-        ListValueId::Int(value) => ListValue::int(state.int_values(value).to_vec()),
-        ListValueId::String(value) => ListValue::string(state.string_values(value).to_vec()),
-        ListValueId::BitArray(value) => ListValue::bit_array(
+        StoredListValueId::BitArray(value) => ListValue::bit_array(
             state
+                .values()
                 .bit_array_values(value)
                 .iter()
                 .map(|value| value.value())
                 .collect(),
         ),
-        ListValueId::UtfCodepoint(value) => {
-            ListValue::utf_codepoint(state.utf_codepoint_values(value).to_vec())
+        StoredListValueId::UtfCodepoint(value) => {
+            ListValue::utf_codepoint(state.values().utf_codepoint_values(value).to_vec())
         }
-        ListValueId::Custom(value) => ListValue::from_evaluated_custom(
+        StoredListValueId::Custom(value) => ListValue::from_evaluated_custom(
             plan.custom_value_type(value.type_id().item_type()),
             state
+                .values()
                 .custom_values(value)
                 .iter()
                 .cloned()
                 .map(|value| custom(plan, state, value))
                 .collect(),
         ),
-        ListValueId::Float(value) => ListValue::float(state.float_values(value).to_vec()),
-        ListValueId::Bool(value) => ListValue::bool(state.bool_values(value).to_vec()),
-        ListValueId::Nil(value) => ListValue::nil(state.nil_len(value)),
-        ListValueId::Tuple(value) => ListValue::from_evaluated_tuple(
+        StoredListValueId::Float(value) => {
+            ListValue::float(state.values().float_values(value).to_vec())
+        }
+        StoredListValueId::Bool(value) => {
+            ListValue::bool(state.values().bool_values(value).to_vec())
+        }
+        StoredListValueId::Nil(value) => ListValue::nil(state.values().nil_len(value)),
+        StoredListValueId::Tuple(value) => ListValue::from_evaluated_tuple(
             plan.tuple_list_item_type(value.type_id()),
             state
+                .values()
                 .tuple_values(value)
                 .iter()
                 .cloned()
@@ -88,26 +95,26 @@ fn list(
                 })
                 .collect(),
         ),
-        ListValueId::ParameterList(value) => {
+        StoredListValueId::ParameterList(value) => {
             let item_type = crate::plan::ValueType::Parameter(value.type_id().item_type().item());
             ListValue::from_evaluated_list(
                 item_type.clone(),
-                vec![ListValue::empty(item_type); state.parameter_list_list_len(value)],
+                vec![ListValue::empty(item_type); state.values().parameter_list_list_len(value)],
             )
         }
-        ListValueId::List(value) => ListValue::from_evaluated_list(
+        StoredListValueId::List(value) => ListValue::from_evaluated_list(
             plan.nested_list_item_type(value.type_id()),
             state
+                .values()
                 .list_values(value)
                 .iter()
-                .cloned()
-                .map(super::state::StoredListValueId::into_value)
-                .map(|value| list(plan, state, &value))
+                .map(|value| list(plan, state, value))
                 .collect(),
         ),
-        ListValueId::Function(value) => ListValue::from_evaluated_function(
+        StoredListValueId::Function(value) => ListValue::from_evaluated_function(
             plan.function_list_item_type(value.type_id()),
             state
+                .values()
                 .function_values(value)
                 .iter()
                 .cloned()
@@ -115,6 +122,10 @@ fn list(
                 .collect(),
         ),
     }
+}
+
+fn parameter_list(value: ParameterListValueId) -> ListValue {
+    ListValue::empty(crate::plan::ValueType::Parameter(value.type_id().item()))
 }
 
 fn function(
@@ -374,11 +385,10 @@ fn nested_list_values(
     value: &super::state::ListListValueId,
 ) -> Vec<ListValue> {
     state
+        .values()
         .list_values(value)
         .iter()
-        .cloned()
-        .map(super::state::StoredListValueId::into_value)
-        .map(|value| list(plan, state, &value))
+        .map(|value| list(plan, state, value))
         .collect()
 }
 
@@ -479,19 +489,20 @@ fn list_capture(
         EvaluatedListCapture::ParameterList { local, value } => CaptureListValue::ParameterList {
             local: *local,
             item_type: value.type_id().item_type().item(),
-            len: state.parameter_list_list_len(value),
+            len: state.values().parameter_list_list_len(value),
         },
         EvaluatedListCapture::Int { local, value } => CaptureListValue::Int {
             local: *local,
-            value: state.int_values(value).to_vec(),
+            value: state.values().int_values(value).to_vec(),
         },
         EvaluatedListCapture::String { local, value } => CaptureListValue::String {
             local: *local,
-            value: state.string_values(value).to_vec(),
+            value: state.values().string_values(value).to_vec(),
         },
         EvaluatedListCapture::BitArray { local, value } => CaptureListValue::BitArray {
             local: *local,
             value: state
+                .values()
                 .bit_array_values(value)
                 .iter()
                 .map(|value| value.value())
@@ -499,12 +510,13 @@ fn list_capture(
         },
         EvaluatedListCapture::UtfCodepoint { local, value } => CaptureListValue::UtfCodepoint {
             local: *local,
-            value: state.utf_codepoint_values(value).to_vec(),
+            value: state.values().utf_codepoint_values(value).to_vec(),
         },
         EvaluatedListCapture::Custom { local, value } => CaptureListValue::Custom {
             local: *local,
             item_type: plan.custom_value_type(value.type_id().item_type()),
             value: state
+                .values()
                 .custom_values(value)
                 .iter()
                 .cloned()
@@ -513,20 +525,21 @@ fn list_capture(
         },
         EvaluatedListCapture::Float { local, value } => CaptureListValue::Float {
             local: *local,
-            value: state.float_values(value).to_vec(),
+            value: state.values().float_values(value).to_vec(),
         },
         EvaluatedListCapture::Bool { local, value } => CaptureListValue::Bool {
             local: *local,
-            value: state.bool_values(value).to_vec(),
+            value: state.values().bool_values(value).to_vec(),
         },
         EvaluatedListCapture::Nil { local, value } => CaptureListValue::Nil {
             local: *local,
-            len: state.nil_len(value),
+            len: state.values().nil_len(value),
         },
         EvaluatedListCapture::Tuple { local, value } => CaptureListValue::Tuple {
             local: *local,
             item_type: plan.tuple_list_item_type(value.type_id()),
             value: state
+                .values()
                 .tuple_values(value)
                 .iter()
                 .cloned()
@@ -547,6 +560,7 @@ fn list_capture(
             local: *local,
             item_type: plan.function_list_item_type(value.type_id()),
             value: state
+                .values()
                 .function_values(value)
                 .iter()
                 .cloned()
@@ -684,37 +698,47 @@ pub fn main() {
                 crate::plan::execution::type_::ValueType::Int,
             ),
         );
-        let int_list = state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
-        let string_list = state.string(
+        let int_list = state
+            .values_mut()
+            .int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
+        let string_list = state.values_mut().string(
             plan.string_list_function_id(0).type_id(),
             vec!["one".into()],
         );
         let bit_array = EvaluatedBitArray::new(BitVec::from_vec(vec![1]));
-        let bit_array_list = state.bit_array(
+        let bit_array_list = state.values_mut().bit_array(
             plan.bit_array_list_function_id(0).type_id(),
             vec![bit_array.clone()],
         );
-        let utf_codepoint_list = state.utf_codepoint(
+        let utf_codepoint_list = state.values_mut().utf_codepoint(
             plan.utf_codepoint_list_function_id(0).type_id(),
             vec!['\u{10ffff}'],
         );
-        let custom_list = state.custom(CustomListAllocation::new(
+        let custom_list = state.values_mut().custom(CustomListAllocation::new(
             plan.custom_list_function_id(0).type_id(),
             vec![custom_value.clone()],
         ));
-        let float_list = state.float(plan.float_list_function_id(0).type_id(), vec![1.5]);
-        let bool_list = state.bool(plan.bool_list_function_id(0).type_id(), vec![true]);
-        let nil_list = state.nil(plan.nil_list_function_id(0).type_id(), 1);
-        let tuple_list = state.tuple(
+        let float_list = state
+            .values_mut()
+            .float(plan.float_list_function_id(0).type_id(), vec![1.5]);
+        let bool_list = state
+            .values_mut()
+            .bool(plan.bool_list_function_id(0).type_id(), vec![true]);
+        let nil_list = state
+            .values_mut()
+            .nil(plan.nil_list_function_id(0).type_id(), 1);
+        let tuple_list = state.values_mut().tuple(
             plan.tuple_list_function_id(0).type_id(),
             vec![vec![EvaluatedValue::Int(1.into())]],
         );
-        let nested_child = state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
-        let nested_list = state.list(
+        let nested_child = state
+            .values_mut()
+            .int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
+        let nested_list = state.values_mut().list(
             plan.list_list_function_id(0).type_id(),
             vec![nested_child.into()],
         );
-        let function_list = state.function(
+        let function_list = state.values_mut().function(
             plan.function_list_function_id(0).type_id(),
             vec![EvaluatedFunctionValue::from(int_function)],
         );
@@ -732,17 +756,17 @@ pub fn main() {
                 EvaluatedValue::Bool(true),
                 EvaluatedValue::Nil,
                 EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
-                EvaluatedValue::List(ListValueId::Int(int_list)),
-                EvaluatedValue::List(ListValueId::String(string_list)),
-                EvaluatedValue::List(ListValueId::BitArray(bit_array_list)),
-                EvaluatedValue::List(ListValueId::UtfCodepoint(utf_codepoint_list)),
-                EvaluatedValue::List(ListValueId::Custom(custom_list)),
-                EvaluatedValue::List(ListValueId::Float(float_list)),
-                EvaluatedValue::List(ListValueId::Bool(bool_list)),
-                EvaluatedValue::List(ListValueId::Nil(nil_list)),
-                EvaluatedValue::List(ListValueId::Tuple(tuple_list)),
-                EvaluatedValue::List(ListValueId::List(nested_list)),
-                EvaluatedValue::List(ListValueId::Function(function_list)),
+                EvaluatedValue::from(ListValueId::Int(int_list)),
+                EvaluatedValue::from(ListValueId::String(string_list)),
+                EvaluatedValue::from(ListValueId::BitArray(bit_array_list)),
+                EvaluatedValue::from(ListValueId::UtfCodepoint(utf_codepoint_list)),
+                EvaluatedValue::from(ListValueId::Custom(custom_list)),
+                EvaluatedValue::from(ListValueId::Float(float_list)),
+                EvaluatedValue::from(ListValueId::Bool(bool_list)),
+                EvaluatedValue::from(ListValueId::Nil(nil_list)),
+                EvaluatedValue::from(ListValueId::Tuple(tuple_list)),
+                EvaluatedValue::from(ListValueId::List(nested_list)),
+                EvaluatedValue::from(ListValueId::Function(function_list)),
             ]),
         );
 
@@ -950,37 +974,47 @@ pub fn main() {
                 .params(function_function_owner.body()),
         );
         let function_function_local = function_function_local(function_function_param.local());
-        let int_list = state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
-        let string_list = state.string(
+        let int_list = state
+            .values_mut()
+            .int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
+        let string_list = state.values_mut().string(
             plan.string_list_function_id(0).type_id(),
             vec!["one".into()],
         );
         let bit_array = EvaluatedBitArray::new(BitVec::from_vec(vec![1]));
-        let bit_array_list = state.bit_array(
+        let bit_array_list = state.values_mut().bit_array(
             plan.bit_array_list_function_id(0).type_id(),
             vec![bit_array.clone()],
         );
-        let utf_codepoint_list = state.utf_codepoint(
+        let utf_codepoint_list = state.values_mut().utf_codepoint(
             plan.utf_codepoint_list_function_id(0).type_id(),
             vec!['\u{10ffff}'],
         );
-        let custom_list = state.custom(CustomListAllocation::new(
+        let custom_list = state.values_mut().custom(CustomListAllocation::new(
             plan.custom_list_function_id(0).type_id(),
             vec![custom_value.clone()],
         ));
-        let float_list = state.float(plan.float_list_function_id(0).type_id(), vec![1.5]);
-        let bool_list = state.bool(plan.bool_list_function_id(0).type_id(), vec![true]);
-        let nil_list = state.nil(plan.nil_list_function_id(0).type_id(), 1);
-        let tuple_list = state.tuple(
+        let float_list = state
+            .values_mut()
+            .float(plan.float_list_function_id(0).type_id(), vec![1.5]);
+        let bool_list = state
+            .values_mut()
+            .bool(plan.bool_list_function_id(0).type_id(), vec![true]);
+        let nil_list = state
+            .values_mut()
+            .nil(plan.nil_list_function_id(0).type_id(), 1);
+        let tuple_list = state.values_mut().tuple(
             plan.tuple_list_function_id(0).type_id(),
             vec![vec![EvaluatedValue::Int(1.into())]],
         );
-        let nested_child = state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
-        let nested_list = state.list(
+        let nested_child = state
+            .values_mut()
+            .int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
+        let nested_list = state.values_mut().list(
             plan.list_list_function_id(0).type_id(),
             vec![nested_child.into()],
         );
-        let function_list = state.function(
+        let function_list = state.values_mut().function(
             plan.function_list_function_id(0).type_id(),
             vec![EvaluatedFunctionValue::from(int_function.clone())],
         );

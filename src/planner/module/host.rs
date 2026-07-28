@@ -1,19 +1,17 @@
 use super::constant::{self, plan_constant_bodies, reserve_constants};
 use super::custom_type;
 use super::registry::{ModuleRegistry, ProgramRegistry};
-use super::{ModuleRole, function_table};
+use super::{ModuleRole, discarded_function_params, function_table};
 use crate::frontend::{HostedTypedProgram, HostedTypedProgramModule};
 use crate::host::{
-    HostFunctionSchema, HostParameter as RegisteredHostParameter, HostProfile,
-    RegisteredHostFunction, RegisteredHostImplementationId,
+    HostFunctionSchema, HostProfile, RegisteredHostFunction, RegisteredHostImplementationId,
 };
 use crate::plan::{
-    BoolLocalId, ConstantTemplates, FunctionTemplateId, HostFunctionImplementation,
-    HostFunctionTemplate, HostParameter as PlannedHostParameter, HostedFunctionTemplate,
-    HostedModulePlan, HostedPlannedModule, HostedPlannedModuleParts, IntLocalId, ModuleId,
-    ParamBinding, ParamLocal, SourceContext,
+    ConstantTemplates, FunctionTemplateId, HostFunctionTemplate, HostImplementationBinding,
+    HostedFunctionTemplate, HostedModulePlan, HostedPlannedModule, HostedPlannedModuleParts,
+    ModuleId, SourceContext,
 };
-use crate::planner::context::{FunctionInfo, FunctionParam, PlanContext};
+use crate::planner::context::{FunctionInfo, PlanContext};
 use crate::planner::error::{HostProviderLinkReason, PlanError};
 use crate::planner::function::{plan_function, plan_selected_external_fallback};
 use crate::planner::type_parameter::TypeParameterScope;
@@ -26,11 +24,11 @@ pub fn plan_host_program<Profile: HostProfile>(
 ) -> Result<HostedModulePlan<Profile>, PlanError> {
     let (root_index, modules, providers, implementations) = program.into_parts();
     plan_host_program_schema(root_index, modules, providers).map(|planned| {
-        let host_implementations = planned
+        let implementation_bindings = planned
             .implementations
             .into_iter()
             .map(|(template, implementation)| {
-                HostFunctionImplementation::new(
+                HostImplementationBinding::new(
                     template,
                     implementations.implementation(implementation),
                 )
@@ -40,7 +38,7 @@ pub fn plan_host_program<Profile: HostProfile>(
             planned.root,
             planned.entry,
             planned.modules,
-            host_implementations,
+            implementation_bindings,
         )
     })
 }
@@ -318,10 +316,223 @@ fn reserve_hosted_constants(
         .into_iter()
         .map(reserve_hosted_module_constants)
         .collect::<Result<Vec<_>, _>>()
-        .map(|reserved| {
-            let (registry_modules, modules) = reserved.into_iter().unzip();
-            (ProgramRegistry::new(registry_modules), modules)
+        .and_then(|reserved| {
+            let (registry_modules, modules): (Vec<_>, Vec<_>) = reserved.into_iter().unzip();
+            let registry = ProgramRegistry::new(registry_modules);
+            validate_host_custom_schemas(&registry, &modules)?;
+            Ok((registry, modules))
         })
+}
+
+fn validate_host_custom_schemas(
+    registry: &ProgramRegistry,
+    modules: &[ModuleWithConstants],
+) -> Result<(), PlanError> {
+    for module in modules {
+        let access = match module.source_context {
+            Some(_) => HostCustomTypeAccess::SourceDeclaration,
+            None => HostCustomTypeAccess::SourceLessPublicSurface,
+        };
+        for function in &module.functions {
+            let LinkedFunction::Host { template, .. } = function else {
+                continue;
+            };
+            for actual in template.custom_schemas() {
+                validate_host_custom_schema(
+                    registry,
+                    template.package(),
+                    template.site(),
+                    template.signature(),
+                    actual,
+                    access,
+                )?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_host_custom_schema(
+    registry: &ProgramRegistry,
+    package: &EcoString,
+    site: &crate::plan::HostCallSite,
+    signature: &crate::plan::FunctionTemplateSignature,
+    actual: &crate::host::HostCustomTypeSchema,
+    access: HostCustomTypeAccess,
+) -> Result<(), PlanError> {
+    let name = crate::plan::CustomTypeName::new(
+        actual.package().clone(),
+        actual.module().clone(),
+        actual.name().clone(),
+    );
+    let definition = host_custom_type_definition(registry, package, site, &name)?;
+    let visible = match access {
+        HostCustomTypeAccess::SourceLessPublicSurface => {
+            !definition.is_opaque()
+                && definition.publicity() == crate::plan::CustomTypePublicity::Public
+        }
+        HostCustomTypeAccess::SourceDeclaration => {
+            let same_package = definition.name().package() == package;
+            let same_module = same_package && definition.name().module() == site.module();
+            if definition.is_opaque() {
+                same_module
+            } else {
+                match definition.publicity() {
+                    crate::plan::CustomTypePublicity::Public => true,
+                    crate::plan::CustomTypePublicity::Internal => same_package,
+                    crate::plan::CustomTypePublicity::Private => same_module,
+                }
+            }
+        }
+    };
+    if !visible {
+        return Err(PlanError::HostProviderLink {
+            package: package.clone(),
+            module: site.module().clone(),
+            function: site.function().clone(),
+            reason: Box::new(HostProviderLinkReason::CustomTypeVisibility { custom_type: name }),
+        });
+    }
+    let expected = host_custom_type_schema(definition);
+    if actual != &expected {
+        return Err(PlanError::HostProviderLink {
+            package: package.clone(),
+            module: site.module().clone(),
+            function: site.function().clone(),
+            reason: Box::new(HostProviderLinkReason::CustomSchemaMismatch {
+                expected,
+                actual: actual.clone(),
+            }),
+        });
+    }
+    for shape in signature
+        .shape()
+        .argument_shapes()
+        .iter()
+        .chain([signature.shape().return_shape()])
+    {
+        if let Some(actual) =
+            invalid_host_custom_type_argument_count(shape, &name, definition.parameters().len())
+        {
+            return Err(PlanError::HostProviderLink {
+                package: package.clone(),
+                module: site.module().clone(),
+                function: site.function().clone(),
+                reason: Box::new(HostProviderLinkReason::CustomTypeArgumentCount {
+                    custom_type: name,
+                    expected: definition.parameters().len(),
+                    actual,
+                }),
+            });
+        }
+    }
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum HostCustomTypeAccess {
+    SourceDeclaration,
+    SourceLessPublicSurface,
+}
+
+fn invalid_host_custom_type_argument_count(
+    shape: &crate::plan::ValueShape,
+    custom_type: &crate::plan::CustomTypeName,
+    expected: usize,
+) -> Option<usize> {
+    let mut pending = vec![shape];
+    while let Some(shape) = pending.pop() {
+        match shape {
+            crate::plan::ValueShape::Tuple(elements) => {
+                pending.extend(elements.iter().rev());
+            }
+            crate::plan::ValueShape::List(item) => pending.push(item),
+            crate::plan::ValueShape::Custom(custom) => {
+                if custom.type_name() == custom_type && custom.arguments().len() != expected {
+                    return Some(custom.arguments().len());
+                }
+                pending.extend(custom.arguments().iter().rev());
+            }
+            crate::plan::ValueShape::Parameter(_)
+            | crate::plan::ValueShape::Int
+            | crate::plan::ValueShape::Float
+            | crate::plan::ValueShape::String
+            | crate::plan::ValueShape::BitArray
+            | crate::plan::ValueShape::UtfCodepoint
+            | crate::plan::ValueShape::Bool
+            | crate::plan::ValueShape::Nil
+            | crate::plan::ValueShape::Function(_) => {}
+        }
+    }
+    None
+}
+
+fn host_custom_type_definition<'registry>(
+    registry: &'registry ProgramRegistry,
+    package: &EcoString,
+    site: &crate::plan::HostCallSite,
+    name: &crate::plan::CustomTypeName,
+) -> Result<&'registry crate::plan::CustomTypeDefinition, PlanError> {
+    registry
+        .custom_type(name)
+        .ok_or_else(|| PlanError::HostProviderLink {
+            package: package.clone(),
+            module: site.module().clone(),
+            function: site.function().clone(),
+            reason: Box::new(HostProviderLinkReason::MissingCustomType {
+                custom_type: name.clone(),
+            }),
+        })
+}
+
+fn host_custom_type_schema(
+    definition: &crate::plan::CustomTypeDefinition,
+) -> crate::host::HostCustomTypeSchema {
+    crate::host::HostCustomTypeSchema::new(
+        definition.name().package().clone(),
+        definition.name().module().clone(),
+        definition.name().name().clone(),
+        definition.parameters().len(),
+        definition.constructors().iter().map(|constructor| {
+            crate::host::HostCustomConstructorSchema::new(
+                constructor.name().clone(),
+                constructor.fields().iter().map(|field| {
+                    crate::host::HostCustomFieldSchema::new(
+                        field.label().cloned(),
+                        host_schema_type(field.type_()),
+                    )
+                }),
+            )
+        }),
+    )
+}
+
+fn host_schema_type(type_: &crate::plan::CustomTypeTemplate) -> crate::host::HostSchemaType {
+    use crate::host::HostSchemaType as H;
+    use crate::plan::CustomTypeTemplate as T;
+
+    match type_ {
+        T::Int => H::Int,
+        T::Float => H::Float,
+        T::String => H::String,
+        T::BitArray => H::BitArray,
+        T::UtfCodepoint => H::UtfCodepoint,
+        T::Bool => H::Bool,
+        T::Nil => H::Nil,
+        T::Tuple(elements) => H::tuple(elements.iter().map(host_schema_type)),
+        T::List(item) => H::list(host_schema_type(item)),
+        T::Function { arguments, return_ } => H::function(
+            arguments.iter().map(host_schema_type),
+            host_schema_type(return_),
+        ),
+        T::Custom { name, arguments } => H::custom(
+            name.package().clone(),
+            name.module().clone(),
+            name.name().clone(),
+            arguments.iter().map(host_schema_type),
+        ),
+        T::Parameter(parameter) => H::parameter(parameter.0),
+    }
 }
 
 fn reserve_hosted_module_constants(
@@ -457,7 +668,7 @@ fn plan_hosted_function(
             implementation,
         } => {
             implementations.push((template.id(), implementation));
-            Ok(HostedFunctionTemplate::HostTemplate(template))
+            Ok(HostedFunctionTemplate::HostTemplate(Box::new(template)))
         }
     }
 }
@@ -544,7 +755,7 @@ fn bind_source_host_function(
     source: &FunctionInfo,
 ) -> Result<(HostFunctionTemplate, RegisteredHostImplementationId), PlanError> {
     let (schema, implementation) = definition.into_parts();
-    let (template_params, registered_shape) = host_function_layout(&schema);
+    let registered_shape = host_function_shape(&schema);
     if source.signature.scheme() != schema.scheme() || source.signature.shape() != &registered_shape
     {
         return Err(PlanError::HostProviderLink {
@@ -563,7 +774,8 @@ fn bind_source_host_function(
         source.signature.clone(),
         package,
         crate::plan::HostCallSite::new(module, schema.name().clone(), source.definition_span),
-        template_params,
+        schema.layout().to_vec().into_boxed_slice(),
+        schema.custom_schemas().to_vec().into_boxed_slice(),
         schema.type_().clone(),
     );
     Ok((template, implementation))
@@ -576,7 +788,7 @@ fn bind_source_less_host_function(
     definition: RegisteredHostFunction,
 ) -> (HostFunctionTemplate, RegisteredHostImplementationId) {
     let (schema, implementation) = definition.into_parts();
-    let (template_params, registered_shape) = host_function_layout(&schema);
+    let registered_shape = host_function_shape(&schema);
     let signature =
         crate::plan::FunctionTemplateSignature::new(id, schema.scheme().clone(), registered_shape);
     let template = HostFunctionTemplate::from_signature(
@@ -587,90 +799,654 @@ fn bind_source_less_host_function(
             schema.name().clone(),
             crate::plan::SourceSpan::new(0, 0),
         ),
-        template_params,
+        schema.layout().to_vec().into_boxed_slice(),
+        schema.custom_schemas().to_vec().into_boxed_slice(),
         schema.type_().clone(),
     );
     (template, implementation)
 }
 
-fn host_function_layout(
-    schema: &HostFunctionSchema,
-) -> (Vec<PlannedHostParameter>, crate::plan::FunctionShape) {
-    let mut template_params = Vec::with_capacity(schema.parameters().len());
-    for parameter in schema.parameters() {
-        template_params.push(match parameter {
-            RegisteredHostParameter::Int(slot) => {
-                PlannedHostParameter::Int(IntLocalId(slot.index()))
-            }
-            RegisteredHostParameter::Float(slot) => {
-                PlannedHostParameter::Float(crate::plan::FloatLocalId(slot.index()))
-            }
-            RegisteredHostParameter::String(slot) => {
-                PlannedHostParameter::String(crate::plan::StringLocalId(slot.index()))
-            }
-            RegisteredHostParameter::BitArray(slot) => {
-                PlannedHostParameter::BitArray(crate::plan::BitArrayLocalId(slot.index()))
-            }
-            RegisteredHostParameter::UtfCodepoint(slot) => {
-                PlannedHostParameter::UtfCodepoint(crate::plan::UtfCodepointLocalId(slot.index()))
-            }
-            RegisteredHostParameter::Bool(slot) => {
-                PlannedHostParameter::Bool(BoolLocalId(slot.index()))
-            }
-            RegisteredHostParameter::Nil(slot) => {
-                PlannedHostParameter::Nil(crate::plan::NilLocalId(slot.index()))
-            }
-        });
-    }
-    let registered_shape = crate::plan::FunctionShape::new(
-        template_params
+fn host_function_shape(schema: &HostFunctionSchema) -> crate::plan::FunctionShape {
+    crate::plan::FunctionShape::new(
+        schema
+            .parameters()
             .iter()
-            .map(PlannedHostParameter::shape)
+            .map(crate::host::HostTypeDescriptor::value_shape)
             .collect(),
-        crate::plan::ValueShape::from_value_type(schema.return_type().value_type()),
-    );
-    (template_params, registered_shape)
+        schema.return_type().value_shape(),
+    )
 }
 
 fn host_function_info(template: &HostFunctionTemplate) -> FunctionInfo {
-    let params = template
-        .parameters()
-        .iter()
-        .map(|parameter| {
-            let local = match parameter {
-                PlannedHostParameter::Int(local) => ParamLocal::int(*local),
-                PlannedHostParameter::Float(local) => ParamLocal::float(*local),
-                PlannedHostParameter::String(local) => ParamLocal::string(*local),
-                PlannedHostParameter::BitArray(local) => ParamLocal::bit_array(*local),
-                PlannedHostParameter::UtfCodepoint(local) => ParamLocal::utf_codepoint(*local),
-                PlannedHostParameter::Bool(local) => ParamLocal::bool(*local),
-                PlannedHostParameter::Nil(local) => ParamLocal::nil(*local),
-            };
-            FunctionParam::new(local, parameter.shape(), ParamBinding::Discard, None)
-        })
-        .collect();
+    let shape = template.signature().shape();
     FunctionInfo {
         signature: template.signature().clone(),
         type_parameters: TypeParameterScope::default(),
-        return_shape: template.signature().shape().return_shape().clone(),
-        params,
+        return_shape: shape.return_shape().clone(),
+        params: discarded_function_params(shape.argument_shapes()),
         definition_span: template.site().span(),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::plan_host_program;
-    use crate::frontend::{ModuleSource, PackageSource, compile_typed_host_program};
-    use crate::host::{HostModule, HostProviderModule, HostProviderSet, StatelessHostProfile};
-    use crate::plan::{
-        BitArrayLocalId, BoolLocalId, FloatLocalId, FunctionShape, FunctionTemplateId,
-        FunctionType, HostParameter, IntLocalId, ModuleId, NilLocalId, StringLocalId,
-        UtfCodepointLocalId, ValueShape, ValueType,
+    use super::{
+        HostCustomTypeAccess, LinkedFunction, ModuleWithConstants, host_schema_type,
+        plan_host_program, validate_host_custom_schema, validate_host_custom_schemas,
     };
+    use crate::frontend::{ModuleSource, PackageSource, compile_typed_host_program};
+    use crate::host::{
+        HostCustomConstructorSchema, HostCustomFieldSchema, HostCustomTypeSchema, HostModule,
+        HostParameter, HostProviderModule, HostProviderSet, HostSchemaType, StatelessHostProfile,
+    };
+    use crate::plan::{
+        CustomConstructorDefinition, CustomConstructorRefinement, CustomFieldDefinition,
+        CustomTypeDefinition, CustomTypeName, CustomTypeParameterId, CustomTypePublicity,
+        CustomTypeTemplate, CustomValueShape, FunctionShape, FunctionTemplateId,
+        FunctionTemplateSignature, FunctionType, HostCallSite, HostFunctionTemplate, ModuleId,
+        SourceSpan, TypeParameterId, TypeScheme, ValueShape, ValueType,
+    };
+    use crate::planner::context::AnonymousFunctions;
+    use crate::planner::module::constant::ConstantSignatures;
+    use crate::planner::module::registry::{ModuleRegistry, ProgramRegistry};
     use crate::planner::{HostProviderLinkReason, PlanError, UnsupportedFunctionReason};
     use ecow::EcoString;
     use num_bigint::BigInt;
+
+    #[test]
+    fn maps_every_planned_custom_field_type_to_the_exact_host_schema() {
+        let custom_name = CustomTypeName::new("domain".into(), "domain/tree".into(), "Tree".into());
+        let cases = [
+            (CustomTypeTemplate::Int, HostSchemaType::Int),
+            (CustomTypeTemplate::Float, HostSchemaType::Float),
+            (CustomTypeTemplate::String, HostSchemaType::String),
+            (CustomTypeTemplate::BitArray, HostSchemaType::BitArray),
+            (
+                CustomTypeTemplate::UtfCodepoint,
+                HostSchemaType::UtfCodepoint,
+            ),
+            (CustomTypeTemplate::Bool, HostSchemaType::Bool),
+            (CustomTypeTemplate::Nil, HostSchemaType::Nil),
+            (
+                CustomTypeTemplate::Tuple(vec![CustomTypeTemplate::Int, CustomTypeTemplate::Bool]),
+                HostSchemaType::tuple([HostSchemaType::Int, HostSchemaType::Bool]),
+            ),
+            (
+                CustomTypeTemplate::List(Box::new(CustomTypeTemplate::String)),
+                HostSchemaType::list(HostSchemaType::String),
+            ),
+            (
+                CustomTypeTemplate::Function {
+                    arguments: vec![CustomTypeTemplate::Int, CustomTypeTemplate::Bool],
+                    return_: Box::new(CustomTypeTemplate::String),
+                },
+                HostSchemaType::function(
+                    [HostSchemaType::Int, HostSchemaType::Bool],
+                    HostSchemaType::String,
+                ),
+            ),
+            (
+                CustomTypeTemplate::Custom {
+                    name: custom_name.clone(),
+                    arguments: vec![CustomTypeTemplate::Parameter(CustomTypeParameterId(0))],
+                },
+                HostSchemaType::custom(
+                    "domain",
+                    "domain/tree",
+                    "Tree",
+                    [HostSchemaType::parameter(0)],
+                ),
+            ),
+            (
+                CustomTypeTemplate::Parameter(CustomTypeParameterId(1)),
+                HostSchemaType::parameter(1),
+            ),
+        ];
+
+        for (template, expected) in cases {
+            assert_eq!(host_schema_type(&template), expected);
+        }
+    }
+
+    #[test]
+    fn source_less_host_custom_type_requires_a_planned_definition() {
+        let package = EcoString::from("application");
+        let site = HostCallSite::new("host/custom".into(), "accept".into(), SourceSpan::new(0, 0));
+        let signature = FunctionTemplateSignature::new(
+            FunctionTemplateId::in_module(ModuleId::new(0), 0),
+            TypeScheme::new(0),
+            FunctionShape::new(Vec::new(), ValueShape::Bool),
+        );
+        let actual = HostCustomTypeSchema::new("application", "domain/missing", "Missing", 0, []);
+        let registry = ProgramRegistry::new(Vec::new());
+
+        assert_eq!(
+            validate_host_custom_schema(
+                &registry,
+                &package,
+                &site,
+                &signature,
+                &actual,
+                HostCustomTypeAccess::SourceLessPublicSurface,
+            )
+            .err(),
+            Some(PlanError::HostProviderLink {
+                package: "application".into(),
+                module: "host/custom".into(),
+                function: "accept".into(),
+                reason: Box::new(HostProviderLinkReason::MissingCustomType {
+                    custom_type: CustomTypeName::new(
+                        "application".into(),
+                        "domain/missing".into(),
+                        "Missing".into(),
+                    ),
+                }),
+            }),
+        );
+    }
+
+    #[test]
+    fn validates_every_custom_schema_and_nested_type_argument_in_a_hosted_module() {
+        let custom_type = CustomTypeName::new("application".into(), "main".into(), "Boxed".into());
+        let definition = CustomTypeDefinition::new(
+            custom_type.clone(),
+            CustomTypePublicity::Public,
+            false,
+            vec![CustomTypeParameterId(0)],
+            vec![CustomConstructorDefinition::new(
+                "Boxed".into(),
+                0,
+                vec![CustomFieldDefinition::new(
+                    Some("value".into()),
+                    CustomTypeTemplate::Parameter(CustomTypeParameterId(0)),
+                )],
+            )],
+        );
+        let registry = ProgramRegistry::new(vec![ModuleRegistry::new(
+            "main".into(),
+            vec![definition.clone()],
+            std::collections::HashMap::new(),
+            ConstantSignatures::default(),
+        )]);
+        let expected = HostCustomTypeSchema::new(
+            "application",
+            "main",
+            "Boxed",
+            1,
+            [HostCustomConstructorSchema::new(
+                "Boxed",
+                [HostCustomFieldSchema::new(
+                    Some("value"),
+                    HostSchemaType::parameter(0),
+                )],
+            )],
+        );
+        let parameter = TypeParameterId(0);
+        let shape = FunctionShape::new(
+            vec![ValueShape::List(Box::new(ValueShape::Custom(
+                CustomValueShape::new(
+                    custom_type,
+                    vec![ValueShape::Parameter(parameter)],
+                    CustomConstructorRefinement::Any,
+                ),
+            )))],
+            ValueShape::Bool,
+        );
+        let type_ = shape.type_();
+        let module = ModuleId::new(0);
+        let signature = FunctionTemplateSignature::new(
+            FunctionTemplateId::in_module(module, 0),
+            TypeScheme::new(1),
+            shape,
+        );
+        let template = HostFunctionTemplate::from_signature(
+            signature,
+            "application".into(),
+            HostCallSite::new("main".into(), "accept".into(), SourceSpan::new(0, 0)),
+            Vec::new().into_boxed_slice(),
+            vec![expected].into_boxed_slice(),
+            type_,
+        );
+        let registered = HostProviderSet::new([HostModule::new("unused", "host/unused")
+            .expect("host module should be valid")
+            .with_function("unused", bool::default)
+            .expect("host function should be valid")])
+        .expect("host module should be unique")
+        .into_registered()
+        .0;
+        let (_, _, functions) = registered
+            .into_iter()
+            .next()
+            .expect("one registered module should exist")
+            .into_parts();
+        let (_, implementation) = functions
+            .into_iter()
+            .next()
+            .expect("one registered function should exist")
+            .into_parts();
+        let (_, constants) = super::reserve_constants(module, Vec::new())
+            .expect("empty constants should reserve")
+            .into_parts();
+        let modules = [ModuleWithConstants {
+            id: module,
+            package: "application".into(),
+            source_context: None,
+            custom_types: vec![definition],
+            functions: vec![LinkedFunction::Host {
+                template,
+                implementation,
+            }],
+            constants,
+            anonymous_functions: AnonymousFunctions::in_module(module, 1),
+        }];
+
+        assert_eq!(validate_host_custom_schemas(&registry, &modules), Ok(()));
+    }
+
+    #[test]
+    fn source_provider_rejects_a_custom_schema_mismatch_before_shape_validation() {
+        let custom_type = CustomTypeName::new(
+            "application".into(),
+            "domain/marker".into(),
+            "Marker".into(),
+        );
+        let definition = CustomTypeDefinition::new(
+            custom_type,
+            CustomTypePublicity::Public,
+            false,
+            Vec::new(),
+            vec![CustomConstructorDefinition::new(
+                "Expected".into(),
+                0,
+                Vec::new(),
+            )],
+        );
+        let registry = ProgramRegistry::new(vec![ModuleRegistry::new(
+            "domain/marker".into(),
+            vec![definition],
+            std::collections::HashMap::new(),
+            ConstantSignatures::default(),
+        )]);
+        let package = EcoString::from("application");
+        let site = HostCallSite::new("host/marker".into(), "accept".into(), SourceSpan::new(0, 0));
+        let signature = FunctionTemplateSignature::new(
+            FunctionTemplateId::in_module(ModuleId::new(0), 0),
+            TypeScheme::new(0),
+            FunctionShape::new(Vec::new(), ValueShape::Bool),
+        );
+        let actual = HostCustomTypeSchema::new(
+            "application",
+            "domain/marker",
+            "Marker",
+            0,
+            [HostCustomConstructorSchema::new(
+                "Actual",
+                Vec::<HostCustomFieldSchema>::new(),
+            )],
+        );
+
+        assert_eq!(
+            validate_host_custom_schema(
+                &registry,
+                &package,
+                &site,
+                &signature,
+                &actual,
+                HostCustomTypeAccess::SourceDeclaration,
+            )
+            .err(),
+            Some(PlanError::HostProviderLink {
+                package: "application".into(),
+                module: "host/marker".into(),
+                function: "accept".into(),
+                reason: Box::new(HostProviderLinkReason::CustomSchemaMismatch {
+                    expected: HostCustomTypeSchema::new(
+                        "application",
+                        "domain/marker",
+                        "Marker",
+                        0,
+                        [HostCustomConstructorSchema::new(
+                            "Expected",
+                            Vec::<HostCustomFieldSchema>::new(),
+                        )],
+                    ),
+                    actual,
+                }),
+            }),
+        );
+    }
+
+    #[test]
+    fn host_custom_types_preserve_source_visibility() {
+        let custom_type =
+            CustomTypeName::new("domain".into(), "domain/marker".into(), "Marker".into());
+        let actual = HostCustomTypeSchema::new(
+            "domain",
+            "domain/marker",
+            "Marker",
+            0,
+            [HostCustomConstructorSchema::new(
+                "Marker",
+                Vec::<HostCustomFieldSchema>::new(),
+            )],
+        );
+        let signature = FunctionTemplateSignature::new(
+            FunctionTemplateId::in_module(ModuleId::new(0), 0),
+            TypeScheme::new(0),
+            FunctionShape::new(Vec::new(), ValueShape::Bool),
+        );
+        let cases = [
+            (
+                CustomTypePublicity::Public,
+                false,
+                EcoString::from("application"),
+                EcoString::from("host/custom"),
+                Ok(()),
+            ),
+            (
+                CustomTypePublicity::Internal,
+                false,
+                EcoString::from("domain"),
+                EcoString::from("host/custom"),
+                Ok(()),
+            ),
+            (
+                CustomTypePublicity::Private,
+                false,
+                EcoString::from("domain"),
+                EcoString::from("domain/marker"),
+                Ok(()),
+            ),
+            (
+                CustomTypePublicity::Public,
+                true,
+                EcoString::from("domain"),
+                EcoString::from("domain/marker"),
+                Ok(()),
+            ),
+            (
+                CustomTypePublicity::Internal,
+                false,
+                EcoString::from("application"),
+                EcoString::from("host/custom"),
+                Err(PlanError::HostProviderLink {
+                    package: "application".into(),
+                    module: "host/custom".into(),
+                    function: "accept".into(),
+                    reason: Box::new(HostProviderLinkReason::CustomTypeVisibility {
+                        custom_type: custom_type.clone(),
+                    }),
+                }),
+            ),
+            (
+                CustomTypePublicity::Private,
+                false,
+                EcoString::from("domain"),
+                EcoString::from("host/custom"),
+                Err(PlanError::HostProviderLink {
+                    package: "domain".into(),
+                    module: "host/custom".into(),
+                    function: "accept".into(),
+                    reason: Box::new(HostProviderLinkReason::CustomTypeVisibility {
+                        custom_type: custom_type.clone(),
+                    }),
+                }),
+            ),
+            (
+                CustomTypePublicity::Public,
+                true,
+                EcoString::from("domain"),
+                EcoString::from("host/custom"),
+                Err(PlanError::HostProviderLink {
+                    package: "domain".into(),
+                    module: "host/custom".into(),
+                    function: "accept".into(),
+                    reason: Box::new(HostProviderLinkReason::CustomTypeVisibility {
+                        custom_type: custom_type.clone(),
+                    }),
+                }),
+            ),
+        ];
+
+        for (publicity, opaque, package, module, expected) in cases {
+            let definition = CustomTypeDefinition::new(
+                custom_type.clone(),
+                publicity,
+                opaque,
+                Vec::new(),
+                vec![CustomConstructorDefinition::new(
+                    "Marker".into(),
+                    0,
+                    Vec::new(),
+                )],
+            );
+            let registry = ProgramRegistry::new(vec![ModuleRegistry::new(
+                "domain/marker".into(),
+                vec![definition],
+                std::collections::HashMap::new(),
+                ConstantSignatures::default(),
+            )]);
+            let site = HostCallSite::new(module, "accept".into(), SourceSpan::new(0, 0));
+
+            assert_eq!(
+                validate_host_custom_schema(
+                    &registry,
+                    &package,
+                    &site,
+                    &signature,
+                    &actual,
+                    HostCustomTypeAccess::SourceDeclaration,
+                ),
+                expected,
+            );
+        }
+    }
+
+    #[test]
+    fn source_less_host_custom_types_require_a_public_non_opaque_surface() {
+        let custom_type =
+            CustomTypeName::new("domain".into(), "domain/marker".into(), "Marker".into());
+        let actual = HostCustomTypeSchema::new(
+            "domain",
+            "domain/marker",
+            "Marker",
+            0,
+            [HostCustomConstructorSchema::new(
+                "Marker",
+                Vec::<HostCustomFieldSchema>::new(),
+            )],
+        );
+        let signature = FunctionTemplateSignature::new(
+            FunctionTemplateId::in_module(ModuleId::new(0), 0),
+            TypeScheme::new(0),
+            FunctionShape::new(Vec::new(), ValueShape::Bool),
+        );
+
+        for (publicity, opaque) in [
+            (CustomTypePublicity::Internal, false),
+            (CustomTypePublicity::Private, false),
+            (CustomTypePublicity::Public, true),
+        ] {
+            let definition = CustomTypeDefinition::new(
+                custom_type.clone(),
+                publicity,
+                opaque,
+                Vec::new(),
+                vec![CustomConstructorDefinition::new(
+                    "Marker".into(),
+                    0,
+                    Vec::new(),
+                )],
+            );
+            let registry = ProgramRegistry::new(vec![ModuleRegistry::new(
+                "domain/marker".into(),
+                vec![definition],
+                std::collections::HashMap::new(),
+                ConstantSignatures::default(),
+            )]);
+            let package = EcoString::from("domain");
+            let site =
+                HostCallSite::new("host/custom".into(), "accept".into(), SourceSpan::new(0, 0));
+
+            assert_eq!(
+                validate_host_custom_schema(
+                    &registry,
+                    &package,
+                    &site,
+                    &signature,
+                    &actual,
+                    HostCustomTypeAccess::SourceLessPublicSurface,
+                ),
+                Err(PlanError::HostProviderLink {
+                    package: "domain".into(),
+                    module: "host/custom".into(),
+                    function: "accept".into(),
+                    reason: Box::new(HostProviderLinkReason::CustomTypeVisibility {
+                        custom_type: custom_type.clone(),
+                    }),
+                }),
+            );
+        }
+    }
+
+    #[test]
+    fn opaque_custom_type_visibility_precedes_schema_matching() {
+        let custom_type =
+            CustomTypeName::new("domain".into(), "domain/marker".into(), "Marker".into());
+        let definition = CustomTypeDefinition::new(
+            custom_type.clone(),
+            CustomTypePublicity::Public,
+            true,
+            Vec::new(),
+            vec![CustomConstructorDefinition::new(
+                "Expected".into(),
+                0,
+                Vec::new(),
+            )],
+        );
+        let registry = ProgramRegistry::new(vec![ModuleRegistry::new(
+            "domain/marker".into(),
+            vec![definition],
+            std::collections::HashMap::new(),
+            ConstantSignatures::default(),
+        )]);
+        let package = EcoString::from("domain");
+        let site = HostCallSite::new("host/custom".into(), "accept".into(), SourceSpan::new(0, 0));
+        let signature = FunctionTemplateSignature::new(
+            FunctionTemplateId::in_module(ModuleId::new(0), 0),
+            TypeScheme::new(0),
+            FunctionShape::new(Vec::new(), ValueShape::Bool),
+        );
+        let actual = HostCustomTypeSchema::new(
+            "domain",
+            "domain/marker",
+            "Marker",
+            0,
+            [HostCustomConstructorSchema::new(
+                "Actual",
+                Vec::<HostCustomFieldSchema>::new(),
+            )],
+        );
+
+        assert_eq!(
+            validate_host_custom_schema(
+                &registry,
+                &package,
+                &site,
+                &signature,
+                &actual,
+                HostCustomTypeAccess::SourceDeclaration,
+            ),
+            Err(PlanError::HostProviderLink {
+                package: "domain".into(),
+                module: "host/custom".into(),
+                function: "accept".into(),
+                reason: Box::new(HostProviderLinkReason::CustomTypeVisibility { custom_type }),
+            }),
+        );
+    }
+
+    #[test]
+    fn source_less_host_custom_type_applies_every_declared_type_argument() {
+        let custom_type =
+            CustomTypeName::new("application".into(), "domain/box".into(), "Boxed".into());
+        let definition = CustomTypeDefinition::new(
+            custom_type.clone(),
+            CustomTypePublicity::Public,
+            false,
+            vec![CustomTypeParameterId(0)],
+            vec![CustomConstructorDefinition::new(
+                "Boxed".into(),
+                0,
+                vec![CustomFieldDefinition::new(
+                    None,
+                    CustomTypeTemplate::Parameter(CustomTypeParameterId(0)),
+                )],
+            )],
+        );
+        let registry = ProgramRegistry::new(vec![ModuleRegistry::new(
+            "domain/box".into(),
+            vec![definition],
+            std::collections::HashMap::new(),
+            ConstantSignatures::default(),
+        )]);
+        let package = EcoString::from("application");
+        let site = HostCallSite::new("host/box".into(), "accept".into(), SourceSpan::new(0, 0));
+        let signature = FunctionTemplateSignature::new(
+            FunctionTemplateId::in_module(ModuleId::new(0), 0),
+            TypeScheme::new(0),
+            FunctionShape::new(
+                vec![ValueShape::Tuple(
+                    vec![ValueShape::Custom(CustomValueShape::new(
+                        custom_type.clone(),
+                        Vec::new(),
+                        CustomConstructorRefinement::Any,
+                    ))]
+                    .into_boxed_slice(),
+                )],
+                ValueShape::Bool,
+            ),
+        );
+        let actual = HostCustomTypeSchema::new(
+            "application",
+            "domain/box",
+            "Boxed",
+            1,
+            [HostCustomConstructorSchema::new(
+                "Boxed",
+                [HostCustomFieldSchema::new(
+                    None::<EcoString>,
+                    HostSchemaType::parameter(0),
+                )],
+            )],
+        );
+
+        assert_eq!(
+            validate_host_custom_schema(
+                &registry,
+                &package,
+                &site,
+                &signature,
+                &actual,
+                HostCustomTypeAccess::SourceLessPublicSurface,
+            )
+            .err(),
+            Some(PlanError::HostProviderLink {
+                package: "application".into(),
+                module: "host/box".into(),
+                function: "accept".into(),
+                reason: Box::new(HostProviderLinkReason::CustomTypeArgumentCount {
+                    custom_type: CustomTypeName::new(
+                        "application".into(),
+                        "domain/box".into(),
+                        "Boxed".into(),
+                    ),
+                    expected: 1,
+                    actual: 0,
+                }),
+            }),
+        );
+    }
 
     #[test]
     fn plan_host_program_bodyless_templates_with_module_qualified_ids() {
@@ -781,9 +1557,13 @@ pub fn main() {
             functions[0].type_(),
             &FunctionType::new(vec![ValueType::Int, ValueType::Int], ValueType::Int),
         );
+        assert!(matches!(
+            functions[0].layout(),
+            [HostParameter::Int(left), HostParameter::Int(right)]
+                if left.index() == 0 && right.index() == 1
+        ));
         assert_eq!(functions[1].name(), "subtract");
         assert_eq!(functions[2].name(), "ready");
-        assert_eq!(functions[2].parameters(), &[]);
         assert_eq!(
             functions[2].signature().shape(),
             &FunctionShape::new(Vec::new(), ValueShape::Bool),
@@ -793,14 +1573,6 @@ pub fn main() {
             &FunctionType::new(Vec::new(), ValueType::Bool),
         );
         assert_eq!(functions[3].name(), "choose");
-        assert_eq!(
-            functions[3].parameters(),
-            [
-                HostParameter::Bool(BoolLocalId(0)),
-                HostParameter::Int(IntLocalId(0)),
-                HostParameter::Int(IntLocalId(1)),
-            ],
-        );
         assert_eq!(
             functions[3].signature().shape(),
             &FunctionShape::new(
@@ -815,19 +1587,15 @@ pub fn main() {
                 ValueType::Int,
             ),
         );
-        assert_eq!(functions[4].name(), "all");
-        assert_eq!(
-            functions[4].parameters(),
+        assert!(matches!(
+            functions[3].layout(),
             [
-                HostParameter::Bool(BoolLocalId(0)),
-                HostParameter::Bool(BoolLocalId(1)),
-                HostParameter::Bool(BoolLocalId(2)),
-                HostParameter::Bool(BoolLocalId(3)),
-                HostParameter::Bool(BoolLocalId(4)),
-                HostParameter::Bool(BoolLocalId(5)),
-                HostParameter::Bool(BoolLocalId(6)),
-            ],
-        );
+                HostParameter::Bool(condition),
+                HostParameter::Int(left),
+                HostParameter::Int(right),
+            ] if condition.index() == 0 && left.index() == 0 && right.index() == 1
+        ));
+        assert_eq!(functions[4].name(), "all");
         assert_eq!(
             functions[4].signature().shape(),
             &FunctionShape::new(vec![ValueShape::Bool; 7], ValueShape::Bool),
@@ -836,19 +1604,25 @@ pub fn main() {
             functions[4].type_(),
             &FunctionType::new(vec![ValueType::Bool; 7], ValueType::Bool),
         );
-        assert_eq!(functions[5].name(), "consume");
-        assert_eq!(
-            functions[5].parameters(),
+        assert!(matches!(
+            functions[4].layout(),
             [
-                HostParameter::Int(IntLocalId(0)),
-                HostParameter::Float(FloatLocalId(0)),
-                HostParameter::String(StringLocalId(0)),
-                HostParameter::BitArray(BitArrayLocalId(0)),
-                HostParameter::UtfCodepoint(UtfCodepointLocalId(0)),
-                HostParameter::Bool(BoolLocalId(0)),
-                HostParameter::Nil(NilLocalId(0)),
-            ],
-        );
+                HostParameter::Bool(first),
+                HostParameter::Bool(second),
+                HostParameter::Bool(third),
+                HostParameter::Bool(fourth),
+                HostParameter::Bool(fifth),
+                HostParameter::Bool(sixth),
+                HostParameter::Bool(seventh),
+            ] if first.index() == 0
+                && second.index() == 1
+                && third.index() == 2
+                && fourth.index() == 3
+                && fifth.index() == 4
+                && sixth.index() == 5
+                && seventh.index() == 6
+        ));
+        assert_eq!(functions[5].name(), "consume");
         assert_eq!(
             functions[5].signature().shape(),
             &FunctionShape::new(
@@ -879,6 +1653,24 @@ pub fn main() {
                 ValueType::Nil,
             ),
         );
+        assert!(matches!(
+            functions[5].layout(),
+            [
+                HostParameter::Int(int),
+                HostParameter::Float(float),
+                HostParameter::String(string),
+                HostParameter::BitArray(bit_array),
+                HostParameter::UtfCodepoint(utf_codepoint),
+                HostParameter::Bool(bool_),
+                HostParameter::Nil(nil),
+            ] if int.index() == 0
+                && float.index() == 0
+                && string.index() == 0
+                && bit_array.index() == 0
+                && utf_codepoint.index() == 0
+                && bool_.index() == 0
+                && nil.index() == 0
+        ));
         let source = plan.modules()[1].functions()[0]
             .gleam_body()
             .expect("root module should retain its source function");

@@ -1,208 +1,15 @@
 use ecow::EcoString;
 use geam::{
-    BitArrayValue, ExecutionError, HostCall, HostFailure, HostLocation, HostModule, HostProfile,
-    HostProvider, HostProviderModule, HostProviderSet, HostedExecution, InvariantError,
-    ModuleSource, PackageSource, Value, ValueType, compile_typed_host_program, plan_host_program,
+    ExecutionError, HostCall, HostCallCompletion, HostCallError, HostCustom,
+    HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
+    HostCustomConstructorSchema, HostCustomField, HostCustomFieldList, HostCustomFieldListEnd,
+    HostCustomFieldSchema, HostCustomSchema, HostCustomType, HostCustomTypeSchema, HostFailure,
+    HostLocation, HostModule, HostProvider, HostProviderLinkReason, HostProviderModule,
+    HostProviderSet, HostSchemaType, HostTypeList, HostTypeListEnd, HostTypeParameter,
+    HostedExecution, ModuleSource, PackageSource, PlanError, StatelessHostProfile, Value,
+    compile_typed_host_program, plan_host_program,
 };
 use num_bigint::BigInt;
-use std::convert::Infallible;
-
-struct StatefulProfile;
-
-struct RunState {
-    total: BigInt,
-}
-
-struct Counter;
-
-impl HostProfile for StatefulProfile {
-    type RunState = RunState;
-}
-
-impl HostProvider<StatefulProfile> for Counter {
-    type State = BigInt;
-
-    fn project(state: &mut RunState) -> &mut Self::State {
-        &mut state.total
-    }
-}
-
-#[test]
-fn source_less_modules_use_the_same_stateful_profile_registration() {
-    let module = HostModule::<StatefulProfile>::new_for_profile("host_support", "host/state")
-        .expect("host module should be valid")
-        .with_function("int", std::convert::identity::<BigInt>)
-        .expect("host function should be valid")
-        .with_function("float", std::convert::identity::<f64>)
-        .expect("host function should be valid")
-        .with_function("string", std::convert::identity::<EcoString>)
-        .expect("host function should be valid")
-        .with_function("bit_array", std::convert::identity::<BitArrayValue>)
-        .expect("host function should be valid")
-        .with_function("utf_codepoint", std::convert::identity::<char>)
-        .expect("host function should be valid")
-        .with_function("bool", std::convert::identity::<bool>)
-        .expect("host function should be valid")
-        .with_function("nil", std::convert::identity::<()>)
-        .expect("host function should be valid");
-    let source = r#"
-import host/state
-
-pub fn main() {
-  let assert <<codepoint:utf8_codepoint>> = <<"A":utf8>>
-  #(
-    state.int(1),
-    state.float(2.5),
-    state.string("three"),
-    state.bit_array(<<4>>),
-    state.utf_codepoint(codepoint),
-    state.bool(True),
-    state.nil(Nil),
-  )
-}
-"#;
-    let typed = compile_typed_host_program(
-        "application",
-        "main",
-        [PackageSource::new(
-            "application",
-            ["host_support"],
-            [ModuleSource::new("main", "src/main.gleam", source)],
-        )],
-        HostProviderSet::new([module]).expect("host module should be unique"),
-    )
-    .expect("host program should compile");
-    let plan = plan_host_program(typed).expect("host program should plan");
-
-    assert_eq!(
-        plan.modules()
-            .iter()
-            .map(|module| (module.package().as_str(), module.module().as_str()))
-            .collect::<Vec<_>>(),
-        [("host_support", "host/state"), ("application", "main")],
-    );
-    assert!(
-        plan.modules()[0]
-            .functions()
-            .iter()
-            .all(|function| function.host_template().is_some()),
-    );
-    let execution = HostedExecution::from_module_plan(plan);
-    let mut state = RunState {
-        total: BigInt::from(0),
-    };
-    assert_eq!(
-        execution.run_main(&mut state, &mut Vec::new()),
-        Ok(Value::Tuple(vec![
-            Value::Int(1.into()),
-            Value::Float(2.5),
-            Value::String("three".into()),
-            Value::BitArray(BitArrayValue::from_bytes(vec![4])),
-            Value::UtfCodepoint('A'),
-            Value::Bool(true),
-            Value::Nil,
-        ])),
-    );
-}
-
-#[test]
-fn executes_source_backed_provider_calls_with_caller_owned_state() {
-    let provider = HostProviderModule::<StatefulProfile>::new("application", "main")
-        .expect("provider module should be valid")
-        .with_scoped_function::<Counter, _, _, _>(
-            "accumulate",
-            |call: &mut HostCall<'_, StatefulProfile, Counter>, left: BigInt, right: BigInt| {
-                let total = call.state();
-                *total += left + right;
-                Ok(total.clone())
-            },
-        )
-        .expect("provider function should be valid");
-    let hosts =
-        HostProviderSet::with_providers(Vec::<HostModule<StatefulProfile>>::new(), [provider])
-            .expect("provider modules should be unique");
-    let source = r#"
-@external(erlang, "host", "accumulate")
-fn accumulate(left: Int, right: Int) -> Int
-
-fn apply(function: fn(Int, Int) -> Int, left: Int, right: Int) {
-  function(left, right)
-}
-
-fn tail(left: Int, right: Int) {
-  accumulate(left, right)
-}
-
-pub fn main() {
-  let function = accumulate
-  #(
-    accumulate(1, 2),
-    apply(function, 4, 5),
-    tail(6, 7),
-    function == accumulate,
-  )
-}
-"#;
-    let typed = compile_typed_host_program(
-        "application",
-        "main",
-        [PackageSource::new(
-            "application",
-            Vec::<String>::new(),
-            [ModuleSource::new("main", "src/main.gleam", source)],
-        )],
-        hosts,
-    )
-    .expect("host program should compile");
-    let plan = plan_host_program(typed).expect("provider should link");
-    let functions = plan.modules()[0].functions();
-    assert_eq!(
-        functions
-            .iter()
-            .map(|function| {
-                if let Some(function) = function.gleam_body() {
-                    function.name().as_str()
-                } else {
-                    function
-                        .host_template()
-                        .expect("function should have one body owner")
-                        .name()
-                        .as_str()
-                }
-            })
-            .collect::<Vec<_>>(),
-        ["main", "accumulate", "apply", "tail"],
-    );
-    assert!(functions[0].gleam_body().is_some());
-    assert!(functions[1].host_template().is_some());
-    let execution = HostedExecution::from_module_plan(plan);
-    let mut state = RunState { total: 0.into() };
-    let mut echoes = Vec::new();
-
-    assert_eq!(
-        execution.run_main(&mut state, &mut echoes),
-        Ok(Value::Tuple(vec![
-            Value::Int(3.into()),
-            Value::Int(12.into()),
-            Value::Int(25.into()),
-            Value::Bool(true),
-        ])),
-    );
-    assert_eq!(state.total, BigInt::from(25));
-    assert!(echoes.is_empty());
-
-    let mut independent_state = RunState { total: 100.into() };
-    assert_eq!(
-        execution.run_main(&mut independent_state, &mut Vec::new()),
-        Ok(Value::Tuple(vec![
-            Value::Int(103.into()),
-            Value::Int(112.into()),
-            Value::Int(125.into()),
-            Value::Bool(true),
-        ])),
-    );
-    assert_eq!(independent_state.total, BigInt::from(125));
-}
 
 #[test]
 fn executes_external_gleam_fallback_without_a_provider() {
@@ -229,7 +36,8 @@ pub fn main() {
     .expect("host program should compile");
     let plan = plan_host_program(typed).expect("fallback body should plan");
     assert!(plan.modules()[0].functions()[0].gleam_body().is_some());
-    let execution = HostedExecution::from_module_plan(plan);
+    let execution =
+        HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
 
     assert_eq!(
         execution.run_main(&mut (), &mut Vec::new()),
@@ -239,7 +47,7 @@ pub fn main() {
 
 #[test]
 fn reports_fallible_provider_failure_at_the_tail_call_site() {
-    let provider = HostProviderModule::<geam::StatelessHostProfile>::new("application", "main")
+    let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
         .expect("provider module should be valid")
         .with_fallible_function("fail", |_: BigInt| -> Result<BigInt, HostFailure> {
             Err(HostFailure::new("service unavailable"))
@@ -271,7 +79,8 @@ pub fn main() {
     )
     .expect("host program should compile");
     let plan = plan_host_program(typed).expect("provider should link");
-    let execution = HostedExecution::from_module_plan(plan);
+    let execution =
+        HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
     let error = execution
         .run_main(&mut (), &mut Vec::new())
         .expect_err("fallible provider should fail");
@@ -294,22 +103,47 @@ pub fn main() {
     assert_eq!(*line, 6);
 }
 
+struct SchemaProvider;
+
+impl HostProvider<StatelessHostProfile> for SchemaProvider {
+    type State = ();
+
+    fn project(state: &mut ()) -> &mut Self::State {
+        state
+    }
+}
+
 #[test]
-fn links_non_returning_external_provider_and_reports_its_call_site() {
-    let provider = HostProviderModule::<geam::StatelessHostProfile>::new("application", "main")
-        .expect("provider module should be valid")
-        .with_fallible_function("stop", |value: BigInt| -> Result<Infallible, HostFailure> {
-            Err(HostFailure::new(format!("stopped at {value}")))
-        })
-        .expect("provider function should be valid");
-    let hosts = HostProviderSet::with_providers(Vec::<HostModule>::new(), [provider])
-        .expect("provider modules should be unique");
+fn source_less_host_custom_type_must_have_a_planned_definition() {
+    struct MissingSchema;
+
+    impl HostCustomSchema for MissingSchema {
+        const PACKAGE: &'static str = "host_support";
+        const MODULE: &'static str = "host/custom";
+        const NAME: &'static str = "Missing";
+        const PARAMETER_COUNT: usize = 0;
+
+        type Constructors = HostCustomConstructorListEnd;
+    }
+
+    type Missing = HostCustomType<MissingSchema>;
+
+    fn accept<'call>(
+        call: HostCall<'call, StatelessHostProfile, SchemaProvider, bool>,
+        _value: HostCustom<'call, Missing>,
+    ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
+        Ok(call.return_value(true))
+    }
+
+    let host = HostModule::new("host_support", "host/custom")
+        .expect("host module should be valid")
+        .with_scoped_function::<SchemaProvider, (Missing,), bool, _>("accept", accept)
+        .expect("host function should be valid");
     let source = r#"
-@external(erlang, "host", "stop")
-fn stop(value: Int) -> value
+import host/custom
 
 pub fn main() {
-  stop(7)
+  1
 }
 "#;
     let typed = compile_typed_host_program(
@@ -317,66 +151,180 @@ pub fn main() {
         "main",
         [PackageSource::new(
             "application",
-            Vec::<String>::new(),
-            [ModuleSource::new("main", "src/main.gleam", source)],
+            ["host_support"],
+            [ModuleSource::new("main", "main.gleam", source)],
         )],
-        hosts,
+        HostProviderSet::new([host]).expect("host module should be unique"),
     )
     .expect("host program should compile");
-    let plan = plan_host_program(typed).expect("provider should link");
-    let execution = HostedExecution::from_module_plan(plan);
-    let error = execution
-        .run_main(&mut (), &mut Vec::new())
-        .expect_err("non-returning provider should fail");
-    let ExecutionError::Host(error) = error else {
-        panic!("non-returning provider should produce a host error");
+
+    let Err(PlanError::HostProviderLink {
+        package,
+        module,
+        function,
+        reason,
+    }) = plan_host_program(typed)
+    else {
+        panic!("missing custom type should reject host linkage");
+    };
+    let HostProviderLinkReason::MissingCustomType { custom_type } = *reason else {
+        panic!("missing custom type should preserve its exact reason");
     };
 
-    assert_eq!(error.package(), "application");
-    assert_eq!(error.module(), "main");
-    assert_eq!(error.function(), "stop");
-    assert_eq!(error.failure().message(), "stopped at 7");
-    assert_eq!(error.signature().argument_types(), [ValueType::Int]);
-    let ValueType::Parameter(parameter) = error.signature().return_() else {
-        panic!("non-returning provider should preserve its generic return");
-    };
-    assert_eq!(parameter.index(), 0);
-    let HostLocation::Resolved { site, path, line } = error.location() else {
-        panic!("source-backed provider failure should resolve its call site");
-    };
-    assert_eq!(site.module(), "main");
-    assert_eq!(site.function(), "main");
-    assert_eq!(path.as_str(), "src/main.gleam");
-    assert_eq!(*line, 6);
+    assert_eq!(package, "host_support");
+    assert_eq!(module, "host/custom");
+    assert_eq!(function, "accept");
+    assert_eq!(custom_type.package(), "host_support");
+    assert_eq!(custom_type.module(), "host/custom");
+    assert_eq!(custom_type.name(), "Missing");
 }
 
 #[test]
-fn preserves_nested_execution_failure_without_rewrapping_it_as_host_failure() {
-    let provider = HostProviderModule::<StatefulProfile>::new("application", "main")
-        .expect("provider module should be valid")
-        .with_scoped_function::<Counter, _, _, _>(
-            "nested",
-            |_call: &mut HostCall<'_, StatefulProfile, Counter>| {
-                Result::<bool, geam::HostCallError>::Err(
-                    ExecutionError::Invariant(InvariantError::ListIndexOutOfBounds {
-                        item_type: ValueType::Bool,
-                        index: 2,
-                        length: 1,
-                    })
-                    .into(),
-                )
-            },
-        )
-        .expect("provider function should be valid");
-    let hosts =
-        HostProviderSet::with_providers(Vec::<HostModule<StatefulProfile>>::new(), [provider])
-            .expect("provider modules should be unique");
-    let source = r#"
-@external(erlang, "host", "nested")
-fn nested() -> Bool
+fn source_less_host_custom_type_must_be_public_and_non_opaque() {
+    struct InternalMarkerDefinition;
+
+    impl HostCustomConstructorDefinition for InternalMarkerDefinition {
+        const NAME: &'static str = "Marker";
+
+        type Fields = HostCustomFieldListEnd;
+    }
+
+    struct InternalMarkerSchema;
+
+    impl HostCustomSchema for InternalMarkerSchema {
+        const PACKAGE: &'static str = "domain";
+        const MODULE: &'static str = "domain/marker";
+        const NAME: &'static str = "Marker";
+        const PARAMETER_COUNT: usize = 0;
+
+        type Constructors =
+            HostCustomConstructorList<InternalMarkerDefinition, HostCustomConstructorListEnd>;
+    }
+
+    type InternalMarker = HostCustomType<InternalMarkerSchema>;
+
+    fn accept<'call>(
+        call: HostCall<'call, StatelessHostProfile, SchemaProvider, bool>,
+        _value: HostCustom<'call, InternalMarker>,
+    ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
+        Ok(call.return_value(true))
+    }
+
+    let host = HostModule::new("domain", "host/custom")
+        .expect("host module should be valid")
+        .with_scoped_function::<SchemaProvider, (InternalMarker,), bool, _>("accept", accept)
+        .expect("host function should be valid");
+    let domain = r#"
+@internal
+pub type Marker {
+  Marker
+}
+"#;
+    let main = r#"
+import host/custom
 
 pub fn main() {
-  nested()
+  1
+}
+"#;
+    let typed = compile_typed_host_program(
+        "application",
+        "main",
+        [
+            PackageSource::new(
+                "domain",
+                Vec::<EcoString>::new(),
+                [ModuleSource::new(
+                    "domain/marker",
+                    "domain/marker.gleam",
+                    domain,
+                )],
+            ),
+            PackageSource::new(
+                "application",
+                ["domain"],
+                [ModuleSource::new("main", "main.gleam", main)],
+            ),
+        ],
+        HostProviderSet::new([host]).expect("host module should be unique"),
+    )
+    .expect("host program should compile");
+
+    let Err(PlanError::HostProviderLink {
+        package,
+        module,
+        function,
+        reason,
+    }) = plan_host_program(typed)
+    else {
+        panic!("internal custom type should not enter a source-less public host surface");
+    };
+    let HostProviderLinkReason::CustomTypeVisibility { custom_type } = *reason else {
+        panic!("internal custom type should preserve its exact visibility reason");
+    };
+
+    assert_eq!(package, "domain");
+    assert_eq!(module, "host/custom");
+    assert_eq!(function, "accept");
+    assert_eq!(custom_type.package(), "domain");
+    assert_eq!(custom_type.module(), "domain/marker");
+    assert_eq!(custom_type.name(), "Marker");
+}
+
+#[test]
+fn source_provider_custom_schema_must_exactly_match_the_planned_definition() {
+    struct MismatchedBoxedSchema;
+
+    struct EnabledField;
+
+    impl HostCustomField for EnabledField {
+        const LABEL: Option<&'static str> = Some("enabled");
+
+        type Type = bool;
+    }
+
+    struct MismatchedBoxedConstructor;
+
+    impl HostCustomConstructorDefinition for MismatchedBoxedConstructor {
+        const NAME: &'static str = "Boxed";
+
+        type Fields = HostCustomFieldList<EnabledField, HostCustomFieldListEnd>;
+    }
+
+    impl HostCustomSchema for MismatchedBoxedSchema {
+        const PACKAGE: &'static str = "application";
+        const MODULE: &'static str = "main";
+        const NAME: &'static str = "Boxed";
+        const PARAMETER_COUNT: usize = 1;
+
+        type Constructors =
+            HostCustomConstructorList<MismatchedBoxedConstructor, HostCustomConstructorListEnd>;
+    }
+
+    type BoxedArguments = HostTypeList<HostTypeParameter<0>, HostTypeListEnd>;
+    type Boxed = HostCustomType<MismatchedBoxedSchema, BoxedArguments>;
+
+    fn accept<'call>(
+        call: HostCall<'call, StatelessHostProfile, SchemaProvider, bool>,
+        _value: HostCustom<'call, Boxed>,
+    ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
+        Ok(call.return_value(true))
+    }
+
+    let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
+        .expect("provider module should be valid")
+        .with_scoped_function::<SchemaProvider, (Boxed,), bool, _>("accept", accept)
+        .expect("provider function should be valid");
+    let source = r#"
+pub type Boxed(value) {
+  Boxed(value: value)
+}
+
+@external(erlang, "host", "accept")
+fn accept(value: Boxed(value)) -> Bool
+
+pub fn main() {
+  accept(Boxed(1))
 }
 "#;
     let typed = compile_typed_host_program(
@@ -384,24 +332,162 @@ pub fn main() {
         "main",
         [PackageSource::new(
             "application",
-            Vec::<String>::new(),
-            [ModuleSource::new("main", "src/main.gleam", source)],
+            Vec::<EcoString>::new(),
+            [ModuleSource::new("main", "main.gleam", source)],
         )],
-        hosts,
+        HostProviderSet::with_providers(Vec::<HostModule>::new(), [provider])
+            .expect("provider module should be unique"),
     )
     .expect("host program should compile");
-    let plan = plan_host_program(typed).expect("provider should link");
-    let execution = HostedExecution::from_module_plan(plan);
-    let mut state = RunState { total: 0.into() };
 
     assert_eq!(
-        execution.run_main(&mut state, &mut Vec::new()),
-        Err(ExecutionError::Invariant(
-            InvariantError::ListIndexOutOfBounds {
-                item_type: ValueType::Bool,
-                index: 2,
-                length: 1,
-            },
-        )),
+        plan_host_program(typed).err(),
+        Some(PlanError::HostProviderLink {
+            package: "application".into(),
+            module: "main".into(),
+            function: "accept".into(),
+            reason: Box::new(HostProviderLinkReason::CustomSchemaMismatch {
+                expected: HostCustomTypeSchema::new(
+                    "application",
+                    "main",
+                    "Boxed",
+                    1,
+                    [HostCustomConstructorSchema::new(
+                        "Boxed",
+                        [HostCustomFieldSchema::new(
+                            Some("value"),
+                            HostSchemaType::parameter(0),
+                        )],
+                    )],
+                ),
+                actual: HostCustomTypeSchema::of::<MismatchedBoxedSchema>(),
+            }),
+        }),
+    );
+}
+
+#[test]
+fn source_provider_validates_custom_schemas_referenced_by_constructor_fields() {
+    struct MismatchedInnerField;
+
+    impl HostCustomField for MismatchedInnerField {
+        const LABEL: Option<&'static str> = Some("value");
+
+        type Type = bool;
+    }
+
+    struct InnerConstructor;
+
+    impl HostCustomConstructorDefinition for InnerConstructor {
+        const NAME: &'static str = "Inner";
+
+        type Fields = HostCustomFieldList<MismatchedInnerField, HostCustomFieldListEnd>;
+    }
+
+    struct InnerSchema;
+
+    impl HostCustomSchema for InnerSchema {
+        const PACKAGE: &'static str = "application";
+        const MODULE: &'static str = "main";
+        const NAME: &'static str = "Inner";
+        const PARAMETER_COUNT: usize = 0;
+
+        type Constructors =
+            HostCustomConstructorList<InnerConstructor, HostCustomConstructorListEnd>;
+    }
+
+    struct OuterInnerField;
+
+    impl HostCustomField for OuterInnerField {
+        const LABEL: Option<&'static str> = Some("inner");
+
+        type Type = HostCustomType<InnerSchema>;
+    }
+
+    struct OuterConstructor;
+
+    impl HostCustomConstructorDefinition for OuterConstructor {
+        const NAME: &'static str = "Outer";
+
+        type Fields = HostCustomFieldList<OuterInnerField, HostCustomFieldListEnd>;
+    }
+
+    struct OuterSchema;
+
+    impl HostCustomSchema for OuterSchema {
+        const PACKAGE: &'static str = "application";
+        const MODULE: &'static str = "main";
+        const NAME: &'static str = "Outer";
+        const PARAMETER_COUNT: usize = 0;
+
+        type Constructors =
+            HostCustomConstructorList<OuterConstructor, HostCustomConstructorListEnd>;
+    }
+
+    type Outer = HostCustomType<OuterSchema>;
+
+    fn accept<'call>(
+        call: HostCall<'call, StatelessHostProfile, SchemaProvider, bool>,
+        _value: HostCustom<'call, Outer>,
+    ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
+        Ok(call.return_value(true))
+    }
+
+    let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
+        .expect("provider module should be valid")
+        .with_scoped_function::<SchemaProvider, (Outer,), bool, _>("accept", accept)
+        .expect("provider function should be valid");
+    let source = r#"
+pub type Inner {
+  Inner(value: Int)
+}
+
+pub type Outer {
+  Outer(inner: Inner)
+}
+
+@external(erlang, "host", "accept")
+fn accept(value: Outer) -> Bool
+
+pub fn main() {
+  accept(Outer(Inner(1)))
+}
+"#;
+    let typed = compile_typed_host_program(
+        "application",
+        "main",
+        [PackageSource::new(
+            "application",
+            Vec::<EcoString>::new(),
+            [ModuleSource::new("main", "main.gleam", source)],
+        )],
+        HostProviderSet::with_providers(Vec::<HostModule>::new(), [provider])
+            .expect("provider module should be unique"),
+    )
+    .expect("host program should compile");
+
+    assert_eq!(
+        plan_host_program(typed).err(),
+        Some(PlanError::HostProviderLink {
+            package: "application".into(),
+            module: "main".into(),
+            function: "accept".into(),
+            reason: Box::new(HostProviderLinkReason::CustomSchemaMismatch {
+                expected: HostCustomTypeSchema::new(
+                    "application",
+                    "main",
+                    "Inner",
+                    0,
+                    [HostCustomConstructorSchema::new(
+                        "Inner",
+                        [HostCustomFieldSchema::new(
+                            Some("value"),
+                            HostSchemaType::Int,
+                        )],
+                    )],
+                ),
+                actual: HostCustomTypeSchema::of::<InnerSchema>(),
+            }),
+        }),
     );
 }

@@ -72,7 +72,8 @@ pub fn main() {
     )
     .expect("host program should compile");
     let plan = plan_host_program(typed).expect("host program should plan");
-    let execution = HostedExecution::from_module_plan(plan);
+    let execution =
+        HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
     let expected = Value::Tuple(vec![
         Value::Int(20.into()),
         Value::Bool(true),
@@ -177,7 +178,8 @@ pub fn main() {
     )
     .expect("host program should compile");
     let plan = plan_host_program(typed).expect("host program should plan");
-    let execution = HostedExecution::from_module_plan(plan);
+    let execution =
+        HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
     let expected = Value::Tuple(vec![
         Value::Int(2.into()),
         Value::Float(1.5),
@@ -287,7 +289,8 @@ pub fn main() {
         )
         .expect("host program should compile");
         let plan = plan_host_program(typed).expect("host program should plan");
-        let execution = HostedExecution::from_module_plan(plan);
+        let execution =
+            HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         let error = execution
             .run_main(&mut (), &mut Vec::new())
             .expect_err("fallible host function should fail");

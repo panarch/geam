@@ -42,6 +42,7 @@ use crate::host::HostProfile;
 use crate::plan::{HostedModulePlan, ModuleId, ModulePlan, SourceContext};
 use ecow::EcoString;
 pub use explain::ExecutionPlanExplanation;
+pub use host::HostSpecializationError;
 use std::convert::Infallible;
 
 pub struct ExecutionPlan {
@@ -515,12 +516,17 @@ impl ExecutionPlan {
 }
 
 impl<Profile: HostProfile> HostedExecution<Profile> {
-    pub fn from_module_plan(module_plan: HostedModulePlan<Profile>) -> Self {
-        let (program, host_functions) = lowering::lower_hosted(module_plan);
-        Self {
+    /// Seals all entry-reachable host specializations into executable storage.
+    ///
+    /// A linked but unused provider does not participate in sealing.
+    pub fn try_from_module_plan(
+        module_plan: HostedModulePlan<Profile>,
+    ) -> Result<Self, HostSpecializationError> {
+        let (program, host_functions) = lowering::lower_hosted(module_plan)?;
+        Ok(Self {
             program,
             host_functions,
-        }
+        })
     }
 
     pub fn run_main(
@@ -535,8 +541,21 @@ impl<Profile: HostProfile> HostedExecution<Profile> {
         ExecutionPlanExplanation::new_hosted(self)
     }
 
-    pub(crate) fn host_functions(&self) -> &host::HostFunctionTables<Profile> {
-        &self.host_functions
+    pub(crate) fn host_value_function<Body>(
+        &self,
+        id: &host::HostFunctionId<Body>,
+    ) -> &host::HostedValueFunction<Profile>
+    where
+        Body: function::ExecutionFunctionBody,
+    {
+        self.host_functions.value(id)
+    }
+
+    pub(crate) fn host_never_function(
+        &self,
+        id: host::HostNeverFunctionId,
+    ) -> &host::HostedNeverFunction<Profile> {
+        self.host_functions.never(id)
     }
 }
 
@@ -547,9 +566,8 @@ mod tests {
     use crate::plan::execution::function::{
         BoolFunctionBody, BoolFunctionId, IntFunctionBody, IntFunctionId, ValueFunctionEntry,
     };
-    use crate::plan::execution::host::{
-        HostBoolFunctionId, HostIntFunctionId, HostedFunctionTarget,
-    };
+    use crate::plan::execution::graph::{BoolLocalId, IntLocalId};
+    use crate::plan::execution::host::{HostFunctionId, HostedFunctionTarget};
     use crate::{
         HostModule, HostProviderSet, ModuleSource, PackageSource, compile_typed_host_program,
         compile_typed_module, plan_host_program, plan_module,
@@ -595,10 +613,11 @@ pub fn main() {
         )
         .expect("host source should compile");
         let plan = plan_host_program(typed).expect("host source should plan");
-        let execution = HostedExecution::from_module_plan(plan);
-        let graph: &ValueFunctionEntry<IntFunctionBody, HostedFunctionTarget<HostIntFunctionId>> =
+        let execution =
+            HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
+        let graph: &ValueFunctionEntry<IntFunctionBody, HostedFunctionTarget<IntFunctionBody>> =
             execution.program.functions.int_function(IntFunctionId(0));
-        let host: &ValueFunctionEntry<IntFunctionBody, HostedFunctionTarget<HostIntFunctionId>> =
+        let host: &ValueFunctionEntry<IntFunctionBody, HostedFunctionTarget<IntFunctionBody>> =
             execution.program.functions.int_function(IntFunctionId(2));
 
         assert_eq!(
@@ -611,10 +630,11 @@ pub fn main() {
         assert!(matches!(
             host,
             ValueFunctionEntry::Host(target)
-                if *target == HostedFunctionTarget::value(HostIntFunctionId::new(0))
+                if *target
+                    == HostedFunctionTarget::value(HostFunctionId::new(0, IntLocalId(0)))
         ));
-        let implementation = &execution.host_functions.int_functions()[0];
-        assert_eq!(implementation.metadata().name(), "add");
+        let implementation = &execution.host_functions.value_functions()[0];
+        assert_eq!(implementation.name(), "add");
         assert_eq!(
             execution.run_main(&mut (), &mut Vec::new()),
             Ok(crate::Value::Int(3.into())),
@@ -651,14 +671,15 @@ pub fn main() {
         )
         .expect("host source should compile");
         let plan = plan_host_program(typed).expect("host source should plan");
-        let execution = HostedExecution::from_module_plan(plan);
-        let main: &ValueFunctionEntry<BoolFunctionBody, HostedFunctionTarget<HostBoolFunctionId>> =
+        let execution =
+            HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
+        let main: &ValueFunctionEntry<BoolFunctionBody, HostedFunctionTarget<BoolFunctionBody>> =
             execution.program.functions.bool_function(BoolFunctionId(0));
-        let host: &ValueFunctionEntry<BoolFunctionBody, HostedFunctionTarget<HostBoolFunctionId>> =
+        let host: &ValueFunctionEntry<BoolFunctionBody, HostedFunctionTarget<BoolFunctionBody>> =
             execution.program.functions.bool_function(BoolFunctionId(1));
         let identity: &ValueFunctionEntry<
             BoolFunctionBody,
-            HostedFunctionTarget<HostBoolFunctionId>,
+            HostedFunctionTarget<BoolFunctionBody>,
         > = execution.program.functions.bool_function(BoolFunctionId(2));
 
         assert_eq!(
@@ -671,10 +692,11 @@ pub fn main() {
         assert!(matches!(
             host,
             ValueFunctionEntry::Host(target)
-                if *target == HostedFunctionTarget::value(HostBoolFunctionId::new(0))
+                if *target
+                    == HostedFunctionTarget::value(HostFunctionId::new(0, BoolLocalId(0)))
         ));
-        let implementation = &execution.host_functions.bool_functions()[0];
-        assert_eq!(implementation.metadata().name(), "is_positive");
+        let implementation = &execution.host_functions.value_functions()[0];
+        assert_eq!(implementation.name(), "is_positive");
         assert_eq!(
             execution.run_main(&mut (), &mut Vec::new()),
             Ok(crate::Value::Bool(true)),
@@ -721,7 +743,8 @@ pub fn main() {
         )
         .expect("host source should compile");
         let plan = plan_host_program(typed).expect("host source should plan");
-        let execution = HostedExecution::from_module_plan(plan);
+        let execution =
+            HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         let expected = concat!(
             "module main\n",
             "main int#0\n",

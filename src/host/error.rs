@@ -19,6 +19,14 @@ pub enum HostRegistrationError {
     },
 
     #[error(
+        "host function {function} uses type parameter indices {parameters:?}; indices must be contiguous from zero"
+    )]
+    NonContiguousTypeParameters {
+        function: EcoString,
+        parameters: Box<[usize]>,
+    },
+
+    #[error(
         "host module {module} was registered by both package {first_package} and package {second_package}"
     )]
     DuplicateModule {

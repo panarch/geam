@@ -102,7 +102,9 @@ pub(super) fn evaluate<Plan: ExecutableRuntimePlan>(
             plan,
             expected,
             *index,
-            state.function_values(&environment.function_list(*list)),
+            state
+                .values()
+                .function_values(&environment.function_list(*list)),
         ),
     };
     let value = value?;
@@ -520,7 +522,7 @@ mod tests {
         FunctionInstructionKind, FunctionTarget, InstructionKind, ListInstruction,
     };
     use crate::runtime::evaluated::{EvaluatedCustomValue, EvaluatedValue};
-    use crate::runtime::state::{ListValueId, RuntimeState};
+    use crate::runtime::state::{RuntimeState, StoredListValueId};
     use crate::runtime::{BitArrayValue, ExecutionError, InvariantError, ListValue, Value};
 
     #[test]
@@ -660,9 +662,11 @@ pub fn main() {
                     FunctionInstructionKind::ListIndex { index, .. } => {
                         let mut echo = Vec::new();
                         let mut state = RuntimeState::new(&mut echo);
-                        let empty = state.function(function_list_type, Vec::new());
+                        let empty = state.values_mut().function(function_list_type, Vec::new());
                         let mut values = RetainedValues::empty();
-                        values.push_evaluated(EvaluatedValue::List(ListValueId::Function(empty)));
+                        values.push_evaluated(EvaluatedValue::List(StoredListValueId::Function(
+                            empty,
+                        )));
                         let environment = BlockEnvironment::from_retained(values);
 
                         assert_eq!(

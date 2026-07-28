@@ -1,7 +1,7 @@
 use super::{FrontendError, ModuleSource, PackageSource};
 use crate::host::{
-    HostFunctionSchema, HostProfile, HostProviderSet, HostValueType, RegisteredHostImplementations,
-    RegisteredHostModule, RegisteredHostProviderModule,
+    HostFunctionSchema, HostProfile, HostProviderSet, HostTypeDescriptor,
+    RegisteredHostImplementations, RegisteredHostModule, RegisteredHostProviderModule,
 };
 use camino::Utf8PathBuf;
 use ecow::EcoString;
@@ -15,7 +15,7 @@ use gleam_core::type_::error::VariableOrigin;
 use gleam_core::type_::{
     Deprecation, ModuleInterface, PRELUDE_MODULE_NAME, References, ValueConstructor,
     ValueConstructorVariant, bit_array, bool as bool_type, build_prelude, float, fn_, generic_var,
-    int, nil, string, utf_codepoint,
+    int, list, named, nil, string, tuple, utf_codepoint,
 };
 use gleam_core::uid::UniqueIdGenerator;
 use gleam_core::warning::{TypeWarningEmitter, WarningEmitter};
@@ -540,11 +540,7 @@ fn host_value_constructor(
     schema: &HostFunctionSchema,
 ) -> (EcoString, ValueConstructor) {
     let type_ = fn_(
-        schema
-            .parameters()
-            .iter()
-            .map(|parameter| host_type(parameter.type_()))
-            .collect(),
+        schema.parameters().iter().map(host_type).collect(),
         host_type(schema.return_type()),
     );
     // Gleam keeps these metadata types crate-private, but exposes their
@@ -576,16 +572,27 @@ fn host_value_constructor(
     )
 }
 
-fn host_type(type_: HostValueType) -> std::sync::Arc<gleam_core::type_::Type> {
+fn host_type(type_: &HostTypeDescriptor) -> std::sync::Arc<gleam_core::type_::Type> {
     match type_ {
-        HostValueType::Parameter(parameter) => generic_var(parameter.index() as u64),
-        HostValueType::Int => int(),
-        HostValueType::Float => float(),
-        HostValueType::String => string(),
-        HostValueType::BitArray => bit_array(),
-        HostValueType::UtfCodepoint => utf_codepoint(),
-        HostValueType::Bool => bool_type(),
-        HostValueType::Nil => nil(),
+        HostTypeDescriptor::Parameter(index) => generic_var(*index as u64),
+        HostTypeDescriptor::Int => int(),
+        HostTypeDescriptor::Float => float(),
+        HostTypeDescriptor::String => string(),
+        HostTypeDescriptor::BitArray => bit_array(),
+        HostTypeDescriptor::UtfCodepoint => utf_codepoint(),
+        HostTypeDescriptor::Bool => bool_type(),
+        HostTypeDescriptor::Nil => nil(),
+        HostTypeDescriptor::List(item) => list(host_type(item)),
+        HostTypeDescriptor::Tuple(elements) => {
+            tuple(elements.iter().map(host_type).collect::<Vec<_>>())
+        }
+        HostTypeDescriptor::Custom { schema, arguments } => named(
+            schema.package(),
+            schema.module(),
+            schema.name(),
+            Publicity::Public,
+            arguments.iter().map(host_type).collect(),
+        ),
     }
 }
 
@@ -687,9 +694,9 @@ mod tests {
     use super::{
         FrontendError, HostedTypedProgramModule, ModuleSource, PackageSource,
         compile_typed_host_program, compile_typed_module, compile_typed_package_program,
-        compile_typed_program, host_module_interface,
+        compile_typed_program, host_module_interface, host_type,
     };
-    use crate::host::{HostModule, HostProviderSet};
+    use crate::host::{HostCustomTypeSchema, HostModule, HostProviderSet, HostTypeDescriptor};
     use crate::plan_host_program;
     use crate::planner::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
     use ecow::EcoString;
@@ -697,7 +704,8 @@ mod tests {
     use gleam_core::type_::error::VariableOrigin;
     use gleam_core::type_::{
         Deprecation, ValueConstructor, ValueConstructorVariant, bit_array, bool as bool_type,
-        build_prelude, float, fn_, int, nil, string, utf_codepoint,
+        build_prelude, float, fn_, generic_var, int, list, named, nil, string, tuple,
+        utf_codepoint,
     };
     use gleam_core::uid::UniqueIdGenerator;
     use num_bigint::BigInt;
@@ -899,6 +907,40 @@ mod tests {
             format!("{:?}", constructor.called_function_purity()),
             "Unknown",
         );
+    }
+
+    #[test]
+    fn maps_recursive_host_types_into_exact_gleam_interface_types() {
+        let custom = HostCustomTypeSchema::new("domain", "domain/tree", "Tree", 1, Vec::new());
+        let cases = [
+            (
+                HostTypeDescriptor::List(Box::new(HostTypeDescriptor::Parameter(0))),
+                list(generic_var(0)),
+            ),
+            (
+                HostTypeDescriptor::Tuple(
+                    vec![HostTypeDescriptor::Int, HostTypeDescriptor::Bool].into_boxed_slice(),
+                ),
+                tuple(vec![int(), bool_type()]),
+            ),
+            (
+                HostTypeDescriptor::Custom {
+                    schema: custom,
+                    arguments: vec![HostTypeDescriptor::String].into_boxed_slice(),
+                },
+                named(
+                    "domain",
+                    "domain/tree",
+                    "Tree",
+                    Publicity::Public,
+                    vec![string()],
+                ),
+            ),
+        ];
+
+        for (host, expected) in cases {
+            assert_eq!(host_type(&host), expected);
+        }
     }
 
     #[test]

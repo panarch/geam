@@ -1,6 +1,6 @@
 use geam::{
-    HostModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource, Value,
-    compile_typed_host_program, plan_host_program,
+    ExecutionError, HostFailure, HostModule, HostProviderSet, HostedExecution, ModuleSource,
+    PackageSource, Value, compile_typed_host_program, plan_host_program,
 };
 use num_bigint::BigInt;
 
@@ -71,7 +71,8 @@ pub fn main() {
             .collect::<Vec<_>>(),
         ["subtract", "add", "unused"],
     );
-    let execution = HostedExecution::from_module_plan(plan);
+    let execution =
+        HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
     let expected = Value::Tuple(vec![
         Value::Int(
             "99999999999999999999999999999999999997"
@@ -175,4 +176,46 @@ function tuple#0
         execution.explain().to_string().trim(),
         expected_explanation.trim(),
     );
+}
+
+#[test]
+fn preserves_stateless_bool_host_failures() {
+    let control = HostModule::new("host_support", "host/control")
+        .expect("host module should be valid")
+        .with_fallible_function("ready", || -> Result<bool, HostFailure> {
+            Err(HostFailure::new("not ready"))
+        })
+        .expect("host function should be valid");
+    let source = r#"
+import host/control
+
+pub fn main() {
+  control.ready()
+}
+"#;
+    let typed = compile_typed_host_program(
+        "application",
+        "main",
+        [PackageSource::new(
+            "application",
+            ["host_support"],
+            [ModuleSource::new("main", "main.gleam", source)],
+        )],
+        HostProviderSet::new([control]).expect("host module should be unique"),
+    )
+    .expect("host program should compile");
+    let plan = plan_host_program(typed).expect("host program should plan");
+    let execution =
+        HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
+    let error = execution
+        .run_main(&mut (), &mut Vec::new())
+        .expect_err("fallible Bool host function should fail");
+    let ExecutionError::Host(error) = error else {
+        panic!("fallible Bool host function should produce a host error");
+    };
+
+    assert_eq!(error.package(), "host_support");
+    assert_eq!(error.module(), "host/control");
+    assert_eq!(error.function(), "ready");
+    assert_eq!(error.failure().message(), "not ready");
 }

@@ -79,7 +79,7 @@ pub(super) fn int<Plan: ExecutableRuntimePlan>(
             plan,
             expected,
             *index,
-            state.int_values(&environment.int_list(*list)),
+            state.values().int_values(&environment.int_list(*list)),
         ),
         I::Add { left, right } => Ok(environment.int(*left) + environment.int(*right)),
         I::Sub { left, right } => Ok(environment.int(*left) - environment.int(*right)),
@@ -167,7 +167,7 @@ pub(super) fn float<Plan: ExecutableRuntimePlan>(
             plan,
             expected,
             *index,
-            state.float_values(&environment.float_list(*list)),
+            state.values().float_values(&environment.float_list(*list)),
         ),
         I::Add { left, right } => Ok(environment.float(*left) + environment.float(*right)),
         I::Sub { left, right } => Ok(environment.float(*left) - environment.float(*right)),
@@ -246,7 +246,9 @@ pub(super) fn string<Plan: ExecutableRuntimePlan>(
             plan,
             expected,
             *index,
-            state.string_values(&environment.string_list(*list)),
+            state
+                .values()
+                .string_values(&environment.string_list(*list)),
         ),
         I::Concatenate { left, right } => Ok(format!(
             "{}{}",
@@ -324,7 +326,9 @@ pub(super) fn bit_array<Plan: ExecutableRuntimePlan>(
             plan,
             expected,
             *index,
-            state.bit_array_values(&environment.bit_array_list(*list)),
+            state
+                .values()
+                .bit_array_values(&environment.bit_array_list(*list)),
         ),
     }
 }
@@ -390,7 +394,9 @@ pub(super) fn utf_codepoint<Plan: ExecutableRuntimePlan>(
             plan,
             expected,
             *index,
-            state.utf_codepoint_values(&environment.utf_codepoint_list(*list)),
+            state
+                .values()
+                .utf_codepoint_values(&environment.utf_codepoint_list(*list)),
         ),
     }
 }
@@ -474,7 +480,9 @@ pub(super) fn custom<Plan: ExecutableRuntimePlan>(
             plan,
             expected,
             *index,
-            state.custom_values(&environment.custom_list(*list)),
+            state
+                .values()
+                .custom_values(&environment.custom_list(*list)),
         ),
     }
 }
@@ -542,7 +550,7 @@ pub(super) fn bool<Plan: ExecutableRuntimePlan>(
             plan,
             expected,
             *index,
-            state.bool_values(&environment.bool_list(*list)),
+            state.values().bool_values(&environment.bool_list(*list)),
         ),
         I::Not(value) => Ok(!environment.bool(*value)),
         I::LtInt { left, right } => Ok(environment.int(*left) < environment.int(*right)),
@@ -569,10 +577,10 @@ pub(super) fn bool<Plan: ExecutableRuntimePlan>(
             Ok(environment.string(*value).starts_with(prefix.as_str()))
         }
         I::ListLengthEquals { value, length } => {
-            Ok(state.list_len(&environment.list(value)) == *length)
+            Ok(state.values().list_len(&environment.list(value)) == *length)
         }
         I::ListLengthAtLeast { value, length } => {
-            Ok(state.list_len(&environment.list(value)) >= *length)
+            Ok(state.values().list_len(&environment.list(value)) >= *length)
         }
     }
 }
@@ -625,7 +633,7 @@ pub(super) fn nil<Plan: ExecutableRuntimePlan>(
             })
         }
         I::ListIndex { list, index } => {
-            let length = state.nil_len(&environment.nil_list(*list));
+            let length = state.values().nil_len(&environment.nil_list(*list));
             ensure_list_index(expected, *index, length)
         }
     }
@@ -694,7 +702,7 @@ pub(super) fn tuple<Plan: ExecutableRuntimePlan>(
             plan,
             expected,
             *index,
-            state.tuple_values(&environment.tuple_list(*list)),
+            state.values().tuple_values(&environment.tuple_list(*list)),
         ),
     }
 }
