@@ -1,4 +1,6 @@
-use super::{HostCallback, HostFunctionImplementation, HostReturn};
+use super::{
+    HostCallback, HostFunctionImplementation, HostReturn, HostValueFunctionImplementation,
+};
 use crate::host::function::HostValueType;
 use crate::host::function::argument::HostCallArguments;
 use crate::host::{HostCallError, HostProfile};
@@ -38,15 +40,17 @@ impl HostReturn for BigInt {
         + Sync
         + 'static,
     ) -> HostFunctionImplementation<Profile> {
-        HostFunctionImplementation::Int(HostIntFunction {
+        HostFunctionImplementation::Value(HostValueFunctionImplementation::Int(HostIntFunction {
             implementation: Arc::new(function),
-        })
+        }))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{HostFunctionImplementation, HostIntFunction, HostReturn};
+    use super::{
+        HostFunctionImplementation, HostIntFunction, HostReturn, HostValueFunctionImplementation,
+    };
     use crate::host::StatelessHostProfile;
     use crate::host::function::HostValueType;
     use crate::host::function::argument::{CallArguments, HostCallArguments, HostParameterLayout};
@@ -82,7 +86,9 @@ mod tests {
     fn int_implementation(
         implementation: HostFunctionImplementation<StatelessHostProfile>,
     ) -> HostIntFunction<StatelessHostProfile> {
-        let HostFunctionImplementation::Int(implementation) = implementation else {
+        let HostFunctionImplementation::Value(HostValueFunctionImplementation::Int(implementation)) =
+            implementation
+        else {
             panic!("BigInt return should create an Int implementation");
         };
         implementation

@@ -1,7 +1,7 @@
 use super::super::body::FunctionBody;
 use super::{
-    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, IntFunctionId,
-    NeverFunctionId, NilFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
+    BitArrayFunctionId, BoolFunctionId, FloatFunctionId, IntFunctionId, NeverFunctionId,
+    NilFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
 };
 use crate::plan::execution::function::FunctionBodyOwner;
 use crate::plan::execution::graph::{
@@ -13,7 +13,8 @@ use std::convert::Infallible;
 
 pub(crate) type IntFunctionBody =
     FunctionBody<IntLocalId, crate::plan::FunctionCallTarget<IntFunctionId>>;
-pub(crate) type NeverFunctionBody = FunctionBody<Infallible, NeverFunctionId>;
+pub(crate) type NeverFunctionBody =
+    FunctionBody<Infallible, crate::plan::FunctionCallTarget<NeverFunctionId>>;
 pub(crate) type FloatFunctionBody =
     FunctionBody<FloatLocalId, crate::plan::FunctionCallTarget<FloatFunctionId>>;
 pub(crate) type StringFunctionBody =
@@ -26,22 +27,23 @@ pub(crate) type BoolFunctionBody =
     FunctionBody<BoolLocalId, crate::plan::FunctionCallTarget<BoolFunctionId>>;
 pub(crate) type NilFunctionBody =
     FunctionBody<NilLocalId, crate::plan::FunctionCallTarget<NilFunctionId>>;
-pub(crate) type TupleFunctionBody = FunctionBody<TupleLocalId, TupleFunctionId>;
+pub(crate) type TupleFunctionBody =
+    FunctionBody<TupleLocalId, crate::plan::FunctionCallTarget<TupleFunctionId>>;
 
 pub(crate) struct CustomFunctionBody {
-    signature_shape: CustomValueShape,
+    _signature_shape: CustomValueShape,
     _body_shape: CustomValueShape,
-    body: FunctionBody<CustomLocal, usize>,
+    body: FunctionBody<CustomLocal, crate::plan::FunctionCallTarget<usize>>,
 }
 
 impl CustomFunctionBody {
     pub(in crate::plan::execution) fn from_parts(
         signature_shape: CustomValueShape,
         body_shape: CustomValueShape,
-        body: FunctionBody<CustomLocal, usize>,
+        body: FunctionBody<CustomLocal, crate::plan::FunctionCallTarget<usize>>,
     ) -> Self {
         Self {
-            signature_shape,
+            _signature_shape: signature_shape,
             _body_shape: body_shape,
             body,
         }
@@ -54,21 +56,20 @@ impl CustomFunctionBody {
 
     #[cfg(test)]
     pub(crate) fn signature_shape(&self) -> &CustomValueShape {
-        &self.signature_shape
+        &self._signature_shape
     }
 
-    pub(crate) fn function_body(&self) -> &FunctionBody<CustomLocal, usize> {
+    #[cfg(test)]
+    pub(crate) fn function_body(
+        &self,
+    ) -> &FunctionBody<CustomLocal, crate::plan::FunctionCallTarget<usize>> {
         &self.body
-    }
-
-    pub(crate) fn function_id(&self, index: usize) -> CustomFunctionId {
-        CustomFunctionId::new(index, self.signature_shape)
     }
 }
 
 impl FunctionBodyOwner for CustomFunctionBody {
     type Return = CustomLocal;
-    type TailCall = usize;
+    type TailCall = crate::plan::FunctionCallTarget<usize>;
 
     fn function_body(&self) -> &FunctionBody<Self::Return, Self::TailCall> {
         &self.body

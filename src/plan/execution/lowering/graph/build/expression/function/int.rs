@@ -61,6 +61,7 @@ pub(in crate::plan::execution::lowering) fn int_function_expr(
             function,
             args,
             type_: _,
+            site,
         } => call_args(args, cursor, graph, context).and_then(|flow| match flow {
             DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
             DraftFlow::Value {
@@ -71,7 +72,11 @@ pub(in crate::plan::execution::lowering) fn int_function_expr(
                 let value = graph.function_instruction(
                     &mut cursor,
                     shape.clone(),
-                    I::Call { function, args },
+                    I::Call {
+                        function,
+                        args,
+                        site: site.clone(),
+                    },
                 );
                 DraftFlow::value(cursor, DraftIntFunction::new(value))
             }),
@@ -80,6 +85,7 @@ pub(in crate::plan::execution::lowering) fn int_function_expr(
             function,
             args,
             type_: _,
+            site,
         } => function_function_expr(function, cursor, graph, context).and_then(|flow| match flow {
             DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
             DraftFlow::Value {
@@ -97,6 +103,7 @@ pub(in crate::plan::execution::lowering) fn int_function_expr(
                         I::FunctionCall {
                             function: function.value().clone(),
                             args,
+                            site: site.clone(),
                         },
                     );
                     DraftFlow::value(cursor, DraftIntFunction::new(value))

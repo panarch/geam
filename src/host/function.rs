@@ -4,7 +4,7 @@ mod return_;
 mod type_;
 
 use crate::host::{HostProfile, HostProvider};
-use crate::plan::FunctionType;
+use crate::plan::{FunctionType, TypeScheme};
 use ecow::EcoString;
 use std::fmt;
 
@@ -17,13 +17,15 @@ pub(crate) use argument::{
 };
 pub(crate) use return_::{
     HostBitArrayFunction, HostBoolFunction, HostFloatFunction, HostFunctionImplementation,
-    HostIntFunction, HostNilFunction, HostStringFunction, HostUtfCodepointFunction,
+    HostIntFunction, HostNeverFunction, HostNilFunction, HostStringFunction,
+    HostUtfCodepointFunction, HostValueFunctionImplementation,
 };
 pub(crate) use type_::HostValueType;
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct HostFunctionSchema {
     name: EcoString,
+    scheme: TypeScheme,
     parameters: Box<[HostParameter]>,
     return_: HostValueType,
     type_: FunctionType,
@@ -33,7 +35,8 @@ pub struct HostFunctionSchema {
 ///
 /// Host functions accept zero through seven scalar arguments. Supported Rust
 /// values are `BigInt`, `f64`, `EcoString`, `BitArrayValue`, `char`, `bool`,
-/// and `()`. A host function returns one value from the same set.
+/// and `()`. A host function returns one value from the same set, or
+/// `Infallible` when it never returns successfully.
 ///
 /// ```compile_fail
 /// use geam::HostModule;
@@ -114,6 +117,10 @@ impl HostFunctionSchema {
         &self.type_
     }
 
+    pub fn scheme(&self) -> &TypeScheme {
+        &self.scheme
+    }
+
     pub(crate) fn parameters(&self) -> &[HostParameter] {
         &self.parameters
     }
@@ -128,6 +135,7 @@ impl fmt::Debug for HostFunctionSchema {
         formatter
             .debug_struct("HostFunctionSchema")
             .field("name", &self.name)
+            .field("scheme", &self.scheme)
             .field("type_", &self.type_)
             .finish()
     }
@@ -183,9 +191,17 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
             .map(|parameter| parameter.type_().value_type())
             .collect();
         let return_type = registration.return_.value_type();
+        let parameter_count = registration
+            .parameters
+            .iter()
+            .map(|parameter| parameter.type_().type_parameter_count())
+            .chain([registration.return_.type_parameter_count()])
+            .max()
+            .unwrap_or(0);
         Self {
             schema: HostFunctionSchema {
                 name,
+                scheme: TypeScheme::new(parameter_count),
                 parameters: registration.parameters,
                 return_: registration.return_,
                 type_: FunctionType::new(argument_types, return_type),
@@ -210,10 +226,12 @@ mod tests {
         HostNilFunction, HostValueType,
     };
     use crate::BitArrayValue;
+    use crate::host::HostFailure;
     use crate::host::function::argument::CallArguments;
-    use crate::plan::ValueType;
+    use crate::plan::{TypeParameterId, ValueType};
     use ecow::EcoString;
     use num_bigint::BigInt;
+    use std::convert::Infallible;
 
     #[test]
     fn definition_assembles_schema_and_int_implementation_together() {
@@ -307,6 +325,47 @@ mod tests {
     }
 
     #[test]
+    fn definition_assembles_generic_never_scheme_and_callback_together() {
+        let definition: HostFunctionDefinition<crate::host::StatelessHostProfile> =
+            HostFunctionDefinition::new_fallible(
+                "stop".into(),
+                |value: BigInt| -> Result<Infallible, HostFailure> {
+                    Err(HostFailure::new(format!("stopped at {value}")))
+                },
+            );
+
+        assert_eq!(definition.schema().name(), "stop");
+        assert_eq!(
+            definition.schema().scheme().parameters(),
+            [TypeParameterId(0)],
+        );
+        assert_eq!(
+            definition.schema().type_().argument_types(),
+            [ValueType::Int],
+        );
+        assert_eq!(
+            definition.schema().type_().return_(),
+            &ValueType::Parameter(TypeParameterId(0)),
+        );
+        assert_eq!(
+            definition.schema().return_type(),
+            HostValueType::Parameter(TypeParameterId(0)),
+        );
+
+        let (_, implementation) = definition.into_parts();
+        assert_eq!(
+            never_implementation(implementation)
+                .call(
+                    &mut (),
+                    &CallArguments::new(vec![BigInt::from(7)], Vec::new()),
+                )
+                .expect_err("stop should fail")
+                .to_string(),
+            "stopped at 7",
+        );
+    }
+
+    #[test]
     fn schema_clone_contains_only_the_registered_signature() {
         let definition: HostFunctionDefinition<crate::host::StatelessHostProfile> =
             HostFunctionDefinition::new("negate".into(), <bool as std::ops::Not>::not);
@@ -318,7 +377,7 @@ mod tests {
         assert_eq!(schema.type_().return_(), &ValueType::Bool);
         assert_eq!(
             format!("{schema:?}"),
-            r#"HostFunctionSchema { name: "negate", type_: FunctionType { arguments: [Bool], return_: Bool } }"#,
+            r#"HostFunctionSchema { name: "negate", scheme: TypeScheme { parameters: [] }, type_: FunctionType { arguments: [Bool], return_: Bool } }"#,
         );
     }
 
@@ -347,10 +406,21 @@ mod tests {
         nil_implementation(implementation);
     }
 
+    #[test]
+    #[should_panic(expected = "stop should retain a Never implementation")]
+    fn never_definition_shape_guard_is_visible() {
+        let definition = HostFunctionDefinition::new("stop".into(), || true);
+        let (_, implementation) = definition.into_parts();
+        never_implementation(implementation);
+    }
+
     fn int_implementation(
         implementation: HostFunctionImplementation<crate::host::StatelessHostProfile>,
     ) -> HostIntFunction<crate::host::StatelessHostProfile> {
-        let HostFunctionImplementation::Int(implementation) = implementation else {
+        let HostFunctionImplementation::Value(super::HostValueFunctionImplementation::Int(
+            implementation,
+        )) = implementation
+        else {
             panic!("choose should retain an Int implementation");
         };
         implementation
@@ -359,7 +429,10 @@ mod tests {
     fn bool_implementation(
         implementation: HostFunctionImplementation<crate::host::StatelessHostProfile>,
     ) -> HostBoolFunction<crate::host::StatelessHostProfile> {
-        let HostFunctionImplementation::Bool(implementation) = implementation else {
+        let HostFunctionImplementation::Value(super::HostValueFunctionImplementation::Bool(
+            implementation,
+        )) = implementation
+        else {
             panic!("is_positive should retain a Bool implementation");
         };
         implementation
@@ -368,8 +441,20 @@ mod tests {
     fn nil_implementation(
         implementation: HostFunctionImplementation<crate::host::StatelessHostProfile>,
     ) -> HostNilFunction<crate::host::StatelessHostProfile> {
-        let HostFunctionImplementation::Nil(implementation) = implementation else {
+        let HostFunctionImplementation::Value(super::HostValueFunctionImplementation::Nil(
+            implementation,
+        )) = implementation
+        else {
             panic!("consume should retain a Nil implementation");
+        };
+        implementation
+    }
+
+    fn never_implementation(
+        implementation: HostFunctionImplementation<crate::host::StatelessHostProfile>,
+    ) -> super::HostNeverFunction<crate::host::StatelessHostProfile> {
+        let HostFunctionImplementation::Never(implementation) = implementation else {
+            panic!("stop should retain a Never implementation");
         };
         implementation
     }

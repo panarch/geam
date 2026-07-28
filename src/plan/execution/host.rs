@@ -5,10 +5,12 @@ use std::marker::PhantomData;
 
 pub(crate) use function::{
     HostBitArrayFunctionId, HostBoolFunctionId, HostFloatFunctionId, HostIntFunctionId,
-    HostNilFunctionId, HostStringFunctionId, HostUtfCodepointFunctionId, HostedBitArrayFunction,
-    HostedBoolFunction, HostedFloatFunction, HostedFunction, HostedFunctionMetadata,
-    HostedIntFunction, HostedNilFunction, HostedStringFunction, HostedUtfCodepointFunction,
+    HostNeverFunctionId, HostNilFunctionId, HostStringFunctionId, HostUtfCodepointFunctionId,
+    HostedBitArrayFunction, HostedBoolFunction, HostedFloatFunction, HostedFunction,
+    HostedFunctionMetadata, HostedFunctionTarget, HostedIntFunction, HostedNeverFunction,
+    HostedNilFunction, HostedStringFunction, HostedUtfCodepointFunction,
 };
-pub(crate) use table::HostFunctionTables;
+pub(in crate::plan::execution) use table::HostValueFunctionTables;
+pub(crate) use table::{HostFunctionTables, HostValueFunctionTarget};
 
 pub(crate) struct HostedExecutionProfile<Profile: HostProfile>(PhantomData<Profile>);

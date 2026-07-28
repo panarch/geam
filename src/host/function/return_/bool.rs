@@ -1,4 +1,6 @@
-use super::{HostCallback, HostFunctionImplementation, HostReturn};
+use super::{
+    HostCallback, HostFunctionImplementation, HostReturn, HostValueFunctionImplementation,
+};
 use crate::host::function::HostValueType;
 use crate::host::function::argument::HostCallArguments;
 use crate::host::{HostCallError, HostProfile};
@@ -37,15 +39,17 @@ impl HostReturn for bool {
         + Sync
         + 'static,
     ) -> HostFunctionImplementation<Profile> {
-        HostFunctionImplementation::Bool(HostBoolFunction {
+        HostFunctionImplementation::Value(HostValueFunctionImplementation::Bool(HostBoolFunction {
             implementation: Arc::new(function),
-        })
+        }))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{HostBoolFunction, HostFunctionImplementation, HostReturn};
+    use super::{
+        HostBoolFunction, HostFunctionImplementation, HostReturn, HostValueFunctionImplementation,
+    };
     use crate::host::StatelessHostProfile;
     use crate::host::function::HostValueType;
     use crate::host::function::argument::{CallArguments, HostCallArguments, HostParameterLayout};
@@ -82,7 +86,10 @@ mod tests {
     fn bool_implementation(
         implementation: HostFunctionImplementation<StatelessHostProfile>,
     ) -> HostBoolFunction<StatelessHostProfile> {
-        let HostFunctionImplementation::Bool(implementation) = implementation else {
+        let HostFunctionImplementation::Value(HostValueFunctionImplementation::Bool(
+            implementation,
+        )) = implementation
+        else {
             panic!("bool return should create a Bool implementation");
         };
         implementation

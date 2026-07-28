@@ -20,6 +20,7 @@ pub(super) enum GraphAction {
     NeverCall {
         function: NeverCall,
         inputs: RetainedValues,
+        site: crate::plan::HostCallSite,
     },
 }
 
@@ -131,7 +132,11 @@ pub(super) fn terminator_action<Plan: ExecutableRuntimePlan>(
                     NeverCall::Value(environment.never_function(function))
                 }
             };
-            Ok(GraphAction::NeverCall { function, inputs })
+            Ok(GraphAction::NeverCall {
+                function,
+                inputs,
+                site: call.site().clone(),
+            })
         }
     }
 }

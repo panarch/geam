@@ -38,10 +38,12 @@ pub(crate) enum TypedListExprKind<Item: ListItem> {
     Call {
         function: Item::Function,
         args: Vec<CallArg>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: Box<ListFunctionExpr>,
         args: Vec<CallArg>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: Box<TupleExpr>,
@@ -84,6 +86,7 @@ pub(crate) enum TypedListReturnKind<Item: ListItem> {
     Call {
         function: Item::Function,
         args: Vec<CallArg>,
+        site: crate::plan::HostCallSite,
     },
     BoolCase {
         subject: BoolExpr,
@@ -204,9 +207,15 @@ impl<Item: ListItem> TypedListExpr<Item> {
                     TypedListExprKind::Constant(reference),
                 ))
             }
-            TypedListExprKind::Call { function, args } => {
-                TypedListReturnKind::Call { function, args }
-            }
+            TypedListExprKind::Call {
+                function,
+                args,
+                site,
+            } => TypedListReturnKind::Call {
+                function,
+                args,
+                site,
+            },
             TypedListExprKind::BoolCase {
                 subject,
                 true_,
@@ -312,20 +321,48 @@ impl<Item: ListItem> TypedListExpr<Item> {
         Self::new(item, TypedListExprKind::LocalGet { local, name })
     }
 
+    #[cfg(test)]
     pub(super) fn call(item: Item, function: Item::Function, args: Vec<CallArg>) -> Self {
-        Self::new(item, TypedListExprKind::Call { function, args })
+        Self::call_at(item, function, args, crate::plan::HostCallSite::unknown())
     }
 
+    pub(super) fn call_at(
+        item: Item,
+        function: Item::Function,
+        args: Vec<CallArg>,
+        site: crate::plan::HostCallSite,
+    ) -> Self {
+        Self::new(
+            item,
+            TypedListExprKind::Call {
+                function,
+                args,
+                site,
+            },
+        )
+    }
+
+    #[cfg(test)]
     pub(super) fn function_call(
         item: Item,
         function: ListFunctionExpr,
         args: Vec<CallArg>,
+    ) -> Self {
+        Self::function_call_at(item, function, args, crate::plan::HostCallSite::unknown())
+    }
+
+    pub(super) fn function_call_at(
+        item: Item,
+        function: ListFunctionExpr,
+        args: Vec<CallArg>,
+        site: crate::plan::HostCallSite,
     ) -> Self {
         Self::new(
             item,
             TypedListExprKind::FunctionCall {
                 function: Box::new(function),
                 args,
+                site,
             },
         )
     }

@@ -256,7 +256,11 @@ fn direct_call(
                 let value = graph.custom_instruction(
                     &mut cursor,
                     shape.clone(),
-                    super::super::instruction::DraftCustomInstruction::Call { function, args },
+                    super::super::instruction::DraftCustomInstruction::Call {
+                        function,
+                        args,
+                        site: site.clone(),
+                    },
                 );
                 DraftFlow::value(cursor, value.erase())
             })
@@ -287,12 +291,16 @@ fn direct_call(
             let value = graph.tuple_instruction(
                 &mut cursor,
                 elements.clone(),
-                super::super::instruction::DraftTupleInstruction::Call { function, args },
+                super::super::instruction::DraftTupleInstruction::Call {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
             );
             DraftFlow::value(cursor, value.erase())
         }),
         StoredValueShape::List(item) => {
-            list::generic_direct_call(item, function, args, cursor, graph, context)
+            list::generic_direct_call(item, function, args, site, cursor, graph, context)
                 .map(|flow| flow.map(|value| value.erase()))
         }
         StoredValueShape::Function(shape) => {
@@ -305,6 +313,7 @@ fn direct_call(
                         super::super::instruction::DraftFunctionInstruction::Call {
                             function,
                             args,
+                            site: site.clone(),
                         },
                     );
                     DraftFlow::value(cursor, value.erase())
@@ -382,7 +391,11 @@ fn function_call(
             let value = graph.custom_instruction(
                 &mut cursor,
                 shape.clone(),
-                super::super::instruction::DraftCustomInstruction::FunctionCall { function, args },
+                super::super::instruction::DraftCustomInstruction::FunctionCall {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
             );
             DraftFlow::value(cursor, value.erase())
         }
@@ -412,13 +425,24 @@ fn function_call(
             let value = graph.tuple_instruction(
                 &mut cursor,
                 elements.clone(),
-                super::super::instruction::DraftTupleInstruction::FunctionCall { function, args },
+                super::super::instruction::DraftTupleInstruction::FunctionCall {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
             );
             DraftFlow::value(cursor, value.erase())
         }
         StoredValueShape::List(item) => {
-            let value =
-                list::generic_function_call(item, function, args, &mut cursor, graph, context);
+            let value = list::generic_function_call(
+                item,
+                function,
+                args,
+                site,
+                &mut cursor,
+                graph,
+                context,
+            );
             DraftFlow::value(cursor, value.erase())
         }
         StoredValueShape::Function(shape) => {
@@ -428,6 +452,7 @@ fn function_call(
                 super::super::instruction::DraftFunctionInstruction::FunctionCall {
                     function,
                     args,
+                    site: site.clone(),
                 },
             );
             DraftFlow::value(cursor, value.erase())
@@ -745,21 +770,23 @@ pub(in crate::plan::execution::lowering) fn never_expr(
 
     match expression.kind() {
         E::LocalGet { .. } | E::ListIndex { .. } => Representability::Uninhabited,
-        E::Call { function, args, .. } => {
-            call_args(args, cursor, graph, context).and_then(|flow| match flow {
-                DraftFlow::Diverged => Representability::Inhabited(()),
-                DraftFlow::Value {
-                    cursor,
-                    value: args,
-                } => context.never_function_id(function).map(|function| {
-                    graph.finish_never_call(cursor, function, args);
-                }),
-            })
-        }
+        E::Call {
+            function,
+            args,
+            site,
+        } => call_args(args, cursor, graph, context).and_then(|flow| match flow {
+            DraftFlow::Diverged => Representability::Inhabited(()),
+            DraftFlow::Value {
+                cursor,
+                value: args,
+            } => context.never_function_id(function).map(|function| {
+                graph.finish_never_call(cursor, function, args, site.clone());
+            }),
+        }),
         E::FunctionCall {
             function: value,
             args,
-            ..
+            site,
         } => {
             let shape = context.concrete_function_shape(&value.shape());
             function::generic_never_function_expr(value, &shape, cursor, graph, context).and_then(
@@ -778,6 +805,7 @@ pub(in crate::plan::execution::lowering) fn never_expr(
                                 cursor,
                                 function.value().clone(),
                                 args,
+                                site.clone(),
                             );
                         }
                     }),
@@ -986,17 +1014,29 @@ pub(in crate::plan::execution::lowering) fn tuple_never_expr(
     match expression.kind() {
         E::Value(values) => diverging_values(values, proof.diverging(), cursor, graph, context),
         E::Constant(_) | E::LocalGet { .. } | E::ListIndex { .. } => Representability::Uninhabited,
-        E::Call { function, args } => never_direct_call(function, args, cursor, graph, context),
+        E::Call {
+            function,
+            args,
+            site,
+        } => never_direct_call(function, args, site, cursor, graph, context),
         E::FunctionCall {
             function: value,
             args,
+            site,
         } => function::tuple_never_function_expr(value, cursor, graph, context).and_then(|flow| {
             match flow {
                 DraftFlow::Diverged => Representability::Inhabited(()),
                 DraftFlow::Value {
                     cursor,
                     value: function,
-                } => never_function_call(function.value().clone(), args, cursor, graph, context),
+                } => never_function_call(
+                    function.value().clone(),
+                    args,
+                    site,
+                    cursor,
+                    graph,
+                    context,
+                ),
             }
         }),
         E::TupleIndex { tuple: source, .. } => tuple::tuple_expr(source, cursor, graph, context)
@@ -1108,7 +1148,11 @@ pub(in crate::plan::execution::lowering) fn custom_never_expr_kind(
             context,
         ),
         E::Constant(_) | E::LocalGet { .. } | E::ListIndex { .. } => Representability::Uninhabited,
-        E::Call { function, args } => never_direct_call(function, args, cursor, graph, context),
+        E::Call {
+            function,
+            args,
+            site,
+        } => never_direct_call(function, args, site, cursor, graph, context),
         E::FunctionCall(call) => {
             function::custom_never_function_expr(call.function(), cursor, graph, context).and_then(
                 |flow| match flow {
@@ -1119,6 +1163,7 @@ pub(in crate::plan::execution::lowering) fn custom_never_expr_kind(
                     } => never_function_call(
                         function.value().clone(),
                         call.arguments(),
+                        call.site(),
                         cursor,
                         graph,
                         context,
@@ -1210,6 +1255,7 @@ pub(in crate::plan::execution::lowering) fn custom_never_expr_kind(
 fn never_direct_call(
     function: &module::FunctionInstantiation,
     args: &[module::CallArg],
+    site: &crate::plan::HostCallSite,
     cursor: DraftCursor,
     graph: &mut DraftGraph,
     context: &mut super::super::LoweringContext,
@@ -1220,7 +1266,7 @@ fn never_direct_call(
             cursor,
             value: args,
         } => context.never_function_id(function).map(|function| {
-            graph.finish_never_call(cursor, function, args);
+            graph.finish_never_call(cursor, function, args, site.clone());
         }),
     })
 }
@@ -1228,6 +1274,7 @@ fn never_direct_call(
 fn never_function_call(
     function: super::super::DraftFunction,
     args: &[module::CallArg],
+    site: &crate::plan::HostCallSite,
     cursor: DraftCursor,
     graph: &mut DraftGraph,
     context: &mut super::super::LoweringContext,
@@ -1238,7 +1285,7 @@ fn never_function_call(
             cursor,
             value: args,
         } => {
-            graph.finish_never_function_call(cursor, function, args);
+            graph.finish_never_function_call(cursor, function, args, site.clone());
         }
     })
 }

@@ -448,13 +448,23 @@ fn freeze_custom(
             fields: values.any_slice(fields),
         },
         DraftCustomInstruction::Constant(id) => E::Constant(*id),
-        DraftCustomInstruction::Call { function, args } => E::Call {
+        DraftCustomInstruction::Call {
+            function,
+            args,
+            site,
+        } => E::Call {
             function: *function,
             args: values.any_slice(args),
+            site: site.clone(),
         },
-        DraftCustomInstruction::FunctionCall { function, args } => E::FunctionCall {
+        DraftCustomInstruction::FunctionCall {
+            function,
+            args,
+            site,
+        } => E::FunctionCall {
             function: values.custom_function(function),
             args: values.any_slice(args),
+            site: site.clone(),
         },
         DraftCustomInstruction::TupleIndex { tuple, index } => E::TupleIndex {
             tuple: values.tuple(tuple),
@@ -617,13 +627,23 @@ fn freeze_tuple(
     match instruction {
         DraftTupleInstruction::Value(elements) => E::Value(values.any_slice(elements)),
         DraftTupleInstruction::Constant(id) => E::Constant(*id),
-        DraftTupleInstruction::Call { function, args } => E::Call {
+        DraftTupleInstruction::Call {
+            function,
+            args,
+            site,
+        } => E::Call {
             function: *function,
             args: values.any_slice(args),
+            site: site.clone(),
         },
-        DraftTupleInstruction::FunctionCall { function, args } => E::FunctionCall {
+        DraftTupleInstruction::FunctionCall {
+            function,
+            args,
+            site,
+        } => E::FunctionCall {
             function: values.tuple_function(function),
             args: values.any_slice(args),
+            site: site.clone(),
         },
         DraftTupleInstruction::TupleIndex { tuple, index } => E::TupleIndex {
             tuple: values.tuple(tuple),
@@ -649,13 +669,23 @@ fn freeze_parameter_list(
     match instruction {
         DraftParameterListInstruction::Empty => E::Empty,
         DraftParameterListInstruction::Constant(id) => E::Constant(*id),
-        DraftParameterListInstruction::Call { function, args } => E::Call {
+        DraftParameterListInstruction::Call {
+            function,
+            args,
+            site,
+        } => E::Call {
             function: *function,
             args: values.any_slice(args),
+            site: site.clone(),
         },
-        DraftParameterListInstruction::FunctionCall { function, args } => E::FunctionCall {
+        DraftParameterListInstruction::FunctionCall {
+            function,
+            args,
+            site,
+        } => E::FunctionCall {
             function: values.list_function(function),
             args: values.any_slice(args),
+            site: site.clone(),
         },
         DraftParameterListInstruction::TupleIndex { tuple, index } => E::TupleIndex {
             tuple: values.tuple(tuple),
@@ -812,13 +842,23 @@ where
                 .into_boxed_slice(),
             tail: list(values, tail),
         },
-        DraftTypedListInstruction::Call { function, args } => E::Call {
+        DraftTypedListInstruction::Call {
+            function,
+            args,
+            site,
+        } => E::Call {
             function: function.clone(),
             args: values.any_slice(args),
+            site: site.clone(),
         },
-        DraftTypedListInstruction::FunctionCall { function, args } => E::FunctionCall {
+        DraftTypedListInstruction::FunctionCall {
+            function,
+            args,
+            site,
+        } => E::FunctionCall {
             function: values.list_function(function),
             args: values.any_slice(args),
+            site: site.clone(),
         },
         DraftTypedListInstruction::TupleIndex { tuple, index } => E::TupleIndex {
             tuple: values.tuple(tuple),
@@ -863,13 +903,23 @@ fn freeze_function(
                 .into_boxed_slice(),
         },
         DraftFunctionInstruction::Constructor(constructor) => E::Constructor(*constructor),
-        DraftFunctionInstruction::Call { function, args } => E::Call {
+        DraftFunctionInstruction::Call {
+            function,
+            args,
+            site,
+        } => E::Call {
             function: function.clone(),
             args: values.any_slice(args),
+            site: site.clone(),
         },
-        DraftFunctionInstruction::FunctionCall { function, args } => E::FunctionCall {
+        DraftFunctionInstruction::FunctionCall {
+            function,
+            args,
+            site,
+        } => E::FunctionCall {
             function: values.function_function(function),
             args: values.any_slice(args),
+            site: site.clone(),
         },
         DraftFunctionInstruction::TupleIndex { tuple, index } => E::TupleIndex {
             tuple: values.tuple(tuple),

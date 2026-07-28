@@ -410,63 +410,72 @@ impl FunctionExpr {
         }
     }
 
-    pub(crate) fn call(
+    pub(crate) fn call_at(
         function: crate::plan::FunctionInstantiation,
         args: Vec<crate::plan::CallArg>,
         shape: FunctionShape,
+        site: crate::plan::HostCallSite,
     ) -> Self {
         let type_ = shape.type_();
         match shape.return_shape().clone() {
-            ValueShape::Parameter(parameter) => Self::generic(GenericFunctionExpr::call(
+            ValueShape::Parameter(parameter) => Self::generic(GenericFunctionExpr::call_at(
                 function,
                 args,
                 crate::plan::GenericFunctionType::new(shape.argument_shapes().to_vec(), parameter),
+                site,
             )),
             ValueShape::Int => {
-                Self::int_with_shape(IntFunctionExpr::call(function, args, type_), shape)
+                Self::int_with_shape(IntFunctionExpr::call_at(function, args, type_, site), shape)
             }
-            ValueShape::String => {
-                Self::string_with_shape(StringFunctionExpr::call(function, args, type_), shape)
-            }
-            ValueShape::BitArray => {
-                Self::bit_array_with_shape(BitArrayFunctionExpr::call(function, args, type_), shape)
-            }
-            ValueShape::UtfCodepoint => Self::utf_codepoint_with_shape(
-                UtfCodepointFunctionExpr::call(function, args, type_),
+            ValueShape::String => Self::string_with_shape(
+                StringFunctionExpr::call_at(function, args, type_, site),
                 shape,
             ),
-            ValueShape::Custom(return_) => Self::custom(CustomFunctionExpr::call(
+            ValueShape::BitArray => Self::bit_array_with_shape(
+                BitArrayFunctionExpr::call_at(function, args, type_, site),
+                shape,
+            ),
+            ValueShape::UtfCodepoint => Self::utf_codepoint_with_shape(
+                UtfCodepointFunctionExpr::call_at(function, args, type_, site),
+                shape,
+            ),
+            ValueShape::Custom(return_) => Self::custom(CustomFunctionExpr::call_at(
                 function,
                 args,
                 crate::plan::CustomFunctionType::from_shapes(
                     shape.argument_shapes().to_vec(),
                     return_,
                 ),
+                site,
             )),
-            ValueShape::Float => {
-                Self::float_with_shape(FloatFunctionExpr::call(function, args, type_), shape)
-            }
-            ValueShape::Bool => {
-                Self::bool_with_shape(BoolFunctionExpr::call(function, args, type_), shape)
-            }
+            ValueShape::Float => Self::float_with_shape(
+                FloatFunctionExpr::call_at(function, args, type_, site),
+                shape,
+            ),
+            ValueShape::Bool => Self::bool_with_shape(
+                BoolFunctionExpr::call_at(function, args, type_, site),
+                shape,
+            ),
             ValueShape::Nil => {
-                Self::nil_with_shape(NilFunctionExpr::call(function, args, type_), shape)
+                Self::nil_with_shape(NilFunctionExpr::call_at(function, args, type_, site), shape)
             }
-            ValueShape::Tuple(_) => {
-                Self::tuple_with_shape(TupleFunctionExpr::call(function, args, type_), shape)
-            }
+            ValueShape::Tuple(_) => Self::tuple_with_shape(
+                TupleFunctionExpr::call_at(function, args, type_, site),
+                shape,
+            ),
             ValueShape::List(item) => Self::list_with_shape(
-                ListFunctionExpr::call(function, args, type_, item.value_type()),
+                ListFunctionExpr::call_at(function, args, type_, item.value_type(), site),
                 shape,
             ),
             ValueShape::Function(return_) => Self::function_with_shape(
-                FunctionFunctionExpr::call(
+                FunctionFunctionExpr::call_at(
                     function,
                     args,
                     crate::plan::FunctionFunctionType::from_shapes(
                         shape.argument_shapes().to_vec(),
                         *return_,
                     ),
+                    site,
                 ),
                 shape,
             ),

@@ -87,10 +87,15 @@ pub(super) fn lower_never_function_graph<ModuleExpression, ModuleFunction>(
     + Fn(
         &ModuleFunction,
         &mut LoweringContext,
-    ) -> Representability<execution::function::NeverFunctionId>,
+    ) -> Representability<
+        crate::plan::FunctionCallTarget<execution::function::NeverFunctionId>,
+    >,
 ) -> Representability<
     draft::LoweredFunctionGraph<
-        execution::function::FunctionBody<Infallible, execution::function::NeverFunctionId>,
+        execution::function::FunctionBody<
+            Infallible,
+            crate::plan::FunctionCallTarget<execution::function::NeverFunctionId>,
+        >,
     >,
 > {
     build::build_never_function_graph(template, body, context, lower_expression, lower_function)

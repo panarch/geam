@@ -89,8 +89,8 @@ mod tests {
     use super::function_instantiation_mismatch;
     use crate::plan::{Expr, FunctionType, IntLocalId, LocalId, Step, ValueType};
     use crate::planner::dsl::{
-        call_float_at, call_int_function_at, call_list, float, float_arg, function, host_call_site,
-        int, int_arg, int_function_arg, int_function_call_arg, int_function_ref,
+        call_float_at, call_int_function_at, call_list_at, float, float_arg, function,
+        host_call_site, int, int_arg, int_function_arg, int_function_call_arg, int_function_ref,
         int_return_tail_call_at, let_float_step, let_int_function_step, let_list_step, list,
         list_return_expr, local_float, local_int, local_int_function, local_list, module,
         return_list,
@@ -329,7 +329,12 @@ pub fn main() {
             .step(let_list_step(
                 0,
                 "values",
-                call_list(2, [int_arg(int(1))], ValueType::Int),
+                call_list_at(
+                    2,
+                    [int_arg(int(1))],
+                    ValueType::Int,
+                    host_call_site(source, "main", "singleton(1)"),
+                ),
             )),
             [
                 function("half", local_float(0, "value").div_float(float(2.0)))

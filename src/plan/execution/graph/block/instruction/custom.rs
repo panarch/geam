@@ -17,10 +17,12 @@ pub(crate) enum CustomInstruction {
     Call {
         function: CustomFunctionId,
         args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: CustomFunctionLocal,
         args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: TupleLocalId,
@@ -52,10 +54,10 @@ impl Explain for CustomInstruction {
                 write_local_labels(output, fields);
             }
             CustomInstruction::Constant(id) => write_constant(output, "custom", *id),
-            CustomInstruction::Call { function, args } => {
+            CustomInstruction::Call { function, args, .. } => {
                 write_call(output, "custom.call", function, args);
             }
-            CustomInstruction::FunctionCall { function, args } => {
+            CustomInstruction::FunctionCall { function, args, .. } => {
                 write_function_call(output, "custom.function_call", function, args);
             }
             CustomInstruction::TupleIndex { tuple, index } => {

@@ -280,27 +280,36 @@ impl Expr {
             ValueShape::UtfCodepoint => {
                 Self::utf_codepoint(UtfCodepointExpr::call_at(function, args, site))
             }
-            ValueShape::Custom(shape) => Self::custom(CustomExpr::call(function, args, shape)),
+            ValueShape::Custom(shape) => {
+                Self::custom(CustomExpr::call_at(function, args, shape, site))
+            }
             ValueShape::Float => Self::float(FloatExpr::call_at(function, args, site)),
             ValueShape::Bool => Self::bool(BoolExpr::call_at(function, args, site)),
             ValueShape::Nil => Self::nil(NilExpr::call_at(function, args, site)),
             ValueShape::Tuple(shape) => {
-                let expression = TupleExpr::call(
+                let expression = TupleExpr::call_at(
                     function,
                     args,
                     shape.iter().map(ValueShape::value_type).collect(),
+                    site,
                 );
                 Self {
                     shape: ValueShape::Tuple(shape),
                     kind: ExprKind::Tuple(expression),
                 }
             }
-            ValueShape::List(item_shape) => {
-                Self::list(ListExpr::call(function, args, (*item_shape).clone()))
-            }
-            ValueShape::Function(shape) => {
-                Self::function(FunctionExpr::call(function, args, (*shape).clone()))
-            }
+            ValueShape::List(item_shape) => Self::list(ListExpr::call_at(
+                function,
+                args,
+                (*item_shape).clone(),
+                site,
+            )),
+            ValueShape::Function(shape) => Self::function(FunctionExpr::call_at(
+                function,
+                args,
+                (*shape).clone(),
+                site,
+            )),
         }
     }
 

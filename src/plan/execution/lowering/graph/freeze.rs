@@ -312,21 +312,22 @@ where
             site,
             pattern_span,
         )),
-        DraftTerminator::NeverCall { function, args } => {
-            E::NeverCall(execution::graph::NeverCall::new(
-                match function {
-                    DraftNeverCallTarget::Direct(function) => {
-                        execution::graph::NeverCallTarget::Direct(function)
-                    }
-                    DraftNeverCallTarget::Value(function) => {
-                        execution::graph::NeverCallTarget::Value(
-                            layout.values.never_function(&function),
-                        )
-                    }
-                },
-                layout.values.any_slice(&args),
-            ))
-        }
+        DraftTerminator::NeverCall {
+            function,
+            args,
+            site,
+        } => E::NeverCall(execution::graph::NeverCall::new(
+            match function {
+                DraftNeverCallTarget::Direct(function) => {
+                    execution::graph::NeverCallTarget::Direct(function)
+                }
+                DraftNeverCallTarget::Value(function) => execution::graph::NeverCallTarget::Value(
+                    layout.values.never_function(&function),
+                ),
+            },
+            layout.values.any_slice(&args),
+            site,
+        )),
     }
 }
 

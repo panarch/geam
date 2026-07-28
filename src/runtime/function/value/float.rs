@@ -1,7 +1,5 @@
-use super::super::{EvaluatedFunctionExit, evaluate};
-use crate::plan::execution::function::{
-    ExecutionFunctionEntry, ExecutionFunctionRef, FloatFunctionId,
-};
+use super::super::{EvaluatedFunctionExit, evaluate_entry, parameter_locals};
+use crate::plan::execution::function::FloatFunctionId;
 use crate::plan::execution::graph::ParamLocal;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
@@ -16,12 +14,7 @@ pub(in crate::runtime) fn run_float<Plan: ExecutableRuntimePlan>(
     mut inputs: RetainedValues,
 ) -> ExecutionResult<f64> {
     loop {
-        let exit = match plan.float_function(function).as_ref() {
-            ExecutionFunctionRef::Graph(function) => evaluate(plan, state, function.body(), inputs),
-            ExecutionFunctionRef::Host(target) => plan
-                .call_host_float(state, origin.clone(), target, &inputs)
-                .map(EvaluatedFunctionExit::Return),
-        }?;
+        let exit = evaluate_entry(plan, state, plan.float_function(function), origin, inputs)?;
         match exit {
             EvaluatedFunctionExit::Return(value) => return Ok(value),
             EvaluatedFunctionExit::TailCall {
@@ -40,15 +33,7 @@ pub(in crate::runtime) fn float_parameter_locals<Plan: ExecutableRuntimePlan>(
     plan: &Plan,
     function: FloatFunctionId,
 ) -> Vec<ParamLocal> {
-    match plan.float_function(function).as_ref() {
-        ExecutionFunctionRef::Graph(function) => function
-            .entry()
-            .params(function.body())
-            .iter()
-            .map(|slot| slot.local().clone())
-            .collect(),
-        ExecutionFunctionRef::Host(target) => plan.host_float_parameters(target).to_vec(),
-    }
+    parameter_locals(plan, plan.float_function(function))
 }
 
 #[cfg(test)]

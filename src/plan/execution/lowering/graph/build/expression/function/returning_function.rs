@@ -105,26 +105,36 @@ pub(in crate::plan::execution::lowering) fn function_function_expr_kind(
                 ));
             Representability::Inhabited(DraftFlow::value(cursor, DraftFunctionFunction::new(value)))
         }
-        E::Call { function, args } => {
-            call_args(args, cursor, graph, context).and_then(|flow| match flow {
-                DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
-                DraftFlow::Value {
-                    mut cursor,
-                    value: args,
-                } => context
-                    .function_function_function_id(function, type_.clone())
-                    .map(|function| {
-                        let function = execution::function::FunctionFunctionId::Function(function);
-                        let value = graph.function_instruction(
-                            &mut cursor,
-                            shape.clone(),
-                            I::Call { function, args },
-                        );
-                        DraftFlow::value(cursor, DraftFunctionFunction::new(value))
-                    }),
-            })
-        }
-        E::FunctionCall { function, args } => lower_function_call(
+        E::Call {
+            function,
+            args,
+            site,
+        } => call_args(args, cursor, graph, context).and_then(|flow| match flow {
+            DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
+            DraftFlow::Value {
+                mut cursor,
+                value: args,
+            } => context
+                .function_function_function_id(function, type_.clone())
+                .map(|function| {
+                    let function = execution::function::FunctionFunctionId::Function(function);
+                    let value = graph.function_instruction(
+                        &mut cursor,
+                        shape.clone(),
+                        I::Call {
+                            function,
+                            args,
+                            site: site.clone(),
+                        },
+                    );
+                    DraftFlow::value(cursor, DraftFunctionFunction::new(value))
+                }),
+        }),
+        E::FunctionCall {
+            function,
+            args,
+            site,
+        } => lower_function_call(
             args,
             cursor,
             graph,
@@ -140,6 +150,7 @@ pub(in crate::plan::execution::lowering) fn function_function_expr_kind(
                     I::FunctionCall {
                         function: function.value().clone(),
                         args,
+                        site: site.clone(),
                     },
                 );
                 DraftFlow::value(cursor, DraftFunctionFunction::new(value))

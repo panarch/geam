@@ -6,8 +6,7 @@ mod value_shape;
 mod value_type;
 
 pub(crate) use host::{
-    HostFunctionImplementation, HostParameter, HostReturnFamily, HostedModulePlanParts,
-    HostedPlannedModuleParts,
+    HostFunctionImplementation, HostParameter, HostedModulePlanParts, HostedPlannedModuleParts,
 };
 pub use host::{
     HostFunctionTemplate, HostedFunctionTemplate, HostedModulePlan, HostedPlannedModule,

@@ -674,7 +674,10 @@ mod tests {
     fn int_function<Host: HostProfile>(
         implementation: HostFunctionImplementation<Host>,
     ) -> HostIntFunction<Host> {
-        let HostFunctionImplementation::Int(implementation) = implementation else {
+        let HostFunctionImplementation::Value(crate::host::HostValueFunctionImplementation::Int(
+            implementation,
+        )) = implementation
+        else {
             panic!("registered function should return Int");
         };
         implementation

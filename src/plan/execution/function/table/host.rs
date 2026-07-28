@@ -6,11 +6,9 @@ use crate::plan::execution::function::{
 };
 use crate::plan::execution::graph::LocalLabel;
 use crate::plan::execution::host::{
-    HostBitArrayFunctionId, HostBoolFunctionId, HostFloatFunctionId, HostFunctionTables,
-    HostIntFunctionId, HostNilFunctionId, HostStringFunctionId, HostUtfCodepointFunctionId,
-    HostedExecutionProfile, HostedFunction,
+    HostFunctionTables, HostValueFunctionTarget, HostedExecutionProfile, HostedFunctionMetadata,
+    HostedFunctionTarget,
 };
-use std::convert::Infallible;
 
 pub(in crate::plan::execution) struct HostedFunctionTablesExplanation<'a, Profile: HostProfile> {
     tables: &'a FunctionTables<HostedExecutionProfile<Profile>>,
@@ -400,134 +398,38 @@ fn write_hosted_table<'a, Profile, Body, Functions>(
 ) where
     Profile: HostProfile,
     Body: ExecutionFunctionBody + 'a,
+    Body::HostValueTarget: HostValueFunctionTarget<Profile>,
     Body::Return: LocalLabel,
     Body::TailCall: TailCallLabelIndex,
-    Body::HostTarget: HostTargetExplanation<Profile>,
-    Functions: IntoIterator<Item = &'a ValueFunctionEntry<Body, Body::HostTarget>>,
+    Functions: IntoIterator<
+        Item = &'a ValueFunctionEntry<Body, HostedFunctionTarget<Body::HostValueTarget>>,
+    >,
 {
     for (index, function) in functions.into_iter().enumerate() {
         match function {
             ValueFunctionEntry::Graph(function) => {
                 write_function(context, family, index, function);
             }
-            ValueFunctionEntry::Host(target) => {
-                target.write_hosted_function(context, family, index, host_functions);
-            }
+            ValueFunctionEntry::Host(target) => match target {
+                HostedFunctionTarget::Value(target) => {
+                    write_hosted_function(context, family, index, target.metadata(host_functions))
+                }
+                HostedFunctionTarget::Never(target) => write_hosted_function(
+                    context,
+                    family,
+                    index,
+                    host_functions.never(*target).metadata(),
+                ),
+            },
         }
     }
 }
 
-trait HostTargetExplanation<Profile: HostProfile> {
-    fn write_hosted_function(
-        &self,
-        context: &mut ExplainContext<'_, '_>,
-        family: &'static str,
-        index: usize,
-        functions: &HostFunctionTables<Profile>,
-    );
-}
-
-impl<Profile: HostProfile> HostTargetExplanation<Profile> for Infallible {
-    fn write_hosted_function(
-        &self,
-        _context: &mut ExplainContext<'_, '_>,
-        _family: &'static str,
-        _index: usize,
-        _functions: &HostFunctionTables<Profile>,
-    ) {
-        match *self {}
-    }
-}
-
-impl<Profile: HostProfile> HostTargetExplanation<Profile> for HostIntFunctionId {
-    fn write_hosted_function(
-        &self,
-        context: &mut ExplainContext<'_, '_>,
-        family: &'static str,
-        index: usize,
-        functions: &HostFunctionTables<Profile>,
-    ) {
-        write_hosted_function(context, family, index, functions.int(*self));
-    }
-}
-
-impl<Profile: HostProfile> HostTargetExplanation<Profile> for HostFloatFunctionId {
-    fn write_hosted_function(
-        &self,
-        context: &mut ExplainContext<'_, '_>,
-        family: &'static str,
-        index: usize,
-        functions: &HostFunctionTables<Profile>,
-    ) {
-        write_hosted_function(context, family, index, functions.float(*self));
-    }
-}
-
-impl<Profile: HostProfile> HostTargetExplanation<Profile> for HostStringFunctionId {
-    fn write_hosted_function(
-        &self,
-        context: &mut ExplainContext<'_, '_>,
-        family: &'static str,
-        index: usize,
-        functions: &HostFunctionTables<Profile>,
-    ) {
-        write_hosted_function(context, family, index, functions.string(*self));
-    }
-}
-
-impl<Profile: HostProfile> HostTargetExplanation<Profile> for HostBitArrayFunctionId {
-    fn write_hosted_function(
-        &self,
-        context: &mut ExplainContext<'_, '_>,
-        family: &'static str,
-        index: usize,
-        functions: &HostFunctionTables<Profile>,
-    ) {
-        write_hosted_function(context, family, index, functions.bit_array(*self));
-    }
-}
-
-impl<Profile: HostProfile> HostTargetExplanation<Profile> for HostUtfCodepointFunctionId {
-    fn write_hosted_function(
-        &self,
-        context: &mut ExplainContext<'_, '_>,
-        family: &'static str,
-        index: usize,
-        functions: &HostFunctionTables<Profile>,
-    ) {
-        write_hosted_function(context, family, index, functions.utf_codepoint(*self));
-    }
-}
-
-impl<Profile: HostProfile> HostTargetExplanation<Profile> for HostBoolFunctionId {
-    fn write_hosted_function(
-        &self,
-        context: &mut ExplainContext<'_, '_>,
-        family: &'static str,
-        index: usize,
-        functions: &HostFunctionTables<Profile>,
-    ) {
-        write_hosted_function(context, family, index, functions.bool(*self));
-    }
-}
-
-impl<Profile: HostProfile> HostTargetExplanation<Profile> for HostNilFunctionId {
-    fn write_hosted_function(
-        &self,
-        context: &mut ExplainContext<'_, '_>,
-        family: &'static str,
-        index: usize,
-        functions: &HostFunctionTables<Profile>,
-    ) {
-        write_hosted_function(context, family, index, functions.nil(*self));
-    }
-}
-
-fn write_hosted_function<Implementation>(
+fn write_hosted_function(
     context: &mut ExplainContext<'_, '_>,
     family: &'static str,
     index: usize,
-    function: &HostedFunction<Implementation>,
+    function: &HostedFunctionMetadata,
 ) {
     context.push_str("\nfunction ");
     FunctionLabel::new(family, index).write(context.output());
@@ -547,11 +449,12 @@ mod tests {
     use super::HostedFunctionTablesExplanation;
     use crate::plan::execution::explain;
     use crate::{
-        BitArrayValue, HostModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
-        compile_typed_host_program, plan_host_program,
+        BitArrayValue, ExecutionError, HostFailure, HostModule, HostProviderSet, HostedExecution,
+        ModuleSource, PackageSource, compile_typed_host_program, plan_host_program,
     };
     use ecow::EcoString;
     use num_bigint::BigInt;
+    use std::convert::Infallible;
 
     #[test]
     fn writes_every_scalar_host_target_in_family_order() {
@@ -644,5 +547,71 @@ function tuple#0
         ));
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn writes_generic_never_and_concrete_non_returning_host_targets() {
+        fn stop() -> Result<Infallible, HostFailure> {
+            Err(HostFailure::new("stopped"))
+        }
+
+        let control = HostModule::new("host_support", "host/control")
+            .expect("host module should be valid")
+            .with_fallible_function(
+                "generic_stop",
+                stop as fn() -> Result<Infallible, HostFailure>,
+            )
+            .expect("host function should be valid")
+            .with_fallible_function("int_stop", stop as fn() -> Result<Infallible, HostFailure>)
+            .expect("host function should be valid");
+        let hosts = HostProviderSet::new([control]).expect("host modules should be unique");
+        let source = r#"
+import host/control
+
+pub fn main() {
+  let int_stop: fn() -> Int = control.int_stop
+  let _ = int_stop == int_stop
+  control.generic_stop()
+}
+"#;
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                ["host_support"],
+                [ModuleSource::new("main", "main.gleam", source)],
+            )],
+            hosts,
+        )
+        .expect("host source should compile");
+        let plan = plan_host_program(typed).expect("host source should plan");
+        let execution = HostedExecution::from_module_plan(plan);
+        let expected = r#"
+function never#0
+  entry b0 params=[] captures=[]
+  block b0 params=[]
+    %function.int#0:shape#1(fn() -> Int) = function[Int] reference int#0
+    %bool#0:shape#2(Bool) = bool.equal %function.int#0 %function.int#0
+    tail never#1 args=[]
+
+function never#1
+  host host_support::host/control.generic_stop signature=fn() -> param#0
+
+function int#0
+  host host_support::host/control.int_stop signature=fn() -> Int
+"#;
+        let mut actual = String::new();
+        let mut context = explain::ExplainContext::new_hosted(&execution, &mut actual);
+        context.write(&HostedFunctionTablesExplanation::new(
+            &execution.program.functions,
+            &execution.host_functions,
+        ));
+
+        assert_eq!(actual, expected);
+        assert!(matches!(
+            execution.run_main(&mut (), &mut Vec::new()),
+            Err(ExecutionError::Host(error)) if error.failure().message() == "stopped"
+        ));
     }
 }

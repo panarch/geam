@@ -121,7 +121,7 @@ fn function_call_expr_at(
             None => Err(function_call_return_type_mismatch()),
         },
         ValueShape::Custom(_) => match function.into_custom() {
-            Some(function) => crate::plan::CustomExpr::try_function_call(function, args)
+            Some(function) => crate::plan::CustomExpr::try_function_call_at(function, args, site)
                 .map(Expr::custom)
                 .map_err(|_| PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::CallShape {
@@ -152,7 +152,7 @@ fn function_call_expr_at(
             Some(function) => {
                 let return_type = return_shape.iter().map(ValueShape::value_type).collect();
                 Ok(Expr::tuple(
-                    crate::plan::TupleExpr::function_call(function, args, return_type)
+                    crate::plan::TupleExpr::function_call_at(function, args, return_type, site)
                         .with_shape(return_shape),
                 ))
             }
@@ -160,12 +160,13 @@ fn function_call_expr_at(
         },
         ValueShape::List(item_shape) => match function.into_list() {
             Some(function) => Ok(Expr::list(
-                crate::plan::ListExpr::function_call(function, args).with_item_shape(*item_shape),
+                crate::plan::ListExpr::function_call_at(function, args, site)
+                    .with_item_shape(*item_shape),
             )),
             None => Err(function_call_return_type_mismatch()),
         },
         ValueShape::Function(_) => match function.into_function() {
-            Some(function) => function_returning_function_value_call_expr(function, args),
+            Some(function) => function_returning_function_value_call_expr(function, args, site),
             None => Err(function_call_return_type_mismatch()),
         },
     }
@@ -182,70 +183,78 @@ fn function_call_return_type_mismatch() -> PlanError {
 fn function_returning_function_value_call_expr(
     function: FunctionFunctionExpr,
     args: Vec<CallArg>,
+    site: crate::plan::HostCallSite,
 ) -> Result<Expr, PlanError> {
     let return_shape = function.function_function_type().return_shape().clone();
     let return_type = return_shape.type_();
     Ok(match return_shape.return_shape().clone() {
         ValueShape::Parameter(parameter) => Expr::function(FunctionExpr::generic_with_shape(
-            crate::plan::GenericFunctionExpr::function_call(
+            crate::plan::GenericFunctionExpr::function_call_at(
                 function,
                 args,
                 crate::plan::GenericFunctionType::new(
                     return_shape.argument_shapes().to_vec(),
                     parameter,
                 ),
+                site,
             ),
             return_shape,
         )),
         ValueShape::Int => Expr::function(FunctionExpr::int_with_shape(
-            crate::plan::IntFunctionExpr::function_call(function, args, return_type),
+            crate::plan::IntFunctionExpr::function_call_at(function, args, return_type, site),
             return_shape,
         )),
         ValueShape::String => Expr::function(FunctionExpr::string_with_shape(
-            crate::plan::StringFunctionExpr::function_call(function, args, return_type),
+            crate::plan::StringFunctionExpr::function_call_at(function, args, return_type, site),
             return_shape,
         )),
         ValueShape::BitArray => Expr::function(FunctionExpr::bit_array_with_shape(
-            crate::plan::BitArrayFunctionExpr::function_call(function, args, return_type),
+            crate::plan::BitArrayFunctionExpr::function_call_at(function, args, return_type, site),
             return_shape,
         )),
         ValueShape::UtfCodepoint => Expr::function(FunctionExpr::utf_codepoint_with_shape(
-            crate::plan::UtfCodepointFunctionExpr::function_call(function, args, return_type),
+            crate::plan::UtfCodepointFunctionExpr::function_call_at(
+                function,
+                args,
+                return_type,
+                site,
+            ),
             return_shape,
         )),
         ValueShape::Custom(_) => {
-            return crate::plan::CustomFunctionExpr::try_function_call(function, args)
+            return crate::plan::CustomFunctionExpr::try_function_call_at(function, args, site)
                 .map(FunctionExpr::custom)
                 .map(Expr::function)
                 .map_err(function_function_call_mismatch);
         }
         ValueShape::Float => Expr::function(FunctionExpr::float_with_shape(
-            crate::plan::FloatFunctionExpr::function_call(function, args, return_type),
+            crate::plan::FloatFunctionExpr::function_call_at(function, args, return_type, site),
             return_shape,
         )),
         ValueShape::Bool => Expr::function(FunctionExpr::bool_with_shape(
-            crate::plan::BoolFunctionExpr::function_call(function, args, return_type),
+            crate::plan::BoolFunctionExpr::function_call_at(function, args, return_type, site),
             return_shape,
         )),
         ValueShape::Nil => Expr::function(FunctionExpr::nil_with_shape(
-            crate::plan::NilFunctionExpr::function_call(function, args, return_type),
+            crate::plan::NilFunctionExpr::function_call_at(function, args, return_type, site),
             return_shape,
         )),
         ValueShape::Tuple(_) => Expr::function(FunctionExpr::tuple_with_shape(
-            crate::plan::TupleFunctionExpr::function_call(function, args, return_type),
+            crate::plan::TupleFunctionExpr::function_call_at(function, args, return_type, site),
             return_shape,
         )),
         ValueShape::List(item_shape) => Expr::function(FunctionExpr::list_with_shape(
-            crate::plan::ListFunctionExpr::function_call(
+            crate::plan::ListFunctionExpr::function_call_at(
                 function,
                 args,
                 return_type,
                 item_shape.value_type(),
+                site,
             ),
             return_shape,
         )),
         ValueShape::Function(_) => {
-            return FunctionFunctionExpr::try_function_call(function, args)
+            return FunctionFunctionExpr::try_function_call_at(function, args, site)
                 .map(FunctionExpr::function)
                 .map(Expr::function)
                 .map_err(function_function_call_mismatch);
@@ -332,7 +341,11 @@ mod tests {
             function_type,
         );
         assert_eq!(
-            function_returning_function_value_call_expr(provider.clone(), Vec::new()),
+            function_returning_function_value_call_expr(
+                provider.clone(),
+                Vec::new(),
+                crate::plan::HostCallSite::unknown(),
+            ),
             Ok(Expr::function(FunctionExpr::generic_with_shape(
                 GenericFunctionExpr::function_call(
                     provider,
@@ -1209,9 +1222,13 @@ pub fn main() {
             ));
 
             assert_eq!(
-                function_returning_function_value_call_expr(function, Vec::new(),)
-                    .expect("function-returning function call")
-                    .value_type(),
+                function_returning_function_value_call_expr(
+                    function,
+                    Vec::new(),
+                    crate::plan::HostCallSite::unknown(),
+                )
+                .expect("function-returning function call")
+                .value_type(),
                 ValueType::Function(Box::new(returned_function_type)),
             );
         }
@@ -1384,7 +1401,11 @@ pub fn main() {
         ));
 
         assert_eq!(
-            function_returning_function_value_call_expr(function, Vec::new(),),
+            function_returning_function_value_call_expr(
+                function,
+                Vec::new(),
+                crate::plan::HostCallSite::unknown(),
+            ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
                     reason: InvalidCallShapeReason::FunctionCallArityMismatch,

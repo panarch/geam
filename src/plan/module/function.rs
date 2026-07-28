@@ -134,49 +134,79 @@ pub(crate) type UtfCodepointReturn =
 pub(crate) struct CustomReturn {
     signature_shape: crate::plan::CustomValueShape,
     body_shape: crate::plan::CustomValueShape,
-    body: ReturnBody<super::CustomExprKind, FunctionInstantiation>,
+    body: ReturnBody<super::CustomExprKind, crate::plan::FunctionCallTarget<FunctionInstantiation>>,
 }
 pub(crate) type BoolReturn =
     ReturnBody<BoolExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
 pub(crate) type NilReturn =
     ReturnBody<NilExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
-pub(crate) type TupleReturn = ReturnBody<TupleExpr, FunctionInstantiation>;
-pub(crate) type GenericListReturn = ReturnBody<super::GenericListExpr, FunctionInstantiation>;
-pub(crate) type ParameterListListReturn =
-    ReturnBody<super::ParameterListListExpr, FunctionInstantiation>;
-pub(crate) type IntListReturn = ReturnBody<IntListExpr, FunctionInstantiation>;
-pub(crate) type FloatListReturn = ReturnBody<FloatListExpr, FunctionInstantiation>;
-pub(crate) type StringListReturn = ReturnBody<StringListExpr, FunctionInstantiation>;
-pub(crate) type BitArrayListReturn = ReturnBody<BitArrayListExpr, FunctionInstantiation>;
-pub(crate) type UtfCodepointListReturn = ReturnBody<UtfCodepointListExpr, FunctionInstantiation>;
-pub(crate) type CustomListReturn = ReturnBody<CustomListExpr, FunctionInstantiation>;
-pub(crate) type BoolListReturn = ReturnBody<BoolListExpr, FunctionInstantiation>;
-pub(crate) type NilListReturn = ReturnBody<NilListExpr, FunctionInstantiation>;
-pub(crate) type TupleListReturn = ReturnBody<TupleListExpr, FunctionInstantiation>;
-pub(crate) type ListListReturn = ReturnBody<ListListExpr, FunctionInstantiation>;
-pub(crate) type FunctionListReturn = ReturnBody<FunctionListExpr, FunctionInstantiation>;
+pub(crate) type TupleReturn =
+    ReturnBody<TupleExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
+pub(crate) type GenericListReturn =
+    ReturnBody<super::GenericListExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
+pub(crate) type ParameterListListReturn = ReturnBody<
+    super::ParameterListListExpr,
+    crate::plan::FunctionCallTarget<FunctionInstantiation>,
+>;
+pub(crate) type IntListReturn =
+    ReturnBody<IntListExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
+pub(crate) type FloatListReturn =
+    ReturnBody<FloatListExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
+pub(crate) type StringListReturn =
+    ReturnBody<StringListExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
+pub(crate) type BitArrayListReturn =
+    ReturnBody<BitArrayListExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
+pub(crate) type UtfCodepointListReturn =
+    ReturnBody<UtfCodepointListExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
+pub(crate) type CustomListReturn =
+    ReturnBody<CustomListExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
+pub(crate) type BoolListReturn =
+    ReturnBody<BoolListExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
+pub(crate) type NilListReturn =
+    ReturnBody<NilListExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
+pub(crate) type TupleListReturn =
+    ReturnBody<TupleListExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
+pub(crate) type ListListReturn =
+    ReturnBody<ListListExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
+pub(crate) type FunctionListReturn =
+    ReturnBody<FunctionListExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
 pub(crate) type GenericFunctionReturn =
-    ReturnBody<super::GenericFunctionExpr, FunctionInstantiation>;
-pub(crate) type IntFunctionReturn = ReturnBody<super::IntFunctionExpr, FunctionInstantiation>;
-pub(crate) type FloatFunctionReturn = ReturnBody<super::FloatFunctionExpr, FunctionInstantiation>;
-pub(crate) type StringFunctionReturn = ReturnBody<super::StringFunctionExpr, FunctionInstantiation>;
+    ReturnBody<super::GenericFunctionExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
+pub(crate) type IntFunctionReturn =
+    ReturnBody<super::IntFunctionExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
+pub(crate) type FloatFunctionReturn =
+    ReturnBody<super::FloatFunctionExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
+pub(crate) type StringFunctionReturn =
+    ReturnBody<super::StringFunctionExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
 pub(crate) type BitArrayFunctionReturn =
-    ReturnBody<super::BitArrayFunctionExpr, FunctionInstantiation>;
-pub(crate) type UtfCodepointFunctionReturn =
-    ReturnBody<super::UtfCodepointFunctionExpr, FunctionInstantiation>;
+    ReturnBody<super::BitArrayFunctionExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
+pub(crate) type UtfCodepointFunctionReturn = ReturnBody<
+    super::UtfCodepointFunctionExpr,
+    crate::plan::FunctionCallTarget<FunctionInstantiation>,
+>;
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct CustomFunctionReturn {
     type_: CustomFunctionType,
-    body: ReturnBody<super::CustomFunctionExprKind, FunctionInstantiation>,
+    body: ReturnBody<
+        super::CustomFunctionExprKind,
+        crate::plan::FunctionCallTarget<FunctionInstantiation>,
+    >,
 }
-pub(crate) type BoolFunctionReturn = ReturnBody<super::BoolFunctionExpr, FunctionInstantiation>;
-pub(crate) type NilFunctionReturn = ReturnBody<super::NilFunctionExpr, FunctionInstantiation>;
-pub(crate) type TupleFunctionReturn = ReturnBody<super::TupleFunctionExpr, FunctionInstantiation>;
-pub(crate) type ListFunctionReturn = ReturnBody<super::ListFunctionExpr, FunctionInstantiation>;
+pub(crate) type BoolFunctionReturn =
+    ReturnBody<super::BoolFunctionExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
+pub(crate) type NilFunctionReturn =
+    ReturnBody<super::NilFunctionExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
+pub(crate) type TupleFunctionReturn =
+    ReturnBody<super::TupleFunctionExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
+pub(crate) type ListFunctionReturn =
+    ReturnBody<super::ListFunctionExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct FunctionFunctionReturn {
     type_: FunctionFunctionType,
-    body: ReturnBody<super::FunctionFunctionExprKind, FunctionInstantiation>,
+    body: ReturnBody<
+        super::FunctionFunctionExprKind,
+        crate::plan::FunctionCallTarget<FunctionInstantiation>,
+    >,
 }
 
 #[cfg(test)]
@@ -1574,18 +1604,25 @@ impl CustomReturn {
         &self.signature_shape
     }
 
-    pub(crate) fn body(&self) -> &ReturnBody<super::CustomExprKind, FunctionInstantiation> {
+    pub(crate) fn body(
+        &self,
+    ) -> &ReturnBody<super::CustomExprKind, crate::plan::FunctionCallTarget<FunctionInstantiation>>
+    {
         &self.body
     }
 }
 
 fn custom_return_body(
     kind: super::CustomExprKind,
-) -> ReturnBody<super::CustomExprKind, FunctionInstantiation> {
+) -> ReturnBody<super::CustomExprKind, crate::plan::FunctionCallTarget<FunctionInstantiation>> {
     use super::CustomExprKind as K;
 
     match kind {
-        K::Call { function, args } => ReturnBody::tail_call(function, args),
+        K::Call {
+            function,
+            args,
+            site,
+        } => ReturnBody::tail_call(crate::plan::FunctionCallTarget::new(function, site), args),
         K::BoolCase {
             subject,
             true_,
@@ -1649,18 +1686,28 @@ impl CustomFunctionReturn {
         &self.type_
     }
 
-    pub(crate) fn body(&self) -> &ReturnBody<super::CustomFunctionExprKind, FunctionInstantiation> {
+    pub(crate) fn body(
+        &self,
+    ) -> &ReturnBody<
+        super::CustomFunctionExprKind,
+        crate::plan::FunctionCallTarget<FunctionInstantiation>,
+    > {
         &self.body
     }
 }
 
 fn custom_function_return_body(
     kind: super::CustomFunctionExprKind,
-) -> ReturnBody<super::CustomFunctionExprKind, FunctionInstantiation> {
+) -> ReturnBody<super::CustomFunctionExprKind, crate::plan::FunctionCallTarget<FunctionInstantiation>>
+{
     use super::CustomFunctionExprKind as K;
 
     match kind {
-        K::Call { function, args } => ReturnBody::tail_call(function, args),
+        K::Call {
+            function,
+            args,
+            site,
+        } => ReturnBody::tail_call(crate::plan::FunctionCallTarget::new(function, site), args),
         K::BoolCase {
             subject,
             true_,
@@ -1764,18 +1811,28 @@ impl FunctionFunctionReturn {
 
     pub(crate) fn body(
         &self,
-    ) -> &ReturnBody<super::FunctionFunctionExprKind, FunctionInstantiation> {
+    ) -> &ReturnBody<
+        super::FunctionFunctionExprKind,
+        crate::plan::FunctionCallTarget<FunctionInstantiation>,
+    > {
         &self.body
     }
 }
 
 fn function_function_return_body(
     kind: super::FunctionFunctionExprKind,
-) -> ReturnBody<super::FunctionFunctionExprKind, FunctionInstantiation> {
+) -> ReturnBody<
+    super::FunctionFunctionExprKind,
+    crate::plan::FunctionCallTarget<FunctionInstantiation>,
+> {
     use super::FunctionFunctionExprKind as K;
 
     match kind {
-        K::Call { function, args } => ReturnBody::tail_call(function, args),
+        K::Call {
+            function,
+            args,
+            site,
+        } => ReturnBody::tail_call(crate::plan::FunctionCallTarget::new(function, site), args),
         K::BoolCase {
             subject,
             true_,
@@ -2245,7 +2302,7 @@ mod tests {
                         steps: Vec::new(),
                         return_: Box::new(ReturnBody {
                             kind: ReturnBodyKind::TailCall {
-                                function: custom_instantiation,
+                                function: custom_instantiation.into(),
                                 args: Vec::new(),
                             },
                         }),
@@ -2277,7 +2334,7 @@ mod tests {
                 type_: function_function_type,
                 body: ReturnBody {
                     kind: ReturnBodyKind::TailCall {
-                        function: function_instantiation,
+                        function: function_instantiation.into(),
                         args: Vec::new(),
                     },
                 },
@@ -2351,13 +2408,13 @@ mod tests {
                                 subject: BoolExpr::value(true),
                                 true_: Box::new(ReturnBody {
                                     kind: ReturnBodyKind::TailCall {
-                                        function: function.clone(),
+                                        function: function.clone().into(),
                                         args: Vec::new(),
                                     },
                                 }),
                                 false_: Box::new(ReturnBody {
                                     kind: ReturnBodyKind::TailCall {
-                                        function,
+                                        function: function.into(),
                                         args: Vec::new(),
                                     },
                                 }),

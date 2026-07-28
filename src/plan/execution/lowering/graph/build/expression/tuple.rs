@@ -58,25 +58,32 @@ pub(in crate::plan::execution::lowering) fn tuple_expr(
             ));
             Representability::Inhabited(DraftFlow::value(cursor, value))
         }
-        E::Call { function, args } => {
-            call_args(args, cursor, graph, context).and_then(|flow| match flow {
-                DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
-                DraftFlow::Value {
-                    mut cursor,
-                    value: args,
-                } => context.tuple_function_id(function).map(|function| {
-                    let value = graph.tuple_instruction(
-                        &mut cursor,
-                        elements.clone().into_boxed_slice(),
-                        I::Call { function, args },
-                    );
-                    DraftFlow::value(cursor, value)
-                }),
-            })
-        }
+        E::Call {
+            function,
+            args,
+            site,
+        } => call_args(args, cursor, graph, context).and_then(|flow| match flow {
+            DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
+            DraftFlow::Value {
+                mut cursor,
+                value: args,
+            } => context.tuple_function_id(function).map(|function| {
+                let value = graph.tuple_instruction(
+                    &mut cursor,
+                    elements.clone().into_boxed_slice(),
+                    I::Call {
+                        function,
+                        args,
+                        site: site.clone(),
+                    },
+                );
+                DraftFlow::value(cursor, value)
+            }),
+        }),
         E::FunctionCall {
             function: value,
             args,
+            site,
         } => {
             function::tuple_function_expr(value, cursor, graph, context).and_then(|flow| match flow
             {
@@ -96,6 +103,7 @@ pub(in crate::plan::execution::lowering) fn tuple_expr(
                             I::FunctionCall {
                                 function: function.value().clone(),
                                 args,
+                                site: site.clone(),
                             },
                         );
                         DraftFlow::value(cursor, value)

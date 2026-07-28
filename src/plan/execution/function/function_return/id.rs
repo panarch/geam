@@ -190,6 +190,13 @@ impl CustomFunctionFunctionId {
     pub(crate) fn index(&self) -> usize {
         self.index
     }
+
+    pub(crate) fn with_index(&self, index: usize) -> Self {
+        Self {
+            index,
+            type_: self.type_.clone(),
+        }
+    }
 }
 
 impl GenericFunctionFunctionId {
@@ -228,6 +235,13 @@ impl FunctionFunctionFunctionId {
 
     pub(crate) fn index(&self) -> usize {
         self.index
+    }
+
+    pub(crate) fn with_index(&self, index: usize) -> Self {
+        Self {
+            index,
+            type_: self.type_.clone(),
+        }
     }
 
     #[cfg(test)]

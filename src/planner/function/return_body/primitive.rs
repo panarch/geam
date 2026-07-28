@@ -514,9 +514,14 @@ pub(super) fn float_return(expression: FloatExpr) -> FloatReturn {
 
 pub(super) fn tuple_return(expression: TupleExpr) -> TupleReturn {
     match expression.kind() {
-        TupleExprKind::Call { function, args } => {
-            ReturnBody::tail_call(function.clone(), args.clone())
-        }
+        TupleExprKind::Call {
+            function,
+            args,
+            site,
+        } => ReturnBody::tail_call(
+            crate::plan::FunctionCallTarget::new(function.clone(), site.clone()),
+            args.clone(),
+        ),
         TupleExprKind::BoolCase {
             subject,
             true_,
@@ -610,9 +615,13 @@ pub(super) fn list_return(expression: ListExpr) -> ListReturn {
 
 pub(super) fn typed_list_return_body<Item: ListItem>(
     expression: TypedListExpr<Item>,
-) -> ReturnBody<TypedListExpr<Item>, Item::Function> {
+) -> ReturnBody<TypedListExpr<Item>, crate::plan::FunctionCallTarget<Item::Function>> {
     match expression.into_return_kind() {
-        TypedListReturnKind::Call { function, args } => ReturnBody::tail_call(function, args),
+        TypedListReturnKind::Call {
+            function,
+            args,
+            site,
+        } => ReturnBody::tail_call(crate::plan::FunctionCallTarget::new(function, site), args),
         TypedListReturnKind::BoolCase {
             subject,
             true_,

@@ -13,10 +13,12 @@ pub(crate) enum TupleInstruction {
     Call {
         function: TupleFunctionId,
         args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: TupleFunctionLocalId,
         args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: TupleLocalId,
@@ -41,10 +43,10 @@ impl Explain for TupleInstruction {
                 write_local_labels(output, elements);
             }
             TupleInstruction::Constant(id) => write_constant(output, "tuple", *id),
-            TupleInstruction::Call { function, args } => {
+            TupleInstruction::Call { function, args, .. } => {
                 write_call(output, "tuple.call", function, args);
             }
-            TupleInstruction::FunctionCall { function, args } => {
+            TupleInstruction::FunctionCall { function, args, .. } => {
                 write_function_call(output, "tuple.function_call", function, args);
             }
             TupleInstruction::TupleIndex { tuple, index } => {

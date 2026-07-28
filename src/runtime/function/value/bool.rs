@@ -1,7 +1,5 @@
-use super::super::{EvaluatedFunctionExit, evaluate};
-use crate::plan::execution::function::{
-    BoolFunctionId, ExecutionFunctionEntry, ExecutionFunctionRef,
-};
+use super::super::{EvaluatedFunctionExit, evaluate_entry, parameter_locals};
+use crate::plan::execution::function::BoolFunctionId;
 use crate::plan::execution::graph::ParamLocal;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
@@ -16,12 +14,7 @@ pub(in crate::runtime) fn run_bool<Plan: ExecutableRuntimePlan>(
     mut inputs: RetainedValues,
 ) -> ExecutionResult<bool> {
     loop {
-        let exit = match plan.bool_function(function).as_ref() {
-            ExecutionFunctionRef::Graph(function) => evaluate(plan, state, function.body(), inputs),
-            ExecutionFunctionRef::Host(target) => plan
-                .call_host_bool(state, origin, target, &inputs)
-                .map(EvaluatedFunctionExit::Return),
-        }?;
+        let exit = evaluate_entry(plan, state, plan.bool_function(function), origin, inputs)?;
         match exit {
             EvaluatedFunctionExit::Return(value) => return Ok(value),
             EvaluatedFunctionExit::TailCall {
@@ -40,15 +33,7 @@ pub(in crate::runtime) fn bool_parameter_locals<Plan: ExecutableRuntimePlan>(
     plan: &Plan,
     function: BoolFunctionId,
 ) -> Vec<ParamLocal> {
-    match plan.bool_function(function).as_ref() {
-        ExecutionFunctionRef::Graph(function) => function
-            .entry()
-            .params(function.body())
-            .iter()
-            .map(|slot| slot.local().clone())
-            .collect(),
-        ExecutionFunctionRef::Host(target) => plan.host_bool_parameters(target).to_vec(),
-    }
+    parameter_locals(plan, plan.bool_function(function))
 }
 
 #[cfg(test)]

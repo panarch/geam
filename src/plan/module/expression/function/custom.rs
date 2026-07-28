@@ -30,10 +30,12 @@ pub(crate) enum CustomFunctionExprKind {
     Call {
         function: FunctionInstantiation,
         args: Vec<crate::plan::CallArg>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: Box<FunctionFunctionExpr>,
         args: Vec<crate::plan::CallArg>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: Box<TupleExpr>,
@@ -130,20 +132,43 @@ impl CustomFunctionExpr {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn call(
         function: FunctionInstantiation,
         args: Vec<crate::plan::CallArg>,
         type_: CustomFunctionType,
     ) -> Self {
+        Self::call_at(function, args, type_, crate::plan::HostCallSite::unknown())
+    }
+
+    pub(crate) fn call_at(
+        function: FunctionInstantiation,
+        args: Vec<crate::plan::CallArg>,
+        type_: CustomFunctionType,
+        site: crate::plan::HostCallSite,
+    ) -> Self {
         Self {
             type_,
-            kind: CustomFunctionExprKind::Call { function, args },
+            kind: CustomFunctionExprKind::Call {
+                function,
+                args,
+                site,
+            },
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn try_function_call(
         function: FunctionFunctionExpr,
         args: Vec<crate::plan::CallArg>,
+    ) -> Result<Self, FunctionFunctionCallMismatch> {
+        Self::try_function_call_at(function, args, crate::plan::HostCallSite::unknown())
+    }
+
+    pub(crate) fn try_function_call_at(
+        function: FunctionFunctionExpr,
+        args: Vec<crate::plan::CallArg>,
+        site: crate::plan::HostCallSite,
     ) -> Result<Self, FunctionFunctionCallMismatch> {
         let expected = function.function_function_type().argument_types().len();
         if expected != args.len() {
@@ -165,6 +190,7 @@ impl CustomFunctionExpr {
             kind: CustomFunctionExprKind::FunctionCall {
                 function: Box::new(function),
                 args,
+                site,
             },
         })
     }
@@ -360,6 +386,7 @@ mod tests {
                 CustomFunctionExprKind::FunctionCall {
                     function: Box::new(function.clone()),
                     args: vec![argument.clone()],
+                    site: crate::plan::HostCallSite::unknown(),
                 },
             ),
         );

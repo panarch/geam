@@ -6,9 +6,11 @@ mod nil;
 mod string;
 mod utf_codepoint;
 
+use crate::host::{HostCallArguments, HostCallError, HostNeverFunction, HostProfile};
 use crate::plan::execution::graph::ParamLocal;
 use crate::plan::execution::type_::FunctionType;
 use ecow::EcoString;
+use std::convert::Infallible;
 
 pub(crate) use bit_array::{HostBitArrayFunctionId, HostedBitArrayFunction};
 pub(crate) use bool::{HostBoolFunctionId, HostedBoolFunction};
@@ -18,10 +20,21 @@ pub(crate) use nil::{HostNilFunctionId, HostedNilFunction};
 pub(crate) use string::{HostStringFunctionId, HostedStringFunction};
 pub(crate) use utf_codepoint::{HostUtfCodepointFunctionId, HostedUtfCodepointFunction};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct HostNeverFunctionId(usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HostedFunctionTarget<ValueTarget> {
+    Value(ValueTarget),
+    Never(HostNeverFunctionId),
+}
+
 pub(crate) struct HostedFunction<Implementation> {
     metadata: HostedFunctionMetadata,
     implementation: Implementation,
 }
+
+pub(crate) type HostedNeverFunction<Profile> = HostedFunction<HostNeverFunction<Profile>>;
 
 pub(crate) struct HostedFunctionMetadata {
     package: EcoString,
@@ -29,6 +42,26 @@ pub(crate) struct HostedFunctionMetadata {
     signature: crate::plan::FunctionType,
     parameters: Box<[ParamLocal]>,
     type_: FunctionType,
+}
+
+impl HostNeverFunctionId {
+    pub(in crate::plan::execution) fn new(index: usize) -> Self {
+        Self(index)
+    }
+
+    pub(crate) fn index(self) -> usize {
+        self.0
+    }
+}
+
+impl<ValueTarget> HostedFunctionTarget<ValueTarget> {
+    pub(in crate::plan::execution) fn value(target: ValueTarget) -> Self {
+        Self::Value(target)
+    }
+
+    pub(in crate::plan::execution) fn never(target: HostNeverFunctionId) -> Self {
+        Self::Never(target)
+    }
 }
 
 impl<Implementation> HostedFunction<Implementation> {
@@ -52,32 +85,22 @@ impl<Implementation> HostedFunction<Implementation> {
         }
     }
 
-    pub(crate) fn package(&self) -> &EcoString {
-        self.metadata.package()
-    }
-
-    pub(crate) fn module(&self) -> &EcoString {
-        self.metadata.module()
-    }
-
-    pub(crate) fn name(&self) -> &EcoString {
-        self.metadata.name()
-    }
-
-    pub(crate) fn site(&self) -> &crate::plan::HostCallSite {
-        self.metadata.site()
-    }
-
     pub(crate) fn parameters(&self) -> &[ParamLocal] {
         self.metadata.parameters()
     }
 
-    pub(in crate::plan::execution) fn type_(&self) -> &FunctionType {
-        self.metadata.type_()
-    }
-
     pub(crate) fn metadata(&self) -> &HostedFunctionMetadata {
         &self.metadata
+    }
+}
+
+impl<Profile: HostProfile> HostedNeverFunction<Profile> {
+    pub(crate) fn call(
+        &self,
+        state: &mut Profile::RunState,
+        arguments: &dyn HostCallArguments,
+    ) -> Result<Infallible, HostCallError> {
+        self.implementation.call(state, arguments)
     }
 }
 
@@ -102,11 +125,11 @@ impl HostedFunctionMetadata {
         &self.signature
     }
 
-    fn parameters(&self) -> &[ParamLocal] {
+    pub(crate) fn parameters(&self) -> &[ParamLocal] {
         &self.parameters
     }
 
-    fn type_(&self) -> &FunctionType {
+    pub(crate) fn type_(&self) -> &FunctionType {
         &self.type_
     }
 }

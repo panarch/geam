@@ -1,7 +1,5 @@
-use super::super::{EvaluatedFunctionExit, evaluate};
-use crate::plan::execution::function::{
-    BitArrayFunctionId, ExecutionFunctionEntry, ExecutionFunctionRef,
-};
+use super::super::{EvaluatedFunctionExit, evaluate_entry, parameter_locals};
+use crate::plan::execution::function::BitArrayFunctionId;
 use crate::plan::execution::graph::ParamLocal;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
@@ -17,13 +15,13 @@ pub(in crate::runtime) fn run_bit_array<Plan: ExecutableRuntimePlan>(
     mut inputs: RetainedValues,
 ) -> ExecutionResult<EvaluatedBitArray> {
     loop {
-        let exit = match plan.bit_array_function(function).as_ref() {
-            ExecutionFunctionRef::Graph(function) => evaluate(plan, state, function.body(), inputs),
-            ExecutionFunctionRef::Host(target) => plan
-                .call_host_bit_array(state, origin.clone(), target, &inputs)
-                .map(EvaluatedBitArray::from_value)
-                .map(EvaluatedFunctionExit::Return),
-        }?;
+        let exit = evaluate_entry(
+            plan,
+            state,
+            plan.bit_array_function(function),
+            origin,
+            inputs,
+        )?;
         match exit {
             EvaluatedFunctionExit::Return(value) => return Ok(value),
             EvaluatedFunctionExit::TailCall {
@@ -42,15 +40,7 @@ pub(in crate::runtime) fn bit_array_parameter_locals<Plan: ExecutableRuntimePlan
     plan: &Plan,
     function: BitArrayFunctionId,
 ) -> Vec<ParamLocal> {
-    match plan.bit_array_function(function).as_ref() {
-        ExecutionFunctionRef::Graph(function) => function
-            .entry()
-            .params(function.body())
-            .iter()
-            .map(|slot| slot.local().clone())
-            .collect(),
-        ExecutionFunctionRef::Host(target) => plan.host_bit_array_parameters(target).to_vec(),
-    }
+    parameter_locals(plan, plan.bit_array_function(function))
 }
 
 #[cfg(test)]

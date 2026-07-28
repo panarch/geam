@@ -70,22 +70,28 @@ pub(in crate::plan::execution::lowering) fn custom_expr_kind(
             ));
             Representability::Inhabited(DraftFlow::value(cursor, value))
         }
-        E::Call { function, args } => {
-            call_args(args, cursor, graph, context).and_then(|flow| match flow {
-                DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
-                DraftFlow::Value {
-                    mut cursor,
-                    value: args,
-                } => context.custom_function_id(function, shape).map(|function| {
-                    let value = graph.custom_instruction(
-                        &mut cursor,
-                        shape.clone(),
-                        I::Call { function, args },
-                    );
-                    DraftFlow::value(cursor, value)
-                }),
-            })
-        }
+        E::Call {
+            function,
+            args,
+            site,
+        } => call_args(args, cursor, graph, context).and_then(|flow| match flow {
+            DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
+            DraftFlow::Value {
+                mut cursor,
+                value: args,
+            } => context.custom_function_id(function, shape).map(|function| {
+                let value = graph.custom_instruction(
+                    &mut cursor,
+                    shape.clone(),
+                    I::Call {
+                        function,
+                        args,
+                        site: site.clone(),
+                    },
+                );
+                DraftFlow::value(cursor, value)
+            }),
+        }),
         E::FunctionCall(call) => {
             function::custom_function_expr(call.function(), cursor, graph, context).and_then(
                 |flow| match flow {
@@ -106,6 +112,7 @@ pub(in crate::plan::execution::lowering) fn custom_expr_kind(
                                     I::FunctionCall {
                                         function: function.value().clone(),
                                         args,
+                                        site: call.site().clone(),
                                     },
                                 );
                                 DraftFlow::value(cursor, value)

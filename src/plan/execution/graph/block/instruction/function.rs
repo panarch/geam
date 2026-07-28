@@ -208,12 +208,12 @@ impl Explain for FunctionInstruction {
                 context.push_str(".constructor#");
                 context.push_str(&constructor.index().to_string());
             }
-            FunctionInstructionKind::Call { function, args } => {
+            FunctionInstructionKind::Call { function, args, .. } => {
                 context.push_str("call ");
                 function.function_label().write(context.output());
                 write_args(context.output(), args);
             }
-            FunctionInstructionKind::FunctionCall { function, args } => {
+            FunctionInstructionKind::FunctionCall { function, args, .. } => {
                 write_function_call(context.output(), "function_call", function, args);
             }
             FunctionInstructionKind::TupleIndex { tuple, index } => {
@@ -372,10 +372,12 @@ pub(crate) enum FunctionInstructionKind {
     Call {
         function: FunctionFunctionId,
         args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: FunctionFunctionLocal,
         args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: TupleLocalId,

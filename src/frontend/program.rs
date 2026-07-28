@@ -14,8 +14,8 @@ use gleam_core::parse;
 use gleam_core::type_::error::VariableOrigin;
 use gleam_core::type_::{
     Deprecation, ModuleInterface, PRELUDE_MODULE_NAME, References, ValueConstructor,
-    ValueConstructorVariant, bit_array, bool as bool_type, build_prelude, float, fn_, int, nil,
-    string, utf_codepoint,
+    ValueConstructorVariant, bit_array, bool as bool_type, build_prelude, float, fn_, generic_var,
+    int, nil, string, utf_codepoint,
 };
 use gleam_core::uid::UniqueIdGenerator;
 use gleam_core::warning::{TypeWarningEmitter, WarningEmitter};
@@ -578,6 +578,7 @@ fn host_value_constructor(
 
 fn host_type(type_: HostValueType) -> std::sync::Arc<gleam_core::type_::Type> {
     match type_ {
+        HostValueType::Parameter(parameter) => generic_var(parameter.index() as u64),
         HostValueType::Int => int(),
         HostValueType::Float => float(),
         HostValueType::String => string(),

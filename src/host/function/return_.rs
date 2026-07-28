@@ -2,6 +2,7 @@ mod bit_array;
 mod bool;
 mod float;
 mod int;
+mod never;
 mod nil;
 mod string;
 mod utf_codepoint;
@@ -14,6 +15,7 @@ pub(crate) use bit_array::HostBitArrayFunction;
 pub(crate) use bool::HostBoolFunction;
 pub(crate) use float::HostFloatFunction;
 pub(crate) use int::HostIntFunction;
+pub(crate) use never::HostNeverFunction;
 pub(crate) use nil::HostNilFunction;
 pub(crate) use string::HostStringFunction;
 pub(crate) use utf_codepoint::HostUtfCodepointFunction;
@@ -26,6 +28,11 @@ pub(super) type HostCallback<Profile, Return> = dyn Fn(
     + Sync;
 
 pub(crate) enum HostFunctionImplementation<Profile: HostProfile> {
+    Never(HostNeverFunction<Profile>),
+    Value(HostValueFunctionImplementation<Profile>),
+}
+
+pub(crate) enum HostValueFunctionImplementation<Profile: HostProfile> {
     Int(HostIntFunction<Profile>),
     Float(HostFloatFunction<Profile>),
     String(HostStringFunction<Profile>),
@@ -36,6 +43,15 @@ pub(crate) enum HostFunctionImplementation<Profile: HostProfile> {
 }
 
 impl<Profile: HostProfile> Clone for HostFunctionImplementation<Profile> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Never(function) => Self::Never(function.clone()),
+            Self::Value(function) => Self::Value(function.clone()),
+        }
+    }
+}
+
+impl<Profile: HostProfile> Clone for HostValueFunctionImplementation<Profile> {
     fn clone(&self) -> Self {
         match self {
             Self::Int(function) => Self::Int(function.clone()),

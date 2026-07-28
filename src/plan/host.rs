@@ -6,7 +6,7 @@ use super::{FunctionTemplateId, ModuleId};
 use crate::host::HostProfile;
 
 pub use function::HostFunctionTemplate;
-pub(crate) use function::{HostParameter, HostReturnFamily};
+pub(crate) use function::HostParameter;
 pub(crate) use implementation::HostFunctionImplementation;
 pub(crate) use module::HostedPlannedModuleParts;
 pub use module::{HostedFunctionTemplate, HostedPlannedModule};

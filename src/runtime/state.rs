@@ -915,6 +915,7 @@ pub fn main() {
             &plan,
             &mut state,
             main,
+            crate::runtime::error::HostCallOrigin::Entry,
             RetainedValues::empty(),
         )
         .expect("tail-recursive list graph should return");

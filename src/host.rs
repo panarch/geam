@@ -14,9 +14,10 @@ pub(crate) use failure::HostCallErrorKind;
 pub(crate) use function::{
     HostBitArrayArgumentSlot, HostBitArrayFunction, HostBoolArgumentSlot, HostBoolFunction,
     HostCallArguments, HostFloatArgumentSlot, HostFloatFunction, HostFunctionDefinition,
-    HostFunctionImplementation, HostIntArgumentSlot, HostIntFunction, HostNilArgumentSlot,
-    HostNilFunction, HostParameter, HostStringArgumentSlot, HostStringFunction,
-    HostUtfCodepointArgumentSlot, HostUtfCodepointFunction, HostValueType,
+    HostFunctionImplementation, HostIntArgumentSlot, HostIntFunction, HostNeverFunction,
+    HostNilArgumentSlot, HostNilFunction, HostParameter, HostStringArgumentSlot,
+    HostStringFunction, HostUtfCodepointArgumentSlot, HostUtfCodepointFunction,
+    HostValueFunctionImplementation, HostValueType,
 };
 pub(crate) use module::{
     RegisteredHostFunction, RegisteredHostImplementationId, RegisteredHostImplementations,

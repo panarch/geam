@@ -1,7 +1,5 @@
-use super::super::{EvaluatedFunctionExit, evaluate};
-use crate::plan::execution::function::{
-    ExecutionFunctionEntry, ExecutionFunctionRef, StringFunctionId,
-};
+use super::super::{EvaluatedFunctionExit, evaluate_entry, parameter_locals};
+use crate::plan::execution::function::StringFunctionId;
 use crate::plan::execution::graph::ParamLocal;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
@@ -17,12 +15,7 @@ pub(in crate::runtime) fn run_string<Plan: ExecutableRuntimePlan>(
     mut inputs: RetainedValues,
 ) -> ExecutionResult<EcoString> {
     loop {
-        let exit = match plan.string_function(function).as_ref() {
-            ExecutionFunctionRef::Graph(function) => evaluate(plan, state, function.body(), inputs),
-            ExecutionFunctionRef::Host(target) => plan
-                .call_host_string(state, origin.clone(), target, &inputs)
-                .map(EvaluatedFunctionExit::Return),
-        }?;
+        let exit = evaluate_entry(plan, state, plan.string_function(function), origin, inputs)?;
         match exit {
             EvaluatedFunctionExit::Return(value) => return Ok(value),
             EvaluatedFunctionExit::TailCall {
@@ -41,15 +34,7 @@ pub(in crate::runtime) fn string_parameter_locals<Plan: ExecutableRuntimePlan>(
     plan: &Plan,
     function: StringFunctionId,
 ) -> Vec<ParamLocal> {
-    match plan.string_function(function).as_ref() {
-        ExecutionFunctionRef::Graph(function) => function
-            .entry()
-            .params(function.body())
-            .iter()
-            .map(|slot| slot.local().clone())
-            .collect(),
-        ExecutionFunctionRef::Host(target) => plan.host_string_parameters(target).to_vec(),
-    }
+    parameter_locals(plan, plan.string_function(function))
 }
 
 #[cfg(test)]

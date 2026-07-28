@@ -198,8 +198,15 @@ pub(in crate::plan::execution::lowering) struct FunctionTableBuilder {
         Vec<(usize, LoweredFunction<FunctionFunctionFunctionBody>)>,
 }
 
-pub(in crate::plan::execution::lowering) struct AdditionalValueFunctions<Profile: ExecutionProfile>
-{
+pub(in crate::plan::execution::lowering) struct AdditionalFunctions<Profile: ExecutionProfile> {
+    pub(in crate::plan::execution::lowering) never: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, NeverFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) custom: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, CustomFunctionBody>>,
+    )>,
     pub(in crate::plan::execution::lowering) int: Vec<(
         usize,
         LoweredSpecialization<ExecutionFunction<Profile, IntFunctionBody>>,
@@ -228,11 +235,169 @@ pub(in crate::plan::execution::lowering) struct AdditionalValueFunctions<Profile
         usize,
         LoweredSpecialization<ExecutionFunction<Profile, NilFunctionBody>>,
     )>,
+    pub(in crate::plan::execution::lowering) tuple: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, TupleFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) parameter_list: Vec<(
+        ParameterListFunctionId,
+        LoweredSpecialization<ExecutionFunction<Profile, ParameterListFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) int_list: Vec<(
+        IntListFunctionId,
+        LoweredSpecialization<ExecutionFunction<Profile, IntListFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) string_list: Vec<(
+        StringListFunctionId,
+        LoweredSpecialization<ExecutionFunction<Profile, StringListFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) bit_array_list: Vec<(
+        BitArrayListFunctionId,
+        LoweredSpecialization<ExecutionFunction<Profile, BitArrayListFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) utf_codepoint_list: Vec<(
+        UtfCodepointListFunctionId,
+        LoweredSpecialization<ExecutionFunction<Profile, UtfCodepointListFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) custom_list: Vec<(
+        CustomListFunctionId,
+        LoweredSpecialization<ExecutionFunction<Profile, CustomListFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) float_list: Vec<(
+        FloatListFunctionId,
+        LoweredSpecialization<ExecutionFunction<Profile, FloatListFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) bool_list: Vec<(
+        BoolListFunctionId,
+        LoweredSpecialization<ExecutionFunction<Profile, BoolListFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) nil_list: Vec<(
+        NilListFunctionId,
+        LoweredSpecialization<ExecutionFunction<Profile, NilListFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) tuple_list: Vec<(
+        TupleListFunctionId,
+        LoweredSpecialization<ExecutionFunction<Profile, TupleListFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) parameter_list_list: Vec<(
+        ParameterListListFunctionId,
+        LoweredSpecialization<ExecutionFunction<Profile, ParameterListListFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) list_list: Vec<(
+        ListListFunctionId,
+        LoweredSpecialization<ExecutionFunction<Profile, ListListFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) function_list: Vec<(
+        FunctionListFunctionId,
+        LoweredSpecialization<ExecutionFunction<Profile, FunctionListFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) int_function_functions: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, IntFunctionFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) float_function_functions: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, FloatFunctionFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) string_function_functions: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, StringFunctionFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) bit_array_function_functions: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, BitArrayFunctionFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) utf_codepoint_function_functions: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, UtfCodepointFunctionFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) custom_function_functions: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, CustomFunctionFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) bool_function_functions: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, BoolFunctionFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) nil_function_functions: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, NilFunctionFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) tuple_function_functions: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, TupleFunctionFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) generic_function_functions: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, GenericFunctionFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) never_function_functions: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, NeverFunctionFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) parameter_list_function_functions: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, ListFunctionFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) parameter_list_list_function_functions: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, ListFunctionFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) int_list_function_functions: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, ListFunctionFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) string_list_function_functions: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, ListFunctionFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) bit_array_list_function_functions: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, ListFunctionFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) utf_codepoint_list_function_functions: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, ListFunctionFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) custom_list_function_functions: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, ListFunctionFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) float_list_function_functions: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, ListFunctionFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) bool_list_function_functions: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, ListFunctionFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) nil_list_function_functions: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, ListFunctionFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) tuple_list_function_functions: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, ListFunctionFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) list_list_function_functions: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, ListFunctionFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) function_list_function_functions: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, ListFunctionFunctionBody>>,
+    )>,
+    pub(in crate::plan::execution::lowering) function_function_functions: Vec<(
+        usize,
+        LoweredSpecialization<ExecutionFunction<Profile, FunctionFunctionFunctionBody>>,
+    )>,
 }
 
-impl<Profile: ExecutionProfile> AdditionalValueFunctions<Profile> {
-    fn empty() -> Self {
+impl<Profile: ExecutionProfile> AdditionalFunctions<Profile> {
+    pub(in crate::plan::execution::lowering) fn empty() -> Self {
         Self {
+            never: Vec::new(),
+            custom: Vec::new(),
             int: Vec::new(),
             float: Vec::new(),
             string: Vec::new(),
@@ -240,6 +405,45 @@ impl<Profile: ExecutionProfile> AdditionalValueFunctions<Profile> {
             utf_codepoint: Vec::new(),
             bool: Vec::new(),
             nil: Vec::new(),
+            tuple: Vec::new(),
+            parameter_list: Vec::new(),
+            int_list: Vec::new(),
+            string_list: Vec::new(),
+            bit_array_list: Vec::new(),
+            utf_codepoint_list: Vec::new(),
+            custom_list: Vec::new(),
+            float_list: Vec::new(),
+            bool_list: Vec::new(),
+            nil_list: Vec::new(),
+            tuple_list: Vec::new(),
+            parameter_list_list: Vec::new(),
+            list_list: Vec::new(),
+            function_list: Vec::new(),
+            int_function_functions: Vec::new(),
+            float_function_functions: Vec::new(),
+            string_function_functions: Vec::new(),
+            bit_array_function_functions: Vec::new(),
+            utf_codepoint_function_functions: Vec::new(),
+            custom_function_functions: Vec::new(),
+            bool_function_functions: Vec::new(),
+            nil_function_functions: Vec::new(),
+            tuple_function_functions: Vec::new(),
+            generic_function_functions: Vec::new(),
+            never_function_functions: Vec::new(),
+            parameter_list_function_functions: Vec::new(),
+            parameter_list_list_function_functions: Vec::new(),
+            int_list_function_functions: Vec::new(),
+            string_list_function_functions: Vec::new(),
+            bit_array_list_function_functions: Vec::new(),
+            utf_codepoint_list_function_functions: Vec::new(),
+            custom_list_function_functions: Vec::new(),
+            float_list_function_functions: Vec::new(),
+            bool_list_function_functions: Vec::new(),
+            nil_list_function_functions: Vec::new(),
+            tuple_list_function_functions: Vec::new(),
+            list_list_function_functions: Vec::new(),
+            function_list_function_functions: Vec::new(),
+            function_function_functions: Vec::new(),
         }
     }
 }
@@ -248,12 +452,12 @@ impl FunctionTableBuilder {
     pub(in crate::plan::execution::lowering) fn finish(
         self,
     ) -> SpecializationOutcome<Box<FunctionTables<Infallible>>> {
-        self.finish_profile(AdditionalValueFunctions::empty())
+        self.finish_profile(AdditionalFunctions::empty())
     }
 
     pub(super) fn finish_profile<Profile: ExecutionProfile>(
         mut self,
-        additional: AdditionalValueFunctions<Profile>,
+        additional: AdditionalFunctions<Profile>,
     ) -> SpecializationOutcome<Box<FunctionTables<Profile>>> {
         let mut erased = HashSet::new();
         let int_functions =
@@ -291,12 +495,24 @@ impl FunctionTableBuilder {
                 .into_iter()
                 .chain(additional.nil)
                 .collect();
+        let custom_functions =
+            profile_functions::<Profile, _, _>(std::mem::take(&mut self.custom_functions))
+                .into_iter()
+                .chain(additional.custom)
+                .collect();
+        let tuple_functions =
+            profile_functions::<Profile, _, _>(std::mem::take(&mut self.tuple_functions))
+                .into_iter()
+                .chain(additional.tuple)
+                .collect();
+        let never_functions =
+            profile_functions::<Profile, _, _>(std::mem::take(&mut self.never_functions))
+                .into_iter()
+                .chain(additional.never)
+                .collect();
         let tables = FunctionTables {
             value_returns: ValueFunctionTables {
-                never_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.never_functions),
-                    &mut erased,
-                ),
+                never_functions: sort_functions(never_functions, &mut erased),
                 int_functions: sort_inhabited(int_functions, |index| *index, &mut erased)
                     .into_iter()
                     .map(|(_, function)| function)
@@ -305,186 +521,294 @@ impl FunctionTableBuilder {
                 string_functions: sort_functions(string_functions, &mut erased),
                 bit_array_functions: sort_functions(bit_array_functions, &mut erased),
                 utf_codepoint_functions: sort_functions(utf_codepoint_functions, &mut erased),
-                custom_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.custom_functions),
-                    &mut erased,
-                ),
+                custom_functions: sort_functions(custom_functions, &mut erased),
                 bool_functions: sort_inhabited(bool_functions, |index| *index, &mut erased)
                     .into_iter()
                     .map(|(_, function)| function)
                     .collect(),
                 nil_functions: sort_functions(nil_functions, &mut erased),
-                tuple_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.tuple_functions),
-                    &mut erased,
-                ),
+                tuple_functions: sort_functions(tuple_functions, &mut erased),
             },
             list_returns: ListFunctionTables {
                 parameter_list_functions: sort_list_functions(
-                    profile_functions::<Profile, _, _>(self.parameter_list_functions),
+                    profile_functions::<Profile, _, _>(self.parameter_list_functions)
+                        .into_iter()
+                        .chain(additional.parameter_list)
+                        .collect(),
                     |id| id.index(),
                     &mut erased,
                 ),
                 int_list_functions: sort_list_functions(
-                    profile_functions::<Profile, _, _>(self.int_list_functions),
+                    profile_functions::<Profile, _, _>(self.int_list_functions)
+                        .into_iter()
+                        .chain(additional.int_list)
+                        .collect(),
                     |id| id.index(),
                     &mut erased,
                 ),
                 string_list_functions: sort_list_functions(
-                    profile_functions::<Profile, _, _>(self.string_list_functions),
+                    profile_functions::<Profile, _, _>(self.string_list_functions)
+                        .into_iter()
+                        .chain(additional.string_list)
+                        .collect(),
                     |id| id.index(),
                     &mut erased,
                 ),
                 bit_array_list_functions: sort_list_functions(
-                    profile_functions::<Profile, _, _>(self.bit_array_list_functions),
+                    profile_functions::<Profile, _, _>(self.bit_array_list_functions)
+                        .into_iter()
+                        .chain(additional.bit_array_list)
+                        .collect(),
                     |id| id.index(),
                     &mut erased,
                 ),
                 utf_codepoint_list_functions: sort_list_functions(
-                    profile_functions::<Profile, _, _>(self.utf_codepoint_list_functions),
+                    profile_functions::<Profile, _, _>(self.utf_codepoint_list_functions)
+                        .into_iter()
+                        .chain(additional.utf_codepoint_list)
+                        .collect(),
                     |id| id.index(),
                     &mut erased,
                 ),
                 custom_list_functions: sort_list_functions(
-                    profile_functions::<Profile, _, _>(self.custom_list_functions),
+                    profile_functions::<Profile, _, _>(self.custom_list_functions)
+                        .into_iter()
+                        .chain(additional.custom_list)
+                        .collect(),
                     |id| id.index(),
                     &mut erased,
                 ),
                 float_list_functions: sort_list_functions(
-                    profile_functions::<Profile, _, _>(self.float_list_functions),
+                    profile_functions::<Profile, _, _>(self.float_list_functions)
+                        .into_iter()
+                        .chain(additional.float_list)
+                        .collect(),
                     |id| id.index(),
                     &mut erased,
                 ),
                 bool_list_functions: sort_list_functions(
-                    profile_functions::<Profile, _, _>(self.bool_list_functions),
+                    profile_functions::<Profile, _, _>(self.bool_list_functions)
+                        .into_iter()
+                        .chain(additional.bool_list)
+                        .collect(),
                     |id| id.index(),
                     &mut erased,
                 ),
                 nil_list_functions: sort_list_functions(
-                    profile_functions::<Profile, _, _>(self.nil_list_functions),
+                    profile_functions::<Profile, _, _>(self.nil_list_functions)
+                        .into_iter()
+                        .chain(additional.nil_list)
+                        .collect(),
                     |id| id.index(),
                     &mut erased,
                 ),
                 tuple_list_functions: sort_list_functions(
-                    profile_functions::<Profile, _, _>(self.tuple_list_functions),
+                    profile_functions::<Profile, _, _>(self.tuple_list_functions)
+                        .into_iter()
+                        .chain(additional.tuple_list)
+                        .collect(),
                     |id| id.index(),
                     &mut erased,
                 ),
                 parameter_list_list_functions: sort_list_functions(
-                    profile_functions::<Profile, _, _>(self.parameter_list_list_functions),
+                    profile_functions::<Profile, _, _>(self.parameter_list_list_functions)
+                        .into_iter()
+                        .chain(additional.parameter_list_list)
+                        .collect(),
                     |id| id.index(),
                     &mut erased,
                 ),
                 list_list_functions: sort_list_functions(
-                    profile_functions::<Profile, _, _>(self.list_list_functions),
+                    profile_functions::<Profile, _, _>(self.list_list_functions)
+                        .into_iter()
+                        .chain(additional.list_list)
+                        .collect(),
                     |id| id.index(),
                     &mut erased,
                 ),
                 function_list_functions: sort_list_functions(
-                    profile_functions::<Profile, _, _>(self.function_list_functions),
+                    profile_functions::<Profile, _, _>(self.function_list_functions)
+                        .into_iter()
+                        .chain(additional.function_list)
+                        .collect(),
                     |id| id.index(),
                     &mut erased,
                 ),
             },
             function_returns: FunctionFunctionTables {
                 int_function_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.int_function_functions),
+                    profile_functions::<Profile, _, _>(self.int_function_functions)
+                        .into_iter()
+                        .chain(additional.int_function_functions)
+                        .collect(),
                     &mut erased,
                 ),
                 float_function_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.float_function_functions),
+                    profile_functions::<Profile, _, _>(self.float_function_functions)
+                        .into_iter()
+                        .chain(additional.float_function_functions)
+                        .collect(),
                     &mut erased,
                 ),
                 string_function_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.string_function_functions),
+                    profile_functions::<Profile, _, _>(self.string_function_functions)
+                        .into_iter()
+                        .chain(additional.string_function_functions)
+                        .collect(),
                     &mut erased,
                 ),
                 bit_array_function_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.bit_array_function_functions),
+                    profile_functions::<Profile, _, _>(self.bit_array_function_functions)
+                        .into_iter()
+                        .chain(additional.bit_array_function_functions)
+                        .collect(),
                     &mut erased,
                 ),
                 utf_codepoint_function_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.utf_codepoint_function_functions),
+                    profile_functions::<Profile, _, _>(self.utf_codepoint_function_functions)
+                        .into_iter()
+                        .chain(additional.utf_codepoint_function_functions)
+                        .collect(),
                     &mut erased,
                 ),
                 custom_function_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.custom_function_functions),
+                    profile_functions::<Profile, _, _>(self.custom_function_functions)
+                        .into_iter()
+                        .chain(additional.custom_function_functions)
+                        .collect(),
                     &mut erased,
                 ),
                 bool_function_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.bool_function_functions),
+                    profile_functions::<Profile, _, _>(self.bool_function_functions)
+                        .into_iter()
+                        .chain(additional.bool_function_functions)
+                        .collect(),
                     &mut erased,
                 ),
                 nil_function_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.nil_function_functions),
+                    profile_functions::<Profile, _, _>(self.nil_function_functions)
+                        .into_iter()
+                        .chain(additional.nil_function_functions)
+                        .collect(),
                     &mut erased,
                 ),
                 tuple_function_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.tuple_function_functions),
+                    profile_functions::<Profile, _, _>(self.tuple_function_functions)
+                        .into_iter()
+                        .chain(additional.tuple_function_functions)
+                        .collect(),
                     &mut erased,
                 ),
                 generic_function_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.generic_function_functions),
+                    profile_functions::<Profile, _, _>(self.generic_function_functions)
+                        .into_iter()
+                        .chain(additional.generic_function_functions)
+                        .collect(),
                     &mut erased,
                 ),
                 never_function_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.never_function_functions),
+                    profile_functions::<Profile, _, _>(self.never_function_functions)
+                        .into_iter()
+                        .chain(additional.never_function_functions)
+                        .collect(),
                     &mut erased,
                 ),
                 parameter_list_function_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.parameter_list_function_functions),
+                    profile_functions::<Profile, _, _>(self.parameter_list_function_functions)
+                        .into_iter()
+                        .chain(additional.parameter_list_function_functions)
+                        .collect(),
                     &mut erased,
                 ),
                 parameter_list_list_function_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.parameter_list_list_function_functions),
+                    profile_functions::<Profile, _, _>(self.parameter_list_list_function_functions)
+                        .into_iter()
+                        .chain(additional.parameter_list_list_function_functions)
+                        .collect(),
                     &mut erased,
                 ),
                 int_list_function_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.int_list_function_functions),
+                    profile_functions::<Profile, _, _>(self.int_list_function_functions)
+                        .into_iter()
+                        .chain(additional.int_list_function_functions)
+                        .collect(),
                     &mut erased,
                 ),
                 string_list_function_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.string_list_function_functions),
+                    profile_functions::<Profile, _, _>(self.string_list_function_functions)
+                        .into_iter()
+                        .chain(additional.string_list_function_functions)
+                        .collect(),
                     &mut erased,
                 ),
                 bit_array_list_function_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.bit_array_list_function_functions),
+                    profile_functions::<Profile, _, _>(self.bit_array_list_function_functions)
+                        .into_iter()
+                        .chain(additional.bit_array_list_function_functions)
+                        .collect(),
                     &mut erased,
                 ),
                 utf_codepoint_list_function_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.utf_codepoint_list_function_functions),
+                    profile_functions::<Profile, _, _>(self.utf_codepoint_list_function_functions)
+                        .into_iter()
+                        .chain(additional.utf_codepoint_list_function_functions)
+                        .collect(),
                     &mut erased,
                 ),
                 custom_list_function_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.custom_list_function_functions),
+                    profile_functions::<Profile, _, _>(self.custom_list_function_functions)
+                        .into_iter()
+                        .chain(additional.custom_list_function_functions)
+                        .collect(),
                     &mut erased,
                 ),
                 float_list_function_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.float_list_function_functions),
+                    profile_functions::<Profile, _, _>(self.float_list_function_functions)
+                        .into_iter()
+                        .chain(additional.float_list_function_functions)
+                        .collect(),
                     &mut erased,
                 ),
                 bool_list_function_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.bool_list_function_functions),
+                    profile_functions::<Profile, _, _>(self.bool_list_function_functions)
+                        .into_iter()
+                        .chain(additional.bool_list_function_functions)
+                        .collect(),
                     &mut erased,
                 ),
                 nil_list_function_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.nil_list_function_functions),
+                    profile_functions::<Profile, _, _>(self.nil_list_function_functions)
+                        .into_iter()
+                        .chain(additional.nil_list_function_functions)
+                        .collect(),
                     &mut erased,
                 ),
                 tuple_list_function_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.tuple_list_function_functions),
+                    profile_functions::<Profile, _, _>(self.tuple_list_function_functions)
+                        .into_iter()
+                        .chain(additional.tuple_list_function_functions)
+                        .collect(),
                     &mut erased,
                 ),
                 list_list_function_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.list_list_function_functions),
+                    profile_functions::<Profile, _, _>(self.list_list_function_functions)
+                        .into_iter()
+                        .chain(additional.list_list_function_functions)
+                        .collect(),
                     &mut erased,
                 ),
                 function_list_function_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.function_list_function_functions),
+                    profile_functions::<Profile, _, _>(self.function_list_function_functions)
+                        .into_iter()
+                        .chain(additional.function_list_function_functions)
+                        .collect(),
                     &mut erased,
                 ),
                 function_function_functions: sort_functions(
-                    profile_functions::<Profile, _, _>(self.function_function_functions),
+                    profile_functions::<Profile, _, _>(self.function_function_functions)
+                        .into_iter()
+                        .chain(additional.function_function_functions)
+                        .collect(),
                     &mut erased,
                 ),
             },

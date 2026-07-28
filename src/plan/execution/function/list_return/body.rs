@@ -12,20 +12,32 @@ use crate::plan::execution::graph::{
 };
 
 pub(crate) type ParameterListFunctionBody =
-    FunctionBody<ParameterListLocalId, ParameterListFunctionId>;
-pub(crate) type IntListFunctionBody = FunctionBody<IntListLocalId, IntListFunctionId>;
-pub(crate) type FloatListFunctionBody = FunctionBody<FloatListLocalId, FloatListFunctionId>;
-pub(crate) type StringListFunctionBody = FunctionBody<StringListLocalId, StringListFunctionId>;
+    FunctionBody<ParameterListLocalId, crate::plan::FunctionCallTarget<ParameterListFunctionId>>;
+pub(crate) type IntListFunctionBody =
+    FunctionBody<IntListLocalId, crate::plan::FunctionCallTarget<IntListFunctionId>>;
+pub(crate) type FloatListFunctionBody =
+    FunctionBody<FloatListLocalId, crate::plan::FunctionCallTarget<FloatListFunctionId>>;
+pub(crate) type StringListFunctionBody =
+    FunctionBody<StringListLocalId, crate::plan::FunctionCallTarget<StringListFunctionId>>;
 pub(crate) type BitArrayListFunctionBody =
-    FunctionBody<BitArrayListLocalId, BitArrayListFunctionId>;
-pub(crate) type UtfCodepointListFunctionBody =
-    FunctionBody<UtfCodepointListLocalId, UtfCodepointListFunctionId>;
-pub(crate) type CustomListFunctionBody = FunctionBody<CustomListLocalId, CustomListFunctionId>;
-pub(crate) type BoolListFunctionBody = FunctionBody<BoolListLocalId, BoolListFunctionId>;
-pub(crate) type NilListFunctionBody = FunctionBody<NilListLocalId, NilListFunctionId>;
-pub(crate) type TupleListFunctionBody = FunctionBody<TupleListLocalId, TupleListFunctionId>;
-pub(crate) type ParameterListListFunctionBody =
-    FunctionBody<ParameterListListLocalId, ParameterListListFunctionId>;
-pub(crate) type ListListFunctionBody = FunctionBody<ListListLocalId, ListListFunctionId>;
+    FunctionBody<BitArrayListLocalId, crate::plan::FunctionCallTarget<BitArrayListFunctionId>>;
+pub(crate) type UtfCodepointListFunctionBody = FunctionBody<
+    UtfCodepointListLocalId,
+    crate::plan::FunctionCallTarget<UtfCodepointListFunctionId>,
+>;
+pub(crate) type CustomListFunctionBody =
+    FunctionBody<CustomListLocalId, crate::plan::FunctionCallTarget<CustomListFunctionId>>;
+pub(crate) type BoolListFunctionBody =
+    FunctionBody<BoolListLocalId, crate::plan::FunctionCallTarget<BoolListFunctionId>>;
+pub(crate) type NilListFunctionBody =
+    FunctionBody<NilListLocalId, crate::plan::FunctionCallTarget<NilListFunctionId>>;
+pub(crate) type TupleListFunctionBody =
+    FunctionBody<TupleListLocalId, crate::plan::FunctionCallTarget<TupleListFunctionId>>;
+pub(crate) type ParameterListListFunctionBody = FunctionBody<
+    ParameterListListLocalId,
+    crate::plan::FunctionCallTarget<ParameterListListFunctionId>,
+>;
+pub(crate) type ListListFunctionBody =
+    FunctionBody<ListListLocalId, crate::plan::FunctionCallTarget<ListListFunctionId>>;
 pub(crate) type FunctionListFunctionBody =
-    FunctionBody<FunctionListLocalId, FunctionListFunctionId>;
+    FunctionBody<FunctionListLocalId, crate::plan::FunctionCallTarget<FunctionListFunctionId>>;

@@ -11,14 +11,20 @@ pub(crate) enum NeverCallTarget {
 pub(crate) struct NeverCall {
     function: NeverCallTarget,
     args: Box<[ParamLocal]>,
+    site: crate::plan::HostCallSite,
 }
 
 impl NeverCall {
     pub(in crate::plan::execution) fn new(
         function: NeverCallTarget,
         args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     ) -> Self {
-        Self { function, args }
+        Self {
+            function,
+            args,
+            site,
+        }
     }
 
     pub(crate) fn function(&self) -> &NeverCallTarget {
@@ -27,6 +33,10 @@ impl NeverCall {
 
     pub(crate) fn args(&self) -> &[ParamLocal] {
         &self.args
+    }
+
+    pub(crate) fn site(&self) -> &crate::plan::HostCallSite {
+        &self.site
     }
 }
 

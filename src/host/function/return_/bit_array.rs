@@ -1,4 +1,6 @@
-use super::{HostCallback, HostFunctionImplementation, HostReturn};
+use super::{
+    HostCallback, HostFunctionImplementation, HostReturn, HostValueFunctionImplementation,
+};
 use crate::BitArrayValue;
 use crate::host::function::HostValueType;
 use crate::host::function::argument::HostCallArguments;
@@ -38,15 +40,20 @@ impl HostReturn for BitArrayValue {
         + Sync
         + 'static,
     ) -> HostFunctionImplementation<Profile> {
-        HostFunctionImplementation::BitArray(HostBitArrayFunction {
-            implementation: Arc::new(function),
-        })
+        HostFunctionImplementation::Value(HostValueFunctionImplementation::BitArray(
+            HostBitArrayFunction {
+                implementation: Arc::new(function),
+            },
+        ))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{HostBitArrayFunction, HostFunctionImplementation, HostReturn};
+    use super::{
+        HostBitArrayFunction, HostFunctionImplementation, HostReturn,
+        HostValueFunctionImplementation,
+    };
     use crate::BitArrayValue;
     use crate::host::StatelessHostProfile;
     use crate::host::function::HostValueType;
@@ -88,7 +95,10 @@ mod tests {
     fn bit_array_implementation(
         implementation: HostFunctionImplementation<StatelessHostProfile>,
     ) -> HostBitArrayFunction<StatelessHostProfile> {
-        let HostFunctionImplementation::BitArray(implementation) = implementation else {
+        let HostFunctionImplementation::Value(HostValueFunctionImplementation::BitArray(
+            implementation,
+        )) = implementation
+        else {
             panic!("BitArrayValue return should create a BitArray implementation");
         };
         implementation

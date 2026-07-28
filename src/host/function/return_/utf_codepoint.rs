@@ -1,4 +1,6 @@
-use super::{HostCallback, HostFunctionImplementation, HostReturn};
+use super::{
+    HostCallback, HostFunctionImplementation, HostReturn, HostValueFunctionImplementation,
+};
 use crate::host::function::HostValueType;
 use crate::host::function::argument::HostCallArguments;
 use crate::host::{HostCallError, HostProfile};
@@ -37,15 +39,20 @@ impl HostReturn for char {
         + Sync
         + 'static,
     ) -> HostFunctionImplementation<Profile> {
-        HostFunctionImplementation::UtfCodepoint(HostUtfCodepointFunction {
-            implementation: Arc::new(function),
-        })
+        HostFunctionImplementation::Value(HostValueFunctionImplementation::UtfCodepoint(
+            HostUtfCodepointFunction {
+                implementation: Arc::new(function),
+            },
+        ))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{HostFunctionImplementation, HostReturn, HostUtfCodepointFunction};
+    use super::{
+        HostFunctionImplementation, HostReturn, HostUtfCodepointFunction,
+        HostValueFunctionImplementation,
+    };
     use crate::host::StatelessHostProfile;
     use crate::host::function::HostValueType;
     use crate::host::function::argument::{CallArguments, HostCallArguments, HostParameterLayout};
@@ -84,7 +91,10 @@ mod tests {
     fn utf_codepoint_implementation(
         implementation: HostFunctionImplementation<StatelessHostProfile>,
     ) -> HostUtfCodepointFunction<StatelessHostProfile> {
-        let HostFunctionImplementation::UtfCodepoint(implementation) = implementation else {
+        let HostFunctionImplementation::Value(HostValueFunctionImplementation::UtfCodepoint(
+            implementation,
+        )) = implementation
+        else {
             panic!("char return should create a UtfCodepoint implementation");
         };
         implementation

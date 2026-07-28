@@ -1,10 +1,11 @@
 use super::super::body::FunctionBody;
 use super::{
-    BitArrayFunctionFunctionId, BoolFunctionFunctionId, CustomFunctionFunctionId,
-    FloatFunctionFunctionId, FunctionFunctionFunctionId, GenericFunctionFunctionId,
-    IntFunctionFunctionId, ListFunctionFunctionId, NeverFunctionFunctionId, NilFunctionFunctionId,
-    StringFunctionFunctionId, TupleFunctionFunctionId, UtfCodepointFunctionFunctionId,
+    BitArrayFunctionFunctionId, BoolFunctionFunctionId, FloatFunctionFunctionId,
+    GenericFunctionFunctionId, IntFunctionFunctionId, ListFunctionFunctionId,
+    NeverFunctionFunctionId, NilFunctionFunctionId, StringFunctionFunctionId,
+    TupleFunctionFunctionId, UtfCodepointFunctionFunctionId,
 };
+use crate::plan::FunctionCallTarget;
 use crate::plan::execution::function::FunctionBodyOwner;
 use crate::plan::execution::graph::{
     BitArrayFunctionLocalId, BoolFunctionLocalId, CustomFunctionLocal, FloatFunctionLocalId,
@@ -15,38 +16,46 @@ use crate::plan::execution::graph::{
 use crate::plan::execution::type_::{CustomFunctionType, FunctionFunctionType, FunctionShape};
 
 pub(crate) type IntFunctionFunctionBody =
-    TypedFunctionBody<FunctionBody<IntFunctionLocalId, IntFunctionFunctionId>>;
-pub(crate) type FloatFunctionFunctionBody =
-    TypedFunctionBody<FunctionBody<FloatFunctionLocalId, FloatFunctionFunctionId>>;
-pub(crate) type StringFunctionFunctionBody =
-    TypedFunctionBody<FunctionBody<StringFunctionLocalId, StringFunctionFunctionId>>;
-pub(crate) type BitArrayFunctionFunctionBody =
-    TypedFunctionBody<FunctionBody<BitArrayFunctionLocalId, BitArrayFunctionFunctionId>>;
-pub(crate) type UtfCodepointFunctionFunctionBody =
-    TypedFunctionBody<FunctionBody<UtfCodepointFunctionLocalId, UtfCodepointFunctionFunctionId>>;
-pub(crate) type GenericFunctionFunctionBody =
-    TypedFunctionBody<FunctionBody<GenericFunctionLocal, GenericFunctionFunctionId>>;
-pub(crate) type NeverFunctionFunctionBody =
-    TypedFunctionBody<FunctionBody<NeverFunctionLocal, NeverFunctionFunctionId>>;
-pub(crate) type BoolFunctionFunctionBody =
-    TypedFunctionBody<FunctionBody<BoolFunctionLocalId, BoolFunctionFunctionId>>;
+    TypedFunctionBody<FunctionBody<IntFunctionLocalId, FunctionCallTarget<IntFunctionFunctionId>>>;
+pub(crate) type FloatFunctionFunctionBody = TypedFunctionBody<
+    FunctionBody<FloatFunctionLocalId, FunctionCallTarget<FloatFunctionFunctionId>>,
+>;
+pub(crate) type StringFunctionFunctionBody = TypedFunctionBody<
+    FunctionBody<StringFunctionLocalId, FunctionCallTarget<StringFunctionFunctionId>>,
+>;
+pub(crate) type BitArrayFunctionFunctionBody = TypedFunctionBody<
+    FunctionBody<BitArrayFunctionLocalId, FunctionCallTarget<BitArrayFunctionFunctionId>>,
+>;
+pub(crate) type UtfCodepointFunctionFunctionBody = TypedFunctionBody<
+    FunctionBody<UtfCodepointFunctionLocalId, FunctionCallTarget<UtfCodepointFunctionFunctionId>>,
+>;
+pub(crate) type GenericFunctionFunctionBody = TypedFunctionBody<
+    FunctionBody<GenericFunctionLocal, FunctionCallTarget<GenericFunctionFunctionId>>,
+>;
+pub(crate) type NeverFunctionFunctionBody = TypedFunctionBody<
+    FunctionBody<NeverFunctionLocal, FunctionCallTarget<NeverFunctionFunctionId>>,
+>;
+pub(crate) type BoolFunctionFunctionBody = TypedFunctionBody<
+    FunctionBody<BoolFunctionLocalId, FunctionCallTarget<BoolFunctionFunctionId>>,
+>;
 pub(crate) type NilFunctionFunctionBody =
-    TypedFunctionBody<FunctionBody<NilFunctionLocalId, NilFunctionFunctionId>>;
-pub(crate) type TupleFunctionFunctionBody =
-    TypedFunctionBody<FunctionBody<TupleFunctionLocalId, TupleFunctionFunctionId>>;
+    TypedFunctionBody<FunctionBody<NilFunctionLocalId, FunctionCallTarget<NilFunctionFunctionId>>>;
+pub(crate) type TupleFunctionFunctionBody = TypedFunctionBody<
+    FunctionBody<TupleFunctionLocalId, FunctionCallTarget<TupleFunctionFunctionId>>,
+>;
 pub(crate) type ListFunctionFunctionBody =
-    TypedFunctionBody<FunctionBody<ListFunctionLocal, ListFunctionFunctionId>>;
+    TypedFunctionBody<FunctionBody<ListFunctionLocal, FunctionCallTarget<ListFunctionFunctionId>>>;
 
 pub(crate) struct CustomFunctionFunctionBody {
     _shape: FunctionShape,
-    type_: CustomFunctionType,
-    body: FunctionBody<CustomFunctionLocal, usize>,
+    _type: CustomFunctionType,
+    body: FunctionBody<CustomFunctionLocal, FunctionCallTarget<usize>>,
 }
 
 pub(crate) struct FunctionFunctionFunctionBody {
     _shape: FunctionShape,
-    type_: FunctionFunctionType,
-    body: FunctionBody<FunctionFunctionLocal, usize>,
+    _type: FunctionFunctionType,
+    body: FunctionBody<FunctionFunctionLocal, FunctionCallTarget<usize>>,
 }
 
 pub(crate) struct TypedFunctionBody<Body> {
@@ -58,21 +67,20 @@ impl CustomFunctionFunctionBody {
     pub(in crate::plan::execution) fn from_parts(
         shape: FunctionShape,
         type_: CustomFunctionType,
-        body: FunctionBody<CustomFunctionLocal, usize>,
+        body: FunctionBody<CustomFunctionLocal, FunctionCallTarget<usize>>,
     ) -> Self {
         Self {
             _shape: shape,
-            type_,
+            _type: type_,
             body,
         }
     }
 
-    pub(crate) fn function_body(&self) -> &FunctionBody<CustomFunctionLocal, usize> {
+    #[cfg(test)]
+    pub(crate) fn function_body(
+        &self,
+    ) -> &FunctionBody<CustomFunctionLocal, FunctionCallTarget<usize>> {
         &self.body
-    }
-
-    pub(crate) fn function_id(&self, index: usize) -> CustomFunctionFunctionId {
-        CustomFunctionFunctionId::new(index, self.type_.clone())
     }
 }
 
@@ -80,26 +88,25 @@ impl FunctionFunctionFunctionBody {
     pub(in crate::plan::execution) fn from_parts(
         shape: FunctionShape,
         type_: FunctionFunctionType,
-        body: FunctionBody<FunctionFunctionLocal, usize>,
+        body: FunctionBody<FunctionFunctionLocal, FunctionCallTarget<usize>>,
     ) -> Self {
         Self {
             _shape: shape,
-            type_,
+            _type: type_,
             body,
         }
     }
 
     #[cfg(test)]
     pub(crate) fn type_(&self) -> &FunctionFunctionType {
-        &self.type_
+        &self._type
     }
 
-    pub(crate) fn function_body(&self) -> &FunctionBody<FunctionFunctionLocal, usize> {
+    #[cfg(test)]
+    pub(crate) fn function_body(
+        &self,
+    ) -> &FunctionBody<FunctionFunctionLocal, FunctionCallTarget<usize>> {
         &self.body
-    }
-
-    pub(crate) fn function_id(&self, index: usize) -> FunctionFunctionFunctionId {
-        FunctionFunctionFunctionId::new(index, self.type_.clone())
     }
 }
 
@@ -111,6 +118,7 @@ impl<Body> TypedFunctionBody<Body> {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn function_body(&self) -> &Body {
         &self.body
     }
@@ -130,7 +138,7 @@ where
 
 impl FunctionBodyOwner for CustomFunctionFunctionBody {
     type Return = CustomFunctionLocal;
-    type TailCall = usize;
+    type TailCall = FunctionCallTarget<usize>;
 
     fn function_body(&self) -> &FunctionBody<Self::Return, Self::TailCall> {
         &self.body
@@ -139,7 +147,7 @@ impl FunctionBodyOwner for CustomFunctionFunctionBody {
 
 impl FunctionBodyOwner for FunctionFunctionFunctionBody {
     type Return = FunctionFunctionLocal;
-    type TailCall = usize;
+    type TailCall = FunctionCallTarget<usize>;
 
     fn function_body(&self) -> &FunctionBody<Self::Return, Self::TailCall> {
         &self.body

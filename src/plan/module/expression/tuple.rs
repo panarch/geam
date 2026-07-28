@@ -24,10 +24,12 @@ pub(crate) enum TupleExprKind {
     Call {
         function: FunctionInstantiation,
         args: Vec<CallArg>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: Box<TupleFunctionExpr>,
         args: Vec<CallArg>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: Box<TupleExpr>,
@@ -107,24 +109,52 @@ impl TupleExpr {
         Self::new(type_, TupleExprKind::LocalGet { local, name })
     }
 
+    #[cfg(test)]
     pub(crate) fn call(
         function: FunctionInstantiation,
         args: Vec<CallArg>,
         type_: Vec<ValueType>,
     ) -> Self {
-        Self::new(type_, TupleExprKind::Call { function, args })
+        Self::call_at(function, args, type_, crate::plan::HostCallSite::unknown())
     }
 
+    pub(crate) fn call_at(
+        function: FunctionInstantiation,
+        args: Vec<CallArg>,
+        type_: Vec<ValueType>,
+        site: crate::plan::HostCallSite,
+    ) -> Self {
+        Self::new(
+            type_,
+            TupleExprKind::Call {
+                function,
+                args,
+                site,
+            },
+        )
+    }
+
+    #[cfg(test)]
     pub(crate) fn function_call(
         function: TupleFunctionExpr,
         args: Vec<CallArg>,
         type_: Vec<ValueType>,
+    ) -> Self {
+        Self::function_call_at(function, args, type_, crate::plan::HostCallSite::unknown())
+    }
+
+    pub(crate) fn function_call_at(
+        function: TupleFunctionExpr,
+        args: Vec<CallArg>,
+        type_: Vec<ValueType>,
+        site: crate::plan::HostCallSite,
     ) -> Self {
         Self::new(
             type_,
             TupleExprKind::FunctionCall {
                 function: Box::new(function),
                 args,
+                site,
             },
         )
     }
@@ -272,6 +302,7 @@ mod tests {
             &TupleExprKind::Call {
                 function: function_instantiation(),
                 args: Vec::new(),
+                site: crate::plan::HostCallSite::unknown(),
             },
         );
         assert_eq!(
@@ -279,6 +310,7 @@ mod tests {
             &TupleExprKind::FunctionCall {
                 function: Box::new(tuple_function_expr()),
                 args: Vec::new(),
+                site: crate::plan::HostCallSite::unknown(),
             },
         );
         assert_eq!(

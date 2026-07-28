@@ -19,7 +19,7 @@ use crate::plan::execution::type_::{
     StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
 };
 use crate::runtime::ExecutableRuntimePlan;
-use crate::runtime::error::ExecutionResult;
+use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomValue, EvaluatedFunctionValue, EvaluatedListFunction,
     EvaluatedValue,
@@ -160,19 +160,34 @@ fn parameter<Plan: ExecutableRuntimePlan>(
     match instruction {
         I::Empty => Ok(ParameterListValueId::new(type_id)),
         I::Constant(id) => constant(plan, state, *id),
-        I::Call { function, args } => crate::runtime::function::run_parameter_list(
+        I::Call {
+            function,
+            args,
+            site,
+        } => crate::runtime::function::run_parameter_list(
             plan,
             state,
             *function,
+            HostCallOrigin::source(site.clone()),
             environment.retain(args),
         ),
-        I::FunctionCall { function, args } => {
+        I::FunctionCall {
+            function,
+            args,
+            site,
+        } => {
             let function = environment.list_function(function);
             let mut inputs = environment.retain(args);
             inputs.append_captures(function.captures());
             match function.runtime_id() {
                 ListFunctionId::Parameter(function) => {
-                    crate::runtime::function::run_parameter_list(plan, state, function, inputs)
+                    crate::runtime::function::run_parameter_list(
+                        plan,
+                        state,
+                        function,
+                        HostCallOrigin::source(site.clone()),
+                        inputs,
+                    )
                 }
                 _ => Err(list_function_mismatch()),
             }
@@ -228,12 +243,14 @@ trait RuntimeTypedList {
         plan: &Plan,
         state: &mut RuntimeStateFor<'_, Plan>,
         function: Self::Function,
+        origin: HostCallOrigin,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle>;
     fn run_value<Plan: ExecutableRuntimePlan>(
         plan: &Plan,
         state: &mut RuntimeStateFor<'_, Plan>,
         function: EvaluatedListFunction,
+        origin: HostCallOrigin,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle>;
     fn projected(value: &ListValueId) -> Option<Self::Handle>;
@@ -268,14 +285,32 @@ fn typed<Family: RuntimeTypedList, Plan: ExecutableRuntimePlan>(
             values.extend(Family::values(state, &Family::local(environment, *tail)));
             Ok(Family::allocate(state, type_id, values))
         }
-        I::Call { function, args } => {
-            Family::run_direct(plan, state, function.clone(), environment.retain(args))
-        }
-        I::FunctionCall { function, args } => {
+        I::Call {
+            function,
+            args,
+            site,
+        } => Family::run_direct(
+            plan,
+            state,
+            function.clone(),
+            HostCallOrigin::source(site.clone()),
+            environment.retain(args),
+        ),
+        I::FunctionCall {
+            function,
+            args,
+            site,
+        } => {
             let function = environment.list_function(function);
             let mut inputs = environment.retain(args);
             inputs.append_captures(function.captures());
-            Family::run_value(plan, state, function, inputs)
+            Family::run_value(
+                plan,
+                state,
+                function,
+                HostCallOrigin::source(site.clone()),
+                inputs,
+            )
         }
         I::TupleIndex { tuple, index } => tuple_projection(
             plan,
@@ -385,20 +420,22 @@ macro_rules! vector_family {
                 plan: &Plan,
                 state: &mut RuntimeStateFor<'_, Plan>,
                 function: Self::Function,
+                origin: HostCallOrigin,
                 inputs: RetainedValues,
             ) -> ExecutionResult<Self::Handle> {
-                crate::runtime::function::$run_method(plan, state, function, inputs)
+                crate::runtime::function::$run_method(plan, state, function, origin, inputs)
             }
 
             fn run_value<Plan: ExecutableRuntimePlan>(
                 plan: &Plan,
                 state: &mut RuntimeStateFor<'_, Plan>,
                 function: EvaluatedListFunction,
+                origin: HostCallOrigin,
                 inputs: RetainedValues,
             ) -> ExecutionResult<Self::Handle> {
                 match function.runtime_id() {
                     ListFunctionId::$function_variant(function) => {
-                        crate::runtime::function::$run_method(plan, state, function, inputs)
+                        crate::runtime::function::$run_method(plan, state, function, origin, inputs)
                     }
                     _ => Err(list_function_mismatch()),
                 }
@@ -565,20 +602,22 @@ impl RuntimeTypedList for CustomFamily {
         plan: &Plan,
         state: &mut RuntimeStateFor<'_, Plan>,
         function: Self::Function,
+        origin: HostCallOrigin,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle> {
-        crate::runtime::function::run_custom_list(plan, state, function, inputs)
+        crate::runtime::function::run_custom_list(plan, state, function, origin, inputs)
     }
 
     fn run_value<Plan: ExecutableRuntimePlan>(
         plan: &Plan,
         state: &mut RuntimeStateFor<'_, Plan>,
         function: EvaluatedListFunction,
+        origin: HostCallOrigin,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle> {
         match function.runtime_id() {
             ListFunctionId::Custom(function) => {
-                crate::runtime::function::run_custom_list(plan, state, function, inputs)
+                crate::runtime::function::run_custom_list(plan, state, function, origin, inputs)
             }
             _ => Err(list_function_mismatch()),
         }
@@ -630,20 +669,22 @@ impl RuntimeTypedList for NilFamily {
         plan: &Plan,
         state: &mut RuntimeStateFor<'_, Plan>,
         function: Self::Function,
+        origin: HostCallOrigin,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle> {
-        crate::runtime::function::run_nil_list(plan, state, function, inputs)
+        crate::runtime::function::run_nil_list(plan, state, function, origin, inputs)
     }
 
     fn run_value<Plan: ExecutableRuntimePlan>(
         plan: &Plan,
         state: &mut RuntimeStateFor<'_, Plan>,
         function: EvaluatedListFunction,
+        origin: HostCallOrigin,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle> {
         match function.runtime_id() {
             ListFunctionId::Nil(function) => {
-                crate::runtime::function::run_nil_list(plan, state, function, inputs)
+                crate::runtime::function::run_nil_list(plan, state, function, origin, inputs)
             }
             _ => Err(list_function_mismatch()),
         }
@@ -698,20 +739,24 @@ impl RuntimeTypedList for ParameterListFamily {
         plan: &Plan,
         state: &mut RuntimeStateFor<'_, Plan>,
         function: Self::Function,
+        origin: HostCallOrigin,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle> {
-        crate::runtime::function::run_parameter_list_list(plan, state, function, inputs)
+        crate::runtime::function::run_parameter_list_list(plan, state, function, origin, inputs)
     }
 
     fn run_value<Plan: ExecutableRuntimePlan>(
         plan: &Plan,
         state: &mut RuntimeStateFor<'_, Plan>,
         function: EvaluatedListFunction,
+        origin: HostCallOrigin,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle> {
         match function.runtime_id() {
             ListFunctionId::ParameterList(function) => {
-                crate::runtime::function::run_parameter_list_list(plan, state, function, inputs)
+                crate::runtime::function::run_parameter_list_list(
+                    plan, state, function, origin, inputs,
+                )
             }
             _ => Err(list_function_mismatch()),
         }
@@ -763,20 +808,22 @@ impl RuntimeTypedList for ListFamily {
         plan: &Plan,
         state: &mut RuntimeStateFor<'_, Plan>,
         function: Self::Function,
+        origin: HostCallOrigin,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle> {
-        crate::runtime::function::run_list_list(plan, state, function, inputs)
+        crate::runtime::function::run_list_list(plan, state, function, origin, inputs)
     }
 
     fn run_value<Plan: ExecutableRuntimePlan>(
         plan: &Plan,
         state: &mut RuntimeStateFor<'_, Plan>,
         function: EvaluatedListFunction,
+        origin: HostCallOrigin,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle> {
         match function.runtime_id() {
             ListFunctionId::List(function) => {
-                crate::runtime::function::run_list_list(plan, state, function, inputs)
+                crate::runtime::function::run_list_list(plan, state, function, origin, inputs)
             }
             _ => Err(list_function_mismatch()),
         }
@@ -828,20 +875,22 @@ impl RuntimeTypedList for FunctionFamily {
         plan: &Plan,
         state: &mut RuntimeStateFor<'_, Plan>,
         function: Self::Function,
+        origin: HostCallOrigin,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle> {
-        crate::runtime::function::run_function_list(plan, state, function, inputs)
+        crate::runtime::function::run_function_list(plan, state, function, origin, inputs)
     }
 
     fn run_value<Plan: ExecutableRuntimePlan>(
         plan: &Plan,
         state: &mut RuntimeStateFor<'_, Plan>,
         function: EvaluatedListFunction,
+        origin: HostCallOrigin,
         inputs: RetainedValues,
     ) -> ExecutionResult<Self::Handle> {
         match function.runtime_id() {
             ListFunctionId::Function(function) => {
-                crate::runtime::function::run_function_list(plan, state, function, inputs)
+                crate::runtime::function::run_function_list(plan, state, function, origin, inputs)
             }
             _ => Err(list_function_mismatch()),
         }
@@ -936,6 +985,7 @@ pub fn main() {
                 plan,
                 &mut RuntimeState::new(&mut Vec::new()),
                 function,
+                crate::runtime::error::HostCallOrigin::Entry,
                 RetainedValues::empty()
             ),
             Err(list_function_mismatch()),
@@ -977,6 +1027,7 @@ pub fn main() {
                 list_type: int_function_id.type_id(),
             },
             args: Box::new([]),
+            site: crate::plan::HostCallSite::unknown(),
         };
 
         assert_eq!(

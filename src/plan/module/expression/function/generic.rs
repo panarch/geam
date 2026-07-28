@@ -28,10 +28,12 @@ pub(crate) enum GenericFunctionExprKind {
     Call {
         function: FunctionInstantiation,
         args: Vec<crate::plan::CallArg>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: Box<FunctionFunctionExpr>,
         args: Vec<crate::plan::CallArg>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: Box<TupleExpr>,
@@ -108,27 +110,52 @@ impl GenericFunctionExpr {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn call(
         function: FunctionInstantiation,
         args: Vec<crate::plan::CallArg>,
         type_: crate::plan::GenericFunctionType,
     ) -> Self {
+        Self::call_at(function, args, type_, crate::plan::HostCallSite::unknown())
+    }
+
+    pub(crate) fn call_at(
+        function: FunctionInstantiation,
+        args: Vec<crate::plan::CallArg>,
+        type_: crate::plan::GenericFunctionType,
+        site: crate::plan::HostCallSite,
+    ) -> Self {
         Self {
             type_,
-            kind: GenericFunctionExprKind::Call { function, args },
+            kind: GenericFunctionExprKind::Call {
+                function,
+                args,
+                site,
+            },
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn function_call(
         function: FunctionFunctionExpr,
         args: Vec<crate::plan::CallArg>,
         type_: crate::plan::GenericFunctionType,
+    ) -> Self {
+        Self::function_call_at(function, args, type_, crate::plan::HostCallSite::unknown())
+    }
+
+    pub(crate) fn function_call_at(
+        function: FunctionFunctionExpr,
+        args: Vec<crate::plan::CallArg>,
+        type_: crate::plan::GenericFunctionType,
+        site: crate::plan::HostCallSite,
     ) -> Self {
         Self {
             type_,
             kind: GenericFunctionExprKind::FunctionCall {
                 function: Box::new(function),
                 args,
+                site,
             },
         }
     }

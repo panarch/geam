@@ -1,11 +1,9 @@
 mod parameter;
-mod return_;
 
 use crate::plan::{FunctionTemplateId, FunctionTemplateSignature, FunctionType, TypeScheme};
 use ecow::EcoString;
 
 pub(crate) use parameter::HostParameter;
-pub(crate) use return_::HostReturnFamily;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HostFunctionTemplate {
@@ -13,7 +11,6 @@ pub struct HostFunctionTemplate {
     package: EcoString,
     site: crate::plan::HostCallSite,
     parameters: Box<[HostParameter]>,
-    return_family: HostReturnFamily,
     type_: FunctionType,
 }
 
@@ -23,7 +20,6 @@ impl HostFunctionTemplate {
         package: EcoString,
         site: crate::plan::HostCallSite,
         parameters: Vec<HostParameter>,
-        return_family: HostReturnFamily,
         type_: FunctionType,
     ) -> Self {
         Self {
@@ -31,7 +27,6 @@ impl HostFunctionTemplate {
             package,
             site,
             parameters: parameters.into_boxed_slice(),
-            return_family,
             type_,
         }
     }
@@ -66,10 +61,6 @@ impl HostFunctionTemplate {
 
     pub(crate) fn parameters(&self) -> &[HostParameter] {
         &self.parameters
-    }
-
-    pub(crate) fn return_family(&self) -> HostReturnFamily {
-        self.return_family
     }
 
     pub(crate) fn signature(&self) -> &FunctionTemplateSignature {

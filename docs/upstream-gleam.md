@@ -147,10 +147,11 @@ are not interpreted as pure Gleam definitions.
 
 `HostModule::with_function` accepts infallible Rust closures with zero through
 seven arguments and a return drawn from `BigInt`, `f64`, `EcoString`,
-`BitArrayValue`, `char`, `bool`, and `()`. The arity limit follows Clippy's
-default `too_many_arguments` threshold. Unsupported types and arities fail
-Rust trait resolution; the hosted runtime performs no signature validation or
-generic value downcast.
+`BitArrayValue`, `char`, `bool`, and `()`. `Infallible` is additionally
+supported as a return-only marker for providers that cannot complete
+successfully. The arity limit follows Clippy's default `too_many_arguments`
+threshold. Unsupported types and arities fail Rust trait resolution; the
+hosted runtime performs no signature validation or generic value downcast.
 
 `HostModule::with_fallible_function` maps an owned `HostFailure` into a
 source-located host execution error. `with_scoped_function` receives a typed

@@ -7,6 +7,8 @@ use crate::plan::execution::lowering::specialization::{Representability, StoredV
 use crate::plan::module;
 use std::convert::Infallible;
 
+type NeverCallTarget = crate::plan::FunctionCallTarget<execution::function::NeverFunctionId>;
+
 pub(in crate::plan::execution::lowering::graph) fn build_function_graph<
     ModuleExpression,
     ModuleFunction,
@@ -65,8 +67,8 @@ pub(in crate::plan::execution::lowering::graph) fn build_never_function_graph<
     + Fn(
         &ModuleFunction,
         &mut super::LoweringContext,
-    ) -> Representability<execution::function::NeverFunctionId>,
-) -> Representability<DraftGraphBuilder<DraftNeverReturn, execution::function::NeverFunctionId>> {
+    ) -> Representability<NeverCallTarget>,
+) -> Representability<DraftGraphBuilder<DraftNeverReturn, NeverCallTarget>> {
     let (mut graph, cursor) = graph_builder(template, context);
     lower_prefix(template.steps(), cursor, &mut graph, context)
         .and_then(|flow| {
@@ -395,7 +397,7 @@ where
 fn lower_never_return_body<ModuleExpression, ModuleFunction>(
     body: &module::ReturnBody<ModuleExpression, ModuleFunction>,
     cursor: DraftCursor,
-    graph: &mut DraftGraphBuilder<DraftNeverReturn, execution::function::NeverFunctionId>,
+    graph: &mut DraftGraphBuilder<DraftNeverReturn, NeverCallTarget>,
     context: &mut super::LoweringContext,
     lower_expression: impl Copy
     + Fn(
@@ -408,7 +410,7 @@ fn lower_never_return_body<ModuleExpression, ModuleFunction>(
     + Fn(
         &ModuleFunction,
         &mut super::LoweringContext,
-    ) -> Representability<execution::function::NeverFunctionId>,
+    ) -> Representability<NeverCallTarget>,
 ) -> Representability<()> {
     use module::ReturnBodyKind as B;
 
@@ -535,7 +537,7 @@ fn lower_never_return_body<ModuleExpression, ModuleFunction>(
 fn lower_never_switch<Pattern, Subject, ModuleExpression, ModuleFunction>(
     subject: Representability<DraftFlow<Subject>>,
     switch: ReturnSwitch<'_, Pattern, ModuleExpression, ModuleFunction>,
-    graph: &mut DraftGraphBuilder<DraftNeverReturn, execution::function::NeverFunctionId>,
+    graph: &mut DraftGraphBuilder<DraftNeverReturn, NeverCallTarget>,
     context: &mut super::LoweringContext,
     finish: impl FnOnce(
         DraftCursor,
@@ -555,7 +557,7 @@ fn lower_never_switch<Pattern, Subject, ModuleExpression, ModuleFunction>(
     + Fn(
         &ModuleFunction,
         &mut super::LoweringContext,
-    ) -> Representability<execution::function::NeverFunctionId>,
+    ) -> Representability<NeverCallTarget>,
 ) -> Representability<()>
 where
     Pattern: Clone,
@@ -678,15 +680,19 @@ mod tests {
     fn finish_never_function(
         function: &FunctionInstantiation,
         context: &mut crate::plan::execution::lowering::LoweringContext,
-    ) -> Representability<crate::plan::execution::function::NeverFunctionId> {
-        context.never_function_id(function)
+    ) -> Representability<super::NeverCallTarget> {
+        context.never_function_id(function).map(|function| {
+            crate::plan::FunctionCallTarget::new(function, crate::plan::HostCallSite::unknown())
+        })
     }
 
     fn finish_never_call_target(
         target: &crate::plan::FunctionCallTarget<FunctionInstantiation>,
         context: &mut crate::plan::execution::lowering::LoweringContext,
-    ) -> Representability<crate::plan::execution::function::NeverFunctionId> {
-        context.never_function_id(target.function())
+    ) -> Representability<super::NeverCallTarget> {
+        context
+            .never_function_id(target.function())
+            .map(|function| crate::plan::FunctionCallTarget::new(function, target.site().clone()))
     }
 
     #[derive(Clone, Copy)]
@@ -862,10 +868,11 @@ mod tests {
             ReturnBody::<IntExpr, FunctionInstantiation>::tail_call(function.clone(), Vec::new());
         let mut context =
             crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
-        let (mut graph, cursor) = DraftGraphBuilder::<
-            DraftNeverReturn,
-            crate::plan::execution::function::NeverFunctionId,
-        >::new(Vec::new(), Vec::new());
+        let (mut graph, cursor) =
+            DraftGraphBuilder::<DraftNeverReturn, super::NeverCallTarget>::new(
+                Vec::new(),
+                Vec::new(),
+            );
 
         assert_eq!(
             super::lower_never_return_body(
@@ -923,10 +930,11 @@ mod tests {
             ReturnBody::expr(IntExpr::value(1.into())),
             ReturnBody::expr(IntExpr::value(2.into())),
         );
-        let (mut graph, cursor) = DraftGraphBuilder::<
-            DraftNeverReturn,
-            crate::plan::execution::function::NeverFunctionId,
-        >::new(Vec::new(), Vec::new());
+        let (mut graph, cursor) =
+            DraftGraphBuilder::<DraftNeverReturn, super::NeverCallTarget>::new(
+                Vec::new(),
+                Vec::new(),
+            );
         assert_eq!(
             super::lower_never_return_body(
                 &true_body,
@@ -952,10 +960,11 @@ mod tests {
             ReturnBody::expr(IntExpr::value(1.into())),
             ReturnBody::expr(IntExpr::value(2.into())),
         );
-        let (mut graph, cursor) = DraftGraphBuilder::<
-            DraftNeverReturn,
-            crate::plan::execution::function::NeverFunctionId,
-        >::new(Vec::new(), Vec::new());
+        let (mut graph, cursor) =
+            DraftGraphBuilder::<DraftNeverReturn, super::NeverCallTarget>::new(
+                Vec::new(),
+                Vec::new(),
+            );
         assert_eq!(
             super::lower_never_return_body(
                 &false_body,
@@ -988,10 +997,11 @@ mod tests {
             ReturnBody::expr(IntExpr::value(1.into())),
             ReturnBody::expr(IntExpr::value(2.into())),
         );
-        let (mut graph, cursor) = DraftGraphBuilder::<
-            DraftNeverReturn,
-            crate::plan::execution::function::NeverFunctionId,
-        >::new(Vec::new(), Vec::new());
+        let (mut graph, cursor) =
+            DraftGraphBuilder::<DraftNeverReturn, super::NeverCallTarget>::new(
+                Vec::new(),
+                Vec::new(),
+            );
         assert_eq!(
             super::lower_never_return_body(
                 &dynamic_body,
@@ -1028,10 +1038,11 @@ mod tests {
             ReturnBody::expr(IntExpr::value(1.into())),
             ReturnBody::expr(IntExpr::value(2.into())),
         );
-        let (mut graph, cursor) = DraftGraphBuilder::<
-            DraftNeverReturn,
-            crate::plan::execution::function::NeverFunctionId,
-        >::new(Vec::new(), Vec::new());
+        let (mut graph, cursor) =
+            DraftGraphBuilder::<DraftNeverReturn, super::NeverCallTarget>::new(
+                Vec::new(),
+                Vec::new(),
+            );
         assert_eq!(
             super::lower_never_return_body(
                 &panic_subject,
@@ -1054,10 +1065,11 @@ mod tests {
             vec![(1.into(), ReturnBody::expr(IntExpr::value(1.into())))],
             ReturnBody::expr(IntExpr::value(2.into())),
         );
-        let (mut graph, cursor) = DraftGraphBuilder::<
-            DraftNeverReturn,
-            crate::plan::execution::function::NeverFunctionId,
-        >::new(Vec::new(), Vec::new());
+        let (mut graph, cursor) =
+            DraftGraphBuilder::<DraftNeverReturn, super::NeverCallTarget>::new(
+                Vec::new(),
+                Vec::new(),
+            );
 
         assert_eq!(
             super::lower_never_return_body(
@@ -1104,10 +1116,11 @@ mod tests {
         for (body, expected) in bodies {
             let mut context =
                 crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
-            let (mut graph, cursor) = DraftGraphBuilder::<
-                DraftNeverReturn,
-                crate::plan::execution::function::NeverFunctionId,
-            >::new(Vec::new(), Vec::new());
+            let (mut graph, cursor) =
+                DraftGraphBuilder::<DraftNeverReturn, super::NeverCallTarget>::new(
+                    Vec::new(),
+                    Vec::new(),
+                );
             assert_eq!(
                 super::lower_never_return_body(
                     &body,
@@ -1151,10 +1164,11 @@ mod tests {
         );
         let mut context =
             crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
-        let (mut graph, cursor) = DraftGraphBuilder::<
-            DraftNeverReturn,
-            crate::plan::execution::function::NeverFunctionId,
-        >::new(Vec::new(), Vec::new());
+        let (mut graph, cursor) =
+            DraftGraphBuilder::<DraftNeverReturn, super::NeverCallTarget>::new(
+                Vec::new(),
+                Vec::new(),
+            );
         assert_eq!(
             super::lower_never_return_body(
                 &block,
@@ -1220,10 +1234,11 @@ mod tests {
         );
         let mut context =
             crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
-        let (mut graph, cursor) = DraftGraphBuilder::<
-            DraftNeverReturn,
-            crate::plan::execution::function::NeverFunctionId,
-        >::new(Vec::new(), Vec::new());
+        let (mut graph, cursor) =
+            DraftGraphBuilder::<DraftNeverReturn, super::NeverCallTarget>::new(
+                Vec::new(),
+                Vec::new(),
+            );
         assert_eq!(
             super::lower_never_return_body(
                 &tuple_body,

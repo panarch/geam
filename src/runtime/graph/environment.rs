@@ -80,7 +80,7 @@ struct BlockValues {
     never_functions: Vec<EvaluatedNeverFunction>,
 }
 
-pub(super) struct BlockEnvironment {
+pub(in crate::runtime) struct BlockEnvironment {
     values: Box<BlockValues>,
 }
 
@@ -89,7 +89,7 @@ pub(in crate::runtime) struct RetainedValues {
 }
 
 impl BlockEnvironment {
-    pub(super) fn from_retained(values: RetainedValues) -> Self {
+    pub(in crate::runtime) fn from_retained(values: RetainedValues) -> Self {
         Self {
             values: values.values,
         }
@@ -103,7 +103,7 @@ impl BlockEnvironment {
         retained
     }
 
-    pub(super) fn value(&self, local: &ParamLocal) -> EvaluatedValue {
+    pub(in crate::runtime) fn value(&self, local: &ParamLocal) -> EvaluatedValue {
         match local {
             ParamLocal::Int(local) => EvaluatedValue::Int(self.int(*local)),
             ParamLocal::Float(local) => EvaluatedValue::Float(self.float(*local)),
@@ -348,7 +348,7 @@ impl BlockEnvironment {
         self.values.function_lists[local.0].clone()
     }
 
-    pub(super) fn list(&self, local: &ListLocal) -> ListValueId {
+    pub(in crate::runtime) fn list(&self, local: &ListLocal) -> ListValueId {
         match local {
             ListLocal::Parameter { local, .. } => self.parameter_list(*local).into(),
             ListLocal::ParameterList { local, .. } => self.parameter_list_list(*local).into(),
@@ -949,7 +949,10 @@ pub fn main() {
     fn int_implementation(
         implementation: HostFunctionImplementation<crate::host::StatelessHostProfile>,
     ) -> HostIntFunction<crate::host::StatelessHostProfile> {
-        let HostFunctionImplementation::Int(implementation) = implementation else {
+        let HostFunctionImplementation::Value(crate::host::HostValueFunctionImplementation::Int(
+            implementation,
+        )) = implementation
+        else {
             panic!("choose should retain an Int implementation");
         };
         implementation

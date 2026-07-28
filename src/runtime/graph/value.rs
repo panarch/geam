@@ -1,4 +1,4 @@
-use super::CompletedGraph;
+use super::environment::BlockEnvironment;
 use crate::runtime::evaluated::{EvaluatedFunctionValue, EvaluatedValue};
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -7,13 +7,13 @@ use std::convert::Infallible;
 pub(in crate::runtime) trait GraphValue {
     type Evaluated;
 
-    fn read(&self, completed: &CompletedGraph) -> Self::Evaluated;
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated;
 }
 
 impl GraphValue for Infallible {
     type Evaluated = Infallible;
 
-    fn read(&self, _completed: &CompletedGraph) -> Self::Evaluated {
+    fn read(&self, _environment: &BlockEnvironment) -> Self::Evaluated {
         match *self {}
     }
 }
@@ -21,72 +21,72 @@ impl GraphValue for Infallible {
 impl GraphValue for crate::plan::execution::graph::IntLocalId {
     type Evaluated = BigInt;
 
-    fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
-        completed.environment.int(*self)
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
+        environment.int(*self)
     }
 }
 
 impl GraphValue for crate::plan::execution::graph::FloatLocalId {
     type Evaluated = f64;
 
-    fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
-        completed.environment.float(*self)
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
+        environment.float(*self)
     }
 }
 
 impl GraphValue for crate::plan::execution::graph::StringLocalId {
     type Evaluated = EcoString;
 
-    fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
-        completed.environment.string(*self)
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
+        environment.string(*self)
     }
 }
 
 impl GraphValue for crate::plan::execution::graph::BitArrayLocalId {
     type Evaluated = crate::runtime::EvaluatedBitArray;
 
-    fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
-        completed.environment.bit_array(*self)
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
+        environment.bit_array(*self)
     }
 }
 
 impl GraphValue for crate::plan::execution::graph::UtfCodepointLocalId {
     type Evaluated = char;
 
-    fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
-        completed.environment.utf_codepoint(*self)
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
+        environment.utf_codepoint(*self)
     }
 }
 
 impl GraphValue for crate::plan::execution::graph::CustomLocal {
     type Evaluated = crate::runtime::EvaluatedCustomValue;
 
-    fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
-        completed.environment.custom(*self)
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
+        environment.custom(*self)
     }
 }
 
 impl GraphValue for crate::plan::execution::graph::BoolLocalId {
     type Evaluated = bool;
 
-    fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
-        completed.environment.bool(*self)
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
+        environment.bool(*self)
     }
 }
 
 impl GraphValue for crate::plan::execution::graph::NilLocalId {
     type Evaluated = ();
 
-    fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
-        completed.environment.nil(*self)
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
+        environment.nil(*self)
     }
 }
 
 impl GraphValue for crate::plan::execution::graph::TupleLocalId {
     type Evaluated = Vec<EvaluatedValue>;
 
-    fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
-        completed.environment.tuple(*self)
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
+        environment.tuple(*self)
     }
 }
 
@@ -95,8 +95,8 @@ macro_rules! list_graph_value {
         impl GraphValue for $local {
             type Evaluated = $value;
 
-            fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
-                completed.environment.$method(*self)
+            fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
+                environment.$method(*self)
             }
         }
     };
@@ -173,8 +173,8 @@ macro_rules! function_graph_value {
         impl GraphValue for $local {
             type Evaluated = $value;
 
-            fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
-                completed.environment.$method(self.clone())
+            fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
+                environment.$method(self.clone())
             }
         }
     };
@@ -224,63 +224,61 @@ function_graph_value!(
 impl GraphValue for crate::plan::execution::graph::GenericFunctionLocal {
     type Evaluated = crate::runtime::EvaluatedGenericFunction;
 
-    fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
-        completed.environment.generic_function(self)
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
+        environment.generic_function(self)
     }
 }
 
 impl GraphValue for crate::plan::execution::graph::NeverFunctionLocal {
     type Evaluated = crate::runtime::EvaluatedNeverFunction;
 
-    fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
-        completed.environment.never_function(self)
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
+        environment.never_function(self)
     }
 }
 
 impl GraphValue for crate::plan::execution::graph::CustomFunctionLocal {
     type Evaluated = crate::runtime::EvaluatedCustomFunction;
 
-    fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
-        completed.environment.custom_function(self)
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
+        environment.custom_function(self)
     }
 }
 
 impl GraphValue for crate::plan::execution::graph::ListFunctionLocal {
     type Evaluated = crate::runtime::EvaluatedListFunction;
 
-    fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
-        completed.environment.list_function(self)
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
+        environment.list_function(self)
     }
 }
 
 impl GraphValue for crate::plan::execution::graph::FunctionFunctionLocal {
     type Evaluated = crate::runtime::EvaluatedFunctionFunction;
 
-    fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
-        completed.environment.function_function(self)
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
+        environment.function_function(self)
     }
 }
 
 impl GraphValue for crate::plan::execution::graph::FunctionLocal {
     type Evaluated = EvaluatedFunctionValue;
 
-    fn read(&self, completed: &CompletedGraph) -> Self::Evaluated {
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
         match self {
-            Self::Generic(local) => completed.environment.generic_function(local).into(),
-            Self::Never(local) => completed.environment.never_function(local).into(),
-            Self::Int(local) => completed.environment.int_function(*local).into(),
-            Self::Float(local) => completed.environment.float_function(*local).into(),
-            Self::String(local) => completed.environment.string_function(*local).into(),
-            Self::BitArray(local) => completed.environment.bit_array_function(*local).into(),
-            Self::UtfCodepoint(local) => {
-                completed.environment.utf_codepoint_function(*local).into()
-            }
-            Self::Custom(local) => completed.environment.custom_function(local).into(),
-            Self::Bool(local) => completed.environment.bool_function(*local).into(),
-            Self::Nil(local) => completed.environment.nil_function(*local).into(),
-            Self::Tuple(local) => completed.environment.tuple_function(*local).into(),
-            Self::List(local) => completed.environment.list_function(local).into(),
-            Self::Function(local) => completed.environment.function_function(local).into(),
+            Self::Generic(local) => environment.generic_function(local).into(),
+            Self::Never(local) => environment.never_function(local).into(),
+            Self::Int(local) => environment.int_function(*local).into(),
+            Self::Float(local) => environment.float_function(*local).into(),
+            Self::String(local) => environment.string_function(*local).into(),
+            Self::BitArray(local) => environment.bit_array_function(*local).into(),
+            Self::UtfCodepoint(local) => environment.utf_codepoint_function(*local).into(),
+            Self::Custom(local) => environment.custom_function(local).into(),
+            Self::Bool(local) => environment.bool_function(*local).into(),
+            Self::Nil(local) => environment.nil_function(*local).into(),
+            Self::Tuple(local) => environment.tuple_function(*local).into(),
+            Self::List(local) => environment.list_function(local).into(),
+            Self::Function(local) => environment.function_function(local).into(),
         }
     }
 }

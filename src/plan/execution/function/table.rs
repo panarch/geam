@@ -309,16 +309,6 @@ impl<Profile: ExecutionProfile> FunctionTables<Profile> {
         &self.value_returns.custom_functions[id.index()]
     }
 
-    #[cfg(test)]
-    pub(in crate::plan::execution) fn custom_function_id(&self, index: usize) -> CustomFunctionId {
-        CustomFunctionId::new(
-            index,
-            *super::graph_function::<Profile, _>(&self.value_returns.custom_functions[index])
-                .body()
-                .signature_shape(),
-        )
-    }
-
     pub(in crate::plan::execution) fn bool_function(
         &self,
         id: BoolFunctionId,
@@ -459,22 +449,6 @@ impl<Profile: ExecutionProfile> FunctionTables<Profile> {
         &self.function_returns.custom_function_functions[id.index()]
     }
 
-    #[cfg(test)]
-    pub(in crate::plan::execution) fn function_function_function_id(
-        &self,
-        index: usize,
-    ) -> FunctionFunctionFunctionId {
-        FunctionFunctionFunctionId::new(
-            index,
-            super::graph_function::<Profile, _>(
-                &self.function_returns.function_function_functions[index],
-            )
-            .body()
-            .type_()
-            .clone(),
-        )
-    }
-
     pub(in crate::plan::execution) fn bool_function_function(
         &self,
         id: BoolFunctionFunctionId,
@@ -562,6 +536,31 @@ impl<Profile: ExecutionProfile> FunctionTables<Profile> {
         id: &FunctionFunctionFunctionId,
     ) -> &ExecutionFunction<Profile, FunctionFunctionFunctionBody> {
         &self.function_returns.function_function_functions[id.index()]
+    }
+}
+
+#[cfg(test)]
+impl FunctionTables<Infallible> {
+    pub(in crate::plan::execution) fn custom_function_id(&self, index: usize) -> CustomFunctionId {
+        CustomFunctionId::new(
+            index,
+            *self.value_returns.custom_functions[index]
+                .body()
+                .signature_shape(),
+        )
+    }
+
+    pub(in crate::plan::execution) fn function_function_function_id(
+        &self,
+        index: usize,
+    ) -> FunctionFunctionFunctionId {
+        FunctionFunctionFunctionId::new(
+            index,
+            self.function_returns.function_function_functions[index]
+                .body()
+                .type_()
+                .clone(),
+        )
     }
 }
 

@@ -47,7 +47,7 @@ pub(crate) use list_return::{
 };
 pub(crate) use profile::{
     ExecutionFunction, ExecutionFunctionBody, ExecutionFunctionEntry, ExecutionFunctionRef,
-    ExecutionHostTarget, ExecutionProfile, graph_function,
+    ExecutionHostTarget, ExecutionProfile,
 };
 pub(crate) use runtime::{FunctionReturnFamily, GenericCallableId, RuntimeFunctionId};
 pub(super) use table::FunctionTables;

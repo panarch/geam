@@ -535,53 +535,8 @@ impl<Profile: HostProfile> HostedExecution<Profile> {
         ExecutionPlanExplanation::new_hosted(self)
     }
 
-    pub(crate) fn host_int_function(
-        &self,
-        id: host::HostIntFunctionId,
-    ) -> &host::HostedIntFunction<Profile> {
-        self.host_functions.int(id)
-    }
-
-    pub(crate) fn host_float_function(
-        &self,
-        id: host::HostFloatFunctionId,
-    ) -> &host::HostedFloatFunction<Profile> {
-        self.host_functions.float(id)
-    }
-
-    pub(crate) fn host_string_function(
-        &self,
-        id: host::HostStringFunctionId,
-    ) -> &host::HostedStringFunction<Profile> {
-        self.host_functions.string(id)
-    }
-
-    pub(crate) fn host_bit_array_function(
-        &self,
-        id: host::HostBitArrayFunctionId,
-    ) -> &host::HostedBitArrayFunction<Profile> {
-        self.host_functions.bit_array(id)
-    }
-
-    pub(crate) fn host_utf_codepoint_function(
-        &self,
-        id: host::HostUtfCodepointFunctionId,
-    ) -> &host::HostedUtfCodepointFunction<Profile> {
-        self.host_functions.utf_codepoint(id)
-    }
-
-    pub(crate) fn host_bool_function(
-        &self,
-        id: host::HostBoolFunctionId,
-    ) -> &host::HostedBoolFunction<Profile> {
-        self.host_functions.bool(id)
-    }
-
-    pub(crate) fn host_nil_function(
-        &self,
-        id: host::HostNilFunctionId,
-    ) -> &host::HostedNilFunction<Profile> {
-        self.host_functions.nil(id)
+    pub(crate) fn host_functions(&self) -> &host::HostFunctionTables<Profile> {
+        &self.host_functions
     }
 }
 
@@ -592,7 +547,9 @@ mod tests {
     use crate::plan::execution::function::{
         BoolFunctionBody, BoolFunctionId, IntFunctionBody, IntFunctionId, ValueFunctionEntry,
     };
-    use crate::plan::execution::host::{HostBoolFunctionId, HostIntFunctionId};
+    use crate::plan::execution::host::{
+        HostBoolFunctionId, HostIntFunctionId, HostedFunctionTarget,
+    };
     use crate::{
         HostModule, HostProviderSet, ModuleSource, PackageSource, compile_typed_host_program,
         compile_typed_module, plan_host_program, plan_module,
@@ -639,9 +596,9 @@ pub fn main() {
         .expect("host source should compile");
         let plan = plan_host_program(typed).expect("host source should plan");
         let execution = HostedExecution::from_module_plan(plan);
-        let graph: &ValueFunctionEntry<IntFunctionBody, HostIntFunctionId> =
+        let graph: &ValueFunctionEntry<IntFunctionBody, HostedFunctionTarget<HostIntFunctionId>> =
             execution.program.functions.int_function(IntFunctionId(0));
-        let host: &ValueFunctionEntry<IntFunctionBody, HostIntFunctionId> =
+        let host: &ValueFunctionEntry<IntFunctionBody, HostedFunctionTarget<HostIntFunctionId>> =
             execution.program.functions.int_function(IntFunctionId(2));
 
         assert_eq!(
@@ -653,10 +610,11 @@ pub fn main() {
         );
         assert!(matches!(
             host,
-            ValueFunctionEntry::Host(target) if *target == HostIntFunctionId::new(0)
+            ValueFunctionEntry::Host(target)
+                if *target == HostedFunctionTarget::value(HostIntFunctionId::new(0))
         ));
         let implementation = &execution.host_functions.int_functions()[0];
-        assert_eq!(implementation.name(), "add");
+        assert_eq!(implementation.metadata().name(), "add");
         assert_eq!(
             execution.run_main(&mut (), &mut Vec::new()),
             Ok(crate::Value::Int(3.into())),
@@ -694,12 +652,14 @@ pub fn main() {
         .expect("host source should compile");
         let plan = plan_host_program(typed).expect("host source should plan");
         let execution = HostedExecution::from_module_plan(plan);
-        let main: &ValueFunctionEntry<BoolFunctionBody, HostBoolFunctionId> =
+        let main: &ValueFunctionEntry<BoolFunctionBody, HostedFunctionTarget<HostBoolFunctionId>> =
             execution.program.functions.bool_function(BoolFunctionId(0));
-        let host: &ValueFunctionEntry<BoolFunctionBody, HostBoolFunctionId> =
+        let host: &ValueFunctionEntry<BoolFunctionBody, HostedFunctionTarget<HostBoolFunctionId>> =
             execution.program.functions.bool_function(BoolFunctionId(1));
-        let identity: &ValueFunctionEntry<BoolFunctionBody, HostBoolFunctionId> =
-            execution.program.functions.bool_function(BoolFunctionId(2));
+        let identity: &ValueFunctionEntry<
+            BoolFunctionBody,
+            HostedFunctionTarget<HostBoolFunctionId>,
+        > = execution.program.functions.bool_function(BoolFunctionId(2));
 
         assert_eq!(
             [main, host, identity].map(|function| match function {
@@ -710,10 +670,11 @@ pub fn main() {
         );
         assert!(matches!(
             host,
-            ValueFunctionEntry::Host(target) if *target == HostBoolFunctionId::new(0)
+            ValueFunctionEntry::Host(target)
+                if *target == HostedFunctionTarget::value(HostBoolFunctionId::new(0))
         ));
         let implementation = &execution.host_functions.bool_functions()[0];
-        assert_eq!(implementation.name(), "is_positive");
+        assert_eq!(implementation.metadata().name(), "is_positive");
         assert_eq!(
             execution.run_main(&mut (), &mut Vec::new()),
             Ok(crate::Value::Bool(true)),

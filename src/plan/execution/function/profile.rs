@@ -13,11 +13,12 @@ use crate::plan::execution::graph::{
 use crate::plan::execution::host::{
     HostBitArrayFunctionId, HostBoolFunctionId, HostFloatFunctionId, HostIntFunctionId,
     HostNilFunctionId, HostStringFunctionId, HostUtfCodepointFunctionId, HostedExecutionProfile,
+    HostedFunctionTarget,
 };
 use std::convert::Infallible;
 
 pub(crate) trait ExecutionFunctionBody: FunctionBodyOwner {
-    type HostTarget;
+    type HostValueTarget;
 }
 
 pub(crate) enum ExecutionFunctionRef<'function, Body, HostTarget> {
@@ -39,38 +40,12 @@ pub(crate) trait ExecutionProfile {
     fn graph<Body: ExecutionFunctionBody>(
         function: ExecutableFunction<Body>,
     ) -> Self::Function<Body>;
-
-    fn graph_only<Body>(function: &Self::Function<Body>) -> &ExecutableFunction<Body>
-    where
-        Body: ExecutionFunctionBody<HostTarget = Infallible>;
 }
 
 pub(crate) type ExecutionFunction<Profile, Body> = <Profile as ExecutionProfile>::Function<Body>;
 
 pub(crate) type ExecutionHostTarget<Profile, Body> =
     <Profile as ExecutionProfile>::HostTarget<Body>;
-
-pub(crate) fn graph_function<Profile, Body>(
-    function: &ExecutionFunction<Profile, Body>,
-) -> &ExecutableFunction<Body>
-where
-    Profile: ExecutionProfile,
-    Body: ExecutionFunctionBody<HostTarget = Infallible>,
-{
-    Profile::graph_only(function)
-}
-
-pub(crate) trait HostTarget {
-    type Target;
-}
-
-impl<Body> ExecutionFunctionBody for Body
-where
-    Body: FunctionBodyOwner,
-    Body::Return: HostTarget,
-{
-    type HostTarget = <Body::Return as HostTarget>::Target;
-}
 
 impl ExecutionProfile for Infallible {
     type RunState = ();
@@ -82,34 +57,18 @@ impl ExecutionProfile for Infallible {
     ) -> Self::Function<Body> {
         function
     }
-
-    fn graph_only<Body>(function: &Self::Function<Body>) -> &ExecutableFunction<Body>
-    where
-        Body: ExecutionFunctionBody<HostTarget = Infallible>,
-    {
-        function
-    }
 }
 
 impl<Profile: HostProfile> ExecutionProfile for HostedExecutionProfile<Profile> {
     type RunState = Profile::RunState;
-    type HostTarget<Body: ExecutionFunctionBody> = Body::HostTarget;
-    type Function<Body: ExecutionFunctionBody> = ValueFunctionEntry<Body, Body::HostTarget>;
+    type HostTarget<Body: ExecutionFunctionBody> = HostedFunctionTarget<Body::HostValueTarget>;
+    type Function<Body: ExecutionFunctionBody> =
+        ValueFunctionEntry<Body, HostedFunctionTarget<Body::HostValueTarget>>;
 
     fn graph<Body: ExecutionFunctionBody>(
         function: ExecutableFunction<Body>,
     ) -> Self::Function<Body> {
         ValueFunctionEntry::graph(function)
-    }
-
-    fn graph_only<Body>(function: &Self::Function<Body>) -> &ExecutableFunction<Body>
-    where
-        Body: ExecutionFunctionBody<HostTarget = Infallible>,
-    {
-        match function {
-            ValueFunctionEntry::Graph(function) => function,
-            ValueFunctionEntry::Host(target) => match *target {},
-        }
     }
 }
 
@@ -121,8 +80,10 @@ impl<Body> ExecutionFunctionEntry<Body> for ExecutableFunction<Body> {
     }
 }
 
-impl<Body, HostTarget> ExecutionFunctionEntry<Body> for ValueFunctionEntry<Body, HostTarget> {
-    type HostTarget = HostTarget;
+impl<Body, Target> ExecutionFunctionEntry<Body>
+    for ValueFunctionEntry<Body, HostedFunctionTarget<Target>>
+{
+    type HostTarget = HostedFunctionTarget<Target>;
 
     fn as_ref(&self) -> ExecutionFunctionRef<'_, Body, Self::HostTarget> {
         match self {
@@ -132,156 +93,179 @@ impl<Body, HostTarget> ExecutionFunctionEntry<Body> for ValueFunctionEntry<Body,
     }
 }
 
-impl HostTarget for Infallible {
+pub(crate) trait HostValueTarget {
+    type Target;
+}
+
+impl<Body> ExecutionFunctionBody for Body
+where
+    Body: FunctionBodyOwner,
+    Body::Return: HostValueTarget,
+{
+    type HostValueTarget = <Body::Return as HostValueTarget>::Target;
+}
+
+impl HostValueTarget for Infallible {
     type Target = Infallible;
 }
 
-impl HostTarget for IntLocalId {
+impl HostValueTarget for IntLocalId {
     type Target = HostIntFunctionId;
 }
 
-impl HostTarget for FloatLocalId {
+impl HostValueTarget for FloatLocalId {
     type Target = HostFloatFunctionId;
 }
 
-impl HostTarget for StringLocalId {
+impl HostValueTarget for StringLocalId {
     type Target = HostStringFunctionId;
 }
 
-impl HostTarget for BitArrayLocalId {
+impl HostValueTarget for BitArrayLocalId {
     type Target = HostBitArrayFunctionId;
 }
 
-impl HostTarget for UtfCodepointLocalId {
+impl HostValueTarget for UtfCodepointLocalId {
     type Target = HostUtfCodepointFunctionId;
 }
 
-impl HostTarget for BoolLocalId {
+impl HostValueTarget for BoolLocalId {
     type Target = HostBoolFunctionId;
 }
 
-impl HostTarget for NilLocalId {
+impl HostValueTarget for NilLocalId {
     type Target = HostNilFunctionId;
 }
 
-impl HostTarget for CustomLocal {
+impl HostValueTarget for CustomLocal {
     type Target = Infallible;
 }
 
-impl HostTarget for TupleLocalId {
+impl HostValueTarget for TupleLocalId {
     type Target = Infallible;
 }
 
-impl HostTarget for ParameterListLocalId {
+impl HostValueTarget for ParameterListLocalId {
     type Target = Infallible;
 }
 
-impl HostTarget for IntListLocalId {
+impl HostValueTarget for IntListLocalId {
     type Target = Infallible;
 }
 
-impl HostTarget for FloatListLocalId {
+impl HostValueTarget for FloatListLocalId {
     type Target = Infallible;
 }
 
-impl HostTarget for StringListLocalId {
+impl HostValueTarget for StringListLocalId {
     type Target = Infallible;
 }
 
-impl HostTarget for BitArrayListLocalId {
+impl HostValueTarget for BitArrayListLocalId {
     type Target = Infallible;
 }
 
-impl HostTarget for UtfCodepointListLocalId {
+impl HostValueTarget for UtfCodepointListLocalId {
     type Target = Infallible;
 }
 
-impl HostTarget for CustomListLocalId {
+impl HostValueTarget for CustomListLocalId {
     type Target = Infallible;
 }
 
-impl HostTarget for BoolListLocalId {
+impl HostValueTarget for BoolListLocalId {
     type Target = Infallible;
 }
 
-impl HostTarget for NilListLocalId {
+impl HostValueTarget for NilListLocalId {
     type Target = Infallible;
 }
 
-impl HostTarget for TupleListLocalId {
+impl HostValueTarget for TupleListLocalId {
     type Target = Infallible;
 }
 
-impl HostTarget for ParameterListListLocalId {
+impl HostValueTarget for ParameterListListLocalId {
     type Target = Infallible;
 }
 
-impl HostTarget for ListListLocalId {
+impl HostValueTarget for ListListLocalId {
     type Target = Infallible;
 }
 
-impl HostTarget for FunctionListLocalId {
+impl HostValueTarget for FunctionListLocalId {
     type Target = Infallible;
 }
 
-impl HostTarget for IntFunctionLocalId {
+impl HostValueTarget for IntFunctionLocalId {
     type Target = Infallible;
 }
 
-impl HostTarget for FloatFunctionLocalId {
+impl HostValueTarget for FloatFunctionLocalId {
     type Target = Infallible;
 }
 
-impl HostTarget for StringFunctionLocalId {
+impl HostValueTarget for StringFunctionLocalId {
     type Target = Infallible;
 }
 
-impl HostTarget for BitArrayFunctionLocalId {
+impl HostValueTarget for BitArrayFunctionLocalId {
     type Target = Infallible;
 }
 
-impl HostTarget for UtfCodepointFunctionLocalId {
+impl HostValueTarget for UtfCodepointFunctionLocalId {
     type Target = Infallible;
 }
 
-impl HostTarget for GenericFunctionLocal {
+impl HostValueTarget for GenericFunctionLocal {
     type Target = Infallible;
 }
 
-impl HostTarget for NeverFunctionLocal {
+impl HostValueTarget for NeverFunctionLocal {
     type Target = Infallible;
 }
 
-impl HostTarget for CustomFunctionLocal {
+impl HostValueTarget for CustomFunctionLocal {
     type Target = Infallible;
 }
 
-impl HostTarget for BoolFunctionLocalId {
+impl HostValueTarget for BoolFunctionLocalId {
     type Target = Infallible;
 }
 
-impl HostTarget for NilFunctionLocalId {
+impl HostValueTarget for NilFunctionLocalId {
     type Target = Infallible;
 }
 
-impl HostTarget for TupleFunctionLocalId {
+impl HostValueTarget for TupleFunctionLocalId {
     type Target = Infallible;
 }
 
-impl HostTarget for ListFunctionLocal {
+impl HostValueTarget for ListFunctionLocal {
     type Target = Infallible;
 }
 
-impl HostTarget for FunctionFunctionLocal {
+impl HostValueTarget for FunctionFunctionLocal {
     type Target = Infallible;
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ExecutionFunction, ExecutionHostTarget, HostTarget, HostedExecutionProfile};
+    use super::{ExecutionFunction, ExecutionHostTarget, HostValueTarget, HostedExecutionProfile};
     use crate::StatelessHostProfile;
     use crate::plan::execution::function::{
-        CustomFunctionBody, ExecutableFunction, IntFunctionBody, ValueFunctionEntry,
+        BitArrayFunctionBody, BitArrayFunctionFunctionBody, BitArrayListFunctionBody,
+        BoolFunctionBody, BoolFunctionFunctionBody, BoolListFunctionBody, CustomFunctionBody,
+        CustomFunctionFunctionBody, CustomListFunctionBody, ExecutableFunction, FloatFunctionBody,
+        FloatFunctionFunctionBody, FloatListFunctionBody, FunctionBodyOwner,
+        FunctionFunctionFunctionBody, FunctionListFunctionBody, GenericFunctionFunctionBody,
+        IntFunctionBody, IntFunctionFunctionBody, IntListFunctionBody, ListFunctionFunctionBody,
+        ListListFunctionBody, NeverFunctionBody, NeverFunctionFunctionBody, NilFunctionBody,
+        NilFunctionFunctionBody, NilListFunctionBody, ParameterListFunctionBody,
+        ParameterListListFunctionBody, StringFunctionBody, StringFunctionFunctionBody,
+        StringListFunctionBody, TupleFunctionBody, TupleFunctionFunctionBody,
+        TupleListFunctionBody, UtfCodepointFunctionBody, UtfCodepointFunctionFunctionBody,
+        UtfCodepointListFunctionBody, ValueFunctionEntry,
     };
     use crate::plan::execution::graph::{
         BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
@@ -295,7 +279,7 @@ mod tests {
     };
     use crate::plan::execution::host::{
         HostBitArrayFunctionId, HostBoolFunctionId, HostFloatFunctionId, HostIntFunctionId,
-        HostNilFunctionId, HostStringFunctionId, HostUtfCodepointFunctionId,
+        HostNilFunctionId, HostStringFunctionId, HostUtfCodepointFunctionId, HostedFunctionTarget,
     };
     use std::any::TypeId;
     use std::convert::Infallible;
@@ -303,7 +287,7 @@ mod tests {
     type Hosted = HostedExecutionProfile<StatelessHostProfile>;
 
     #[test]
-    fn maps_scalar_return_locals_to_typed_host_targets() {
+    fn maps_every_return_local_to_its_value_host_target() {
         assert_target::<IntLocalId, HostIntFunctionId>();
         assert_target::<FloatLocalId, HostFloatFunctionId>();
         assert_target::<StringLocalId, HostStringFunctionId>();
@@ -311,10 +295,6 @@ mod tests {
         assert_target::<UtfCodepointLocalId, HostUtfCodepointFunctionId>();
         assert_target::<BoolLocalId, HostBoolFunctionId>();
         assert_target::<NilLocalId, HostNilFunctionId>();
-    }
-
-    #[test]
-    fn keeps_non_scalar_return_locals_graph_only() {
         assert_target::<Infallible, Infallible>();
         assert_target::<CustomLocal, Infallible>();
         assert_target::<TupleLocalId, Infallible>();
@@ -347,6 +327,46 @@ mod tests {
     }
 
     #[test]
+    fn maps_every_function_body_to_a_value_or_never_host_target() {
+        assert_hosted::<NeverFunctionBody, Infallible>();
+        assert_hosted::<IntFunctionBody, HostIntFunctionId>();
+        assert_hosted::<FloatFunctionBody, HostFloatFunctionId>();
+        assert_hosted::<StringFunctionBody, HostStringFunctionId>();
+        assert_hosted::<BitArrayFunctionBody, HostBitArrayFunctionId>();
+        assert_hosted::<UtfCodepointFunctionBody, HostUtfCodepointFunctionId>();
+        assert_hosted::<CustomFunctionBody, Infallible>();
+        assert_hosted::<BoolFunctionBody, HostBoolFunctionId>();
+        assert_hosted::<NilFunctionBody, HostNilFunctionId>();
+        assert_hosted::<TupleFunctionBody, Infallible>();
+        assert_hosted::<ParameterListFunctionBody, Infallible>();
+        assert_hosted::<IntListFunctionBody, Infallible>();
+        assert_hosted::<FloatListFunctionBody, Infallible>();
+        assert_hosted::<StringListFunctionBody, Infallible>();
+        assert_hosted::<BitArrayListFunctionBody, Infallible>();
+        assert_hosted::<UtfCodepointListFunctionBody, Infallible>();
+        assert_hosted::<CustomListFunctionBody, Infallible>();
+        assert_hosted::<BoolListFunctionBody, Infallible>();
+        assert_hosted::<NilListFunctionBody, Infallible>();
+        assert_hosted::<TupleListFunctionBody, Infallible>();
+        assert_hosted::<ParameterListListFunctionBody, Infallible>();
+        assert_hosted::<ListListFunctionBody, Infallible>();
+        assert_hosted::<FunctionListFunctionBody, Infallible>();
+        assert_hosted::<IntFunctionFunctionBody, Infallible>();
+        assert_hosted::<FloatFunctionFunctionBody, Infallible>();
+        assert_hosted::<StringFunctionFunctionBody, Infallible>();
+        assert_hosted::<BitArrayFunctionFunctionBody, Infallible>();
+        assert_hosted::<UtfCodepointFunctionFunctionBody, Infallible>();
+        assert_hosted::<GenericFunctionFunctionBody, Infallible>();
+        assert_hosted::<NeverFunctionFunctionBody, Infallible>();
+        assert_hosted::<CustomFunctionFunctionBody, Infallible>();
+        assert_hosted::<BoolFunctionFunctionBody, Infallible>();
+        assert_hosted::<NilFunctionFunctionBody, Infallible>();
+        assert_hosted::<TupleFunctionFunctionBody, Infallible>();
+        assert_hosted::<ListFunctionFunctionBody, Infallible>();
+        assert_hosted::<FunctionFunctionFunctionBody, Infallible>();
+    }
+
+    #[test]
     fn maps_plain_and_hosted_function_entries_through_one_profile() {
         assert_same::<
             ExecutionFunction<Infallible, IntFunctionBody>,
@@ -355,23 +375,37 @@ mod tests {
         assert_same::<ExecutionHostTarget<Infallible, IntFunctionBody>, Infallible>();
         assert_same::<
             ExecutionFunction<Hosted, IntFunctionBody>,
-            ValueFunctionEntry<IntFunctionBody, HostIntFunctionId>,
+            ValueFunctionEntry<IntFunctionBody, HostedFunctionTarget<HostIntFunctionId>>,
         >();
-        assert_same::<ExecutionHostTarget<Hosted, IntFunctionBody>, HostIntFunctionId>();
+        assert_same::<
+            ExecutionHostTarget<Hosted, IntFunctionBody>,
+            HostedFunctionTarget<HostIntFunctionId>,
+        >();
         assert_same::<
             ExecutionFunction<Hosted, CustomFunctionBody>,
-            ValueFunctionEntry<CustomFunctionBody, Infallible>,
+            ValueFunctionEntry<CustomFunctionBody, HostedFunctionTarget<Infallible>>,
         >();
-        assert_same::<ExecutionHostTarget<Hosted, CustomFunctionBody>, Infallible>();
+        assert_same::<
+            ExecutionHostTarget<Hosted, CustomFunctionBody>,
+            HostedFunctionTarget<Infallible>,
+        >();
+    }
+
+    fn assert_hosted<Body, ValueTarget>()
+    where
+        Body: FunctionBodyOwner + super::ExecutionFunctionBody + 'static,
+        ValueTarget: 'static,
+    {
+        assert_same::<ExecutionHostTarget<Hosted, Body>, HostedFunctionTarget<ValueTarget>>();
     }
 
     fn assert_target<Return, Expected>()
     where
-        Return: HostTarget,
+        Return: HostValueTarget,
         Return::Target: 'static,
         Expected: 'static,
     {
-        assert_eq!(TypeId::of::<Return::Target>(), TypeId::of::<Expected>());
+        assert_same::<Return::Target, Expected>();
     }
 
     fn assert_same<Actual: 'static, Expected: 'static>() {

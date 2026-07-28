@@ -138,56 +138,67 @@ macro_rules! fixed_never_function {
                         DraftNeverFunction::new(value),
                     ))
                 }
-                E::Call { function, args, .. } => {
-                    call_args(args, cursor, graph, context).and_then(|flow| match flow {
+                E::Call {
+                    function,
+                    args,
+                    site,
+                    ..
+                } => call_args(args, cursor, graph, context).and_then(|flow| match flow {
+                    DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
+                    DraftFlow::Value {
+                        mut cursor,
+                        value: args,
+                    } => {
+                        let type_ = context.generic_function_type(shape);
+                        context
+                            .never_function_function_id(function, type_)
+                            .map(|function| {
+                                let function =
+                                    execution::function::FunctionFunctionId::Never(function);
+                                let value = graph.function_instruction(
+                                    &mut cursor,
+                                    shape.clone(),
+                                    I::Call {
+                                        function,
+                                        args,
+                                        site: site.clone(),
+                                    },
+                                );
+                                DraftFlow::value(cursor, DraftNeverFunction::new(value))
+                            })
+                    }
+                }),
+                E::FunctionCall {
+                    function,
+                    args,
+                    site,
+                    ..
+                } => function_function_expr(function, cursor, graph, context).and_then(|flow| {
+                    match flow {
                         DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
                         DraftFlow::Value {
-                            mut cursor,
-                            value: args,
-                        } => {
-                            let type_ = context.generic_function_type(shape);
-                            context
-                                .never_function_function_id(function, type_)
-                                .map(|function| {
-                                    let function =
-                                        execution::function::FunctionFunctionId::Never(function);
-                                    let value = graph.function_instruction(
-                                        &mut cursor,
-                                        shape.clone(),
-                                        I::Call { function, args },
-                                    );
-                                    DraftFlow::value(cursor, DraftNeverFunction::new(value))
-                                })
-                        }
-                    })
-                }
-                E::FunctionCall { function, args, .. } => {
-                    function_function_expr(function, cursor, graph, context).and_then(|flow| {
-                        match flow {
-                            DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
+                            cursor,
+                            value: function,
+                        } => call_args(args, cursor, graph, context).map(|flow| match flow {
+                            DraftFlow::Diverged => DraftFlow::Diverged,
                             DraftFlow::Value {
-                                cursor,
-                                value: function,
-                            } => call_args(args, cursor, graph, context).map(|flow| match flow {
-                                DraftFlow::Diverged => DraftFlow::Diverged,
-                                DraftFlow::Value {
-                                    mut cursor,
-                                    value: args,
-                                } => {
-                                    let value = graph.function_instruction(
-                                        &mut cursor,
-                                        shape.clone(),
-                                        I::FunctionCall {
-                                            function: function.value().clone(),
-                                            args,
-                                        },
-                                    );
-                                    DraftFlow::value(cursor, DraftNeverFunction::new(value))
-                                }
-                            }),
-                        }
-                    })
-                }
+                                mut cursor,
+                                value: args,
+                            } => {
+                                let value = graph.function_instruction(
+                                    &mut cursor,
+                                    shape.clone(),
+                                    I::FunctionCall {
+                                        function: function.value().clone(),
+                                        args,
+                                        site: site.clone(),
+                                    },
+                                );
+                                DraftFlow::value(cursor, DraftNeverFunction::new(value))
+                            }
+                        }),
+                    }
+                }),
                 E::TupleIndex {
                     tuple: source,
                     index,
@@ -398,53 +409,62 @@ pub(in crate::plan::execution::lowering) fn custom_function_kind(
                 ));
             Representability::Inhabited(DraftFlow::value(cursor, DraftNeverFunction::new(value)))
         }
-        E::Call { function, args } => {
-            call_args(args, cursor, graph, context).and_then(|flow| match flow {
-                DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
+        E::Call {
+            function,
+            args,
+            site,
+        } => call_args(args, cursor, graph, context).and_then(|flow| match flow {
+            DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
+            DraftFlow::Value {
+                mut cursor,
+                value: args,
+            } => {
+                let type_ = context.generic_function_type(shape);
+                context
+                    .never_function_function_id(function, type_)
+                    .map(|function| {
+                        let function = execution::function::FunctionFunctionId::Never(function);
+                        let value = graph.function_instruction(
+                            &mut cursor,
+                            shape.clone(),
+                            I::Call {
+                                function,
+                                args,
+                                site: site.clone(),
+                            },
+                        );
+                        DraftFlow::value(cursor, DraftNeverFunction::new(value))
+                    })
+            }
+        }),
+        E::FunctionCall {
+            function,
+            args,
+            site,
+        } => function_function_expr(function, cursor, graph, context).and_then(|flow| match flow {
+            DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
+            DraftFlow::Value {
+                cursor,
+                value: function,
+            } => call_args(args, cursor, graph, context).map(|flow| match flow {
+                DraftFlow::Diverged => DraftFlow::Diverged,
                 DraftFlow::Value {
                     mut cursor,
                     value: args,
                 } => {
-                    let type_ = context.generic_function_type(shape);
-                    context
-                        .never_function_function_id(function, type_)
-                        .map(|function| {
-                            let function = execution::function::FunctionFunctionId::Never(function);
-                            let value = graph.function_instruction(
-                                &mut cursor,
-                                shape.clone(),
-                                I::Call { function, args },
-                            );
-                            DraftFlow::value(cursor, DraftNeverFunction::new(value))
-                        })
+                    let value = graph.function_instruction(
+                        &mut cursor,
+                        shape.clone(),
+                        I::FunctionCall {
+                            function: function.value().clone(),
+                            args,
+                            site: site.clone(),
+                        },
+                    );
+                    DraftFlow::value(cursor, DraftNeverFunction::new(value))
                 }
-            })
-        }
-        E::FunctionCall { function, args } => {
-            function_function_expr(function, cursor, graph, context).and_then(|flow| match flow {
-                DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
-                DraftFlow::Value {
-                    cursor,
-                    value: function,
-                } => call_args(args, cursor, graph, context).map(|flow| match flow {
-                    DraftFlow::Diverged => DraftFlow::Diverged,
-                    DraftFlow::Value {
-                        mut cursor,
-                        value: args,
-                    } => {
-                        let value = graph.function_instruction(
-                            &mut cursor,
-                            shape.clone(),
-                            I::FunctionCall {
-                                function: function.value().clone(),
-                                args,
-                            },
-                        );
-                        DraftFlow::value(cursor, DraftNeverFunction::new(value))
-                    }
-                }),
-            })
-        }
+            }),
+        }),
         E::TupleIndex {
             tuple: source,
             index,

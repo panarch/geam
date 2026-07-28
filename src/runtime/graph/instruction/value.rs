@@ -413,10 +413,22 @@ pub(super) fn custom<Plan: ExecutableRuntimePlan>(
             environment.values(fields),
         )),
         I::Constant(id) => constant(plan, state, *id),
-        I::Call { function, args } => {
-            crate::runtime::function::run_custom(plan, state, *function, environment.retain(args))
-        }
-        I::FunctionCall { function, args } => {
+        I::Call {
+            function,
+            args,
+            site,
+        } => crate::runtime::function::run_custom(
+            plan,
+            state,
+            *function,
+            crate::runtime::error::HostCallOrigin::source(site.clone()),
+            environment.retain(args),
+        ),
+        I::FunctionCall {
+            function,
+            args,
+            site,
+        } => {
             let function = environment.custom_function(function);
             match function {
                 EvaluatedCustomFunction::Function(function) => {
@@ -424,6 +436,7 @@ pub(super) fn custom<Plan: ExecutableRuntimePlan>(
                         plan,
                         state,
                         function.runtime_id(),
+                        crate::runtime::error::HostCallOrigin::source(site.clone()),
                         inputs_with_captures(environment, args, function.captures()),
                     )
                 }
@@ -630,15 +643,28 @@ pub(super) fn tuple<Plan: ExecutableRuntimePlan>(
     match instruction {
         I::Value(values) => Ok(environment.values(values).into_vec()),
         I::Constant(id) => constant(plan, state, *id),
-        I::Call { function, args } => {
-            crate::runtime::function::run_tuple(plan, state, *function, environment.retain(args))
-        }
-        I::FunctionCall { function, args } => {
+        I::Call {
+            function,
+            args,
+            site,
+        } => crate::runtime::function::run_tuple(
+            plan,
+            state,
+            *function,
+            crate::runtime::error::HostCallOrigin::source(site.clone()),
+            environment.retain(args),
+        ),
+        I::FunctionCall {
+            function,
+            args,
+            site,
+        } => {
             let function = environment.tuple_function(*function);
             crate::runtime::function::run_tuple(
                 plan,
                 state,
                 function.runtime_id(),
+                crate::runtime::error::HostCallOrigin::source(site.clone()),
                 inputs_with_captures(environment, args, function.captures()),
             )
         }

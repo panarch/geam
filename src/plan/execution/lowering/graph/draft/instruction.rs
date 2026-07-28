@@ -270,10 +270,12 @@ pub(in crate::plan::execution::lowering) enum DraftCustomInstruction {
     Call {
         function: CustomFunctionId,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: DraftFunction,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: DraftTuple,
@@ -402,10 +404,12 @@ pub(in crate::plan::execution::lowering) enum DraftTupleInstruction {
     Call {
         function: TupleFunctionId,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: DraftFunction,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: DraftTuple,
@@ -427,10 +431,12 @@ pub(in crate::plan::execution::lowering) enum DraftParameterListInstruction {
     Call {
         function: crate::plan::execution::function::ParameterListFunctionId,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: DraftFunction,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: DraftTuple,
@@ -456,10 +462,12 @@ pub(in crate::plan::execution::lowering) enum DraftTypedListInstruction<Element,
     Call {
         function: Function,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: DraftFunction,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: DraftTuple,
@@ -590,10 +598,12 @@ pub(in crate::plan::execution::lowering) enum DraftFunctionInstruction {
     Call {
         function: FunctionFunctionId,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: DraftFunction,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: DraftTuple,
@@ -901,7 +911,7 @@ impl DraftTupleInstruction {
             Self::Value(elements) => push_operands(elements, values),
             Self::Constant(_) => {}
             Self::Call { args, .. } => push_operands(args, values),
-            Self::FunctionCall { function, args } => {
+            Self::FunctionCall { function, args, .. } => {
                 function.push_operand(values);
                 push_operands(args, values);
             }
@@ -920,7 +930,7 @@ impl DraftParameterListInstruction {
         match self {
             Self::Empty | Self::Constant(_) => {}
             Self::Call { args, .. } => push_operands(args, values),
-            Self::FunctionCall { function, args } => {
+            Self::FunctionCall { function, args, .. } => {
                 function.push_operand(values);
                 push_operands(args, values);
             }
@@ -944,7 +954,7 @@ impl<Element: DraftOperand, Local, Function> DraftTypedListInstruction<Element, 
                 tail.push_operand(values);
             }
             Self::Call { args, .. } => push_operands(args, values),
-            Self::FunctionCall { function, args } => {
+            Self::FunctionCall { function, args, .. } => {
                 function.push_operand(values);
                 push_operands(args, values);
             }
@@ -992,7 +1002,7 @@ impl DraftFunctionInstruction {
                 }
             }
             Self::Call { args, .. } => push_operands(args, values),
-            Self::FunctionCall { function, args } => {
+            Self::FunctionCall { function, args, .. } => {
                 function.push_operand(values);
                 push_operands(args, values);
             }

@@ -8,7 +8,7 @@ mod value;
 pub(super) use environment::RetainedValues;
 pub(super) use value::GraphValue;
 
-use self::environment::BlockEnvironment;
+pub(in crate::runtime) use self::environment::BlockEnvironment;
 use self::terminator::{GraphAction, NeverCall, terminator_action};
 use crate::plan::execution::graph::{BlockGraph, BlockGraphExitId, ParamLocal};
 use crate::runtime::ExecutableRuntimePlan;
@@ -33,7 +33,7 @@ impl CompletedGraph {
     where
         Value: GraphValue,
     {
-        let value = value.read(&self);
+        let value = value.read(&self.environment);
         drop(self.environment);
         state.drain_releases();
         value
@@ -74,18 +74,23 @@ pub(super) fn execute<Plan: ExecutableRuntimePlan>(
                 environment = BlockEnvironment::from_retained(inputs);
             }
             GraphAction::Exit(exit) => return Ok(CompletedGraph { exit, environment }),
-            GraphAction::NeverCall { function, inputs } => {
+            GraphAction::NeverCall {
+                function,
+                inputs,
+                site,
+            } => {
                 drop(environment);
                 state.drain_releases();
+                let origin = crate::runtime::error::HostCallOrigin::source(site);
                 return match function {
                     NeverCall::Direct(function) => {
-                        crate::runtime::function::run_never(plan, state, function, inputs)
+                        crate::runtime::function::run_never(plan, state, function, origin, inputs)
                             .map(|never| match never {})
                     }
-                    NeverCall::Value(function) => {
-                        crate::runtime::function::run_never_value(plan, state, function, inputs)
-                            .map(|never| match never {})
-                    }
+                    NeverCall::Value(function) => crate::runtime::function::run_never_value(
+                        plan, state, function, origin, inputs,
+                    )
+                    .map(|never| match never {}),
                 };
             }
         }

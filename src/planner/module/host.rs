@@ -4,14 +4,14 @@ use super::registry::{ModuleRegistry, ProgramRegistry};
 use super::{ModuleRole, function_table};
 use crate::frontend::{HostedTypedProgram, HostedTypedProgramModule};
 use crate::host::{
-    HostFunctionSchema, HostParameter as RegisteredHostParameter, HostProfile, HostValueType,
+    HostFunctionSchema, HostParameter as RegisteredHostParameter, HostProfile,
     RegisteredHostFunction, RegisteredHostImplementationId,
 };
 use crate::plan::{
     BoolLocalId, ConstantTemplates, FunctionTemplateId, HostFunctionImplementation,
-    HostFunctionTemplate, HostParameter as PlannedHostParameter, HostReturnFamily,
-    HostedFunctionTemplate, HostedModulePlan, HostedPlannedModule, HostedPlannedModuleParts,
-    IntLocalId, ModuleId, ParamBinding, ParamLocal, SourceContext,
+    HostFunctionTemplate, HostParameter as PlannedHostParameter, HostedFunctionTemplate,
+    HostedModulePlan, HostedPlannedModule, HostedPlannedModuleParts, IntLocalId, ModuleId,
+    ParamBinding, ParamLocal, SourceContext,
 };
 use crate::planner::context::{FunctionInfo, FunctionParam, PlanContext};
 use crate::planner::error::{HostProviderLinkReason, PlanError};
@@ -544,9 +544,8 @@ fn bind_source_host_function(
     source: &FunctionInfo,
 ) -> Result<(HostFunctionTemplate, RegisteredHostImplementationId), PlanError> {
     let (schema, implementation) = definition.into_parts();
-    let (template_params, return_family, registered_shape) = host_function_layout(&schema);
-    if source.signature.scheme() != &crate::plan::TypeScheme::new(0)
-        || source.signature.shape() != &registered_shape
+    let (template_params, registered_shape) = host_function_layout(&schema);
+    if source.signature.scheme() != schema.scheme() || source.signature.shape() != &registered_shape
     {
         return Err(PlanError::HostProviderLink {
             package,
@@ -555,7 +554,7 @@ fn bind_source_host_function(
             reason: Box::new(HostProviderLinkReason::SchemeMismatch {
                 expected_scheme: source.signature.scheme().clone(),
                 expected_type: source.signature.shape().type_(),
-                actual_scheme: crate::plan::TypeScheme::new(0),
+                actual_scheme: schema.scheme().clone(),
                 actual_type: registered_shape.type_(),
             }),
         });
@@ -565,7 +564,6 @@ fn bind_source_host_function(
         package,
         crate::plan::HostCallSite::new(module, schema.name().clone(), source.definition_span),
         template_params,
-        return_family,
         schema.type_().clone(),
     );
     Ok((template, implementation))
@@ -578,12 +576,9 @@ fn bind_source_less_host_function(
     definition: RegisteredHostFunction,
 ) -> (HostFunctionTemplate, RegisteredHostImplementationId) {
     let (schema, implementation) = definition.into_parts();
-    let (template_params, return_family, registered_shape) = host_function_layout(&schema);
-    let signature = crate::plan::FunctionTemplateSignature::new(
-        id,
-        crate::plan::TypeScheme::new(0),
-        registered_shape,
-    );
+    let (template_params, registered_shape) = host_function_layout(&schema);
+    let signature =
+        crate::plan::FunctionTemplateSignature::new(id, schema.scheme().clone(), registered_shape);
     let template = HostFunctionTemplate::from_signature(
         signature,
         package,
@@ -593,7 +588,6 @@ fn bind_source_less_host_function(
             crate::plan::SourceSpan::new(0, 0),
         ),
         template_params,
-        return_family,
         schema.type_().clone(),
     );
     (template, implementation)
@@ -601,11 +595,7 @@ fn bind_source_less_host_function(
 
 fn host_function_layout(
     schema: &HostFunctionSchema,
-) -> (
-    Vec<PlannedHostParameter>,
-    HostReturnFamily,
-    crate::plan::FunctionShape,
-) {
+) -> (Vec<PlannedHostParameter>, crate::plan::FunctionShape) {
     let mut template_params = Vec::with_capacity(schema.parameters().len());
     for parameter in schema.parameters() {
         template_params.push(match parameter {
@@ -632,23 +622,14 @@ fn host_function_layout(
             }
         });
     }
-    let return_family = match schema.return_type() {
-        HostValueType::Int => HostReturnFamily::Int,
-        HostValueType::Float => HostReturnFamily::Float,
-        HostValueType::String => HostReturnFamily::String,
-        HostValueType::BitArray => HostReturnFamily::BitArray,
-        HostValueType::UtfCodepoint => HostReturnFamily::UtfCodepoint,
-        HostValueType::Bool => HostReturnFamily::Bool,
-        HostValueType::Nil => HostReturnFamily::Nil,
-    };
     let registered_shape = crate::plan::FunctionShape::new(
         template_params
             .iter()
             .map(PlannedHostParameter::shape)
             .collect(),
-        return_family.shape(),
+        crate::plan::ValueShape::from_value_type(schema.return_type().value_type()),
     );
-    (template_params, return_family, registered_shape)
+    (template_params, registered_shape)
 }
 
 fn host_function_info(template: &HostFunctionTemplate) -> FunctionInfo {
@@ -671,7 +652,7 @@ fn host_function_info(template: &HostFunctionTemplate) -> FunctionInfo {
     FunctionInfo {
         signature: template.signature().clone(),
         type_parameters: TypeParameterScope::default(),
-        return_shape: template.return_family().shape(),
+        return_shape: template.signature().shape().return_shape().clone(),
         params,
         definition_span: template.site().span(),
     }
@@ -684,8 +665,8 @@ mod tests {
     use crate::host::{HostModule, HostProviderModule, HostProviderSet, StatelessHostProfile};
     use crate::plan::{
         BitArrayLocalId, BoolLocalId, FloatLocalId, FunctionShape, FunctionTemplateId,
-        FunctionType, HostParameter, HostReturnFamily, IntLocalId, ModuleId, NilLocalId,
-        StringLocalId, UtfCodepointLocalId, ValueShape, ValueType,
+        FunctionType, HostParameter, IntLocalId, ModuleId, NilLocalId, StringLocalId,
+        UtfCodepointLocalId, ValueShape, ValueType,
     };
     use crate::planner::{HostProviderLinkReason, PlanError, UnsupportedFunctionReason};
     use ecow::EcoString;
@@ -803,7 +784,6 @@ pub fn main() {
         assert_eq!(functions[1].name(), "subtract");
         assert_eq!(functions[2].name(), "ready");
         assert_eq!(functions[2].parameters(), &[]);
-        assert_eq!(functions[2].return_family(), HostReturnFamily::Bool,);
         assert_eq!(
             functions[2].signature().shape(),
             &FunctionShape::new(Vec::new(), ValueShape::Bool),
@@ -821,7 +801,6 @@ pub fn main() {
                 HostParameter::Int(IntLocalId(1)),
             ],
         );
-        assert_eq!(functions[3].return_family(), HostReturnFamily::Int,);
         assert_eq!(
             functions[3].signature().shape(),
             &FunctionShape::new(
@@ -849,7 +828,6 @@ pub fn main() {
                 HostParameter::Bool(BoolLocalId(6)),
             ],
         );
-        assert_eq!(functions[4].return_family(), HostReturnFamily::Bool);
         assert_eq!(
             functions[4].signature().shape(),
             &FunctionShape::new(vec![ValueShape::Bool; 7], ValueShape::Bool),
@@ -871,7 +849,6 @@ pub fn main() {
                 HostParameter::Nil(NilLocalId(0)),
             ],
         );
-        assert_eq!(functions[5].return_family(), HostReturnFamily::Nil);
         assert_eq!(
             functions[5].signature().shape(),
             &FunctionShape::new(

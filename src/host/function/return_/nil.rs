@@ -1,4 +1,6 @@
-use super::{HostCallback, HostFunctionImplementation, HostReturn};
+use super::{
+    HostCallback, HostFunctionImplementation, HostReturn, HostValueFunctionImplementation,
+};
 use crate::host::function::HostValueType;
 use crate::host::function::argument::HostCallArguments;
 use crate::host::{HostCallError, HostProfile};
@@ -37,15 +39,17 @@ impl HostReturn for () {
         + Sync
         + 'static,
     ) -> HostFunctionImplementation<Profile> {
-        HostFunctionImplementation::Nil(HostNilFunction {
+        HostFunctionImplementation::Value(HostValueFunctionImplementation::Nil(HostNilFunction {
             implementation: Arc::new(function),
-        })
+        }))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{HostFunctionImplementation, HostNilFunction, HostReturn};
+    use super::{
+        HostFunctionImplementation, HostNilFunction, HostReturn, HostValueFunctionImplementation,
+    };
     use crate::host::StatelessHostProfile;
     use crate::host::function::HostValueType;
     use crate::host::function::argument::{CallArguments, HostCallArguments, HostParameterLayout};
@@ -85,7 +89,9 @@ mod tests {
     fn nil_implementation(
         implementation: HostFunctionImplementation<StatelessHostProfile>,
     ) -> HostNilFunction<StatelessHostProfile> {
-        let HostFunctionImplementation::Nil(implementation) = implementation else {
+        let HostFunctionImplementation::Value(HostValueFunctionImplementation::Nil(implementation)) =
+            implementation
+        else {
             panic!("() return should create a Nil implementation");
         };
         implementation

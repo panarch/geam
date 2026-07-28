@@ -1,4 +1,6 @@
-use super::{HostCallback, HostFunctionImplementation, HostReturn};
+use super::{
+    HostCallback, HostFunctionImplementation, HostReturn, HostValueFunctionImplementation,
+};
 use crate::host::function::HostValueType;
 use crate::host::function::argument::HostCallArguments;
 use crate::host::{HostCallError, HostProfile};
@@ -38,15 +40,19 @@ impl HostReturn for EcoString {
         + Sync
         + 'static,
     ) -> HostFunctionImplementation<Profile> {
-        HostFunctionImplementation::String(HostStringFunction {
-            implementation: Arc::new(function),
-        })
+        HostFunctionImplementation::Value(HostValueFunctionImplementation::String(
+            HostStringFunction {
+                implementation: Arc::new(function),
+            },
+        ))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{HostFunctionImplementation, HostReturn, HostStringFunction};
+    use super::{
+        HostFunctionImplementation, HostReturn, HostStringFunction, HostValueFunctionImplementation,
+    };
     use crate::host::StatelessHostProfile;
     use crate::host::function::HostValueType;
     use crate::host::function::argument::{CallArguments, HostCallArguments, HostParameterLayout};
@@ -85,7 +91,10 @@ mod tests {
     fn string_implementation(
         implementation: HostFunctionImplementation<StatelessHostProfile>,
     ) -> HostStringFunction<StatelessHostProfile> {
-        let HostFunctionImplementation::String(implementation) = implementation else {
+        let HostFunctionImplementation::Value(HostValueFunctionImplementation::String(
+            implementation,
+        )) = implementation
+        else {
             panic!("EcoString return should create a String implementation");
         };
         implementation

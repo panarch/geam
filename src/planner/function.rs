@@ -173,25 +173,27 @@ mod tests {
     use crate::planner::dsl::{
         bool_, bool_arg, bool_function_ref, bool_function_return_block,
         bool_function_return_bool_case, bool_function_return_expr, bool_function_return_int_case,
-        bool_function_return_string_case, bool_function_return_tail_call, bool_return_tail_call_at,
-        call_bool_at, call_int_at, call_int_function_at, call_int_returning_function, function,
-        function_function_ref, function_function_return_block, function_function_return_expr,
+        bool_function_return_string_case, bool_function_return_tail_call_at,
+        bool_return_tail_call_at, call_bool_at, call_int_at, call_int_function_at,
+        call_int_returning_function_at, function, function_function_ref,
+        function_function_return_block, function_function_return_expr,
         function_function_return_int_case, function_function_return_string_case,
-        function_function_return_tail_call, host_call_site, int, int_arg, int_function_arg,
-        int_function_call_arg, int_function_closure, int_function_ref, int_function_return_block,
-        int_function_return_bool_case, int_function_return_expr, int_function_return_int_case,
-        int_function_return_string_case, int_function_return_tail_call, int_return_block,
-        int_return_bool_case, int_return_expr, int_return_int_case, int_return_tail_call_at,
-        let_int_function_step, let_int_step, local_bool, local_int, local_int_function, local_nil,
-        local_string, module, module_with_anonymous, nil, nil_arg, nil_function_ref,
-        nil_function_return_block, nil_function_return_bool_case, nil_function_return_expr,
-        nil_function_return_int_case, nil_function_return_string_case,
-        nil_function_return_tail_call, nil_return_tail_call_at, return_bool_function,
-        return_function_function, return_int_function, return_nil_function, return_string_function,
-        string, string_arg, string_function_ref, string_function_return_block,
-        string_function_return_bool_case, string_function_return_expr,
-        string_function_return_int_case, string_function_return_string_case,
-        string_function_return_tail_call, string_return_tail_call_at,
+        function_function_return_tail_call_at, host_call_site, host_call_site_in, int, int_arg,
+        int_function_arg, int_function_call_arg, int_function_closure, int_function_ref,
+        int_function_return_block, int_function_return_bool_case, int_function_return_expr,
+        int_function_return_int_case, int_function_return_string_case,
+        int_function_return_tail_call_at, int_return_block, int_return_bool_case, int_return_expr,
+        int_return_int_case, int_return_tail_call_at, let_int_function_step, let_int_step,
+        local_bool, local_int, local_int_function, local_nil, local_string, module,
+        module_with_anonymous, nil, nil_arg, nil_function_ref, nil_function_return_block,
+        nil_function_return_bool_case, nil_function_return_expr, nil_function_return_int_case,
+        nil_function_return_string_case, nil_function_return_tail_call_at, nil_return_tail_call_at,
+        return_bool_function, return_function_function, return_int_function, return_nil_function,
+        return_string_function, string, string_arg, string_function_ref,
+        string_function_return_block, string_function_return_bool_case,
+        string_function_return_expr, string_function_return_int_case,
+        string_function_return_string_case, string_function_return_tail_call_at,
+        string_return_tail_call_at,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, expect_plan_error};
@@ -363,7 +365,12 @@ pub fn main() {
             function(
                 "main",
                 call_int_function_at(
-                    call_int_returning_function(5, [int_arg(int(0))], int_to_int.clone()),
+                    call_int_returning_function_at(
+                        5,
+                        [int_arg(int(0))],
+                        int_to_int.clone(),
+                        host_call_site_in(source, "main", "get_int(0)(1)", "get_int(0)"),
+                    ),
                     [int_function_call_arg(int(1))],
                     host_call_site(source, "main", "get_int(0)(1)"),
                 ),
@@ -388,10 +395,11 @@ pub fn main() {
                                         [LocalId::Int(IntLocalId(0))],
                                     )),
                                 )],
-                                int_function_return_tail_call(
+                                int_function_return_tail_call_at(
                                     5,
                                     int_to_int.clone(),
                                     [int_arg(local_int(0, "n").sub_int(int(1)))],
+                                    host_call_site(source, "get_int", "get_int(n - 1)"),
                                 ),
                             ),
                         ),
@@ -413,10 +421,11 @@ pub fn main() {
                                         [LocalId::String(StringLocalId(0))],
                                     )),
                                 )],
-                                string_function_return_tail_call(
+                                string_function_return_tail_call_at(
                                     6,
                                     string_to_string.clone(),
                                     [int_arg(local_int(0, "n").sub_int(int(1)))],
+                                    host_call_site(source, "get_string", "get_string(n - 1)"),
                                 ),
                             ),
                         ),
@@ -438,10 +447,11 @@ pub fn main() {
                                         [LocalId::Bool(BoolLocalId(0))],
                                     )),
                                 )],
-                                bool_function_return_tail_call(
+                                bool_function_return_tail_call_at(
                                     7,
                                     bool_to_bool.clone(),
                                     [int_arg(local_int(0, "n").sub_int(int(1)))],
+                                    host_call_site(source, "get_bool", "get_bool(n - 1)"),
                                 ),
                             ),
                         ),
@@ -463,10 +473,11 @@ pub fn main() {
                                         [LocalId::Nil(NilLocalId(0))],
                                     )),
                                 )],
-                                nil_function_return_tail_call(
+                                nil_function_return_tail_call_at(
                                     8,
                                     nil_to_nil.clone(),
                                     [int_arg(local_int(0, "n").sub_int(int(1)))],
+                                    host_call_site(source, "get_nil", "get_nil(n - 1)"),
                                 ),
                             ),
                         ),
@@ -487,10 +498,11 @@ pub fn main() {
                                     int_to_int.clone(),
                                 )),
                             )],
-                            function_function_return_tail_call(
+                            function_function_return_tail_call_at(
                                 9,
                                 int_to_int_function.clone(),
                                 [int_arg(local_int(0, "n").sub_int(int(1)))],
+                                host_call_site(source, "get_getter", "get_getter(n - 1)"),
                             ),
                         ),
                     )),
@@ -579,7 +591,17 @@ pub fn main() {
             function(
                 "main",
                 call_int_function_at(
-                    call_int_returning_function(9, [bool_arg(bool_(true))], int_to_int.clone()),
+                    call_int_returning_function_at(
+                        9,
+                        [bool_arg(bool_(true))],
+                        int_to_int.clone(),
+                        host_call_site_in(
+                            source,
+                            "main",
+                            "choose_int(True)(1)",
+                            "choose_int(True)",
+                        ),
+                    ),
                     [int_function_call_arg(int(1))],
                     host_call_site(source, "main", "choose_int(True)(1)"),
                 ),
@@ -764,7 +786,17 @@ pub fn main() {
             function(
                 "main",
                 call_int_function_at(
-                    call_int_returning_function(9, [string_arg(string("one"))], int_to_int.clone()),
+                    call_int_returning_function_at(
+                        9,
+                        [string_arg(string("one"))],
+                        int_to_int.clone(),
+                        host_call_site_in(
+                            source,
+                            "main",
+                            r#"choose_int("one")(1)"#,
+                            r#"choose_int("one")"#,
+                        ),
+                    ),
                     [int_function_call_arg(int(1))],
                     host_call_site(source, "main", r#"choose_int("one")(1)"#),
                 ),

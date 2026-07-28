@@ -1,4 +1,6 @@
-use super::{HostCallback, HostFunctionImplementation, HostReturn};
+use super::{
+    HostCallback, HostFunctionImplementation, HostReturn, HostValueFunctionImplementation,
+};
 use crate::host::function::HostValueType;
 use crate::host::function::argument::HostCallArguments;
 use crate::host::{HostCallError, HostProfile};
@@ -37,15 +39,19 @@ impl HostReturn for f64 {
         + Sync
         + 'static,
     ) -> HostFunctionImplementation<Profile> {
-        HostFunctionImplementation::Float(HostFloatFunction {
-            implementation: Arc::new(function),
-        })
+        HostFunctionImplementation::Value(HostValueFunctionImplementation::Float(
+            HostFloatFunction {
+                implementation: Arc::new(function),
+            },
+        ))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{HostFloatFunction, HostFunctionImplementation, HostReturn};
+    use super::{
+        HostFloatFunction, HostFunctionImplementation, HostReturn, HostValueFunctionImplementation,
+    };
     use crate::host::StatelessHostProfile;
     use crate::host::function::HostValueType;
     use crate::host::function::argument::{CallArguments, HostCallArguments, HostParameterLayout};
@@ -84,7 +90,10 @@ mod tests {
     fn float_implementation(
         implementation: HostFunctionImplementation<StatelessHostProfile>,
     ) -> HostFloatFunction<StatelessHostProfile> {
-        let HostFunctionImplementation::Float(implementation) = implementation else {
+        let HostFunctionImplementation::Value(HostValueFunctionImplementation::Float(
+            implementation,
+        )) = implementation
+        else {
             panic!("f64 return should create a Float implementation");
         };
         implementation

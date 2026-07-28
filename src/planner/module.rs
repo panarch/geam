@@ -734,7 +734,7 @@ mod tests {
         TupleExprKind, TupleListLocalId, TypeParameterId, TypeScheme, ValueShape, ValueType,
     };
     use crate::planner::dsl::{
-        call_int_at, call_int_returning_function, function, function_ref, host_call_site, int,
+        call_int_at, call_int_returning_function_at, function, function_ref, host_call_site, int,
         int_arg, int_function_closure, int_return_tail_call_at, local_int, module, string,
         string_function_ref,
     };
@@ -1638,8 +1638,7 @@ fn get() {
 
     #[test]
     fn plan_function_returning_function_after_main_call() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 pub fn main() {
   get()
   1
@@ -1652,16 +1651,16 @@ fn add_one(value: Int) {
 fn get() {
   add_one
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let returned_function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
         let expected = module(
             "main",
-            function("main", int(1)).evaluate(call_int_returning_function(
+            function("main", int(1)).evaluate(call_int_returning_function_at(
                 2,
                 [],
                 returned_function_type,
+                host_call_site(source, "main", "get()"),
             )),
             [
                 function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value"),

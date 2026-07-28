@@ -304,6 +304,7 @@ pub(in crate::plan::execution::lowering) enum DraftTerminator {
     NeverCall {
         function: DraftNeverCallTarget,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
 }
 
@@ -1144,12 +1145,14 @@ impl DraftGraph {
         cursor: DraftCursor,
         function: execution::function::NeverFunctionId,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     ) {
         self.finish(
             cursor,
             DraftTerminator::NeverCall {
                 function: DraftNeverCallTarget::Direct(function),
                 args,
+                site,
             },
         );
     }
@@ -1159,12 +1162,14 @@ impl DraftGraph {
         cursor: DraftCursor,
         function: DraftFunction,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     ) {
         self.finish(
             cursor,
             DraftTerminator::NeverCall {
                 function: DraftNeverCallTarget::Value(function),
                 args,
+                site,
             },
         );
     }

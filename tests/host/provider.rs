@@ -5,6 +5,7 @@ use geam::{
     ModuleSource, PackageSource, Value, ValueType, compile_typed_host_program, plan_host_program,
 };
 use num_bigint::BigInt;
+use std::convert::Infallible;
 
 struct StatefulProfile;
 
@@ -289,6 +290,62 @@ pub fn main() {
     };
     assert_eq!(site.module(), "main");
     assert_eq!(site.function(), "tail");
+    assert_eq!(path.as_str(), "src/main.gleam");
+    assert_eq!(*line, 6);
+}
+
+#[test]
+fn links_non_returning_external_provider_and_reports_its_call_site() {
+    let provider = HostProviderModule::<geam::StatelessHostProfile>::new("application", "main")
+        .expect("provider module should be valid")
+        .with_fallible_function("stop", |value: BigInt| -> Result<Infallible, HostFailure> {
+            Err(HostFailure::new(format!("stopped at {value}")))
+        })
+        .expect("provider function should be valid");
+    let hosts = HostProviderSet::with_providers(Vec::<HostModule>::new(), [provider])
+        .expect("provider modules should be unique");
+    let source = r#"
+@external(erlang, "host", "stop")
+fn stop(value: Int) -> value
+
+pub fn main() {
+  stop(7)
+}
+"#;
+    let typed = compile_typed_host_program(
+        "application",
+        "main",
+        [PackageSource::new(
+            "application",
+            Vec::<String>::new(),
+            [ModuleSource::new("main", "src/main.gleam", source)],
+        )],
+        hosts,
+    )
+    .expect("host program should compile");
+    let plan = plan_host_program(typed).expect("provider should link");
+    let execution = HostedExecution::from_module_plan(plan);
+    let error = execution
+        .run_main(&mut (), &mut Vec::new())
+        .expect_err("non-returning provider should fail");
+    let ExecutionError::Host(error) = error else {
+        panic!("non-returning provider should produce a host error");
+    };
+
+    assert_eq!(error.package(), "application");
+    assert_eq!(error.module(), "main");
+    assert_eq!(error.function(), "stop");
+    assert_eq!(error.failure().message(), "stopped at 7");
+    assert_eq!(error.signature().argument_types(), [ValueType::Int]);
+    let ValueType::Parameter(parameter) = error.signature().return_() else {
+        panic!("non-returning provider should preserve its generic return");
+    };
+    assert_eq!(parameter.index(), 0);
+    let HostLocation::Resolved { site, path, line } = error.location() else {
+        panic!("source-backed provider failure should resolve its call site");
+    };
+    assert_eq!(site.module(), "main");
+    assert_eq!(site.function(), "main");
     assert_eq!(path.as_str(), "src/main.gleam");
     assert_eq!(*line, 6);
 }

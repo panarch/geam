@@ -181,11 +181,12 @@ mod tests {
     use crate::host::function::argument::CallArguments;
     use crate::host::function::{
         HostFunctionImplementation, HostIntFunction, HostParameter, HostStringFunction,
-        HostValueType,
+        HostValueFunctionImplementation, HostValueType,
     };
     use crate::host::{HostCall, HostFailure, HostProfile, HostProvider, StatelessHostProfile};
     use ecow::EcoString;
     use num_bigint::BigInt;
+    use std::convert::Infallible;
 
     struct Profile;
 
@@ -232,6 +233,66 @@ mod tests {
                 .to_string(),
             "unavailable",
         );
+    }
+
+    #[test]
+    fn supports_infallible_return_without_a_runtime_value() {
+        let registration = <_ as HostFunction<(), Infallible>>::register::<StatelessHostProfile>(
+            never_returns as fn() -> Infallible,
+        );
+
+        assert_eq!(registration.parameters.as_ref(), []);
+        assert_eq!(
+            registration.return_,
+            HostValueType::Parameter(crate::plan::TypeParameterId(0)),
+        );
+        let _implementation = never_function(registration.implementation);
+    }
+
+    #[test]
+    #[should_panic(expected = "infallible callback was invoked")]
+    fn invokes_infallible_return_callback() {
+        let registration = <_ as HostFunction<(), Infallible>>::register::<StatelessHostProfile>(
+            never_returns as fn() -> Infallible,
+        );
+        let implementation = never_function(registration.implementation);
+
+        let _result = implementation.call(&mut (), &CallArguments::new(Vec::new(), Vec::new()));
+    }
+
+    #[test]
+    fn supports_fallible_infallible_return_with_arguments() {
+        let registration =
+            <_ as FallibleHostFunction<(BigInt,), Infallible>>::register::<StatelessHostProfile>(
+                |value: BigInt| Err(HostFailure::new(format!("stopped at {value}"))),
+            );
+
+        assert_eq!(
+            parameter_types(&registration.parameters),
+            [HostValueType::Int],
+        );
+        assert_eq!(
+            registration.return_,
+            HostValueType::Parameter(crate::plan::TypeParameterId(0)),
+        );
+        assert_eq!(
+            never_function(registration.implementation)
+                .call(
+                    &mut (),
+                    &CallArguments::new(vec![BigInt::from(7)], Vec::new()),
+                )
+                .expect_err("fallible Infallible callback should fail")
+                .to_string(),
+            "stopped at 7",
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "test function should return Never")]
+    fn never_function_shape_guard_is_visible() {
+        let registration =
+            <_ as HostFunction<(), BigInt>>::register::<StatelessHostProfile>(BigInt::default);
+        never_function(registration.implementation);
     }
 
     #[test]
@@ -525,7 +586,10 @@ mod tests {
         ints: Vec<BigInt>,
         bools: Vec<bool>,
     ) -> bool {
-        let HostFunctionImplementation::Bool(implementation) = implementation else {
+        let HostFunctionImplementation::Value(HostValueFunctionImplementation::Bool(
+            implementation,
+        )) = implementation
+        else {
             panic!("test function should return Bool");
         };
         implementation
@@ -536,7 +600,10 @@ mod tests {
     fn string_implementation(
         implementation: HostFunctionImplementation<StatelessHostProfile>,
     ) -> HostStringFunction<StatelessHostProfile> {
-        let HostFunctionImplementation::String(implementation) = implementation else {
+        let HostFunctionImplementation::Value(HostValueFunctionImplementation::String(
+            implementation,
+        )) = implementation
+        else {
             panic!("all-scalar test function should return String");
         };
         implementation
@@ -545,9 +612,24 @@ mod tests {
     fn int_function<Profile: HostProfile>(
         implementation: HostFunctionImplementation<Profile>,
     ) -> HostIntFunction<Profile> {
-        let HostFunctionImplementation::Int(implementation) = implementation else {
+        let HostFunctionImplementation::Value(HostValueFunctionImplementation::Int(implementation)) =
+            implementation
+        else {
             panic!("test function should return Int");
         };
         implementation
+    }
+
+    fn never_function<Profile: HostProfile>(
+        implementation: HostFunctionImplementation<Profile>,
+    ) -> crate::host::HostNeverFunction<Profile> {
+        let HostFunctionImplementation::Never(implementation) = implementation else {
+            panic!("test function should return Never");
+        };
+        implementation
+    }
+
+    fn never_returns() -> Infallible {
+        panic!("infallible callback was invoked")
     }
 }
