@@ -75,12 +75,17 @@ fn collect_hosted_module_declarations(
         })
         .collect::<Result<Vec<_>, _>>()
         .and_then(|declarations| {
-            if let Some(((package, module), functions)) = provider_modules.into_iter().next() {
-                let function = functions
-                    .iter()
-                    .map(|function| function.schema().name().clone())
-                    .min()
-                    .unwrap_or_default();
+            if let Some((package, module, function)) =
+                provider_modules
+                    .into_iter()
+                    .find_map(|((package, module), functions)| {
+                        functions
+                            .iter()
+                            .map(|function| function.schema().name().clone())
+                            .min()
+                            .map(|function| (package, module, function))
+                    })
+            {
                 Err(PlanError::HostProviderLink {
                     package,
                     module,
@@ -1947,6 +1952,33 @@ pub fn main() {
                 reason: Box::new(HostProviderLinkReason::MissingModule),
             }),
         );
+    }
+
+    #[test]
+    fn empty_provider_module_has_no_source_linkage_target() {
+        let provider = HostProviderModule::<StatelessHostProfile>::new("application", "missing")
+            .expect("provider module should be valid");
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<EcoString>::new(),
+                [ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    "pub fn main() { 1 }",
+                )],
+            )],
+            HostProviderSet::with_providers(Vec::<HostModule>::new(), [provider])
+                .expect("provider module should be unique"),
+        )
+        .expect("host program should compile");
+
+        let plan = plan_host_program(typed).expect("empty provider should not require a module");
+
+        assert_eq!(plan.modules().len(), 1);
+        assert_eq!(plan.modules()[0].module(), "main");
     }
 
     #[test]
