@@ -312,6 +312,11 @@ enum HostSpecialization {
     Never(usize),
 }
 
+struct HostParameters {
+    entry: Box<[ParamLocal]>,
+    call: Box<[HostCallParameter]>,
+}
+
 fn host_parameters(
     shapes: &[StoredValueShape],
     layout: &[crate::host::HostParameter],
@@ -333,11 +338,6 @@ fn host_parameters(
         entry: entry.into_boxed_slice(),
         call: call.into_boxed_slice(),
     }
-}
-
-struct HostParameters {
-    entry: Box<[ParamLocal]>,
-    call: Box<[HostCallParameter]>,
 }
 
 fn host_call_parameter(

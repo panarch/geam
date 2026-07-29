@@ -23,17 +23,6 @@ use nil::HostNilFunction;
 use string::HostStringFunction;
 use utf_codepoint::HostUtfCodepointFunction;
 
-pub(super) type HostCallback<Profile, Return> = dyn Fn(
-        &mut <Profile as HostProfile>::RunState,
-        &dyn HostCallArguments,
-    ) -> Result<Return, HostCallError>
-    + Send
-    + Sync;
-
-type HostScopedCallback<Profile> = dyn Fn(&mut dyn HostCallRuntime<Profile>) -> Result<HostValueToken, HostCallError>
-    + Send
-    + Sync;
-
 pub(crate) enum HostFunctionImplementation<Profile: HostProfile> {
     Never(HostNeverFunction<Profile>),
     Value(HostValueFunction<Profile>),
@@ -53,6 +42,17 @@ enum HostValueFunctionKind<Profile: HostProfile> {
     Nil(HostNilFunction<Profile>),
     Scoped(Arc<HostScopedCallback<Profile>>),
 }
+
+pub(super) type HostCallback<Profile, Return> = dyn Fn(
+        &mut <Profile as HostProfile>::RunState,
+        &dyn HostCallArguments,
+    ) -> Result<Return, HostCallError>
+    + Send
+    + Sync;
+
+type HostScopedCallback<Profile> = dyn Fn(&mut dyn HostCallRuntime<Profile>) -> Result<HostValueToken, HostCallError>
+    + Send
+    + Sync;
 
 impl<Profile: HostProfile> Clone for HostValueFunction<Profile> {
     fn clone(&self) -> Self {

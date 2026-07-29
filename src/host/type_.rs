@@ -25,13 +25,13 @@ use super::HostScopedValue;
 use ecow::EcoString;
 use std::collections::{BTreeSet, HashSet};
 
-type HostCustomIdentity = (EcoString, EcoString, EcoString);
-
 /// A type accepted by the scoped host ABI.
 #[allow(private_bounds)]
 pub trait HostType: private::Sealed + private::Abi + Send + Sync + 'static {
     type Value<'call>: Clone;
 }
+
+type HostCustomIdentity = (EcoString, EcoString, EcoString);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum HostTypeDescriptor {

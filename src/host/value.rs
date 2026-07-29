@@ -3,43 +3,6 @@ use ecow::EcoString;
 use num_bigint::BigInt;
 use std::marker::PhantomData;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct HostValueToken {
-    pub family: HostValueFamily,
-    pub index: usize,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum HostValueFamily {
-    Int,
-    Float,
-    String,
-    BitArray,
-    UtfCodepoint,
-    Bool,
-    Nil,
-    List,
-    Tuple,
-    Custom,
-    Function,
-    SymbolicFunction,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum HostListToken {
-    Parameter(usize),
-    Stored(usize),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct HostTupleToken(pub usize);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct HostCustomToken(pub usize);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct HostFunctionToken(pub usize);
-
 /// A call-scoped value whose concrete runtime family is selected by `Type`.
 ///
 /// This handle is used for generic parameters and cannot outlive its active
@@ -107,6 +70,43 @@ pub struct HostCallCompletion<'call, Return> {
     call: PhantomData<&'call mut ()>,
     return_: PhantomData<fn() -> Return>,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct HostValueToken {
+    pub family: HostValueFamily,
+    pub index: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum HostValueFamily {
+    Int,
+    Float,
+    String,
+    BitArray,
+    UtfCodepoint,
+    Bool,
+    Nil,
+    List,
+    Tuple,
+    Custom,
+    Function,
+    SymbolicFunction,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HostListToken {
+    Parameter(usize),
+    Stored(usize),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct HostTupleToken(pub usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct HostCustomToken(pub usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct HostFunctionToken(pub usize);
 
 #[derive(Debug, PartialEq)]
 pub(crate) enum HostScopedValue {

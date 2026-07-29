@@ -12,8 +12,6 @@ pub use self::host::{HostError, HostLocation, HostOrigin};
 pub use self::invariant::InvariantError;
 pub use self::panic::{BitArraySegmentPanicReason, Panic, PanicDetails, PanicKind, PanicMessage};
 
-pub(crate) type ExecutionResult<T> = Result<T, ExecutionError>;
-
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum ExecutionError {
     #[error("{0}")]
@@ -23,6 +21,8 @@ pub enum ExecutionError {
     #[error("{0}")]
     Host(Box<HostError>),
 }
+
+pub(crate) type ExecutionResult<T> = Result<T, ExecutionError>;
 
 impl ExecutionError {
     pub(crate) fn from_host_call(

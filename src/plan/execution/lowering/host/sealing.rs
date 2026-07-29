@@ -9,8 +9,6 @@ use crate::plan::{
 use ecow::EcoString;
 use std::collections::{HashMap, HashSet};
 
-type CustomIdentity = (EcoString, EcoString, EcoString);
-
 pub(super) fn first_uninhabited_callback(
     template: &HostFunctionTemplate,
     substitution: &SpecializedTypeSubstitution,
@@ -46,6 +44,8 @@ struct CallbackSearch<'a> {
     schemas: HashMap<CustomIdentity, &'a HostCustomTypeSchema>,
     visiting: HashSet<SpecializedCustomValueShape>,
 }
+
+type CustomIdentity = (EcoString, EcoString, EcoString);
 
 impl CallbackSearch<'_> {
     fn find(&mut self, descriptor: &HostTypeDescriptor) -> Option<FunctionType> {

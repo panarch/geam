@@ -22,14 +22,14 @@ pub struct HostProviderModule<Profile: HostProfile> {
     functions: RegisteredFunctions<Profile>,
 }
 
-struct HostModuleIdentity {
-    package: EcoString,
-    module: EcoString,
-}
-
 pub struct HostProviderSet<Profile: HostProfile = StatelessHostProfile> {
     modules: Vec<HostModule<Profile>>,
     providers: Vec<HostProviderModule<Profile>>,
+}
+
+struct HostModuleIdentity {
+    package: EcoString,
+    module: EcoString,
 }
 
 pub(crate) struct RegisteredHostModule {

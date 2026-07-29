@@ -5,19 +5,15 @@ use ecow::EcoString;
 use miette::NamedSource;
 use std::fmt;
 
-#[derive(Clone)]
-pub(crate) enum HostCallOrigin {
-    Entry,
-    Source(HostCallSite),
-    Host(HostOrigin),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HostOrigin {
+#[derive(Debug, Clone)]
+pub struct HostError {
     package: EcoString,
     module: EcoString,
     function: EcoString,
     signature: FunctionType,
+    failure: HostFailure,
+    location: HostLocation,
+    source: Option<Box<NamedSource<String>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,15 +29,19 @@ pub enum HostLocation {
     },
 }
 
-#[derive(Debug, Clone)]
-pub struct HostError {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostOrigin {
     package: EcoString,
     module: EcoString,
     function: EcoString,
     signature: FunctionType,
-    failure: HostFailure,
-    location: HostLocation,
-    source: Option<Box<NamedSource<String>>>,
+}
+
+#[derive(Clone)]
+pub(crate) enum HostCallOrigin {
+    Entry,
+    Source(HostCallSite),
+    Host(HostOrigin),
 }
 
 impl HostError {
@@ -175,32 +175,6 @@ impl HostLocation {
     }
 }
 
-impl HostCallOrigin {
-    pub(crate) fn source(site: HostCallSite) -> Self {
-        Self::Source(site)
-    }
-
-    pub(crate) fn host(function: &crate::plan::execution::host::HostedFunctionMetadata) -> Self {
-        Self::Host(HostOrigin::new(
-            function.package().clone(),
-            function.module().clone(),
-            function.name().clone(),
-            function.signature().clone(),
-        ))
-    }
-
-    pub(crate) fn into_source_site(
-        self,
-        declaration: &HostCallSite,
-    ) -> Result<HostCallSite, HostOrigin> {
-        match self {
-            Self::Entry => Ok(declaration.clone()),
-            Self::Source(site) => Ok(site),
-            Self::Host(caller) => Err(caller),
-        }
-    }
-}
-
 impl HostOrigin {
     fn new(
         package: EcoString,
@@ -230,6 +204,32 @@ impl HostOrigin {
 
     pub fn signature(&self) -> &FunctionType {
         &self.signature
+    }
+}
+
+impl HostCallOrigin {
+    pub(crate) fn source(site: HostCallSite) -> Self {
+        Self::Source(site)
+    }
+
+    pub(crate) fn host(function: &crate::plan::execution::host::HostedFunctionMetadata) -> Self {
+        Self::Host(HostOrigin::new(
+            function.package().clone(),
+            function.module().clone(),
+            function.name().clone(),
+            function.signature().clone(),
+        ))
+    }
+
+    pub(crate) fn into_source_site(
+        self,
+        declaration: &HostCallSite,
+    ) -> Result<HostCallSite, HostOrigin> {
+        match self {
+            Self::Entry => Ok(declaration.clone()),
+            Self::Source(site) => Ok(site),
+            Self::Host(caller) => Err(caller),
+        }
     }
 }
 

@@ -3,19 +3,6 @@ use crate::host::HostProfile;
 use crate::plan::execution::host::{HostedExecutionProfile, HostedFunctionTarget};
 use std::convert::Infallible;
 
-pub(crate) trait ExecutionFunctionBody: FunctionBodyOwner {}
-
-pub(crate) enum ExecutionFunctionRef<'function, Body, HostTarget> {
-    Graph(&'function ExecutableFunction<Body>),
-    Host(&'function HostTarget),
-}
-
-pub(crate) trait ExecutionFunctionEntry<Body> {
-    type HostTarget;
-
-    fn as_ref(&self) -> ExecutionFunctionRef<'_, Body, Self::HostTarget>;
-}
-
 pub(crate) trait ExecutionProfile {
     type RunState;
     type HostTarget<Body: ExecutionFunctionBody>;
@@ -24,6 +11,19 @@ pub(crate) trait ExecutionProfile {
     fn graph<Body: ExecutionFunctionBody>(
         function: ExecutableFunction<Body>,
     ) -> Self::Function<Body>;
+}
+
+pub(crate) trait ExecutionFunctionBody: FunctionBodyOwner {}
+
+pub(crate) trait ExecutionFunctionEntry<Body> {
+    type HostTarget;
+
+    fn as_ref(&self) -> ExecutionFunctionRef<'_, Body, Self::HostTarget>;
+}
+
+pub(crate) enum ExecutionFunctionRef<'function, Body, HostTarget> {
+    Graph(&'function ExecutableFunction<Body>),
+    Host(&'function HostTarget),
 }
 
 pub(crate) type ExecutionFunction<Profile, Body> = <Profile as ExecutionProfile>::Function<Body>;

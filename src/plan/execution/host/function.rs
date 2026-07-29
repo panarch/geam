@@ -8,28 +8,15 @@ use crate::plan::execution::type_::FunctionType;
 use ecow::EcoString;
 use std::marker::PhantomData;
 
-#[derive(Debug)]
-pub(crate) struct HostFunctionId<Body: FunctionBodyOwner> {
-    index: usize,
-    return_: Body::Return,
-    body: PhantomData<fn() -> Body>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct HostNeverFunctionId(usize);
-
-pub(crate) enum HostedFunctionTarget<Body: FunctionBodyOwner> {
-    Value(HostFunctionId<Body>),
-    Never(HostNeverFunctionId),
-}
-
 pub(crate) struct HostedFunction<Implementation> {
     metadata: HostedFunctionMetadata,
     implementation: Implementation,
 }
 
-pub(crate) type HostedValueFunction<Profile> = HostedFunction<HostValueFunction<Profile>>;
-pub(crate) type HostedNeverFunction<Profile> = HostedFunction<HostNeverFunction<Profile>>;
+pub(crate) enum HostedFunctionTarget<Body: FunctionBodyOwner> {
+    Value(HostFunctionId<Body>),
+    Never(HostNeverFunctionId),
+}
 
 pub(crate) struct HostedFunctionMetadata {
     package: EcoString,
@@ -55,6 +42,19 @@ pub(crate) enum HostCallParameter {
     Custom(ParamLocal),
     Function(ParamLocal),
 }
+
+#[derive(Debug)]
+pub(crate) struct HostFunctionId<Body: FunctionBodyOwner> {
+    index: usize,
+    return_: Body::Return,
+    body: PhantomData<fn() -> Body>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct HostNeverFunctionId(usize);
+
+pub(crate) type HostedValueFunction<Profile> = HostedFunction<HostValueFunction<Profile>>;
+pub(crate) type HostedNeverFunction<Profile> = HostedFunction<HostNeverFunction<Profile>>;
 
 impl<Body> Clone for HostFunctionId<Body>
 where

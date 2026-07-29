@@ -22,20 +22,22 @@ pub(crate) use nil::HostNilArgumentSlot;
 pub(crate) use string::HostStringArgumentSlot;
 pub(crate) use utf_codepoint::HostUtfCodepointArgumentSlot;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct HostValueArgumentSlot(usize);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct HostListArgumentSlot(usize);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct HostTupleArgumentSlot(usize);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct HostCustomArgumentSlot(usize);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct HostFunctionArgumentSlot(usize);
+#[derive(Default)]
+pub(super) struct HostParameterLayout {
+    parameters: Vec<HostParameter>,
+    next_int: usize,
+    next_float: usize,
+    next_string: usize,
+    next_bit_array: usize,
+    next_utf_codepoint: usize,
+    next_bool: usize,
+    next_nil: usize,
+    next_value: usize,
+    next_list: usize,
+    next_tuple: usize,
+    next_custom: usize,
+    next_function: usize,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HostParameter {
@@ -52,6 +54,21 @@ pub(crate) enum HostParameter {
     Custom(HostCustomArgumentSlot),
     Function(HostFunctionArgumentSlot),
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct HostValueArgumentSlot(usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct HostListArgumentSlot(usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct HostTupleArgumentSlot(usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct HostCustomArgumentSlot(usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct HostFunctionArgumentSlot(usize);
 
 pub(crate) trait HostCallArguments {
     fn int(&self, slot: HostIntArgumentSlot) -> BigInt;
@@ -83,23 +100,6 @@ pub(super) trait HostScopedArgument: HostAbiType {
         Profile: HostProfile,
         Provider: HostProvider<Profile>,
         Return: HostAbiType;
-}
-
-#[derive(Default)]
-pub(super) struct HostParameterLayout {
-    parameters: Vec<HostParameter>,
-    next_int: usize,
-    next_float: usize,
-    next_string: usize,
-    next_bit_array: usize,
-    next_utf_codepoint: usize,
-    next_bool: usize,
-    next_nil: usize,
-    next_value: usize,
-    next_list: usize,
-    next_tuple: usize,
-    next_custom: usize,
-    next_function: usize,
 }
 
 impl HostValueArgumentSlot {
