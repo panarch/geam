@@ -33,21 +33,31 @@ pub(in crate::plan::execution::lowering) fn int_expr(
             ));
             Representability::Inhabited(DraftFlow::value(cursor, value))
         }
-        E::Call { function, args } => {
-            call_args(args, cursor, graph, context).and_then(|flow| match flow {
-                DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
-                DraftFlow::Value {
-                    mut cursor,
-                    value: args,
-                } => context.int_function_id(function).map(|function| {
-                    let value = graph.int_instruction(&mut cursor, I::Call { function, args });
-                    DraftFlow::value(cursor, value)
-                }),
-            })
-        }
+        E::Call {
+            function,
+            args,
+            site,
+        } => call_args(args, cursor, graph, context).and_then(|flow| match flow {
+            DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
+            DraftFlow::Value {
+                mut cursor,
+                value: args,
+            } => context.int_function_id(function).map(|function| {
+                let value = graph.int_instruction(
+                    &mut cursor,
+                    I::Call {
+                        function,
+                        args,
+                        site: site.clone(),
+                    },
+                );
+                DraftFlow::value(cursor, value)
+            }),
+        }),
         E::FunctionCall {
             function: value,
             args,
+            site,
         } => {
             function::int_function_expr(value, cursor, graph, context).and_then(|flow| match flow {
                 DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
@@ -65,6 +75,7 @@ pub(in crate::plan::execution::lowering) fn int_expr(
                             I::FunctionCall {
                                 function: function.value().clone(),
                                 args,
+                                site: site.clone(),
                             },
                         );
                         DraftFlow::value(cursor, value)

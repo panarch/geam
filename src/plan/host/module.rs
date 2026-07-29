@@ -1,88 +1,47 @@
 use super::HostFunctionTemplate;
-use crate::plan::{ModuleId, PlannedModule};
+use crate::plan::{
+    ConstantTemplates, CustomTypeDefinition, FunctionTemplate, ModuleId, SourceContext,
+};
 use ecow::EcoString;
 
 pub struct HostedPlannedModule {
-    kind: HostedPlannedModuleKind,
-}
-
-pub(crate) enum HostedPlannedModuleKind {
-    Source(Box<PlannedModule>),
-    Host(PlannedHostModule),
-}
-
-pub struct PlannedHostModule {
     id: ModuleId,
     package: EcoString,
     module: EcoString,
-    functions: Vec<HostFunctionTemplate>,
+    source_context: Option<SourceContext>,
+    custom_types: Vec<CustomTypeDefinition>,
+    constants: ConstantTemplates,
+    functions: Vec<HostedFunctionTemplate>,
+    anonymous_functions: Vec<FunctionTemplate>,
+}
+
+pub enum HostedFunctionTemplate {
+    GleamBody(Box<FunctionTemplate>),
+    HostTemplate(Box<HostFunctionTemplate>),
+}
+
+pub(crate) struct HostedPlannedModuleParts {
+    pub(crate) id: ModuleId,
+    pub(crate) package: EcoString,
+    pub(crate) module: EcoString,
+    pub(crate) source_context: Option<SourceContext>,
+    pub(crate) custom_types: Vec<CustomTypeDefinition>,
+    pub(crate) constants: ConstantTemplates,
+    pub(crate) functions: Vec<HostedFunctionTemplate>,
+    pub(crate) anonymous_functions: Vec<FunctionTemplate>,
 }
 
 impl HostedPlannedModule {
-    pub(crate) fn from_source(module: PlannedModule) -> Self {
+    pub(crate) fn new(parts: HostedPlannedModuleParts) -> Self {
         Self {
-            kind: HostedPlannedModuleKind::Source(Box::new(module)),
-        }
-    }
-
-    pub(crate) fn from_host(module: PlannedHostModule) -> Self {
-        Self {
-            kind: HostedPlannedModuleKind::Host(module),
-        }
-    }
-
-    pub fn id(&self) -> ModuleId {
-        match &self.kind {
-            HostedPlannedModuleKind::Source(module) => module.id(),
-            HostedPlannedModuleKind::Host(module) => module.id(),
-        }
-    }
-
-    pub fn package(&self) -> &EcoString {
-        match &self.kind {
-            HostedPlannedModuleKind::Source(module) => module.package(),
-            HostedPlannedModuleKind::Host(module) => module.package(),
-        }
-    }
-
-    pub fn module(&self) -> &EcoString {
-        match &self.kind {
-            HostedPlannedModuleKind::Source(module) => module.module(),
-            HostedPlannedModuleKind::Host(module) => module.module(),
-        }
-    }
-
-    pub fn source(&self) -> Option<&PlannedModule> {
-        match &self.kind {
-            HostedPlannedModuleKind::Source(module) => Some(module),
-            HostedPlannedModuleKind::Host(_) => None,
-        }
-    }
-
-    pub fn host(&self) -> Option<&PlannedHostModule> {
-        match &self.kind {
-            HostedPlannedModuleKind::Source(_) => None,
-            HostedPlannedModuleKind::Host(module) => Some(module),
-        }
-    }
-
-    pub(crate) fn into_kind(self) -> HostedPlannedModuleKind {
-        self.kind
-    }
-}
-
-impl PlannedHostModule {
-    pub(crate) fn new(
-        id: ModuleId,
-        package: EcoString,
-        module: EcoString,
-        functions: Vec<HostFunctionTemplate>,
-    ) -> Self {
-        Self {
-            id,
-            package,
-            module,
-            functions,
+            id: parts.id,
+            package: parts.package,
+            module: parts.module,
+            source_context: parts.source_context,
+            custom_types: parts.custom_types,
+            constants: parts.constants,
+            functions: parts.functions,
+            anonymous_functions: parts.anonymous_functions,
         }
     }
 
@@ -98,11 +57,94 @@ impl PlannedHostModule {
         &self.module
     }
 
-    pub fn functions(&self) -> &[HostFunctionTemplate] {
+    pub fn source_context(&self) -> Option<&SourceContext> {
+        self.source_context.as_ref()
+    }
+
+    pub fn functions(&self) -> &[HostedFunctionTemplate] {
         &self.functions
     }
 
-    pub(crate) fn into_parts(self) -> (ModuleId, EcoString, EcoString, Vec<HostFunctionTemplate>) {
-        (self.id, self.package, self.module, self.functions)
+    pub(crate) fn into_parts(self) -> HostedPlannedModuleParts {
+        HostedPlannedModuleParts {
+            id: self.id,
+            package: self.package,
+            module: self.module,
+            source_context: self.source_context,
+            custom_types: self.custom_types,
+            constants: self.constants,
+            functions: self.functions,
+            anonymous_functions: self.anonymous_functions,
+        }
+    }
+}
+
+impl HostedFunctionTemplate {
+    pub fn gleam_body(&self) -> Option<&FunctionTemplate> {
+        match self {
+            Self::GleamBody(function) => Some(function.as_ref()),
+            Self::HostTemplate(_) => None,
+        }
+    }
+
+    pub fn host_template(&self) -> Option<&HostFunctionTemplate> {
+        match self {
+            Self::GleamBody(_) => None,
+            Self::HostTemplate(function) => Some(function.as_ref()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::frontend::{ModuleSource, PackageSource, compile_typed_host_program};
+    use crate::host::{HostModule, HostProviderSet};
+    use crate::planner::plan_host_program;
+    use num_bigint::BigInt;
+
+    #[test]
+    fn function_templates_expose_exactly_one_body_owner() {
+        let hosts = HostProviderSet::new([HostModule::new("host_support", "host/math")
+            .expect("host module should be valid")
+            .with_function("identity", |value: BigInt| value)
+            .expect("host function should be valid")])
+        .expect("host modules should be unique");
+        let source = r#"
+import host/math
+
+pub fn main() {
+  math.identity(1)
+}
+"#;
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                ["host_support"],
+                [ModuleSource::new("main", "main.gleam", source)],
+            )],
+            hosts,
+        )
+        .expect("host program should compile");
+        let plan = plan_host_program(typed).expect("host program should plan");
+        let host = &plan.modules()[0].functions()[0];
+        let source = &plan.modules()[1].functions()[0];
+
+        assert_eq!(
+            host.host_template()
+                .expect("source-less function should own a host template")
+                .name(),
+            "identity",
+        );
+        assert!(host.gleam_body().is_none());
+        assert_eq!(
+            source
+                .gleam_body()
+                .expect("source function should own a Gleam body")
+                .name(),
+            "main",
+        );
+        assert!(source.host_template().is_none());
     }
 }

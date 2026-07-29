@@ -4,30 +4,31 @@ use super::{
     UtfCodepointFunctionBody,
 };
 use crate::plan::execution::explain::{Explain, ExplainContext};
-use crate::plan::execution::function::ExecutableFunction;
-use crate::plan::execution::function::write_table;
+use crate::plan::execution::function::{ExecutionFunction, ExecutionProfile, write_table};
+use std::convert::Infallible;
 
-pub(in crate::plan::execution) struct ValueFunctionTables<IntFunction, BoolFunction> {
-    pub(in crate::plan::execution) never_functions: Vec<ExecutableFunction<NeverFunctionBody>>,
-    pub(in crate::plan::execution) int_functions: Vec<IntFunction>,
-    pub(in crate::plan::execution) float_functions: Vec<ExecutableFunction<FloatFunctionBody>>,
-    pub(in crate::plan::execution) string_functions: Vec<ExecutableFunction<StringFunctionBody>>,
+pub(in crate::plan::execution) struct ValueFunctionTables<Profile: ExecutionProfile> {
+    pub(in crate::plan::execution) never_functions:
+        Vec<ExecutionFunction<Profile, NeverFunctionBody>>,
+    pub(in crate::plan::execution) int_functions: Vec<ExecutionFunction<Profile, IntFunctionBody>>,
+    pub(in crate::plan::execution) float_functions:
+        Vec<ExecutionFunction<Profile, FloatFunctionBody>>,
+    pub(in crate::plan::execution) string_functions:
+        Vec<ExecutionFunction<Profile, StringFunctionBody>>,
     pub(in crate::plan::execution) bit_array_functions:
-        Vec<ExecutableFunction<BitArrayFunctionBody>>,
+        Vec<ExecutionFunction<Profile, BitArrayFunctionBody>>,
     pub(in crate::plan::execution) utf_codepoint_functions:
-        Vec<ExecutableFunction<UtfCodepointFunctionBody>>,
-    pub(in crate::plan::execution) custom_functions: Vec<ExecutableFunction<CustomFunctionBody>>,
-    pub(in crate::plan::execution) bool_functions: Vec<BoolFunction>,
-    pub(in crate::plan::execution) nil_functions: Vec<ExecutableFunction<NilFunctionBody>>,
-    pub(in crate::plan::execution) tuple_functions: Vec<ExecutableFunction<TupleFunctionBody>>,
+        Vec<ExecutionFunction<Profile, UtfCodepointFunctionBody>>,
+    pub(in crate::plan::execution) custom_functions:
+        Vec<ExecutionFunction<Profile, CustomFunctionBody>>,
+    pub(in crate::plan::execution) bool_functions:
+        Vec<ExecutionFunction<Profile, BoolFunctionBody>>,
+    pub(in crate::plan::execution) nil_functions: Vec<ExecutionFunction<Profile, NilFunctionBody>>,
+    pub(in crate::plan::execution) tuple_functions:
+        Vec<ExecutionFunction<Profile, TupleFunctionBody>>,
 }
 
-impl Explain
-    for ValueFunctionTables<
-        ExecutableFunction<IntFunctionBody>,
-        ExecutableFunction<BoolFunctionBody>,
-    >
-{
+impl Explain for ValueFunctionTables<Infallible> {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
         write_table(context, "never", &self.never_functions);
         write_table(context, "int", &self.int_functions);

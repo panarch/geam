@@ -18,10 +18,12 @@ pub(crate) enum BoolInstruction {
     Call {
         function: BoolFunctionId,
         args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: BoolFunctionLocalId,
         args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: TupleLocalId,
@@ -98,10 +100,10 @@ impl Explain for BoolInstruction {
                 write_literal(output, "bool.value", if *value { "True" } else { "False" });
             }
             BoolInstruction::Constant(id) => write_constant(output, "bool", *id),
-            BoolInstruction::Call { function, args } => {
+            BoolInstruction::Call { function, args, .. } => {
                 write_call(output, "bool.call", function, args);
             }
-            BoolInstruction::FunctionCall { function, args } => {
+            BoolInstruction::FunctionCall { function, args, .. } => {
                 write_function_call(output, "bool.function_call", function, args);
             }
             BoolInstruction::TupleIndex { tuple, index } => {

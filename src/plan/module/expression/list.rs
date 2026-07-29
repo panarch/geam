@@ -324,128 +324,183 @@ impl ListExpr {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn call(
         function: crate::plan::FunctionInstantiation,
         args: Vec<CallArg>,
         item_shape: crate::plan::ValueShape,
     ) -> Self {
-        let expression =
-            match item_shape.clone() {
-                crate::plan::ValueShape::Parameter(parameter) => Self::Generic(
-                    GenericListExpr::call(GenericListItem::new(parameter), function, args),
-                ),
-                crate::plan::ValueShape::Int => {
-                    Self::Int(IntListExpr::call(IntListItem, function, args))
-                }
-                crate::plan::ValueShape::String => {
-                    Self::String(StringListExpr::call(StringListItem, function, args))
-                }
-                crate::plan::ValueShape::BitArray => {
-                    Self::BitArray(BitArrayListExpr::call(BitArrayListItem, function, args))
-                }
-                crate::plan::ValueShape::UtfCodepoint => Self::UtfCodepoint(
-                    UtfCodepointListExpr::call(UtfCodepointListItem, function, args),
-                ),
-                crate::plan::ValueShape::Custom(shape) => Self::Custom(CustomListExpr::call(
-                    CustomListItem {
-                        item_type: shape.type_().clone(),
-                    },
-                    function,
-                    args,
-                )),
-                crate::plan::ValueShape::Float => {
-                    Self::Float(FloatListExpr::call(FloatListItem, function, args))
-                }
-                crate::plan::ValueShape::Bool => {
-                    Self::Bool(BoolListExpr::call(BoolListItem, function, args))
-                }
-                crate::plan::ValueShape::Nil => {
-                    Self::Nil(NilListExpr::call(NilListItem, function, args))
-                }
-                crate::plan::ValueShape::Tuple(shape) => Self::Tuple(TupleListExpr::call(
-                    TupleListItem {
-                        item_type: shape
-                            .iter()
-                            .map(crate::plan::ValueShape::value_type)
-                            .collect(),
-                    },
-                    function,
-                    args,
-                )),
-                crate::plan::ValueShape::List(shape) => match shape.representation() {
-                    crate::plan::ValueRepresentation::Uninhabited(parameter) => {
-                        Self::ParameterList(ParameterListListExpr::call(
-                            ParameterListListItem::new(parameter),
-                            function,
-                            args,
-                        ))
-                    }
-                    crate::plan::ValueRepresentation::Stored(item_shape) => Self::List(
-                        ListListExpr::call(ListListItem::new(item_shape), function, args),
-                    ),
-                },
-                crate::plan::ValueShape::Function(shape) => Self::Function(FunctionListExpr::call(
-                    FunctionListItem {
-                        item_type: shape.type_(),
-                    },
-                    function,
-                    args,
-                )),
-            };
-        expression.with_item_shape(item_shape)
+        Self::call_at(
+            function,
+            args,
+            item_shape,
+            crate::plan::HostCallSite::unknown(),
+        )
     }
 
-    pub(crate) fn function_call(function: ListFunctionExpr, args: Vec<CallArg>) -> Self {
-        match function.return_item_type() {
-            ValueType::Parameter(parameter) => Self::Generic(GenericListExpr::function_call(
-                GenericListItem::new(parameter),
-                function,
-                args,
-            )),
-            ValueType::Int => Self::Int(IntListExpr::function_call(IntListItem, function, args)),
-            ValueType::String => Self::String(StringListExpr::function_call(
+    pub(crate) fn call_at(
+        function: crate::plan::FunctionInstantiation,
+        args: Vec<CallArg>,
+        item_shape: crate::plan::ValueShape,
+        site: crate::plan::HostCallSite,
+    ) -> Self {
+        let expression = match item_shape.clone() {
+            crate::plan::ValueShape::Parameter(parameter) => Self::Generic(
+                GenericListExpr::call_at(GenericListItem::new(parameter), function, args, site),
+            ),
+            crate::plan::ValueShape::Int => {
+                Self::Int(IntListExpr::call_at(IntListItem, function, args, site))
+            }
+            crate::plan::ValueShape::String => Self::String(StringListExpr::call_at(
                 StringListItem,
                 function,
                 args,
+                site,
             )),
-            ValueType::BitArray => Self::BitArray(BitArrayListExpr::function_call(
+            crate::plan::ValueShape::BitArray => Self::BitArray(BitArrayListExpr::call_at(
                 BitArrayListItem,
                 function,
                 args,
+                site,
             )),
-            ValueType::UtfCodepoint => Self::UtfCodepoint(UtfCodepointListExpr::function_call(
+            crate::plan::ValueShape::UtfCodepoint => Self::UtfCodepoint(
+                UtfCodepointListExpr::call_at(UtfCodepointListItem, function, args, site),
+            ),
+            crate::plan::ValueShape::Custom(shape) => Self::Custom(CustomListExpr::call_at(
+                CustomListItem {
+                    item_type: shape.type_().clone(),
+                },
+                function,
+                args,
+                site,
+            )),
+            crate::plan::ValueShape::Float => {
+                Self::Float(FloatListExpr::call_at(FloatListItem, function, args, site))
+            }
+            crate::plan::ValueShape::Bool => {
+                Self::Bool(BoolListExpr::call_at(BoolListItem, function, args, site))
+            }
+            crate::plan::ValueShape::Nil => {
+                Self::Nil(NilListExpr::call_at(NilListItem, function, args, site))
+            }
+            crate::plan::ValueShape::Tuple(shape) => Self::Tuple(TupleListExpr::call_at(
+                TupleListItem {
+                    item_type: shape
+                        .iter()
+                        .map(crate::plan::ValueShape::value_type)
+                        .collect(),
+                },
+                function,
+                args,
+                site,
+            )),
+            crate::plan::ValueShape::List(shape) => match shape.representation() {
+                crate::plan::ValueRepresentation::Uninhabited(parameter) => {
+                    Self::ParameterList(ParameterListListExpr::call_at(
+                        ParameterListListItem::new(parameter),
+                        function,
+                        args,
+                        site,
+                    ))
+                }
+                crate::plan::ValueRepresentation::Stored(item_shape) => Self::List(
+                    ListListExpr::call_at(ListListItem::new(item_shape), function, args, site),
+                ),
+            },
+            crate::plan::ValueShape::Function(shape) => Self::Function(FunctionListExpr::call_at(
+                FunctionListItem {
+                    item_type: shape.type_(),
+                },
+                function,
+                args,
+                site,
+            )),
+        };
+        expression.with_item_shape(item_shape)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn function_call(function: ListFunctionExpr, args: Vec<CallArg>) -> Self {
+        Self::function_call_at(function, args, crate::plan::HostCallSite::unknown())
+    }
+
+    pub(crate) fn function_call_at(
+        function: ListFunctionExpr,
+        args: Vec<CallArg>,
+        site: crate::plan::HostCallSite,
+    ) -> Self {
+        match function.return_item_type() {
+            ValueType::Parameter(parameter) => Self::Generic(GenericListExpr::function_call_at(
+                GenericListItem::new(parameter),
+                function,
+                args,
+                site,
+            )),
+            ValueType::Int => Self::Int(IntListExpr::function_call_at(
+                IntListItem,
+                function,
+                args,
+                site,
+            )),
+            ValueType::String => Self::String(StringListExpr::function_call_at(
+                StringListItem,
+                function,
+                args,
+                site,
+            )),
+            ValueType::BitArray => Self::BitArray(BitArrayListExpr::function_call_at(
+                BitArrayListItem,
+                function,
+                args,
+                site,
+            )),
+            ValueType::UtfCodepoint => Self::UtfCodepoint(UtfCodepointListExpr::function_call_at(
                 UtfCodepointListItem,
                 function,
                 args,
+                site,
             )),
-            ValueType::Custom(item_type) => Self::Custom(CustomListExpr::function_call(
+            ValueType::Custom(item_type) => Self::Custom(CustomListExpr::function_call_at(
                 CustomListItem { item_type },
                 function,
                 args,
+                site,
             )),
-            ValueType::Float => {
-                Self::Float(FloatListExpr::function_call(FloatListItem, function, args))
-            }
-            ValueType::Bool => {
-                Self::Bool(BoolListExpr::function_call(BoolListItem, function, args))
-            }
-            ValueType::Nil => Self::Nil(NilListExpr::function_call(NilListItem, function, args)),
+            ValueType::Float => Self::Float(FloatListExpr::function_call_at(
+                FloatListItem,
+                function,
+                args,
+                site,
+            )),
+            ValueType::Bool => Self::Bool(BoolListExpr::function_call_at(
+                BoolListItem,
+                function,
+                args,
+                site,
+            )),
+            ValueType::Nil => Self::Nil(NilListExpr::function_call_at(
+                NilListItem,
+                function,
+                args,
+                site,
+            )),
             ValueType::Tuple(item_type) => {
                 let item = TupleListItem { item_type };
-                Self::Tuple(TupleListExpr::function_call(item, function, args))
+                Self::Tuple(TupleListExpr::function_call_at(item, function, args, site))
             }
             ValueType::List(item_type) => {
                 match crate::plan::ValueShape::from_value_type(*item_type).representation() {
                     crate::plan::ValueRepresentation::Uninhabited(parameter) => {
-                        Self::ParameterList(ParameterListListExpr::function_call(
+                        Self::ParameterList(ParameterListListExpr::function_call_at(
                             ParameterListListItem::new(parameter),
                             function,
                             args,
+                            site,
                         ))
                     }
                     crate::plan::ValueRepresentation::Stored(item_shape) => {
                         let item = ListListItem::new(item_shape);
-                        Self::List(ListListExpr::function_call(item, function, args))
+                        Self::List(ListListExpr::function_call_at(item, function, args, site))
                     }
                 }
             }
@@ -453,7 +508,9 @@ impl ListExpr {
                 let item = FunctionListItem {
                     item_type: *item_type,
                 };
-                Self::Function(FunctionListExpr::function_call(item, function, args))
+                Self::Function(FunctionListExpr::function_call_at(
+                    item, function, args, site,
+                ))
             }
         }
     }

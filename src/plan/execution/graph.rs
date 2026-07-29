@@ -199,6 +199,7 @@ mod tests {
         BlockGraphExitId, BlockId, Edge, Instruction, InstructionKind, IntInstruction, MatchEdge,
         MatchEdgeArgument, MatchPattern, MatchPatternList, Terminator,
     };
+    use crate::plan::FunctionCallTarget;
     use crate::plan::execution::ExecutionPlan;
     use crate::plan::execution::function::{FunctionBody, FunctionExit, IntFunctionId};
     use crate::plan::execution::graph::{BoolLocalId, IntLocalId, ListLocal, ParamLocal};
@@ -467,7 +468,7 @@ pub fn main() { loop(1) }
 
     fn assert_branch_add_and_jump(
         plan: &ExecutionPlan,
-        body: &FunctionBody<IntLocalId, IntFunctionId>,
+        body: &FunctionBody<IntLocalId, FunctionCallTarget<IntFunctionId>>,
         block_id: BlockId,
         addend: i64,
         target: BlockId,
@@ -578,7 +579,7 @@ pub fn main() { loop(1) }
     }
 
     fn returned_int(
-        body: &FunctionBody<IntLocalId, IntFunctionId>,
+        body: &FunctionBody<IntLocalId, FunctionCallTarget<IntFunctionId>>,
         terminator: &Terminator,
     ) -> IntLocalId {
         match terminator {

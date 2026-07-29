@@ -46,6 +46,13 @@ impl CustomFunctionId {
     pub(crate) fn index(self) -> usize {
         self.index
     }
+
+    pub(crate) fn with_index(self, index: usize) -> Self {
+        Self {
+            index,
+            return_shape: self.return_shape,
+        }
+    }
 }
 
 impl FunctionLabelSource for NeverFunctionId {

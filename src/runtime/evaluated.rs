@@ -3,8 +3,9 @@ use bitvec::vec::BitVec;
 use ecow::EcoString;
 use num_bigint::BigInt;
 use std::rc::Rc;
+use std::sync::Arc;
 
-use super::state::{ListValueId, RuntimeState};
+use super::state::{ListValueId, ParameterListValueId, RuntimeState, StoredListValueId};
 use crate::plan::ValueType;
 use crate::plan::execution::function::{
     BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, FunctionFunctionId,
@@ -22,7 +23,7 @@ use crate::plan::execution::type_::{CustomConstructorId, CustomTypeId, FunctionT
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::runtime) struct EvaluatedBitArray {
-    bits: Rc<BitVec<u8, Msb0>>,
+    value: crate::BitArrayValue,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -60,12 +61,20 @@ impl EvaluatedBitArray {
         bits.force_align();
         bits.set_uninitialized(false);
         Self {
-            bits: Rc::new(bits),
+            value: crate::BitArrayValue::from_evaluated(Arc::new(bits)),
         }
     }
 
     pub(in crate::runtime) fn bits(&self) -> &bitvec::slice::BitSlice<u8, Msb0> {
-        &self.bits
+        self.value.bits()
+    }
+
+    pub(in crate::runtime) fn value(&self) -> crate::BitArrayValue {
+        self.value.clone()
+    }
+
+    pub(in crate::runtime) fn from_value(value: crate::BitArrayValue) -> Self {
+        Self { value }
     }
 }
 
@@ -80,8 +89,37 @@ pub(in crate::runtime) enum EvaluatedValue {
     Bool(bool),
     Nil,
     Tuple(Vec<EvaluatedValue>),
-    List(ListValueId),
+    ParameterList(ParameterListValueId),
+    List(StoredListValueId),
     Function(EvaluatedFunctionValue),
+}
+
+impl From<ListValueId> for EvaluatedValue {
+    fn from(value: ListValueId) -> Self {
+        match value {
+            ListValueId::Parameter(value) => Self::ParameterList(value),
+            ListValueId::Int(value) => Self::List(StoredListValueId::Int(value)),
+            ListValueId::String(value) => Self::List(StoredListValueId::String(value)),
+            ListValueId::BitArray(value) => Self::List(StoredListValueId::BitArray(value)),
+            ListValueId::UtfCodepoint(value) => Self::List(StoredListValueId::UtfCodepoint(value)),
+            ListValueId::Custom(value) => Self::List(StoredListValueId::Custom(value)),
+            ListValueId::Float(value) => Self::List(StoredListValueId::Float(value)),
+            ListValueId::Bool(value) => Self::List(StoredListValueId::Bool(value)),
+            ListValueId::Nil(value) => Self::List(StoredListValueId::Nil(value)),
+            ListValueId::Tuple(value) => Self::List(StoredListValueId::Tuple(value)),
+            ListValueId::ParameterList(value) => {
+                Self::List(StoredListValueId::ParameterList(value))
+            }
+            ListValueId::List(value) => Self::List(StoredListValueId::List(value)),
+            ListValueId::Function(value) => Self::List(StoredListValueId::Function(value)),
+        }
+    }
+}
+
+impl From<StoredListValueId> for EvaluatedValue {
+    fn from(value: StoredListValueId) -> Self {
+        Self::List(value)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -624,6 +662,7 @@ impl EvaluatedValue {
             Self::Tuple(values) => {
                 ValueType::Tuple(values.iter().map(|value| value.value_type(plan)).collect())
             }
+            Self::ParameterList(value) => plan.list_value_type(value.type_id().list_type()),
             Self::List(value) => plan.list_value_type(value.list_type()),
             Self::Function(value) => {
                 ValueType::Function(Box::new(plan.function_type(value.type_())))
@@ -1002,7 +1041,7 @@ impl EvaluatedCapture {
 
 pub(in crate::runtime) fn values_equal(
     plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
-    state: &RuntimeState,
+    state: &RuntimeState<'_, impl Sized>,
     left: &EvaluatedValue,
     right: &EvaluatedValue,
 ) -> bool {
@@ -1030,6 +1069,9 @@ pub(in crate::runtime) fn values_equal(
                     .zip(right)
                     .all(|(left, right)| values_equal(plan, state, left, right))
         }
+        (EvaluatedValue::ParameterList(left), EvaluatedValue::ParameterList(right)) => {
+            left.type_id() == right.type_id()
+        }
         (EvaluatedValue::List(left), EvaluatedValue::List(right)) => {
             lists_equal(plan, state, left, right)
         }
@@ -1042,16 +1084,16 @@ pub(in crate::runtime) fn values_equal(
 
 fn lists_equal(
     plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
-    state: &RuntimeState,
-    left: &ListValueId,
-    right: &ListValueId,
+    state: &RuntimeState<'_, impl Sized>,
+    left: &StoredListValueId,
+    right: &StoredListValueId,
 ) -> bool {
     if left.list_type() != right.list_type() {
         return false;
     }
 
-    let left = state.evaluated_values(left);
-    let right = state.evaluated_values(right);
+    let left = state.values().evaluated_values(left);
+    let right = state.values().evaluated_values(right);
     left.len() == right.len()
         && left
             .iter()
@@ -1198,8 +1240,8 @@ pub fn main() {
         let source = [0x77u8];
         let value = EvaluatedBitArray::new(source.view_bits::<Msb0>()[4..6].to_bitvec());
 
-        assert_eq!(value.bits.as_raw_slice(), &[0b0100_0000]);
-        assert_eq!(value.bits.len(), 2);
+        assert_eq!(value.bits(), &[0b0100_0000u8].view_bits::<Msb0>()[..2],);
+        assert_eq!(value.bits().len(), 2);
     }
 
     #[test]
@@ -1207,7 +1249,9 @@ pub fn main() {
         let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
-        let list = state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
+        let list = state
+            .values_mut()
+            .int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
         let function = EvaluatedIntFunction::reference(
             IntFunctionId(0),
             Vec::new(),
@@ -1226,7 +1270,7 @@ pub fn main() {
             EvaluatedValue::Bool(true),
             EvaluatedValue::Nil,
             EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
-            EvaluatedValue::List(ListValueId::Int(list)),
+            EvaluatedValue::from(ListValueId::Int(list)),
             EvaluatedValue::Function(EvaluatedFunctionValue::from(function)),
         ];
         let expected = [
@@ -1544,63 +1588,87 @@ pub fn main() {
         ));
 
         let int_lists = (
-            state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]),
-            state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]),
+            state
+                .values_mut()
+                .int(plan.int_list_function_id(0).type_id(), vec![1.into()]),
+            state
+                .values_mut()
+                .int(plan.int_list_function_id(0).type_id(), vec![1.into()]),
         );
         let string_lists = (
-            state.string(
+            state.values_mut().string(
                 plan.string_list_function_id(0).type_id(),
                 vec!["one".into()],
             ),
-            state.string(
+            state.values_mut().string(
                 plan.string_list_function_id(0).type_id(),
                 vec!["one".into()],
             ),
         );
         let float_lists = (
-            state.float(plan.float_list_function_id(0).type_id(), vec![1.5]),
-            state.float(plan.float_list_function_id(0).type_id(), vec![1.5]),
+            state
+                .values_mut()
+                .float(plan.float_list_function_id(0).type_id(), vec![1.5]),
+            state
+                .values_mut()
+                .float(plan.float_list_function_id(0).type_id(), vec![1.5]),
         );
         let utf_codepoint_lists = (
-            state.utf_codepoint(plan.utf_codepoint_list_function_id(0).type_id(), vec!['a']),
-            state.utf_codepoint(plan.utf_codepoint_list_function_id(0).type_id(), vec!['a']),
+            state
+                .values_mut()
+                .utf_codepoint(plan.utf_codepoint_list_function_id(0).type_id(), vec!['a']),
+            state
+                .values_mut()
+                .utf_codepoint(plan.utf_codepoint_list_function_id(0).type_id(), vec!['a']),
         );
         let bool_lists = (
-            state.bool(plan.bool_list_function_id(0).type_id(), vec![true]),
-            state.bool(plan.bool_list_function_id(0).type_id(), vec![true]),
+            state
+                .values_mut()
+                .bool(plan.bool_list_function_id(0).type_id(), vec![true]),
+            state
+                .values_mut()
+                .bool(plan.bool_list_function_id(0).type_id(), vec![true]),
         );
         let nil_lists = (
-            state.nil(plan.nil_list_function_id(0).type_id(), 1),
-            state.nil(plan.nil_list_function_id(0).type_id(), 1),
+            state
+                .values_mut()
+                .nil(plan.nil_list_function_id(0).type_id(), 1),
+            state
+                .values_mut()
+                .nil(plan.nil_list_function_id(0).type_id(), 1),
         );
         let tuple_lists = (
-            state.tuple(
+            state.values_mut().tuple(
                 plan.tuple_list_function_id(0).type_id(),
                 vec![vec![EvaluatedValue::Int(1.into())]],
             ),
-            state.tuple(
+            state.values_mut().tuple(
                 plan.tuple_list_function_id(0).type_id(),
                 vec![vec![EvaluatedValue::Int(1.into())]],
             ),
         );
-        let left_child = state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
-        let right_child = state.int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
+        let left_child = state
+            .values_mut()
+            .int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
+        let right_child = state
+            .values_mut()
+            .int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
         let nested_lists = (
-            state.list(
+            state.values_mut().list(
                 plan.list_list_function_id(0).type_id(),
                 vec![left_child.into()],
             ),
-            state.list(
+            state.values_mut().list(
                 plan.list_list_function_id(0).type_id(),
                 vec![right_child.into()],
             ),
         );
         let function_lists = (
-            state.function(
+            state.values_mut().function(
                 plan.function_list_function_id(0).type_id(),
                 vec![EvaluatedFunctionValue::from(int_function.clone())],
             ),
-            state.function(
+            state.values_mut().function(
                 plan.function_list_function_id(0).type_id(),
                 vec![EvaluatedFunctionValue::from(int_function.clone())],
             ),
@@ -1648,15 +1716,15 @@ pub fn main() {
             assert!(values_equal(
                 &plan,
                 &state,
-                &EvaluatedValue::List(left),
-                &EvaluatedValue::List(right),
+                &EvaluatedValue::from(left),
+                &EvaluatedValue::from(right),
             ));
         }
         assert!(!values_equal(
             &plan,
             &state,
-            &EvaluatedValue::List(ListValueId::Int(int_lists.0)),
-            &EvaluatedValue::List(ListValueId::String(string_lists.0)),
+            &EvaluatedValue::from(ListValueId::Int(int_lists.0)),
+            &EvaluatedValue::from(ListValueId::String(string_lists.0)),
         ));
         assert!(values_equal(
             &plan,

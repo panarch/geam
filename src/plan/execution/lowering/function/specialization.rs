@@ -25,8 +25,13 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
     match template.return_().kind() {
         R::Generic { body, .. } => match &return_inhabitation {
             ValueInhabitation::Uninhabited(_) => {
-                let graph =
-                    graph::lower_never_function_graph(template, body, context, graph::never_expr);
+                let graph = graph::lower_never_function_graph(
+                    template,
+                    body,
+                    context,
+                    graph::never_expr,
+                    never_function_id,
+                );
                 functions
                     .never_functions
                     .push((index, lowered_function(key, graph)));
@@ -41,7 +46,11 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 body,
                 context,
                 graph::int_expr,
-                |function, context| context.int_function_id(function),
+                |target, context| {
+                    context.int_function_id(target.function()).map(|function| {
+                        crate::plan::FunctionCallTarget::new(function, target.site().clone())
+                    })
+                },
             );
             functions
                 .int_functions
@@ -53,7 +62,13 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 body,
                 context,
                 graph::float_expr,
-                |function, context| context.float_function_id(function),
+                |target, context| {
+                    context
+                        .float_function_id(target.function())
+                        .map(|function| {
+                            crate::plan::FunctionCallTarget::new(function, target.site().clone())
+                        })
+                },
             );
             functions
                 .float_functions
@@ -65,7 +80,13 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 body,
                 context,
                 graph::string_expr,
-                |function, context| context.string_function_id(function),
+                |target, context| {
+                    context
+                        .string_function_id(target.function())
+                        .map(|function| {
+                            crate::plan::FunctionCallTarget::new(function, target.site().clone())
+                        })
+                },
             );
             functions
                 .string_functions
@@ -77,7 +98,13 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 body,
                 context,
                 graph::bit_array_expr,
-                |function, context| context.bit_array_function_id(function),
+                |target, context| {
+                    context
+                        .bit_array_function_id(target.function())
+                        .map(|function| {
+                            crate::plan::FunctionCallTarget::new(function, target.site().clone())
+                        })
+                },
             );
             functions
                 .bit_array_functions
@@ -89,7 +116,13 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 body,
                 context,
                 graph::utf_codepoint_expr,
-                |function, context| context.utf_codepoint_function_id(function),
+                |target, context| {
+                    context
+                        .utf_codepoint_function_id(target.function())
+                        .map(|function| {
+                            crate::plan::FunctionCallTarget::new(function, target.site().clone())
+                        })
+                },
             );
             functions
                 .utf_codepoint_functions
@@ -104,7 +137,11 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 body,
                 context,
                 graph::bool_expr,
-                |function, context| context.bool_function_id(function),
+                |target, context| {
+                    context.bool_function_id(target.function()).map(|function| {
+                        crate::plan::FunctionCallTarget::new(function, target.site().clone())
+                    })
+                },
             );
             functions
                 .bool_functions
@@ -116,7 +153,11 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 body,
                 context,
                 graph::nil_expr,
-                |function, context| context.nil_function_id(function),
+                |target, context| {
+                    context.nil_function_id(target.function()).map(|function| {
+                        crate::plan::FunctionCallTarget::new(function, target.site().clone())
+                    })
+                },
             );
             functions
                 .nil_functions
@@ -140,7 +181,11 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 body,
                 context,
                 graph::int_list_expr,
-                |function, context| context.int_list_function_id(function),
+                |target, context| {
+                    lower_call_target(target, context, |function, context| {
+                        context.int_list_function_id(function)
+                    })
+                },
             );
             functions
                 .int_list_functions
@@ -154,7 +199,11 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 body,
                 context,
                 graph::string_list_expr,
-                |function, context| context.string_list_function_id(function),
+                |target, context| {
+                    lower_call_target(target, context, |function, context| {
+                        context.string_list_function_id(function)
+                    })
+                },
             );
             functions
                 .string_list_functions
@@ -170,7 +219,11 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 body,
                 context,
                 graph::bit_array_list_expr,
-                |function, context| context.bit_array_list_function_id(function),
+                |target, context| {
+                    lower_call_target(target, context, |function, context| {
+                        context.bit_array_list_function_id(function)
+                    })
+                },
             );
             functions
                 .bit_array_list_functions
@@ -186,7 +239,11 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 body,
                 context,
                 graph::utf_codepoint_list_expr,
-                |function, context| context.utf_codepoint_list_function_id(function),
+                |target, context| {
+                    lower_call_target(target, context, |function, context| {
+                        context.utf_codepoint_list_function_id(function)
+                    })
+                },
             );
             functions
                 .utf_codepoint_list_functions
@@ -200,7 +257,11 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 body,
                 context,
                 graph::custom_list_expr,
-                move |function, context| context.custom_list_function_id(function, type_id),
+                move |target, context| {
+                    lower_call_target(target, context, |function, context| {
+                        context.custom_list_function_id(function, type_id)
+                    })
+                },
             );
             functions
                 .custom_list_functions
@@ -214,7 +275,11 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 body,
                 context,
                 graph::float_list_expr,
-                |function, context| context.float_list_function_id(function),
+                |target, context| {
+                    lower_call_target(target, context, |function, context| {
+                        context.float_list_function_id(function)
+                    })
+                },
             );
             functions
                 .float_list_functions
@@ -227,7 +292,11 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 body,
                 context,
                 graph::bool_list_expr,
-                |function, context| context.bool_list_function_id(function),
+                |target, context| {
+                    lower_call_target(target, context, |function, context| {
+                        context.bool_list_function_id(function)
+                    })
+                },
             );
             functions
                 .bool_list_functions
@@ -240,7 +309,11 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 body,
                 context,
                 graph::nil_list_expr,
-                |function, context| context.nil_list_function_id(function),
+                |target, context| {
+                    lower_call_target(target, context, |function, context| {
+                        context.nil_list_function_id(function)
+                    })
+                },
             );
             functions
                 .nil_list_functions
@@ -254,7 +327,11 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 body,
                 context,
                 graph::tuple_list_expr,
-                move |function, context| context.tuple_list_function_id(function, type_id),
+                move |target, context| {
+                    lower_call_target(target, context, |function, context| {
+                        context.tuple_list_function_id(function, type_id)
+                    })
+                },
             );
             functions
                 .tuple_list_functions
@@ -268,7 +345,11 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 body,
                 context,
                 graph::list_list_expr,
-                move |function, context| context.list_list_function_id(function, type_id),
+                move |target, context| {
+                    lower_call_target(target, context, |function, context| {
+                        context.list_list_function_id(function, type_id)
+                    })
+                },
             );
             functions
                 .list_list_functions
@@ -282,7 +363,11 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
                 body,
                 context,
                 graph::function_list_expr,
-                move |function, context| context.function_list_function_id(function, type_id),
+                move |target, context| {
+                    lower_call_target(target, context, |function, context| {
+                        context.function_list_function_id(function, type_id)
+                    })
+                },
             );
             functions
                 .function_list_functions
@@ -375,10 +460,12 @@ fn lower_custom_return(
                 |kind, cursor, graph, context| {
                     graph::custom_expr_kind(kind, &body_shape, cursor, graph, context)
                 },
-                |function, context| {
-                    context
-                        .custom_function_id(function, &signature_shape)
-                        .map(|function| function.index())
+                |target, context| {
+                    lower_call_target(target, context, |function, context| {
+                        context
+                            .custom_function_id(function, &signature_shape)
+                            .map(|function| function.index())
+                    })
                 },
             )
             .map(|graph| {
@@ -402,6 +489,7 @@ fn lower_custom_return(
                 |kind, cursor, graph, context| {
                     graph::custom_never_expr_kind(kind, &proof, cursor, graph, context)
                 },
+                never_function_id,
             );
             functions
                 .never_functions
@@ -432,7 +520,11 @@ fn lower_tuple_return(
                 body,
                 context,
                 graph::tuple_expr,
-                |function, context| context.tuple_function_id(function),
+                |target, context| {
+                    lower_call_target(target, context, |function, context| {
+                        context.tuple_function_id(function)
+                    })
+                },
             );
             functions
                 .tuple_functions
@@ -446,12 +538,34 @@ fn lower_tuple_return(
                 |expression, cursor, graph, context| {
                     graph::tuple_never_expr(expression, &proof, cursor, graph, context)
                 },
+                never_function_id,
             );
             functions
                 .never_functions
                 .push((index, lowered_function(key, graph)));
         }
     }
+}
+
+fn never_function_id(
+    target: &crate::plan::FunctionCallTarget<module::FunctionInstantiation>,
+    context: &mut LoweringContext,
+) -> Representability<crate::plan::FunctionCallTarget<execution::function::NeverFunctionId>> {
+    lower_call_target(target, context, |function, context| {
+        context.never_function_id(function)
+    })
+}
+
+fn lower_call_target<Function>(
+    target: &crate::plan::FunctionCallTarget<module::FunctionInstantiation>,
+    context: &mut LoweringContext,
+    lower: impl FnOnce(
+        &module::FunctionInstantiation,
+        &mut LoweringContext,
+    ) -> Representability<Function>,
+) -> Representability<crate::plan::FunctionCallTarget<Function>> {
+    lower(target.function(), context)
+        .map(|function| crate::plan::FunctionCallTarget::new(function, target.site().clone()))
 }
 
 fn lower_generic_value(
@@ -479,7 +593,11 @@ fn lower_generic_value(
                         graph::DraftInt::from_owned,
                     )
                 },
-                |function, context| context.int_function_id(function),
+                |target, context| {
+                    context.int_function_id(target.function()).map(|function| {
+                        crate::plan::FunctionCallTarget::new(function, target.site().clone())
+                    })
+                },
             );
             functions
                 .int_functions
@@ -499,7 +617,13 @@ fn lower_generic_value(
                         graph::DraftFloat::from_owned,
                     )
                 },
-                |function, context| context.float_function_id(function),
+                |target, context| {
+                    context
+                        .float_function_id(target.function())
+                        .map(|function| {
+                            crate::plan::FunctionCallTarget::new(function, target.site().clone())
+                        })
+                },
             );
             functions
                 .float_functions
@@ -519,7 +643,13 @@ fn lower_generic_value(
                         graph::DraftString::from_owned,
                     )
                 },
-                |function, context| context.string_function_id(function),
+                |target, context| {
+                    context
+                        .string_function_id(target.function())
+                        .map(|function| {
+                            crate::plan::FunctionCallTarget::new(function, target.site().clone())
+                        })
+                },
             );
             functions
                 .string_functions
@@ -539,7 +669,13 @@ fn lower_generic_value(
                         graph::DraftBitArray::from_owned,
                     )
                 },
-                |function, context| context.bit_array_function_id(function),
+                |target, context| {
+                    context
+                        .bit_array_function_id(target.function())
+                        .map(|function| {
+                            crate::plan::FunctionCallTarget::new(function, target.site().clone())
+                        })
+                },
             );
             functions
                 .bit_array_functions
@@ -559,7 +695,13 @@ fn lower_generic_value(
                         graph::DraftUtfCodepoint::from_owned,
                     )
                 },
-                |function, context| context.utf_codepoint_function_id(function),
+                |target, context| {
+                    context
+                        .utf_codepoint_function_id(target.function())
+                        .map(|function| {
+                            crate::plan::FunctionCallTarget::new(function, target.site().clone())
+                        })
+                },
             );
             functions
                 .utf_codepoint_functions
@@ -580,10 +722,12 @@ fn lower_generic_value(
                         graph::DraftCustom::from_owned,
                     )
                 },
-                |function, context| {
-                    context
-                        .custom_function_id(function, shape)
-                        .map(|function| function.index())
+                |target, context| {
+                    lower_call_target(target, context, |function, context| {
+                        context
+                            .custom_function_id(function, shape)
+                            .map(|function| function.index())
+                    })
                 },
             )
             .map(|graph| {
@@ -613,7 +757,11 @@ fn lower_generic_value(
                         graph::DraftBool::from_owned,
                     )
                 },
-                |function, context| context.bool_function_id(function),
+                |target, context| {
+                    context.bool_function_id(target.function()).map(|function| {
+                        crate::plan::FunctionCallTarget::new(function, target.site().clone())
+                    })
+                },
             );
             functions
                 .bool_functions
@@ -633,7 +781,11 @@ fn lower_generic_value(
                         graph::DraftNil::from_owned,
                     )
                 },
-                |function, context| context.nil_function_id(function),
+                |target, context| {
+                    context.nil_function_id(target.function()).map(|function| {
+                        crate::plan::FunctionCallTarget::new(function, target.site().clone())
+                    })
+                },
             );
             functions
                 .nil_functions
@@ -653,7 +805,11 @@ fn lower_generic_value(
                         graph::DraftTuple::from_owned,
                     )
                 },
-                |function, context| context.tuple_function_id(function),
+                |target, context| {
+                    lower_call_target(target, context, |function, context| {
+                        context.tuple_function_id(function)
+                    })
+                },
             );
             functions
                 .tuple_functions
@@ -699,7 +855,11 @@ fn lower_generic_list(
                     graph::generic_list_expr(expression, cursor, graph, context)
                         .map(|flow| flow.map(graph::DraftParameterList::new))
                 },
-                move |function, context| context.parameter_list_function_id(function, parameter),
+                move |target, context| {
+                    lower_call_target(target, context, |function, context| {
+                        context.parameter_list_function_id(function, parameter)
+                    })
+                },
             );
             functions
                 .parameter_list_functions
@@ -735,7 +895,11 @@ fn lower_parameter_list_list(
                         },
                     )
                 },
-                move |function, context| context.parameter_list_list_function_id(function, type_id),
+                move |target, context| {
+                    lower_call_target(target, context, |function, context| {
+                        context.parameter_list_list_function_id(function, type_id)
+                    })
+                },
             );
             functions
                 .parameter_list_list_functions
@@ -752,7 +916,11 @@ fn lower_parameter_list_list(
                     graph::parameter_list_list_expr(expression, cursor, graph, context)
                         .map(|flow| flow.map(|value| graph::DraftListList::new(value.into_list())))
                 },
-                move |function, context| context.list_list_function_id(function, type_id),
+                move |target, context| {
+                    lower_call_target(target, context, |function, context| {
+                        context.list_list_function_id(function, type_id)
+                    })
+                },
             );
             functions
                 .list_list_functions
@@ -959,7 +1127,9 @@ fn generic_item_list_graph<DraftList, FrozenList, TailCall>(
         &mut LoweringContext,
     ) -> Representability<TailCall>,
 ) -> Representability<
-    graph::LoweredFunctionGraph<execution::function::FunctionBody<FrozenList, TailCall>>,
+    graph::LoweredFunctionGraph<
+        execution::function::FunctionBody<FrozenList, crate::plan::FunctionCallTarget<TailCall>>,
+    >,
 >
 where
     DraftList: graph::DraftGraphValue + graph::FreezeGraphValue<Frozen = FrozenList>,
@@ -972,7 +1142,7 @@ where
         move |expression, cursor, graph, context| {
             graph::generic_list_expr(expression, cursor, graph, context).map(|flow| flow.map(make))
         },
-        lower_function,
+        move |target, context| lower_call_target(target, context, lower_function),
     )
 }
 
@@ -1187,7 +1357,9 @@ fn generic_value_list_graph<DraftList, FrozenList, TailCall>(
         &mut LoweringContext,
     ) -> Representability<TailCall>,
 ) -> Representability<
-    graph::LoweredFunctionGraph<execution::function::FunctionBody<FrozenList, TailCall>>,
+    graph::LoweredFunctionGraph<
+        execution::function::FunctionBody<FrozenList, crate::plan::FunctionCallTarget<TailCall>>,
+    >,
 >
 where
     DraftList: graph::DraftGraphValue + graph::FreezeGraphValue<Frozen = FrozenList>,
@@ -1201,7 +1373,7 @@ where
             graph::generic_expr(expression, cursor, graph, context)
                 .map(|flow| flow.map(|value| make(graph::DraftList::from_owned(value))))
         },
-        lower_function,
+        move |target, context| lower_call_target(target, context, lower_function),
     )
 }
 
@@ -1225,7 +1397,11 @@ fn lower_int_function(
                 |expression, cursor, graph, context| {
                     graph::symbolic_int_function_expr(expression, &function, cursor, graph, context)
                 },
-                |tail, context| context.generic_function_function_id(tail, generic_type.clone()),
+                |tail, context| {
+                    lower_call_target(tail, context, |function, context| {
+                        context.generic_function_function_id(function, generic_type.clone())
+                    })
+                },
             );
             let graph = typed_function_return(&function, graph, context);
             functions
@@ -1238,7 +1414,11 @@ fn lower_int_function(
                 body,
                 context,
                 graph::int_function_expr,
-                |tail, context| context.int_function_function_id(tail),
+                |tail, context| {
+                    lower_call_target(tail, context, |function, context| {
+                        context.int_function_function_id(function)
+                    })
+                },
             );
             let graph = typed_function_return(&function, graph, context);
             functions
@@ -1270,7 +1450,11 @@ fn lower_float_function(
                         expression, &function, cursor, graph, context,
                     )
                 },
-                |tail, context| context.generic_function_function_id(tail, generic_type.clone()),
+                |tail, context| {
+                    lower_call_target(tail, context, |function, context| {
+                        context.generic_function_function_id(function, generic_type.clone())
+                    })
+                },
             );
             let graph = typed_function_return(&function, graph, context);
             functions
@@ -1283,7 +1467,11 @@ fn lower_float_function(
                 body,
                 context,
                 graph::float_function_expr,
-                |tail, context| context.float_function_function_id(tail),
+                |tail, context| {
+                    lower_call_target(tail, context, |function, context| {
+                        context.float_function_function_id(function)
+                    })
+                },
             );
             let graph = typed_function_return(&function, graph, context);
             functions
@@ -1315,7 +1503,11 @@ fn lower_string_function(
                         expression, &function, cursor, graph, context,
                     )
                 },
-                |tail, context| context.generic_function_function_id(tail, generic_type.clone()),
+                |tail, context| {
+                    lower_call_target(tail, context, |function, context| {
+                        context.generic_function_function_id(function, generic_type.clone())
+                    })
+                },
             );
             let graph = typed_function_return(&function, graph, context);
             functions
@@ -1328,7 +1520,11 @@ fn lower_string_function(
                 body,
                 context,
                 graph::string_function_expr,
-                |tail, context| context.string_function_function_id(tail),
+                |tail, context| {
+                    lower_call_target(tail, context, |function, context| {
+                        context.string_function_function_id(function)
+                    })
+                },
             );
             let graph = typed_function_return(&function, graph, context);
             functions
@@ -1360,7 +1556,11 @@ fn lower_bit_array_function(
                         expression, &function, cursor, graph, context,
                     )
                 },
-                |tail, context| context.generic_function_function_id(tail, generic_type.clone()),
+                |tail, context| {
+                    lower_call_target(tail, context, |function, context| {
+                        context.generic_function_function_id(function, generic_type.clone())
+                    })
+                },
             );
             let graph = typed_function_return(&function, graph, context);
             functions
@@ -1373,7 +1573,11 @@ fn lower_bit_array_function(
                 body,
                 context,
                 graph::bit_array_function_expr,
-                |tail, context| context.bit_array_function_function_id(tail),
+                |tail, context| {
+                    lower_call_target(tail, context, |function, context| {
+                        context.bit_array_function_function_id(function)
+                    })
+                },
             );
             let graph = typed_function_return(&function, graph, context);
             functions
@@ -1405,7 +1609,11 @@ fn lower_utf_codepoint_function(
                         expression, &function, cursor, graph, context,
                     )
                 },
-                |tail, context| context.generic_function_function_id(tail, generic_type.clone()),
+                |tail, context| {
+                    lower_call_target(tail, context, |function, context| {
+                        context.generic_function_function_id(function, generic_type.clone())
+                    })
+                },
             );
             let graph = typed_function_return(&function, graph, context);
             functions
@@ -1418,7 +1626,11 @@ fn lower_utf_codepoint_function(
                 body,
                 context,
                 graph::utf_codepoint_function_expr,
-                |tail, context| context.utf_codepoint_function_function_id(tail),
+                |tail, context| {
+                    lower_call_target(tail, context, |function, context| {
+                        context.utf_codepoint_function_function_id(function)
+                    })
+                },
             );
             let graph = typed_function_return(&function, graph, context);
             functions
@@ -1450,7 +1662,11 @@ fn lower_bool_function(
                         expression, &function, cursor, graph, context,
                     )
                 },
-                |tail, context| context.generic_function_function_id(tail, generic_type.clone()),
+                |tail, context| {
+                    lower_call_target(tail, context, |function, context| {
+                        context.generic_function_function_id(function, generic_type.clone())
+                    })
+                },
             );
             let graph = typed_function_return(&function, graph, context);
             functions
@@ -1463,7 +1679,11 @@ fn lower_bool_function(
                 body,
                 context,
                 graph::bool_function_expr,
-                |tail, context| context.bool_function_function_id(tail),
+                |tail, context| {
+                    lower_call_target(tail, context, |function, context| {
+                        context.bool_function_function_id(function)
+                    })
+                },
             );
             let graph = typed_function_return(&function, graph, context);
             functions
@@ -1493,7 +1713,11 @@ fn lower_nil_function(
                 |expression, cursor, graph, context| {
                     graph::symbolic_nil_function_expr(expression, &function, cursor, graph, context)
                 },
-                |tail, context| context.generic_function_function_id(tail, generic_type.clone()),
+                |tail, context| {
+                    lower_call_target(tail, context, |function, context| {
+                        context.generic_function_function_id(function, generic_type.clone())
+                    })
+                },
             );
             let graph = typed_function_return(&function, graph, context);
             functions
@@ -1506,7 +1730,11 @@ fn lower_nil_function(
                 body,
                 context,
                 graph::nil_function_expr,
-                |tail, context| context.nil_function_function_id(tail),
+                |tail, context| {
+                    lower_call_target(tail, context, |function, context| {
+                        context.nil_function_function_id(function)
+                    })
+                },
             );
             let graph = typed_function_return(&function, graph, context);
             functions
@@ -1547,7 +1775,11 @@ fn lower_tuple_function(
                         expression, &function, cursor, graph, context,
                     )
                 },
-                |tail, context| context.generic_function_function_id(tail, generic_type.clone()),
+                |tail, context| {
+                    lower_call_target(tail, context, |function, context| {
+                        context.generic_function_function_id(function, generic_type.clone())
+                    })
+                },
             );
             let graph = typed_function_return(&function, graph, context);
             functions
@@ -1561,7 +1793,11 @@ fn lower_tuple_function(
                 body,
                 context,
                 graph::tuple_never_function_expr,
-                |tail, context| context.never_function_function_id(tail, generic_type.clone()),
+                |tail, context| {
+                    lower_call_target(tail, context, |function, context| {
+                        context.never_function_function_id(function, generic_type.clone())
+                    })
+                },
             );
             let graph = typed_function_return(&function, graph, context);
             functions
@@ -1574,7 +1810,11 @@ fn lower_tuple_function(
                 body,
                 context,
                 graph::tuple_function_expr,
-                |tail, context| context.tuple_function_function_id(tail),
+                |tail, context| {
+                    lower_call_target(tail, context, |function, context| {
+                        context.tuple_function_function_id(function)
+                    })
+                },
             );
             let graph = typed_function_return(&function, graph, context);
             functions
@@ -1609,7 +1849,11 @@ fn lower_custom_function(
                         kind, &function, cursor, graph, context,
                     )
                 },
-                |tail, context| context.generic_function_function_id(tail, generic_type.clone()),
+                |tail, context| {
+                    lower_call_target(tail, context, |function, context| {
+                        context.generic_function_function_id(function, generic_type.clone())
+                    })
+                },
             );
             let graph = typed_function_return(&function, graph, context);
             functions
@@ -1625,7 +1869,11 @@ fn lower_custom_function(
                 |kind, cursor, graph, context| {
                     graph::custom_never_function_expr_kind(kind, &function, cursor, graph, context)
                 },
-                |tail, context| context.never_function_function_id(tail, generic_type.clone()),
+                |tail, context| {
+                    lower_call_target(tail, context, |function, context| {
+                        context.never_function_function_id(function, generic_type.clone())
+                    })
+                },
             );
             let graph = typed_function_return(&function, graph, context);
             functions
@@ -1650,9 +1898,11 @@ fn lower_custom_function(
                     )
                 },
                 |tail, context| {
-                    context
-                        .custom_function_function_id(tail, type_.clone())
-                        .map(|function| function.index())
+                    lower_call_target(tail, context, |function, context| {
+                        context
+                            .custom_function_function_id(function, type_.clone())
+                            .map(|function| function.index())
+                    })
                 },
             );
             let shape = context.function_shape(shape.clone());
@@ -1700,7 +1950,11 @@ fn lower_list_function(
                         expression, &function, cursor, graph, context,
                     )
                 },
-                |tail, context| context.generic_function_function_id(tail, generic_type.clone()),
+                |tail, context| {
+                    lower_call_target(tail, context, |function, context| {
+                        context.generic_function_function_id(function, generic_type.clone())
+                    })
+                },
             );
             let graph = typed_function_return(&function, graph, context);
             functions
@@ -1715,7 +1969,11 @@ fn lower_list_function(
                 body,
                 context,
                 graph::list_function_expr,
-                |tail, context| context.list_function_function_id(tail, &function, &item),
+                |tail, context| {
+                    lower_call_target(tail, context, |target, context| {
+                        context.list_function_function_id(target, &function, &item)
+                    })
+                },
             );
             let graph = typed_function_return(&function, graph, context);
             push_list_function_function(functions, index, &item, lowered_function(key, graph));
@@ -1748,7 +2006,11 @@ fn lower_function_function(
                         kind, &function, cursor, graph, context,
                     )
                 },
-                |tail, context| context.generic_function_function_id(tail, generic_type.clone()),
+                |tail, context| {
+                    lower_call_target(tail, context, |function, context| {
+                        context.generic_function_function_id(function, generic_type.clone())
+                    })
+                },
             );
             let graph = typed_function_return(&function, graph, context);
             functions
@@ -1774,9 +2036,11 @@ fn lower_function_function(
                     )
                 },
                 |tail, context| {
-                    context
-                        .function_function_function_id(tail, type_.clone())
-                        .map(|function| function.index())
+                    lower_call_target(tail, context, |function, context| {
+                        context
+                            .function_function_function_id(function, type_.clone())
+                            .map(|function| function.index())
+                    })
                 },
             );
             let shape = context.function_shape(shape.clone());
@@ -1803,7 +2067,7 @@ fn lower_generic_function(
     functions: &mut FunctionTableBuilder,
     context: &mut LoweringContext,
 ) {
-    lower_polymorphic_function::<_, GenericFunctionExpression>(
+    lower_polymorphic_function::<_, _, GenericFunctionExpression>(
         template, key, index, body, function, functions, context,
     );
 }
@@ -1817,23 +2081,32 @@ fn lower_generic_value_function(
     functions: &mut FunctionTableBuilder,
     context: &mut LoweringContext,
 ) {
-    lower_polymorphic_function::<_, GenericValueFunctionExpression>(
+    lower_polymorphic_function::<_, _, GenericValueFunctionExpression>(
         template, key, index, body, function, functions, context,
     );
 }
 
-trait PolymorphicFunctionExpression<Expression> {
+trait PolymorphicFunctionExpression<Expression, ModuleFunction> {
     fn lower(
         expression: &Expression,
         cursor: graph::DraftCursor,
         graph: &mut graph::DraftGraph,
         context: &mut LoweringContext,
     ) -> Representability<graph::DraftFlow<graph::DraftFunction>>;
+
+    fn function_target(
+        function: &ModuleFunction,
+    ) -> &crate::plan::FunctionCallTarget<module::FunctionInstantiation>;
 }
 
 struct GenericFunctionExpression;
 
-impl PolymorphicFunctionExpression<module::GenericFunctionExpr> for GenericFunctionExpression {
+impl
+    PolymorphicFunctionExpression<
+        module::GenericFunctionExpr,
+        crate::plan::FunctionCallTarget<module::FunctionInstantiation>,
+    > for GenericFunctionExpression
+{
     fn lower(
         expression: &module::GenericFunctionExpr,
         cursor: graph::DraftCursor,
@@ -1842,11 +2115,22 @@ impl PolymorphicFunctionExpression<module::GenericFunctionExpr> for GenericFunct
     ) -> Representability<graph::DraftFlow<graph::DraftFunction>> {
         graph::generic_function_expr(expression, cursor, graph, context)
     }
+
+    fn function_target(
+        function: &crate::plan::FunctionCallTarget<module::FunctionInstantiation>,
+    ) -> &crate::plan::FunctionCallTarget<module::FunctionInstantiation> {
+        function
+    }
 }
 
 struct GenericValueFunctionExpression;
 
-impl PolymorphicFunctionExpression<module::GenericExpr> for GenericValueFunctionExpression {
+impl
+    PolymorphicFunctionExpression<
+        module::GenericExpr,
+        crate::plan::FunctionCallTarget<module::FunctionInstantiation>,
+    > for GenericValueFunctionExpression
+{
     fn lower(
         expression: &module::GenericExpr,
         cursor: graph::DraftCursor,
@@ -1856,18 +2140,24 @@ impl PolymorphicFunctionExpression<module::GenericExpr> for GenericValueFunction
         graph::generic_expr(expression, cursor, graph, context)
             .map(|flow| flow.map(graph::DraftFunction::from_owned))
     }
+
+    fn function_target(
+        target: &crate::plan::FunctionCallTarget<module::FunctionInstantiation>,
+    ) -> &crate::plan::FunctionCallTarget<module::FunctionInstantiation> {
+        target
+    }
 }
 
-fn lower_polymorphic_function<Expression, Lower>(
+fn lower_polymorphic_function<Expression, ModuleFunction, Lower>(
     template: &module::FunctionTemplate,
     key: &super::super::specialization::SpecializationKey,
     index: usize,
-    body: &module::ReturnBody<Expression, module::FunctionInstantiation>,
+    body: &module::ReturnBody<Expression, ModuleFunction>,
     function: &SpecializedFunctionShape,
     functions: &mut FunctionTableBuilder,
     context: &mut LoweringContext,
 ) where
-    Lower: PolymorphicFunctionExpression<Expression>,
+    Lower: PolymorphicFunctionExpression<Expression, ModuleFunction>,
 {
     match context.function_representation(function) {
         FunctionRepresentation::Symbolic => {
@@ -1880,7 +2170,15 @@ fn lower_polymorphic_function<Expression, Lower>(
                     Lower::lower(expression, cursor, graph, context)
                         .map(|flow| flow.map(graph::DraftGenericFunction::new))
                 },
-                |tail, context| context.generic_function_function_id(tail, type_.clone()),
+                |tail, context| {
+                    lower_call_target(
+                        Lower::function_target(tail),
+                        context,
+                        |function, context| {
+                            context.generic_function_function_id(function, type_.clone())
+                        },
+                    )
+                },
             );
             let graph = typed_function_return(function, graph, context);
             functions
@@ -1897,7 +2195,15 @@ fn lower_polymorphic_function<Expression, Lower>(
                     Lower::lower(expression, cursor, graph, context)
                         .map(|flow| flow.map(graph::DraftNeverFunction::new))
                 },
-                |tail, context| context.never_function_function_id(tail, type_.clone()),
+                |tail, context| {
+                    lower_call_target(
+                        Lower::function_target(tail),
+                        context,
+                        |function, context| {
+                            context.never_function_function_id(function, type_.clone())
+                        },
+                    )
+                },
             );
             let graph = typed_function_return(function, graph, context);
             functions
@@ -1914,7 +2220,13 @@ fn lower_polymorphic_function<Expression, Lower>(
                         Lower::lower(expression, cursor, graph, context)
                             .map(|flow| flow.map(graph::DraftIntFunction::new))
                     },
-                    |tail, context| context.int_function_function_id(tail),
+                    |tail, context| {
+                        lower_call_target(
+                            Lower::function_target(tail),
+                            context,
+                            |function, context| context.int_function_function_id(function),
+                        )
+                    },
                 );
                 let graph = typed_function_return(function, graph, context);
                 functions
@@ -1930,7 +2242,13 @@ fn lower_polymorphic_function<Expression, Lower>(
                         Lower::lower(expression, cursor, graph, context)
                             .map(|flow| flow.map(graph::DraftFloatFunction::new))
                     },
-                    |tail, context| context.float_function_function_id(tail),
+                    |tail, context| {
+                        lower_call_target(
+                            Lower::function_target(tail),
+                            context,
+                            |function, context| context.float_function_function_id(function),
+                        )
+                    },
                 );
                 let graph = typed_function_return(function, graph, context);
                 functions
@@ -1946,7 +2264,13 @@ fn lower_polymorphic_function<Expression, Lower>(
                         Lower::lower(expression, cursor, graph, context)
                             .map(|flow| flow.map(graph::DraftStringFunction::new))
                     },
-                    |tail, context| context.string_function_function_id(tail),
+                    |tail, context| {
+                        lower_call_target(
+                            Lower::function_target(tail),
+                            context,
+                            |function, context| context.string_function_function_id(function),
+                        )
+                    },
                 );
                 let graph = typed_function_return(function, graph, context);
                 functions
@@ -1962,7 +2286,13 @@ fn lower_polymorphic_function<Expression, Lower>(
                         Lower::lower(expression, cursor, graph, context)
                             .map(|flow| flow.map(graph::DraftBitArrayFunction::new))
                     },
-                    |tail, context| context.bit_array_function_function_id(tail),
+                    |tail, context| {
+                        lower_call_target(
+                            Lower::function_target(tail),
+                            context,
+                            |function, context| context.bit_array_function_function_id(function),
+                        )
+                    },
                 );
                 let graph = typed_function_return(function, graph, context);
                 functions
@@ -1978,7 +2308,15 @@ fn lower_polymorphic_function<Expression, Lower>(
                         Lower::lower(expression, cursor, graph, context)
                             .map(|flow| flow.map(graph::DraftUtfCodepointFunction::new))
                     },
-                    |tail, context| context.utf_codepoint_function_function_id(tail),
+                    |tail, context| {
+                        lower_call_target(
+                            Lower::function_target(tail),
+                            context,
+                            |function, context| {
+                                context.utf_codepoint_function_function_id(function)
+                            },
+                        )
+                    },
                 );
                 let graph = typed_function_return(function, graph, context);
                 functions
@@ -1997,9 +2335,15 @@ fn lower_polymorphic_function<Expression, Lower>(
                             .map(|flow| flow.map(graph::DraftCustomFunction::new))
                     },
                     |tail, context| {
-                        context
-                            .custom_function_function_id(tail, type_.clone())
-                            .map(|function| function.index())
+                        lower_call_target(
+                            Lower::function_target(tail),
+                            context,
+                            |function, context| {
+                                context
+                                    .custom_function_function_id(function, type_.clone())
+                                    .map(|function| function.index())
+                            },
+                        )
                     },
                 );
                 let shape = context.lower_concrete_function_shape(function);
@@ -2023,7 +2367,13 @@ fn lower_polymorphic_function<Expression, Lower>(
                         Lower::lower(expression, cursor, graph, context)
                             .map(|flow| flow.map(graph::DraftBoolFunction::new))
                     },
-                    |tail, context| context.bool_function_function_id(tail),
+                    |tail, context| {
+                        lower_call_target(
+                            Lower::function_target(tail),
+                            context,
+                            |function, context| context.bool_function_function_id(function),
+                        )
+                    },
                 );
                 let graph = typed_function_return(function, graph, context);
                 functions
@@ -2039,7 +2389,13 @@ fn lower_polymorphic_function<Expression, Lower>(
                         Lower::lower(expression, cursor, graph, context)
                             .map(|flow| flow.map(graph::DraftNilFunction::new))
                     },
-                    |tail, context| context.nil_function_function_id(tail),
+                    |tail, context| {
+                        lower_call_target(
+                            Lower::function_target(tail),
+                            context,
+                            |function, context| context.nil_function_function_id(function),
+                        )
+                    },
                 );
                 let graph = typed_function_return(function, graph, context);
                 functions
@@ -2055,7 +2411,13 @@ fn lower_polymorphic_function<Expression, Lower>(
                         Lower::lower(expression, cursor, graph, context)
                             .map(|flow| flow.map(graph::DraftTupleFunction::new))
                     },
-                    |tail, context| context.tuple_function_function_id(tail),
+                    |tail, context| {
+                        lower_call_target(
+                            Lower::function_target(tail),
+                            context,
+                            |function, context| context.tuple_function_function_id(function),
+                        )
+                    },
                 );
                 let graph = typed_function_return(function, graph, context);
                 functions
@@ -2071,7 +2433,15 @@ fn lower_polymorphic_function<Expression, Lower>(
                         Lower::lower(expression, cursor, graph, context)
                             .map(|flow| flow.map(graph::DraftListFunction::new))
                     },
-                    |tail, context| context.list_function_function_id(tail, function, &item),
+                    |tail, context| {
+                        lower_call_target(
+                            Lower::function_target(tail),
+                            context,
+                            |target, context| {
+                                context.list_function_function_id(target, function, &item)
+                            },
+                        )
+                    },
                 );
                 let graph = typed_function_return(function, graph, context);
                 push_list_function_function(functions, index, &item, lowered_function(key, graph));
@@ -2088,9 +2458,15 @@ fn lower_polymorphic_function<Expression, Lower>(
                             .map(|flow| flow.map(graph::DraftFunctionFunction::new))
                     },
                     |tail, context| {
-                        context
-                            .function_function_function_id(tail, type_.clone())
-                            .map(|function| function.index())
+                        lower_call_target(
+                            Lower::function_target(tail),
+                            context,
+                            |function, context| {
+                                context
+                                    .function_function_function_id(function, type_.clone())
+                                    .map(|function| function.index())
+                            },
+                        )
                     },
                 );
                 let shape = context.lower_concrete_function_shape(function);

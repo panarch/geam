@@ -2,7 +2,7 @@ use super::{
     BoolExpr, CallArg, CustomFieldAccess, FloatExpr, GenericFunctionExpr, GenericListExpr, IntExpr,
     PanicExpr, StringExpr, TupleExpr,
 };
-use crate::plan::{FunctionInstantiation, GenericLocal, Step, TypeParameterId};
+use crate::plan::{FunctionInstantiation, GenericLocal, HostCallSite, Step, TypeParameterId};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -21,10 +21,12 @@ pub(crate) enum GenericExprKind {
     Call {
         function: FunctionInstantiation,
         args: Vec<CallArg>,
+        site: HostCallSite,
     },
     FunctionCall {
         function: Box<GenericFunctionExpr>,
         args: Vec<CallArg>,
+        site: HostCallSite,
     },
     TupleIndex {
         tuple: Box<TupleExpr>,
@@ -70,24 +72,48 @@ impl GenericExpr {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn call(
         parameter: TypeParameterId,
         function: FunctionInstantiation,
         args: Vec<CallArg>,
     ) -> Self {
+        Self::call_at(parameter, function, args, HostCallSite::unknown())
+    }
+
+    pub(crate) fn call_at(
+        parameter: TypeParameterId,
+        function: FunctionInstantiation,
+        args: Vec<CallArg>,
+        site: HostCallSite,
+    ) -> Self {
         Self {
             parameter,
-            kind: GenericExprKind::Call { function, args },
+            kind: GenericExprKind::Call {
+                function,
+                args,
+                site,
+            },
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn function_call(function: GenericFunctionExpr, args: Vec<CallArg>) -> Self {
+        Self::function_call_at(function, args, HostCallSite::unknown())
+    }
+
+    pub(crate) fn function_call_at(
+        function: GenericFunctionExpr,
+        args: Vec<CallArg>,
+        site: HostCallSite,
+    ) -> Self {
         let parameter = function.return_parameter();
         Self {
             parameter,
             kind: GenericExprKind::FunctionCall {
                 function: Box::new(function),
                 args,
+                site,
             },
         }
     }

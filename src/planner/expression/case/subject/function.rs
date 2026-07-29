@@ -360,11 +360,12 @@ mod tests {
     };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
     use crate::planner::dsl::{
-        bit_array_function_ref, bool_function_ref, call_int_function, float_function_ref, function,
-        function_function_ref, int, int_function_call_arg, int_function_ref, int_return_block,
-        int_return_expr, let_bool_function_step, let_int_function_step, let_nil_function_step,
-        let_string_function_step, list_function_ref, local_int, local_int_function, module,
-        nil_function_ref, string_function_ref, tuple_function_ref, utf_codepoint_function_ref,
+        bit_array_function_ref, bool_function_ref, call_int_function_at, float_function_ref,
+        function, function_function_ref, host_call_site, int, int_function_call_arg,
+        int_function_ref, int_return_block, int_return_expr, let_bool_function_step,
+        let_int_function_step, let_nil_function_step, let_string_function_step, list_function_ref,
+        local_int, local_int_function, module, nil_function_ref, string_function_ref,
+        tuple_function_ref, utf_codepoint_function_ref,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{dummy_span, expect_plan_error};
@@ -375,8 +376,7 @@ mod tests {
 
     #[test]
     fn plan_function_subject_binds_internal_subject_once() {
-        let actual = plan_module(crate::planner::support::compile(
-            r#"
+        let source = r#"
 fn add_one(value: Int) {
   value + 1
 }
@@ -386,9 +386,9 @@ pub fn main() {
     f -> f(41)
   }
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual =
+            plan_module(crate::planner::support::compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
@@ -405,9 +405,10 @@ pub fn main() {
                             "f",
                             local_int_function(0, "<case:int_function:0>", [ValueType::Int]),
                         )],
-                        int_return_expr(call_int_function(
+                        int_return_expr(call_int_function_at(
                             local_int_function(1, "f", [ValueType::Int]),
                             [int_function_call_arg(int(41))],
+                            host_call_site(source, "main", "f(41)"),
                         )),
                     ),
                 ),
@@ -420,8 +421,7 @@ pub fn main() {
 
     #[test]
     fn plan_function_subject_alias_binds_inner_then_alias_after_single_subject_eval() {
-        let actual = plan_module(crate::planner::support::compile(
-            r#"
+        let source = r#"
 fn add_one(value: Int) {
   value + 1
 }
@@ -431,9 +431,9 @@ pub fn main() {
     f as alias -> alias(41)
   }
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual =
+            plan_module(crate::planner::support::compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
@@ -457,9 +457,10 @@ pub fn main() {
                                 local_int_function(0, "<case:int_function:0>", [ValueType::Int]),
                             ),
                         ],
-                        int_return_expr(call_int_function(
+                        int_return_expr(call_int_function_at(
                             local_int_function(2, "alias", [ValueType::Int]),
                             [int_function_call_arg(int(41))],
+                            host_call_site(source, "main", "alias(41)"),
                         )),
                     ),
                 ),

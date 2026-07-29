@@ -1,4 +1,5 @@
 mod diagnostic;
+mod host;
 mod invariant;
 mod panic;
 
@@ -6,10 +7,10 @@ use crate::plan::{PanicSite, SourceContext, SourceSpan};
 use crate::runtime::Value;
 use ecow::EcoString;
 
+pub(crate) use self::host::HostCallOrigin;
+pub use self::host::{HostError, HostLocation, HostOrigin};
 pub use self::invariant::InvariantError;
 pub use self::panic::{BitArraySegmentPanicReason, Panic, PanicDetails, PanicKind, PanicMessage};
-
-pub(crate) type ExecutionResult<T> = Result<T, ExecutionError>;
 
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum ExecutionError {
@@ -17,9 +18,45 @@ pub enum ExecutionError {
     Panic(Panic),
     #[error("{0}")]
     Invariant(InvariantError),
+    #[error("{0}")]
+    Host(Box<HostError>),
 }
 
+pub(crate) type ExecutionResult<T> = Result<T, ExecutionError>;
+
 impl ExecutionError {
+    pub(crate) fn from_host_call(
+        function: &crate::plan::execution::host::HostedFunctionMetadata,
+        site: crate::plan::HostCallSite,
+        source_context: Option<&SourceContext>,
+        failure: crate::HostFailure,
+    ) -> Self {
+        Self::Host(Box::new(HostError::new(
+            function.package().clone(),
+            function.module().clone(),
+            function.name().clone(),
+            function.signature().clone(),
+            failure,
+            site,
+            source_context,
+        )))
+    }
+
+    pub(crate) fn from_host_origin(
+        function: &crate::plan::execution::host::HostedFunctionMetadata,
+        caller: HostOrigin,
+        failure: crate::HostFailure,
+    ) -> Self {
+        Self::Host(Box::new(HostError::new_from_host(
+            function.package().clone(),
+            function.module().clone(),
+            function.name().clone(),
+            function.signature().clone(),
+            failure,
+            caller,
+        )))
+    }
+
     pub(crate) fn source_panic(
         source_context: Option<&SourceContext>,
         kind: PanicKind,

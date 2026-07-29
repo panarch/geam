@@ -242,7 +242,7 @@ mod tests {
         ValueType,
     };
     use crate::planner::dsl::{
-        bool_, bool_return_block, bool_return_bool_case, bool_return_expr, call_bool, function,
+        bool_, bool_return_block, bool_return_bool_case, bool_return_expr, call_bool_at, function,
         function_ref, int, int_return_block, int_return_bool_case, int_return_expr, let_bool_step,
         list, list_return_bool_case, list_return_expr, local_bool, module, nil,
         nil_return_bool_case, nil_return_expr, return_list, string, string_return_bool_case,
@@ -542,8 +542,7 @@ pub fn main() {
 
     #[test]
     fn plan_bool_case_function_call_subject() {
-        let actual = plan_module(crate::planner::support::compile(
-            r#"
+        let source = r#"
 fn flag() {
   True
 }
@@ -554,15 +553,19 @@ pub fn main() {
     False -> 0
   }
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual =
+            plan_module(crate::planner::support::compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
                 int_return_bool_case(
-                    call_bool(1, []),
+                    call_bool_at(
+                        1,
+                        [],
+                        crate::planner::dsl::host_call_site(source, "main", "flag()"),
+                    ),
                     int_return_expr(int(1)),
                     int_return_expr(int(0)),
                 ),

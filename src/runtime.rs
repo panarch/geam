@@ -4,14 +4,15 @@ mod error;
 mod evaluated;
 mod function;
 mod graph;
+mod host;
 mod materialize;
 mod state;
 mod value;
 
 pub use echo::{EchoLocation, EchoOutput, EchoSink};
 pub use error::{
-    BitArraySegmentPanicReason, ExecutionError, InvariantError, Panic, PanicDetails, PanicKind,
-    PanicMessage,
+    BitArraySegmentPanicReason, ExecutionError, HostError, HostLocation, HostOrigin,
+    InvariantError, Panic, PanicDetails, PanicKind, PanicMessage,
 };
 pub(in crate::runtime) use evaluated::{
     EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
@@ -34,87 +35,266 @@ pub use value::{
 };
 
 use crate::plan::execution::ExecutionPlan;
-use crate::plan::execution::function::RuntimeFunctionId;
+use crate::plan::execution::function::{
+    ExecutionFunctionBody, ExecutionHostTarget, FunctionBodyOwner, RuntimeFunctionId,
+};
+use crate::plan::execution::graph::ParamLocal;
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
+use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::graph::RetainedValues;
-use crate::runtime::state::RuntimeState;
+use crate::runtime::state::{RuntimeState, RuntimeStateFor};
 
 pub(in crate::runtime) trait ExecutableRuntimePlan:
-    RuntimeExecutionPlan<
-        IntFunction: function::RuntimeIntFunction<Self>,
-        BoolFunction: function::RuntimeBoolFunction<Self>,
-    >
+    RuntimeExecutionPlan
 {
+    type RuntimeHost<'run>: state::RuntimeHostState<State = Self::RunState>
+    where
+        Self: 'run;
+
+    fn call_host<Body>(
+        &self,
+        state: &mut RuntimeStateFor<'_, Self>,
+        origin: HostCallOrigin,
+        target: &ExecutionHostTarget<Self::Profile, Body>,
+        inputs: RetainedValues,
+    ) -> ExecutionResult<<<Body as FunctionBodyOwner>::Return as graph::GraphValue>::Evaluated>
+    where
+        Body: ExecutionFunctionBody,
+        Body::Return: graph::GraphValue;
+
+    fn host_parameters<Body>(
+        &self,
+        target: &ExecutionHostTarget<Self::Profile, Body>,
+    ) -> &[ParamLocal]
+    where
+        Body: ExecutionFunctionBody;
 }
 
-impl<Plan> ExecutableRuntimePlan for Plan
-where
-    Plan: RuntimeExecutionPlan,
-    Plan::IntFunction: function::RuntimeIntFunction<Plan>,
-    Plan::BoolFunction: function::RuntimeBoolFunction<Plan>,
+impl ExecutableRuntimePlan for ExecutionPlan {
+    type RuntimeHost<'run> = ();
+
+    fn call_host<Body>(
+        &self,
+        _state: &mut RuntimeStateFor<'_, Self>,
+        _origin: HostCallOrigin,
+        target: &ExecutionHostTarget<Self::Profile, Body>,
+        _inputs: RetainedValues,
+    ) -> ExecutionResult<<<Body as FunctionBodyOwner>::Return as graph::GraphValue>::Evaluated>
+    where
+        Body: ExecutionFunctionBody,
+        Body::Return: graph::GraphValue,
+    {
+        match *target {}
+    }
+
+    fn host_parameters<Body>(
+        &self,
+        target: &ExecutionHostTarget<Self::Profile, Body>,
+    ) -> &[ParamLocal]
+    where
+        Body: ExecutionFunctionBody,
+    {
+        match *target {}
+    }
+}
+
+impl<Profile: crate::HostProfile> ExecutableRuntimePlan
+    for crate::plan::execution::HostedExecution<Profile>
 {
+    type RuntimeHost<'run>
+        = &'run mut Profile::RunState
+    where
+        Self: 'run;
+
+    fn call_host<Body>(
+        &self,
+        state: &mut RuntimeStateFor<'_, Self>,
+        origin: HostCallOrigin,
+        target: &ExecutionHostTarget<Self::Profile, Body>,
+        inputs: RetainedValues,
+    ) -> ExecutionResult<<<Body as FunctionBodyOwner>::Return as graph::GraphValue>::Evaluated>
+    where
+        Body: ExecutionFunctionBody,
+        Body::Return: graph::GraphValue,
+    {
+        match target {
+            crate::plan::execution::host::HostedFunctionTarget::Value(target) => {
+                invoke_host_value(self, state, origin, target, inputs)
+            }
+            crate::plan::execution::host::HostedFunctionTarget::Never(target) => {
+                invoke_host_never(self, state, origin, *target, inputs).map(|never| match never {})
+            }
+        }
+    }
+
+    fn host_parameters<Body>(
+        &self,
+        target: &ExecutionHostTarget<Self::Profile, Body>,
+    ) -> &[ParamLocal]
+    where
+        Body: ExecutionFunctionBody,
+    {
+        match target {
+            crate::plan::execution::host::HostedFunctionTarget::Value(target) => {
+                self.host_value_function(target).parameters()
+            }
+            crate::plan::execution::host::HostedFunctionTarget::Never(target) => {
+                self.host_never_function(*target).parameters()
+            }
+        }
+    }
+}
+
+fn invoke_host_value<'run, Profile, Body>(
+    plan: &crate::plan::execution::HostedExecution<Profile>,
+    state: &mut RuntimeStateFor<'run, crate::plan::execution::HostedExecution<Profile>>,
+    origin: HostCallOrigin,
+    target: &crate::plan::execution::host::HostFunctionId<Body>,
+    inputs: RetainedValues,
+) -> ExecutionResult<<<Body as FunctionBodyOwner>::Return as graph::GraphValue>::Evaluated>
+where
+    Profile: crate::HostProfile,
+    Body: ExecutionFunctionBody,
+    Body::Return: graph::GraphValue,
+    crate::plan::execution::HostedExecution<Profile>: 'run,
+{
+    let function = plan.host_value_function(target);
+    let mut call = host::RuntimeHostCall::new(plan, state, function, inputs);
+    match function.implementation().call(&mut call) {
+        Ok(returned) => Ok(call.finish(returned, target.return_())),
+        Err(error) => {
+            drop(call);
+            state.values_mut().drain_releases();
+            Err(host_call_error(plan, origin, function.metadata(), error))
+        }
+    }
+}
+
+fn invoke_host_never<'run, Profile>(
+    plan: &crate::plan::execution::HostedExecution<Profile>,
+    state: &mut RuntimeStateFor<'run, crate::plan::execution::HostedExecution<Profile>>,
+    origin: HostCallOrigin,
+    target: crate::plan::execution::host::HostNeverFunctionId,
+    inputs: RetainedValues,
+) -> ExecutionResult<std::convert::Infallible>
+where
+    Profile: crate::HostProfile,
+    crate::plan::execution::HostedExecution<Profile>: 'run,
+{
+    let function = plan.host_never_function(target);
+    let mut call = host::RuntimeHostCall::new(plan, state, function, inputs);
+    match function.implementation().call(&mut call) {
+        Ok(never) => match never {},
+        Err(error) => {
+            drop(call);
+            state.values_mut().drain_releases();
+            Err(host_call_error(plan, origin, function.metadata(), error))
+        }
+    }
+}
+
+fn host_call_error<Profile: crate::HostProfile>(
+    plan: &crate::plan::execution::HostedExecution<Profile>,
+    origin: HostCallOrigin,
+    function: &crate::plan::execution::host::HostedFunctionMetadata,
+    error: crate::host::HostCallError,
+) -> ExecutionError {
+    match error.into_kind() {
+        crate::host::HostCallErrorKind::Nested(error) => error,
+        crate::host::HostCallErrorKind::Failure(failure) => {
+            match origin.into_source_site(function.site()) {
+                Ok(site) => ExecutionError::from_host_call(
+                    function,
+                    site.clone(),
+                    plan.source_context_for(site.module()),
+                    failure,
+                ),
+                Err(caller) => ExecutionError::from_host_origin(function, caller, failure),
+            }
+        }
+    }
 }
 
 pub fn run_main(plan: &ExecutionPlan, echo: &mut dyn EchoSink) -> Result<Value, ExecutionError> {
-    run_program(plan, echo)
-}
-
-pub(crate) fn run_hosted_main(
-    plan: &crate::plan::execution::HostedExecution,
-    echo: &mut dyn EchoSink,
-) -> Result<Value, ExecutionError> {
-    run_program(plan, echo)
-}
-
-fn run_program(
-    plan: &impl ExecutableRuntimePlan,
-    echo: &mut dyn EchoSink,
-) -> Result<Value, ExecutionError> {
     let mut state = RuntimeState::new(echo);
+    run_program(plan, &mut state)
+}
+
+pub(crate) fn run_hosted_main<Profile: crate::HostProfile>(
+    plan: &crate::plan::execution::HostedExecution<Profile>,
+    host: &mut Profile::RunState,
+    echo: &mut dyn EchoSink,
+) -> Result<Value, ExecutionError> {
+    let mut state = RuntimeState::with_host(echo, host);
+    run_program(plan, &mut state)
+}
+
+fn run_program<Plan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
+) -> Result<Value, ExecutionError>
+where
+    Plan: ExecutableRuntimePlan,
+{
     let inputs = RetainedValues::empty();
     let value = match plan.main_runtime() {
         RuntimeFunctionId::Never(function) => {
-            return function::run_never(plan, &mut state, function, inputs)
-                .map(|never| match never {});
+            return function::run_never(
+                plan,
+                state,
+                function,
+                error::HostCallOrigin::Entry,
+                inputs,
+            )
+            .map(|never| match never {});
         }
         RuntimeFunctionId::Int(function) => {
-            function::run_int(plan, &mut state, function, inputs).map(EvaluatedValue::Int)
+            function::run_int(plan, state, function, error::HostCallOrigin::Entry, inputs)
+                .map(EvaluatedValue::Int)
         }
         RuntimeFunctionId::Float(function) => {
-            function::run_float(plan, &mut state, function, inputs).map(EvaluatedValue::Float)
+            function::run_float(plan, state, function, error::HostCallOrigin::Entry, inputs)
+                .map(EvaluatedValue::Float)
         }
         RuntimeFunctionId::String(function) => {
-            function::run_string(plan, &mut state, function, inputs).map(EvaluatedValue::String)
+            function::run_string(plan, state, function, error::HostCallOrigin::Entry, inputs)
+                .map(EvaluatedValue::String)
         }
         RuntimeFunctionId::BitArray(function) => {
-            function::run_bit_array(plan, &mut state, function, inputs)
+            function::run_bit_array(plan, state, function, error::HostCallOrigin::Entry, inputs)
                 .map(EvaluatedValue::BitArray)
         }
         RuntimeFunctionId::UtfCodepoint(function) => {
-            function::run_utf_codepoint(plan, &mut state, function, inputs)
+            function::run_utf_codepoint(plan, state, function, error::HostCallOrigin::Entry, inputs)
                 .map(EvaluatedValue::UtfCodepoint)
         }
         RuntimeFunctionId::Custom(function) => {
-            function::run_custom(plan, &mut state, function, inputs).map(EvaluatedValue::Custom)
+            function::run_custom(plan, state, function, error::HostCallOrigin::Entry, inputs)
+                .map(EvaluatedValue::Custom)
         }
         RuntimeFunctionId::Bool(function) => {
-            function::run_bool(plan, &mut state, function, inputs).map(EvaluatedValue::Bool)
+            function::run_bool(plan, state, function, error::HostCallOrigin::Entry, inputs)
+                .map(EvaluatedValue::Bool)
         }
         RuntimeFunctionId::Nil(function) => {
-            function::run_nil(plan, &mut state, function, inputs).map(|()| EvaluatedValue::Nil)
+            function::run_nil(plan, state, function, error::HostCallOrigin::Entry, inputs)
+                .map(|()| EvaluatedValue::Nil)
         }
         RuntimeFunctionId::Tuple { id, .. } => {
-            function::run_tuple(plan, &mut state, id, inputs).map(EvaluatedValue::Tuple)
+            function::run_tuple(plan, state, id, error::HostCallOrigin::Entry, inputs)
+                .map(EvaluatedValue::Tuple)
         }
         RuntimeFunctionId::List(function) => {
-            function::run_list(plan, &mut state, function, inputs).map(EvaluatedValue::List)
+            function::run_list(plan, state, function, error::HostCallOrigin::Entry, inputs)
+                .map(EvaluatedValue::from)
         }
         RuntimeFunctionId::Function { id, .. } => {
-            function::run_function(plan, &mut state, id, inputs).map(EvaluatedValue::Function)
+            function::run_function(plan, state, id, error::HostCallOrigin::Entry, inputs)
+                .map(EvaluatedValue::Function)
         }
     }?;
-    state.drain_releases();
-    Ok(materialize::value(plan, &state, value))
+    state.values_mut().drain_releases();
+    Ok(materialize::value(plan, state, value))
 }
 
 #[cfg(test)]

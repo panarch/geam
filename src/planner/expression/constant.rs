@@ -243,7 +243,7 @@ fn plan_var(
                 name,
                 external_erlang.is_some() || external_javascript.is_some(),
             )
-            .validate_external()?;
+            .validate_external(context)?;
             let function = context.module_function(&target)?;
 
             Ok(Expr::function(FunctionExpr::reference(
@@ -613,8 +613,7 @@ pub fn main() {
 
     #[test]
     fn plan_constant_function_value_call() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add_one(value: Int) {
   value + 1
 }
@@ -624,9 +623,8 @@ const f = add_one
 pub fn main() {
   f(41)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let function_shape = FunctionShape::new(vec![ValueShape::Int], ValueShape::Int);
         let signature = ConstantTemplateSignature::function(
             ConstantTemplateId::new(0),
@@ -654,9 +652,10 @@ pub fn main() {
             "main",
             function(
                 "main",
-                crate::plan::IntReturn::expr(crate::plan::IntExpr::function_call(
+                crate::plan::IntReturn::expr(crate::plan::IntExpr::function_call_at(
                     function_expr,
                     vec![int_function_call_arg(int(41))],
+                    crate::planner::dsl::host_call_site(source, "main", "f(41)"),
                 )),
             ),
             [function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value")],
@@ -741,6 +740,7 @@ pub fn main() {
                     ParamBinding::Named("value".into()),
                     None,
                 )],
+                definition_span: crate::plan::SourceSpan::new(0, 0),
             },
         )]);
         let mut anonymous_functions = AnonymousFunctions::default();

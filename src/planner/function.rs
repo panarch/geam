@@ -23,7 +23,7 @@ pub(super) struct PlannedFunctionBody {
 pub(super) fn plan_function(
     info: FunctionInfo,
     function: TypedFunction,
-    mut context: PlanContext<'_>,
+    context: PlanContext<'_>,
 ) -> Result<FunctionTemplate, PlanError> {
     let name = function_name(&function)?;
 
@@ -34,6 +34,24 @@ pub(super) fn plan_function(
         });
     }
 
+    plan_selected_function(info, function, context, name)
+}
+
+pub(super) fn plan_selected_external_fallback(
+    name: EcoString,
+    info: FunctionInfo,
+    function: TypedFunction,
+    context: PlanContext<'_>,
+) -> Result<FunctionTemplate, PlanError> {
+    plan_selected_function(info, function, context, name)
+}
+
+fn plan_selected_function(
+    info: FunctionInfo,
+    function: TypedFunction,
+    mut context: PlanContext<'_>,
+    name: EcoString,
+) -> Result<FunctionTemplate, PlanError> {
     context.set_current_function(name.clone());
     context.set_type_parameters(info.type_parameters.clone());
     let params = define_params(&info.params, &mut context)?;
@@ -155,25 +173,27 @@ mod tests {
     use crate::planner::dsl::{
         bool_, bool_arg, bool_function_ref, bool_function_return_block,
         bool_function_return_bool_case, bool_function_return_expr, bool_function_return_int_case,
-        bool_function_return_string_case, bool_function_return_tail_call, bool_return_tail_call,
-        call_bool, call_int, call_int_function, call_int_returning_function, function,
-        function_function_ref, function_function_return_block, function_function_return_expr,
+        bool_function_return_string_case, bool_function_return_tail_call_at,
+        bool_return_tail_call_at, call_bool_at, call_int_at, call_int_function_at,
+        call_int_returning_function_at, function, function_function_ref,
+        function_function_return_block, function_function_return_expr,
         function_function_return_int_case, function_function_return_string_case,
-        function_function_return_tail_call, int, int_arg, int_function_arg, int_function_call_arg,
-        int_function_closure, int_function_ref, int_function_return_block,
-        int_function_return_bool_case, int_function_return_expr, int_function_return_int_case,
-        int_function_return_string_case, int_function_return_tail_call, int_return_block,
-        int_return_bool_case, int_return_expr, int_return_int_case, int_return_tail_call,
-        let_int_function_step, let_int_step, local_bool, local_int, local_int_function, local_nil,
-        local_string, module, module_with_anonymous, nil, nil_arg, nil_function_ref,
-        nil_function_return_block, nil_function_return_bool_case, nil_function_return_expr,
-        nil_function_return_int_case, nil_function_return_string_case,
-        nil_function_return_tail_call, nil_return_tail_call, return_bool_function,
-        return_function_function, return_int_function, return_nil_function, return_string_function,
-        string, string_arg, string_function_ref, string_function_return_block,
-        string_function_return_bool_case, string_function_return_expr,
-        string_function_return_int_case, string_function_return_string_case,
-        string_function_return_tail_call, string_return_tail_call,
+        function_function_return_tail_call_at, host_call_site, host_call_site_in, int, int_arg,
+        int_function_arg, int_function_call_arg, int_function_closure, int_function_ref,
+        int_function_return_block, int_function_return_bool_case, int_function_return_expr,
+        int_function_return_int_case, int_function_return_string_case,
+        int_function_return_tail_call_at, int_return_block, int_return_bool_case, int_return_expr,
+        int_return_int_case, int_return_tail_call_at, let_int_function_step, let_int_step,
+        local_bool, local_int, local_int_function, local_nil, local_string, module,
+        module_with_anonymous, nil, nil_arg, nil_function_ref, nil_function_return_block,
+        nil_function_return_bool_case, nil_function_return_expr, nil_function_return_int_case,
+        nil_function_return_string_case, nil_function_return_tail_call_at, nil_return_tail_call_at,
+        return_bool_function, return_function_function, return_int_function, return_nil_function,
+        return_string_function, string, string_arg, string_function_ref,
+        string_function_return_block, string_function_return_bool_case,
+        string_function_return_expr, string_function_return_int_case,
+        string_function_return_string_case, string_function_return_tail_call_at,
+        string_return_tail_call_at,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, expect_plan_error};
@@ -183,8 +203,7 @@ mod tests {
 
     #[test]
     fn plan_final_direct_call_as_tail_call() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add(a: Int, b: Int) {
   a + b
 }
@@ -192,14 +211,17 @@ fn add(a: Int, b: Int) {
 pub fn main() {
   add(1, 2)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
-                int_return_tail_call(1, [int_arg(int(1)), int_arg(int(2))]),
+                int_return_tail_call_at(
+                    1,
+                    [int_arg(int(1)), int_arg(int(2))],
+                    host_call_site(source, "main", "add(1, 2)"),
+                ),
             ),
             [
                 function("add", local_int(0, "a").add_int(local_int(1, "b")))
@@ -213,8 +235,7 @@ pub fn main() {
 
     #[test]
     fn plan_block_case_branches_preserve_tail_call() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn count_down(n: Int, acc: Int) {
   {
     case n {
@@ -227,14 +248,17 @@ fn count_down(n: Int, acc: Int) {
 pub fn main() {
   count_down(1, 0)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
-                int_return_tail_call(1, [int_arg(int(1)), int_arg(int(0))]),
+                int_return_tail_call_at(
+                    1,
+                    [int_arg(int(1)), int_arg(int(0))],
+                    host_call_site(source, "main", "count_down(1, 0)"),
+                ),
             ),
             [function(
                 "count_down",
@@ -243,12 +267,13 @@ pub fn main() {
                     int_return_int_case(
                         local_int(0, "n"),
                         [(0, int_return_expr(local_int(1, "acc")))],
-                        int_return_tail_call(
+                        int_return_tail_call_at(
                             1,
                             [
                                 int_arg(local_int(0, "n").sub_int(int(1))),
                                 int_arg(local_int(1, "acc").add_int(int(1))),
                             ],
+                            host_call_site(source, "count_down", "count_down(n - 1, acc + 1)"),
                         ),
                     ),
                 ),
@@ -262,8 +287,7 @@ pub fn main() {
 
     #[test]
     fn plan_function_return_family_block_int_case_fallbacks_as_tail_calls() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn int_identity(value: Int) {
   value
 }
@@ -328,9 +352,8 @@ fn get_getter(n: Int) {
 pub fn main() {
   get_int(0)(1)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let int_to_int = function_type([ValueType::Int], ValueType::Int);
         let string_to_string = function_type([ValueType::String], ValueType::String);
         let bool_to_bool = function_type([ValueType::Bool], ValueType::Bool);
@@ -341,9 +364,15 @@ pub fn main() {
             "main",
             function(
                 "main",
-                call_int_function(
-                    call_int_returning_function(5, [int_arg(int(0))], int_to_int.clone()),
+                call_int_function_at(
+                    call_int_returning_function_at(
+                        5,
+                        [int_arg(int(0))],
+                        int_to_int.clone(),
+                        host_call_site_in(source, "main", "get_int(0)(1)", "get_int(0)"),
+                    ),
                     [int_function_call_arg(int(1))],
+                    host_call_site(source, "main", "get_int(0)(1)"),
                 ),
             ),
             [
@@ -366,10 +395,11 @@ pub fn main() {
                                         [LocalId::Int(IntLocalId(0))],
                                     )),
                                 )],
-                                int_function_return_tail_call(
+                                int_function_return_tail_call_at(
                                     5,
                                     int_to_int.clone(),
                                     [int_arg(local_int(0, "n").sub_int(int(1)))],
+                                    host_call_site(source, "get_int", "get_int(n - 1)"),
                                 ),
                             ),
                         ),
@@ -391,10 +421,11 @@ pub fn main() {
                                         [LocalId::String(StringLocalId(0))],
                                     )),
                                 )],
-                                string_function_return_tail_call(
+                                string_function_return_tail_call_at(
                                     6,
                                     string_to_string.clone(),
                                     [int_arg(local_int(0, "n").sub_int(int(1)))],
+                                    host_call_site(source, "get_string", "get_string(n - 1)"),
                                 ),
                             ),
                         ),
@@ -416,10 +447,11 @@ pub fn main() {
                                         [LocalId::Bool(BoolLocalId(0))],
                                     )),
                                 )],
-                                bool_function_return_tail_call(
+                                bool_function_return_tail_call_at(
                                     7,
                                     bool_to_bool.clone(),
                                     [int_arg(local_int(0, "n").sub_int(int(1)))],
+                                    host_call_site(source, "get_bool", "get_bool(n - 1)"),
                                 ),
                             ),
                         ),
@@ -441,10 +473,11 @@ pub fn main() {
                                         [LocalId::Nil(NilLocalId(0))],
                                     )),
                                 )],
-                                nil_function_return_tail_call(
+                                nil_function_return_tail_call_at(
                                     8,
                                     nil_to_nil.clone(),
                                     [int_arg(local_int(0, "n").sub_int(int(1)))],
+                                    host_call_site(source, "get_nil", "get_nil(n - 1)"),
                                 ),
                             ),
                         ),
@@ -465,10 +498,11 @@ pub fn main() {
                                     int_to_int.clone(),
                                 )),
                             )],
-                            function_function_return_tail_call(
+                            function_function_return_tail_call_at(
                                 9,
                                 int_to_int_function.clone(),
                                 [int_arg(local_int(0, "n").sub_int(int(1)))],
+                                host_call_site(source, "get_getter", "get_getter(n - 1)"),
                             ),
                         ),
                     )),
@@ -482,8 +516,7 @@ pub fn main() {
 
     #[test]
     fn plan_function_return_family_bool_case_branches() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn int_identity(value: Int) {
   value
 }
@@ -547,9 +580,8 @@ fn choose_nil(flag: Bool) {
 pub fn main() {
   choose_int(True)(1)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let int_to_int = function_type([ValueType::Int], ValueType::Int);
         let string_to_string = function_type([ValueType::String], ValueType::String);
         let bool_to_bool = function_type([ValueType::Bool], ValueType::Bool);
@@ -558,9 +590,20 @@ pub fn main() {
             "main",
             function(
                 "main",
-                call_int_function(
-                    call_int_returning_function(9, [bool_arg(bool_(true))], int_to_int.clone()),
+                call_int_function_at(
+                    call_int_returning_function_at(
+                        9,
+                        [bool_arg(bool_(true))],
+                        int_to_int.clone(),
+                        host_call_site_in(
+                            source,
+                            "main",
+                            "choose_int(True)(1)",
+                            "choose_int(True)",
+                        ),
+                    ),
                     [int_function_call_arg(int(1))],
+                    host_call_site(source, "main", "choose_int(True)(1)"),
                 ),
             ),
             [
@@ -657,8 +700,7 @@ pub fn main() {
 
     #[test]
     fn plan_function_return_family_string_case_branches() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn int_identity(value: Int) {
   value
 }
@@ -733,9 +775,8 @@ fn choose_getter(key: String) {
 pub fn main() {
   choose_int("one")(1)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let int_to_int = function_type([ValueType::Int], ValueType::Int);
         let string_to_string = function_type([ValueType::String], ValueType::String);
         let bool_to_bool = function_type([ValueType::Bool], ValueType::Bool);
@@ -744,9 +785,20 @@ pub fn main() {
             "main",
             function(
                 "main",
-                call_int_function(
-                    call_int_returning_function(9, [string_arg(string("one"))], int_to_int.clone()),
+                call_int_function_at(
+                    call_int_returning_function_at(
+                        9,
+                        [string_arg(string("one"))],
+                        int_to_int.clone(),
+                        host_call_site_in(
+                            source,
+                            "main",
+                            r#"choose_int("one")(1)"#,
+                            r#"choose_int("one")"#,
+                        ),
+                    ),
                     [int_function_call_arg(int(1))],
+                    host_call_site(source, "main", r#"choose_int("one")(1)"#),
                 ),
             ),
             [
@@ -886,8 +938,7 @@ pub fn main() {
 
     #[test]
     fn plan_bool_case_branches_as_tail_calls() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn positive(value: Int) {
   value
 }
@@ -906,12 +957,18 @@ fn choose(flag: Bool) {
 pub fn main() {
   choose(True)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
-            function("main", int_return_tail_call(3, [bool_arg(bool_(true))])),
+            function(
+                "main",
+                int_return_tail_call_at(
+                    3,
+                    [bool_arg(bool_(true))],
+                    host_call_site(source, "main", "choose(True)"),
+                ),
+            ),
             [
                 function("positive", local_int(0, "value")).param_int(0, "value"),
                 function("negative", int(0).sub_int(local_int(0, "value"))).param_int(0, "value"),
@@ -919,8 +976,16 @@ pub fn main() {
                     "choose",
                     int_return_bool_case(
                         local_bool(0, "flag"),
-                        int_return_tail_call(1, [int_arg(int(1))]),
-                        int_return_tail_call(2, [int_arg(int(1))]),
+                        int_return_tail_call_at(
+                            1,
+                            [int_arg(int(1))],
+                            host_call_site(source, "choose", "positive(1)"),
+                        ),
+                        int_return_tail_call_at(
+                            2,
+                            [int_arg(int(1))],
+                            host_call_site(source, "choose", "negative(1)"),
+                        ),
                     ),
                 )
                 .param_bool(0, "flag"),
@@ -939,8 +1004,7 @@ pub fn main() {
 
     #[test]
     fn plan_non_tail_direct_call_stays_expression_call() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add(a: Int, b: Int) {
   a + b
 }
@@ -948,14 +1012,18 @@ fn add(a: Int, b: Int) {
 pub fn main() {
   add(1, 2) + 3
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
-                call_int(1, [int_arg(int(1)), int_arg(int(2))]).add_int(int(3)),
+                call_int_at(
+                    1,
+                    [int_arg(int(1)), int_arg(int(2))],
+                    host_call_site(source, "main", "add(1, 2)"),
+                )
+                .add_int(int(3)),
             ),
             [
                 function("add", local_int(0, "a").add_int(local_int(1, "b")))
@@ -969,8 +1037,7 @@ pub fn main() {
 
     #[test]
     fn plan_call_argument_direct_call_stays_expression_call() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add(a: Int, b: Int) {
   a + b
 }
@@ -982,16 +1049,20 @@ fn identity(value: Int) {
 pub fn main() {
   identity(add(1, 2))
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
-                int_return_tail_call(
+                int_return_tail_call_at(
                     2,
-                    [int_arg(call_int(1, [int_arg(int(1)), int_arg(int(2))]))],
+                    [int_arg(call_int_at(
+                        1,
+                        [int_arg(int(1)), int_arg(int(2))],
+                        host_call_site(source, "main", "add(1, 2)"),
+                    ))],
+                    host_call_site(source, "main", "identity(add(1, 2))"),
                 ),
             ),
             [
@@ -1007,8 +1078,7 @@ pub fn main() {
 
     #[test]
     fn plan_expression_statement_direct_call_stays_expression_call() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add(a: Int, b: Int) {
   a + b
 }
@@ -1017,12 +1087,15 @@ pub fn main() {
   add(1, 2)
   3
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
-            function("main", int(3)).evaluate(call_int(1, [int_arg(int(1)), int_arg(int(2))])),
+            function("main", int(3)).evaluate(call_int_at(
+                1,
+                [int_arg(int(1)), int_arg(int(2))],
+                host_call_site(source, "main", "add(1, 2)"),
+            )),
             [
                 function("add", local_int(0, "a").add_int(local_int(1, "b")))
                     .param_int(0, "a")
@@ -1035,8 +1108,7 @@ pub fn main() {
 
     #[test]
     fn plan_let_value_direct_call_stays_expression_call() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add(a: Int, b: Int) {
   a + b
 }
@@ -1045,15 +1117,18 @@ pub fn main() {
   let value = add(1, 2)
   value
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function("main", local_int(0, "value")).let_int(
                 0,
                 "value",
-                call_int(1, [int_arg(int(1)), int_arg(int(2))]),
+                call_int_at(
+                    1,
+                    [int_arg(int(1)), int_arg(int(2))],
+                    host_call_site(source, "main", "add(1, 2)"),
+                ),
             ),
             [
                 function("add", local_int(0, "a").add_int(local_int(1, "b")))
@@ -1067,8 +1142,7 @@ pub fn main() {
 
     #[test]
     fn plan_short_circuit_rhs_direct_call_stays_expression_call() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn truth() {
   True
 }
@@ -1076,12 +1150,18 @@ fn truth() {
 pub fn main() {
   False && truth()
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
-            function("main", bool_(false).and_bool(call_bool(1, []))),
+            function(
+                "main",
+                bool_(false).and_bool(call_bool_at(
+                    1,
+                    [],
+                    host_call_site(source, "main", "truth()"),
+                )),
+            ),
             [function("truth", bool_(true))],
         );
 
@@ -1090,8 +1170,7 @@ pub fn main() {
 
     #[test]
     fn plan_final_function_value_call_stays_expression_call() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add(a: Int, b: Int) {
   a + b
 }
@@ -1100,16 +1179,16 @@ pub fn main() {
   let f = add
   f(1, 2)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
-                call_int_function(
+                call_int_function_at(
                     local_int_function(0, "f", [ValueType::Int, ValueType::Int]),
                     [int_function_call_arg(int(1)), int_function_call_arg(int(2))],
+                    host_call_site(source, "main", "f(1, 2)"),
                 ),
             )
             .step(let_int_function_step(
@@ -1132,20 +1211,22 @@ pub fn main() {
 
     #[test]
     fn plan_shadowed_current_function_local_call_stays_function_value_call() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 pub fn main() {
   let main = fn() { 0 }
   main()
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module_with_anonymous(
             "main",
             function(
                 "main",
-                call_int_function(local_int_function(0, "main", Vec::<ValueType>::new()), []),
+                call_int_function_at(
+                    local_int_function(0, "main", Vec::<ValueType>::new()),
+                    [],
+                    host_call_site(source, "main", "main()"),
+                ),
             )
             .step(let_int_function_step(
                 0,
@@ -1161,8 +1242,7 @@ pub fn main() {
 
     #[test]
     fn plan_shadowed_current_function_argument_call_stays_function_value_call() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn one() {
   1
 }
@@ -1174,23 +1254,27 @@ fn run(run: fn() -> Int) {
 pub fn main() {
   run(one)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
-                int_return_tail_call(
+                int_return_tail_call_at(
                     2,
                     [int_function_arg(int_function_ref(1, Vec::<LocalId>::new()))],
+                    host_call_site(source, "main", "run(one)"),
                 ),
             ),
             [
                 function("one", int(1)),
                 function(
                     "run",
-                    call_int_function(local_int_function(0, "run", Vec::<ValueType>::new()), []),
+                    call_int_function_at(
+                        local_int_function(0, "run", Vec::<ValueType>::new()),
+                        [],
+                        host_call_site(source, "run", "run()"),
+                    ),
                 )
                 .param_int_function(0, "run", Vec::<ValueType>::new()),
             ],
@@ -1201,8 +1285,7 @@ pub fn main() {
 
     #[test]
     fn plan_final_pipeline_direct_call_preserves_tail_call() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn count_down(n: Int, acc: Int) {
   case n {
     0 -> acc
@@ -1213,16 +1296,19 @@ fn count_down(n: Int, acc: Int) {
 pub fn main() {
   1 |> count_down(0)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
                 int_return_block(
                     [let_int_step(0, "_pipe", int(1))],
-                    int_return_tail_call(1, [int_arg(local_int(0, "_pipe")), int_arg(int(0))]),
+                    int_return_tail_call_at(
+                        1,
+                        [int_arg(local_int(0, "_pipe")), int_arg(int(0))],
+                        host_call_site(source, "main", "count_down(0)"),
+                    ),
                 ),
             ),
             [function(
@@ -1230,12 +1316,13 @@ pub fn main() {
                 int_return_int_case(
                     local_int(0, "n"),
                     [(0, int_return_expr(local_int(1, "acc")))],
-                    int_return_tail_call(
+                    int_return_tail_call_at(
                         1,
                         [
                             int_arg(local_int(0, "n").sub_int(int(1))),
                             int_arg(local_int(1, "acc").add_int(int(1))),
                         ],
+                        host_call_site(source, "count_down", "count_down(n - 1, acc + 1)"),
                     ),
                 ),
             )
@@ -1271,8 +1358,7 @@ pub fn main() {
 
     #[test]
     fn plan_main_as_local_function_call() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 pub fn main() {
   1
 }
@@ -1280,13 +1366,15 @@ pub fn main() {
 pub fn helper() {
   main()
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function("main", int(1)),
-            [function("helper", int_return_tail_call(0, []))],
+            [function(
+                "helper",
+                int_return_tail_call_at(0, [], host_call_site(source, "helper", "main()")),
+            )],
         );
 
         assert_eq!(actual, expected);
@@ -1294,8 +1382,7 @@ pub fn helper() {
 
     #[test]
     fn plan_typed_local_function_calls() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 pub fn string_id(value: String) {
   value
 }
@@ -1319,14 +1406,17 @@ pub fn bool_main() {
 pub fn nil_main() {
   nil_id(Nil)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
-                string_return_tail_call(1, [string_arg(string("geam"))]),
+                string_return_tail_call_at(
+                    1,
+                    [string_arg(string("geam"))],
+                    host_call_site(source, "main", "string_id(\"geam\")"),
+                ),
             ),
             [
                 function("string_id", local_string(0, "value")).param_string(0, "value"),
@@ -1334,9 +1424,20 @@ pub fn nil_main() {
                 function("nil_id", local_nil(0, "value")).param_nil(0, "value"),
                 function(
                     "bool_main",
-                    bool_return_tail_call(2, [bool_arg(bool_(true))]),
+                    bool_return_tail_call_at(
+                        2,
+                        [bool_arg(bool_(true))],
+                        host_call_site(source, "bool_main", "bool_id(True)"),
+                    ),
                 ),
-                function("nil_main", nil_return_tail_call(3, [nil_arg(nil())])),
+                function(
+                    "nil_main",
+                    nil_return_tail_call_at(
+                        3,
+                        [nil_arg(nil())],
+                        host_call_site(source, "nil_main", "nil_id(Nil)"),
+                    ),
+                ),
             ],
         );
 
@@ -1345,8 +1446,7 @@ pub fn nil_main() {
 
     #[test]
     fn plan_labelled_discard_argument_preserves_param_slot() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn pick(ignored _: Int, value value: Int) {
   value
 }
@@ -1354,14 +1454,17 @@ fn pick(ignored _: Int, value value: Int) {
 pub fn main() {
   pick(value: 2, ignored: 1)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
-                int_return_tail_call(1, [int_arg(int(1)), int_arg(int(2))]),
+                int_return_tail_call_at(
+                    1,
+                    [int_arg(int(1)), int_arg(int(2))],
+                    host_call_site(source, "main", "pick(value: 2, ignored: 1)"),
+                ),
             ),
             [function("pick", local_int(1, "value"))
                 .discard_int_param(0)
@@ -1440,6 +1543,7 @@ pub fn main() -> Int
             type_parameters: Default::default(),
             return_shape: crate::plan::ValueShape::Int,
             params: Vec::new(),
+            definition_span: crate::plan::SourceSpan::new(0, 0),
         };
         let mut anonymous = crate::planner::context::AnonymousFunctions::default();
         let module_name = "main".into();
@@ -1485,6 +1589,7 @@ pub fn main() -> Int
             type_parameters: Default::default(),
             return_shape: crate::plan::ValueShape::Int,
             params: vec![invalid_param.clone()],
+            definition_span: crate::plan::SourceSpan::new(0, 0),
         };
         let mut anonymous = crate::planner::context::AnonymousFunctions::default();
         let module_name = "main".into();

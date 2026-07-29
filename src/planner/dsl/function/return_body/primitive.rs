@@ -89,6 +89,21 @@ pub(crate) fn int_return_tail_call(
     )
 }
 
+pub(crate) fn int_return_tail_call_at(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+    site: crate::plan::HostCallSite,
+) -> IntReturn {
+    let args = args.into_iter().collect::<Vec<_>>();
+    ReturnBody::tail_call(
+        crate::plan::FunctionCallTarget::new(
+            tail_call_instantiation(function, &args, ValueShape::Int),
+            site,
+        ),
+        args,
+    )
+}
+
 pub(crate) fn int_return_bool_case(
     subject: Bool,
     true_: IntReturn,
@@ -149,6 +164,21 @@ pub(crate) fn bool_return_tail_call(
     let args = args.into_iter().collect::<Vec<_>>();
     ReturnBody::tail_call(
         tail_call_instantiation(function, &args, ValueShape::Bool),
+        args,
+    )
+}
+
+pub(crate) fn bool_return_tail_call_at(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+    site: crate::plan::HostCallSite,
+) -> BoolReturn {
+    let args = args.into_iter().collect::<Vec<_>>();
+    ReturnBody::tail_call(
+        crate::plan::FunctionCallTarget::new(
+            tail_call_instantiation(function, &args, ValueShape::Bool),
+            site,
+        ),
         args,
     )
 }
@@ -217,6 +247,21 @@ pub(crate) fn string_return_tail_call(
     let args = args.into_iter().collect::<Vec<_>>();
     ReturnBody::tail_call(
         tail_call_instantiation(function, &args, ValueShape::String),
+        args,
+    )
+}
+
+pub(crate) fn string_return_tail_call_at(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+    site: crate::plan::HostCallSite,
+) -> StringReturn {
+    let args = args.into_iter().collect::<Vec<_>>();
+    ReturnBody::tail_call(
+        crate::plan::FunctionCallTarget::new(
+            tail_call_instantiation(function, &args, ValueShape::String),
+            site,
+        ),
         args,
     )
 }
@@ -432,6 +477,21 @@ pub(crate) fn nil_return_tail_call(
     let args = args.into_iter().collect::<Vec<_>>();
     ReturnBody::tail_call(
         tail_call_instantiation(function, &args, ValueShape::Nil),
+        args,
+    )
+}
+
+pub(crate) fn nil_return_tail_call_at(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+    site: crate::plan::HostCallSite,
+) -> NilReturn {
+    let args = args.into_iter().collect::<Vec<_>>();
+    ReturnBody::tail_call(
+        crate::plan::FunctionCallTarget::new(
+            tail_call_instantiation(function, &args, ValueShape::Nil),
+            site,
+        ),
         args,
     )
 }

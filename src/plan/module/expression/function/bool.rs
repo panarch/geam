@@ -29,11 +29,13 @@ pub(crate) enum BoolFunctionExprKind {
         function: FunctionInstantiation,
         args: Vec<crate::plan::CallArg>,
         type_: FunctionType,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: Box<FunctionFunctionExpr>,
         args: Vec<crate::plan::CallArg>,
         type_: FunctionType,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: Box<TupleExpr>,
@@ -111,10 +113,20 @@ impl BoolFunctionExpr {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn call(
         function: FunctionInstantiation,
         args: Vec<crate::plan::CallArg>,
         type_: FunctionType,
+    ) -> Self {
+        Self::call_at(function, args, type_, crate::plan::HostCallSite::unknown())
+    }
+
+    pub(crate) fn call_at(
+        function: FunctionInstantiation,
+        args: Vec<crate::plan::CallArg>,
+        type_: FunctionType,
+        site: crate::plan::HostCallSite,
     ) -> Self {
         Self {
             type_: type_.clone(),
@@ -122,14 +134,25 @@ impl BoolFunctionExpr {
                 function,
                 args,
                 type_,
+                site,
             },
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn function_call(
         function: FunctionFunctionExpr,
         args: Vec<crate::plan::CallArg>,
         type_: FunctionType,
+    ) -> Self {
+        Self::function_call_at(function, args, type_, crate::plan::HostCallSite::unknown())
+    }
+
+    pub(crate) fn function_call_at(
+        function: FunctionFunctionExpr,
+        args: Vec<crate::plan::CallArg>,
+        type_: FunctionType,
+        site: crate::plan::HostCallSite,
     ) -> Self {
         Self {
             type_: type_.clone(),
@@ -137,6 +160,7 @@ impl BoolFunctionExpr {
                 function: Box::new(function),
                 args,
                 type_,
+                site,
             },
         }
     }
@@ -301,6 +325,7 @@ mod tests {
                 function: function_returning_function_instantiation(),
                 args: Vec::new(),
                 type_: function_type(),
+                site: crate::plan::HostCallSite::unknown(),
             },
         );
         assert_eq!(
@@ -310,6 +335,7 @@ mod tests {
                 function: Box::new(function_function_value()),
                 args: Vec::new(),
                 type_: function_type(),
+                site: crate::plan::HostCallSite::unknown(),
             },
         );
         assert_eq!(

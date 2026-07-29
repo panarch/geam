@@ -20,6 +20,19 @@ pub(crate) fn call_int(function: usize, args: impl IntoIterator<Item = CallArg>)
     ))
 }
 
+pub(crate) fn call_int_at(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+    site: crate::plan::HostCallSite,
+) -> Int {
+    let args = args.into_iter().collect::<Vec<_>>();
+    Int(IntExpr::call_at(
+        instantiation(function, &args, ValueShape::Int),
+        args,
+        site,
+    ))
+}
+
 pub(crate) fn call_string(function: usize, args: impl IntoIterator<Item = CallArg>) -> String {
     let args = args.into_iter().collect::<Vec<_>>();
     String(StringExpr::call(
@@ -36,11 +49,37 @@ pub(crate) fn call_float(function: usize, args: impl IntoIterator<Item = CallArg
     ))
 }
 
+pub(crate) fn call_float_at(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+    site: crate::plan::HostCallSite,
+) -> Float {
+    let args = args.into_iter().collect::<Vec<_>>();
+    Float(FloatExpr::call_at(
+        instantiation(function, &args, ValueShape::Float),
+        args,
+        site,
+    ))
+}
+
 pub(crate) fn call_bool(function: usize, args: impl IntoIterator<Item = CallArg>) -> Bool {
     let args = args.into_iter().collect::<Vec<_>>();
     Bool(BoolExpr::call(
         instantiation(function, &args, ValueShape::Bool),
         args,
+    ))
+}
+
+pub(crate) fn call_bool_at(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+    site: crate::plan::HostCallSite,
+) -> Bool {
+    let args = args.into_iter().collect::<Vec<_>>();
+    Bool(BoolExpr::call_at(
+        instantiation(function, &args, ValueShape::Bool),
+        args,
+        site,
     ))
 }
 
@@ -69,13 +108,33 @@ pub(crate) fn call_list(
     ))
 }
 
-pub(crate) fn call_int_returning_function(
+pub(crate) fn call_list_at(
+    function: usize,
+    args: impl IntoIterator<Item = CallArg>,
+    element_type: ValueType,
+    site: crate::plan::HostCallSite,
+) -> List {
+    let args = args.into_iter().collect::<Vec<_>>();
+    List(ListExpr::call_at(
+        instantiation(
+            function,
+            &args,
+            ValueShape::List(Box::new(ValueShape::from_value_type(element_type.clone()))),
+        ),
+        args,
+        ValueShape::from_value_type(element_type),
+        site,
+    ))
+}
+
+pub(crate) fn call_int_returning_function_at(
     function: usize,
     args: impl IntoIterator<Item = CallArg>,
     return_type: FunctionType,
+    site: crate::plan::HostCallSite,
 ) -> IntFunction {
     let args = args.into_iter().collect::<Vec<_>>();
-    IntFunction(IntFunctionExpr::call(
+    IntFunction(IntFunctionExpr::call_at(
         instantiation(
             function,
             &args,
@@ -85,6 +144,7 @@ pub(crate) fn call_int_returning_function(
         ),
         args,
         return_type,
+        site,
     ))
 }
 
@@ -98,11 +158,23 @@ pub(crate) fn call_int_function(
     ))
 }
 
+pub(crate) fn call_int_function_at(
+    function: IntFunction,
+    args: impl IntoIterator<Item = CallArg>,
+    site: crate::plan::HostCallSite,
+) -> Int {
+    Int(IntExpr::function_call_at(
+        function.into(),
+        args.into_iter().collect(),
+        site,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        call_bool, call_float, call_int, call_int_function, call_int_returning_function, call_list,
-        call_nil, call_string, instantiation,
+        call_bool, call_float, call_int, call_int_function, call_int_returning_function_at,
+        call_list, call_list_at, call_nil, call_string, instantiation,
     };
     use crate::plan::{
         BoolExpr, FloatExpr, FunctionShape, FunctionType, IntExpr, IntFunctionExpr, ListExpr,
@@ -146,15 +218,40 @@ mod tests {
                 ValueShape::Int,
             ),
         );
+        let site = crate::plan::HostCallSite::new(
+            "main".into(),
+            "main".into(),
+            crate::plan::SourceSpan::new(1, 2),
+        );
+        assert_eq!(
+            call_list_at(5, [], ValueType::Int, site.clone()).0,
+            ListExpr::call_at(
+                instantiation(5, &[], ValueShape::List(Box::new(ValueShape::Int)),),
+                Vec::new(),
+                ValueShape::Int,
+                site,
+            ),
+        );
     }
 
     #[test]
     fn function_call_helpers_build_call_shapes() {
         let return_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
+        let site = crate::plan::HostCallSite::new(
+            "main".into(),
+            "main".into(),
+            crate::plan::SourceSpan::new(1, 2),
+        );
 
         assert_eq!(
-            call_int_returning_function(6, [int_arg(int(1))], return_type.clone()).0,
-            IntFunctionExpr::call(
+            call_int_returning_function_at(
+                6,
+                [int_arg(int(1))],
+                return_type.clone(),
+                site.clone(),
+            )
+            .0,
+            IntFunctionExpr::call_at(
                 instantiation(
                     6,
                     &[int_arg(int(1))],
@@ -164,6 +261,7 @@ mod tests {
                 ),
                 vec![int_arg(int(1))],
                 return_type,
+                site,
             ),
         );
         assert_eq!(

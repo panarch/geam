@@ -5,7 +5,7 @@ use crate::plan::{
 use crate::planner::context::FunctionInfo;
 use crate::planner::module::constant::ConstantSignatures;
 use ecow::EcoString;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::planner) enum ModuleConstantResolutionError {
@@ -22,6 +22,7 @@ pub(in crate::planner) struct ModuleRegistry {
     name: EcoString,
     custom_types: Vec<CustomTypeDefinition>,
     functions: HashMap<EcoString, FunctionInfo>,
+    executable_externals: HashSet<EcoString>,
     constants: ConstantSignatures,
 }
 
@@ -49,6 +50,18 @@ impl ProgramRegistry {
         name: &EcoString,
     ) -> Option<FunctionInfo> {
         self.modules[module.index()].functions.get(name).cloned()
+    }
+
+    pub(in crate::planner) fn executable_external(
+        &self,
+        module: &EcoString,
+        name: &EcoString,
+    ) -> bool {
+        self.module_id(module).is_some_and(|module| {
+            self.modules[module.index()]
+                .executable_externals
+                .contains(name)
+        })
     }
 
     pub(in crate::planner) fn constant_instantiation(
@@ -98,8 +111,17 @@ impl ModuleRegistry {
             name,
             custom_types,
             functions,
+            executable_externals: HashSet::new(),
             constants,
         }
+    }
+
+    pub(in crate::planner) fn with_executable_externals(
+        mut self,
+        functions: HashSet<EcoString>,
+    ) -> Self {
+        self.executable_externals = functions;
+        self
     }
 }
 
@@ -209,6 +231,7 @@ mod tests {
             type_parameters: TypeParameterScope::default(),
             return_shape: ValueShape::Int,
             params: Vec::new(),
+            definition_span: crate::plan::SourceSpan::new(0, 0),
         }
     }
 

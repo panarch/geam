@@ -2,6 +2,7 @@ mod body;
 mod entry;
 mod function_return;
 mod list_return;
+mod profile;
 mod runtime;
 mod table;
 mod value_return;
@@ -12,7 +13,7 @@ pub(in crate::plan::execution) trait FunctionLabelSource {
     fn function_label(&self) -> FunctionLabel;
 }
 
-pub(in crate::plan::execution::function) use body::FunctionBodyOwner;
+pub(crate) use body::FunctionBodyOwner;
 pub(in crate::plan::execution) use body::TailCallLabelIndex;
 pub(crate) use body::{FunctionBody, FunctionExit};
 pub(crate) use entry::FunctionEntry;
@@ -43,6 +44,10 @@ pub(crate) use list_return::{
     ParameterListListFunctionBody, ParameterListListFunctionId, StringListFunctionBody,
     StringListFunctionId, TupleListFunctionBody, TupleListFunctionId, UtfCodepointListFunctionBody,
     UtfCodepointListFunctionId,
+};
+pub(crate) use profile::{
+    ExecutionFunction, ExecutionFunctionBody, ExecutionFunctionEntry, ExecutionFunctionRef,
+    ExecutionHostTarget, ExecutionProfile,
 };
 pub(crate) use runtime::{FunctionReturnFamily, GenericCallableId, RuntimeFunctionId};
 pub(super) use table::FunctionTables;

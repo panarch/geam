@@ -230,6 +230,7 @@ struct FunctionTable {
 }
 
 struct FunctionToPlan {
+    name: EcoString,
     info: FunctionInfo,
     function: TypedFunction,
 }
@@ -249,6 +250,7 @@ fn function_table(
         let scheme = type_parameters.scheme();
         seeds.push(FunctionSeed {
             name,
+            definition_span: function.location.into(),
             function: function.clone(),
             params,
             return_shape,
@@ -293,6 +295,7 @@ fn function_table(
         let info = function_info(module, local_index, &seed);
         by_name.insert(seed.name.clone(), info.clone());
         functions_to_plan.push(FunctionToPlan {
+            name: seed.name,
             info,
             function: seed.function,
         });
@@ -323,12 +326,14 @@ fn function_info(module: ModuleId, function_index: usize, seed: &FunctionSeed) -
         type_parameters: seed.type_parameters.clone(),
         return_shape: seed.return_shape.clone(),
         params: seed.params.clone(),
+        definition_span: seed.definition_span,
     }
 }
 
 #[derive(Clone)]
 struct FunctionSeed {
     name: EcoString,
+    definition_span: crate::plan::SourceSpan,
     function: TypedFunction,
     params: Vec<FunctionParam>,
     return_shape: crate::plan::ValueShape,
@@ -369,29 +374,7 @@ fn function_params_allowing_labels_in(
     arguments: &[gleam_core::ast::TypedArg],
     parameters: &mut TypeParameterScope,
 ) -> Vec<FunctionParam> {
-    let mut next_generic = 0;
-    let mut next_int = 0;
-    let mut next_float = 0;
-    let mut next_string = 0;
-    let mut next_bit_array = 0;
-    let mut next_utf_codepoint = 0;
-    let mut next_custom = 0;
-    let mut next_bool = 0;
-    let mut next_nil = 0;
-    let mut next_tuple = 0;
-    let mut next_int_list = 0;
-    let mut next_string_list = 0;
-    let mut next_bit_array_list = 0;
-    let mut next_utf_codepoint_list = 0;
-    let mut next_custom_list = 0;
-    let mut next_float_list = 0;
-    let mut next_bool_list = 0;
-    let mut next_nil_list = 0;
-    let mut next_tuple_list = 0;
-    let mut next_list_list = 0;
-    let mut next_function_list = 0;
-    let mut next_generic_list = 0;
-    let mut function_locals = FunctionParamLocalCounters::default();
+    let mut locals = FunctionParamLocalCounters::default();
 
     arguments
         .iter()
@@ -408,173 +391,24 @@ fn function_params_allowing_labels_in(
             };
 
             let shape = crate::plan::ValueShape::from_gleam_in(&argument.type_, parameters);
-            let local = match &shape {
-                crate::plan::ValueShape::Parameter(parameter) => {
-                    let local = ParamLocal::generic(crate::plan::GenericLocal::new(
-                        crate::plan::GenericLocalId(next_generic),
-                        *parameter,
-                    ));
-                    next_generic += 1;
-                    local
-                }
-                crate::plan::ValueShape::Int => {
-                    let local = ParamLocal::int(crate::plan::IntLocalId(next_int));
-                    next_int += 1;
-                    local
-                }
-                crate::plan::ValueShape::Float => {
-                    let local = ParamLocal::float(crate::plan::FloatLocalId(next_float));
-                    next_float += 1;
-                    local
-                }
-                crate::plan::ValueShape::String => {
-                    let local = ParamLocal::string(crate::plan::StringLocalId(next_string));
-                    next_string += 1;
-                    local
-                }
-                crate::plan::ValueShape::BitArray => {
-                    let local = ParamLocal::bit_array(crate::plan::BitArrayLocalId(next_bit_array));
-                    next_bit_array += 1;
-                    local
-                }
-                crate::plan::ValueShape::UtfCodepoint => {
-                    let local = ParamLocal::utf_codepoint(crate::plan::UtfCodepointLocalId(
-                        next_utf_codepoint,
-                    ));
-                    next_utf_codepoint += 1;
-                    local
-                }
-                crate::plan::ValueShape::Custom(custom_shape) => {
-                    let local = ParamLocal::custom_shape(
-                        crate::plan::CustomLocalId(next_custom),
-                        custom_shape.clone(),
-                    );
-                    next_custom += 1;
-                    local
-                }
-                crate::plan::ValueShape::Bool => {
-                    let local = ParamLocal::bool(crate::plan::BoolLocalId(next_bool));
-                    next_bool += 1;
-                    local
-                }
-                crate::plan::ValueShape::Nil => {
-                    let local = ParamLocal::nil(crate::plan::NilLocalId(next_nil));
-                    next_nil += 1;
-                    local
-                }
-                crate::plan::ValueShape::Tuple(elements) => {
-                    let local = ParamLocal::tuple(
-                        crate::plan::TupleLocalId(next_tuple),
-                        elements
-                            .iter()
-                            .map(crate::plan::ValueShape::value_type)
-                            .collect(),
-                    );
-                    next_tuple += 1;
-                    local
-                }
-                crate::plan::ValueShape::List(element_shape) => {
-                    let local = match element_shape.as_ref() {
-                        crate::plan::ValueShape::Parameter(parameter) => {
-                            let local = crate::plan::ListLocal::generic(
-                                crate::plan::GenericListLocalId(next_generic_list),
-                                *parameter,
-                            );
-                            next_generic_list += 1;
-                            local
-                        }
-                        crate::plan::ValueShape::Int => {
-                            let local = crate::plan::ListLocal::int(crate::plan::IntListLocalId(
-                                next_int_list,
-                            ));
-                            next_int_list += 1;
-                            local
-                        }
-                        crate::plan::ValueShape::String => {
-                            let local = crate::plan::ListLocal::string(
-                                crate::plan::StringListLocalId(next_string_list),
-                            );
-                            next_string_list += 1;
-                            local
-                        }
-                        crate::plan::ValueShape::BitArray => {
-                            let local = crate::plan::ListLocal::bit_array(
-                                crate::plan::BitArrayListLocalId(next_bit_array_list),
-                            );
-                            next_bit_array_list += 1;
-                            local
-                        }
-                        crate::plan::ValueShape::UtfCodepoint => {
-                            let local = crate::plan::ListLocal::utf_codepoint(
-                                crate::plan::UtfCodepointListLocalId(next_utf_codepoint_list),
-                            );
-                            next_utf_codepoint_list += 1;
-                            local
-                        }
-                        crate::plan::ValueShape::Custom(item_shape) => {
-                            let local = crate::plan::ListLocal::custom(
-                                crate::plan::CustomListLocalId(next_custom_list),
-                                item_shape.type_().clone(),
-                            );
-                            next_custom_list += 1;
-                            local
-                        }
-                        crate::plan::ValueShape::Float => {
-                            let local = crate::plan::ListLocal::float(
-                                crate::plan::FloatListLocalId(next_float_list),
-                            );
-                            next_float_list += 1;
-                            local
-                        }
-                        crate::plan::ValueShape::Bool => {
-                            let local = crate::plan::ListLocal::bool(crate::plan::BoolListLocalId(
-                                next_bool_list,
-                            ));
-                            next_bool_list += 1;
-                            local
-                        }
-                        crate::plan::ValueShape::Nil => {
-                            let local = crate::plan::ListLocal::nil(crate::plan::NilListLocalId(
-                                next_nil_list,
-                            ));
-                            next_nil_list += 1;
-                            local
-                        }
-                        crate::plan::ValueShape::Tuple(item_shape) => {
-                            let local = crate::plan::ListLocal::tuple(
-                                crate::plan::TupleListLocalId(next_tuple_list),
-                                item_shape
-                                    .iter()
-                                    .map(crate::plan::ValueShape::value_type)
-                                    .collect(),
-                            );
-                            next_tuple_list += 1;
-                            local
-                        }
-                        crate::plan::ValueShape::List(item_shape) => {
-                            let local = crate::plan::ListLocal::list(
-                                crate::plan::ListListLocalId(next_list_list),
-                                item_shape.value_type(),
-                            );
-                            next_list_list += 1;
-                            local
-                        }
-                        crate::plan::ValueShape::Function(item_shape) => {
-                            let local = crate::plan::ListLocal::function(
-                                crate::plan::FunctionListLocalId(next_function_list),
-                                item_shape.type_(),
-                            );
-                            next_function_list += 1;
-                            local
-                        }
-                    };
-                    ParamLocal::list(local)
-                }
-                crate::plan::ValueShape::Function(function_shape) => {
-                    function_locals.next_shape(function_shape)
-                }
-            };
+            let local = locals.next_value_shape(&shape);
             FunctionParam::new(local, shape, binding, label)
+        })
+        .collect()
+}
+
+pub(super) fn discarded_function_params(shapes: &[crate::plan::ValueShape]) -> Vec<FunctionParam> {
+    let mut locals = FunctionParamLocalCounters::default();
+    shapes
+        .iter()
+        .cloned()
+        .map(|shape| {
+            FunctionParam::new(
+                locals.next_value_shape(&shape),
+                shape,
+                ParamBinding::Discard,
+                None,
+            )
         })
         .collect()
 }
@@ -591,11 +425,210 @@ struct FunctionParamLocalCounters {
     next_bool: usize,
     next_nil: usize,
     next_tuple: usize,
+    next_generic_list: usize,
+    next_int_list: usize,
+    next_string_list: usize,
+    next_bit_array_list: usize,
+    next_utf_codepoint_list: usize,
+    next_custom_list: usize,
+    next_float_list: usize,
+    next_bool_list: usize,
+    next_nil_list: usize,
+    next_tuple_list: usize,
+    next_list_list: usize,
+    next_function_list: usize,
+    next_function: FunctionParamFunctionLocalCounters,
+}
+
+#[derive(Default)]
+struct FunctionParamFunctionLocalCounters {
+    next_generic: usize,
+    next_int: usize,
+    next_float: usize,
+    next_string: usize,
+    next_bit_array: usize,
+    next_utf_codepoint: usize,
+    next_custom: usize,
+    next_bool: usize,
+    next_nil: usize,
+    next_tuple: usize,
     next_list: usize,
     next_function: usize,
 }
 
 impl FunctionParamLocalCounters {
+    fn next_value_shape(&mut self, shape: &crate::plan::ValueShape) -> ParamLocal {
+        match shape {
+            crate::plan::ValueShape::Parameter(parameter) => {
+                let local = ParamLocal::generic(crate::plan::GenericLocal::new(
+                    crate::plan::GenericLocalId(self.next_generic),
+                    *parameter,
+                ));
+                self.next_generic += 1;
+                local
+            }
+            crate::plan::ValueShape::Int => {
+                let local = ParamLocal::int(crate::plan::IntLocalId(self.next_int));
+                self.next_int += 1;
+                local
+            }
+            crate::plan::ValueShape::Float => {
+                let local = ParamLocal::float(crate::plan::FloatLocalId(self.next_float));
+                self.next_float += 1;
+                local
+            }
+            crate::plan::ValueShape::String => {
+                let local = ParamLocal::string(crate::plan::StringLocalId(self.next_string));
+                self.next_string += 1;
+                local
+            }
+            crate::plan::ValueShape::BitArray => {
+                let local =
+                    ParamLocal::bit_array(crate::plan::BitArrayLocalId(self.next_bit_array));
+                self.next_bit_array += 1;
+                local
+            }
+            crate::plan::ValueShape::UtfCodepoint => {
+                let local = ParamLocal::utf_codepoint(crate::plan::UtfCodepointLocalId(
+                    self.next_utf_codepoint,
+                ));
+                self.next_utf_codepoint += 1;
+                local
+            }
+            crate::plan::ValueShape::Custom(custom_shape) => {
+                let local = ParamLocal::custom_shape(
+                    crate::plan::CustomLocalId(self.next_custom),
+                    custom_shape.clone(),
+                );
+                self.next_custom += 1;
+                local
+            }
+            crate::plan::ValueShape::Bool => {
+                let local = ParamLocal::bool(crate::plan::BoolLocalId(self.next_bool));
+                self.next_bool += 1;
+                local
+            }
+            crate::plan::ValueShape::Nil => {
+                let local = ParamLocal::nil(crate::plan::NilLocalId(self.next_nil));
+                self.next_nil += 1;
+                local
+            }
+            crate::plan::ValueShape::Tuple(elements) => {
+                let local = ParamLocal::tuple(
+                    crate::plan::TupleLocalId(self.next_tuple),
+                    elements
+                        .iter()
+                        .map(crate::plan::ValueShape::value_type)
+                        .collect(),
+                );
+                self.next_tuple += 1;
+                local
+            }
+            crate::plan::ValueShape::List(element_shape) => {
+                let local = match element_shape.as_ref() {
+                    crate::plan::ValueShape::Parameter(parameter) => {
+                        let local = crate::plan::ListLocal::generic(
+                            crate::plan::GenericListLocalId(self.next_generic_list),
+                            *parameter,
+                        );
+                        self.next_generic_list += 1;
+                        local
+                    }
+                    crate::plan::ValueShape::Int => {
+                        let local = crate::plan::ListLocal::int(crate::plan::IntListLocalId(
+                            self.next_int_list,
+                        ));
+                        self.next_int_list += 1;
+                        local
+                    }
+                    crate::plan::ValueShape::String => {
+                        let local = crate::plan::ListLocal::string(crate::plan::StringListLocalId(
+                            self.next_string_list,
+                        ));
+                        self.next_string_list += 1;
+                        local
+                    }
+                    crate::plan::ValueShape::BitArray => {
+                        let local = crate::plan::ListLocal::bit_array(
+                            crate::plan::BitArrayListLocalId(self.next_bit_array_list),
+                        );
+                        self.next_bit_array_list += 1;
+                        local
+                    }
+                    crate::plan::ValueShape::UtfCodepoint => {
+                        let local = crate::plan::ListLocal::utf_codepoint(
+                            crate::plan::UtfCodepointListLocalId(self.next_utf_codepoint_list),
+                        );
+                        self.next_utf_codepoint_list += 1;
+                        local
+                    }
+                    crate::plan::ValueShape::Custom(item_shape) => {
+                        let local = crate::plan::ListLocal::custom(
+                            crate::plan::CustomListLocalId(self.next_custom_list),
+                            item_shape.type_().clone(),
+                        );
+                        self.next_custom_list += 1;
+                        local
+                    }
+                    crate::plan::ValueShape::Float => {
+                        let local = crate::plan::ListLocal::float(crate::plan::FloatListLocalId(
+                            self.next_float_list,
+                        ));
+                        self.next_float_list += 1;
+                        local
+                    }
+                    crate::plan::ValueShape::Bool => {
+                        let local = crate::plan::ListLocal::bool(crate::plan::BoolListLocalId(
+                            self.next_bool_list,
+                        ));
+                        self.next_bool_list += 1;
+                        local
+                    }
+                    crate::plan::ValueShape::Nil => {
+                        let local = crate::plan::ListLocal::nil(crate::plan::NilListLocalId(
+                            self.next_nil_list,
+                        ));
+                        self.next_nil_list += 1;
+                        local
+                    }
+                    crate::plan::ValueShape::Tuple(item_shape) => {
+                        let local = crate::plan::ListLocal::tuple(
+                            crate::plan::TupleListLocalId(self.next_tuple_list),
+                            item_shape
+                                .iter()
+                                .map(crate::plan::ValueShape::value_type)
+                                .collect(),
+                        );
+                        self.next_tuple_list += 1;
+                        local
+                    }
+                    crate::plan::ValueShape::List(item_shape) => {
+                        let local = crate::plan::ListLocal::list(
+                            crate::plan::ListListLocalId(self.next_list_list),
+                            item_shape.value_type(),
+                        );
+                        self.next_list_list += 1;
+                        local
+                    }
+                    crate::plan::ValueShape::Function(item_shape) => {
+                        let local = crate::plan::ListLocal::function(
+                            crate::plan::FunctionListLocalId(self.next_function_list),
+                            item_shape.type_(),
+                        );
+                        self.next_function_list += 1;
+                        local
+                    }
+                };
+                ParamLocal::list(local)
+            }
+            crate::plan::ValueShape::Function(function_shape) => {
+                self.next_function.next_shape(function_shape)
+            }
+        }
+    }
+}
+
+impl FunctionParamFunctionLocalCounters {
     fn next_shape(&mut self, shape: &crate::plan::FunctionShape) -> ParamLocal {
         let type_ = shape.type_();
         match shape.return_shape() {
@@ -729,8 +762,9 @@ mod tests {
         TupleExprKind, TupleListLocalId, TypeParameterId, TypeScheme, ValueShape, ValueType,
     };
     use crate::planner::dsl::{
-        call_int, call_int_returning_function, function, function_ref, int, int_arg,
-        int_function_closure, int_return_tail_call, local_int, module, string, string_function_ref,
+        call_int_at, call_int_returning_function_at, function, function_ref, host_call_site, int,
+        int_arg, int_function_closure, int_return_tail_call_at, local_int, module, string,
+        string_function_ref,
     };
     use crate::planner::support::{compile, expect_plan_error};
     use crate::planner::{
@@ -1163,8 +1197,7 @@ pub fn main() {
 
     #[test]
     fn plan_functions_before_and_after_main() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn before() {
   1
 }
@@ -1176,14 +1209,15 @@ pub fn main() {
 fn after() {
   2
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
-                call_int(1, Vec::new()).add_int(call_int(2, Vec::new())),
+                call_int_at(1, Vec::new(), host_call_site(source, "main", "before()")).add_int(
+                    call_int_at(2, Vec::new(), host_call_site(source, "main", "after()")),
+                ),
             ),
             [function("before", int(1)), function("after", int(2))],
         );
@@ -1193,8 +1227,7 @@ fn after() {
 
     #[test]
     fn plan_type_alias_function_signature_as_underlying_type() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 pub type UserId =
   Int
 
@@ -1205,12 +1238,18 @@ fn identity(value: UserId) -> UserId {
 pub fn main() {
   identity(41)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
-            function("main", int_return_tail_call(1, [int_arg(int(41))])),
+            function(
+                "main",
+                int_return_tail_call_at(
+                    1,
+                    [int_arg(int(41))],
+                    host_call_site(source, "main", "identity(41)"),
+                ),
+            ),
             [function("identity", local_int(0, "value")).param_int(0, "value")],
         );
 
@@ -1627,8 +1666,7 @@ fn get() {
 
     #[test]
     fn plan_function_returning_function_after_main_call() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 pub fn main() {
   get()
   1
@@ -1641,16 +1679,16 @@ fn add_one(value: Int) {
 fn get() {
   add_one
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let returned_function_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
         let expected = module(
             "main",
-            function("main", int(1)).evaluate(call_int_returning_function(
+            function("main", int(1)).evaluate(call_int_returning_function_at(
                 2,
                 [],
                 returned_function_type,
+                host_call_site(source, "main", "get()"),
             )),
             [
                 function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value"),
@@ -1720,8 +1758,7 @@ fn tuple_getter(callback: fn(#(Int)) -> #(String)) {
 
     #[test]
     fn plan_discard_function_argument_slots() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn pick(_: Int, value: Int) {
   value
 }
@@ -1729,14 +1766,17 @@ fn pick(_: Int, value: Int) {
 pub fn main() {
   pick(1, 42)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
-                int_return_tail_call(1, [int_arg(int(1)), int_arg(int(42))]),
+                int_return_tail_call_at(
+                    1,
+                    [int_arg(int(1)), int_arg(int(42))],
+                    host_call_site(source, "main", "pick(1, 42)"),
+                ),
             ),
             [function("pick", local_int(1, "value"))
                 .discard_int_param(0)
@@ -1818,8 +1858,7 @@ fn count(values: Outcome) {
 
     #[test]
     fn plan_labelled_function_argument_uses_local_name() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn identity(value local: Int) {
   local
 }
@@ -1827,12 +1866,18 @@ fn identity(value local: Int) {
 pub fn main() {
   identity(value: 1)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
-            function("main", int_return_tail_call(1, [int_arg(int(1))])),
+            function(
+                "main",
+                int_return_tail_call_at(
+                    1,
+                    [int_arg(int(1))],
+                    host_call_site(source, "main", "identity(value: 1)"),
+                ),
+            ),
             [function("identity", local_int(0, "local")).param_int(0, "local")],
         );
 

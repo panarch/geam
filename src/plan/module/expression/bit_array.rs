@@ -110,10 +110,12 @@ pub(crate) enum BitArrayExprKind {
     Call {
         function: FunctionInstantiation,
         args: Vec<CallArg>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: Box<BitArrayFunctionExpr>,
         args: Vec<CallArg>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: Box<TupleExpr>,
@@ -164,14 +166,37 @@ impl BitArrayExpr {
         Self::new(BitArrayExprKind::LocalGet { local, name })
     }
 
+    #[cfg(test)]
     pub(crate) fn call(function: FunctionInstantiation, args: Vec<CallArg>) -> Self {
-        Self::new(BitArrayExprKind::Call { function, args })
+        Self::call_at(function, args, crate::plan::HostCallSite::unknown())
     }
 
+    pub(crate) fn call_at(
+        function: FunctionInstantiation,
+        args: Vec<CallArg>,
+        site: crate::plan::HostCallSite,
+    ) -> Self {
+        Self::new(BitArrayExprKind::Call {
+            function,
+            args,
+            site,
+        })
+    }
+
+    #[cfg(test)]
     pub(crate) fn function_call(function: BitArrayFunctionExpr, args: Vec<CallArg>) -> Self {
+        Self::function_call_at(function, args, crate::plan::HostCallSite::unknown())
+    }
+
+    pub(crate) fn function_call_at(
+        function: BitArrayFunctionExpr,
+        args: Vec<CallArg>,
+        site: crate::plan::HostCallSite,
+    ) -> Self {
         Self::new(BitArrayExprKind::FunctionCall {
             function: Box::new(function),
             args,
+            site,
         })
     }
 
@@ -289,6 +314,7 @@ mod tests {
             &BitArrayExprKind::Call {
                 function: function_instantiation(),
                 args: Vec::new(),
+                site: crate::plan::HostCallSite::unknown(),
             },
         );
         assert_eq!(
@@ -296,6 +322,7 @@ mod tests {
             &BitArrayExprKind::FunctionCall {
                 function: Box::new(function_expr()),
                 args: Vec::new(),
+                site: crate::plan::HostCallSite::unknown(),
             },
         );
         assert_eq!(

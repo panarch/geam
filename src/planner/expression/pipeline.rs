@@ -82,6 +82,7 @@ fn plan_direct_call(
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let TypedExpr::Call {
+        location,
         type_,
         fun,
         arguments,
@@ -93,11 +94,12 @@ fn plan_direct_call(
         ));
     };
 
-    call::plan_pipeline_direct_call(type_, *fun, arguments, context)
+    call::plan_pipeline_direct_call(location, type_, *fun, arguments, context)
 }
 
 fn plan_hole_call(expression: TypedExpr, context: &mut PlanContext<'_>) -> Result<Expr, PlanError> {
     let TypedExpr::Call {
+        location,
         type_,
         fun,
         arguments,
@@ -109,7 +111,7 @@ fn plan_hole_call(expression: TypedExpr, context: &mut PlanContext<'_>) -> Resul
         ));
     };
 
-    call::plan_pipeline_hole_call(type_, *fun, arguments, context)
+    call::plan_pipeline_hole_call(location, type_, *fun, arguments, context)
 }
 
 fn invalid_pipeline_shape(reason: InvalidPipelineShapeReason) -> PlanError {
@@ -122,13 +124,14 @@ fn invalid_pipeline_shape(reason: InvalidPipelineShapeReason) -> PlanError {
 mod tests {
     use crate::plan::{EchoSite, EchoSubject, IntLocalId, LocalId, SourceSpan, Step};
     use crate::planner::dsl::{
-        block_int, bool_, bool_arg, bool_return_block, bool_return_tail_call, call_int,
-        call_int_function, function, int, int_arg, int_function_call_arg, int_function_closure,
-        int_function_ref, int_return_block, int_return_expr, int_return_tail_call, let_bool_step,
-        let_int_function_step, let_int_step, let_nil_step, let_string_step, local_bool, local_int,
-        local_int_function, local_nil, local_string, module, module_with_anonymous, nil, nil_arg,
-        nil_return_block, nil_return_tail_call, string, string_arg, string_return_block,
-        string_return_tail_call,
+        block_int, bool_, bool_arg, bool_return_block, bool_return_tail_call_at, call_int_at,
+        call_int_function_at, function, host_call_site, host_call_site_in, int, int_arg,
+        int_function_call_arg, int_function_closure, int_function_ref, int_return_block,
+        int_return_expr, int_return_tail_call_at, let_bool_step, let_int_function_step,
+        let_int_step, let_nil_step, let_string_step, local_bool, local_int, local_int_function,
+        local_nil, local_string, module, module_with_anonymous, nil, nil_arg, nil_return_block,
+        nil_return_tail_call_at, string, string_arg, string_return_block,
+        string_return_tail_call_at,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span, expect_plan_error};
@@ -176,8 +179,7 @@ mod tests {
 
     #[test]
     fn plan_pipeline_direct_local_function() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add_one(value: Int) {
   value + 1
 }
@@ -185,16 +187,19 @@ fn add_one(value: Int) {
 pub fn main() {
   1 |> add_one
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
                 int_return_block(
                     [let_int_step(0, "_pipe", int(1))],
-                    int_return_tail_call(1, [int_arg(local_int(0, "_pipe"))]),
+                    int_return_tail_call_at(
+                        1,
+                        [int_arg(local_int(0, "_pipe"))],
+                        host_call_site(source, "main", "add_one"),
+                    ),
                 ),
             ),
             [function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value")],
@@ -205,8 +210,7 @@ pub fn main() {
 
     #[test]
     fn plan_pipeline_first_argument_call() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add(left: Int, right: Int) {
   left + right
 }
@@ -214,16 +218,19 @@ fn add(left: Int, right: Int) {
 pub fn main() {
   1 |> add(2)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
                 int_return_block(
                     [let_int_step(0, "_pipe", int(1))],
-                    int_return_tail_call(1, [int_arg(local_int(0, "_pipe")), int_arg(int(2))]),
+                    int_return_tail_call_at(
+                        1,
+                        [int_arg(local_int(0, "_pipe")), int_arg(int(2))],
+                        host_call_site(source, "main", "add(2)"),
+                    ),
                 ),
             ),
             [
@@ -238,8 +245,7 @@ pub fn main() {
 
     #[test]
     fn plan_chained_pipeline() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add(left: Int, right: Int) {
   left + right
 }
@@ -251,9 +257,8 @@ fn multiply(left: Int, right: Int) {
 pub fn main() {
   1 |> add(2) |> multiply(3)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
@@ -264,10 +269,18 @@ pub fn main() {
                         let_int_step(
                             1,
                             "_pipe",
-                            call_int(1, [int_arg(local_int(0, "_pipe")), int_arg(int(2))]),
+                            call_int_at(
+                                1,
+                                [int_arg(local_int(0, "_pipe")), int_arg(int(2))],
+                                host_call_site(source, "main", "add(2)"),
+                            ),
                         ),
                     ],
-                    int_return_tail_call(2, [int_arg(local_int(1, "_pipe")), int_arg(int(3))]),
+                    int_return_tail_call_at(
+                        2,
+                        [int_arg(local_int(1, "_pipe")), int_arg(int(3))],
+                        host_call_site(source, "main", "multiply(3)"),
+                    ),
                 ),
             ),
             [
@@ -288,8 +301,7 @@ pub fn main() {
 
     #[test]
     fn plan_pipeline_block_first_value() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add_one(value: Int) {
   value + 1
 }
@@ -301,9 +313,8 @@ pub fn main() {
   }
   |> add_one
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
@@ -314,7 +325,11 @@ pub fn main() {
                         "_pipe",
                         block_int([let_int_step(0, "x", int(1))], local_int(0, "x")),
                     )],
-                    int_return_tail_call(1, [int_arg(local_int(1, "_pipe"))]),
+                    int_return_tail_call_at(
+                        1,
+                        [int_arg(local_int(1, "_pipe"))],
+                        host_call_site(source, "main", "add_one"),
+                    ),
                 ),
             ),
             [function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value")],
@@ -325,8 +340,7 @@ pub fn main() {
 
     #[test]
     fn plan_pipeline_explicit_hole() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn subtract(left: Int, right: Int) {
   left - right
 }
@@ -334,16 +348,19 @@ fn subtract(left: Int, right: Int) {
 pub fn main() {
   1 |> subtract(10, _)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
                 int_return_block(
                     [let_int_step(0, "_pipe", int(1))],
-                    int_return_tail_call(1, [int_arg(int(10)), int_arg(local_int(0, "_pipe"))]),
+                    int_return_tail_call_at(
+                        1,
+                        [int_arg(int(10)), int_arg(local_int(0, "_pipe"))],
+                        host_call_site(source, "main", "subtract(10, _)"),
+                    ),
                 ),
             ),
             [function(
@@ -359,8 +376,7 @@ pub fn main() {
 
     #[test]
     fn plan_pipeline_labelled_direct_call_uses_function_param_order() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add(to base: Int, value amount: Int) {
   base + amount
 }
@@ -368,16 +384,19 @@ fn add(to base: Int, value amount: Int) {
 pub fn main() {
   2 |> add(to: 40)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
                 int_return_block(
                     [let_int_step(0, "_pipe", int(2))],
-                    int_return_tail_call(1, [int_arg(int(40)), int_arg(local_int(0, "_pipe"))]),
+                    int_return_tail_call_at(
+                        1,
+                        [int_arg(int(40)), int_arg(local_int(0, "_pipe"))],
+                        host_call_site(source, "main", "add(to: 40)"),
+                    ),
                 ),
             ),
             [
@@ -392,8 +411,7 @@ pub fn main() {
 
     #[test]
     fn plan_pipeline_labelled_hole_call_uses_hole_position() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add(to base: Int, value amount: Int) {
   base + amount
 }
@@ -401,16 +419,19 @@ fn add(to base: Int, value amount: Int) {
 pub fn main() {
   2 |> add(to: 40, value: _)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
                 int_return_block(
                     [let_int_step(0, "_pipe", int(2))],
-                    int_return_tail_call(1, [int_arg(int(40)), int_arg(local_int(0, "_pipe"))]),
+                    int_return_tail_call_at(
+                        1,
+                        [int_arg(int(40)), int_arg(local_int(0, "_pipe"))],
+                        host_call_site(source, "main", "add(to: 40, value: _)"),
+                    ),
                 ),
             ),
             [
@@ -425,8 +446,7 @@ pub fn main() {
 
     #[test]
     fn plan_pipeline_function_value_call_shape() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add_one(value: Int) {
   value + 1
 }
@@ -435,18 +455,18 @@ pub fn main() {
   let f = add_one
   1 |> f
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
                 int_return_block(
                     [let_int_step(0, "_pipe", int(1))],
-                    int_return_expr(call_int_function(
+                    int_return_expr(call_int_function_at(
                         local_int_function(0, "f", [LocalId::Int(IntLocalId(0))]),
                         [int_function_call_arg(local_int(0, "_pipe"))],
+                        host_call_site_in(source, "main", "1 |> f", "f"),
                     )),
                 ),
             )
@@ -463,17 +483,18 @@ pub fn main() {
 
     #[test]
     fn plan_pipeline_anonymous_function_value_call_shape() {
-        let actual = plan_module(compile(r#"pub fn main() { 1 |> fn(value) { value } }"#))
-            .expect("source should plan");
+        let source = r#"pub fn main() { 1 |> fn(value) { value } }"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module_with_anonymous(
             "main",
             function(
                 "main",
                 int_return_block(
                     [let_int_step(0, "_pipe", int(1))],
-                    int_return_expr(call_int_function(
+                    int_return_expr(call_int_function_at(
                         int_function_closure(1, [LocalId::Int(IntLocalId(0))], []),
                         [int_function_call_arg(local_int(0, "_pipe"))],
+                        host_call_site(source, "main", "fn(value) { value }"),
                     )),
                 ),
             ),
@@ -486,8 +507,7 @@ pub fn main() {
 
     #[test]
     fn plan_pipeline_function_value_hole_call_shape() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn subtract(left: Int, right: Int) {
   left - right
 }
@@ -496,9 +516,8 @@ pub fn main() {
   let f = subtract
   1 |> f(10, _)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let params = [LocalId::Int(IntLocalId(0)), LocalId::Int(IntLocalId(1))];
         let expected = module(
             "main",
@@ -506,12 +525,13 @@ pub fn main() {
                 "main",
                 int_return_block(
                     [let_int_step(0, "_pipe", int(1))],
-                    int_return_expr(call_int_function(
+                    int_return_expr(call_int_function_at(
                         local_int_function(0, "f", params),
                         [
                             int_function_call_arg(int(10)),
                             int_function_call_arg(local_int(0, "_pipe")),
                         ],
+                        host_call_site(source, "main", "f(10, _)"),
                     )),
                 ),
             )
@@ -529,8 +549,7 @@ pub fn main() {
 
     #[test]
     fn plan_pipeline_middle_explicit_hole() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn three_arg(a: Int, b: Int, c: Int) {
   a + b + c
 }
@@ -538,22 +557,22 @@ fn three_arg(a: Int, b: Int, c: Int) {
 pub fn main() {
   1 |> three_arg(10, _, 3)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
                 int_return_block(
                     [let_int_step(0, "_pipe", int(1))],
-                    int_return_tail_call(
+                    int_return_tail_call_at(
                         1,
                         [
                             int_arg(int(10)),
                             int_arg(local_int(0, "_pipe")),
                             int_arg(int(3)),
                         ],
+                        host_call_site(source, "main", "three_arg(10, _, 3)"),
                     ),
                 ),
             ),
@@ -573,8 +592,7 @@ pub fn main() {
 
     #[test]
     fn plan_pipeline_return_types() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 pub fn main() {
   "geam" |> identity_string
 }
@@ -598,16 +616,19 @@ pub fn nil_main() {
 fn identity_nil(value: Nil) {
   value
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
                 string_return_block(
                     [let_string_step(0, "_pipe", string("geam"))],
-                    string_return_tail_call(1, [string_arg(local_string(0, "_pipe"))]),
+                    string_return_tail_call_at(
+                        1,
+                        [string_arg(local_string(0, "_pipe"))],
+                        host_call_site(source, "main", "identity_string"),
+                    ),
                 ),
             ),
             [
@@ -617,7 +638,11 @@ fn identity_nil(value: Nil) {
                     "bool_main",
                     bool_return_block(
                         [let_bool_step(0, "_pipe", bool_(true))],
-                        bool_return_tail_call(2, [bool_arg(local_bool(0, "_pipe"))]),
+                        bool_return_tail_call_at(
+                            2,
+                            [bool_arg(local_bool(0, "_pipe"))],
+                            host_call_site(source, "bool_main", "identity_bool"),
+                        ),
                     ),
                 ),
                 function("identity_nil", local_nil(0, "value")).param_nil(0, "value"),
@@ -625,7 +650,11 @@ fn identity_nil(value: Nil) {
                     "nil_main",
                     nil_return_block(
                         [let_nil_step(0, "_pipe", nil())],
-                        nil_return_tail_call(4, [nil_arg(local_nil(0, "_pipe"))]),
+                        nil_return_tail_call_at(
+                            4,
+                            [nil_arg(local_nil(0, "_pipe"))],
+                            host_call_site(source, "nil_main", "identity_nil"),
+                        ),
                     ),
                 ),
             ],

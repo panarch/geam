@@ -5,11 +5,10 @@ mod source;
 mod value_shape;
 mod value_type;
 
-pub(crate) use host::{
-    HostFunctionImplementation, HostParameter, HostReturnFamily, HostedModulePlanParts,
-    HostedPlannedModuleKind,
+pub use host::{
+    HostFunctionTemplate, HostedFunctionTemplate, HostedModulePlan, HostedPlannedModule,
 };
-pub use host::{HostFunctionTemplate, HostedModulePlan, HostedPlannedModule, PlannedHostModule};
+pub(crate) use host::{HostImplementationBinding, HostedModulePlanParts, HostedPlannedModuleParts};
 pub(crate) use module::{
     AssertBinding, AssertPattern, AssertSubject, BitArrayBindingPattern, BitArrayBitsSize,
     BitArrayEvaluatedSize, BitArrayExprKind, BitArrayFunctionExprKind, BitArrayFunctionReference,
@@ -98,7 +97,8 @@ pub(crate) use module::{
 };
 #[cfg(test)]
 pub(crate) use module::{StepKind, StoredListExpr};
-pub use source::{EchoSite, PanicSite, SourceContext, SourceSpan};
+pub(crate) use source::FunctionCallTarget;
+pub use source::{EchoSite, HostCallSite, PanicSite, SourceContext, SourceSpan};
 pub(crate) use value_shape::{
     CustomConstructorRefinement, CustomValueShape, FunctionShape, ValueRepresentation, ValueShape,
     ValueStorageShape,

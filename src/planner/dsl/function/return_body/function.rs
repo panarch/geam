@@ -12,12 +12,13 @@ pub(crate) fn int_function_return_expr(expression: IntFunction) -> IntFunctionRe
     ReturnBody::expr(expression.into())
 }
 
-pub(crate) fn int_function_return_tail_call(
+pub(crate) fn int_function_return_tail_call_at(
     function: usize,
     type_: FunctionType,
     args: impl IntoIterator<Item = CallArg>,
+    site: crate::plan::HostCallSite,
 ) -> IntFunctionReturn {
-    function_return_tail_call(function, type_, args)
+    function_return_tail_call(function, type_, args, site)
 }
 
 pub(crate) fn int_function_return_bool_case(
@@ -73,12 +74,13 @@ pub(crate) fn string_function_return_expr(expression: StringFunction) -> StringF
     ReturnBody::expr(expression.into())
 }
 
-pub(crate) fn string_function_return_tail_call(
+pub(crate) fn string_function_return_tail_call_at(
     function: usize,
     type_: FunctionType,
     args: impl IntoIterator<Item = CallArg>,
+    site: crate::plan::HostCallSite,
 ) -> StringFunctionReturn {
-    function_return_tail_call(function, type_, args)
+    function_return_tail_call(function, type_, args, site)
 }
 
 pub(crate) fn string_function_return_bool_case(
@@ -137,12 +139,13 @@ pub(crate) fn bool_function_return_expr(expression: BoolFunction) -> BoolFunctio
     ReturnBody::expr(expression.into())
 }
 
-pub(crate) fn bool_function_return_tail_call(
+pub(crate) fn bool_function_return_tail_call_at(
     function: usize,
     type_: FunctionType,
     args: impl IntoIterator<Item = CallArg>,
+    site: crate::plan::HostCallSite,
 ) -> BoolFunctionReturn {
-    function_return_tail_call(function, type_, args)
+    function_return_tail_call(function, type_, args, site)
 }
 
 pub(crate) fn bool_function_return_bool_case(
@@ -201,12 +204,13 @@ pub(crate) fn nil_function_return_expr(expression: NilFunction) -> NilFunctionRe
     ReturnBody::expr(expression.into())
 }
 
-pub(crate) fn nil_function_return_tail_call(
+pub(crate) fn nil_function_return_tail_call_at(
     function: usize,
     type_: FunctionType,
     args: impl IntoIterator<Item = CallArg>,
+    site: crate::plan::HostCallSite,
 ) -> NilFunctionReturn {
-    function_return_tail_call(function, type_, args)
+    function_return_tail_call(function, type_, args, site)
 }
 
 pub(crate) fn nil_function_return_bool_case(
@@ -264,10 +268,11 @@ pub(crate) fn function_function_return_expr(
     FunctionFunctionReturn::expr(expression.into())
 }
 
-pub(crate) fn function_function_return_tail_call(
+pub(crate) fn function_function_return_tail_call_at(
     function: usize,
     type_: crate::plan::FunctionFunctionType,
     args: impl IntoIterator<Item = CallArg>,
+    site: crate::plan::HostCallSite,
 ) -> FunctionFunctionReturn {
     let args = args.into_iter().collect::<Vec<_>>();
     let function = tail_call_instantiation(
@@ -277,8 +282,8 @@ pub(crate) fn function_function_return_tail_call(
             type_.to_function_type(),
         ))),
     );
-    FunctionFunctionReturn::expr(crate::plan::FunctionFunctionExpr::call(
-        function, args, type_,
+    FunctionFunctionReturn::expr(crate::plan::FunctionFunctionExpr::call_at(
+        function, args, type_, site,
     ))
 }
 
@@ -286,14 +291,15 @@ fn function_return_tail_call<Expression>(
     function: usize,
     type_: FunctionType,
     args: impl IntoIterator<Item = CallArg>,
-) -> ReturnBody<Expression, crate::plan::FunctionInstantiation> {
+    site: crate::plan::HostCallSite,
+) -> ReturnBody<Expression, crate::plan::FunctionCallTarget<crate::plan::FunctionInstantiation>> {
     let args = args.into_iter().collect::<Vec<_>>();
     let function = tail_call_instantiation(
         function,
         &args,
         ValueShape::Function(Box::new(FunctionShape::from_function_type(type_))),
     );
-    ReturnBody::tail_call(function, args)
+    ReturnBody::tail_call(crate::plan::FunctionCallTarget::new(function, site), args)
 }
 
 pub(crate) fn function_function_return_int_case(
@@ -342,18 +348,18 @@ mod tests {
     use super::{
         bool_function_return_block, bool_function_return_bool_case, bool_function_return_expr,
         bool_function_return_int_case, bool_function_return_string_case,
-        bool_function_return_tail_call, function_function_return_block,
+        bool_function_return_tail_call_at, function_function_return_block,
         function_function_return_expr, function_function_return_int_case,
-        function_function_return_string_case, function_function_return_tail_call,
+        function_function_return_string_case, function_function_return_tail_call_at,
         int_function_return_block, int_function_return_bool_case, int_function_return_expr,
         int_function_return_int_case, int_function_return_string_case,
-        int_function_return_tail_call, nil_function_return_block, nil_function_return_bool_case,
+        int_function_return_tail_call_at, nil_function_return_block, nil_function_return_bool_case,
         nil_function_return_expr, nil_function_return_int_case, nil_function_return_string_case,
-        nil_function_return_tail_call, return_bool_function, return_function_function,
+        nil_function_return_tail_call_at, return_bool_function, return_function_function,
         return_int_function, return_nil_function, return_string_function,
         string_function_return_block, string_function_return_bool_case,
         string_function_return_expr, string_function_return_int_case,
-        string_function_return_string_case, string_function_return_tail_call,
+        string_function_return_string_case, string_function_return_tail_call_at,
     };
     use crate::plan::{
         CallArg, FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionReturn,
@@ -418,25 +424,65 @@ mod tests {
             )
         }
 
+        let site = crate::plan::HostCallSite::new(
+            "main".into(),
+            "main".into(),
+            crate::plan::SourceSpan::new(1, 2),
+        );
         let int_type = FunctionType::new(Vec::new(), ValueType::Int);
         assert_eq!(
-            int_function_return_tail_call(0, int_type.clone(), Vec::<CallArg>::new()),
-            ReturnBody::tail_call(returned_function(0, int_type), Vec::new()),
+            int_function_return_tail_call_at(
+                0,
+                int_type.clone(),
+                Vec::<CallArg>::new(),
+                site.clone(),
+            ),
+            ReturnBody::tail_call(
+                crate::plan::FunctionCallTarget::new(returned_function(0, int_type), site.clone()),
+                Vec::new(),
+            ),
         );
         let string_type = FunctionType::new(Vec::new(), ValueType::String);
         assert_eq!(
-            string_function_return_tail_call(1, string_type.clone(), Vec::<CallArg>::new()),
-            ReturnBody::tail_call(returned_function(1, string_type), Vec::new()),
+            string_function_return_tail_call_at(
+                1,
+                string_type.clone(),
+                Vec::<CallArg>::new(),
+                site.clone(),
+            ),
+            ReturnBody::tail_call(
+                crate::plan::FunctionCallTarget::new(
+                    returned_function(1, string_type),
+                    site.clone(),
+                ),
+                Vec::new(),
+            ),
         );
         let bool_type = FunctionType::new(Vec::new(), ValueType::Bool);
         assert_eq!(
-            bool_function_return_tail_call(2, bool_type.clone(), Vec::<CallArg>::new()),
-            ReturnBody::tail_call(returned_function(2, bool_type), Vec::new()),
+            bool_function_return_tail_call_at(
+                2,
+                bool_type.clone(),
+                Vec::<CallArg>::new(),
+                site.clone(),
+            ),
+            ReturnBody::tail_call(
+                crate::plan::FunctionCallTarget::new(returned_function(2, bool_type), site.clone()),
+                Vec::new(),
+            ),
         );
         let nil_type = FunctionType::new(Vec::new(), ValueType::Nil);
         assert_eq!(
-            nil_function_return_tail_call(3, nil_type.clone(), Vec::<CallArg>::new()),
-            ReturnBody::tail_call(returned_function(3, nil_type), Vec::new()),
+            nil_function_return_tail_call_at(
+                3,
+                nil_type.clone(),
+                Vec::<CallArg>::new(),
+                site.clone(),
+            ),
+            ReturnBody::tail_call(
+                crate::plan::FunctionCallTarget::new(returned_function(3, nil_type), site.clone()),
+                Vec::new(),
+            ),
         );
         let function_type = crate::plan::FunctionFunctionType::new(
             Vec::new(),
@@ -444,11 +490,17 @@ mod tests {
         );
         let function = returned_function(4, function_type.to_function_type());
         assert_eq!(
-            function_function_return_tail_call(4, function_type.clone(), Vec::<CallArg>::new(),),
-            FunctionFunctionReturn::expr(crate::plan::FunctionFunctionExpr::call(
+            function_function_return_tail_call_at(
+                4,
+                function_type.clone(),
+                Vec::<CallArg>::new(),
+                site.clone(),
+            ),
+            FunctionFunctionReturn::expr(crate::plan::FunctionFunctionExpr::call_at(
                 function,
                 Vec::new(),
                 function_type,
+                site,
             )),
         );
     }

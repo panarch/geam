@@ -1,4 +1,6 @@
-use super::{BitArraySegmentPanicReason, ExecutionError, InvariantError, Panic, PanicDetails};
+use super::{
+    BitArraySegmentPanicReason, ExecutionError, HostError, InvariantError, Panic, PanicDetails,
+};
 use crate::plan::{FunctionType, ValueType};
 use crate::runtime::Value;
 use miette::{Diagnostic, LabeledSpan, SourceCode};
@@ -56,6 +58,7 @@ impl Diagnostic for ExecutionError {
         match self {
             Self::Panic(panic) => panic.code(),
             Self::Invariant(error) => error.code(),
+            Self::Host(error) => error.code(),
         }
     }
 
@@ -63,6 +66,7 @@ impl Diagnostic for ExecutionError {
         match self {
             Self::Panic(panic) => panic.help(),
             Self::Invariant(error) => error.help(),
+            Self::Host(error) => error.help(),
         }
     }
 
@@ -70,6 +74,7 @@ impl Diagnostic for ExecutionError {
         match self {
             Self::Panic(panic) => panic.source_code(),
             Self::Invariant(error) => error.source_code(),
+            Self::Host(error) => error.source_code(),
         }
     }
 
@@ -77,7 +82,31 @@ impl Diagnostic for ExecutionError {
         match self {
             Self::Panic(panic) => panic.labels(),
             Self::Invariant(error) => error.labels(),
+            Self::Host(error) => error.labels(),
         }
+    }
+}
+
+impl Diagnostic for HostError {
+    fn code<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
+        Some(Box::new("geam::host_function"))
+    }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
+        None
+    }
+
+    fn source_code(&self) -> Option<&dyn SourceCode> {
+        self.source().map(|source| source as &dyn SourceCode)
+    }
+
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        let super::HostLocation::Resolved { site, .. } = self.location() else {
+            return None;
+        };
+        Some(Box::new(std::iter::once(
+            LabeledSpan::new_primary_with_span(Some(self.primary_label()), site.span().to_miette()),
+        )))
     }
 }
 
@@ -214,16 +243,18 @@ fn render_custom_type(type_: &crate::plan::CustomType) -> String {
 #[cfg(test)]
 mod tests {
     use super::{render_value, render_value_type};
+    use crate::host::HostFailure;
     use crate::plan::execution::function::{
         FunctionReturnFamily, IntFunctionId, RuntimeFunctionId,
     };
     use crate::plan::execution::graph::{IntLocalId, ParamLocal};
     use crate::plan::{
-        CustomType, CustomTypeName, FunctionType, PanicSite, SourceContext, SourceSpan, ValueType,
+        CustomType, CustomTypeName, FunctionType, HostCallSite, PanicSite, SourceContext,
+        SourceSpan, ValueType,
     };
     use crate::runtime::{BitArrayValue, FunctionValue, ListValue, Value};
     use crate::runtime::{
-        ExecutionError, InvariantError, Panic, PanicDetails, PanicKind, PanicMessage,
+        ExecutionError, HostError, InvariantError, Panic, PanicDetails, PanicKind, PanicMessage,
     };
     use miette::Diagnostic;
 
@@ -239,6 +270,69 @@ mod tests {
         assert!(error.help().is_none());
         assert!(error.source_code().is_none());
         assert!(error.labels().is_none());
+    }
+
+    #[test]
+    fn host_diagnostic_and_execution_wrapper_preserve_source_labels() {
+        let source = SourceContext::new("src/main.gleam", "pub fn main() {\n  fail(1)\n}");
+        let host = HostError::new(
+            "host_support".into(),
+            "host/service".into(),
+            "fail".into(),
+            FunctionType::new(vec![ValueType::Int], ValueType::Int),
+            HostFailure::new("unavailable"),
+            HostCallSite::new("main".into(), "main".into(), SourceSpan::new(18, 25)),
+            Some(&source),
+        );
+        let labels = host
+            .labels()
+            .expect("source-backed host failure should have a label")
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            host.code().map(|code| code.to_string()),
+            Some("geam::host_function".into()),
+        );
+        assert!(host.help().is_none());
+        assert!(host.source_code().is_some());
+        assert_eq!(labels.len(), 1);
+        assert_eq!(
+            labels[0].label(),
+            Some("host function host_support::host/service.fail failed"),
+        );
+        assert_eq!(labels[0].offset(), 18);
+        assert_eq!(labels[0].len(), 7);
+
+        let error = ExecutionError::Host(Box::new(host));
+        assert_eq!(
+            error.code().map(|code| code.to_string()),
+            Some("geam::host_function".into()),
+        );
+        assert!(error.help().is_none());
+        assert!(error.source_code().is_some());
+        assert_eq!(
+            error
+                .labels()
+                .expect("execution wrapper should retain the host label")
+                .count(),
+            1,
+        );
+    }
+
+    #[test]
+    fn source_less_host_diagnostic_has_no_source_or_labels() {
+        let host = HostError::new(
+            "host_support".into(),
+            "host/service".into(),
+            "fail".into(),
+            FunctionType::new(Vec::new(), ValueType::Bool),
+            HostFailure::new("unavailable"),
+            HostCallSite::new("host/service".into(), "fail".into(), SourceSpan::new(0, 0)),
+            None,
+        );
+
+        assert!(host.source_code().is_none());
+        assert!(host.labels().is_none());
     }
 
     #[test]

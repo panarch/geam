@@ -2,7 +2,7 @@ use super::{
     BoolExpr, CallArg, CustomFieldAccess, FloatExpr, IntFunctionExpr, IntListExpr, PanicExpr,
     StringExpr, TupleExpr,
 };
-use crate::plan::{ConstantIntReference, FunctionInstantiation, IntLocalId, Step};
+use crate::plan::{ConstantIntReference, FunctionInstantiation, HostCallSite, IntLocalId, Step};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -22,10 +22,12 @@ pub(crate) enum IntExprKind {
     Call {
         function: FunctionInstantiation,
         args: Vec<CallArg>,
+        site: HostCallSite,
     },
     FunctionCall {
         function: Box<IntFunctionExpr>,
         args: Vec<CallArg>,
+        site: HostCallSite,
     },
     TupleIndex {
         tuple: Box<TupleExpr>,
@@ -103,17 +105,40 @@ impl IntExpr {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn call(function: FunctionInstantiation, args: Vec<CallArg>) -> Self {
+        Self::call_at(function, args, HostCallSite::unknown())
+    }
+
+    pub(crate) fn call_at(
+        function: FunctionInstantiation,
+        args: Vec<CallArg>,
+        site: HostCallSite,
+    ) -> Self {
         Self {
-            kind: IntExprKind::Call { function, args },
+            kind: IntExprKind::Call {
+                function,
+                args,
+                site,
+            },
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn function_call(function: IntFunctionExpr, args: Vec<CallArg>) -> Self {
+        Self::function_call_at(function, args, HostCallSite::unknown())
+    }
+
+    pub(crate) fn function_call_at(
+        function: IntFunctionExpr,
+        args: Vec<CallArg>,
+        site: HostCallSite,
+    ) -> Self {
         Self {
             kind: IntExprKind::FunctionCall {
                 function: Box::new(function),
                 args,
+                site,
             },
         }
     }
@@ -292,6 +317,7 @@ mod tests {
             &IntExprKind::Call {
                 function: function_instantiation(),
                 args: Vec::new(),
+                site: crate::plan::HostCallSite::unknown(),
             },
         );
         assert_eq!(
@@ -299,6 +325,7 @@ mod tests {
             &IntExprKind::FunctionCall {
                 function: Box::new(function_expr()),
                 args: Vec::new(),
+                site: crate::plan::HostCallSite::unknown(),
             },
         );
         assert_eq!(

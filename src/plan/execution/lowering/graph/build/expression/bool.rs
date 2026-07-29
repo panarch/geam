@@ -151,21 +151,31 @@ fn bool_value_instruction(
             ));
             Representability::Inhabited(DraftFlow::value(cursor, value))
         }
-        E::Call { function, args } => {
-            call_args(args, cursor, graph, context).and_then(|flow| match flow {
-                DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
-                DraftFlow::Value {
-                    mut cursor,
-                    value: args,
-                } => context.bool_function_id(function).map(|function| {
-                    let value = graph.bool_instruction(&mut cursor, I::Call { function, args });
-                    DraftFlow::value(cursor, value)
-                }),
-            })
-        }
+        E::Call {
+            function,
+            args,
+            site,
+        } => call_args(args, cursor, graph, context).and_then(|flow| match flow {
+            DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
+            DraftFlow::Value {
+                mut cursor,
+                value: args,
+            } => context.bool_function_id(function).map(|function| {
+                let value = graph.bool_instruction(
+                    &mut cursor,
+                    I::Call {
+                        function,
+                        args,
+                        site: site.clone(),
+                    },
+                );
+                DraftFlow::value(cursor, value)
+            }),
+        }),
         E::FunctionCall {
             function: value,
             args,
+            site,
         } => function::bool_function_expr(value, cursor, graph, context).and_then(
             |flow| match flow {
                 DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
@@ -183,6 +193,7 @@ fn bool_value_instruction(
                             I::FunctionCall {
                                 function: function.value().clone(),
                                 args,
+                                site: site.clone(),
                             },
                         );
                         DraftFlow::value(cursor, value)

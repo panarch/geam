@@ -11,14 +11,14 @@ use crate::runtime::error::ExecutionResult;
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedValue, values_equal,
 };
-use crate::runtime::state::RuntimeState;
+use crate::runtime::state::RuntimeStateFor;
 use crate::runtime::{ExecutableRuntimePlan, ExecutionError, InvariantError};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
-pub(super) fn int(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn int<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &BlockEnvironment,
     instruction: &IntInstruction,
     expected: &ValueType,
@@ -28,15 +28,28 @@ pub(super) fn int(
     match instruction {
         I::Value(value) => Ok(value.clone()),
         I::Constant(id) => constant(plan, state, *id),
-        I::Call { function, args } => {
-            crate::runtime::function::run_int(plan, state, *function, environment.retain(args))
-        }
-        I::FunctionCall { function, args } => {
+        I::Call {
+            function,
+            args,
+            site,
+        } => crate::runtime::function::run_int(
+            plan,
+            state,
+            *function,
+            crate::runtime::error::HostCallOrigin::source(site.clone()),
+            environment.retain(args),
+        ),
+        I::FunctionCall {
+            function,
+            args,
+            site,
+        } => {
             let function = environment.int_function(*function);
             crate::runtime::function::run_int(
                 plan,
                 state,
                 function.runtime_id(),
+                crate::runtime::error::HostCallOrigin::source(site.clone()),
                 inputs_with_captures(environment, args, function.captures()),
             )
         }
@@ -66,7 +79,7 @@ pub(super) fn int(
             plan,
             expected,
             *index,
-            state.int_values(&environment.int_list(*list)),
+            state.values().int_values(&environment.int_list(*list)),
         ),
         I::Add { left, right } => Ok(environment.int(*left) + environment.int(*right)),
         I::Sub { left, right } => Ok(environment.int(*left) - environment.int(*right)),
@@ -91,9 +104,9 @@ pub(super) fn int(
     }
 }
 
-pub(super) fn float(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn float<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &BlockEnvironment,
     instruction: &FloatInstruction,
     expected: &ValueType,
@@ -103,15 +116,28 @@ pub(super) fn float(
     match instruction {
         I::Value(value) => Ok(*value),
         I::Constant(id) => constant(plan, state, *id),
-        I::Call { function, args } => {
-            crate::runtime::function::run_float(plan, state, *function, environment.retain(args))
-        }
-        I::FunctionCall { function, args } => {
+        I::Call {
+            function,
+            args,
+            site,
+        } => crate::runtime::function::run_float(
+            plan,
+            state,
+            *function,
+            crate::runtime::error::HostCallOrigin::source(site.clone()),
+            environment.retain(args),
+        ),
+        I::FunctionCall {
+            function,
+            args,
+            site,
+        } => {
             let function = environment.float_function(*function);
             crate::runtime::function::run_float(
                 plan,
                 state,
                 function.runtime_id(),
+                crate::runtime::error::HostCallOrigin::source(site.clone()),
                 inputs_with_captures(environment, args, function.captures()),
             )
         }
@@ -141,7 +167,7 @@ pub(super) fn float(
             plan,
             expected,
             *index,
-            state.float_values(&environment.float_list(*list)),
+            state.values().float_values(&environment.float_list(*list)),
         ),
         I::Add { left, right } => Ok(environment.float(*left) + environment.float(*right)),
         I::Sub { left, right } => Ok(environment.float(*left) - environment.float(*right)),
@@ -157,9 +183,9 @@ pub(super) fn float(
     }
 }
 
-pub(super) fn string(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn string<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &BlockEnvironment,
     instruction: &StringInstruction,
     expected: &ValueType,
@@ -169,15 +195,28 @@ pub(super) fn string(
     match instruction {
         I::Value(value) => Ok(value.clone()),
         I::Constant(id) => constant(plan, state, *id),
-        I::Call { function, args } => {
-            crate::runtime::function::run_string(plan, state, *function, environment.retain(args))
-        }
-        I::FunctionCall { function, args } => {
+        I::Call {
+            function,
+            args,
+            site,
+        } => crate::runtime::function::run_string(
+            plan,
+            state,
+            *function,
+            crate::runtime::error::HostCallOrigin::source(site.clone()),
+            environment.retain(args),
+        ),
+        I::FunctionCall {
+            function,
+            args,
+            site,
+        } => {
             let function = environment.string_function(*function);
             crate::runtime::function::run_string(
                 plan,
                 state,
                 function.runtime_id(),
+                crate::runtime::error::HostCallOrigin::source(site.clone()),
                 inputs_with_captures(environment, args, function.captures()),
             )
         }
@@ -207,7 +246,9 @@ pub(super) fn string(
             plan,
             expected,
             *index,
-            state.string_values(&environment.string_list(*list)),
+            state
+                .values()
+                .string_values(&environment.string_list(*list)),
         ),
         I::Concatenate { left, right } => Ok(format!(
             "{}{}",
@@ -222,9 +263,9 @@ pub(super) fn string(
     }
 }
 
-pub(super) fn bit_array(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn bit_array<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &BlockEnvironment,
     instruction: &BitArrayInstruction,
     expected: &ValueType,
@@ -234,18 +275,28 @@ pub(super) fn bit_array(
     match instruction {
         I::Value(segments) => super::super::bit_array::evaluate(plan, environment, segments),
         I::Constant(id) => constant(plan, state, *id),
-        I::Call { function, args } => crate::runtime::function::run_bit_array(
+        I::Call {
+            function,
+            args,
+            site,
+        } => crate::runtime::function::run_bit_array(
             plan,
             state,
             *function,
+            crate::runtime::error::HostCallOrigin::source(site.clone()),
             environment.retain(args),
         ),
-        I::FunctionCall { function, args } => {
+        I::FunctionCall {
+            function,
+            args,
+            site,
+        } => {
             let function = environment.bit_array_function(*function);
             crate::runtime::function::run_bit_array(
                 plan,
                 state,
                 function.runtime_id(),
+                crate::runtime::error::HostCallOrigin::source(site.clone()),
                 inputs_with_captures(environment, args, function.captures()),
             )
         }
@@ -275,14 +326,16 @@ pub(super) fn bit_array(
             plan,
             expected,
             *index,
-            state.bit_array_values(&environment.bit_array_list(*list)),
+            state
+                .values()
+                .bit_array_values(&environment.bit_array_list(*list)),
         ),
     }
 }
 
-pub(super) fn utf_codepoint(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn utf_codepoint<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &BlockEnvironment,
     instruction: &UtfCodepointInstruction,
     expected: &ValueType,
@@ -290,18 +343,28 @@ pub(super) fn utf_codepoint(
     use UtfCodepointInstruction as I;
 
     match instruction {
-        I::Call { function, args } => crate::runtime::function::run_utf_codepoint(
+        I::Call {
+            function,
+            args,
+            site,
+        } => crate::runtime::function::run_utf_codepoint(
             plan,
             state,
             *function,
+            crate::runtime::error::HostCallOrigin::source(site.clone()),
             environment.retain(args),
         ),
-        I::FunctionCall { function, args } => {
+        I::FunctionCall {
+            function,
+            args,
+            site,
+        } => {
             let function = environment.utf_codepoint_function(*function);
             crate::runtime::function::run_utf_codepoint(
                 plan,
                 state,
                 function.runtime_id(),
+                crate::runtime::error::HostCallOrigin::source(site.clone()),
                 inputs_with_captures(environment, args, function.captures()),
             )
         }
@@ -331,14 +394,16 @@ pub(super) fn utf_codepoint(
             plan,
             expected,
             *index,
-            state.utf_codepoint_values(&environment.utf_codepoint_list(*list)),
+            state
+                .values()
+                .utf_codepoint_values(&environment.utf_codepoint_list(*list)),
         ),
     }
 }
 
-pub(super) fn custom(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn custom<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &BlockEnvironment,
     instruction: &CustomInstruction,
     expected: &ValueType,
@@ -354,10 +419,22 @@ pub(super) fn custom(
             environment.values(fields),
         )),
         I::Constant(id) => constant(plan, state, *id),
-        I::Call { function, args } => {
-            crate::runtime::function::run_custom(plan, state, *function, environment.retain(args))
-        }
-        I::FunctionCall { function, args } => {
+        I::Call {
+            function,
+            args,
+            site,
+        } => crate::runtime::function::run_custom(
+            plan,
+            state,
+            *function,
+            crate::runtime::error::HostCallOrigin::source(site.clone()),
+            environment.retain(args),
+        ),
+        I::FunctionCall {
+            function,
+            args,
+            site,
+        } => {
             let function = environment.custom_function(function);
             match function {
                 EvaluatedCustomFunction::Function(function) => {
@@ -365,6 +442,7 @@ pub(super) fn custom(
                         plan,
                         state,
                         function.runtime_id(),
+                        crate::runtime::error::HostCallOrigin::source(site.clone()),
                         inputs_with_captures(environment, args, function.captures()),
                     )
                 }
@@ -402,14 +480,16 @@ pub(super) fn custom(
             plan,
             expected,
             *index,
-            state.custom_values(&environment.custom_list(*list)),
+            state
+                .values()
+                .custom_values(&environment.custom_list(*list)),
         ),
     }
 }
 
-pub(super) fn bool(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn bool<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &BlockEnvironment,
     instruction: &BoolInstruction,
     expected: &ValueType,
@@ -419,15 +499,28 @@ pub(super) fn bool(
     match instruction {
         I::Value(value) => Ok(*value),
         I::Constant(id) => constant(plan, state, *id),
-        I::Call { function, args } => {
-            crate::runtime::function::run_bool(plan, state, *function, environment.retain(args))
-        }
-        I::FunctionCall { function, args } => {
+        I::Call {
+            function,
+            args,
+            site,
+        } => crate::runtime::function::run_bool(
+            plan,
+            state,
+            *function,
+            crate::runtime::error::HostCallOrigin::source(site.clone()),
+            environment.retain(args),
+        ),
+        I::FunctionCall {
+            function,
+            args,
+            site,
+        } => {
             let function = environment.bool_function(*function);
             crate::runtime::function::run_bool(
                 plan,
                 state,
                 function.runtime_id(),
+                crate::runtime::error::HostCallOrigin::source(site.clone()),
                 inputs_with_captures(environment, args, function.captures()),
             )
         }
@@ -457,7 +550,7 @@ pub(super) fn bool(
             plan,
             expected,
             *index,
-            state.bool_values(&environment.bool_list(*list)),
+            state.values().bool_values(&environment.bool_list(*list)),
         ),
         I::Not(value) => Ok(!environment.bool(*value)),
         I::LtInt { left, right } => Ok(environment.int(*left) < environment.int(*right)),
@@ -484,17 +577,17 @@ pub(super) fn bool(
             Ok(environment.string(*value).starts_with(prefix.as_str()))
         }
         I::ListLengthEquals { value, length } => {
-            Ok(state.list_len(&environment.list(value)) == *length)
+            Ok(state.values().list_len(&environment.list(value)) == *length)
         }
         I::ListLengthAtLeast { value, length } => {
-            Ok(state.list_len(&environment.list(value)) >= *length)
+            Ok(state.values().list_len(&environment.list(value)) >= *length)
         }
     }
 }
 
-pub(super) fn nil(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn nil<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &BlockEnvironment,
     instruction: &NilInstruction,
     expected: &ValueType,
@@ -504,15 +597,28 @@ pub(super) fn nil(
     match instruction {
         I::Value => Ok(()),
         I::Constant(id) => constant(plan, state, *id),
-        I::Call { function, args } => {
-            crate::runtime::function::run_nil(plan, state, *function, environment.retain(args))
-        }
-        I::FunctionCall { function, args } => {
+        I::Call {
+            function,
+            args,
+            site,
+        } => crate::runtime::function::run_nil(
+            plan,
+            state,
+            *function,
+            crate::runtime::error::HostCallOrigin::source(site.clone()),
+            environment.retain(args),
+        ),
+        I::FunctionCall {
+            function,
+            args,
+            site,
+        } => {
             let function = environment.nil_function(*function);
             crate::runtime::function::run_nil(
                 plan,
                 state,
                 function.runtime_id(),
+                crate::runtime::error::HostCallOrigin::source(site.clone()),
                 inputs_with_captures(environment, args, function.captures()),
             )
         }
@@ -527,15 +633,15 @@ pub(super) fn nil(
             })
         }
         I::ListIndex { list, index } => {
-            let length = state.nil_len(&environment.nil_list(*list));
+            let length = state.values().nil_len(&environment.nil_list(*list));
             ensure_list_index(expected, *index, length)
         }
     }
 }
 
-pub(super) fn tuple(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn tuple<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &BlockEnvironment,
     instruction: &TupleInstruction,
     expected: &ValueType,
@@ -545,15 +651,28 @@ pub(super) fn tuple(
     match instruction {
         I::Value(values) => Ok(environment.values(values).into_vec()),
         I::Constant(id) => constant(plan, state, *id),
-        I::Call { function, args } => {
-            crate::runtime::function::run_tuple(plan, state, *function, environment.retain(args))
-        }
-        I::FunctionCall { function, args } => {
+        I::Call {
+            function,
+            args,
+            site,
+        } => crate::runtime::function::run_tuple(
+            plan,
+            state,
+            *function,
+            crate::runtime::error::HostCallOrigin::source(site.clone()),
+            environment.retain(args),
+        ),
+        I::FunctionCall {
+            function,
+            args,
+            site,
+        } => {
             let function = environment.tuple_function(*function);
             crate::runtime::function::run_tuple(
                 plan,
                 state,
                 function.runtime_id(),
+                crate::runtime::error::HostCallOrigin::source(site.clone()),
                 inputs_with_captures(environment, args, function.captures()),
             )
         }
@@ -583,17 +702,18 @@ pub(super) fn tuple(
             plan,
             expected,
             *index,
-            state.tuple_values(&environment.tuple_list(*list)),
+            state.values().tuple_values(&environment.tuple_list(*list)),
         ),
     }
 }
 
-pub(super) fn constant<Value>(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn constant<Plan, Value>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     id: ConstantId<Value>,
 ) -> ExecutionResult<Value::Evaluated>
 where
+    Plan: ExecutableRuntimePlan,
     Value: ConstantValue + GraphValue,
 {
     evaluate_constant(plan, state, plan.constant(id))

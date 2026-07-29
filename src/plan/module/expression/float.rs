@@ -2,7 +2,9 @@ use super::{
     BoolExpr, CallArg, CustomFieldAccess, FloatFunctionExpr, FloatListExpr, IntExpr, PanicExpr,
     StringExpr, TupleExpr,
 };
-use crate::plan::{ConstantFloatReference, FloatLocalId, FunctionInstantiation, Step};
+use crate::plan::{
+    ConstantFloatReference, FloatLocalId, FunctionInstantiation, HostCallSite, Step,
+};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -22,10 +24,12 @@ pub(crate) enum FloatExprKind {
     Call {
         function: FunctionInstantiation,
         args: Vec<CallArg>,
+        site: HostCallSite,
     },
     FunctionCall {
         function: Box<FloatFunctionExpr>,
         args: Vec<CallArg>,
+        site: HostCallSite,
     },
     TupleIndex {
         tuple: Box<TupleExpr>,
@@ -98,17 +102,40 @@ impl FloatExpr {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn call(function: FunctionInstantiation, args: Vec<CallArg>) -> Self {
+        Self::call_at(function, args, HostCallSite::unknown())
+    }
+
+    pub(crate) fn call_at(
+        function: FunctionInstantiation,
+        args: Vec<CallArg>,
+        site: HostCallSite,
+    ) -> Self {
         Self {
-            kind: FloatExprKind::Call { function, args },
+            kind: FloatExprKind::Call {
+                function,
+                args,
+                site,
+            },
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn function_call(function: FloatFunctionExpr, args: Vec<CallArg>) -> Self {
+        Self::function_call_at(function, args, HostCallSite::unknown())
+    }
+
+    pub(crate) fn function_call_at(
+        function: FloatFunctionExpr,
+        args: Vec<CallArg>,
+        site: HostCallSite,
+    ) -> Self {
         Self {
             kind: FloatExprKind::FunctionCall {
                 function: Box::new(function),
                 args,
+                site,
             },
         }
     }
@@ -269,6 +296,7 @@ mod tests {
             &FloatExprKind::Call {
                 function: function_instantiation(),
                 args: Vec::new(),
+                site: crate::plan::HostCallSite::unknown(),
             },
         );
         assert_eq!(
@@ -276,6 +304,7 @@ mod tests {
             &FloatExprKind::FunctionCall {
                 function: Box::new(function_expr()),
                 args: Vec::new(),
+                site: crate::plan::HostCallSite::unknown(),
             },
         );
         assert_eq!(

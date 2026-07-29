@@ -12,10 +12,12 @@ pub(crate) enum NilInstruction {
     Call {
         function: NilFunctionId,
         args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: NilFunctionLocalId,
         args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: TupleLocalId,
@@ -37,10 +39,10 @@ impl Explain for NilInstruction {
         match self {
             NilInstruction::Value => output.push_str("nil.value"),
             NilInstruction::Constant(id) => write_constant(output, "nil", *id),
-            NilInstruction::Call { function, args } => {
+            NilInstruction::Call { function, args, .. } => {
                 write_call(output, "nil.call", function, args)
             }
-            NilInstruction::FunctionCall { function, args } => {
+            NilInstruction::FunctionCall { function, args, .. } => {
                 write_function_call(output, "nil.function_call", function, args);
             }
             NilInstruction::TupleIndex { tuple, index } => {

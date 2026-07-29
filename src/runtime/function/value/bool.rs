@@ -1,137 +1,48 @@
-use super::super::{EvaluatedFunctionExit, evaluate};
-use crate::plan::execution::HostedExecution;
-use crate::plan::execution::function::{
-    BoolFunctionBody, BoolFunctionId, ExecutableFunction, ValueFunctionEntry,
-};
+use super::super::{EvaluatedFunctionExit, evaluate_entry, parameter_locals};
+use crate::plan::execution::function::BoolFunctionId;
 use crate::plan::execution::graph::ParamLocal;
-use crate::plan::execution::host::HostBoolFunctionId;
-use crate::plan::execution::runtime::RuntimeExecutionPlan;
 use crate::runtime::ExecutableRuntimePlan;
-use crate::runtime::error::ExecutionResult;
+use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::graph::RetainedValues;
-use crate::runtime::state::RuntimeState;
+use crate::runtime::state::RuntimeStateFor;
 
-pub(in crate::runtime) trait RuntimeBoolFunction<Plan: RuntimeExecutionPlan> {
-    fn evaluate<EvaluateGraph>(
-        &self,
-        plan: &Plan,
-        state: &mut RuntimeState,
-        inputs: RetainedValues,
-        evaluate_graph: EvaluateGraph,
-    ) -> ExecutionResult<EvaluatedFunctionExit<bool, BoolFunctionId>>
-    where
-        EvaluateGraph: FnOnce(
-            &Plan,
-            &mut RuntimeState,
-            &ExecutableFunction<BoolFunctionBody>,
-            RetainedValues,
-        )
-            -> ExecutionResult<EvaluatedFunctionExit<bool, BoolFunctionId>>;
-
-    fn parameter_locals(&self, plan: &Plan) -> Vec<ParamLocal>;
-}
-
-impl<Plan: RuntimeExecutionPlan> RuntimeBoolFunction<Plan>
-    for ExecutableFunction<BoolFunctionBody>
-{
-    fn evaluate<EvaluateGraph>(
-        &self,
-        plan: &Plan,
-        state: &mut RuntimeState,
-        inputs: RetainedValues,
-        evaluate_graph: EvaluateGraph,
-    ) -> ExecutionResult<EvaluatedFunctionExit<bool, BoolFunctionId>>
-    where
-        EvaluateGraph: FnOnce(
-            &Plan,
-            &mut RuntimeState,
-            &ExecutableFunction<BoolFunctionBody>,
-            RetainedValues,
-        )
-            -> ExecutionResult<EvaluatedFunctionExit<bool, BoolFunctionId>>,
-    {
-        evaluate_graph(plan, state, self, inputs)
-    }
-
-    fn parameter_locals(&self, _plan: &Plan) -> Vec<ParamLocal> {
-        self.entry()
-            .params(self.body())
-            .iter()
-            .map(|slot| slot.local().clone())
-            .collect()
-    }
-}
-
-impl RuntimeBoolFunction<HostedExecution>
-    for ValueFunctionEntry<BoolFunctionBody, HostBoolFunctionId>
-{
-    fn evaluate<EvaluateGraph>(
-        &self,
-        plan: &HostedExecution,
-        state: &mut RuntimeState,
-        inputs: RetainedValues,
-        evaluate_graph: EvaluateGraph,
-    ) -> ExecutionResult<EvaluatedFunctionExit<bool, BoolFunctionId>>
-    where
-        EvaluateGraph: FnOnce(
-            &HostedExecution,
-            &mut RuntimeState,
-            &ExecutableFunction<BoolFunctionBody>,
-            RetainedValues,
-        )
-            -> ExecutionResult<EvaluatedFunctionExit<bool, BoolFunctionId>>,
-    {
-        match self {
-            ValueFunctionEntry::Graph(function) => evaluate_graph(plan, state, function, inputs),
-            ValueFunctionEntry::Host(target) => Ok(EvaluatedFunctionExit::Return(
-                plan.host_bool_function(*target).call(&inputs),
-            )),
-        }
-    }
-
-    fn parameter_locals(&self, plan: &HostedExecution) -> Vec<ParamLocal> {
-        match self {
-            ValueFunctionEntry::Graph(function) => function.parameter_locals(plan),
-            ValueFunctionEntry::Host(target) => {
-                plan.host_bool_function(*target).parameters().to_vec()
-            }
-        }
-    }
-}
-
-pub(in crate::runtime) fn run_bool(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(in crate::runtime) fn run_bool<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     mut function: BoolFunctionId,
+    mut origin: HostCallOrigin,
     mut inputs: RetainedValues,
 ) -> ExecutionResult<bool> {
     loop {
-        match plan.bool_function(function).evaluate(
-            plan,
-            state,
-            inputs,
-            |plan, state, function, inputs| evaluate(plan, state, function.body(), inputs),
-        )? {
+        let exit = evaluate_entry(plan, state, plan.bool_function(function), origin, inputs)?;
+        match exit {
             EvaluatedFunctionExit::Return(value) => return Ok(value),
             EvaluatedFunctionExit::TailCall {
                 function: target,
                 args,
             } => {
-                function = target;
+                origin = HostCallOrigin::source(target.site().clone());
+                function = *target.function();
                 inputs = args;
             }
         }
     }
 }
 
+pub(in crate::runtime) fn bool_parameter_locals<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    function: BoolFunctionId,
+) -> Vec<ParamLocal> {
+    parameter_locals(plan, plan.bool_function(function))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::RuntimeBoolFunction as _;
+    use super::bool_parameter_locals;
     use crate::plan::execution::function::BoolFunctionId;
     use crate::plan::execution::graph::{BoolLocalId, IntLocalId, ParamLocal};
-    use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::{
-        HostModule, HostModules, HostedExecution, ModuleSource, PackageSource, Value,
+        HostModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource, Value,
         compile_typed_host_program, compile_typed_module, plan_host_program, plan_module, run_main,
     };
     use num_bigint::BigInt;
@@ -151,10 +62,8 @@ pub fn main() {
             compile_typed_module("main", "main.gleam", source).expect("source should compile");
         let plan = plan_module(typed).expect("source should plan");
         let execution = crate::ExecutionPlan::from_module_plan(plan);
-        let function = RuntimeExecutionPlan::bool_function(&execution, BoolFunctionId(1));
-
         assert_eq!(
-            function.parameter_locals(&execution),
+            bool_parameter_locals(&execution, BoolFunctionId(1)),
             [ParamLocal::Bool(BoolLocalId(0))],
         );
         assert_eq!(run_main(&execution, &mut Vec::new()), Ok(Value::Bool(true)),);
@@ -166,7 +75,7 @@ pub fn main() {
             .expect("host module should be valid")
             .with_function("is_positive", |value: BigInt| value > BigInt::from(0))
             .expect("host function should be valid");
-        let hosts = HostModules::new([predicates]).expect("host modules should be unique");
+        let hosts = HostProviderSet::new([predicates]).expect("host modules should be unique");
         let source = r#"
 import host/predicates
 
@@ -190,18 +99,19 @@ pub fn main() {
         )
         .expect("host source should compile");
         let plan = plan_host_program(typed).expect("host source should plan");
-        let execution = HostedExecution::from_module_plan(plan);
-        let host = RuntimeExecutionPlan::bool_function(&execution, BoolFunctionId(1));
-        let graph = RuntimeExecutionPlan::bool_function(&execution, BoolFunctionId(2));
-
+        let execution =
+            HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         assert_eq!(
-            graph.parameter_locals(&execution),
+            bool_parameter_locals(&execution, BoolFunctionId(2)),
             [ParamLocal::Bool(BoolLocalId(0))],
         );
         assert_eq!(
-            host.parameter_locals(&execution),
+            bool_parameter_locals(&execution, BoolFunctionId(1)),
             [ParamLocal::Int(IntLocalId(0))],
         );
-        assert_eq!(execution.run_main(&mut Vec::new()), Ok(Value::Bool(true)),);
+        assert_eq!(
+            execution.run_main(&mut (), &mut Vec::new()),
+            Ok(Value::Bool(true)),
+        );
     }
 }

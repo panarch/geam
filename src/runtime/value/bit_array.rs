@@ -1,10 +1,11 @@
 use bitvec::order::Msb0;
 use bitvec::vec::BitVec;
+use std::sync::Arc;
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BitArrayValue {
-    bits: BitVec<u8, Msb0>,
+    bits: Arc<BitVec<u8, Msb0>>,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
@@ -17,7 +18,7 @@ pub struct BitArrayValueLengthError {
 impl BitArrayValue {
     pub fn from_bytes(bytes: Vec<u8>) -> Self {
         Self {
-            bits: BitVec::from_vec(bytes),
+            bits: Arc::new(BitVec::from_vec(bytes)),
         }
     }
 
@@ -41,7 +42,9 @@ impl BitArrayValue {
         {
             *last &= u8::MAX << (8 - remaining);
         }
-        Ok(Self { bits })
+        Ok(Self {
+            bits: Arc::new(bits),
+        })
     }
 
     pub fn bytes(&self) -> &[u8] {
@@ -52,16 +55,19 @@ impl BitArrayValue {
         self.bits.len()
     }
 
-    pub(crate) fn from_evaluated(bits: &bitvec::slice::BitSlice<u8, Msb0>) -> Self {
-        Self {
-            bits: bits.to_bitvec(),
-        }
+    pub(crate) fn bits(&self) -> &bitvec::slice::BitSlice<u8, Msb0> {
+        &self.bits
+    }
+
+    pub(crate) fn from_evaluated(bits: Arc<BitVec<u8, Msb0>>) -> Self {
+        Self { bits }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{BitArrayValue, BitArrayValueLengthError};
+    use std::sync::Arc;
 
     #[test]
     fn aligned_bytes_preserve_all_bits() {
@@ -69,6 +75,15 @@ mod tests {
 
         assert_eq!(value.bytes(), &[0xa5, 0xff]);
         assert_eq!(value.bit_len(), 16);
+    }
+
+    #[test]
+    fn clones_share_the_immutable_bit_storage() {
+        let value = BitArrayValue::from_bytes(vec![0xa5]);
+        let clone = value.clone();
+
+        assert!(Arc::ptr_eq(&value.bits, &clone.bits));
+        assert_send_sync::<BitArrayValue>();
     }
 
     #[test]
@@ -105,4 +120,6 @@ mod tests {
             }),
         );
     }
+
+    fn assert_send_sync<Value: Send + Sync>() {}
 }

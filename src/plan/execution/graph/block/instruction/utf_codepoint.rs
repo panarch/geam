@@ -9,10 +9,12 @@ pub(crate) enum UtfCodepointInstruction {
     Call {
         function: UtfCodepointFunctionId,
         args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: UtfCodepointFunctionLocalId,
         args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: TupleLocalId,
@@ -32,10 +34,10 @@ impl Explain for UtfCodepointInstruction {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
         let output = context.output();
         match self {
-            UtfCodepointInstruction::Call { function, args } => {
+            UtfCodepointInstruction::Call { function, args, .. } => {
                 write_call(output, "utf_codepoint.call", function, args);
             }
-            UtfCodepointInstruction::FunctionCall { function, args } => {
+            UtfCodepointInstruction::FunctionCall { function, args, .. } => {
                 write_function_call(output, "utf_codepoint.function_call", function, args);
             }
             UtfCodepointInstruction::TupleIndex { tuple, index } => {

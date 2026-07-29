@@ -8,12 +8,12 @@ mod value;
 pub(super) use environment::RetainedValues;
 pub(super) use value::GraphValue;
 
-use self::environment::BlockEnvironment;
+pub(in crate::runtime) use self::environment::BlockEnvironment;
 use self::terminator::{GraphAction, NeverCall, terminator_action};
 use crate::plan::execution::graph::{BlockGraph, BlockGraphExitId, ParamLocal};
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::ExecutionResult;
-use crate::runtime::state::RuntimeState;
+use crate::runtime::state::{RuntimeState, RuntimeStateFor};
 
 pub(super) struct CompletedGraph {
     exit: BlockGraphExitId,
@@ -25,35 +25,35 @@ impl CompletedGraph {
         self.exit
     }
 
-    pub(super) fn into_value<Value>(
+    pub(super) fn into_value<Value, State>(
         self,
-        state: &mut RuntimeState,
+        state: &mut RuntimeState<'_, State>,
         value: &Value,
     ) -> Value::Evaluated
     where
         Value: GraphValue,
     {
-        let value = value.read(&self);
+        let value = value.read(&self.environment);
         drop(self.environment);
-        state.drain_releases();
+        state.values_mut().drain_releases();
         value
     }
 
-    pub(super) fn into_retained(
+    pub(super) fn into_retained<State>(
         self,
-        state: &mut RuntimeState,
+        state: &mut RuntimeState<'_, State>,
         values: &[ParamLocal],
     ) -> RetainedValues {
         let retained = self.environment.retain(values);
         drop(self.environment);
-        state.drain_releases();
+        state.values_mut().drain_releases();
         retained
     }
 }
 
-pub(super) fn execute(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn execute<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     graph: &BlockGraph,
     inputs: RetainedValues,
 ) -> ExecutionResult<CompletedGraph> {
@@ -69,23 +69,28 @@ pub(super) fn execute(
         match terminator_action(plan, state, &environment, block.terminator())? {
             GraphAction::Continue { block, inputs } => {
                 drop(environment);
-                state.drain_releases();
+                state.values_mut().drain_releases();
                 block_id = block;
                 environment = BlockEnvironment::from_retained(inputs);
             }
             GraphAction::Exit(exit) => return Ok(CompletedGraph { exit, environment }),
-            GraphAction::NeverCall { function, inputs } => {
+            GraphAction::NeverCall {
+                function,
+                inputs,
+                site,
+            } => {
                 drop(environment);
-                state.drain_releases();
+                state.values_mut().drain_releases();
+                let origin = crate::runtime::error::HostCallOrigin::source(site);
                 return match function {
                     NeverCall::Direct(function) => {
-                        crate::runtime::function::run_never(plan, state, function, inputs)
+                        crate::runtime::function::run_never(plan, state, function, origin, inputs)
                             .map(|never| match never {})
                     }
-                    NeverCall::Value(function) => {
-                        crate::runtime::function::run_never_value(plan, state, function, inputs)
-                            .map(|never| match never {})
-                    }
+                    NeverCall::Value(function) => crate::runtime::function::run_never_value(
+                        plan, state, function, origin, inputs,
+                    )
+                    .map(|never| match never {}),
                 };
             }
         }

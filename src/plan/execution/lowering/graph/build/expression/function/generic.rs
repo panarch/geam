@@ -183,19 +183,31 @@ where
                 ));
             Representability::Inhabited(DraftFlow::value(cursor, make(value)))
         }
-        E::Call { function, args } => call_args(args, cursor, graph, context).and_then(|flow| {
+        E::Call {
+            function,
+            args,
+            site,
+        } => call_args(args, cursor, graph, context).and_then(|flow| {
             flow.and_then(|mut cursor, args| {
                 direct(function, context).map(|function| {
                     let value = graph.function_instruction(
                         &mut cursor,
                         shape.clone(),
-                        I::Call { function, args },
+                        I::Call {
+                            function,
+                            args,
+                            site: site.clone(),
+                        },
                     );
                     DraftFlow::value(cursor, make(value))
                 })
             })
         }),
-        E::FunctionCall { function, args } => lower_function_call(
+        E::FunctionCall {
+            function,
+            args,
+            site,
+        } => lower_function_call(
             args,
             cursor,
             graph,
@@ -211,6 +223,7 @@ where
                     I::FunctionCall {
                         function: function.value().clone(),
                         args,
+                        site: site.clone(),
                     },
                 );
                 DraftFlow::value(cursor, make(value))
@@ -513,30 +526,42 @@ macro_rules! define_symbolic_fixed_function {
                         DraftGenericFunction::new(value),
                     ))
                 }
-                E::Call { function, args, .. } => {
-                    call_args(args, cursor, graph, context).and_then(|flow| match flow {
-                        DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
-                        DraftFlow::Value {
-                            mut cursor,
-                            value: args,
-                        } => {
-                            let type_ = context.generic_function_type(shape);
-                            context
-                                .generic_function_function_id(function, type_)
-                                .map(|function| {
-                                    let function =
-                                        execution::function::FunctionFunctionId::Generic(function);
-                                    let value = graph.function_instruction(
-                                        &mut cursor,
-                                        shape.clone(),
-                                        I::Call { function, args },
-                                    );
-                                    DraftFlow::value(cursor, DraftGenericFunction::new(value))
-                                })
-                        }
-                    })
-                }
-                E::FunctionCall { function, args, .. } => lower_function_call(
+                E::Call {
+                    function,
+                    args,
+                    site,
+                    ..
+                } => call_args(args, cursor, graph, context).and_then(|flow| match flow {
+                    DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
+                    DraftFlow::Value {
+                        mut cursor,
+                        value: args,
+                    } => {
+                        let type_ = context.generic_function_type(shape);
+                        context
+                            .generic_function_function_id(function, type_)
+                            .map(|function| {
+                                let function =
+                                    execution::function::FunctionFunctionId::Generic(function);
+                                let value = graph.function_instruction(
+                                    &mut cursor,
+                                    shape.clone(),
+                                    I::Call {
+                                        function,
+                                        args,
+                                        site: site.clone(),
+                                    },
+                                );
+                                DraftFlow::value(cursor, DraftGenericFunction::new(value))
+                            })
+                    }
+                }),
+                E::FunctionCall {
+                    function,
+                    args,
+                    site,
+                    ..
+                } => lower_function_call(
                     args,
                     cursor,
                     graph,
@@ -554,6 +579,7 @@ macro_rules! define_symbolic_fixed_function {
                             I::FunctionCall {
                                 function: function.value().clone(),
                                 args,
+                                site: site.clone(),
                             },
                         );
                         DraftFlow::value(cursor, DraftGenericFunction::new(value))
@@ -800,33 +826,40 @@ fn symbolic_custom_kind(
                 ));
             Representability::Inhabited(DraftFlow::value(cursor, DraftGenericFunction::new(value)))
         }
-        E::Call { function, args } => {
-            call_args(args, cursor, graph, context).and_then(|flow| match flow {
-                DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
-                DraftFlow::Value {
-                    mut cursor,
-                    value: args,
-                } => {
-                    let type_ = context.generic_function_type(shape);
-                    context
-                        .generic_function_function_id(function, type_)
-                        .map(|function| {
-                            let value = graph.function_instruction(
-                                &mut cursor,
-                                shape.clone(),
-                                I::Call {
-                                    function: execution::function::FunctionFunctionId::Generic(
-                                        function,
-                                    ),
-                                    args,
-                                },
-                            );
-                            DraftFlow::value(cursor, DraftGenericFunction::new(value))
-                        })
-                }
-            })
-        }
-        E::FunctionCall { function, args } => lower_function_call(
+        E::Call {
+            function,
+            args,
+            site,
+        } => call_args(args, cursor, graph, context).and_then(|flow| match flow {
+            DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
+            DraftFlow::Value {
+                mut cursor,
+                value: args,
+            } => {
+                let type_ = context.generic_function_type(shape);
+                context
+                    .generic_function_function_id(function, type_)
+                    .map(|function| {
+                        let value = graph.function_instruction(
+                            &mut cursor,
+                            shape.clone(),
+                            I::Call {
+                                function: execution::function::FunctionFunctionId::Generic(
+                                    function,
+                                ),
+                                args,
+                                site: site.clone(),
+                            },
+                        );
+                        DraftFlow::value(cursor, DraftGenericFunction::new(value))
+                    })
+            }
+        }),
+        E::FunctionCall {
+            function,
+            args,
+            site,
+        } => lower_function_call(
             args,
             cursor,
             graph,
@@ -842,6 +875,7 @@ fn symbolic_custom_kind(
                     I::FunctionCall {
                         function: function.value().clone(),
                         args,
+                        site: site.clone(),
                     },
                 );
                 DraftFlow::value(cursor, DraftGenericFunction::new(value))
@@ -1027,33 +1061,42 @@ fn symbolic_list_kind(
                 .function(super::super::super::local::list_function_local_key(local));
             Representability::Inhabited(DraftFlow::value(cursor, DraftGenericFunction::new(value)))
         }
-        E::Call { function, args, .. } => {
-            call_args(args, cursor, graph, context).and_then(|flow| match flow {
-                DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
-                DraftFlow::Value {
-                    mut cursor,
-                    value: args,
-                } => {
-                    let type_ = context.generic_function_type(shape);
-                    context
-                        .generic_function_function_id(function, type_)
-                        .map(|function| {
-                            let value = graph.function_instruction(
-                                &mut cursor,
-                                shape.clone(),
-                                I::Call {
-                                    function: execution::function::FunctionFunctionId::Generic(
-                                        function,
-                                    ),
-                                    args,
-                                },
-                            );
-                            DraftFlow::value(cursor, DraftGenericFunction::new(value))
-                        })
-                }
-            })
-        }
-        E::FunctionCall { function, args, .. } => lower_function_call(
+        E::Call {
+            function,
+            args,
+            site,
+            ..
+        } => call_args(args, cursor, graph, context).and_then(|flow| match flow {
+            DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
+            DraftFlow::Value {
+                mut cursor,
+                value: args,
+            } => {
+                let type_ = context.generic_function_type(shape);
+                context
+                    .generic_function_function_id(function, type_)
+                    .map(|function| {
+                        let value = graph.function_instruction(
+                            &mut cursor,
+                            shape.clone(),
+                            I::Call {
+                                function: execution::function::FunctionFunctionId::Generic(
+                                    function,
+                                ),
+                                args,
+                                site: site.clone(),
+                            },
+                        );
+                        DraftFlow::value(cursor, DraftGenericFunction::new(value))
+                    })
+            }
+        }),
+        E::FunctionCall {
+            function,
+            args,
+            site,
+            ..
+        } => lower_function_call(
             args,
             cursor,
             graph,
@@ -1069,6 +1112,7 @@ fn symbolic_list_kind(
                     I::FunctionCall {
                         function: function.value().clone(),
                         args,
+                        site: site.clone(),
                     },
                 );
                 DraftFlow::value(cursor, DraftGenericFunction::new(value))
@@ -1263,33 +1307,40 @@ fn symbolic_returning_function_kind(
                 ));
             Representability::Inhabited(DraftFlow::value(cursor, DraftGenericFunction::new(value)))
         }
-        E::Call { function, args } => {
-            call_args(args, cursor, graph, context).and_then(|flow| match flow {
-                DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
-                DraftFlow::Value {
-                    mut cursor,
-                    value: args,
-                } => {
-                    let type_ = context.generic_function_type(shape);
-                    context
-                        .generic_function_function_id(function, type_)
-                        .map(|function| {
-                            let value = graph.function_instruction(
-                                &mut cursor,
-                                shape.clone(),
-                                I::Call {
-                                    function: execution::function::FunctionFunctionId::Generic(
-                                        function,
-                                    ),
-                                    args,
-                                },
-                            );
-                            DraftFlow::value(cursor, DraftGenericFunction::new(value))
-                        })
-                }
-            })
-        }
-        E::FunctionCall { function, args } => lower_function_call(
+        E::Call {
+            function,
+            args,
+            site,
+        } => call_args(args, cursor, graph, context).and_then(|flow| match flow {
+            DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
+            DraftFlow::Value {
+                mut cursor,
+                value: args,
+            } => {
+                let type_ = context.generic_function_type(shape);
+                context
+                    .generic_function_function_id(function, type_)
+                    .map(|function| {
+                        let value = graph.function_instruction(
+                            &mut cursor,
+                            shape.clone(),
+                            I::Call {
+                                function: execution::function::FunctionFunctionId::Generic(
+                                    function,
+                                ),
+                                args,
+                                site: site.clone(),
+                            },
+                        );
+                        DraftFlow::value(cursor, DraftGenericFunction::new(value))
+                    })
+            }
+        }),
+        E::FunctionCall {
+            function,
+            args,
+            site,
+        } => lower_function_call(
             args,
             cursor,
             graph,
@@ -1305,6 +1356,7 @@ fn symbolic_returning_function_kind(
                     I::FunctionCall {
                         function: function.value().clone(),
                         args,
+                        site: site.clone(),
                     },
                 );
                 DraftFlow::value(cursor, DraftGenericFunction::new(value))

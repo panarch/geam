@@ -62,6 +62,7 @@ enum GenericListOperation {
     FunctionCall {
         function: DraftFunction,
         args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         source: DraftTuple,
@@ -83,7 +84,15 @@ fn typed_generic_list_operation<Element, Local, Function>(
     use super::super::instruction::DraftTypedListInstruction as I;
 
     match operation {
-        GenericListOperation::FunctionCall { function, args } => I::FunctionCall { function, args },
+        GenericListOperation::FunctionCall {
+            function,
+            args,
+            site,
+        } => I::FunctionCall {
+            function,
+            args,
+            site,
+        },
         GenericListOperation::TupleIndex { source, index } => I::TupleIndex {
             tuple: source,
             index,
@@ -102,7 +111,15 @@ fn parameter_list_operation(
     use super::super::instruction::DraftParameterListInstruction as I;
 
     match operation {
-        GenericListOperation::FunctionCall { function, args } => I::FunctionCall { function, args },
+        GenericListOperation::FunctionCall {
+            function,
+            args,
+            site,
+        } => I::FunctionCall {
+            function,
+            args,
+            site,
+        },
         GenericListOperation::TupleIndex { source, index } => I::TupleIndex {
             tuple: source,
             index,
@@ -223,6 +240,7 @@ pub(super) fn generic_direct_call(
     item: &SpecializedValueShape,
     target: &module::FunctionInstantiation,
     args: Vec<DraftValueRef>,
+    site: &crate::plan::HostCallSite,
     mut cursor: DraftCursor,
     graph: &mut DraftGraph,
     context: &mut super::super::LoweringContext,
@@ -234,45 +252,110 @@ pub(super) fn generic_direct_call(
 
     context.list_function_id(target, item).map(|function| {
         let kind = match function {
-            execution::function::ListFunctionId::Parameter(function) => {
-                I::Parameter(function.type_id(), P::Call { function, args })
-            }
-            execution::function::ListFunctionId::ParameterList(function) => {
-                I::ParameterList(function.type_id(), T::Call { function, args })
-            }
-            execution::function::ListFunctionId::Int(function) => {
-                I::Int(function.type_id(), T::Call { function, args })
-            }
-            execution::function::ListFunctionId::String(function) => {
-                I::String(function.type_id(), T::Call { function, args })
-            }
-            execution::function::ListFunctionId::BitArray(function) => {
-                I::BitArray(function.type_id(), T::Call { function, args })
-            }
-            execution::function::ListFunctionId::UtfCodepoint(function) => {
-                I::UtfCodepoint(function.type_id(), T::Call { function, args })
-            }
-            execution::function::ListFunctionId::Custom(function) => {
-                I::Custom(function.type_id(), T::Call { function, args })
-            }
-            execution::function::ListFunctionId::Float(function) => {
-                I::Float(function.type_id(), T::Call { function, args })
-            }
-            execution::function::ListFunctionId::Bool(function) => {
-                I::Bool(function.type_id(), T::Call { function, args })
-            }
-            execution::function::ListFunctionId::Nil(function) => {
-                I::Nil(function.type_id(), T::Call { function, args })
-            }
-            execution::function::ListFunctionId::Tuple(function) => {
-                I::Tuple(function.type_id(), T::Call { function, args })
-            }
-            execution::function::ListFunctionId::List(function) => {
-                I::List(function.type_id(), T::Call { function, args })
-            }
-            execution::function::ListFunctionId::Function(function) => {
-                I::Function(function.type_id(), T::Call { function, args })
-            }
+            execution::function::ListFunctionId::Parameter(function) => I::Parameter(
+                function.type_id(),
+                P::Call {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
+            ),
+            execution::function::ListFunctionId::ParameterList(function) => I::ParameterList(
+                function.type_id(),
+                T::Call {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
+            ),
+            execution::function::ListFunctionId::Int(function) => I::Int(
+                function.type_id(),
+                T::Call {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
+            ),
+            execution::function::ListFunctionId::String(function) => I::String(
+                function.type_id(),
+                T::Call {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
+            ),
+            execution::function::ListFunctionId::BitArray(function) => I::BitArray(
+                function.type_id(),
+                T::Call {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
+            ),
+            execution::function::ListFunctionId::UtfCodepoint(function) => I::UtfCodepoint(
+                function.type_id(),
+                T::Call {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
+            ),
+            execution::function::ListFunctionId::Custom(function) => I::Custom(
+                function.type_id(),
+                T::Call {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
+            ),
+            execution::function::ListFunctionId::Float(function) => I::Float(
+                function.type_id(),
+                T::Call {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
+            ),
+            execution::function::ListFunctionId::Bool(function) => I::Bool(
+                function.type_id(),
+                T::Call {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
+            ),
+            execution::function::ListFunctionId::Nil(function) => I::Nil(
+                function.type_id(),
+                T::Call {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
+            ),
+            execution::function::ListFunctionId::Tuple(function) => I::Tuple(
+                function.type_id(),
+                T::Call {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
+            ),
+            execution::function::ListFunctionId::List(function) => I::List(
+                function.type_id(),
+                T::Call {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
+            ),
+            execution::function::ListFunctionId::Function(function) => I::Function(
+                function.type_id(),
+                T::Call {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
+            ),
         };
         let value = graph.list_instruction(&mut cursor, item.clone(), kind);
         DraftFlow::value(cursor, value)
@@ -283,6 +366,7 @@ pub(super) fn generic_function_call(
     item: &SpecializedValueShape,
     function: DraftFunction,
     args: Vec<DraftValueRef>,
+    site: &crate::plan::HostCallSite,
     cursor: &mut DraftCursor,
     graph: &mut DraftGraph,
     context: &mut super::super::LoweringContext,
@@ -292,7 +376,11 @@ pub(super) fn generic_function_call(
         item.clone(),
         generic_list_operation(
             item,
-            GenericListOperation::FunctionCall { function, args },
+            GenericListOperation::FunctionCall {
+                function,
+                args,
+                site: site.clone(),
+            },
             context,
         ),
     )
@@ -424,7 +512,11 @@ fn parameter_list_kind(
             ));
             Representability::Inhabited(DraftFlow::value(cursor, value))
         }
-        E::Call { function, args } => call_args(args, cursor, graph, context).and_then(|flow| {
+        E::Call {
+            function,
+            args,
+            site,
+        } => call_args(args, cursor, graph, context).and_then(|flow| {
             flow.and_then(|mut cursor, args| {
                 context
                     .parameter_list_function_id(function, parameter)
@@ -432,7 +524,14 @@ fn parameter_list_kind(
                         let value = graph.list_instruction(
                             &mut cursor,
                             item,
-                            I::Parameter(list_type, P::Call { function, args }),
+                            I::Parameter(
+                                list_type,
+                                P::Call {
+                                    function,
+                                    args,
+                                    site: site.clone(),
+                                },
+                            ),
                         );
                         DraftFlow::value(cursor, value)
                     })
@@ -441,6 +540,7 @@ fn parameter_list_kind(
         E::FunctionCall {
             function: value,
             args,
+            site,
         } => function::list_function_expr(value, cursor, graph, context).and_then(|flow| {
             flow.and_then(|cursor, function| {
                 call_args(args, cursor, graph, context).map(|flow| {
@@ -453,6 +553,7 @@ fn parameter_list_kind(
                                 P::FunctionCall {
                                     function: function.value().clone(),
                                     args,
+                                    site: site.clone(),
                                 },
                             ),
                         )
@@ -1054,14 +1155,19 @@ fn stored_generic_list_kind(
             ));
             Representability::Inhabited(DraftFlow::value(cursor, value))
         }
-        E::Call { function, args } => call_args(args, cursor, graph, context).and_then(|flow| {
+        E::Call {
+            function,
+            args,
+            site,
+        } => call_args(args, cursor, graph, context).and_then(|flow| {
             flow.and_then(|cursor, args| {
-                generic_direct_call(&item_shape, function, args, cursor, graph, context)
+                generic_direct_call(&item_shape, function, args, site, cursor, graph, context)
             })
         }),
         E::FunctionCall {
             function: value,
             args,
+            site,
         } => function::list_function_expr(value, cursor, graph, context).and_then(|flow| {
             flow.and_then(|cursor, function| {
                 call_args(args, cursor, graph, context).map(|flow| {
@@ -1070,6 +1176,7 @@ fn stored_generic_list_kind(
                             &item_shape,
                             function.value().clone(),
                             args,
+                            site,
                             cursor,
                             graph,
                             context,
@@ -1317,14 +1424,19 @@ fn parameter_list_list_kind(
             ));
             Representability::Inhabited(DraftFlow::value(cursor, value))
         }
-        E::Call { function, args } => call_args(args, cursor, graph, context).and_then(|flow| {
+        E::Call {
+            function,
+            args,
+            site,
+        } => call_args(args, cursor, graph, context).and_then(|flow| {
             flow.and_then(|cursor, args| {
-                generic_direct_call(&item_shape, function, args, cursor, graph, context)
+                generic_direct_call(&item_shape, function, args, site, cursor, graph, context)
             })
         }),
         E::FunctionCall {
             function: value,
             args,
+            site,
         } => function::list_function_expr(value, cursor, graph, context).and_then(|flow| {
             flow.and_then(|cursor, function| {
                 call_args(args, cursor, graph, context).map(|flow| {
@@ -1333,6 +1445,7 @@ fn parameter_list_list_kind(
                             &item_shape,
                             function.value().clone(),
                             args,
+                            site,
                             cursor,
                             graph,
                             context,
@@ -1597,6 +1710,7 @@ where
         E::Call {
             function: target,
             args,
+            site,
         } => call_args(args, cursor, graph, context).and_then(|flow| match flow {
             DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
             DraftFlow::Value {
@@ -1606,7 +1720,14 @@ where
                 let value = graph.list_instruction(
                     &mut cursor,
                     item_shape.clone(),
-                    Item::instruction(list_type, I::Call { function, args }),
+                    Item::instruction(
+                        list_type,
+                        I::Call {
+                            function,
+                            args,
+                            site: site.clone(),
+                        },
+                    ),
                 );
                 DraftFlow::value(cursor, Item::wrap(value))
             }),
@@ -1614,6 +1735,7 @@ where
         E::FunctionCall {
             function: value,
             args,
+            site,
         } => function::list_function_expr(value, cursor, graph, context).and_then(|flow| {
             flow.and_then(|cursor, function| {
                 call_args(args, cursor, graph, context).and_then(|flow| {
@@ -1626,6 +1748,7 @@ where
                                 I::FunctionCall {
                                     function: function.value().clone(),
                                     args,
+                                    site: site.clone(),
                                 },
                             ),
                         );

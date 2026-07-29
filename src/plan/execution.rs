@@ -11,6 +11,8 @@ use self::constant::ConstantTable;
 #[cfg(test)]
 use self::constant::{ConstantId, ConstantProgram, ConstantValue};
 #[cfg(test)]
+use self::function::ExecutableFunction;
+#[cfg(test)]
 use self::function::{
     BitArrayFunctionBody, BitArrayFunctionFunctionBody, BitArrayFunctionFunctionId,
     BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionBody, BoolFunctionFunctionBody,
@@ -18,18 +20,17 @@ use self::function::{
     CustomFunctionFunctionBody, CustomFunctionFunctionId, CustomFunctionId, CustomListFunctionId,
     FloatFunctionFunctionBody, FloatFunctionFunctionId, FloatListFunctionId,
     FunctionFunctionFunctionBody, FunctionFunctionFunctionId, FunctionListFunctionId,
-    GenericFunctionFunctionBody, GenericFunctionFunctionId, IntFunctionFunctionBody,
-    IntFunctionFunctionId, IntFunctionId, IntListFunctionId, ListFunctionFunctionBody,
-    ListFunctionFunctionId, ListListFunctionId, NeverFunctionFunctionBody, NeverFunctionFunctionId,
-    NilFunctionBody, NilFunctionFunctionBody, NilFunctionFunctionId, NilFunctionId,
-    NilListFunctionId, ParameterListFunctionId, ParameterListListFunctionId,
-    StringFunctionFunctionBody, StringFunctionFunctionId, StringListFunctionId, TupleFunctionBody,
-    TupleFunctionFunctionBody, TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionId,
-    UtfCodepointFunctionFunctionBody, UtfCodepointFunctionFunctionId, UtfCodepointListFunctionId,
+    GenericFunctionFunctionBody, GenericFunctionFunctionId, IntFunctionBody,
+    IntFunctionFunctionBody, IntFunctionFunctionId, IntFunctionId, IntListFunctionId,
+    ListFunctionFunctionBody, ListFunctionFunctionId, ListListFunctionId,
+    NeverFunctionFunctionBody, NeverFunctionFunctionId, NilFunctionBody, NilFunctionFunctionBody,
+    NilFunctionFunctionId, NilFunctionId, NilListFunctionId, ParameterListFunctionId,
+    ParameterListListFunctionId, StringFunctionFunctionBody, StringFunctionFunctionId,
+    StringListFunctionId, TupleFunctionBody, TupleFunctionFunctionBody, TupleFunctionFunctionId,
+    TupleFunctionId, TupleListFunctionId, UtfCodepointFunctionFunctionBody,
+    UtfCodepointFunctionFunctionId, UtfCodepointListFunctionId,
 };
-use self::function::{
-    ExecutableFunction, FunctionLabelSource, FunctionTables, IntFunctionBody, RuntimeFunctionId,
-};
+use self::function::{ExecutionProfile, FunctionLabelSource, FunctionTables, RuntimeFunctionId};
 #[cfg(test)]
 use self::type_::{
     CustomConstructorId, CustomConstructorRefinement, CustomTypeId, CustomValueShape,
@@ -37,39 +38,25 @@ use self::type_::{
     ListTypeId, TupleListTypeId, ValueShapeDescriptor, ValueShapeId, ValueType,
 };
 use self::type_::{CustomTypeTable, ListTypeTable, ValueShapeTable};
+use crate::host::HostProfile;
 use crate::plan::{HostedModulePlan, ModuleId, ModulePlan, SourceContext};
 use ecow::EcoString;
 pub use explain::ExecutionPlanExplanation;
+pub use host::{HostSpecializationError, HostSpecializationErrorReason};
 use std::convert::Infallible;
 
 pub struct ExecutionPlan {
     program: ExecutionProgram<Infallible>,
 }
 
-pub struct HostedExecution {
-    program: ExecutionProgram<host::HostedExecutionHost>,
-    host_functions: host::HostFunctionTables,
+pub struct HostedExecution<Profile: HostProfile> {
+    program: ExecutionProgram<host::HostedExecutionProfile<Profile>>,
+    host_functions: host::HostFunctionTables<Profile>,
 }
 
-pub(crate) trait ExecutionHost {
-    type IntFunction;
-    type BoolFunction;
-}
-
-impl ExecutionHost for Infallible {
-    type IntFunction = ExecutableFunction<IntFunctionBody>;
-    type BoolFunction = ExecutableFunction<function::BoolFunctionBody>;
-}
-
-impl ExecutionHost for host::HostedExecutionHost {
-    type IntFunction = function::ValueFunctionEntry<IntFunctionBody, host::HostIntFunctionId>;
-    type BoolFunction =
-        function::ValueFunctionEntry<function::BoolFunctionBody, host::HostBoolFunctionId>;
-}
-
-pub(crate) struct ExecutionProgram<Host: ExecutionHost> {
+pub(crate) struct ExecutionProgram<Profile: ExecutionProfile> {
     common: ExecutionProgramCommon,
-    functions: FunctionTables<Host::IntFunction, Host::BoolFunction>,
+    functions: FunctionTables<Profile>,
 }
 
 struct ExecutionProgramCommon {
@@ -112,7 +99,7 @@ impl explain::Explain for ExecutionPlan {
     }
 }
 
-impl explain::Explain for HostedExecution {
+impl<Profile: HostProfile> explain::Explain for HostedExecution<Profile> {
     fn write_explanation(&self, context: &mut explain::ExplainContext<'_, '_>) {
         context.push_str("module ");
         context.push_str(&self.program.common.modules[self.program.common.root.index()].module);
@@ -528,38 +515,47 @@ impl ExecutionPlan {
     }
 }
 
-impl HostedExecution {
-    pub fn from_module_plan(module_plan: HostedModulePlan) -> Self {
-        let (program, host_functions) = lowering::lower_hosted(module_plan);
-        Self {
+impl<Profile: HostProfile> HostedExecution<Profile> {
+    /// Seals all entry-reachable host specializations into executable storage.
+    ///
+    /// A linked but unused provider does not participate in sealing.
+    pub fn try_from_module_plan(
+        module_plan: HostedModulePlan<Profile>,
+    ) -> Result<Self, HostSpecializationError> {
+        let (program, host_functions) = lowering::lower_hosted(module_plan)?;
+        Ok(Self {
             program,
             host_functions,
-        }
+        })
     }
 
     pub fn run_main(
         &self,
+        state: &mut Profile::RunState,
         echo: &mut dyn crate::EchoSink,
     ) -> Result<crate::Value, crate::ExecutionError> {
-        crate::runtime::run_hosted_main(self, echo)
+        crate::runtime::run_hosted_main(self, state, echo)
     }
 
     pub fn explain(&self) -> ExecutionPlanExplanation<'_> {
         ExecutionPlanExplanation::new_hosted(self)
     }
 
-    pub(crate) fn host_int_function(
+    pub(crate) fn host_value_function<Body>(
         &self,
-        id: host::HostIntFunctionId,
-    ) -> &host::HostedIntFunction {
-        self.host_functions.int(id)
+        id: &host::HostFunctionId<Body>,
+    ) -> &host::HostedValueFunction<Profile>
+    where
+        Body: function::ExecutionFunctionBody,
+    {
+        self.host_functions.value(id)
     }
 
-    pub(crate) fn host_bool_function(
+    pub(crate) fn host_never_function(
         &self,
-        id: host::HostBoolFunctionId,
-    ) -> &host::HostedBoolFunction {
-        self.host_functions.bool(id)
+        id: host::HostNeverFunctionId,
+    ) -> &host::HostedNeverFunction<Profile> {
+        self.host_functions.never(id)
     }
 }
 
@@ -567,14 +563,9 @@ impl HostedExecution {
 mod tests {
     use super::HostedExecution;
     use crate::plan::execution::explain;
-    use crate::plan::execution::function::{
-        BoolFunctionBody, BoolFunctionId, IntFunctionBody, IntFunctionId, ValueFunctionEntry,
-    };
-    use crate::plan::execution::host::{
-        HostBoolFunctionId, HostIntFunctionId, HostedBoolFunction, HostedIntFunction,
-    };
+    use crate::plan::execution::function::IntFunctionId;
     use crate::{
-        HostModule, HostModules, ModuleSource, PackageSource, compile_typed_host_program,
+        HostModule, HostProviderSet, ModuleSource, PackageSource, compile_typed_host_program,
         compile_typed_module, plan_host_program, plan_module,
     };
     use num_bigint::BigInt;
@@ -589,115 +580,6 @@ mod tests {
             execution.program.functions.int_function(IntFunctionId(0));
 
         assert_eq!(function.body().block_graph().blocks().len(), 1);
-    }
-
-    #[test]
-    fn hosted_execution_program_seals_graph_and_host_int_targets() {
-        let math = HostModule::new("host_support", "host/math")
-            .expect("host module should be valid")
-            .with_function("add", <BigInt as std::ops::Add>::add)
-            .expect("host function should be valid");
-        let hosts = HostModules::new([math]).expect("host modules should be unique");
-        let source = r#"
-import host/math
-
-pub fn main() {
-  let call = fn(left, right) { math.add(left, right) }
-  call(1, 2)
-}
-"#;
-        let typed = compile_typed_host_program(
-            "application",
-            "main",
-            [PackageSource::new(
-                "application",
-                ["host_support"],
-                [ModuleSource::new("main", "main.gleam", source)],
-            )],
-            hosts,
-        )
-        .expect("host source should compile");
-        let plan = plan_host_program(typed).expect("host source should plan");
-        let execution = HostedExecution::from_module_plan(plan);
-        let graph: &ValueFunctionEntry<IntFunctionBody, HostIntFunctionId> =
-            execution.program.functions.int_function(IntFunctionId(0));
-        let host: &ValueFunctionEntry<IntFunctionBody, HostIntFunctionId> =
-            execution.program.functions.int_function(IntFunctionId(2));
-
-        assert_eq!(
-            [graph, host].map(|function| match function {
-                ValueFunctionEntry::Graph(_) => "graph",
-                ValueFunctionEntry::Host(_) => "host",
-            }),
-            ["graph", "host"],
-        );
-        assert!(matches!(
-            host,
-            ValueFunctionEntry::Host(target) if *target == HostIntFunctionId::new(0)
-        ));
-        let implementation: &HostedIntFunction = &execution.host_functions.int_functions()[0];
-        assert_eq!(implementation.name(), "add");
-        assert_eq!(
-            execution.run_main(&mut Vec::new()),
-            Ok(crate::Value::Int(3.into())),
-        );
-    }
-
-    #[test]
-    fn hosted_execution_program_seals_graph_and_host_bool_targets() {
-        let predicates = HostModule::new("host_support", "host/predicates")
-            .expect("host module should be valid")
-            .with_function("is_positive", |value: BigInt| value > BigInt::from(0))
-            .expect("host function should be valid");
-        let hosts = HostModules::new([predicates]).expect("host modules should be unique");
-        let source = r#"
-import host/predicates
-
-fn identity(value: Bool) {
-  value
-}
-
-pub fn main() {
-  identity(predicates.is_positive(1))
-}
-"#;
-        let typed = compile_typed_host_program(
-            "application",
-            "main",
-            [PackageSource::new(
-                "application",
-                ["host_support"],
-                [ModuleSource::new("main", "main.gleam", source)],
-            )],
-            hosts,
-        )
-        .expect("host source should compile");
-        let plan = plan_host_program(typed).expect("host source should plan");
-        let execution = HostedExecution::from_module_plan(plan);
-        let main: &ValueFunctionEntry<BoolFunctionBody, HostBoolFunctionId> =
-            execution.program.functions.bool_function(BoolFunctionId(0));
-        let host: &ValueFunctionEntry<BoolFunctionBody, HostBoolFunctionId> =
-            execution.program.functions.bool_function(BoolFunctionId(1));
-        let identity: &ValueFunctionEntry<BoolFunctionBody, HostBoolFunctionId> =
-            execution.program.functions.bool_function(BoolFunctionId(2));
-
-        assert_eq!(
-            [main, host, identity].map(|function| match function {
-                ValueFunctionEntry::Graph(_) => "graph",
-                ValueFunctionEntry::Host(_) => "host",
-            }),
-            ["graph", "host", "graph"],
-        );
-        assert!(matches!(
-            host,
-            ValueFunctionEntry::Host(target) if *target == HostBoolFunctionId::new(0)
-        ));
-        let implementation: &HostedBoolFunction = &execution.host_functions.bool_functions()[0];
-        assert_eq!(implementation.name(), "is_positive");
-        assert_eq!(
-            execution.run_main(&mut Vec::new()),
-            Ok(crate::Value::Bool(true)),
-        );
     }
 
     #[test]
@@ -726,7 +608,7 @@ pub fn main() {
             .expect("host module should be valid")
             .with_function("add", <BigInt as std::ops::Add>::add)
             .expect("host function should be valid");
-        let hosts = HostModules::new([math]).expect("host modules should be unique");
+        let hosts = HostProviderSet::new([math]).expect("host modules should be unique");
         let source = "import host/math\npub fn main() { math.add(1, 2) }";
         let typed = compile_typed_host_program(
             "application",
@@ -740,7 +622,8 @@ pub fn main() {
         )
         .expect("host source should compile");
         let plan = plan_host_program(typed).expect("host source should plan");
-        let execution = HostedExecution::from_module_plan(plan);
+        let execution =
+            HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         let expected = concat!(
             "module main\n",
             "main int#0\n",

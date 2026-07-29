@@ -65,10 +65,12 @@ pub(crate) enum BitArrayInstruction {
     Call {
         function: BitArrayFunctionId,
         args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: crate::plan::execution::graph::BitArrayFunctionLocalId,
         args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: TupleLocalId,
@@ -106,10 +108,10 @@ impl Explain for BitArrayInstruction {
                 context.write_list(segments, |context, segment| context.write(segment));
             }
             Self::Constant(id) => write_constant(context.output(), "bit_array", *id),
-            Self::Call { function, args } => {
+            Self::Call { function, args, .. } => {
                 write_call(context.output(), "bit_array.call", function, args);
             }
-            Self::FunctionCall { function, args } => {
+            Self::FunctionCall { function, args, .. } => {
                 write_function_call(context.output(), "bit_array.function_call", function, args);
             }
             Self::TupleIndex { tuple, index } => {

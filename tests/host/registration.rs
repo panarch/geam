@@ -1,4 +1,4 @@
-use geam::{HostModule, HostModules, HostRegistrationError};
+use geam::{HostModule, HostProviderSet, HostRegistrationError};
 use num_bigint::BigInt;
 
 #[test]
@@ -30,7 +30,7 @@ fn exposes_structured_host_registration_errors_to_external_callers() {
         }),
     );
     assert_eq!(
-        HostModules::new([
+        HostProviderSet::new([
             HostModule::new("first", "host/math").expect("host module should be valid"),
             HostModule::new("second", "host/math").expect("host module should be valid"),
         ])

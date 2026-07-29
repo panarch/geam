@@ -8,6 +8,7 @@ mod value_type;
 
 use super::type_::{CustomTypeTable, ListTypeTable, ValueShapeTable};
 use super::{ExecutionProgram, ExecutionProgramCommon};
+use crate::plan::execution::function::ExecutionProfile;
 use crate::plan::{ModulePlan, ValueShape};
 use specialization::{
     RepresentationContext, SpecializationKey, SpecializedCustomConstructor,
@@ -37,9 +38,9 @@ struct SpecializationState {
     erased_specializations: HashSet<SpecializationKey>,
 }
 
-struct LoweredExecution<IntFunction, BoolFunction> {
+struct LoweredExecution<Profile: ExecutionProfile> {
     constants: super::constant::ConstantTable,
-    functions: super::function::FunctionTables<IntFunction, BoolFunction>,
+    functions: super::function::FunctionTables<Profile>,
     list_types: ListTypeTable,
     custom_types: CustomTypeTable,
     value_shapes: ValueShapeTable,
@@ -50,14 +51,12 @@ enum SpecializationOutcome<T> {
     RequiresErasure(HashSet<SpecializationKey>),
 }
 
-type PlainIntFunction = super::function::ExecutableFunction<super::function::IntFunctionBody>;
-type PlainBoolFunction = super::function::ExecutableFunction<super::function::BoolFunctionBody>;
 type LoweringCompletion<Execution> = (
     ProgramConstantTemplates,
     RepresentationContext,
     SpecializationOutcome<Box<Execution>>,
 );
-type PlainLoweredExecution = LoweredExecution<PlainIntFunction, PlainBoolFunction>;
+type PlainLoweredExecution = LoweredExecution<Infallible>;
 
 pub(super) use host::lower_hosted;
 
@@ -70,6 +69,7 @@ enum FixedPointStep<State, Output> {
 #[derive(Clone)]
 struct ProvisionalSpecialization {
     index: usize,
+    parameters: Box<[specialization::StoredValueShape]>,
 }
 
 impl<T> SpecializationOutcome<T> {
@@ -120,6 +120,18 @@ fn resolve_specialization_fixed_point<State, Output>(
     loop {
         match lower(state) {
             FixedPointStep::Complete(output) => return output,
+            FixedPointStep::Continue(next) => state = next,
+        }
+    }
+}
+
+fn try_resolve_specialization_fixed_point<State, Output, Error>(
+    mut state: State,
+    mut lower: impl FnMut(State) -> Result<FixedPointStep<State, Output>, Error>,
+) -> Result<Output, Error> {
+    loop {
+        match lower(state)? {
+            FixedPointStep::Complete(output) => return Ok(output),
             FixedPointStep::Continue(next) => state = next,
         }
     }
@@ -427,8 +439,11 @@ impl LoweringContext {
     ) -> super::function::RuntimeFunctionId {
         match return_ {
             specialization::ValueInhabitation::Uninhabited(_) => {
-                let specialization = self
-                    .reserve_provisional_specialization(key, function::FunctionTableFamily::Never);
+                let specialization = self.reserve_provisional_specialization(
+                    key,
+                    function::FunctionTableFamily::Never,
+                    Box::new([]),
+                );
                 super::function::RuntimeFunctionId::Never(super::function::NeverFunctionId(
                     specialization.index,
                 ))
@@ -436,7 +451,8 @@ impl LoweringContext {
             specialization::ValueInhabitation::Inhabited(return_shape) => {
                 let family =
                     function::stored_function_table_family(&return_shape, &self.representations);
-                let specialization = self.reserve_provisional_specialization(key, family);
+                let specialization =
+                    self.reserve_provisional_specialization(key, family, Box::new([]));
                 function::function_id(
                     &return_shape,
                     specialization.index,
@@ -455,9 +471,10 @@ impl LoweringContext {
         if self.erased_specializations.contains(&key) {
             specialization::Representability::Uninhabited
         } else {
-            specialization::Representability::Inhabited(
-                self.reserve_provisional_specialization(key, family),
-            )
+            let parameters = self.entry_templates[&key.template()]
+                .stored_parameters(key.substitution(), &self.representations);
+            parameters
+                .map(|parameters| self.reserve_provisional_specialization(key, family, parameters))
         }
     }
 
@@ -465,18 +482,26 @@ impl LoweringContext {
         &mut self,
         key: SpecializationKey,
         family: function::FunctionTableFamily,
+        parameters: Box<[specialization::StoredValueShape]>,
     ) -> ProvisionalSpecialization {
         match self.provisional_specializations.get(&key) {
             Some(specialization) => specialization.clone(),
             None => {
                 let index = self.next_function_index(family);
-                let specialization = ProvisionalSpecialization { index };
+                let specialization = ProvisionalSpecialization { index, parameters };
                 self.provisional_specializations
                     .insert(key.clone(), specialization.clone());
                 self.pending.push_back(key);
                 specialization
             }
         }
+    }
+
+    fn specialization_parameters(
+        &self,
+        key: &SpecializationKey,
+    ) -> &[specialization::StoredValueShape] {
+        &self.provisional_specializations[key].parameters
     }
 
     fn reserve_index_for(
@@ -1229,7 +1254,10 @@ pub(super) mod test_support {
 #[cfg(test)]
 mod tests {
     use super::specialization::{Representability, SpecializationKey};
-    use super::{FixedPointStep, SpecializationOutcome, resolve_specialization_fixed_point};
+    use super::{
+        FixedPointStep, SpecializationOutcome, resolve_specialization_fixed_point,
+        try_resolve_specialization_fixed_point,
+    };
 
     use std::collections::{HashSet, VecDeque};
 
@@ -1248,6 +1276,29 @@ mod tests {
 
         assert_eq!(visited, vec![0, 1, 2]);
         assert_eq!(output, 2);
+    }
+
+    #[test]
+    fn fallible_specialization_fixed_point_retries_and_propagates_errors() {
+        let mut visited = Vec::new();
+        let mut lower = |state| match state {
+            Ok(state) => {
+                visited.push(state);
+                if state < 2 {
+                    Ok(FixedPointStep::Continue(Ok(state + 1)))
+                } else {
+                    Ok(FixedPointStep::Complete(state))
+                }
+            }
+            Err(error) => Err(error),
+        };
+
+        let output = try_resolve_specialization_fixed_point(Ok(0), &mut lower);
+        let error = try_resolve_specialization_fixed_point(Err("lowering failed"), &mut lower);
+
+        assert_eq!(visited, vec![0, 1, 2]);
+        assert_eq!(output, Ok(2));
+        assert_eq!(error, Err("lowering failed"));
     }
 
     #[test]
@@ -1297,6 +1348,11 @@ mod tests {
             Representability::Inhabited(0),
         );
         assert_eq!(context.provisional_specializations[&seeded].index, 0);
+        assert!(
+            context.provisional_specializations[&seeded]
+                .parameters
+                .is_empty()
+        );
         assert_eq!(context.pending, VecDeque::from([seeded]));
 
         context.erased_specializations.insert(erased.clone());
@@ -1307,5 +1363,23 @@ mod tests {
                 .map(|_| ()),
             Representability::Uninhabited,
         );
+    }
+
+    #[test]
+    fn uninhabited_parameters_do_not_enter_the_specialization_queue() {
+        let mut context = super::test_support::lowering_context(Vec::new());
+        let generic = SpecializationKey::monomorphic(crate::plan::FunctionTemplateId::new(1));
+
+        assert_eq!(
+            context
+                .provisional_specialization(
+                    generic.clone(),
+                    super::function::FunctionTableFamily::Int,
+                )
+                .map(|_| ()),
+            Representability::Uninhabited,
+        );
+        assert!(!context.provisional_specializations.contains_key(&generic));
+        assert!(context.pending.is_empty());
     }
 }

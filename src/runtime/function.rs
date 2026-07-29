@@ -1,24 +1,31 @@
+mod callable;
 mod list;
 mod returning_function;
 mod value;
 
+pub(in crate::runtime) use callable::{InvocableFunctionValue, invoke_callable};
 pub(in crate::runtime) use list::{
     run_bit_array_list, run_bool_list, run_custom_list, run_float_list, run_function_list,
     run_int_list, run_list, run_list_list, run_nil_list, run_parameter_list,
     run_parameter_list_list, run_string_list, run_tuple_list, run_utf_codepoint_list,
 };
 pub(in crate::runtime) use returning_function::run_function;
-pub(in crate::runtime) use value::{RuntimeBoolFunction, RuntimeIntFunction};
 pub(in crate::runtime) use value::{
-    run_bit_array, run_bool, run_custom, run_float, run_int, run_never, run_never_value, run_nil,
-    run_string, run_tuple, run_utf_codepoint,
+    bit_array_parameter_locals, bool_parameter_locals, float_parameter_locals,
+    int_parameter_locals, nil_parameter_locals, run_bit_array, run_bool, run_custom, run_float,
+    run_int, run_never, run_never_value, run_nil, run_string, run_tuple, run_utf_codepoint,
+    string_parameter_locals, utf_codepoint_parameter_locals,
 };
 
-use crate::plan::execution::function::{FunctionBody, FunctionExit};
+use crate::plan::execution::function::{
+    ExecutionFunction, ExecutionFunctionBody, ExecutionFunctionEntry, ExecutionFunctionRef,
+    FunctionBody, FunctionBodyOwner, FunctionExit,
+};
+use crate::plan::execution::graph::ParamLocal;
 use crate::runtime::ExecutableRuntimePlan;
-use crate::runtime::error::ExecutionResult;
+use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::graph::{self, GraphValue, RetainedValues};
-use crate::runtime::state::RuntimeState;
+use crate::runtime::state::RuntimeStateFor;
 
 pub(super) enum EvaluatedFunctionExit<Return, TailCall> {
     Return(Return),
@@ -28,13 +35,14 @@ pub(super) enum EvaluatedFunctionExit<Return, TailCall> {
     },
 }
 
-pub(super) fn evaluate<Return, TailCall>(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn evaluate<Plan, Return, TailCall>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     function: &FunctionBody<Return, TailCall>,
     inputs: RetainedValues,
 ) -> ExecutionResult<EvaluatedFunctionExit<Return::Evaluated, TailCall>>
 where
+    Plan: ExecutableRuntimePlan,
     Return: GraphValue,
     TailCall: Clone,
 {
@@ -53,30 +61,79 @@ where
     })
 }
 
+pub(super) fn evaluate_entry<Plan, Body>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
+    function: &ExecutionFunction<Plan::Profile, Body>,
+    origin: HostCallOrigin,
+    inputs: RetainedValues,
+) -> ExecutionResult<
+    EvaluatedFunctionExit<
+        <Body::Return as GraphValue>::Evaluated,
+        <Body as FunctionBodyOwner>::TailCall,
+    >,
+>
+where
+    Plan: ExecutableRuntimePlan,
+    Body: ExecutionFunctionBody,
+    Body::Return: GraphValue,
+    Body::TailCall: Clone,
+{
+    match function.as_ref() {
+        ExecutionFunctionRef::Graph(function) => {
+            evaluate(plan, state, function.body().function_body(), inputs)
+        }
+        ExecutionFunctionRef::Host(target) => plan
+            .call_host(state, origin, target, inputs)
+            .map(EvaluatedFunctionExit::Return),
+    }
+}
+
+pub(super) fn parameter_locals<Plan, Body>(
+    plan: &Plan,
+    function: &ExecutionFunction<Plan::Profile, Body>,
+) -> Vec<ParamLocal>
+where
+    Plan: ExecutableRuntimePlan,
+    Body: ExecutionFunctionBody,
+{
+    match function.as_ref() {
+        ExecutionFunctionRef::Graph(function) => function
+            .entry()
+            .params(function.body().function_body())
+            .iter()
+            .map(|slot| slot.local().clone())
+            .collect(),
+        ExecutionFunctionRef::Host(target) => plan.host_parameters(target).to_vec(),
+    }
+}
+
 fn run_tail<Plan, Id, Return, TailCall>(
     plan: &Plan,
-    state: &mut RuntimeState,
+    state: &mut RuntimeStateFor<'_, Plan>,
     mut function: Id,
+    mut origin: HostCallOrigin,
     mut inputs: RetainedValues,
     execute: impl Fn(
         &Plan,
-        &mut RuntimeState,
+        &mut RuntimeStateFor<'_, Plan>,
         &Id,
+        HostCallOrigin,
         RetainedValues,
     ) -> ExecutionResult<EvaluatedFunctionExit<Return, TailCall>>,
-    next: impl Fn(&Plan, &Id, TailCall) -> Id,
+    next: impl Fn(&Plan, &Id, TailCall) -> (Id, HostCallOrigin),
 ) -> ExecutionResult<Return>
 where
     Plan: ExecutableRuntimePlan,
 {
     loop {
-        match execute(plan, state, &function, inputs)? {
+        match execute(plan, state, &function, origin, inputs)? {
             EvaluatedFunctionExit::Return(value) => return Ok(value),
             EvaluatedFunctionExit::TailCall {
                 function: target,
                 args,
             } => {
-                function = next(plan, &function, target);
+                (function, origin) = next(plan, &function, target);
                 inputs = args;
             }
         }

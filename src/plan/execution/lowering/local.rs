@@ -197,6 +197,18 @@ impl FunctionEntryTemplate {
         }
     }
 
+    pub(super) fn stored_parameters(
+        &self,
+        substitution: &SpecializedTypeSubstitution,
+        representations: &super::specialization::RepresentationContext,
+    ) -> super::specialization::Representability<Box<[StoredValueShape]>> {
+        super::specialization::Representability::collect(self.params.iter().map(|shape| {
+            let shape = SpecializedValueShape::instantiate(shape, substitution);
+            representations.inhabitation(&shape).into_representability()
+        }))
+        .map(Vec::into_boxed_slice)
+    }
+
     pub(super) fn capture_target(
         &self,
         position: module::CapturePosition,

@@ -11,12 +11,13 @@ mod type_parameter;
 mod value_shape;
 
 pub use error::{
-    InvalidCallShapeReason, InvalidCaseShapeReason, InvalidCustomTypeReason,
-    InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
-    InvalidModuleReferenceReason, InvalidPipelineShapeReason, InvalidRecordUpdateShapeReason,
-    InvalidTypedAstReason, InvalidUseShapeReason, PlanError, UnsupportedArgumentReason,
-    UnsupportedBitArraySegmentReason, UnsupportedCaseReason, UnsupportedExpressionKind,
-    UnsupportedFunctionReason, UnsupportedPatternKind, UnsupportedTopLevelKind,
+    HostProviderLinkReason, InvalidCallShapeReason, InvalidCaseShapeReason,
+    InvalidCustomTypeReason, InvalidExpressionShapeKind, InvalidExpressionType,
+    InvalidFunctionShapeReason, InvalidModuleReferenceReason, InvalidPipelineShapeReason,
+    InvalidRecordUpdateShapeReason, InvalidTypedAstReason, InvalidUseShapeReason, PlanError,
+    UnsupportedArgumentReason, UnsupportedBitArraySegmentReason, UnsupportedCaseReason,
+    UnsupportedExpressionKind, UnsupportedFunctionReason, UnsupportedPatternKind,
+    UnsupportedTopLevelKind,
 };
 pub use module::{plan_host_program, plan_module, plan_module_with_source, plan_program};
 

@@ -122,12 +122,12 @@ pub fn compile_typed_project(
     root_module: impl Into<ecow::EcoString>,
 ) -> Result<geam::TypedProgram, geam::ProjectError>
 
-pub fn compile_typed_host_program(
+pub fn compile_typed_host_program<Profile: geam::HostProfile>(
     root_package: impl Into<ecow::EcoString>,
     root_module: impl Into<ecow::EcoString>,
     packages: impl IntoIterator<Item = geam::PackageSource>,
-    hosts: geam::HostModules,
-) -> Result<geam::HostedTypedProgram, geam::FrontendError>
+    hosts: geam::HostProviderSet<Profile>,
+) -> Result<geam::HostedTypedProgram<Profile>, geam::FrontendError>
 ```
 
 `compile_typed_project` is a read-only loader for a Gleam project whose
@@ -139,16 +139,19 @@ The loader follows production dependencies and selects the
 module body is then analysed and planned in full.
 
 `compile_typed_host_program` adds package-qualified source-less module
-interfaces to the same in-memory analysis graph. The adapter presents their
-declared functions to Gleam's analyzer without generating fake Gleam bodies.
-Host provenance and Rust implementations remain Geam-owned data and are not
-interpreted as pure Gleam definitions.
+interfaces to the same in-memory analysis graph. `HostProviderModule` instead
+binds implementations to existing source external declarations without
+replacing their analyzer-owned interface. Neither path generates fake Gleam
+bodies. Host provenance and Rust implementations remain Geam-owned data and
+are not interpreted as pure Gleam definitions.
 
-`HostModule::with_function` accepts infallible Rust closures with zero through
-seven `BigInt` or `bool` arguments and a `BigInt` or `bool` return. The arity
-limit follows Clippy's default `too_many_arguments` threshold. Unsupported
-types and arities fail Rust trait resolution; the hosted runtime performs no
-signature validation or generic value downcast.
+Host registrations provide an exact typed schema to the frontend. Direct
+closures support the documented scalar families and zero through seven
+arguments; scoped registrations describe generic, compound, custom, and
+function values without exposing materialized runtime `Value`s. These are Geam
+host-ABI constraints, not additions to Gleam's analyzer or typed AST. See
+[runtime semantics](runtime-semantics.md) for the value, state, specialization,
+re-entry, and failure contracts.
 
 The current public execution APIs are:
 
@@ -166,9 +169,9 @@ pub fn plan_program(
     program: geam::TypedProgram,
 ) -> Result<geam::ModulePlan, geam::PlanError>
 
-pub fn plan_host_program(
-    program: geam::HostedTypedProgram,
-) -> Result<geam::HostedModulePlan, geam::PlanError>
+pub fn plan_host_program<Profile: geam::HostProfile>(
+    program: geam::HostedTypedProgram<Profile>,
+) -> Result<geam::HostedModulePlan<Profile>, geam::PlanError>
 
 pub fn run_main(
     plan: &geam::ExecutionPlan,
@@ -179,11 +182,14 @@ impl geam::ExecutionPlan {
     pub fn explain(&self) -> geam::ExecutionPlanExplanation<'_>
 }
 
-impl geam::HostedExecution {
-    pub fn from_module_plan(plan: geam::HostedModulePlan) -> Self
+impl<Profile: geam::HostProfile> geam::HostedExecution<Profile> {
+    pub fn try_from_module_plan(
+        plan: geam::HostedModulePlan<Profile>,
+    ) -> Result<Self, geam::HostSpecializationError>
 
     pub fn run_main(
         &self,
+        state: &mut Profile::RunState,
         echo: &mut dyn geam::EchoSink,
     ) -> Result<geam::Value, geam::ExecutionError>
 
@@ -203,6 +209,13 @@ The hosted pipeline is intentionally a separate type-level boundary. A
 registered callbacks in a private sidecar. `HostedExecution` retains only the
 implementations selected by lowering, pairs them with first-use host targets,
 and cannot be passed to the plain `run_main` function.
+`HostedExecution::try_from_module_plan` seals entry-reachable generic
+specializations into concrete runtime storage. Unused providers do not block
+execution. Source external providers are selected before body planning: an
+exact provider wins, a provider-less declaration with a Gleam body uses that
+fallback, and a bodyless declaration without a provider is rejected. Provider
+state remains owned by the caller and is borrowed only for
+`HostedExecution::run_main`.
 
 The caller supplies the `EchoSink` used by `run_main`. Each emitted
 `EchoOutput` owns its materialized value, optional message, and compact source
@@ -218,8 +231,8 @@ milestone:
 - Code generation metadata.
 - Package resolution, dependency download, package cache mutation, and artifact
   writing.
-- Source-declared backend external providers, provider fallback, broader host
-  value families, host state, and CLI behavior.
+- External custom storage, async providers, retained or Rust-created
+  callbacks, and CLI behavior.
 
 ## Current Source Boundary
 

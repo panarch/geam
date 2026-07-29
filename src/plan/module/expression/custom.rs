@@ -57,6 +57,7 @@ pub(crate) struct CustomCallArguments {
 pub(crate) struct CustomFunctionCall {
     function: Box<CustomFunctionExpr>,
     arguments: CustomCallArguments,
+    site: crate::plan::HostCallSite,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -70,6 +71,7 @@ pub(crate) enum CustomExprKind {
     Call {
         function: FunctionInstantiation,
         args: Vec<CallArg>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall(CustomFunctionCall),
     TupleIndex {
@@ -155,20 +157,46 @@ impl CustomExpr {
         )
     }
 
+    #[cfg(test)]
     pub(crate) fn call(
         function: FunctionInstantiation,
         args: Vec<CallArg>,
         shape: CustomValueShape,
     ) -> Self {
-        Self::new(shape, CustomExprKind::Call { function, args })
+        Self::call_at(function, args, shape, crate::plan::HostCallSite::unknown())
     }
 
+    pub(crate) fn call_at(
+        function: FunctionInstantiation,
+        args: Vec<CallArg>,
+        shape: CustomValueShape,
+        site: crate::plan::HostCallSite,
+    ) -> Self {
+        Self::new(
+            shape,
+            CustomExprKind::Call {
+                function,
+                args,
+                site,
+            },
+        )
+    }
+
+    #[cfg(test)]
     pub(crate) fn try_function_call(
         function: CustomFunctionExpr,
         args: Vec<CallArg>,
     ) -> Result<Self, CustomArgumentCountMismatch> {
+        Self::try_function_call_at(function, args, crate::plan::HostCallSite::unknown())
+    }
+
+    pub(crate) fn try_function_call_at(
+        function: CustomFunctionExpr,
+        args: Vec<CallArg>,
+        site: crate::plan::HostCallSite,
+    ) -> Result<Self, CustomArgumentCountMismatch> {
         let shape = function.custom_function_type().return_().clone();
-        CustomFunctionCall::try_new(function, args)
+        CustomFunctionCall::try_new(function, args, site)
             .map(|call| Self::new(shape, CustomExprKind::FunctionCall(call)))
     }
 
@@ -409,6 +437,7 @@ impl CustomFunctionCall {
     pub(crate) fn try_new(
         function: CustomFunctionExpr,
         arguments: Vec<CallArg>,
+        site: crate::plan::HostCallSite,
     ) -> Result<Self, CustomArgumentCountMismatch> {
         let expected = function.custom_function_type().argument_types().len();
         if expected != arguments.len() {
@@ -423,6 +452,7 @@ impl CustomFunctionCall {
             arguments: CustomCallArguments {
                 values: arguments.into_boxed_slice(),
             },
+            site,
         })
     }
 
@@ -432,6 +462,10 @@ impl CustomFunctionCall {
 
     pub(crate) fn arguments(&self) -> &[CallArg] {
         &self.arguments.values
+    }
+
+    pub(crate) fn site(&self) -> &crate::plan::HostCallSite {
+        &self.site
     }
 }
 
@@ -543,8 +577,12 @@ mod tests {
         assert_eq!(
             expression.kind(),
             &CustomExprKind::FunctionCall(
-                super::CustomFunctionCall::try_new(function, vec![argument])
-                    .expect("exact custom function call should be valid"),
+                super::CustomFunctionCall::try_new(
+                    function,
+                    vec![argument],
+                    crate::plan::HostCallSite::unknown(),
+                )
+                .expect("exact custom function call should be valid"),
             ),
         );
     }

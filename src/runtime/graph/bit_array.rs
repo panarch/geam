@@ -413,6 +413,7 @@ mod tests {
     use bitvec::vec::BitVec;
     use bitvec::view::BitView;
     use num_bigint::BigInt;
+    use std::sync::Arc;
 
     #[test]
     fn evaluated_segment_failures_preserve_exact_panic_reasons() {
@@ -685,7 +686,7 @@ mod tests {
         let bit_array = |bytes, bit_len| {
             let mut bits = BitVec::<u8, Msb0>::from_vec(bytes);
             bits.truncate(bit_len);
-            Value::BitArray(BitArrayValue::from_evaluated(&bits))
+            Value::BitArray(BitArrayValue::from_evaluated(Arc::new(bits)))
         };
 
         Value::Tuple(vec![

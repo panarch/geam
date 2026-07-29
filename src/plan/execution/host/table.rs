@@ -1,44 +1,49 @@
-use super::{HostBoolFunctionId, HostIntFunctionId, HostedBoolFunction, HostedIntFunction};
+use super::{HostFunctionId, HostNeverFunctionId, HostedNeverFunction, HostedValueFunction};
+use crate::host::HostProfile;
+use crate::plan::execution::function::ExecutionFunctionBody;
 
-pub(crate) struct HostFunctionTables {
-    int_functions: Box<[HostedIntFunction]>,
-    bool_functions: Box<[HostedBoolFunction]>,
+pub(crate) struct HostFunctionTables<Profile: HostProfile> {
+    value_functions: Box<[HostedValueFunction<Profile>]>,
+    never_functions: Box<[HostedNeverFunction<Profile>]>,
 }
 
-impl HostFunctionTables {
+impl<Profile: HostProfile> HostFunctionTables<Profile> {
     pub(in crate::plan::execution) fn new(
-        int_functions: Box<[HostedIntFunction]>,
-        bool_functions: Box<[HostedBoolFunction]>,
+        value_functions: Box<[HostedValueFunction<Profile>]>,
+        never_functions: Box<[HostedNeverFunction<Profile>]>,
     ) -> Self {
         Self {
-            int_functions,
-            bool_functions,
+            value_functions,
+            never_functions,
         }
     }
 
-    pub(crate) fn int(&self, id: HostIntFunctionId) -> &HostedIntFunction {
-        &self.int_functions[id.index()]
+    pub(crate) fn value<Body: ExecutionFunctionBody>(
+        &self,
+        id: &HostFunctionId<Body>,
+    ) -> &HostedValueFunction<Profile> {
+        &self.value_functions[id.index()]
     }
 
-    pub(crate) fn bool(&self, id: HostBoolFunctionId) -> &HostedBoolFunction {
-        &self.bool_functions[id.index()]
+    pub(crate) fn never(&self, id: HostNeverFunctionId) -> &HostedNeverFunction<Profile> {
+        &self.never_functions[id.index()]
     }
 
     #[cfg(test)]
-    pub(in crate::plan::execution) fn int_functions(&self) -> &[HostedIntFunction] {
-        &self.int_functions
+    pub(in crate::plan::execution) fn value_functions(&self) -> &[HostedValueFunction<Profile>] {
+        &self.value_functions
     }
 
     #[cfg(test)]
-    pub(in crate::plan::execution) fn bool_functions(&self) -> &[HostedBoolFunction] {
-        &self.bool_functions
+    pub(in crate::plan::execution) fn never_functions(&self) -> &[HostedNeverFunction<Profile>] {
+        &self.never_functions
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        HostModule, HostModules, HostedExecution, ModuleSource, PackageSource, Value,
+        HostModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource, Value,
         compile_typed_host_program, plan_host_program,
     };
     use num_bigint::BigInt;
@@ -57,7 +62,7 @@ mod tests {
             .expect("host function should be valid")
             .with_function("unused_predicate", || false)
             .expect("host function should be valid");
-        let hosts = HostModules::new([math]).expect("host modules should be unique");
+        let hosts = HostProviderSet::new([math]).expect("host modules should be unique");
         let source = r#"
 import host/math
 
@@ -78,24 +83,25 @@ pub fn main() {
         )
         .expect("host source should compile");
         let plan = plan_host_program(typed).expect("host source should plan");
-        let execution = HostedExecution::from_module_plan(plan);
+        let execution =
+            HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
 
-        assert_eq!(execution.host_functions.int_functions().len(), 2);
-        let add = &execution.host_functions.int_functions()[0];
+        assert_eq!(execution.host_functions.value_functions().len(), 3);
+        assert!(execution.host_functions.never_functions().is_empty());
+        let add = &execution.host_functions.value_functions()[0];
         assert_eq!(add.package(), "host_support");
         assert_eq!(add.module(), "host/math");
         assert_eq!(add.name(), "add");
-        let subtract = &execution.host_functions.int_functions()[1];
+        let subtract = &execution.host_functions.value_functions()[1];
         assert_eq!(subtract.package(), "host_support");
         assert_eq!(subtract.module(), "host/math");
         assert_eq!(subtract.name(), "subtract");
-        assert_eq!(execution.host_functions.bool_functions().len(), 1);
-        let positive = &execution.host_functions.bool_functions()[0];
+        let positive = &execution.host_functions.value_functions()[2];
         assert_eq!(positive.package(), "host_support");
         assert_eq!(positive.module(), "host/math");
         assert_eq!(positive.name(), "positive");
         assert_eq!(
-            execution.run_main(&mut Vec::new()),
+            execution.run_main(&mut (), &mut Vec::new()),
             Ok(Value::Tuple(vec![Value::Int(2.into()), Value::Bool(true)])),
         );
     }

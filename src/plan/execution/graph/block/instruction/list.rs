@@ -29,10 +29,12 @@ pub(crate) enum ParameterListInstruction {
     Call {
         function: ParameterListFunctionId,
         args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: ListFunctionLocal,
         args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: TupleLocalId,
@@ -58,10 +60,12 @@ pub(crate) enum TypedListInstruction<Element, Local, Function> {
     Call {
         function: Function,
         args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     },
     FunctionCall {
         function: ListFunctionLocal,
         args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     },
     TupleIndex {
         tuple: TupleLocalId,
@@ -218,10 +222,10 @@ fn write_parameter(output: &mut String, instruction: &ParameterListInstruction) 
     match instruction {
         ParameterListInstruction::Empty => output.push_str("empty"),
         ParameterListInstruction::Constant(id) => write_constant(output, "list.parameter", *id),
-        ParameterListInstruction::Call { function, args } => {
+        ParameterListInstruction::Call { function, args, .. } => {
             write_call(output, "call", function, args);
         }
-        ParameterListInstruction::FunctionCall { function, args } => {
+        ParameterListInstruction::FunctionCall { function, args, .. } => {
             write_function_call(output, "function_call", function, args);
         }
         ParameterListInstruction::TupleIndex { tuple, index } => {
@@ -265,8 +269,10 @@ fn write_typed<Element, Local, Function>(
             output.push_str(" tail=");
             tail.write_local_label(output);
         }
-        TypedListInstruction::Call { function, args } => write_call(output, "call", function, args),
-        TypedListInstruction::FunctionCall { function, args } => {
+        TypedListInstruction::Call { function, args, .. } => {
+            write_call(output, "call", function, args);
+        }
+        TypedListInstruction::FunctionCall { function, args, .. } => {
             write_function_call(output, "function_call", function, args);
         }
         TypedListInstruction::TupleIndex { tuple, index } => {

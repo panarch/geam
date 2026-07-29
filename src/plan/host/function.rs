@@ -1,53 +1,35 @@
-mod parameter;
-mod return_;
-
-use crate::plan::{
-    FunctionShape, FunctionTemplateId, FunctionTemplateSignature, FunctionType, TypeScheme,
-};
+use crate::host::HostParameter;
+use crate::plan::{FunctionTemplateId, FunctionTemplateSignature, FunctionType, TypeScheme};
 use ecow::EcoString;
-
-pub(crate) use parameter::HostParameter;
-pub(crate) use return_::HostReturnFamily;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HostFunctionTemplate {
     signature: FunctionTemplateSignature,
     package: EcoString,
-    module: EcoString,
-    name: EcoString,
-    parameters: Box<[HostParameter]>,
-    return_family: HostReturnFamily,
+    site: crate::plan::HostCallSite,
+    layout: Box<[HostParameter]>,
+    parameters: Box<[crate::host::HostTypeDescriptor]>,
+    return_: crate::host::HostTypeDescriptor,
+    custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
     type_: FunctionType,
 }
 
 impl HostFunctionTemplate {
-    pub(crate) fn new(
-        id: FunctionTemplateId,
+    pub(crate) fn from_schema(
+        signature: FunctionTemplateSignature,
         package: EcoString,
-        module: EcoString,
-        name: EcoString,
-        parameters: Vec<HostParameter>,
-        return_family: HostReturnFamily,
-        type_: FunctionType,
+        site: crate::plan::HostCallSite,
+        schema: crate::host::HostFunctionSchema,
     ) -> Self {
         Self {
-            signature: FunctionTemplateSignature::new(
-                id,
-                TypeScheme::new(0),
-                FunctionShape::new(
-                    parameters
-                        .iter()
-                        .map(|parameter| parameter.shape())
-                        .collect(),
-                    return_family.shape(),
-                ),
-            ),
+            signature,
             package,
-            module,
-            name,
-            parameters: parameters.into_boxed_slice(),
-            return_family,
-            type_,
+            site,
+            layout: schema.layout().to_vec().into_boxed_slice(),
+            parameters: schema.parameters().to_vec().into_boxed_slice(),
+            return_: schema.return_type().clone(),
+            custom_schemas: schema.custom_schemas().to_vec().into_boxed_slice(),
+            type_: schema.type_().clone(),
         }
     }
 
@@ -60,11 +42,31 @@ impl HostFunctionTemplate {
     }
 
     pub fn module(&self) -> &EcoString {
-        &self.module
+        self.site.module()
     }
 
     pub fn name(&self) -> &EcoString {
-        &self.name
+        self.site.function()
+    }
+
+    pub(crate) fn site(&self) -> &crate::plan::HostCallSite {
+        &self.site
+    }
+
+    pub(crate) fn layout(&self) -> &[HostParameter] {
+        &self.layout
+    }
+
+    pub(crate) fn parameters(&self) -> &[crate::host::HostTypeDescriptor] {
+        &self.parameters
+    }
+
+    pub(crate) fn return_type(&self) -> &crate::host::HostTypeDescriptor {
+        &self.return_
+    }
+
+    pub(crate) fn custom_schemas(&self) -> &[crate::host::HostCustomTypeSchema] {
+        &self.custom_schemas
     }
 
     pub fn scheme(&self) -> &TypeScheme {
@@ -73,14 +75,6 @@ impl HostFunctionTemplate {
 
     pub fn type_(&self) -> &FunctionType {
         &self.type_
-    }
-
-    pub(crate) fn parameters(&self) -> &[HostParameter] {
-        &self.parameters
-    }
-
-    pub(crate) fn return_family(&self) -> HostReturnFamily {
-        self.return_family
     }
 
     pub(crate) fn signature(&self) -> &FunctionTemplateSignature {

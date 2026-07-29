@@ -1,5 +1,8 @@
 use super::{FrontendError, ModuleSource, PackageSource};
-use crate::host::{HostFunctionSchema, HostModules, HostValueType, RegisteredHostModule};
+use crate::host::{
+    HostFunctionSchema, HostProfile, HostProviderSet, HostTypeDescriptor,
+    RegisteredHostImplementations, RegisteredHostModule, RegisteredHostProviderModule,
+};
 use camino::Utf8PathBuf;
 use ecow::EcoString;
 use gleam_core::analyse::{ModuleAnalyzerConstructor, TargetSupport};
@@ -11,7 +14,8 @@ use gleam_core::parse;
 use gleam_core::type_::error::VariableOrigin;
 use gleam_core::type_::{
     Deprecation, ModuleInterface, PRELUDE_MODULE_NAME, References, ValueConstructor,
-    ValueConstructorVariant, bool as bool_type, build_prelude, fn_, int,
+    ValueConstructorVariant, bit_array, bool as bool_type, build_prelude, float, fn_, generic_var,
+    int, list, named, nil, string, tuple, utf_codepoint,
 };
 use gleam_core::uid::UniqueIdGenerator;
 use gleam_core::warning::{TypeWarningEmitter, WarningEmitter};
@@ -28,11 +32,17 @@ pub struct TypedProgram {
     modules: Vec<TypedProgramModule>,
 }
 
-pub struct HostedTypedProgram {
+pub struct HostedTypedProgram<Profile: HostProfile> {
+    program: HostedProgram,
+    implementations: RegisteredHostImplementations<Profile>,
+}
+
+struct HostedProgram {
     root_package: EcoString,
     root_module: EcoString,
     root_index: usize,
     modules: Vec<HostedTypedProgramModule>,
+    providers: Vec<RegisteredHostProviderModule>,
 }
 
 #[derive(Debug)]
@@ -65,17 +75,29 @@ impl TypedProgram {
     }
 }
 
-impl HostedTypedProgram {
+impl<Profile: HostProfile> HostedTypedProgram<Profile> {
     pub fn root_package(&self) -> &EcoString {
-        &self.root_package
+        &self.program.root_package
     }
 
     pub fn root_module(&self) -> &EcoString {
-        &self.root_module
+        &self.program.root_module
     }
 
-    pub(crate) fn into_parts(self) -> (usize, Vec<HostedTypedProgramModule>) {
-        (self.root_index, self.modules)
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        usize,
+        Vec<HostedTypedProgramModule>,
+        Vec<RegisteredHostProviderModule>,
+        RegisteredHostImplementations<Profile>,
+    ) {
+        (
+            self.program.root_index,
+            self.program.modules,
+            self.program.providers,
+            self.implementations,
+        )
     }
 }
 
@@ -122,18 +144,24 @@ pub fn compile_typed_package_program(
     )
 }
 
-pub fn compile_typed_host_program(
+pub fn compile_typed_host_program<Profile: HostProfile>(
     root_package: impl Into<EcoString>,
     root_module: impl Into<EcoString>,
     packages: impl IntoIterator<Item = PackageSource>,
-    hosts: HostModules,
-) -> Result<HostedTypedProgram, FrontendError> {
+    hosts: HostProviderSet<Profile>,
+) -> Result<HostedTypedProgram<Profile>, FrontendError> {
+    let (modules, providers, implementations) = hosts.into_registered();
     compile_host_package_sources(
         root_package.into(),
         root_module.into(),
         packages.into_iter().collect(),
-        hosts.into_registered(),
+        modules,
+        providers,
     )
+    .map(|program| HostedTypedProgram {
+        program,
+        implementations,
+    })
 }
 
 fn compile_package_sources(
@@ -152,7 +180,8 @@ fn compile_host_package_sources(
     root_module: EcoString,
     packages: Vec<PackageSource>,
     host_modules: Vec<RegisteredHostModule>,
-) -> Result<HostedTypedProgram, FrontendError> {
+    providers: Vec<RegisteredHostProviderModule>,
+) -> Result<HostedProgram, FrontendError> {
     let warnings = WarningEmitter::null();
     let parsed_modules = parse_package_sources(&root_package, packages, &warnings)?;
 
@@ -161,6 +190,7 @@ fn compile_host_package_sources(
         root_module,
         parsed_modules,
         host_modules,
+        providers,
         warnings,
     )
 }
@@ -305,8 +335,9 @@ fn compile_parsed_host_program(
     root_module: EcoString,
     mut parsed_modules: Vec<ParsedModule>,
     host_modules: Vec<RegisteredHostModule>,
+    providers: Vec<RegisteredHostProviderModule>,
     warnings: WarningEmitter,
-) -> Result<HostedTypedProgram, FrontendError> {
+) -> Result<HostedProgram, FrontendError> {
     let module_owners = source_module_owners(&parsed_modules)?;
     for host in &host_modules {
         if let Some((source_package, source_path)) = module_owners.get(host.module()) {
@@ -409,11 +440,12 @@ fn compile_parsed_host_program(
         }
     }
 
-    Ok(HostedTypedProgram {
+    Ok(HostedProgram {
         root_package,
         root_module,
         root_index,
         modules: typed_modules,
+        providers,
     })
 }
 
@@ -508,11 +540,7 @@ fn host_value_constructor(
     schema: &HostFunctionSchema,
 ) -> (EcoString, ValueConstructor) {
     let type_ = fn_(
-        schema
-            .parameters()
-            .iter()
-            .map(|parameter| host_type(parameter.type_()))
-            .collect(),
+        schema.parameters().iter().map(host_type).collect(),
         host_type(schema.return_type()),
     );
     // Gleam keeps these metadata types crate-private, but exposes their
@@ -544,10 +572,31 @@ fn host_value_constructor(
     )
 }
 
-fn host_type(type_: HostValueType) -> std::sync::Arc<gleam_core::type_::Type> {
+fn host_type(type_: &HostTypeDescriptor) -> std::sync::Arc<gleam_core::type_::Type> {
     match type_ {
-        HostValueType::Int => int(),
-        HostValueType::Bool => bool_type(),
+        HostTypeDescriptor::Parameter(index) => generic_var(*index as u64),
+        HostTypeDescriptor::Int => int(),
+        HostTypeDescriptor::Float => float(),
+        HostTypeDescriptor::String => string(),
+        HostTypeDescriptor::BitArray => bit_array(),
+        HostTypeDescriptor::UtfCodepoint => utf_codepoint(),
+        HostTypeDescriptor::Bool => bool_type(),
+        HostTypeDescriptor::Nil => nil(),
+        HostTypeDescriptor::List(item) => list(host_type(item)),
+        HostTypeDescriptor::Tuple(elements) => {
+            tuple(elements.iter().map(host_type).collect::<Vec<_>>())
+        }
+        HostTypeDescriptor::Function { arguments, return_ } => fn_(
+            arguments.iter().map(host_type).collect(),
+            host_type(return_),
+        ),
+        HostTypeDescriptor::Custom { schema, arguments } => named(
+            schema.package(),
+            schema.module(),
+            schema.name(),
+            Publicity::Public,
+            arguments.iter().map(host_type).collect(),
+        ),
     }
 }
 
@@ -649,17 +698,18 @@ mod tests {
     use super::{
         FrontendError, HostedTypedProgramModule, ModuleSource, PackageSource,
         compile_typed_host_program, compile_typed_module, compile_typed_package_program,
-        compile_typed_program, host_module_interface,
+        compile_typed_program, host_module_interface, host_type,
     };
-    use crate::host::{HostModule, HostModules};
+    use crate::host::{HostCustomTypeSchema, HostModule, HostProviderSet, HostTypeDescriptor};
     use crate::plan_host_program;
     use crate::planner::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
     use ecow::EcoString;
     use gleam_core::ast::{Publicity, SrcSpan};
     use gleam_core::type_::error::VariableOrigin;
     use gleam_core::type_::{
-        Deprecation, ValueConstructor, ValueConstructorVariant, bool as bool_type, build_prelude,
-        fn_, int,
+        Deprecation, ValueConstructor, ValueConstructorVariant, bit_array, bool as bool_type,
+        build_prelude, float, fn_, generic_var, int, list, named, nil, string, tuple,
+        utf_codepoint,
     };
     use gleam_core::uid::UniqueIdGenerator;
     use num_bigint::BigInt;
@@ -682,7 +732,7 @@ mod tests {
         };
         assert!(all(true, true, true, true, true, true, true));
 
-        let hosts = HostModules::new([HostModule::new("host_support", "host/math")
+        let hosts = HostProviderSet::new([HostModule::new("host_support", "host/math")
             .expect("host module should be valid")
             .with_function("add", <BigInt as std::ops::Add>::add)
             .expect("host function should be valid")
@@ -691,12 +741,22 @@ mod tests {
             .with_function("choose", choose)
             .expect("host function should be valid")
             .with_function("all", all)
+            .expect("host function should be valid")
+            .with_function(
+                "consume",
+                |_: BigInt,
+                 _: f64,
+                 _: EcoString,
+                 _: crate::BitArrayValue,
+                 _: char,
+                 _: bool,
+                 (): ()| (),
+            )
             .expect("host function should be valid")])
         .expect("host modules should be unique");
-        let host = hosts
-            .into_registered()
-            .pop()
-            .expect("host module should exist");
+        let (mut modules, providers, _) = hosts.into_registered();
+        assert!(providers.is_empty());
+        let host = modules.pop().expect("host module should exist");
         let ids = UniqueIdGenerator::new();
         let prelude = build_prelude(&ids);
         let next_id = ids.next();
@@ -737,7 +797,7 @@ mod tests {
         assert!(!interface.is_internal);
         assert!(interface.types.is_empty());
         assert!(interface.types_value_constructors.is_empty());
-        assert_eq!(interface.values.len(), 4);
+        assert_eq!(interface.values.len(), 5);
         assert!(interface.accessors.is_empty());
         assert!(interface.warnings.is_empty());
         assert!(interface.type_aliases.is_empty());
@@ -773,6 +833,36 @@ mod tests {
                 field_map: None,
                 module: "host/math".into(),
                 arity: 3,
+                location: SrcSpan::new(0, 0),
+                documentation: None,
+                implementations: expected_metadata.variant.implementations(),
+                external_erlang: None,
+                external_javascript: None,
+                purity: expected_metadata.called_function_purity(),
+            },
+        );
+        assert_eq!(
+            interface.values["consume"].type_,
+            fn_(
+                vec![
+                    int(),
+                    float(),
+                    string(),
+                    bit_array(),
+                    utf_codepoint(),
+                    bool_type(),
+                    nil(),
+                ],
+                nil(),
+            ),
+        );
+        assert_eq!(
+            &interface.values["consume"].variant,
+            &ValueConstructorVariant::ModuleFn {
+                name: "consume".into(),
+                field_map: None,
+                module: "host/math".into(),
+                arity: 7,
                 location: SrcSpan::new(0, 0),
                 documentation: None,
                 implementations: expected_metadata.variant.implementations(),
@@ -824,8 +914,42 @@ mod tests {
     }
 
     #[test]
+    fn maps_recursive_host_types_into_exact_gleam_interface_types() {
+        let custom = HostCustomTypeSchema::new("domain", "domain/tree", "Tree", 1, Vec::new());
+        let cases = [
+            (
+                HostTypeDescriptor::List(Box::new(HostTypeDescriptor::Parameter(0))),
+                list(generic_var(0)),
+            ),
+            (
+                HostTypeDescriptor::Tuple(
+                    vec![HostTypeDescriptor::Int, HostTypeDescriptor::Bool].into_boxed_slice(),
+                ),
+                tuple(vec![int(), bool_type()]),
+            ),
+            (
+                HostTypeDescriptor::Custom {
+                    schema: custom,
+                    arguments: vec![HostTypeDescriptor::String].into_boxed_slice(),
+                },
+                named(
+                    "domain",
+                    "domain/tree",
+                    "Tree",
+                    Publicity::Public,
+                    vec![string()],
+                ),
+            ),
+        ];
+
+        for (host, expected) in cases {
+            assert_eq!(host_type(&host), expected);
+        }
+    }
+
+    #[test]
     fn compiles_same_package_host_imports_without_source_bodies() {
-        let hosts = HostModules::new([HostModule::new("application", "host/math")
+        let hosts = HostProviderSet::new([HostModule::new("application", "host/math")
             .expect("host module should be valid")
             .with_function("add", <BigInt as std::ops::Add>::add)
             .expect("host function should be valid")])
@@ -856,6 +980,7 @@ pub fn main() {
         assert_eq!(program.root_module(), "main");
         assert_eq!(
             program
+                .program
                 .modules
                 .iter()
                 .map(|module| match module {
@@ -871,6 +996,7 @@ pub fn main() {
             [("application", "host/math"), ("application", "main")],
         );
         let root = program
+            .program
             .modules
             .iter()
             .find_map(|module| match module {
@@ -885,7 +1011,7 @@ pub fn main() {
 
     #[test]
     fn compiles_direct_dependency_host_imports_in_dependency_order() {
-        let hosts = HostModules::new([HostModule::new("host_support", "host/math")
+        let hosts = HostProviderSet::new([HostModule::new("host_support", "host/math")
             .expect("host module should be valid")
             .with_function("add", <BigInt as std::ops::Add>::add)
             .expect("host function should be valid")])
@@ -908,6 +1034,7 @@ pub fn main() {
 
         assert_eq!(
             program
+                .program
                 .modules
                 .iter()
                 .map(|module| match module {
@@ -926,7 +1053,7 @@ pub fn main() {
 
     #[test]
     fn orders_host_modules_deterministically_before_dependent_source_modules() {
-        let hosts = HostModules::new([
+        let hosts = HostProviderSet::new([
             HostModule::new("host_support", "host/zeta").expect("host module should be valid"),
             HostModule::new("host_support", "host/alpha").expect("host module should be valid"),
         ])
@@ -949,6 +1076,7 @@ pub fn main() {
 
         assert_eq!(
             program
+                .program
                 .modules
                 .iter()
                 .map(|module| match module {
@@ -971,7 +1099,7 @@ pub fn main() {
 
     #[test]
     fn leaves_undeclared_and_unknown_host_imports_to_gleam_analysis() {
-        let undeclared_hosts = HostModules::new([HostModule::new("host_support", "host/math")
+        let undeclared_hosts = HostProviderSet::new([HostModule::new("host_support", "host/math")
             .expect("host module should be valid")
             .with_function("add", <BigInt as std::ops::Add>::add)
             .expect("host function should be valid")])
@@ -992,8 +1120,8 @@ pub fn main() {
         )
         .err()
         .expect("undeclared package should fail analysis");
-        let unknown_hosts =
-            HostModules::new(Vec::<HostModule>::new()).expect("empty host modules should be valid");
+        let unknown_hosts = HostProviderSet::new(Vec::<HostModule>::new())
+            .expect("empty host modules should be valid");
         let unknown = compile_typed_host_program(
             "application",
             "main",
@@ -1033,7 +1161,7 @@ pub fn main() {
 
     #[test]
     fn rejects_source_and_host_module_identity_collisions() {
-        let hosts = HostModules::new([HostModule::new("host_support", "host/math")
+        let hosts = HostProviderSet::new([HostModule::new("host_support", "host/math")
             .expect("host module should be valid")
             .with_function("add", <BigInt as std::ops::Add>::add)
             .expect("host function should be valid")])
@@ -1074,7 +1202,7 @@ pub fn main() {
 
     #[test]
     fn rejects_host_modules_as_root_source() {
-        let hosts = HostModules::new([HostModule::new("application", "main")
+        let hosts = HostProviderSet::new([HostModule::new("application", "main")
             .expect("host module should be valid")
             .with_function("add", <BigInt as std::ops::Add>::add)
             .expect("host function should be valid")])
@@ -1123,7 +1251,8 @@ pub fn main() {
                     Vec::<ModuleSource>::new(),
                 ),
             ],
-            HostModules::new(Vec::<HostModule>::new()).expect("empty host modules should be valid"),
+            HostProviderSet::new(Vec::<HostModule>::new())
+                .expect("empty host modules should be valid"),
         )
         .err()
         .expect("duplicate package should fail");
@@ -1155,7 +1284,8 @@ pub fn main() {
                     )],
                 ),
             ],
-            HostModules::new(Vec::<HostModule>::new()).expect("empty host modules should be valid"),
+            HostProviderSet::new(Vec::<HostModule>::new())
+                .expect("empty host modules should be valid"),
         )
         .err()
         .expect("duplicate module should fail");
@@ -1176,7 +1306,8 @@ pub fn main() {
                     "pub fn value() { 1 }",
                 )],
             )],
-            HostModules::new(Vec::<HostModule>::new()).expect("empty host modules should be valid"),
+            HostProviderSet::new(Vec::<HostModule>::new())
+                .expect("empty host modules should be valid"),
         )
         .err()
         .expect("missing root module should fail");
@@ -1204,7 +1335,8 @@ pub fn main() {
                     ),
                 ],
             )],
-            HostModules::new(Vec::<HostModule>::new()).expect("empty host modules should be valid"),
+            HostProviderSet::new(Vec::<HostModule>::new())
+                .expect("empty host modules should be valid"),
         )
         .err()
         .expect("import cycle should fail");
@@ -1216,7 +1348,7 @@ pub fn main() {
 
     #[test]
     fn reject_margin_hosted_typed_program_invalid_constant_shape() {
-        let hosts = HostModules::new([HostModule::new("host_support", "host/math")
+        let hosts = HostProviderSet::new([HostModule::new("host_support", "host/math")
             .expect("host module should be valid")
             .with_function("add", <BigInt as std::ops::Add>::add)
             .expect("host function should be valid")])
@@ -1237,6 +1369,7 @@ pub fn main() {
         )
         .expect("host program should compile");
         let source_module = program
+            .program
             .modules
             .iter_mut()
             .find_map(|module| match module {

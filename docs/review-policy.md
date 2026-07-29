@@ -104,6 +104,8 @@ actual callers before assigning a semantic role.
 - Aggregate roots must not flatten unrelated child domains for convenience.
   Type, module, and field names must distinguish complete owners from
   contained or open structures.
+- Within an owner module, declare the representative owner or protocol before
+  its variants, payloads, IDs, adapters, and other supporting types.
 - Treat a one-caller type that mirrors a final type and is immediately consumed
   as a design smell. Make it a real final substructure or keep it phase-local
   behind a narrow constructor.
@@ -203,10 +205,37 @@ Host calls should join the existing typed call, tail-call, and function-value
 paths. Do not add string dispatch or a parallel identity model solely for host
 implementations.
 
+Choose graph-only or graph-or-host function storage at one execution-profile
+boundary shared by every return family. Do not spread host-entry generic
+parameters independently through individual function tables.
+
 One sealed registration owner must derive a host function's schema,
 family-local parameter layout, and callback adapter together. Planner and
 runtime phases may consume that layout, but must not independently infer the
 same signature or parameter indexing.
+
+Source provider selection must finish before function body planning. Match an
+exact external scheme, preserve a declared Gleam fallback when no provider is
+selected, reject missing providers for bodyless externals, and never defer
+selection or ordinary-function override decisions to runtime.
+
+Keep compound host values call-scoped and typed. Registration owns recursive
+type descriptors, planning validates ordinary custom schemas exactly, and
+execution specialization seals concrete locals and return storage. Do not
+replace these boundaries with materialized public values, per-specialization
+user registration, or runtime shape validation.
+
+Treat callable invocation as an explicit call-scoped capability. A callback
+capability must have inhabited argument storage when hosted execution is
+sealed; an opaque function value may pass through generic storage without
+becoming invocable. Keep symbolic and invocable function storage distinct, and
+do not add a runtime generic callback branch.
+
+End provider-state and actual payload borrows before nested execution re-enters
+Gleam. Call-scoped runtime-owned handles may remain live across re-entry, but
+they must not escape the host invocation. Nested source panics and host
+failures must retain the actual failed source or provider identity; an outer
+provider must not repackage them as its own failure.
 
 ## Panic Rules
 
@@ -217,6 +246,10 @@ profile validation, or recoverable invariant handling. Do not use
 Boundary failures must become structured errors before runtime execution. If a
 case can be reached from valid Gleam source, reject it as a profile error. If it
 requires a synthetic or mutated typed AST shape, reject it as `InvalidTypedAst`.
+If a valid hosted plan reaches a value-producing specialization whose return
+storage cannot be represented, reject that specialization while sealing
+`HostedExecution`; do not reinterpret it as either source rejection or a
+runtime error.
 
 `#[cfg(test)]` helpers may use panic paths only to assert fixture shape. Keep
 those panics local, visible, and covered by explicit panic tests.
@@ -227,6 +260,8 @@ Errors make boundaries visible:
 
 - Use `Unsupported*` errors for valid Gleam source outside the Geam profile.
 - Use `InvalidTypedAst` errors for typed AST margin cases.
+- Use `HostSpecializationError` only for a valid hosted plan whose reachable
+  ABI specialization cannot be sealed into executable storage.
 - Avoid free-form static string reasons for stable planner errors.
 - Keep dynamic values, such as function and local names, as structured fields.
 - Do not merge unsupported profile cases and invalid typed AST cases into one

@@ -4,11 +4,12 @@ use crate::planner::context::PlanContext;
 use crate::planner::error::{
     InvalidCallShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
 };
-use gleam_core::ast::{CallArg as GleamCallArg, TypedExpr};
+use gleam_core::ast::{CallArg as GleamCallArg, SrcSpan, TypedExpr};
 use gleam_core::type_::Type;
 use std::sync::Arc;
 
 pub(super) fn plan_function_value_call(
+    location: SrcSpan,
     type_: Arc<Type>,
     fun: TypedExpr,
     arguments: Vec<GleamCallArg<TypedExpr>>,
@@ -60,47 +61,67 @@ pub(super) fn plan_function_value_call(
         capture,
     )?;
 
-    function_call_expr(function, args, return_shape)
+    function_call_expr_at(
+        function,
+        args,
+        return_shape,
+        context.host_call_site(location),
+    )
 }
 
+#[cfg(test)]
 fn function_call_expr(
     function: FunctionExpr,
     args: Vec<CallArg>,
     return_shape: ValueShape,
 ) -> Result<Expr, PlanError> {
+    function_call_expr_at(
+        function,
+        args,
+        return_shape,
+        crate::plan::HostCallSite::unknown(),
+    )
+}
+
+fn function_call_expr_at(
+    function: FunctionExpr,
+    args: Vec<CallArg>,
+    return_shape: ValueShape,
+    site: crate::plan::HostCallSite,
+) -> Result<Expr, PlanError> {
     match return_shape {
         ValueShape::Parameter(_) => match function.into_generic() {
-            Some(function) => Ok(Expr::generic(crate::plan::GenericExpr::function_call(
-                function, args,
+            Some(function) => Ok(Expr::generic(crate::plan::GenericExpr::function_call_at(
+                function, args, site,
             ))),
             None => Err(function_call_return_type_mismatch()),
         },
         ValueShape::Int => match function.into_int() {
-            Some(function) => Ok(Expr::int(crate::plan::IntExpr::function_call(
-                function, args,
+            Some(function) => Ok(Expr::int(crate::plan::IntExpr::function_call_at(
+                function, args, site,
             ))),
             None => Err(function_call_return_type_mismatch()),
         },
         ValueShape::String => match function.into_string() {
-            Some(function) => Ok(Expr::string(crate::plan::StringExpr::function_call(
-                function, args,
+            Some(function) => Ok(Expr::string(crate::plan::StringExpr::function_call_at(
+                function, args, site,
             ))),
             None => Err(function_call_return_type_mismatch()),
         },
         ValueShape::BitArray => match function.into_bit_array() {
-            Some(function) => Ok(Expr::bit_array(crate::plan::BitArrayExpr::function_call(
-                function, args,
-            ))),
+            Some(function) => Ok(Expr::bit_array(
+                crate::plan::BitArrayExpr::function_call_at(function, args, site),
+            )),
             None => Err(function_call_return_type_mismatch()),
         },
         ValueShape::UtfCodepoint => match function.into_utf_codepoint() {
             Some(function) => Ok(Expr::utf_codepoint(
-                crate::plan::UtfCodepointExpr::function_call(function, args),
+                crate::plan::UtfCodepointExpr::function_call_at(function, args, site),
             )),
             None => Err(function_call_return_type_mismatch()),
         },
         ValueShape::Custom(_) => match function.into_custom() {
-            Some(function) => crate::plan::CustomExpr::try_function_call(function, args)
+            Some(function) => crate::plan::CustomExpr::try_function_call_at(function, args, site)
                 .map(Expr::custom)
                 .map_err(|_| PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::CallShape {
@@ -110,20 +131,20 @@ fn function_call_expr(
             None => Err(function_call_return_type_mismatch()),
         },
         ValueShape::Float => match function.into_float() {
-            Some(function) => Ok(Expr::float(crate::plan::FloatExpr::function_call(
-                function, args,
+            Some(function) => Ok(Expr::float(crate::plan::FloatExpr::function_call_at(
+                function, args, site,
             ))),
             None => Err(function_call_return_type_mismatch()),
         },
         ValueShape::Bool => match function.into_bool() {
-            Some(function) => Ok(Expr::bool(crate::plan::BoolExpr::function_call(
-                function, args,
+            Some(function) => Ok(Expr::bool(crate::plan::BoolExpr::function_call_at(
+                function, args, site,
             ))),
             None => Err(function_call_return_type_mismatch()),
         },
         ValueShape::Nil => match function.into_nil() {
-            Some(function) => Ok(Expr::nil(crate::plan::NilExpr::function_call(
-                function, args,
+            Some(function) => Ok(Expr::nil(crate::plan::NilExpr::function_call_at(
+                function, args, site,
             ))),
             None => Err(function_call_return_type_mismatch()),
         },
@@ -131,7 +152,7 @@ fn function_call_expr(
             Some(function) => {
                 let return_type = return_shape.iter().map(ValueShape::value_type).collect();
                 Ok(Expr::tuple(
-                    crate::plan::TupleExpr::function_call(function, args, return_type)
+                    crate::plan::TupleExpr::function_call_at(function, args, return_type, site)
                         .with_shape(return_shape),
                 ))
             }
@@ -139,12 +160,13 @@ fn function_call_expr(
         },
         ValueShape::List(item_shape) => match function.into_list() {
             Some(function) => Ok(Expr::list(
-                crate::plan::ListExpr::function_call(function, args).with_item_shape(*item_shape),
+                crate::plan::ListExpr::function_call_at(function, args, site)
+                    .with_item_shape(*item_shape),
             )),
             None => Err(function_call_return_type_mismatch()),
         },
         ValueShape::Function(_) => match function.into_function() {
-            Some(function) => function_returning_function_value_call_expr(function, args),
+            Some(function) => function_returning_function_value_call_expr(function, args, site),
             None => Err(function_call_return_type_mismatch()),
         },
     }
@@ -161,70 +183,78 @@ fn function_call_return_type_mismatch() -> PlanError {
 fn function_returning_function_value_call_expr(
     function: FunctionFunctionExpr,
     args: Vec<CallArg>,
+    site: crate::plan::HostCallSite,
 ) -> Result<Expr, PlanError> {
     let return_shape = function.function_function_type().return_shape().clone();
     let return_type = return_shape.type_();
     Ok(match return_shape.return_shape().clone() {
         ValueShape::Parameter(parameter) => Expr::function(FunctionExpr::generic_with_shape(
-            crate::plan::GenericFunctionExpr::function_call(
+            crate::plan::GenericFunctionExpr::function_call_at(
                 function,
                 args,
                 crate::plan::GenericFunctionType::new(
                     return_shape.argument_shapes().to_vec(),
                     parameter,
                 ),
+                site,
             ),
             return_shape,
         )),
         ValueShape::Int => Expr::function(FunctionExpr::int_with_shape(
-            crate::plan::IntFunctionExpr::function_call(function, args, return_type),
+            crate::plan::IntFunctionExpr::function_call_at(function, args, return_type, site),
             return_shape,
         )),
         ValueShape::String => Expr::function(FunctionExpr::string_with_shape(
-            crate::plan::StringFunctionExpr::function_call(function, args, return_type),
+            crate::plan::StringFunctionExpr::function_call_at(function, args, return_type, site),
             return_shape,
         )),
         ValueShape::BitArray => Expr::function(FunctionExpr::bit_array_with_shape(
-            crate::plan::BitArrayFunctionExpr::function_call(function, args, return_type),
+            crate::plan::BitArrayFunctionExpr::function_call_at(function, args, return_type, site),
             return_shape,
         )),
         ValueShape::UtfCodepoint => Expr::function(FunctionExpr::utf_codepoint_with_shape(
-            crate::plan::UtfCodepointFunctionExpr::function_call(function, args, return_type),
+            crate::plan::UtfCodepointFunctionExpr::function_call_at(
+                function,
+                args,
+                return_type,
+                site,
+            ),
             return_shape,
         )),
         ValueShape::Custom(_) => {
-            return crate::plan::CustomFunctionExpr::try_function_call(function, args)
+            return crate::plan::CustomFunctionExpr::try_function_call_at(function, args, site)
                 .map(FunctionExpr::custom)
                 .map(Expr::function)
                 .map_err(function_function_call_mismatch);
         }
         ValueShape::Float => Expr::function(FunctionExpr::float_with_shape(
-            crate::plan::FloatFunctionExpr::function_call(function, args, return_type),
+            crate::plan::FloatFunctionExpr::function_call_at(function, args, return_type, site),
             return_shape,
         )),
         ValueShape::Bool => Expr::function(FunctionExpr::bool_with_shape(
-            crate::plan::BoolFunctionExpr::function_call(function, args, return_type),
+            crate::plan::BoolFunctionExpr::function_call_at(function, args, return_type, site),
             return_shape,
         )),
         ValueShape::Nil => Expr::function(FunctionExpr::nil_with_shape(
-            crate::plan::NilFunctionExpr::function_call(function, args, return_type),
+            crate::plan::NilFunctionExpr::function_call_at(function, args, return_type, site),
             return_shape,
         )),
         ValueShape::Tuple(_) => Expr::function(FunctionExpr::tuple_with_shape(
-            crate::plan::TupleFunctionExpr::function_call(function, args, return_type),
+            crate::plan::TupleFunctionExpr::function_call_at(function, args, return_type, site),
             return_shape,
         )),
         ValueShape::List(item_shape) => Expr::function(FunctionExpr::list_with_shape(
-            crate::plan::ListFunctionExpr::function_call(
+            crate::plan::ListFunctionExpr::function_call_at(
                 function,
                 args,
                 return_type,
                 item_shape.value_type(),
+                site,
             ),
             return_shape,
         )),
         ValueShape::Function(_) => {
-            return FunctionFunctionExpr::try_function_call(function, args)
+            return FunctionFunctionExpr::try_function_call_at(function, args, site)
                 .map(FunctionExpr::function)
                 .map(Expr::function)
                 .map_err(function_function_call_mismatch);
@@ -267,11 +297,11 @@ mod tests {
         ValueShape, ValueType,
     };
     use crate::planner::dsl::{
-        block_int_function, bool_, bool_case_int_function, call_int_function, function,
-        function_function_ref, function_ref, int, int_case_int_function, int_function_call_arg,
-        int_function_closure, int_function_ref, let_int_function_step, local_int,
-        local_int_function, local_tuple, module, module_with_anonymous, string, tuple, tuple_arg,
-        tuple_function_ref,
+        block_int_function, bool_, bool_case_int_function, call_int_function_at, function,
+        function_function_ref, function_ref, host_call_site, int, int_case_int_function,
+        int_function_call_arg, int_function_closure, int_function_ref, let_int_function_step,
+        local_int, local_int_function, local_tuple, module, module_with_anonymous, string, tuple,
+        tuple_arg, tuple_function_ref,
     };
     use crate::planner::expression::call::support::expect_call_statement_mut;
     use crate::planner::expression::{typed_int_expr, typed_string_expr};
@@ -311,7 +341,11 @@ mod tests {
             function_type,
         );
         assert_eq!(
-            function_returning_function_value_call_expr(provider.clone(), Vec::new()),
+            function_returning_function_value_call_expr(
+                provider.clone(),
+                Vec::new(),
+                crate::plan::HostCallSite::unknown(),
+            ),
             Ok(Expr::function(FunctionExpr::generic_with_shape(
                 GenericFunctionExpr::function_call(
                     provider,
@@ -330,8 +364,7 @@ mod tests {
             GenericFunctionType, Step, TypeParameterId,
         };
 
-        let plan = plan_module(compile(
-            r#"
+        let source = r#"
 fn fail() -> value {
   panic
 }
@@ -341,35 +374,37 @@ pub fn main() {
   let _ = function()
   1
 }
-"#,
-        ))
-        .expect("unresolved diverging function call should plan");
+"#;
+        let plan =
+            plan_module(compile(source)).expect("unresolved diverging function call should plan");
 
         assert_eq!(plan.main_function().steps().len(), 2);
         let function_type = GenericFunctionType::new(Vec::new(), TypeParameterId(0));
         assert_eq!(
             plan.main_function().steps()[1],
-            Step::evaluate(Expr::generic(GenericExpr::function_call(
+            Step::evaluate(Expr::generic(GenericExpr::function_call_at(
                 GenericFunctionExpr::local_get(
                     GenericFunctionLocal::new(GenericFunctionLocalId(0), function_type),
                     "function".into(),
                 ),
                 Vec::new(),
+                host_call_site(source, "main", "function()"),
             ))),
         );
     }
 
     #[test]
     fn plan_immediate_anonymous_function_call() {
-        let actual = plan_module(compile(r#"pub fn main() { fn(x) { x + 1 }(41) }"#))
-            .expect("source should plan");
+        let source = r#"pub fn main() { fn(x) { x + 1 }(41) }"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module_with_anonymous(
             "main",
             function(
                 "main",
-                call_int_function(
+                call_int_function_at(
                     int_function_closure(1, [LocalId::Int(IntLocalId(0))], []),
                     [int_function_call_arg(int(41))],
+                    host_call_site(source, "main", "fn(x) { x + 1 }(41)"),
                 ),
             ),
             [],
@@ -405,8 +440,7 @@ pub fn main() {
 
     #[test]
     fn plan_function_value_assignment_before_call() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add_one(value: Int) {
   value + 1
 }
@@ -415,16 +449,16 @@ pub fn main() {
   let function = add_one
   function(1)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
-                call_int_function(
+                call_int_function_at(
                     local_int_function(0, "function", [LocalId::Int(IntLocalId(0))]),
                     [int_function_call_arg(int(1))],
+                    host_call_site(source, "main", "function(1)"),
                 ),
             )
             .step(let_int_function_step(
@@ -440,8 +474,7 @@ pub fn main() {
 
     #[test]
     fn plan_function_value_and_primitive_shadowing_bindings() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add_one(value: Int) {
   value + 1
 }
@@ -457,18 +490,18 @@ pub fn primitive_shadow() {
   let function = 1
   function + 1
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let add_one =
             function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value");
         let expected = module(
             "main",
             function(
                 "main",
-                call_int_function(
+                call_int_function_at(
                     local_int_function(0, "function", [LocalId::Int(IntLocalId(0))]),
                     [int_function_call_arg(int(1))],
+                    host_call_site(source, "main", "function(1)"),
                 ),
             )
             .let_int(0, "function", int(1))
@@ -494,8 +527,7 @@ pub fn primitive_shadow() {
 
     #[test]
     fn plan_function_valued_block_callee() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add_one(value: Int) {
   value + 1
 }
@@ -503,16 +535,16 @@ fn add_one(value: Int) {
 pub fn main() {
   { add_one }(1)
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let expected = module(
             "main",
             function(
                 "main",
-                call_int_function(
+                call_int_function_at(
                     block_int_function([], int_function_ref(1, [LocalId::Int(IntLocalId(0))])),
                     [int_function_call_arg(int(1))],
+                    host_call_site(source, "main", "{ add_one }(1)"),
                 ),
             ),
             [function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value")],
@@ -523,8 +555,7 @@ pub fn main() {
 
     #[test]
     fn plan_function_valued_case_callee() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn add_one(value: Int) {
   value + 1
 }
@@ -544,9 +575,8 @@ pub fn main() {
   }(1)
   bool_result + int_result
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let add_one =
             function("add_one", local_int(0, "value").add_int(int(1))).param_int(0, "value");
         let add_ten =
@@ -560,25 +590,35 @@ pub fn main() {
             .let_int(
                 0,
                 "bool_result",
-                call_int_function(
+                call_int_function_at(
                     bool_case_int_function(
                         bool_(true),
                         int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
                         int_function_ref(2, [LocalId::Int(IntLocalId(0))]),
                     ),
                     [int_function_call_arg(int(1))],
+                    host_call_site(
+                        source,
+                        "main",
+                        "case True {\n    True -> add_one\n    False -> add_ten\n  }(1)",
+                    ),
                 ),
             )
             .let_int(
                 1,
                 "int_result",
-                call_int_function(
+                call_int_function_at(
                     int_case_int_function(
                         int(0),
                         [(0, int_function_ref(2, [LocalId::Int(IntLocalId(0))]))],
                         int_function_ref(1, [LocalId::Int(IntLocalId(0))]),
                     ),
                     [int_function_call_arg(int(1))],
+                    host_call_site(
+                        source,
+                        "main",
+                        "case 0 {\n    0 -> add_ten\n    _ -> add_one\n  }(1)",
+                    ),
                 ),
             ),
             [add_one, add_ten],
@@ -589,8 +629,7 @@ pub fn main() {
 
     #[test]
     fn plan_function_value_call_tuple_argument() {
-        let actual = plan_module(compile(
-            r#"
+        let source = r#"
 fn tuple_score(pair: #(Int, String)) {
   pair.0
 }
@@ -599,21 +638,21 @@ pub fn main() {
   let function = tuple_score
   function(#(41, "ok"))
 }
-"#,
-        ))
-        .expect("source should plan");
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
         let pair_type = vec![ValueType::Int, ValueType::String];
         let pair_param = ParamLocal::tuple(TupleLocalId(0), pair_type.clone());
         let expected = module(
             "main",
             function(
                 "main",
-                call_int_function(
+                call_int_function_at(
                     local_int_function(0, "function", [ValueType::Tuple(pair_type.clone())]),
                     [tuple_arg(tuple([
                         Expr::from(int(41)),
                         Expr::from(string("ok")),
                     ]))],
+                    host_call_site(source, "main", r#"function(#(41, "ok"))"#),
                 ),
             )
             .step(let_int_function_step(
@@ -1183,9 +1222,13 @@ pub fn main() {
             ));
 
             assert_eq!(
-                function_returning_function_value_call_expr(function, Vec::new(),)
-                    .expect("function-returning function call")
-                    .value_type(),
+                function_returning_function_value_call_expr(
+                    function,
+                    Vec::new(),
+                    crate::plan::HostCallSite::unknown(),
+                )
+                .expect("function-returning function call")
+                .value_type(),
                 ValueType::Function(Box::new(returned_function_type)),
             );
         }
@@ -1358,7 +1401,11 @@ pub fn main() {
         ));
 
         assert_eq!(
-            function_returning_function_value_call_expr(function, Vec::new(),),
+            function_returning_function_value_call_expr(
+                function,
+                Vec::new(),
+                crate::plan::HostCallSite::unknown(),
+            ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
                     reason: InvalidCallShapeReason::FunctionCallArityMismatch,

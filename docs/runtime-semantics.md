@@ -64,22 +64,30 @@ the same target share one identity.
 
 ## Rust Host Functions
 
-Rust host functions enter through package-qualified source-less host modules.
-The ordinary `ExecutionPlan` has an uninhabited host target and remains
-host-free. Hosted source instead follows this separate pipeline:
+Rust host functions enter through package-qualified source-less host modules
+or providers for existing source external declarations. The ordinary
+`ExecutionPlan` has an uninhabited host target and remains host-free. Hosted
+source instead follows this separate pipeline:
 
 ```text
-HostModules + PackageSource[]
+HostProviderSet + PackageSource[]
 -> HostedTypedProgram
 -> HostedModulePlan
 -> HostedExecution
 ```
+
+### Linking And Identity
 
 Registration seals a callable schema and implementation together, so missing
 implementations and signature mismatches cannot become runtime states. The
 plan retains only package, module, function, scheme, shape, and callable target
 metadata. Rust callback objects are carried separately and retained only for
 host functions reached by execution specialization.
+
+Provider selection is completed before source body planning. An exact provider
+selects a host template, an external declaration with no provider uses its
+Gleam body when one exists, and an external-only declaration without a
+provider is rejected. A provider cannot replace an ordinary Gleam function.
 
 Host calls use the same family-specific runtime function IDs as Gleam
 functions. Direct calls, tail calls, function-value calls, and top-level
@@ -88,17 +96,61 @@ model. Qualified and unqualified references to one host function compare
 equal; Rust closure addresses and captures do not participate in language
 equality.
 
-The current host boundary accepts infallible Rust closures with zero through
-seven `BigInt` or `bool` arguments and a `BigInt` or `bool` return. Seven is an
-intentional profile limit aligned with Clippy's default
-`too_many_arguments` threshold. Registration derives the public schema,
-family-local parameter slots, and callback adapter together; unsupported Rust
-types and arities have no `HostFunction` implementation.
+### Host Values And State
 
-Runtime receives the sealed Int/Bool slots and calls the matching typed
-function family without a `Value` downcast, signature check, string lookup,
-panic translation, provider fallback, or mutable per-run host state. Source
-`@external` provider binding and broader value families are separate work.
+The direct host boundary accepts infallible and fallible Rust closures with
+zero through seven arguments. Each argument and return is one of `BigInt`,
+`f64`, `EcoString`, `BitArrayValue`, `char`, `bool`, or `()`. A provider that
+never succeeds may use `Infallible` as its return; `Infallible` is not an
+argument or materialized value family. Seven is an intentional profile limit
+aligned with Clippy's default `too_many_arguments` threshold. Registration
+derives the public schema, family-local parameter slots, and callback adapter
+together; unsupported Rust types and arities have no `HostFunction`
+implementation.
+
+Scoped providers describe compound values through `HostListType`,
+`HostTupleType`, and `HostCustomType`. Lists, tuples, and ordinary custom
+values cross one invocation as typed handles rather than materialized
+`Value`s. A provider can inspect those handles through `HostCall` and can
+construct a return only through the return-family-specific call builder.
+Custom schemas are checked against the selected source definition before
+lowering, so runtime trusts their constructor positions and field shapes.
+
+Each `HostProfile` defines caller-owned `RunState`. A scoped callback can
+project only its declared `HostProvider::State` through the active `HostCall`;
+callback objects and mutable state are not stored in canonical plan nodes.
+
+### Specialization And Re-entry
+
+A generic provider registers one source `TypeScheme`; first-use
+specialization derives concrete parameter locals, return-family storage, and
+host targets. `HostedModulePlan` owns the linked generic program;
+`HostedExecution::try_from_module_plan` seals only entry-reachable
+specializations. A reachable value-producing specialization whose successful
+return storage remains unresolved returns `HostSpecializationError`; an
+unused declaration does not. A function exposed through `HostFunctionType`
+must also have inhabited runtime argument storage. If its argument family
+remains symbolic, sealing rejects that invocation capability. The same
+function value may still cross an opaque `HostTypeParameter` position for
+pass-through or equality because that position does not expose invocation.
+
+A non-returning provider with a concrete result context enters that concrete
+function family; an unresolved result enters the Never family. Neither path
+fabricates a success value. Runtime performs no `Value` downcast, signature
+lookup, generic type lookup, callback shape validation, symbolic callback
+dispatch, or fallback selection.
+
+`HostFunctionType<Arguments, Return>` exposes an invocation capability as a
+call-scoped `HostCallable`. `HostCall::invoke` routes it through the same typed
+function loops used by ordinary calls. Runtime-owned handles may remain live
+across a nested call, but they cannot escape the invocation that supplied
+them. A provider-state or payload borrow must end before re-entry.
+
+Nested execution preserves its original failure domain. A source panic remains
+a source panic. A nested host failure names the provider that actually failed
+and records the invoking host as its caller; the outer provider does not wrap
+it in a new `HostFailure`. Retained arguments and scoped values are released
+before either error returns to the caller.
 
 ## Generic Values
 

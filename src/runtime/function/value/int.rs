@@ -1,136 +1,49 @@
-use super::super::{EvaluatedFunctionExit, evaluate};
-use crate::plan::execution::HostedExecution;
-use crate::plan::execution::function::{
-    ExecutableFunction, IntFunctionBody, IntFunctionId, ValueFunctionEntry,
-};
+use super::super::{EvaluatedFunctionExit, evaluate_entry, parameter_locals};
+use crate::plan::execution::function::IntFunctionId;
 use crate::plan::execution::graph::ParamLocal;
-use crate::plan::execution::host::HostIntFunctionId;
-use crate::plan::execution::runtime::RuntimeExecutionPlan;
 use crate::runtime::ExecutableRuntimePlan;
-use crate::runtime::error::ExecutionResult;
+use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::graph::RetainedValues;
-use crate::runtime::state::RuntimeState;
+use crate::runtime::state::RuntimeStateFor;
 use num_bigint::BigInt;
 
-pub(in crate::runtime) trait RuntimeIntFunction<Plan: RuntimeExecutionPlan> {
-    fn evaluate<EvaluateGraph>(
-        &self,
-        plan: &Plan,
-        state: &mut RuntimeState,
-        inputs: RetainedValues,
-        evaluate_graph: EvaluateGraph,
-    ) -> ExecutionResult<EvaluatedFunctionExit<BigInt, IntFunctionId>>
-    where
-        EvaluateGraph: FnOnce(
-            &Plan,
-            &mut RuntimeState,
-            &ExecutableFunction<IntFunctionBody>,
-            RetainedValues,
-        )
-            -> ExecutionResult<EvaluatedFunctionExit<BigInt, IntFunctionId>>;
-
-    fn parameter_locals(&self, plan: &Plan) -> Vec<ParamLocal>;
-}
-
-impl<Plan: RuntimeExecutionPlan> RuntimeIntFunction<Plan> for ExecutableFunction<IntFunctionBody> {
-    fn evaluate<EvaluateGraph>(
-        &self,
-        plan: &Plan,
-        state: &mut RuntimeState,
-        inputs: RetainedValues,
-        evaluate_graph: EvaluateGraph,
-    ) -> ExecutionResult<EvaluatedFunctionExit<BigInt, IntFunctionId>>
-    where
-        EvaluateGraph: FnOnce(
-            &Plan,
-            &mut RuntimeState,
-            &ExecutableFunction<IntFunctionBody>,
-            RetainedValues,
-        )
-            -> ExecutionResult<EvaluatedFunctionExit<BigInt, IntFunctionId>>,
-    {
-        evaluate_graph(plan, state, self, inputs)
-    }
-
-    fn parameter_locals(&self, _plan: &Plan) -> Vec<ParamLocal> {
-        self.entry()
-            .params(self.body())
-            .iter()
-            .map(|slot| slot.local().clone())
-            .collect()
-    }
-}
-
-impl RuntimeIntFunction<HostedExecution>
-    for ValueFunctionEntry<IntFunctionBody, HostIntFunctionId>
-{
-    fn evaluate<EvaluateGraph>(
-        &self,
-        plan: &HostedExecution,
-        state: &mut RuntimeState,
-        inputs: RetainedValues,
-        evaluate_graph: EvaluateGraph,
-    ) -> ExecutionResult<EvaluatedFunctionExit<BigInt, IntFunctionId>>
-    where
-        EvaluateGraph: FnOnce(
-            &HostedExecution,
-            &mut RuntimeState,
-            &ExecutableFunction<IntFunctionBody>,
-            RetainedValues,
-        )
-            -> ExecutionResult<EvaluatedFunctionExit<BigInt, IntFunctionId>>,
-    {
-        match self {
-            ValueFunctionEntry::Graph(function) => evaluate_graph(plan, state, function, inputs),
-            ValueFunctionEntry::Host(target) => Ok(EvaluatedFunctionExit::Return(
-                plan.host_int_function(*target).call(&inputs),
-            )),
-        }
-    }
-
-    fn parameter_locals(&self, plan: &HostedExecution) -> Vec<ParamLocal> {
-        match self {
-            ValueFunctionEntry::Graph(function) => function.parameter_locals(plan),
-            ValueFunctionEntry::Host(target) => {
-                plan.host_int_function(*target).parameters().to_vec()
-            }
-        }
-    }
-}
-
-pub(in crate::runtime) fn run_int(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(in crate::runtime) fn run_int<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     mut function: IntFunctionId,
+    mut origin: HostCallOrigin,
     mut inputs: RetainedValues,
 ) -> ExecutionResult<BigInt> {
     loop {
-        match plan.int_function(function).evaluate(
-            plan,
-            state,
-            inputs,
-            |plan, state, function, inputs| evaluate(plan, state, function.body(), inputs),
-        )? {
+        let exit = evaluate_entry(plan, state, plan.int_function(function), origin, inputs)?;
+        match exit {
             EvaluatedFunctionExit::Return(value) => return Ok(value),
             EvaluatedFunctionExit::TailCall {
                 function: target,
                 args,
             } => {
-                function = target;
+                origin = HostCallOrigin::source(target.site().clone());
+                function = *target.function();
                 inputs = args;
             }
         }
     }
 }
 
+pub(in crate::runtime) fn int_parameter_locals<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    function: IntFunctionId,
+) -> Vec<ParamLocal> {
+    parameter_locals(plan, plan.int_function(function))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::RuntimeIntFunction as _;
+    use super::int_parameter_locals;
     use crate::plan::execution::function::IntFunctionId;
     use crate::plan::execution::graph::{IntLocalId, ParamLocal};
-    use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::{
-        HostModule, HostModules, HostedExecution, ModuleSource, PackageSource, Value,
+        HostModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource, Value,
         compile_typed_host_program, compile_typed_module, plan_host_program, plan_module, run_main,
     };
     use num_bigint::BigInt;
@@ -150,10 +63,8 @@ pub fn main() {
             compile_typed_module("main", "main.gleam", source).expect("source should compile");
         let plan = plan_module(typed).expect("source should plan");
         let execution = crate::ExecutionPlan::from_module_plan(plan);
-        let function = RuntimeExecutionPlan::int_function(&execution, IntFunctionId(1));
-
         assert_eq!(
-            function.parameter_locals(&execution),
+            int_parameter_locals(&execution, IntFunctionId(1)),
             [ParamLocal::Int(IntLocalId(0))],
         );
         assert_eq!(
@@ -168,7 +79,7 @@ pub fn main() {
             .expect("host module should be valid")
             .with_function("add", <BigInt as std::ops::Add>::add)
             .expect("host function should be valid");
-        let hosts = HostModules::new([math]).expect("host modules should be unique");
+        let hosts = HostProviderSet::new([math]).expect("host modules should be unique");
         let source = r#"
 import host/math
 
@@ -192,23 +103,21 @@ pub fn main() {
         )
         .expect("host source should compile");
         let plan = plan_host_program(typed).expect("host source should plan");
-        let execution = HostedExecution::from_module_plan(plan);
-        let host = RuntimeExecutionPlan::int_function(&execution, IntFunctionId(1));
-        let graph = RuntimeExecutionPlan::int_function(&execution, IntFunctionId(2));
-
+        let execution =
+            HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         assert_eq!(
-            graph.parameter_locals(&execution),
+            int_parameter_locals(&execution, IntFunctionId(2)),
             [ParamLocal::Int(IntLocalId(0))],
         );
         assert_eq!(
-            host.parameter_locals(&execution),
+            int_parameter_locals(&execution, IntFunctionId(1)),
             [
                 ParamLocal::Int(IntLocalId(0)),
                 ParamLocal::Int(IntLocalId(1)),
             ],
         );
         assert_eq!(
-            execution.run_main(&mut Vec::new()),
+            execution.run_main(&mut (), &mut Vec::new()),
             Ok(Value::Int(42.into())),
         );
     }

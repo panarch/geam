@@ -1,7 +1,7 @@
 use super::super::environment::BlockEnvironment;
 use super::value::{constant, custom_projection, list_element, tuple_projection};
 use crate::plan::ValueType;
-use crate::plan::execution::function::{FunctionBody, FunctionEntry, ListFunctionId};
+use crate::plan::execution::function::ListFunctionId;
 use crate::plan::execution::graph::{
     FunctionCapture, FunctionInstruction, FunctionInstructionKind, FunctionTarget, ParamLocal,
 };
@@ -10,8 +10,7 @@ use crate::runtime::evaluated::{
     EvaluatedCapture, EvaluatedCustomFunction, EvaluatedFunction, EvaluatedFunctionValue,
     EvaluatedListCapture, FunctionReferenceId,
 };
-use crate::runtime::function::{RuntimeBoolFunction as _, RuntimeIntFunction as _};
-use crate::runtime::state::RuntimeState;
+use crate::runtime::state::RuntimeStateFor;
 use crate::runtime::{ExecutableRuntimePlan, ExecutionError, InvariantError};
 
 #[derive(Clone, Copy)]
@@ -20,9 +19,9 @@ enum FunctionIdentity {
     Instance,
 }
 
-pub(super) fn evaluate(
-    plan: &impl ExecutableRuntimePlan,
-    state: &mut RuntimeState,
+pub(super) fn evaluate<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
     environment: &BlockEnvironment,
     instruction: &FunctionInstruction,
     expected: &ValueType,
@@ -50,17 +49,32 @@ pub(super) fn evaluate(
             instruction.type_().clone(),
         )
         .into()),
-        I::Call { function, args } => crate::runtime::function::run_function(
+        I::Call {
+            function,
+            args,
+            site,
+        } => crate::runtime::function::run_function(
             plan,
             state,
             function.clone(),
+            crate::runtime::error::HostCallOrigin::source(site.clone()),
             environment.retain(args),
         ),
-        I::FunctionCall { function, args } => {
+        I::FunctionCall {
+            function,
+            args,
+            site,
+        } => {
             let function = environment.function_function(function);
             let mut inputs = environment.retain(args);
             inputs.append_captures(function.captures());
-            crate::runtime::function::run_function(plan, state, function.runtime_id(), inputs)
+            crate::runtime::function::run_function(
+                plan,
+                state,
+                function.runtime_id(),
+                crate::runtime::error::HostCallOrigin::source(site.clone()),
+                inputs,
+            )
         }
         I::TupleIndex { tuple, index } => tuple_projection(
             plan,
@@ -88,7 +102,9 @@ pub(super) fn evaluate(
             plan,
             expected,
             *index,
-            state.function_values(&environment.function_list(*list)),
+            state
+                .values()
+                .function_values(&environment.function_list(*list)),
         ),
     };
     let value = value?;
@@ -181,38 +197,34 @@ fn target_params(plan: &impl ExecutableRuntimePlan, target: &FunctionTarget) -> 
     match target {
         FunctionTarget::Generic(_) => Vec::new(),
         FunctionTarget::Never(function) => {
-            let function = plan.never_function(*function);
-            graph_params(function.entry(), function.body())
+            crate::runtime::function::parameter_locals(plan, plan.never_function(*function))
         }
-        FunctionTarget::Int(function) => plan.int_function(*function).parameter_locals(plan),
+        FunctionTarget::Int(function) => {
+            crate::runtime::function::int_parameter_locals(plan, *function)
+        }
         FunctionTarget::Float(function) => {
-            let function = plan.float_function(*function);
-            graph_params(function.entry(), function.body())
+            crate::runtime::function::float_parameter_locals(plan, *function)
         }
         FunctionTarget::String(function) => {
-            let function = plan.string_function(*function);
-            graph_params(function.entry(), function.body())
+            crate::runtime::function::string_parameter_locals(plan, *function)
         }
         FunctionTarget::BitArray(function) => {
-            let function = plan.bit_array_function(*function);
-            graph_params(function.entry(), function.body())
+            crate::runtime::function::bit_array_parameter_locals(plan, *function)
         }
         FunctionTarget::UtfCodepoint(function) => {
-            let function = plan.utf_codepoint_function(*function);
-            graph_params(function.entry(), function.body())
+            crate::runtime::function::utf_codepoint_parameter_locals(plan, *function)
         }
         FunctionTarget::Custom(function) => {
-            let function = plan.custom_function(*function);
-            graph_params(function.entry(), function.body().function_body())
+            crate::runtime::function::parameter_locals(plan, plan.custom_function(*function))
         }
-        FunctionTarget::Bool(function) => plan.bool_function(*function).parameter_locals(plan),
+        FunctionTarget::Bool(function) => {
+            crate::runtime::function::bool_parameter_locals(plan, *function)
+        }
         FunctionTarget::Nil(function) => {
-            let function = plan.nil_function(*function);
-            graph_params(function.entry(), function.body())
+            crate::runtime::function::nil_parameter_locals(plan, *function)
         }
         FunctionTarget::Tuple(function) => {
-            let function = plan.tuple_function(*function);
-            graph_params(function.entry(), function.body())
+            crate::runtime::function::parameter_locals(plan, plan.tuple_function(*function))
         }
         FunctionTarget::List(function) => list_target_params(plan, function),
         FunctionTarget::Function(function) => function_target_params(plan, function),
@@ -224,57 +236,48 @@ fn list_target_params(
     function: &ListFunctionId,
 ) -> Vec<ParamLocal> {
     match function {
-        ListFunctionId::Parameter(function) => {
-            let function = plan.parameter_list_function(*function);
-            graph_params(function.entry(), function.body())
-        }
-        ListFunctionId::ParameterList(function) => {
-            let function = plan.parameter_list_list_function(*function);
-            graph_params(function.entry(), function.body())
-        }
+        ListFunctionId::Parameter(function) => crate::runtime::function::parameter_locals(
+            plan,
+            plan.parameter_list_function(*function),
+        ),
+        ListFunctionId::ParameterList(function) => crate::runtime::function::parameter_locals(
+            plan,
+            plan.parameter_list_list_function(*function),
+        ),
         ListFunctionId::Int(function) => {
-            let function = plan.int_list_function(*function);
-            graph_params(function.entry(), function.body())
+            crate::runtime::function::parameter_locals(plan, plan.int_list_function(*function))
         }
         ListFunctionId::String(function) => {
-            let function = plan.string_list_function(*function);
-            graph_params(function.entry(), function.body())
+            crate::runtime::function::parameter_locals(plan, plan.string_list_function(*function))
         }
-        ListFunctionId::BitArray(function) => {
-            let function = plan.bit_array_list_function(*function);
-            graph_params(function.entry(), function.body())
-        }
-        ListFunctionId::UtfCodepoint(function) => {
-            let function = plan.utf_codepoint_list_function(*function);
-            graph_params(function.entry(), function.body())
-        }
+        ListFunctionId::BitArray(function) => crate::runtime::function::parameter_locals(
+            plan,
+            plan.bit_array_list_function(*function),
+        ),
+        ListFunctionId::UtfCodepoint(function) => crate::runtime::function::parameter_locals(
+            plan,
+            plan.utf_codepoint_list_function(*function),
+        ),
         ListFunctionId::Custom(function) => {
-            let function = plan.custom_list_function(*function);
-            graph_params(function.entry(), function.body())
+            crate::runtime::function::parameter_locals(plan, plan.custom_list_function(*function))
         }
         ListFunctionId::Float(function) => {
-            let function = plan.float_list_function(*function);
-            graph_params(function.entry(), function.body())
+            crate::runtime::function::parameter_locals(plan, plan.float_list_function(*function))
         }
         ListFunctionId::Bool(function) => {
-            let function = plan.bool_list_function(*function);
-            graph_params(function.entry(), function.body())
+            crate::runtime::function::parameter_locals(plan, plan.bool_list_function(*function))
         }
         ListFunctionId::Nil(function) => {
-            let function = plan.nil_list_function(*function);
-            graph_params(function.entry(), function.body())
+            crate::runtime::function::parameter_locals(plan, plan.nil_list_function(*function))
         }
         ListFunctionId::Tuple(function) => {
-            let function = plan.tuple_list_function(*function);
-            graph_params(function.entry(), function.body())
+            crate::runtime::function::parameter_locals(plan, plan.tuple_list_function(*function))
         }
         ListFunctionId::List(function) => {
-            let function = plan.list_list_function(*function);
-            graph_params(function.entry(), function.body())
+            crate::runtime::function::parameter_locals(plan, plan.list_list_function(*function))
         }
         ListFunctionId::Function(function) => {
-            let function = plan.function_list_function(*function);
-            graph_params(function.entry(), function.body())
+            crate::runtime::function::parameter_locals(plan, plan.function_list_function(*function))
         }
     }
 }
@@ -286,70 +289,54 @@ fn function_target_params(
     use crate::plan::execution::function::FunctionFunctionId as F;
 
     match function {
-        F::Generic(function) => {
-            let function = plan.generic_function_function(function);
-            graph_params(function.entry(), function.body().function_body())
-        }
+        F::Generic(function) => crate::runtime::function::parameter_locals(
+            plan,
+            plan.generic_function_function(function),
+        ),
         F::Never(function) => {
-            let function = plan.never_function_function(function);
-            graph_params(function.entry(), function.body().function_body())
+            crate::runtime::function::parameter_locals(plan, plan.never_function_function(function))
         }
         F::Int(function) => {
-            let function = plan.int_function_function(*function);
-            graph_params(function.entry(), function.body().function_body())
+            crate::runtime::function::parameter_locals(plan, plan.int_function_function(*function))
         }
-        F::Float(function) => {
-            let function = plan.float_function_function(*function);
-            graph_params(function.entry(), function.body().function_body())
-        }
-        F::String(function) => {
-            let function = plan.string_function_function(*function);
-            graph_params(function.entry(), function.body().function_body())
-        }
-        F::BitArray(function) => {
-            let function = plan.bit_array_function_function(*function);
-            graph_params(function.entry(), function.body().function_body())
-        }
-        F::UtfCodepoint(function) => {
-            let function = plan.utf_codepoint_function_function(*function);
-            graph_params(function.entry(), function.body().function_body())
-        }
-        F::Custom(function) => {
-            let function = plan.custom_function_function(function);
-            graph_params(function.entry(), function.body().function_body())
-        }
+        F::Float(function) => crate::runtime::function::parameter_locals(
+            plan,
+            plan.float_function_function(*function),
+        ),
+        F::String(function) => crate::runtime::function::parameter_locals(
+            plan,
+            plan.string_function_function(*function),
+        ),
+        F::BitArray(function) => crate::runtime::function::parameter_locals(
+            plan,
+            plan.bit_array_function_function(*function),
+        ),
+        F::UtfCodepoint(function) => crate::runtime::function::parameter_locals(
+            plan,
+            plan.utf_codepoint_function_function(*function),
+        ),
+        F::Custom(function) => crate::runtime::function::parameter_locals(
+            plan,
+            plan.custom_function_function(function),
+        ),
         F::Bool(function) => {
-            let function = plan.bool_function_function(*function);
-            graph_params(function.entry(), function.body().function_body())
+            crate::runtime::function::parameter_locals(plan, plan.bool_function_function(*function))
         }
         F::Nil(function) => {
-            let function = plan.nil_function_function(*function);
-            graph_params(function.entry(), function.body().function_body())
+            crate::runtime::function::parameter_locals(plan, plan.nil_function_function(*function))
         }
-        F::Tuple(function) => {
-            let function = plan.tuple_function_function(*function);
-            graph_params(function.entry(), function.body().function_body())
-        }
+        F::Tuple(function) => crate::runtime::function::parameter_locals(
+            plan,
+            plan.tuple_function_function(*function),
+        ),
         F::List(function) => {
-            let function = plan.list_function_function(function);
-            graph_params(function.entry(), function.body().function_body())
+            crate::runtime::function::parameter_locals(plan, plan.list_function_function(function))
         }
-        F::Function(function) => {
-            let function = plan.function_function_function(function);
-            graph_params(function.entry(), function.body().function_body())
-        }
+        F::Function(function) => crate::runtime::function::parameter_locals(
+            plan,
+            plan.function_function_function(function),
+        ),
     }
-}
-
-fn graph_params<Return, TailCall>(
-    entry: &FunctionEntry,
-    graph: &FunctionBody<Return, TailCall>,
-) -> Vec<ParamLocal> {
-    entry
-        .params(graph)
-        .iter()
-        .map(|slot| slot.local().clone())
-        .collect()
 }
 
 fn capture_values(
@@ -535,7 +522,7 @@ mod tests {
         FunctionInstructionKind, FunctionTarget, InstructionKind, ListInstruction,
     };
     use crate::runtime::evaluated::{EvaluatedCustomValue, EvaluatedValue};
-    use crate::runtime::state::{ListValueId, RuntimeState};
+    use crate::runtime::state::{RuntimeState, StoredListValueId};
     use crate::runtime::{BitArrayValue, ExecutionError, InvariantError, ListValue, Value};
 
     #[test]
@@ -675,9 +662,11 @@ pub fn main() {
                     FunctionInstructionKind::ListIndex { index, .. } => {
                         let mut echo = Vec::new();
                         let mut state = RuntimeState::new(&mut echo);
-                        let empty = state.function(function_list_type, Vec::new());
+                        let empty = state.values_mut().function(function_list_type, Vec::new());
                         let mut values = RetainedValues::empty();
-                        values.push_evaluated(EvaluatedValue::List(ListValueId::Function(empty)));
+                        values.push_evaluated(EvaluatedValue::List(StoredListValueId::Function(
+                            empty,
+                        )));
                         let environment = BlockEnvironment::from_retained(values);
 
                         assert_eq!(

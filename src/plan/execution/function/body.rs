@@ -27,7 +27,7 @@ pub(crate) enum FunctionExit<Return, TailCall> {
     },
 }
 
-pub(in crate::plan::execution::function) trait FunctionBodyOwner {
+pub(crate) trait FunctionBodyOwner {
     type Return;
     type TailCall;
 
@@ -124,6 +124,14 @@ impl TailCallLabelIndex for NeverFunctionId {
 impl TailCallLabelIndex for IntFunctionId {
     fn tail_call_label_index(&self) -> usize {
         self.0
+    }
+}
+
+impl<Function: TailCallLabelIndex> TailCallLabelIndex
+    for crate::plan::FunctionCallTarget<Function>
+{
+    fn tail_call_label_index(&self) -> usize {
+        self.function().tail_call_label_index()
     }
 }
 
