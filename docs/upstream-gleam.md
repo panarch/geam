@@ -145,45 +145,13 @@ replacing their analyzer-owned interface. Neither path generates fake Gleam
 bodies. Host provenance and Rust implementations remain Geam-owned data and
 are not interpreted as pure Gleam definitions.
 
-`HostModule::with_function` accepts infallible Rust closures with zero through
-seven arguments and a return drawn from `BigInt`, `f64`, `EcoString`,
-`BitArrayValue`, `char`, `bool`, and `()`. `Infallible` is additionally
-supported as a return-only marker for providers that cannot complete
-successfully. The arity limit follows Clippy's default `too_many_arguments`
-threshold. Unsupported types and arities fail Rust trait resolution; the
-hosted runtime performs no signature validation or generic value downcast.
-
-`HostModule::with_fallible_function` maps an owned `HostFailure` into a
-source-located host execution error. `with_scoped_function` receives a typed
-`HostCall` and projects only its declared `HostProvider::State` from the
-caller-owned `HostProfile::RunState`.
-
-Scoped functions use `HostTypeParameter<N>`, `HostListType`,
-`HostTupleType`, and `HostCustomType` as their public type language.
-`HostList`, `HostTuple`, and `HostCustom` are invocation-scoped handles, not
-materialized `Value` arguments. Compound returns are explicitly constructed
-through `HostCall`; tuple element sequences are recursive and have no tuple
-arity limit. `HostTypeParameter<N>` indices start at zero and must be
-contiguous across one registered signature.
-
-`HostFunctionType<Arguments, Return>` exposes a source function value as a
-call-scoped `HostCallable`. `HostCall::invoke` uses the existing typed Gleam
-function loops, including nested host-to-Gleam-to-host calls. The provider must
-release its projected state before re-entry; the Rust call lifetime enforces
-that ownership boundary. Runtime-owned call-scoped handles may remain live
-across the nested call, but callables cannot be retained after their host
-invocation.
-
-Ordinary custom schemas provide the exact source identity and an ordered
-type-level list of constructors and labelled fields. Constructor handles can
-only select a definition at its declared list position. Planning recursively
-validates every referenced custom definition and rejects a missing or
-mismatched definition before lowering. Source-backed providers retain source
-visibility and can inspect opaque representations only in their defining
-module; source-less public host surfaces accept only public non-opaque custom
-types. A generic provider is registered once with its source scheme and
-execution specialization produces deterministic concrete host targets, so
-users do not register one Rust function per Gleam specialization.
+Host registrations provide an exact typed schema to the frontend. Direct
+closures support the documented scalar families and zero through seven
+arguments; scoped registrations describe generic, compound, custom, and
+function values without exposing materialized runtime `Value`s. These are Geam
+host-ABI constraints, not additions to Gleam's analyzer or typed AST. See
+[runtime semantics](runtime-semantics.md) for the value, state, specialization,
+re-entry, and failure contracts.
 
 The current public execution APIs are:
 
@@ -242,20 +210,12 @@ registered callbacks in a private sidecar. `HostedExecution` retains only the
 implementations selected by lowering, pairs them with first-use host targets,
 and cannot be passed to the plain `run_main` function.
 `HostedExecution::try_from_module_plan` seals entry-reachable generic
-specializations into concrete runtime storage. It returns
-`HostSpecializationError` only when a reachable value-producing host
-specialization has no representable successful return storage or an exposed
-callback capability has uninhabited argument storage. An opaque function value
-in a generic parameter may still pass through without becoming invocable, and
-unused providers do not block execution. Source external providers are
-selected before body planning: an exact provider wins, a provider-less
-declaration with a Gleam body uses that fallback, and a bodyless declaration
-without a provider is rejected. Provider state remains owned by the caller and
-is borrowed only for `HostedExecution::run_main`.
-
-Nested source panics remain source panics. Nested host failures retain the
-identity of the provider that failed and record the invoking host as caller
-origin rather than being rewrapped by the outer callback.
+specializations into concrete runtime storage. Unused providers do not block
+execution. Source external providers are selected before body planning: an
+exact provider wins, a provider-less declaration with a Gleam body uses that
+fallback, and a bodyless declaration without a provider is rejected. Provider
+state remains owned by the caller and is borrowed only for
+`HostedExecution::run_main`.
 
 The caller supplies the `EchoSink` used by `run_main`. Each emitted
 `EchoOutput` owns its materialized value, optional message, and compact source

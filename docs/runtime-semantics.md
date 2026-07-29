@@ -76,6 +76,8 @@ HostProviderSet + PackageSource[]
 -> HostedExecution
 ```
 
+### Linking And Identity
+
 Registration seals a callable schema and implementation together, so missing
 implementations and signature mismatches cannot become runtime states. The
 plan retains only package, module, function, scheme, shape, and callable target
@@ -94,6 +96,8 @@ model. Qualified and unqualified references to one host function compare
 equal; Rust closure addresses and captures do not participate in language
 equality.
 
+### Host Values And State
+
 The direct host boundary accepts infallible and fallible Rust closures with
 zero through seven arguments. Each argument and return is one of `BigInt`,
 `f64`, `EcoString`, `BitArrayValue`, `char`, `bool`, or `()`. A provider that
@@ -104,53 +108,19 @@ derives the public schema, family-local parameter slots, and callback adapter
 together; unsupported Rust types and arities have no `HostFunction`
 implementation.
 
-One execution profile maps every return-family function body to either a
-graph-only entry or a typed graph-or-host entry. A non-returning provider with
-a concrete result context enters that concrete function family; an unresolved
-result enters the Never family. Neither path fabricates a success value. Plain
-execution uses `Infallible` only as its uninhabited host target; it is not a
-source-visible host value. Runtime receives the sealed scalar slots and calls
-the matching typed function family without a `Value` downcast, signature
-check, string lookup, panic translation, or runtime fallback selection. Each
-`HostProfile` defines a caller-owned `RunState`; a scoped callback can
-project only its declared `HostProvider::State` through the active `HostCall`.
-An owned `HostFailure` becomes `ExecutionError::Host` with the failed provider
-identity, concrete signature, and preserved source call site.
-
 Scoped providers describe compound values through `HostListType`,
 `HostTupleType`, and `HostCustomType`. Lists, tuples, and ordinary custom
 values cross one invocation as typed handles rather than materialized
 `Value`s. A provider can inspect those handles through `HostCall` and can
 construct a return only through the return-family-specific call builder.
-Tuple element types use a recursive `HostTypeList`, so tuple size is
-independent of the zero-through-seven Rust function argument boundary.
+Custom schemas are checked against the selected source definition before
+lowering, so runtime trusts their constructor positions and field shapes.
 
-`HostFunctionType<Arguments, Return>` exposes an invocation capability as a
-call-scoped `HostCallable`. `HostCall::invoke` routes that callable through the
-same family-specific loops used by ordinary direct, tail, and function-value
-calls. A nested host call projects its own provider state from the same
-caller-owned run state. A provider-state borrow must end before re-entry, which
-Rust enforces through the call lifetime. Callables, lists, tuples, and customs
-are runtime-owned token handles: they may remain live across a nested call but
-cannot escape the invocation that supplied them.
+Each `HostProfile` defines caller-owned `RunState`. A scoped callback can
+project only its declared `HostProvider::State` through the active `HostCall`;
+callback objects and mutable state are not stored in canonical plan nodes.
 
-Nested execution preserves its original failure domain. A source panic remains
-the existing source panic. A nested host failure names the provider that
-actually failed and records the invoking host as its caller; the outer
-provider does not wrap it in a new `HostFailure`. Retained arguments and
-scoped values are released before either error returns to the caller.
-
-An ordinary custom schema supplies its package, module, type parameters, and
-an ordered type-level constructor list. Each constructor owns an ordered
-type-level field list with exact labels and recursive field types. Constructor
-handles select a position from that sealed list, so the runtime receives the
-same index and fields that planning validated. Planning compares every
-referenced custom schema exactly with the selected source definition before
-execution lowering. Source-backed providers retain public, same-package
-internal, and same-module private visibility; source-less public host surfaces
-accept only public non-opaque custom types. Opaque custom representations
-remain available only to source-backed providers in their defining module,
-regardless of declaration publicity.
+### Specialization And Re-entry
 
 A generic provider registers one source `TypeScheme`; first-use
 specialization derives concrete parameter locals, return-family storage, and
@@ -163,8 +133,24 @@ must also have inhabited runtime argument storage. If its argument family
 remains symbolic, sealing rejects that invocation capability. The same
 function value may still cross an opaque `HostTypeParameter` position for
 pass-through or equality because that position does not expose invocation.
-The runtime therefore performs no generic type lookup, callback shape
-validation, or symbolic callback dispatch.
+
+A non-returning provider with a concrete result context enters that concrete
+function family; an unresolved result enters the Never family. Neither path
+fabricates a success value. Runtime performs no `Value` downcast, signature
+lookup, generic type lookup, callback shape validation, symbolic callback
+dispatch, or fallback selection.
+
+`HostFunctionType<Arguments, Return>` exposes an invocation capability as a
+call-scoped `HostCallable`. `HostCall::invoke` routes it through the same typed
+function loops used by ordinary calls. Runtime-owned handles may remain live
+across a nested call, but they cannot escape the invocation that supplied
+them. A provider-state or payload borrow must end before re-entry.
+
+Nested execution preserves its original failure domain. A source panic remains
+a source panic. A nested host failure names the provider that actually failed
+and records the invoking host as its caller; the outer provider does not wrap
+it in a new `HostFailure`. Retained arguments and scoped values are released
+before either error returns to the caller.
 
 ## Generic Values
 

@@ -205,8 +205,8 @@ Host calls should join the existing typed call, tail-call, and function-value
 paths. Do not add string dispatch or a parallel identity model solely for host
 implementations.
 
-Map every return-family function body through one execution profile that
-chooses graph-only or graph-or-host storage. Do not spread host-entry generic
+Choose graph-only or graph-or-host function storage at one execution-profile
+boundary shared by every return family. Do not spread host-entry generic
 parameters independently through individual function tables.
 
 One sealed registration owner must derive a host function's schema,
@@ -220,7 +220,7 @@ selected, reject missing providers for bodyless externals, and never defer
 selection or ordinary-function override decisions to runtime.
 
 Keep compound host values call-scoped and typed. Registration owns recursive
-type descriptors, planning validates ordinary-custom schemas exactly, and
+type descriptors, planning validates ordinary custom schemas exactly, and
 execution specialization seals concrete locals and return storage. Do not
 replace these boundaries with materialized public values, per-specialization
 user registration, or runtime shape validation.
@@ -232,11 +232,10 @@ becoming invocable. Keep symbolic and invocable function storage distinct, and
 do not add a runtime generic callback branch.
 
 End provider-state and actual payload borrows before nested execution re-enters
-Gleam. Call-scoped token handles may remain live across re-entry because the
-runtime owns their payloads, but they must not escape the host invocation.
-Nested source panics and host failures must retain the actual failed source or
-provider identity; an outer provider must not repackage them as its own
-failure.
+Gleam. Call-scoped runtime-owned handles may remain live across re-entry, but
+they must not escape the host invocation. Nested source panics and host
+failures must retain the actual failed source or provider identity; an outer
+provider must not repackage them as its own failure.
 
 ## Panic Rules
 
