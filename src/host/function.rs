@@ -21,17 +21,6 @@ pub(crate) use return_::{HostFunctionImplementation, HostValueFunction};
 #[cfg(test)]
 pub(crate) use return_::{expect_never_implementation, expect_value_implementation};
 
-#[derive(Clone, PartialEq, Eq)]
-pub struct HostFunctionSchema {
-    name: EcoString,
-    scheme: TypeScheme,
-    layout: Box<[HostParameter]>,
-    parameters: Box<[crate::host::HostTypeDescriptor]>,
-    return_: crate::host::HostTypeDescriptor,
-    custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
-    type_: FunctionType,
-}
-
 /// A Rust function that can be registered as a Geam host function.
 ///
 /// Owned host functions accept zero through seven scalar arguments. Supported
@@ -71,27 +60,17 @@ pub struct HostFunctionSchema {
 ///     .with_function("unsupported", |value: i64| value);
 /// ```
 pub trait HostFunction<Arguments, Return>:
-    adapter::HostFunction<Arguments, Return> + Send + Sync + 'static
-{
-}
-
-impl<Function, Arguments, Return> HostFunction<Arguments, Return> for Function where
-    Function: adapter::HostFunction<Arguments, Return> + Send + Sync + 'static
+    adapter::HostFunctionAdapter<Arguments, Return> + Send + Sync + 'static
 {
 }
 
 pub trait FallibleHostFunction<Arguments, Return>:
-    adapter::FallibleHostFunction<Arguments, Return> + Send + Sync + 'static
-{
-}
-
-impl<Function, Arguments, Return> FallibleHostFunction<Arguments, Return> for Function where
-    Function: adapter::FallibleHostFunction<Arguments, Return> + Send + Sync + 'static
+    adapter::FallibleHostFunctionAdapter<Arguments, Return> + Send + Sync + 'static
 {
 }
 
 pub trait ScopedHostFunction<Profile, Provider, Arguments, Return>:
-    adapter::ScopedHostFunction<Profile, Provider, Arguments, Return> + Send + Sync + 'static
+    adapter::ScopedHostFunctionAdapter<Profile, Provider, Arguments, Return> + Send + Sync + 'static
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
@@ -99,10 +78,23 @@ where
 }
 
 pub trait ScopedDivergingHostFunction<Profile, Provider, Arguments, Return>:
-    adapter::ScopedDivergingHostFunction<Profile, Provider, Arguments, Return> + Send + Sync + 'static
+    adapter::ScopedDivergingHostFunctionAdapter<Profile, Provider, Arguments, Return>
+    + Send
+    + Sync
+    + 'static
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
+{
+}
+
+impl<Function, Arguments, Return> HostFunction<Arguments, Return> for Function where
+    Function: adapter::HostFunctionAdapter<Arguments, Return> + Send + Sync + 'static
+{
+}
+
+impl<Function, Arguments, Return> FallibleHostFunction<Arguments, Return> for Function where
+    Function: adapter::FallibleHostFunctionAdapter<Arguments, Return> + Send + Sync + 'static
 {
 }
 
@@ -111,8 +103,10 @@ impl<Profile, Provider, Function, Arguments, Return>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
-    Function:
-        adapter::ScopedHostFunction<Profile, Provider, Arguments, Return> + Send + Sync + 'static,
+    Function: adapter::ScopedHostFunctionAdapter<Profile, Provider, Arguments, Return>
+        + Send
+        + Sync
+        + 'static,
 {
 }
 
@@ -121,11 +115,22 @@ impl<Profile, Provider, Function, Arguments, Return>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
-    Function: adapter::ScopedDivergingHostFunction<Profile, Provider, Arguments, Return>
+    Function: adapter::ScopedDivergingHostFunctionAdapter<Profile, Provider, Arguments, Return>
         + Send
         + Sync
         + 'static,
 {
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct HostFunctionSchema {
+    name: EcoString,
+    scheme: TypeScheme,
+    layout: Box<[HostParameter]>,
+    parameters: Box<[crate::host::HostTypeDescriptor]>,
+    return_: crate::host::HostTypeDescriptor,
+    custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
+    type_: FunctionType,
 }
 
 pub(crate) struct HostFunctionDefinition<Profile: HostProfile> {
@@ -185,8 +190,9 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
     where
         Function: HostFunction<Arguments, Return>,
     {
-        let registration =
-            <Function as adapter::HostFunction<Arguments, Return>>::register::<Profile>(function);
+        let registration = <Function as adapter::HostFunctionAdapter<Arguments, Return>>::register::<
+            Profile,
+        >(function);
         Self::from_registration(name, registration)
     }
 
@@ -197,9 +203,10 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
     where
         Function: FallibleHostFunction<Arguments, Return>,
     {
-        let registration = <Function as adapter::FallibleHostFunction<Arguments, Return>>::register::<
-            Profile,
-        >(function);
+        let registration =
+            <Function as adapter::FallibleHostFunctionAdapter<Arguments, Return>>::register::<
+                Profile,
+            >(function);
         Self::from_registration(name, registration)
     }
 
@@ -211,7 +218,7 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
         Provider: HostProvider<Profile>,
         Function: ScopedHostFunction<Profile, Provider, Arguments, Return>,
     {
-        let registration = <Function as adapter::ScopedHostFunction<
+        let registration = <Function as adapter::ScopedHostFunctionAdapter<
             Profile,
             Provider,
             Arguments,
@@ -228,7 +235,7 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
         Provider: HostProvider<Profile>,
         Function: ScopedDivergingHostFunction<Profile, Provider, Arguments, Return>,
     {
-        let registration = <Function as adapter::ScopedDivergingHostFunction<
+        let registration = <Function as adapter::ScopedDivergingHostFunctionAdapter<
             Profile,
             Provider,
             Arguments,
@@ -463,8 +470,9 @@ mod tests {
 
     #[test]
     fn definition_rejects_non_contiguous_type_parameter_indices_before_allocating_a_scheme() {
-        let mut registration =
-            <_ as super::adapter::HostFunction<(), bool>>::register::<TestHostProfile>(|| true);
+        let mut registration = <_ as super::adapter::HostFunctionAdapter<(), bool>>::register::<
+            TestHostProfile,
+        >(|| true);
         registration.return_type = HostTypeDescriptor::Parameter(2);
         let error = HostFunctionDefinition::from_registration("identity".into(), registration)
             .err()

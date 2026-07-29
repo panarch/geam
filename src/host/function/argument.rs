@@ -22,23 +22,6 @@ pub(crate) use nil::HostNilArgumentSlot;
 pub(crate) use string::HostStringArgumentSlot;
 pub(crate) use utf_codepoint::HostUtfCodepointArgumentSlot;
 
-#[derive(Default)]
-pub(super) struct HostParameterLayout {
-    parameters: Vec<HostParameter>,
-    next_int: usize,
-    next_float: usize,
-    next_string: usize,
-    next_bit_array: usize,
-    next_utf_codepoint: usize,
-    next_bool: usize,
-    next_nil: usize,
-    next_value: usize,
-    next_list: usize,
-    next_tuple: usize,
-    next_custom: usize,
-    next_function: usize,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HostParameter {
     Int(HostIntArgumentSlot),
@@ -69,6 +52,23 @@ pub(crate) struct HostCustomArgumentSlot(usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct HostFunctionArgumentSlot(usize);
+
+#[derive(Default)]
+pub(super) struct HostParameterLayout {
+    parameters: Vec<HostParameter>,
+    next_int: usize,
+    next_float: usize,
+    next_string: usize,
+    next_bit_array: usize,
+    next_utf_codepoint: usize,
+    next_bool: usize,
+    next_nil: usize,
+    next_value: usize,
+    next_list: usize,
+    next_tuple: usize,
+    next_custom: usize,
+    next_function: usize,
+}
 
 pub(crate) trait HostCallArguments {
     fn int(&self, slot: HostIntArgumentSlot) -> BigInt;

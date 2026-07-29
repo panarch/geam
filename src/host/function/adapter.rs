@@ -5,15 +5,16 @@ use crate::host::{
     HostProvider, HostTypeDescriptor,
 };
 
-pub trait HostFunction<Arguments, Return>: Send + Sync + 'static {
+pub trait HostFunctionAdapter<Arguments, Return>: Send + Sync + 'static {
     fn register<Profile: HostProfile>(self) -> HostFunctionRegistration<Profile>;
 }
 
-pub trait FallibleHostFunction<Arguments, Return>: Send + Sync + 'static {
+pub trait FallibleHostFunctionAdapter<Arguments, Return>: Send + Sync + 'static {
     fn register<Profile: HostProfile>(self) -> HostFunctionRegistration<Profile>;
 }
 
-pub trait ScopedHostFunction<Profile, Provider, Arguments, Return>: Send + Sync + 'static
+pub trait ScopedHostFunctionAdapter<Profile, Provider, Arguments, Return>:
+    Send + Sync + 'static
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
@@ -21,7 +22,7 @@ where
     fn register(self) -> HostFunctionRegistration<Profile>;
 }
 
-pub trait ScopedDivergingHostFunction<Profile, Provider, Arguments, Return>:
+pub trait ScopedDivergingHostFunctionAdapter<Profile, Provider, Arguments, Return>:
     Send + Sync + 'static
 where
     Profile: HostProfile,
@@ -40,7 +41,7 @@ pub struct HostFunctionRegistration<Profile: HostProfile> {
 
 macro_rules! host_function {
     () => {
-        impl<Function, Return> HostFunction<(), Return> for Function
+        impl<Function, Return> HostFunctionAdapter<(), Return> for Function
         where
             Function: Fn() -> Return + Send + Sync + 'static,
             Return: HostReturn,
@@ -56,7 +57,7 @@ macro_rules! host_function {
             }
         }
 
-        impl<Function, Return> FallibleHostFunction<(), Return> for Function
+        impl<Function, Return> FallibleHostFunctionAdapter<(), Return> for Function
         where
             Function: Fn() -> Result<Return, HostFailure> + Send + Sync + 'static,
             Return: HostReturn,
@@ -75,7 +76,7 @@ macro_rules! host_function {
         }
 
         impl<Profile, Provider, Function, Return>
-            ScopedHostFunction<Profile, Provider, (), Return> for Function
+            ScopedHostFunctionAdapter<Profile, Provider, (), Return> for Function
         where
             Profile: HostProfile,
             Provider: HostProvider<Profile>,
@@ -107,7 +108,7 @@ macro_rules! host_function {
         }
 
         impl<Profile, Provider, Function, Return>
-            ScopedDivergingHostFunction<Profile, Provider, (), Return> for Function
+            ScopedDivergingHostFunctionAdapter<Profile, Provider, (), Return> for Function
         where
             Profile: HostProfile,
             Provider: HostProvider<Profile>,
@@ -139,7 +140,7 @@ macro_rules! host_function {
         }
     };
     ($($argument:ident => $slot:ident),+) => {
-        impl<Function, Return, $($argument,)*> HostFunction<($($argument,)*), Return> for Function
+        impl<Function, Return, $($argument,)*> HostFunctionAdapter<($($argument,)*), Return> for Function
         where
             Function: Fn($($argument),*) -> Return + Send + Sync + 'static,
             Return: HostReturn,
@@ -162,7 +163,7 @@ macro_rules! host_function {
         }
 
         impl<Function, Return, $($argument,)*>
-            FallibleHostFunction<($($argument,)*), Return> for Function
+            FallibleHostFunctionAdapter<($($argument,)*), Return> for Function
         where
             Function: Fn($($argument),*) -> Result<Return, HostFailure> + Send + Sync + 'static,
             Return: HostReturn,
@@ -185,7 +186,7 @@ macro_rules! host_function {
         }
 
         impl<Profile, Provider, Function, Return, $($argument,)*>
-            ScopedHostFunction<Profile, Provider, ($($argument,)*), Return> for Function
+            ScopedHostFunctionAdapter<Profile, Provider, ($($argument,)*), Return> for Function
         where
             Profile: HostProfile,
             Provider: HostProvider<Profile>,
@@ -232,7 +233,7 @@ macro_rules! host_function {
         }
 
         impl<Profile, Provider, Function, Return, $($argument,)*>
-            ScopedDivergingHostFunction<Profile, Provider, ($($argument,)*), Return> for Function
+            ScopedDivergingHostFunctionAdapter<Profile, Provider, ($($argument,)*), Return> for Function
         where
             Profile: HostProfile,
             Provider: HostProvider<Profile>,
@@ -299,7 +300,8 @@ host_function!(
 #[cfg(test)]
 mod tests {
     use super::{
-        FallibleHostFunction, HostFunction, ScopedDivergingHostFunction, ScopedHostFunction,
+        FallibleHostFunctionAdapter, HostFunctionAdapter, ScopedDivergingHostFunctionAdapter,
+        ScopedHostFunctionAdapter,
     };
     use crate::BitArrayValue;
     use crate::host::function::HostFunctionImplementation;
@@ -430,7 +432,7 @@ mod tests {
 
     #[test]
     fn supports_zero_arguments() {
-        let registration = <_ as HostFunction<(), BigInt>>::register(|| BigInt::from(7));
+        let registration = <_ as HostFunctionAdapter<(), BigInt>>::register(|| BigInt::from(7));
 
         assert_eq!(registration.parameters.as_ref(), []);
         assert_eq!(registration.return_type, HostTypeDescriptor::Int);
@@ -442,10 +444,9 @@ mod tests {
 
     #[test]
     fn supports_zero_argument_fallible_functions() {
-        let registration =
-            <_ as FallibleHostFunction<(), BigInt>>::register::<TestHostProfile>(|| {
-                Err(HostFailure::new("unavailable"))
-            });
+        let registration = <_ as FallibleHostFunctionAdapter<(), BigInt>>::register::<
+            TestHostProfile,
+        >(|| Err(HostFailure::new("unavailable")));
         let implementation = expect_value_implementation(&registration.implementation);
 
         assert_eq!(registration.parameters.as_ref(), []);
@@ -465,30 +466,32 @@ mod tests {
     #[test]
     fn supports_every_fallible_argument_arity() {
         let registrations = vec![
-            <_ as FallibleHostFunction<(), BigInt>>::register::<TestHostProfile>(|| {
+            <_ as FallibleHostFunctionAdapter<(), BigInt>>::register::<TestHostProfile>(|| {
                 Ok::<_, HostFailure>(BigInt::from(0))
             }),
-            <_ as FallibleHostFunction<((),), BigInt>>::register::<TestHostProfile>(|_: ()| {
-                Ok::<_, HostFailure>(BigInt::from(1))
-            }),
-            <_ as FallibleHostFunction<((), ()), BigInt>>::register::<TestHostProfile>(
+            <_ as FallibleHostFunctionAdapter<((),), BigInt>>::register::<TestHostProfile>(
+                |_: ()| Ok::<_, HostFailure>(BigInt::from(1)),
+            ),
+            <_ as FallibleHostFunctionAdapter<((), ()), BigInt>>::register::<TestHostProfile>(
                 |_: (), _: ()| Ok::<_, HostFailure>(BigInt::from(2)),
             ),
-            <_ as FallibleHostFunction<((), (), ()), BigInt>>::register::<TestHostProfile>(
+            <_ as FallibleHostFunctionAdapter<((), (), ()), BigInt>>::register::<TestHostProfile>(
                 |_: (), _: (), _: ()| Ok::<_, HostFailure>(BigInt::from(3)),
             ),
-            <_ as FallibleHostFunction<((), (), (), ()), BigInt>>::register::<TestHostProfile>(
+            <_ as FallibleHostFunctionAdapter<((), (), (), ()), BigInt>>::register::<TestHostProfile>(
                 |_: (), _: (), _: (), _: ()| Ok::<_, HostFailure>(BigInt::from(4)),
             ),
-            <_ as FallibleHostFunction<((), (), (), (), ()), BigInt>>::register::<TestHostProfile>(
-                |_: (), _: (), _: (), _: (), _: ()| Ok::<_, HostFailure>(BigInt::from(5)),
-            ),
-            <_ as FallibleHostFunction<((), (), (), (), (), ()), BigInt>>::register::<
+            <_ as FallibleHostFunctionAdapter<((), (), (), (), ()), BigInt>>::register::<
+                TestHostProfile,
+            >(|_: (), _: (), _: (), _: (), _: ()| {
+                Ok::<_, HostFailure>(BigInt::from(5))
+            }),
+            <_ as FallibleHostFunctionAdapter<((), (), (), (), (), ()), BigInt>>::register::<
                 TestHostProfile,
             >(|_: (), _: (), _: (), _: (), _: (), _: ()| {
                 Ok::<_, HostFailure>(BigInt::from(6))
             }),
-            <_ as FallibleHostFunction<((), (), (), (), (), (), ()), BigInt>>::register::<
+            <_ as FallibleHostFunctionAdapter<((), (), (), (), (), (), ()), BigInt>>::register::<
                 TestHostProfile,
             >(|_: (), _: (), _: (), _: (), _: (), _: (), _: ()| {
                 Ok::<_, HostFailure>(BigInt::from(7))
@@ -533,46 +536,46 @@ mod tests {
         let six: Scoped6 = |call, _, _, _, _, _, _| Ok(call.return_value(BigInt::from(6)));
         let seven: Scoped7 = |call, _, _, _, _, _, _, _| Ok(call.return_value(BigInt::from(7)));
         let registrations = vec![
-            <_ as ScopedHostFunction<TestHostProfile, ScopedProvider, (), BigInt>>::register(
+            <_ as ScopedHostFunctionAdapter<TestHostProfile, ScopedProvider, (), BigInt>>::register(
                 zero,
             ),
-            <_ as ScopedHostFunction<
+            <_ as ScopedHostFunctionAdapter<
                 TestHostProfile,
                 ScopedProvider,
                 ((),),
                 BigInt,
             >>::register(one),
-            <_ as ScopedHostFunction<
+            <_ as ScopedHostFunctionAdapter<
                 TestHostProfile,
                 ScopedProvider,
                 ((), ()),
                 BigInt,
             >>::register(two),
-            <_ as ScopedHostFunction<
+            <_ as ScopedHostFunctionAdapter<
                 TestHostProfile,
                 ScopedProvider,
                 ((), (), ()),
                 BigInt,
             >>::register(three),
-            <_ as ScopedHostFunction<
+            <_ as ScopedHostFunctionAdapter<
                 TestHostProfile,
                 ScopedProvider,
                 ((), (), (), ()),
                 BigInt,
             >>::register(four),
-            <_ as ScopedHostFunction<
+            <_ as ScopedHostFunctionAdapter<
                 TestHostProfile,
                 ScopedProvider,
                 ((), (), (), (), ()),
                 BigInt,
             >>::register(five),
-            <_ as ScopedHostFunction<
+            <_ as ScopedHostFunctionAdapter<
                 TestHostProfile,
                 ScopedProvider,
                 ((), (), (), (), (), ()),
                 BigInt,
             >>::register(six),
-            <_ as ScopedHostFunction<
+            <_ as ScopedHostFunctionAdapter<
                 TestHostProfile,
                 ScopedProvider,
                 ((), (), (), (), (), (), ()),
@@ -617,49 +620,49 @@ mod tests {
         let six: Diverging6 = |_, _, _, _, _, _, _| Err(HostFailure::new("6").into());
         let seven: Diverging7 = |_, _, _, _, _, _, _, _| Err(HostFailure::new("7").into());
         let registrations = vec![
-            <_ as ScopedDivergingHostFunction<
+            <_ as ScopedDivergingHostFunctionAdapter<
                 TestHostProfile,
                 ScopedProvider,
                 (),
                 BigInt,
             >>::register(zero),
-            <_ as ScopedDivergingHostFunction<
+            <_ as ScopedDivergingHostFunctionAdapter<
                 TestHostProfile,
                 ScopedProvider,
                 ((),),
                 BigInt,
             >>::register(one),
-            <_ as ScopedDivergingHostFunction<
+            <_ as ScopedDivergingHostFunctionAdapter<
                 TestHostProfile,
                 ScopedProvider,
                 ((), ()),
                 BigInt,
             >>::register(two),
-            <_ as ScopedDivergingHostFunction<
+            <_ as ScopedDivergingHostFunctionAdapter<
                 TestHostProfile,
                 ScopedProvider,
                 ((), (), ()),
                 BigInt,
             >>::register(three),
-            <_ as ScopedDivergingHostFunction<
+            <_ as ScopedDivergingHostFunctionAdapter<
                 TestHostProfile,
                 ScopedProvider,
                 ((), (), (), ()),
                 BigInt,
             >>::register(four),
-            <_ as ScopedDivergingHostFunction<
+            <_ as ScopedDivergingHostFunctionAdapter<
                 TestHostProfile,
                 ScopedProvider,
                 ((), (), (), (), ()),
                 BigInt,
             >>::register(five),
-            <_ as ScopedDivergingHostFunction<
+            <_ as ScopedDivergingHostFunctionAdapter<
                 TestHostProfile,
                 ScopedProvider,
                 ((), (), (), (), (), ()),
                 BigInt,
             >>::register(six),
-            <_ as ScopedDivergingHostFunction<
+            <_ as ScopedDivergingHostFunctionAdapter<
                 TestHostProfile,
                 ScopedProvider,
                 ((), (), (), (), (), (), ()),
@@ -694,7 +697,8 @@ mod tests {
 
     #[test]
     fn supports_one_argument() {
-        let registration = <_ as HostFunction<(BigInt,), BigInt>>::register(|a: BigInt| a + 1);
+        let registration =
+            <_ as HostFunctionAdapter<(BigInt,), BigInt>>::register(|a: BigInt| a + 1);
 
         assert_eq!(
             registration.parameter_types.as_ref(),
@@ -708,8 +712,9 @@ mod tests {
 
     #[test]
     fn supports_two_arguments() {
-        let registration =
-            <_ as HostFunction<(BigInt, BigInt), BigInt>>::register(|a: BigInt, b: BigInt| a - b);
+        let registration = <_ as HostFunctionAdapter<(BigInt, BigInt), BigInt>>::register(
+            |a: BigInt, b: BigInt| a - b,
+        );
 
         assert_eq!(
             registration.parameter_types.as_ref(),
@@ -727,7 +732,7 @@ mod tests {
 
     #[test]
     fn supports_three_arguments() {
-        let registration = <_ as HostFunction<(bool, BigInt, BigInt), BigInt>>::register(
+        let registration = <_ as HostFunctionAdapter<(bool, BigInt, BigInt), BigInt>>::register(
             |condition: bool, left: BigInt, right: BigInt| {
                 if condition { left } else { right }
             },
@@ -761,7 +766,7 @@ mod tests {
 
     #[test]
     fn supports_four_arguments() {
-        let registration = <_ as HostFunction<(BigInt, bool, BigInt, bool), bool>>::register(
+        let registration = <_ as HostFunctionAdapter<(BigInt, bool, BigInt, bool), bool>>::register(
             |left: BigInt, first: bool, right: BigInt, second: bool| {
                 left < right && first && !second
             },
@@ -786,7 +791,7 @@ mod tests {
     #[test]
     fn supports_five_arguments() {
         let registration =
-            <_ as HostFunction<(BigInt, BigInt, BigInt, BigInt, BigInt), BigInt>>::register(
+            <_ as HostFunctionAdapter<(BigInt, BigInt, BigInt, BigInt, BigInt), BigInt>>::register(
                 |a: BigInt, b: BigInt, c: BigInt, d: BigInt, e: BigInt| a + b + c + d + e,
             );
 
@@ -813,7 +818,7 @@ mod tests {
     #[test]
     fn supports_six_arguments() {
         let registration =
-            <_ as HostFunction<(bool, bool, bool, bool, bool, bool), bool>>::register(
+            <_ as HostFunctionAdapter<(bool, bool, bool, bool, bool, bool), bool>>::register(
                 |a: bool, b: bool, c: bool, d: bool, e: bool, f: bool| {
                     a && !b && c && !d && e && !f
                 },
@@ -839,7 +844,7 @@ mod tests {
 
     #[test]
     fn supports_seven_arguments() {
-        let registration = <_ as HostFunction<
+        let registration = <_ as HostFunctionAdapter<
             (BigInt, bool, BigInt, bool, BigInt, bool, BigInt),
             BigInt,
         >>::register::<TestHostProfile>(
@@ -883,7 +888,7 @@ mod tests {
 
     #[test]
     fn supports_every_scalar_argument_family_in_one_sealed_layout() {
-        let registration = <_ as HostFunction<
+        let registration = <_ as HostFunctionAdapter<
             (BigInt, f64, EcoString, BitArrayValue, char, bool, ()),
             EcoString,
         >>::register::<TestHostProfile>(
@@ -932,7 +937,8 @@ mod tests {
     #[test]
     #[should_panic(expected = "test function should return Int")]
     fn int_return_shape_guard_is_visible() {
-        let registration = <_ as HostFunction<(), bool>>::register(<bool as Default>::default);
+        let registration =
+            <_ as HostFunctionAdapter<(), bool>>::register(<bool as Default>::default);
         call_int(&registration.implementation, Vec::new(), Vec::new());
     }
 
@@ -940,7 +946,8 @@ mod tests {
     #[should_panic(expected = "test function should return Bool")]
     fn bool_return_shape_guard_is_visible() {
         call_bool(
-            <_ as HostFunction<(), BigInt>>::register(<BigInt as Default>::default).implementation,
+            <_ as HostFunctionAdapter<(), BigInt>>::register(<BigInt as Default>::default)
+                .implementation,
             Vec::new(),
             Vec::new(),
         );
@@ -950,7 +957,8 @@ mod tests {
     #[should_panic(expected = "all-scalar test function should return String")]
     fn string_return_shape_guard_is_visible() {
         call_string(
-            <_ as HostFunction<(), BigInt>>::register(<BigInt as Default>::default).implementation,
+            <_ as HostFunctionAdapter<(), BigInt>>::register(<BigInt as Default>::default)
+                .implementation,
             CallArguments::new(Vec::new(), Vec::new()),
         );
     }
