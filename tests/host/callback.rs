@@ -2,7 +2,7 @@ use geam::{
     ExecutionError, HostCall, HostCallCompletion, HostCallError, HostCallable, HostFailure,
     HostFunctionType, HostLocation, HostModule, HostProfile, HostProvider, HostProviderModule,
     HostProviderSet, HostSpecializationErrorReason, HostTypeList, HostTypeListEnd,
-    HostTypeParameter, HostValue, HostedExecution, ModuleSource, PackageSource, PanicKind,
+    HostTypeParameter, HostValue, HostedExecution, ModuleSource, PackageSource,
     StatelessHostProfile, Value, compile_typed_host_program, plan_host_program,
 };
 use num_bigint::BigInt;
@@ -440,60 +440,6 @@ fn stop_after_callback<'call>(
 }
 
 #[test]
-fn preserves_the_failed_nested_host_and_its_host_caller_origin() {
-    let outer = HostModule::<CallbackProfile>::new_for_profile("host_support", "host/outer")
-        .expect("outer host module should be valid")
-        .with_scoped_function::<OuterProvider, (IntCallable, BigInt), BigInt, _>(
-            "apply",
-            apply_with_state,
-        )
-        .expect("outer callback should register");
-    let inner = HostModule::<CallbackProfile>::new_for_profile("host_support", "host/inner")
-        .expect("inner host module should be valid")
-        .with_fallible_function("fail", fail)
-        .expect("inner failure should register");
-    let source = r#"
-import host/inner
-import host/outer
-
-pub fn main() {
-  outer.apply(inner.fail, 1)
-}
-"#;
-    let typed = compile_typed_host_program(
-        "application",
-        "main",
-        [PackageSource::new(
-            "application",
-            ["host_support"],
-            [ModuleSource::new("main", "src/main.gleam", source)],
-        )],
-        HostProviderSet::new([outer, inner]).expect("host modules should be unique"),
-    )
-    .expect("nested host failure source should compile");
-    let plan = plan_host_program(typed).expect("nested host failure source should plan");
-    let execution = HostedExecution::try_from_module_plan(plan)
-        .expect("nested host failure execution should seal");
-    let error = execution
-        .run_main(&mut CallbackState::default(), &mut Vec::new())
-        .expect_err("inner host should fail");
-    let ExecutionError::Host(error) = error else {
-        panic!("nested host failure should remain a host error");
-    };
-
-    assert_eq!(error.package(), "host_support");
-    assert_eq!(error.module(), "host/inner");
-    assert_eq!(error.function(), "fail");
-    assert_eq!(error.failure().message(), "inner unavailable");
-    let HostLocation::Host { caller } = error.location() else {
-        panic!("direct host re-entry should preserve its host caller");
-    };
-    assert_eq!(caller.package(), "host_support");
-    assert_eq!(caller.module(), "host/outer");
-    assert_eq!(caller.function(), "apply");
-}
-
-#[test]
 fn preserves_a_nested_host_failure_from_a_diverging_outer_host() {
     let outer = HostModule::<CallbackProfile>::new_for_profile("host_support", "host/outer")
         .expect("outer host module should be valid")
@@ -544,52 +490,6 @@ pub fn main() {
     };
     assert_eq!(caller.module(), "host/outer");
     assert_eq!(caller.function(), "stop");
-}
-
-#[test]
-fn preserves_a_nested_source_panic_without_host_rewrapping() {
-    let outer = HostModule::<CallbackProfile>::new_for_profile("host_support", "host/outer")
-        .expect("outer host module should be valid")
-        .with_scoped_function::<OuterProvider, (IntCallable, BigInt), BigInt, _>(
-            "apply",
-            apply_with_state,
-        )
-        .expect("outer callback should register");
-    let source = r#"
-import host/outer
-
-fn stop(_value: Int) -> Int {
-  panic as "nested source"
-}
-
-pub fn main() {
-  outer.apply(stop, 1)
-}
-"#;
-    let typed = compile_typed_host_program(
-        "application",
-        "main",
-        [PackageSource::new(
-            "application",
-            ["host_support"],
-            [ModuleSource::new("main", "src/main.gleam", source)],
-        )],
-        HostProviderSet::new([outer]).expect("host module should be unique"),
-    )
-    .expect("nested panic source should compile");
-    let plan = plan_host_program(typed).expect("nested panic source should plan");
-    let execution =
-        HostedExecution::try_from_module_plan(plan).expect("nested panic execution should seal");
-    let error = execution
-        .run_main(&mut CallbackState::default(), &mut Vec::new())
-        .expect_err("nested source should panic");
-    let ExecutionError::Panic(panic) = error else {
-        panic!("nested source panic should not become a host error");
-    };
-
-    assert_eq!(panic.kind(), PanicKind::Panic);
-    assert_eq!(panic.site().module(), "main");
-    assert_eq!(panic.site().function(), "stop");
 }
 
 fn stop_with_state<'call>(

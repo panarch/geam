@@ -2,6 +2,8 @@
 mod callback;
 #[path = "host/compound.rs"]
 mod compound;
+#[path = "host/error.rs"]
+mod error;
 #[path = "host/execution.rs"]
 mod execution;
 #[path = "host/non_returning.rs"]

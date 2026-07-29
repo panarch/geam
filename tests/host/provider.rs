@@ -1,16 +1,13 @@
 use ecow::EcoString;
 use geam::{
-    ExecutionError, HostCall, HostCallCompletion, HostCallError, HostCustom,
-    HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
-    HostCustomConstructorSchema, HostCustomField, HostCustomFieldList, HostCustomFieldListEnd,
-    HostCustomFieldSchema, HostCustomSchema, HostCustomType, HostCustomTypeSchema, HostFailure,
-    HostLocation, HostModule, HostProvider, HostProviderLinkReason, HostProviderModule,
-    HostProviderSet, HostSchemaType, HostTypeList, HostTypeListEnd, HostTypeParameter,
-    HostedExecution, ModuleSource, PackageSource, PlanError, StatelessHostProfile, Value,
-    compile_typed_host_program, plan_host_program,
+    HostCall, HostCallCompletion, HostCallError, HostCustom, HostCustomConstructorDefinition,
+    HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomConstructorSchema,
+    HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomFieldSchema,
+    HostCustomSchema, HostCustomType, HostCustomTypeSchema, HostModule, HostProvider,
+    HostProviderLinkReason, HostProviderModule, HostProviderSet, HostSchemaType, HostTypeList,
+    HostTypeListEnd, HostTypeParameter, HostedExecution, ModuleSource, PackageSource, PlanError,
+    StatelessHostProfile, Value, compile_typed_host_program, plan_host_program,
 };
-use num_bigint::BigInt;
-
 #[test]
 fn executes_external_gleam_fallback_without_a_provider() {
     let source = r#"
@@ -43,64 +40,6 @@ pub fn main() {
         execution.run_main(&mut (), &mut Vec::new()),
         Ok(Value::Int(42.into())),
     );
-}
-
-#[test]
-fn reports_fallible_provider_failure_at_the_tail_call_site() {
-    let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
-        .expect("provider module should be valid")
-        .with_fallible_function("fail", |_: BigInt| -> Result<BigInt, HostFailure> {
-            Err(HostFailure::new("service unavailable"))
-        })
-        .expect("provider function should be valid");
-    let hosts = HostProviderSet::with_providers(Vec::<HostModule>::new(), [provider])
-        .expect("provider modules should be unique");
-    let source = r#"
-@external(erlang, "host", "fail")
-fn fail(value: Int) -> Int
-
-fn tail(value: Int) {
-  fail(value)
-}
-
-pub fn main() {
-  tail(1)
-}
-"#;
-    let typed = compile_typed_host_program(
-        "application",
-        "main",
-        [PackageSource::new(
-            "application",
-            Vec::<String>::new(),
-            [ModuleSource::new("main", "src/main.gleam", source)],
-        )],
-        hosts,
-    )
-    .expect("host program should compile");
-    let plan = plan_host_program(typed).expect("provider should link");
-    let execution =
-        HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
-    let error = execution
-        .run_main(&mut (), &mut Vec::new())
-        .expect_err("fallible provider should fail");
-    let ExecutionError::Host(error) = error else {
-        panic!("fallible provider should produce a host error");
-    };
-
-    assert_eq!(error.package(), "application");
-    assert_eq!(error.module(), "main");
-    assert_eq!(error.function(), "fail");
-    assert_eq!(error.failure().message(), "service unavailable");
-    assert_eq!(error.signature().argument_types(), [geam::ValueType::Int]);
-    assert_eq!(error.signature().return_(), &geam::ValueType::Int);
-    let HostLocation::Resolved { site, path, line } = error.location() else {
-        panic!("source-backed provider failure should resolve its call site");
-    };
-    assert_eq!(site.module(), "main");
-    assert_eq!(site.function(), "tail");
-    assert_eq!(path.as_str(), "src/main.gleam");
-    assert_eq!(*line, 6);
 }
 
 struct SchemaProvider;
