@@ -1,3 +1,5 @@
+mod sealing;
+
 use super::function;
 use super::local;
 use super::specialization::{
@@ -156,13 +158,22 @@ pub(in crate::plan::execution) fn lower_hosted<Profile: HostProfile>(
                         match implementation.as_ref() {
                             RegisteredHostFunctionImplementation::Value(implementation) => {
                                 let ValueInhabitation::Inhabited(return_) = return_ else {
-                                    return Err(HostSpecializationError::new(
-                                        template.package().clone(),
-                                        template.site().module().clone(),
-                                        template.site().function().clone(),
-                                        shape.to_module_shape().type_(),
-                                    ));
+                                    return Err(
+                                        HostSpecializationError::undetermined_return_storage(
+                                            template.package().clone(),
+                                            template.site().module().clone(),
+                                            template.site().function().clone(),
+                                            shape.to_module_shape().type_(),
+                                        ),
+                                    );
                                 };
+                                seal_callbacks(
+                                    template,
+                                    &key,
+                                    &shape,
+                                    &context.representations,
+                                    true,
+                                )?;
                                 let parameters =
                                     host_parameters(&parameters, template.layout(), &mut context);
                                 let type_ = context.lower_concrete_function_type(&shape);
@@ -186,6 +197,13 @@ pub(in crate::plan::execution) fn lower_hosted<Profile: HostProfile>(
                                 );
                             }
                             RegisteredHostFunctionImplementation::Never(implementation) => {
+                                seal_callbacks(
+                                    template,
+                                    &key,
+                                    &shape,
+                                    &context.representations,
+                                    false,
+                                )?;
                                 let parameters =
                                     host_parameters(&parameters, template.layout(), &mut context);
                                 let type_ = context.lower_concrete_function_type(&shape);
@@ -263,6 +281,31 @@ pub(in crate::plan::execution) fn lower_hosted<Profile: HostProfile>(
     ))
 }
 
+fn seal_callbacks(
+    template: &PlannedHostFunctionTemplate,
+    key: &SpecializationKey,
+    shape: &SpecializedFunctionShape,
+    representations: &RepresentationContext,
+    include_return: bool,
+) -> Result<(), HostSpecializationError> {
+    let callback = sealing::first_uninhabited_callback(
+        template,
+        key.substitution(),
+        representations,
+        include_return,
+    );
+    if let Some(callback) = callback {
+        return Err(HostSpecializationError::uninhabited_callback_arguments(
+            template.package().clone(),
+            template.site().module().clone(),
+            template.site().function().clone(),
+            shape.to_module_shape().type_(),
+            callback,
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Clone, Copy)]
 enum HostSpecialization {
     Value(usize),
@@ -281,8 +324,7 @@ fn host_parameters(
         .map(|(position, shape)| {
             let (index, stored) = prefix.allocate_stored(shape.clone(), &context.representations);
             let entry = local::stored_value_local_at(&stored, index, context);
-            let generic = matches!(layout[position], crate::host::HostParameter::Value(_));
-            let call = host_call_parameter(&stored, index, generic, context);
+            let call = host_call_parameter(&stored, index, &layout[position], context);
             (entry, call)
         })
         .collect::<Vec<_>>();
@@ -301,40 +343,45 @@ struct HostParameters {
 fn host_call_parameter(
     shape: &StoredValueShape,
     index: usize,
-    generic: bool,
+    parameter: &crate::host::HostParameter,
     context: &mut LoweringContext,
 ) -> HostCallParameter {
-    match shape {
-        StoredValueShape::Function(_) => {
-            HostCallParameter::Value(local::stored_value_local_at(shape, index, context))
+    match parameter {
+        crate::host::HostParameter::Int(_) => {
+            HostCallParameter::Int(execution_graph::IntLocalId(index))
         }
-        _ if generic => {
-            HostCallParameter::Value(local::stored_value_local_at(shape, index, context))
+        crate::host::HostParameter::Float(_) => {
+            HostCallParameter::Float(execution_graph::FloatLocalId(index))
         }
-        StoredValueShape::Int => HostCallParameter::Int(execution_graph::IntLocalId(index)),
-        StoredValueShape::Float => HostCallParameter::Float(execution_graph::FloatLocalId(index)),
-        StoredValueShape::String => {
+        crate::host::HostParameter::String(_) => {
             HostCallParameter::String(execution_graph::StringLocalId(index))
         }
-        StoredValueShape::BitArray => {
+        crate::host::HostParameter::BitArray(_) => {
             HostCallParameter::BitArray(execution_graph::BitArrayLocalId(index))
         }
-        StoredValueShape::UtfCodepoint => {
+        crate::host::HostParameter::UtfCodepoint(_) => {
             HostCallParameter::UtfCodepoint(execution_graph::UtfCodepointLocalId(index))
         }
-        StoredValueShape::Custom(shape) => {
-            HostCallParameter::Custom(execution_graph::CustomLocal::new(
-                execution_graph::CustomLocalId(index),
-                context.lower_concrete_custom_shape(shape),
-            ))
+        crate::host::HostParameter::Bool(_) => {
+            HostCallParameter::Bool(execution_graph::BoolLocalId(index))
         }
-        StoredValueShape::Bool => HostCallParameter::Bool(execution_graph::BoolLocalId(index)),
-        StoredValueShape::Nil => HostCallParameter::Nil(execution_graph::NilLocalId(index)),
-        StoredValueShape::Tuple(_) => {
+        crate::host::HostParameter::Nil(_) => {
+            HostCallParameter::Nil(execution_graph::NilLocalId(index))
+        }
+        crate::host::HostParameter::Value(_) => {
+            HostCallParameter::Value(local::stored_value_local_at(shape, index, context))
+        }
+        crate::host::HostParameter::List(_) => {
+            HostCallParameter::List(local::stored_value_local_at(shape, index, context))
+        }
+        crate::host::HostParameter::Tuple(_) => {
             HostCallParameter::Tuple(local::stored_value_local_at(shape, index, context))
         }
-        StoredValueShape::List(item) => {
-            HostCallParameter::List(local::list_local_at(item, index, context))
+        crate::host::HostParameter::Custom(_) => {
+            HostCallParameter::Custom(local::stored_value_local_at(shape, index, context))
+        }
+        crate::host::HostParameter::Function(_) => {
+            HostCallParameter::Function(local::stored_value_local_at(shape, index, context))
         }
     }
 }

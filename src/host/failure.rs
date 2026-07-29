@@ -8,7 +8,13 @@ pub struct HostFailure {
 
 #[derive(Debug, PartialEq)]
 pub struct HostCallError {
-    failure: HostFailure,
+    kind: HostCallErrorKind,
+}
+
+#[derive(Debug, PartialEq)]
+pub(crate) enum HostCallErrorKind {
+    Failure(HostFailure),
+    Nested(crate::ExecutionError),
 }
 
 impl HostFailure {
@@ -24,8 +30,14 @@ impl HostFailure {
 }
 
 impl HostCallError {
-    pub(crate) fn into_failure(self) -> HostFailure {
-        self.failure
+    pub(crate) fn nested(error: crate::ExecutionError) -> Self {
+        Self {
+            kind: HostCallErrorKind::Nested(error),
+        }
+    }
+
+    pub(crate) fn into_kind(self) -> HostCallErrorKind {
+        self.kind
     }
 }
 
@@ -39,7 +51,10 @@ impl std::error::Error for HostFailure {}
 
 impl Display for HostCallError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        Display::fmt(&self.failure, formatter)
+        match &self.kind {
+            HostCallErrorKind::Failure(failure) => Display::fmt(failure, formatter),
+            HostCallErrorKind::Nested(error) => Display::fmt(error, formatter),
+        }
     }
 }
 
@@ -47,13 +62,16 @@ impl std::error::Error for HostCallError {}
 
 impl From<HostFailure> for HostCallError {
     fn from(error: HostFailure) -> Self {
-        Self { failure: error }
+        Self {
+            kind: HostCallErrorKind::Failure(error),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{HostCallError, HostFailure};
+    use crate::{ExecutionError, InvariantError, ValueType};
 
     #[test]
     fn host_failure_owns_and_displays_its_message() {
@@ -68,6 +86,28 @@ mod tests {
         let local = HostCallError::from(HostFailure::new("invalid input"));
 
         assert_eq!(local.to_string(), "invalid input");
-        assert_eq!(local.into_failure(), HostFailure::new("invalid input"));
+        assert_eq!(
+            local.into_kind(),
+            super::HostCallErrorKind::Failure(HostFailure::new("invalid input")),
+        );
+    }
+
+    #[test]
+    fn host_call_error_preserves_a_nested_execution_failure() {
+        let execution = ExecutionError::Invariant(InvariantError::ListIndexOutOfBounds {
+            item_type: ValueType::Int,
+            index: 1,
+            length: 0,
+        });
+        let nested = HostCallError::nested(execution.clone());
+
+        assert_eq!(
+            nested.to_string(),
+            "list index out of bounds for Int list (index 1, length 0)",
+        );
+        assert_eq!(
+            nested.into_kind(),
+            super::HostCallErrorKind::Nested(execution),
+        );
     }
 }

@@ -10,18 +10,20 @@ pub use frontend::{
     compile_typed_program, compile_typed_project,
 };
 pub use host::{
-    FallibleHostFunction, HostCall, HostCallCompletion, HostCallError, HostCustom,
+    FallibleHostFunction, HostCall, HostCallCompletion, HostCallError, HostCallable, HostCustom,
     HostCustomConstructor, HostCustomConstructorAt, HostCustomConstructorDefinition,
     HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomConstructorSchema,
     HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomFieldSchema,
     HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType, HostCustomTypeSchema,
-    HostFailure, HostFunction, HostFunctionSchema, HostList, HostListType, HostModule, HostProfile,
-    HostProvider, HostProviderModule, HostProviderSet, HostRegistrationError, HostSchemaType,
-    HostTuple, HostTupleType, HostType, HostTypeList, HostTypeListEnd, HostTypeParameter,
-    HostTypeSequence, HostValue, ScopedHostFunction, StatelessHostProfile,
+    HostFailure, HostFunction, HostFunctionSchema, HostFunctionType, HostList, HostListType,
+    HostModule, HostProfile, HostProvider, HostProviderModule, HostProviderSet,
+    HostRegistrationError, HostSchemaType, HostTuple, HostTupleType, HostType, HostTypeList,
+    HostTypeListEnd, HostTypeParameter, HostTypeSequence, HostValue, ScopedDivergingHostFunction,
+    ScopedHostFunction, StatelessHostProfile,
 };
 pub use plan::execution::{
-    ExecutionPlan, ExecutionPlanExplanation, HostSpecializationError, HostedExecution,
+    ExecutionPlan, ExecutionPlanExplanation, HostSpecializationError,
+    HostSpecializationErrorReason, HostedExecution,
 };
 pub use plan::{
     BitArrayExpr, BitArrayLocalId, BoolExpr, BoolLocalId, CustomType, CustomTypeName, EchoSite,
@@ -37,6 +39,6 @@ pub use planner::{
 pub use runtime::{
     BitArraySegmentPanicReason, BitArrayValue, BitArrayValueLengthError, CustomFieldValue,
     CustomValue, EchoLocation, EchoOutput, EchoSink, ExecutionError, FunctionValue, HostError,
-    HostLocation, InvariantError, ListValue, ListValueItemTypeMismatch, Panic, PanicDetails,
-    PanicKind, PanicMessage, Value, ValueInspection, run_main,
+    HostLocation, HostOrigin, InvariantError, ListValue, ListValueItemTypeMismatch, Panic,
+    PanicDetails, PanicKind, PanicMessage, Value, ValueInspection, run_main,
 };

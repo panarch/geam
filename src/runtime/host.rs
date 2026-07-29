@@ -1,14 +1,17 @@
 use crate::host::{
     HostCallArguments, HostCallRuntime, HostCustomArgumentSlot, HostCustomToken,
-    HostListArgumentSlot, HostListToken, HostProfile, HostScopedValue, HostTupleArgumentSlot,
-    HostTupleToken, HostValueArgumentSlot, HostValueFamily, HostValueToken,
+    HostFunctionArgumentSlot, HostFunctionToken, HostListArgumentSlot, HostListToken, HostProfile,
+    HostScopedValue, HostTupleArgumentSlot, HostTupleToken, HostValueArgumentSlot, HostValueFamily,
+    HostValueToken,
 };
 use crate::plan::execution::host::{HostCallParameter, HostedFunction};
 use crate::plan::execution::type_::{ListStorageTypeId, ListTypeId, ValueType};
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::evaluated::{
-    EvaluatedBitArray, EvaluatedCustomValue, EvaluatedFunctionValue, EvaluatedValue,
+    EvaluatedBitArray, EvaluatedCustomValue, EvaluatedFunctionValue, EvaluatedFunctionValueKind,
+    EvaluatedGenericFunction, EvaluatedValue,
 };
+use crate::runtime::function::InvocableFunctionValue;
 use crate::runtime::graph::{BlockEnvironment, RetainedValues};
 use crate::runtime::state::{
     CustomListAllocation, ListValueId, ParameterListValueId, RuntimeStateFor, StoredListValueId,
@@ -29,9 +32,11 @@ where
     list_arguments: Vec<HostListToken>,
     tuple_arguments: Vec<HostTupleToken>,
     custom_arguments: Vec<HostCustomToken>,
+    function_arguments: Vec<HostFunctionToken>,
     scoped: ScopedValues,
     return_lists: Box<[ListTypeId]>,
     return_customs: Box<[crate::plan::execution::type_::CustomTypeId]>,
+    origin: crate::runtime::error::HostCallOrigin,
     profile: std::marker::PhantomData<Profile>,
 }
 
@@ -53,6 +58,7 @@ where
         let mut list_arguments = Vec::new();
         let mut tuple_arguments = Vec::new();
         let mut custom_arguments = Vec::new();
+        let mut function_arguments = Vec::new();
 
         for parameter in function.call_parameters() {
             match parameter {
@@ -68,8 +74,9 @@ where
                 HostCallParameter::Value(_) => {
                     value_arguments.push(scoped.push(environment.value(&parameter.local())));
                 }
-                HostCallParameter::List(local) => {
-                    list_arguments.push(scoped.push_list_value(environment.list(local)));
+                HostCallParameter::List(_) => {
+                    let token = scoped.push(environment.value(&parameter.local()));
+                    list_arguments.push(scoped.list_tokens[token.index]);
                 }
                 HostCallParameter::Tuple(_) => {
                     let token = scoped.push(environment.value(&parameter.local()));
@@ -78,6 +85,10 @@ where
                 HostCallParameter::Custom(_) => {
                     let token = scoped.push(environment.value(&parameter.local()));
                     custom_arguments.push(HostCustomToken(token.index));
+                }
+                HostCallParameter::Function(_) => {
+                    let token = scoped.push(environment.value(&parameter.local()));
+                    function_arguments.push(HostFunctionToken(token.index));
                 }
             }
         }
@@ -110,9 +121,11 @@ where
             list_arguments,
             tuple_arguments,
             custom_arguments,
+            function_arguments,
             scoped,
             return_lists: return_lists.into_boxed_slice(),
             return_customs: return_customs.into_boxed_slice(),
+            origin: crate::runtime::error::HostCallOrigin::host(function.metadata()),
             profile: std::marker::PhantomData,
         }
     }
@@ -252,7 +265,7 @@ where
                     type_id,
                     values
                         .iter()
-                        .map(|token| self.scoped.functions[token.index].clone())
+                        .map(|token| self.scoped.function_values[token].clone())
                         .collect(),
                 )
                 .into(),
@@ -293,6 +306,10 @@ where
         self.custom_arguments[slot.index()]
     }
 
+    fn function(&self, slot: HostFunctionArgumentSlot) -> HostFunctionToken {
+        self.function_arguments[slot.index()]
+    }
+
     fn int(&self, value: HostValueToken) -> BigInt {
         self.scoped.ints[value.index].clone()
     }
@@ -329,6 +346,10 @@ where
 
     fn custom_token(&self, value: HostValueToken) -> HostCustomToken {
         HostCustomToken(value.index)
+    }
+
+    fn function_token(&self, value: HostValueToken) -> HostFunctionToken {
+        HostFunctionToken(value.index)
     }
 
     fn list_len(&self, value: HostListToken) -> usize {
@@ -368,6 +389,33 @@ where
             .map(|value| self.scoped.push(value))
             .collect::<Vec<_>>()
             .into_boxed_slice()
+    }
+
+    fn invoke(
+        &mut self,
+        function: HostFunctionToken,
+        arguments: Box<[HostScopedValue]>,
+    ) -> Result<HostValueToken, crate::HostCallError> {
+        let function = self.scoped.functions[function.0].clone();
+        let arguments = arguments
+            .into_vec()
+            .into_iter()
+            .map(|value| self.value_from_scoped(value))
+            .collect::<Vec<_>>();
+        let mut inputs = RetainedValues::empty();
+        for value in &arguments {
+            inputs.push_evaluated(value.clone());
+        }
+        crate::runtime::function::invoke_callable(
+            self.plan,
+            self.state,
+            function,
+            self.origin.clone(),
+            inputs,
+            arguments.into_boxed_slice(),
+        )
+        .map(|value| self.scoped.push(value))
+        .map_err(crate::HostCallError::nested)
     }
 
     fn equal(&self, left: HostScopedValue, right: HostScopedValue) -> bool {
@@ -461,6 +509,9 @@ where
             HostScopedValue::Custom(HostCustomToken(index)) => {
                 EvaluatedValue::Custom(self.scoped.customs[index].clone())
             }
+            HostScopedValue::Function(HostFunctionToken(index)) => {
+                EvaluatedValue::Function(self.scoped.functions[index].clone().into_evaluated())
+            }
         }
     }
 }
@@ -479,7 +530,9 @@ struct ScopedValues {
     stored_list_values: HashMap<HostValueToken, StoredListValueId>,
     tuples: Vec<Vec<EvaluatedValue>>,
     customs: Vec<EvaluatedCustomValue>,
-    functions: Vec<EvaluatedFunctionValue>,
+    functions: Vec<InvocableFunctionValue>,
+    symbolic_functions: Vec<EvaluatedGenericFunction>,
+    function_values: HashMap<HostValueToken, EvaluatedFunctionValue>,
 }
 
 impl ScopedValues {
@@ -502,21 +555,10 @@ impl ScopedValues {
             HostValueFamily::Tuple => retained.push_tuple(self.tuples[token.index].clone()),
             HostValueFamily::Custom => retained.push_custom(self.customs[token.index].clone()),
             HostValueFamily::Function => {
-                retained.push_function(self.functions[token.index].clone())
+                retained.push_function(self.functions[token.index].clone().into_evaluated())
             }
-        }
-    }
-
-    fn push_list_value(&mut self, value: ListValueId) -> HostListToken {
-        match value {
-            ListValueId::Parameter(value) => {
-                let index = self.parameter_lists.len();
-                self.parameter_lists.push(value);
-                HostListToken::Parameter(index)
-            }
-            value => {
-                let token = self.push_list(value);
-                HostListToken::Stored(token.index)
+            HostValueFamily::SymbolicFunction => {
+                retained.push_function(self.symbolic_functions[token.index].clone().into())
             }
         }
     }
@@ -596,14 +638,7 @@ impl ScopedValues {
                 let token = self.push_stored(value);
                 self.value_for_list(token)
             }
-            EvaluatedValue::Function(value) => {
-                let index = self.functions.len();
-                self.functions.push(value);
-                HostValueToken {
-                    family: HostValueFamily::Function,
-                    index,
-                }
-            }
+            EvaluatedValue::Function(value) => self.push_function(value),
         }
     }
 
@@ -671,6 +706,10 @@ impl ScopedValues {
                 family: HostValueFamily::Custom,
                 index,
             },
+            HostScopedValue::Function(HostFunctionToken(index)) => HostValueToken {
+                family: HostValueFamily::Function,
+                index,
+            },
         }
     }
 
@@ -693,7 +732,10 @@ impl ScopedValues {
             HostValueFamily::Tuple => EvaluatedValue::Tuple(self.tuples[token.index].clone()),
             HostValueFamily::Custom => EvaluatedValue::Custom(self.customs[token.index].clone()),
             HostValueFamily::Function => {
-                EvaluatedValue::Function(self.functions[token.index].clone())
+                EvaluatedValue::Function(self.functions[token.index].clone().into_evaluated())
+            }
+            HostValueFamily::SymbolicFunction => {
+                EvaluatedValue::Function(self.symbolic_functions[token.index].clone().into())
             }
         }
     }
@@ -703,6 +745,91 @@ impl ScopedValues {
             HostListToken::Parameter(index) => ListValueId::Parameter(self.parameter_lists[index]),
             HostListToken::Stored(index) => self.lists[index].clone().into_value(),
         }
+    }
+
+    fn push_function(&mut self, value: EvaluatedFunctionValue) -> HostValueToken {
+        let (family, index) = match value.kind() {
+            EvaluatedFunctionValueKind::Generic(function) => {
+                let index = self.symbolic_functions.len();
+                self.symbolic_functions.push(function.clone());
+                (HostValueFamily::SymbolicFunction, index)
+            }
+            EvaluatedFunctionValueKind::Never(function) => {
+                let index = self.functions.len();
+                self.functions
+                    .push(InvocableFunctionValue::Never(function.clone()));
+                (HostValueFamily::Function, index)
+            }
+            EvaluatedFunctionValueKind::Int(function) => {
+                let index = self.functions.len();
+                self.functions
+                    .push(InvocableFunctionValue::Int(function.clone()));
+                (HostValueFamily::Function, index)
+            }
+            EvaluatedFunctionValueKind::Float(function) => {
+                let index = self.functions.len();
+                self.functions
+                    .push(InvocableFunctionValue::Float(function.clone()));
+                (HostValueFamily::Function, index)
+            }
+            EvaluatedFunctionValueKind::String(function) => {
+                let index = self.functions.len();
+                self.functions
+                    .push(InvocableFunctionValue::String(function.clone()));
+                (HostValueFamily::Function, index)
+            }
+            EvaluatedFunctionValueKind::BitArray(function) => {
+                let index = self.functions.len();
+                self.functions
+                    .push(InvocableFunctionValue::BitArray(function.clone()));
+                (HostValueFamily::Function, index)
+            }
+            EvaluatedFunctionValueKind::UtfCodepoint(function) => {
+                let index = self.functions.len();
+                self.functions
+                    .push(InvocableFunctionValue::UtfCodepoint(function.clone()));
+                (HostValueFamily::Function, index)
+            }
+            EvaluatedFunctionValueKind::Custom(function) => {
+                let index = self.functions.len();
+                self.functions
+                    .push(InvocableFunctionValue::Custom(function.clone()));
+                (HostValueFamily::Function, index)
+            }
+            EvaluatedFunctionValueKind::Bool(function) => {
+                let index = self.functions.len();
+                self.functions
+                    .push(InvocableFunctionValue::Bool(function.clone()));
+                (HostValueFamily::Function, index)
+            }
+            EvaluatedFunctionValueKind::Nil(function) => {
+                let index = self.functions.len();
+                self.functions
+                    .push(InvocableFunctionValue::Nil(function.clone()));
+                (HostValueFamily::Function, index)
+            }
+            EvaluatedFunctionValueKind::Tuple(function) => {
+                let index = self.functions.len();
+                self.functions
+                    .push(InvocableFunctionValue::Tuple(function.clone()));
+                (HostValueFamily::Function, index)
+            }
+            EvaluatedFunctionValueKind::List(function) => {
+                let index = self.functions.len();
+                self.functions
+                    .push(InvocableFunctionValue::List(function.clone()));
+                (HostValueFamily::Function, index)
+            }
+            EvaluatedFunctionValueKind::Function(function) => {
+                let index = self.functions.len();
+                self.functions
+                    .push(InvocableFunctionValue::Function(function.clone()));
+                (HostValueFamily::Function, index)
+            }
+        };
+        let token = HostValueToken { family, index };
+        self.function_values.insert(token, value);
+        token
     }
 }
 

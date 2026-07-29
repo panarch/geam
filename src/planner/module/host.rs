@@ -770,14 +770,10 @@ fn bind_source_host_function(
             }),
         });
     }
-    let template = HostFunctionTemplate::from_signature(
-        source.signature.clone(),
-        package,
-        crate::plan::HostCallSite::new(module, schema.name().clone(), source.definition_span),
-        schema.layout().to_vec().into_boxed_slice(),
-        schema.custom_schemas().to_vec().into_boxed_slice(),
-        schema.type_().clone(),
-    );
+    let site =
+        crate::plan::HostCallSite::new(module, schema.name().clone(), source.definition_span);
+    let template =
+        HostFunctionTemplate::from_schema(source.signature.clone(), package, site, schema);
     Ok((template, implementation))
 }
 
@@ -791,18 +787,12 @@ fn bind_source_less_host_function(
     let registered_shape = host_function_shape(&schema);
     let signature =
         crate::plan::FunctionTemplateSignature::new(id, schema.scheme().clone(), registered_shape);
-    let template = HostFunctionTemplate::from_signature(
-        signature,
-        package,
-        crate::plan::HostCallSite::new(
-            module,
-            schema.name().clone(),
-            crate::plan::SourceSpan::new(0, 0),
-        ),
-        schema.layout().to_vec().into_boxed_slice(),
-        schema.custom_schemas().to_vec().into_boxed_slice(),
-        schema.type_().clone(),
+    let site = crate::plan::HostCallSite::new(
+        module,
+        schema.name().clone(),
+        crate::plan::SourceSpan::new(0, 0),
     );
+    let template = HostFunctionTemplate::from_schema(signature, package, site, schema);
     (template, implementation)
 }
 
@@ -831,8 +821,7 @@ fn host_function_info(template: &HostFunctionTemplate) -> FunctionInfo {
 #[cfg(test)]
 mod tests {
     use super::{
-        HostCustomTypeAccess, LinkedFunction, ModuleWithConstants, host_schema_type,
-        plan_host_program, validate_host_custom_schema, validate_host_custom_schemas,
+        HostCustomTypeAccess, host_schema_type, plan_host_program, validate_host_custom_schema,
     };
     use crate::frontend::{ModuleSource, PackageSource, compile_typed_host_program};
     use crate::host::{
@@ -843,10 +832,9 @@ mod tests {
         CustomConstructorDefinition, CustomConstructorRefinement, CustomFieldDefinition,
         CustomTypeDefinition, CustomTypeName, CustomTypeParameterId, CustomTypePublicity,
         CustomTypeTemplate, CustomValueShape, FunctionShape, FunctionTemplateId,
-        FunctionTemplateSignature, FunctionType, HostCallSite, HostFunctionTemplate, ModuleId,
-        SourceSpan, TypeParameterId, TypeScheme, ValueShape, ValueType,
+        FunctionTemplateSignature, FunctionType, HostCallSite, ModuleId, SourceSpan,
+        TypeParameterId, TypeScheme, ValueShape, ValueType,
     };
-    use crate::planner::context::AnonymousFunctions;
     use crate::planner::module::constant::ConstantSignatures;
     use crate::planner::module::registry::{ModuleRegistry, ProgramRegistry};
     use crate::planner::{HostProviderLinkReason, PlanError, UnsupportedFunctionReason};
@@ -946,7 +934,7 @@ mod tests {
     }
 
     #[test]
-    fn validates_every_custom_schema_and_nested_type_argument_in_a_hosted_module() {
+    fn validates_a_custom_schema_referenced_through_a_nested_type_argument() {
         let custom_type = CustomTypeName::new("application".into(), "main".into(), "Boxed".into());
         let definition = CustomTypeDefinition::new(
             custom_type.clone(),
@@ -964,11 +952,11 @@ mod tests {
         );
         let registry = ProgramRegistry::new(vec![ModuleRegistry::new(
             "main".into(),
-            vec![definition.clone()],
+            vec![definition],
             std::collections::HashMap::new(),
             ConstantSignatures::default(),
         )]);
-        let expected = HostCustomTypeSchema::new(
+        let schema = HostCustomTypeSchema::new(
             "application",
             "main",
             "Boxed",
@@ -992,55 +980,26 @@ mod tests {
             )))],
             ValueShape::Bool,
         );
-        let type_ = shape.type_();
         let module = ModuleId::new(0);
         let signature = FunctionTemplateSignature::new(
             FunctionTemplateId::in_module(module, 0),
             TypeScheme::new(1),
             shape,
         );
-        let template = HostFunctionTemplate::from_signature(
-            signature,
-            "application".into(),
-            HostCallSite::new("main".into(), "accept".into(), SourceSpan::new(0, 0)),
-            Vec::new().into_boxed_slice(),
-            vec![expected].into_boxed_slice(),
-            type_,
-        );
-        let registered = HostProviderSet::new([HostModule::new("unused", "host/unused")
-            .expect("host module should be valid")
-            .with_function("unused", bool::default)
-            .expect("host function should be valid")])
-        .expect("host module should be unique")
-        .into_registered()
-        .0;
-        let (_, _, functions) = registered
-            .into_iter()
-            .next()
-            .expect("one registered module should exist")
-            .into_parts();
-        let (_, implementation) = functions
-            .into_iter()
-            .next()
-            .expect("one registered function should exist")
-            .into_parts();
-        let (_, constants) = super::reserve_constants(module, Vec::new())
-            .expect("empty constants should reserve")
-            .into_parts();
-        let modules = [ModuleWithConstants {
-            id: module,
-            package: "application".into(),
-            source_context: None,
-            custom_types: vec![definition],
-            functions: vec![LinkedFunction::Host {
-                template,
-                implementation,
-            }],
-            constants,
-            anonymous_functions: AnonymousFunctions::in_module(module, 1),
-        }];
+        let package = EcoString::from("application");
+        let site = HostCallSite::new("main".into(), "accept".into(), SourceSpan::new(0, 0));
 
-        assert_eq!(validate_host_custom_schemas(&registry, &modules), Ok(()));
+        assert_eq!(
+            validate_host_custom_schema(
+                &registry,
+                &package,
+                &site,
+                &signature,
+                &schema,
+                HostCustomTypeAccess::SourceLessPublicSurface,
+            ),
+            Ok(()),
+        );
     }
 
     #[test]

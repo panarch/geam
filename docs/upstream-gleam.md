@@ -166,6 +166,14 @@ through `HostCall`; tuple element sequences are recursive and have no tuple
 arity limit. `HostTypeParameter<N>` indices start at zero and must be
 contiguous across one registered signature.
 
+`HostFunctionType<Arguments, Return>` exposes a source function value as a
+call-scoped `HostCallable`. `HostCall::invoke` uses the existing typed Gleam
+function loops, including nested host-to-Gleam-to-host calls. The provider must
+release its projected state before re-entry; the Rust call lifetime enforces
+that ownership boundary. Runtime-owned call-scoped handles may remain live
+across the nested call, but callables cannot be retained after their host
+invocation.
+
 Ordinary custom schemas provide the exact source identity and an ordered
 type-level list of constructors and labelled fields. Constructor handles can
 only select a definition at its declared list position. Planning recursively
@@ -236,12 +244,18 @@ and cannot be passed to the plain `run_main` function.
 `HostedExecution::try_from_module_plan` seals entry-reachable generic
 specializations into concrete runtime storage. It returns
 `HostSpecializationError` only when a reachable value-producing host
-specialization has no representable successful return storage; unused
-providers do not block execution. Source external providers are selected
-before body planning: an exact provider wins, a provider-less declaration
-with a Gleam body uses that fallback, and a bodyless declaration without a
-provider is rejected. Provider state remains owned by the caller and is
-borrowed only for `HostedExecution::run_main`.
+specialization has no representable successful return storage or an exposed
+callback capability has uninhabited argument storage. An opaque function value
+in a generic parameter may still pass through without becoming invocable, and
+unused providers do not block execution. Source external providers are
+selected before body planning: an exact provider wins, a provider-less
+declaration with a Gleam body uses that fallback, and a bodyless declaration
+without a provider is rejected. Provider state remains owned by the caller and
+is borrowed only for `HostedExecution::run_main`.
+
+Nested source panics remain source panics. Nested host failures retain the
+identity of the provider that failed and record the invoking host as caller
+origin rather than being rewrapped by the outer callback.
 
 The caller supplies the `EchoSink` used by `run_main`. Each emitted
 `EchoOutput` owns its materialized value, optional message, and compact source
@@ -257,8 +271,8 @@ milestone:
 - Code generation metadata.
 - Package resolution, dependency download, package cache mutation, and artifact
   writing.
-- External custom types, broader host value families, async providers,
-  retained callbacks, and CLI behavior.
+- External custom storage, async providers, retained or Rust-created
+  callbacks, and CLI behavior.
 
 ## Current Source Boundary
 

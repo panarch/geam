@@ -101,12 +101,11 @@ impl Diagnostic for HostError {
     }
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        self.source()?;
+        let super::HostLocation::Resolved { site, .. } = self.location() else {
+            return None;
+        };
         Some(Box::new(std::iter::once(
-            LabeledSpan::new_primary_with_span(
-                Some(self.primary_label()),
-                self.location().site().span().to_miette(),
-            ),
+            LabeledSpan::new_primary_with_span(Some(self.primary_label()), site.span().to_miette()),
         )))
     }
 }

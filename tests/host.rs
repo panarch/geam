@@ -1,3 +1,5 @@
+#[path = "host/callback.rs"]
+mod callback;
 #[path = "host/compound.rs"]
 mod compound;
 #[path = "host/execution.rs"]

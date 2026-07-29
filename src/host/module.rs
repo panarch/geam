@@ -1,7 +1,7 @@
 use super::{
     FallibleHostFunction, HostFunction, HostFunctionDefinition, HostFunctionImplementation,
-    HostFunctionSchema, HostProfile, HostProvider, HostRegistrationError, ScopedHostFunction,
-    StatelessHostProfile,
+    HostFunctionSchema, HostProfile, HostProvider, HostRegistrationError,
+    ScopedDivergingHostFunction, ScopedHostFunction, StatelessHostProfile,
 };
 use ecow::EcoString;
 use gleam_core::analyse::name::check_name_case;
@@ -126,6 +126,22 @@ impl<Profile: HostProfile> HostModule<Profile> {
             .map(|()| self)
     }
 
+    pub fn with_scoped_diverging_function<Provider, Arguments, Return, Function>(
+        mut self,
+        name: impl Into<EcoString>,
+        function: Function,
+    ) -> Result<Self, HostRegistrationError>
+    where
+        Provider: HostProvider<Profile>,
+        Function: ScopedDivergingHostFunction<Profile, Provider, Arguments, Return>,
+    {
+        self.functions
+            .register(&self.identity.module, name.into(), |name| {
+                HostFunctionDefinition::new_scoped_diverging::<Provider, _, _, _>(name, function)
+            })
+            .map(|()| self)
+    }
+
     pub fn package(&self) -> &EcoString {
         &self.identity.package
     }
@@ -192,6 +208,22 @@ impl<Profile: HostProfile> HostProviderModule<Profile> {
         self.functions
             .register(&self.identity.module, name.into(), |name| {
                 HostFunctionDefinition::new_scoped::<Provider, _, _, _>(name, function)
+            })
+            .map(|()| self)
+    }
+
+    pub fn with_scoped_diverging_function<Provider, Arguments, Return, Function>(
+        mut self,
+        name: impl Into<EcoString>,
+        function: Function,
+    ) -> Result<Self, HostRegistrationError>
+    where
+        Provider: HostProvider<Profile>,
+        Function: ScopedDivergingHostFunction<Profile, Provider, Arguments, Return>,
+    {
+        self.functions
+            .register(&self.identity.module, name.into(), |name| {
+                HostFunctionDefinition::new_scoped_diverging::<Provider, _, _, _>(name, function)
             })
             .map(|()| self)
     }
@@ -437,12 +469,13 @@ mod tests {
     use crate::host::{
         HostCall, HostCallCompletion, HostCallError, HostFailure, HostFunctionDefinition,
         HostProvider, HostRegistrationError, HostScopedValue, StatelessHostProfile,
-        expect_value_implementation,
+        expect_never_implementation, expect_value_implementation,
     };
     use crate::plan::ValueType;
     use ecow::EcoString;
     use num_bigint::BigInt;
     use std::cell::Cell;
+    use std::convert::Infallible;
 
     struct Counter;
 
@@ -460,6 +493,13 @@ mod tests {
         *call.state() += 1;
         let value = BigInt::from(*call.state());
         Ok(call.return_value(value))
+    }
+
+    fn stop<'call>(
+        mut call: HostCall<'call, TestHostProfile, Counter, BigInt>,
+    ) -> Result<Infallible, HostCallError> {
+        *call.state() += 1;
+        Err(HostFailure::new("stopped").into())
     }
 
     #[test]
@@ -530,6 +570,50 @@ mod tests {
         drop(runtime);
         assert_eq!(state.counter, 42);
         assert!(state.unrelated);
+    }
+
+    #[test]
+    fn scoped_diverging_provider_registration_preserves_the_source_return_type() {
+        let provider = HostProviderModule::<TestHostProfile>::new("application", "main")
+            .expect("provider module should be valid")
+            .with_scoped_diverging_function::<Counter, (), BigInt, _>("stop", stop)
+            .expect("scoped diverging function should be valid");
+
+        let schema = provider
+            .functions()
+            .next()
+            .expect("scoped diverging function should have a schema");
+        assert_eq!(schema.name(), "stop");
+        assert_eq!(schema.type_().argument_types(), []);
+        assert_eq!(schema.type_().return_(), &ValueType::Int);
+
+        let hosts =
+            HostProviderSet::with_providers(Vec::<HostModule<TestHostProfile>>::new(), [provider])
+                .expect("provider module should be unique");
+        let (_, mut providers, implementations) = hosts.into_registered();
+        let (_, _, mut definitions) = providers
+            .pop()
+            .expect("provider module should be registered")
+            .into_parts();
+        let (_, implementation) = definitions
+            .pop()
+            .expect("scoped diverging function should be registered")
+            .into_parts();
+        let registered = implementations.implementation(implementation);
+        let implementation = expect_never_implementation(registered.as_ref());
+        let mut state = TestRunState::default();
+        let arguments = CallArguments::new(Vec::new(), Vec::new());
+        let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
+
+        assert_eq!(
+            implementation
+                .call(&mut runtime)
+                .expect_err("scoped diverging function should fail")
+                .to_string(),
+            "stopped",
+        );
+        drop(runtime);
+        assert_eq!(state.counter, 1);
     }
 
     #[test]

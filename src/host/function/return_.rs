@@ -17,6 +17,8 @@ use bool::HostBoolFunction;
 use float::HostFloatFunction;
 use int::HostIntFunction;
 pub(crate) use never::HostNeverFunction;
+#[cfg(test)]
+pub(crate) use never::expect_never_implementation;
 use nil::HostNilFunction;
 use string::HostStringFunction;
 use utf_codepoint::HostUtfCodepointFunction;
@@ -95,6 +97,17 @@ impl<Profile: HostProfile> HostFunctionImplementation<Profile> {
         Self::Value(HostValueFunction {
             kind: HostValueFunctionKind::Scoped(Arc::new(function)),
         })
+    }
+
+    pub(super) fn scoped_never(
+        function: impl Fn(
+            &mut dyn HostCallRuntime<Profile>,
+        ) -> Result<std::convert::Infallible, HostCallError>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        Self::Never(HostNeverFunction::scoped(function))
     }
 }
 

@@ -42,7 +42,7 @@ use crate::host::HostProfile;
 use crate::plan::{HostedModulePlan, ModuleId, ModulePlan, SourceContext};
 use ecow::EcoString;
 pub use explain::ExecutionPlanExplanation;
-pub use host::HostSpecializationError;
+pub use host::{HostSpecializationError, HostSpecializationErrorReason};
 use std::convert::Infallible;
 
 pub struct ExecutionPlan {

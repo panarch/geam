@@ -12,14 +12,14 @@ use std::fmt;
 pub(super) use argument::CallArguments;
 pub(crate) use argument::{
     HostBitArrayArgumentSlot, HostBoolArgumentSlot, HostCallArguments, HostCustomArgumentSlot,
-    HostFloatArgumentSlot, HostIntArgumentSlot, HostListArgumentSlot, HostNilArgumentSlot,
-    HostParameter, HostStringArgumentSlot, HostTupleArgumentSlot, HostUtfCodepointArgumentSlot,
-    HostValueArgumentSlot,
+    HostFloatArgumentSlot, HostFunctionArgumentSlot, HostIntArgumentSlot, HostListArgumentSlot,
+    HostNilArgumentSlot, HostParameter, HostStringArgumentSlot, HostTupleArgumentSlot,
+    HostUtfCodepointArgumentSlot, HostValueArgumentSlot,
 };
 pub(crate) use return_::HostNeverFunction;
-#[cfg(test)]
-pub(crate) use return_::expect_value_implementation;
 pub(crate) use return_::{HostFunctionImplementation, HostValueFunction};
+#[cfg(test)]
+pub(crate) use return_::{expect_never_implementation, expect_value_implementation};
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct HostFunctionSchema {
@@ -98,6 +98,14 @@ where
 {
 }
 
+pub trait ScopedDivergingHostFunction<Profile, Provider, Arguments, Return>:
+    adapter::ScopedDivergingHostFunction<Profile, Provider, Arguments, Return> + Send + Sync + 'static
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+{
+}
+
 impl<Profile, Provider, Function, Arguments, Return>
     ScopedHostFunction<Profile, Provider, Arguments, Return> for Function
 where
@@ -105,6 +113,18 @@ where
     Provider: HostProvider<Profile>,
     Function:
         adapter::ScopedHostFunction<Profile, Provider, Arguments, Return> + Send + Sync + 'static,
+{
+}
+
+impl<Profile, Provider, Function, Arguments, Return>
+    ScopedDivergingHostFunction<Profile, Provider, Arguments, Return> for Function
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Function: adapter::ScopedDivergingHostFunction<Profile, Provider, Arguments, Return>
+        + Send
+        + Sync
+        + 'static,
 {
 }
 
@@ -192,6 +212,23 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
         Function: ScopedHostFunction<Profile, Provider, Arguments, Return>,
     {
         let registration = <Function as adapter::ScopedHostFunction<
+            Profile,
+            Provider,
+            Arguments,
+            Return,
+        >>::register(function);
+        Self::from_registration(name, registration)
+    }
+
+    pub(crate) fn new_scoped_diverging<Provider, Arguments, Return, Function>(
+        name: EcoString,
+        function: Function,
+    ) -> Result<Self, crate::HostRegistrationError>
+    where
+        Provider: HostProvider<Profile>,
+        Function: ScopedDivergingHostFunction<Profile, Provider, Arguments, Return>,
+    {
+        let registration = <Function as adapter::ScopedDivergingHostFunction<
             Profile,
             Provider,
             Arguments,

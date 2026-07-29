@@ -11,8 +11,8 @@ mod value;
 
 pub use echo::{EchoLocation, EchoOutput, EchoSink};
 pub use error::{
-    BitArraySegmentPanicReason, ExecutionError, HostError, HostLocation, InvariantError, Panic,
-    PanicDetails, PanicKind, PanicMessage,
+    BitArraySegmentPanicReason, ExecutionError, HostError, HostLocation, HostOrigin,
+    InvariantError, Panic, PanicDetails, PanicKind, PanicMessage,
 };
 pub(in crate::runtime) use evaluated::{
     EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
@@ -119,40 +119,10 @@ impl<Profile: crate::HostProfile> ExecutableRuntimePlan
     {
         match target {
             crate::plan::execution::host::HostedFunctionTarget::Value(target) => {
-                let function = self.host_value_function(target);
-                let mut call = host::RuntimeHostCall::new(self, state, function, inputs);
-                match function.implementation().call(&mut call) {
-                    Ok(returned) => Ok(call.finish(returned, target.return_())),
-                    Err(error) => {
-                        drop(call);
-                        state.values_mut().drain_releases();
-                        let site = origin.into_site(function.site());
-                        Err(ExecutionError::from_host_call(
-                            function.metadata(),
-                            site.clone(),
-                            self.source_context_for(site.module()),
-                            error,
-                        ))
-                    }
-                }
+                invoke_host_value(self, state, origin, target, inputs)
             }
             crate::plan::execution::host::HostedFunctionTarget::Never(target) => {
-                let function = self.host_never_function(*target);
-                let mut call = host::RuntimeHostCall::new(self, state, function, inputs);
-                match function.implementation().call(&mut call) {
-                    Ok(never) => match never {},
-                    Err(error) => {
-                        drop(call);
-                        state.values_mut().drain_releases();
-                        let site = origin.into_site(function.site());
-                        Err(ExecutionError::from_host_call(
-                            function.metadata(),
-                            site.clone(),
-                            self.source_context_for(site.module()),
-                            error,
-                        ))
-                    }
-                }
+                invoke_host_never(self, state, origin, *target, inputs).map(|never| match never {})
             }
         }
     }
@@ -170,6 +140,76 @@ impl<Profile: crate::HostProfile> ExecutableRuntimePlan
             }
             crate::plan::execution::host::HostedFunctionTarget::Never(target) => {
                 self.host_never_function(*target).parameters()
+            }
+        }
+    }
+}
+
+fn invoke_host_value<'run, Profile, Body>(
+    plan: &crate::plan::execution::HostedExecution<Profile>,
+    state: &mut RuntimeStateFor<'run, crate::plan::execution::HostedExecution<Profile>>,
+    origin: HostCallOrigin,
+    target: &crate::plan::execution::host::HostFunctionId<Body>,
+    inputs: RetainedValues,
+) -> ExecutionResult<<<Body as FunctionBodyOwner>::Return as graph::GraphValue>::Evaluated>
+where
+    Profile: crate::HostProfile,
+    Body: ExecutionFunctionBody,
+    Body::Return: graph::GraphValue,
+    crate::plan::execution::HostedExecution<Profile>: 'run,
+{
+    let function = plan.host_value_function(target);
+    let mut call = host::RuntimeHostCall::new(plan, state, function, inputs);
+    match function.implementation().call(&mut call) {
+        Ok(returned) => Ok(call.finish(returned, target.return_())),
+        Err(error) => {
+            drop(call);
+            state.values_mut().drain_releases();
+            Err(host_call_error(plan, origin, function.metadata(), error))
+        }
+    }
+}
+
+fn invoke_host_never<'run, Profile>(
+    plan: &crate::plan::execution::HostedExecution<Profile>,
+    state: &mut RuntimeStateFor<'run, crate::plan::execution::HostedExecution<Profile>>,
+    origin: HostCallOrigin,
+    target: crate::plan::execution::host::HostNeverFunctionId,
+    inputs: RetainedValues,
+) -> ExecutionResult<std::convert::Infallible>
+where
+    Profile: crate::HostProfile,
+    crate::plan::execution::HostedExecution<Profile>: 'run,
+{
+    let function = plan.host_never_function(target);
+    let mut call = host::RuntimeHostCall::new(plan, state, function, inputs);
+    match function.implementation().call(&mut call) {
+        Ok(never) => match never {},
+        Err(error) => {
+            drop(call);
+            state.values_mut().drain_releases();
+            Err(host_call_error(plan, origin, function.metadata(), error))
+        }
+    }
+}
+
+fn host_call_error<Profile: crate::HostProfile>(
+    plan: &crate::plan::execution::HostedExecution<Profile>,
+    origin: HostCallOrigin,
+    function: &crate::plan::execution::host::HostedFunctionMetadata,
+    error: crate::host::HostCallError,
+) -> ExecutionError {
+    match error.into_kind() {
+        crate::host::HostCallErrorKind::Nested(error) => error,
+        crate::host::HostCallErrorKind::Failure(failure) => {
+            match origin.into_source_site(function.site()) {
+                Ok(site) => ExecutionError::from_host_call(
+                    function,
+                    site.clone(),
+                    plan.source_context_for(site.module()),
+                    failure,
+                ),
+                Err(caller) => ExecutionError::from_host_origin(function, caller, failure),
             }
         }
     }

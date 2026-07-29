@@ -8,26 +8,28 @@ pub struct HostFunctionTemplate {
     package: EcoString,
     site: crate::plan::HostCallSite,
     layout: Box<[HostParameter]>,
+    parameters: Box<[crate::host::HostTypeDescriptor]>,
+    return_: crate::host::HostTypeDescriptor,
     custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
     type_: FunctionType,
 }
 
 impl HostFunctionTemplate {
-    pub(crate) fn from_signature(
+    pub(crate) fn from_schema(
         signature: FunctionTemplateSignature,
         package: EcoString,
         site: crate::plan::HostCallSite,
-        layout: Box<[HostParameter]>,
-        custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
-        type_: FunctionType,
+        schema: crate::host::HostFunctionSchema,
     ) -> Self {
         Self {
             signature,
             package,
             site,
-            layout,
-            custom_schemas,
-            type_,
+            layout: schema.layout().to_vec().into_boxed_slice(),
+            parameters: schema.parameters().to_vec().into_boxed_slice(),
+            return_: schema.return_type().clone(),
+            custom_schemas: schema.custom_schemas().to_vec().into_boxed_slice(),
+            type_: schema.type_().clone(),
         }
     }
 
@@ -53,6 +55,14 @@ impl HostFunctionTemplate {
 
     pub(crate) fn layout(&self) -> &[HostParameter] {
         &self.layout
+    }
+
+    pub(crate) fn parameters(&self) -> &[crate::host::HostTypeDescriptor] {
+        &self.parameters
+    }
+
+    pub(crate) fn return_type(&self) -> &crate::host::HostTypeDescriptor {
+        &self.return_
     }
 
     pub(crate) fn custom_schemas(&self) -> &[crate::host::HostCustomTypeSchema] {

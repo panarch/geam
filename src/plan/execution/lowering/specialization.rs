@@ -379,6 +379,18 @@ impl SpecializedFunctionShape {
 }
 
 impl SpecializedCustomValueShape {
+    pub(super) fn new(
+        name: CustomTypeName,
+        arguments: Vec<SpecializedValueShape>,
+        constructor: CustomConstructorRefinement,
+    ) -> Self {
+        Self {
+            name,
+            arguments: arguments.into_boxed_slice(),
+            constructor,
+        }
+    }
+
     pub(super) fn instantiate(
         shape: &crate::plan::CustomValueShape,
         substitution: &SpecializedTypeSubstitution,

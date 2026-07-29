@@ -1,8 +1,8 @@
 use crate::host::{HostNeverFunction, HostValueFunction};
 use crate::plan::execution::function::{ExecutionFunctionBody, FunctionBodyOwner};
 use crate::plan::execution::graph::{
-    BitArrayLocalId, BoolLocalId, CustomLocal, FloatLocalId, IntLocalId, ListLocal, NilLocalId,
-    ParamLocal, StringLocalId, UtfCodepointLocalId,
+    BitArrayLocalId, BoolLocalId, FloatLocalId, IntLocalId, NilLocalId, ParamLocal, StringLocalId,
+    UtfCodepointLocalId,
 };
 use crate::plan::execution::type_::FunctionType;
 use ecow::EcoString;
@@ -50,9 +50,10 @@ pub(crate) enum HostCallParameter {
     Bool(BoolLocalId),
     Nil(NilLocalId),
     Value(ParamLocal),
-    List(ListLocal),
+    List(ParamLocal),
     Tuple(ParamLocal),
-    Custom(CustomLocal),
+    Custom(ParamLocal),
+    Function(ParamLocal),
 }
 
 impl<Body> Clone for HostFunctionId<Body>
@@ -207,10 +208,6 @@ impl<Implementation> HostedFunction<Implementation> {
         self.metadata.name()
     }
 
-    pub(crate) fn site(&self) -> &crate::plan::HostCallSite {
-        self.metadata.site()
-    }
-
     pub(crate) fn parameters(&self) -> &[ParamLocal] {
         self.metadata.parameters()
     }
@@ -277,9 +274,10 @@ impl HostCallParameter {
             Self::Bool(local) => ParamLocal::Bool(*local),
             Self::Nil(local) => ParamLocal::Nil(*local),
             Self::Value(local) => local.clone(),
-            Self::List(local) => ParamLocal::List(local.clone()),
+            Self::List(local) => local.clone(),
             Self::Tuple(local) => local.clone(),
-            Self::Custom(local) => ParamLocal::Custom(*local),
+            Self::Custom(local) => local.clone(),
+            Self::Function(local) => local.clone(),
         }
     }
 }
@@ -331,14 +329,14 @@ mod tests {
 
     #[test]
     fn host_call_parameters_expose_their_exact_typed_local() {
-        let custom = CustomLocal::new(
+        let custom = ParamLocal::Custom(CustomLocal::new(
             CustomLocalId(8),
             CustomValueShape::new(CustomTypeId::new(0), CustomValueShapeId::new(1)),
-        );
-        let list = ListLocal::Int {
+        ));
+        let list = ParamLocal::List(ListLocal::Int {
             local: IntListLocalId(9),
             type_id: IntListTypeId::new(ListTypeId::new(2)),
-        };
+        });
         let value_tuple = ParamLocal::Tuple {
             local: TupleLocalId(7),
             type_: vec![ValueType::Int],
@@ -347,6 +345,7 @@ mod tests {
             local: TupleLocalId(10),
             type_: vec![ValueType::Bool],
         };
+        let function = ParamLocal::GenericFunction(generic_function_local(11));
         let cases = [
             (
                 HostCallParameter::Int(IntLocalId(0)),
@@ -377,15 +376,10 @@ mod tests {
                 ParamLocal::Nil(NilLocalId(6)),
             ),
             (HostCallParameter::Value(value_tuple.clone()), value_tuple),
-            (
-                HostCallParameter::List(list.clone()),
-                ParamLocal::List(list),
-            ),
+            (HostCallParameter::List(list.clone()), list),
             (HostCallParameter::Tuple(tuple.clone()), tuple),
-            (
-                HostCallParameter::Custom(custom),
-                ParamLocal::Custom(custom),
-            ),
+            (HostCallParameter::Custom(custom.clone()), custom),
+            (HostCallParameter::Function(function.clone()), function),
         ];
 
         for (parameter, expected) in cases {

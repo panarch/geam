@@ -11,4 +11,4 @@ pub(crate) use function::{
 pub(crate) use table::HostFunctionTables;
 
 pub(crate) struct HostedExecutionProfile<Profile: HostProfile>(PhantomData<Profile>);
-pub use error::HostSpecializationError;
+pub use error::{HostSpecializationError, HostSpecializationErrorReason};

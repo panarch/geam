@@ -9,6 +9,15 @@ use std::fmt;
 pub(crate) enum HostCallOrigin {
     Entry,
     Source(HostCallSite),
+    Host(HostOrigin),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostOrigin {
+    package: EcoString,
+    module: EcoString,
+    function: EcoString,
+    signature: FunctionType,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,6 +28,9 @@ pub enum HostLocation {
         line: usize,
     },
     Site(HostCallSite),
+    Host {
+        caller: HostOrigin,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -54,6 +66,25 @@ impl HostError {
             failure,
             location,
             source,
+        }
+    }
+
+    pub(crate) fn new_from_host(
+        package: EcoString,
+        module: EcoString,
+        function: EcoString,
+        signature: FunctionType,
+        failure: HostFailure,
+        caller: HostOrigin,
+    ) -> Self {
+        Self {
+            package,
+            module,
+            function,
+            signature,
+            failure,
+            location: HostLocation::Host { caller },
+            source: None,
         }
     }
 
@@ -94,23 +125,31 @@ impl HostError {
 }
 
 impl HostLocation {
-    pub fn site(&self) -> &HostCallSite {
+    pub fn site(&self) -> Option<&HostCallSite> {
         match self {
-            Self::Resolved { site, .. } | Self::Site(site) => site,
+            Self::Resolved { site, .. } | Self::Site(site) => Some(site),
+            Self::Host { .. } => None,
         }
     }
 
     pub fn path(&self) -> Option<&Utf8PathBuf> {
         match self {
             Self::Resolved { path, .. } => Some(path),
-            Self::Site(_) => None,
+            Self::Site(_) | Self::Host { .. } => None,
         }
     }
 
     pub fn line(&self) -> Option<usize> {
         match self {
             Self::Resolved { line, .. } => Some(*line),
-            Self::Site(_) => None,
+            Self::Site(_) | Self::Host { .. } => None,
+        }
+    }
+
+    pub fn caller(&self) -> Option<&HostOrigin> {
+        match self {
+            Self::Host { caller } => Some(caller),
+            Self::Resolved { .. } | Self::Site(_) => None,
         }
     }
 
@@ -141,11 +180,56 @@ impl HostCallOrigin {
         Self::Source(site)
     }
 
-    pub(crate) fn into_site(self, declaration: &HostCallSite) -> HostCallSite {
+    pub(crate) fn host(function: &crate::plan::execution::host::HostedFunctionMetadata) -> Self {
+        Self::Host(HostOrigin::new(
+            function.package().clone(),
+            function.module().clone(),
+            function.name().clone(),
+            function.signature().clone(),
+        ))
+    }
+
+    pub(crate) fn into_source_site(
+        self,
+        declaration: &HostCallSite,
+    ) -> Result<HostCallSite, HostOrigin> {
         match self {
-            Self::Entry => declaration.clone(),
-            Self::Source(site) => site,
+            Self::Entry => Ok(declaration.clone()),
+            Self::Source(site) => Ok(site),
+            Self::Host(caller) => Err(caller),
         }
+    }
+}
+
+impl HostOrigin {
+    fn new(
+        package: EcoString,
+        module: EcoString,
+        function: EcoString,
+        signature: FunctionType,
+    ) -> Self {
+        Self {
+            package,
+            module,
+            function,
+            signature,
+        }
+    }
+
+    pub fn package(&self) -> &EcoString {
+        &self.package
+    }
+
+    pub fn module(&self) -> &EcoString {
+        &self.module
+    }
+
+    pub fn function(&self) -> &EcoString {
+        &self.function
+    }
+
+    pub fn signature(&self) -> &FunctionType {
+        &self.signature
     }
 }
 
@@ -211,7 +295,8 @@ mod tests {
             &FunctionType::new(vec![ValueType::Int, ValueType::Int], ValueType::Int),
         );
         assert_eq!(error.failure().message(), "unavailable");
-        assert_eq!(error.location().site(), &site);
+        assert_eq!(error.location().site(), Some(&site));
+        assert_eq!(error.location().caller(), None);
         assert_eq!(error.location().path(), Some(source.path()));
         assert_eq!(error.location().line(), Some(2));
         assert_eq!(
@@ -234,7 +319,8 @@ mod tests {
         );
 
         assert_eq!(error.location(), &HostLocation::Site(site.clone()));
-        assert_eq!(error.location().site(), &site);
+        assert_eq!(error.location().site(), Some(&site));
+        assert_eq!(error.location().caller(), None);
         assert_eq!(error.location().path(), None);
         assert_eq!(error.location().line(), None);
     }
@@ -246,12 +332,57 @@ mod tests {
         let source = HostCallSite::new("main".into(), "main".into(), SourceSpan::new(20, 34));
 
         assert_eq!(
-            HostCallOrigin::Entry.into_site(&declaration),
-            declaration.clone(),
+            HostCallOrigin::Entry.into_source_site(&declaration),
+            Ok(declaration.clone()),
         );
         assert_eq!(
-            HostCallOrigin::source(source.clone()).into_site(&declaration),
-            source,
+            HostCallOrigin::source(source.clone()).into_source_site(&declaration),
+            Ok(source),
+        );
+    }
+
+    #[test]
+    fn host_origin_location_preserves_the_invoking_host_identity() {
+        let caller = super::HostOrigin::new(
+            "application".into(),
+            "host/outer".into(),
+            "apply".into(),
+            FunctionType::new(vec![ValueType::Int], ValueType::Int),
+        );
+        let error = HostError::new_from_host(
+            "application".into(),
+            "host/inner".into(),
+            "increment".into(),
+            FunctionType::new(vec![ValueType::Int], ValueType::Int),
+            HostFailure::new("unavailable"),
+            caller.clone(),
+        );
+
+        assert_eq!(
+            error.location(),
+            &HostLocation::Host {
+                caller: caller.clone(),
+            },
+        );
+        assert_eq!(error.location().site(), None);
+        assert_eq!(error.location().path(), None);
+        assert_eq!(error.location().line(), None);
+        assert_eq!(error.location().caller(), Some(&caller));
+        assert_eq!(caller.package(), "application");
+        assert_eq!(caller.module(), "host/outer");
+        assert_eq!(caller.function(), "apply");
+        assert_eq!(
+            caller.signature(),
+            &FunctionType::new(vec![ValueType::Int], ValueType::Int),
+        );
+        let declaration = HostCallSite::new(
+            "host/inner".into(),
+            "increment".into(),
+            SourceSpan::new(0, 0),
+        );
+        assert_eq!(
+            HostCallOrigin::Host(caller.clone()).into_source_site(&declaration),
+            Err(caller),
         );
     }
 

@@ -21,6 +21,15 @@ where
     fn register(self) -> HostFunctionRegistration<Profile>;
 }
 
+pub trait ScopedDivergingHostFunction<Profile, Provider, Arguments, Return>:
+    Send + Sync + 'static
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+{
+    fn register(self) -> HostFunctionRegistration<Profile>;
+}
+
 pub struct HostFunctionRegistration<Profile: HostProfile> {
     pub(super) parameters: Box<[HostParameter]>,
     pub(super) parameter_types: Box<[HostTypeDescriptor]>,
@@ -92,6 +101,38 @@ macro_rules! host_function {
                     custom_schemas: custom_schemas.into_boxed_slice(),
                     implementation: HostFunctionImplementation::scoped(move |runtime| {
                         self(HostCall::new(runtime)).map(|completion| completion.token)
+                    }),
+                }
+            }
+        }
+
+        impl<Profile, Provider, Function, Return>
+            ScopedDivergingHostFunction<Profile, Provider, (), Return> for Function
+        where
+            Profile: HostProfile,
+            Provider: HostProvider<Profile>,
+            Function: for<'call> Fn(
+                    HostCall<'call, Profile, Provider, Return>,
+                ) -> Result<std::convert::Infallible, HostCallError>
+                + Send
+                + Sync
+                + 'static,
+            Return: HostAbiType,
+        {
+            fn register(self) -> HostFunctionRegistration<Profile> {
+                let mut custom_schemas = Vec::new();
+                let mut visited = std::collections::HashSet::new();
+                <Return as HostAbiType>::collect_custom_schemas(
+                    &mut custom_schemas,
+                    &mut visited,
+                );
+                HostFunctionRegistration {
+                    parameters: Box::new([]),
+                    parameter_types: Box::new([]),
+                    return_type: <Return as HostAbiType>::descriptor(),
+                    custom_schemas: custom_schemas.into_boxed_slice(),
+                    implementation: HostFunctionImplementation::scoped_never(move |runtime| {
+                        self(HostCall::new(runtime))
                     }),
                 }
             }
@@ -189,6 +230,52 @@ macro_rules! host_function {
                 }
             }
         }
+
+        impl<Profile, Provider, Function, Return, $($argument,)*>
+            ScopedDivergingHostFunction<Profile, Provider, ($($argument,)*), Return> for Function
+        where
+            Profile: HostProfile,
+            Provider: HostProvider<Profile>,
+            Function: for<'call> Fn(
+                HostCall<'call, Profile, Provider, Return>,
+                    $(<$argument as crate::host::HostType>::Value<'call>),*
+                ) -> Result<std::convert::Infallible, HostCallError>
+                + Send
+                + Sync
+                + 'static,
+            Return: HostAbiType,
+            $($argument: HostScopedArgument,)*
+        {
+            fn register(self) -> HostFunctionRegistration<Profile> {
+                let mut layout = HostParameterLayout::default();
+                $(let $slot = <$argument as HostScopedArgument>::register(&mut layout);)*
+                let mut custom_schemas = Vec::new();
+                let mut visited = std::collections::HashSet::new();
+                $(<$argument as HostAbiType>::collect_custom_schemas(
+                    &mut custom_schemas,
+                    &mut visited,
+                );)*
+                <Return as HostAbiType>::collect_custom_schemas(
+                    &mut custom_schemas,
+                    &mut visited,
+                );
+                let implementation = HostFunctionImplementation::scoped_never(move |runtime| {
+                    let call = HostCall::new(runtime);
+                    $(let $slot = <$argument as HostScopedArgument>::read(&call, $slot);)*
+                    self(
+                        call,
+                        $($slot),*
+                    )
+                });
+                HostFunctionRegistration {
+                    parameters: layout.finish(),
+                    parameter_types: vec![$(<$argument as HostAbiType>::descriptor()),*].into_boxed_slice(),
+                    return_type: <Return as HostAbiType>::descriptor(),
+                    custom_schemas: custom_schemas.into_boxed_slice(),
+                    implementation,
+                }
+            }
+        }
     };
 }
 
@@ -211,17 +298,20 @@ host_function!(
 
 #[cfg(test)]
 mod tests {
-    use super::{FallibleHostFunction, HostFunction, ScopedHostFunction};
+    use super::{
+        FallibleHostFunction, HostFunction, ScopedDivergingHostFunction, ScopedHostFunction,
+    };
     use crate::BitArrayValue;
     use crate::host::function::HostFunctionImplementation;
     use crate::host::function::argument::CallArguments;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{
         HostCall, HostCallCompletion, HostCallError, HostFailure, HostProvider, HostScopedValue,
-        HostTypeDescriptor, expect_value_implementation,
+        HostTypeDescriptor, expect_never_implementation, expect_value_implementation,
     };
     use ecow::EcoString;
     use num_bigint::BigInt;
+    use std::convert::Infallible;
 
     struct ScopedProvider;
 
@@ -277,6 +367,58 @@ mod tests {
         (),
         (),
     ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError>;
+    type Diverging0 = for<'call> fn(
+        HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+    ) -> Result<Infallible, HostCallError>;
+    type Diverging1 = for<'call> fn(
+        HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+        (),
+    ) -> Result<Infallible, HostCallError>;
+    type Diverging2 = for<'call> fn(
+        HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+        (),
+        (),
+    ) -> Result<Infallible, HostCallError>;
+    type Diverging3 = for<'call> fn(
+        HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+        (),
+        (),
+        (),
+    ) -> Result<Infallible, HostCallError>;
+    type Diverging4 = for<'call> fn(
+        HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+        (),
+        (),
+        (),
+        (),
+    ) -> Result<Infallible, HostCallError>;
+    type Diverging5 = for<'call> fn(
+        HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+        (),
+        (),
+        (),
+        (),
+        (),
+    ) -> Result<Infallible, HostCallError>;
+    type Diverging6 = for<'call> fn(
+        HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+        (),
+        (),
+        (),
+        (),
+        (),
+        (),
+    ) -> Result<Infallible, HostCallError>;
+    type Diverging7 = for<'call> fn(
+        HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+        (),
+        (),
+        (),
+        (),
+        (),
+        (),
+        (),
+    ) -> Result<Infallible, HostCallError>;
 
     impl HostProvider<TestHostProfile> for ScopedProvider {
         type State = usize;
@@ -461,6 +603,92 @@ mod tests {
             );
             drop(runtime);
             assert_eq!(state.counter, usize::from(arity == 0));
+        }
+    }
+
+    #[test]
+    fn supports_every_scoped_diverging_argument_arity() {
+        let zero: Diverging0 = |_| Err(HostFailure::new("0").into());
+        let one: Diverging1 = |_, _| Err(HostFailure::new("1").into());
+        let two: Diverging2 = |_, _, _| Err(HostFailure::new("2").into());
+        let three: Diverging3 = |_, _, _, _| Err(HostFailure::new("3").into());
+        let four: Diverging4 = |_, _, _, _, _| Err(HostFailure::new("4").into());
+        let five: Diverging5 = |_, _, _, _, _, _| Err(HostFailure::new("5").into());
+        let six: Diverging6 = |_, _, _, _, _, _, _| Err(HostFailure::new("6").into());
+        let seven: Diverging7 = |_, _, _, _, _, _, _, _| Err(HostFailure::new("7").into());
+        let registrations = vec![
+            <_ as ScopedDivergingHostFunction<
+                TestHostProfile,
+                ScopedProvider,
+                (),
+                BigInt,
+            >>::register(zero),
+            <_ as ScopedDivergingHostFunction<
+                TestHostProfile,
+                ScopedProvider,
+                ((),),
+                BigInt,
+            >>::register(one),
+            <_ as ScopedDivergingHostFunction<
+                TestHostProfile,
+                ScopedProvider,
+                ((), ()),
+                BigInt,
+            >>::register(two),
+            <_ as ScopedDivergingHostFunction<
+                TestHostProfile,
+                ScopedProvider,
+                ((), (), ()),
+                BigInt,
+            >>::register(three),
+            <_ as ScopedDivergingHostFunction<
+                TestHostProfile,
+                ScopedProvider,
+                ((), (), (), ()),
+                BigInt,
+            >>::register(four),
+            <_ as ScopedDivergingHostFunction<
+                TestHostProfile,
+                ScopedProvider,
+                ((), (), (), (), ()),
+                BigInt,
+            >>::register(five),
+            <_ as ScopedDivergingHostFunction<
+                TestHostProfile,
+                ScopedProvider,
+                ((), (), (), (), (), ()),
+                BigInt,
+            >>::register(six),
+            <_ as ScopedDivergingHostFunction<
+                TestHostProfile,
+                ScopedProvider,
+                ((), (), (), (), (), (), ()),
+                BigInt,
+            >>::register(seven),
+        ];
+
+        for (arity, registration) in registrations.into_iter().enumerate() {
+            assert_eq!(
+                registration.parameter_types.as_ref(),
+                vec![HostTypeDescriptor::Nil; arity],
+            );
+            assert_eq!(registration.return_type, HostTypeDescriptor::Int);
+            let arguments = CallArguments::new(Vec::new(), Vec::new()).with_scalar_values(
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                arity,
+            );
+            let mut state = TestRunState::default();
+            let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
+            assert_eq!(
+                expect_never_implementation(&registration.implementation)
+                    .call(&mut runtime)
+                    .expect_err("scoped diverging callback should not return")
+                    .to_string(),
+                arity.to_string(),
+            );
         }
     }
 

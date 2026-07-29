@@ -1,4 +1,5 @@
 mod custom;
+mod function;
 mod list;
 mod parameter;
 mod scalar;
@@ -12,6 +13,7 @@ pub use custom::{
     HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType, HostCustomTypeSchema,
     HostSchemaType,
 };
+pub use function::HostFunctionType;
 pub use list::HostListType;
 pub use parameter::HostTypeParameter;
 pub use sequence::{HostTypeList, HostTypeListEnd, HostTypeSequence};
@@ -43,6 +45,10 @@ pub(crate) enum HostTypeDescriptor {
     Nil,
     List(Box<HostTypeDescriptor>),
     Tuple(Box<[HostTypeDescriptor]>),
+    Function {
+        arguments: Box<[HostTypeDescriptor]>,
+        return_: Box<HostTypeDescriptor>,
+    },
     Custom {
         schema: HostCustomTypeSchema,
         arguments: Box<[HostTypeDescriptor]>,
@@ -122,6 +128,14 @@ impl HostTypeDescriptor {
                     .collect::<Vec<_>>()
                     .into_boxed_slice(),
             ),
+            Self::Function { arguments, return_ } => HostSchemaType::Function {
+                arguments: arguments
+                    .iter()
+                    .map(Self::schema_type)
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+                return_: Box::new(return_.schema_type()),
+            },
             Self::Custom { schema, arguments } => HostSchemaType::Custom {
                 package: schema.package().clone(),
                 module: schema.module().clone(),
@@ -155,6 +169,12 @@ impl HostTypeDescriptor {
                     .collect::<Vec<_>>()
                     .into_boxed_slice(),
             ),
+            Self::Function { arguments, return_ } => {
+                crate::plan::ValueShape::Function(Box::new(crate::plan::FunctionShape::new(
+                    arguments.iter().map(Self::value_shape).collect(),
+                    return_.value_shape(),
+                )))
+            }
             Self::Custom { schema, arguments } => crate::plan::ValueShape::Custom(
                 crate::plan::CustomValueShape::any(crate::plan::CustomType::new(
                     crate::plan::CustomTypeName::new(
@@ -182,6 +202,12 @@ impl HostTypeDescriptor {
                 for element in elements {
                     element.collect_type_parameters(output);
                 }
+            }
+            Self::Function { arguments, return_ } => {
+                for argument in arguments {
+                    argument.collect_type_parameters(output);
+                }
+                return_.collect_type_parameters(output);
             }
             Self::Custom { arguments, .. } => {
                 for argument in arguments {
@@ -493,10 +519,12 @@ mod tests {
             assert_eq!(descriptor.schema_type(), schema);
         }
         assert_eq!(
-            HostSchemaType::function(
-                [HostSchemaType::Int, HostSchemaType::Bool],
-                HostSchemaType::String,
-            ),
+            HostTypeDescriptor::Function {
+                arguments: vec![HostTypeDescriptor::Int, HostTypeDescriptor::Bool]
+                    .into_boxed_slice(),
+                return_: Box::new(HostTypeDescriptor::String),
+            }
+            .schema_type(),
             HostSchemaType::Function {
                 arguments: vec![HostSchemaType::Int, HostSchemaType::Bool].into_boxed_slice(),
                 return_: Box::new(HostSchemaType::String),

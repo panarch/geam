@@ -223,6 +223,19 @@ execution specialization seals concrete locals and return storage. Do not
 replace these boundaries with materialized public values, per-specialization
 user registration, or runtime shape validation.
 
+Treat callable invocation as an explicit call-scoped capability. A callback
+capability must have inhabited argument storage when hosted execution is
+sealed; an opaque function value may pass through generic storage without
+becoming invocable. Keep symbolic and invocable function storage distinct, and
+do not add a runtime generic callback branch.
+
+End provider-state and actual payload borrows before nested execution re-enters
+Gleam. Call-scoped token handles may remain live across re-entry because the
+runtime owns their payloads, but they must not escape the host invocation.
+Nested source panics and host failures must retain the actual failed source or
+provider identity; an outer provider must not repackage them as its own
+failure.
+
 ## Panic Rules
 
 Production Geam logic must not use explicit panic paths for control flow,

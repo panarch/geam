@@ -8,7 +8,7 @@ use crate::runtime::Value;
 use ecow::EcoString;
 
 pub(crate) use self::host::HostCallOrigin;
-pub use self::host::{HostError, HostLocation};
+pub use self::host::{HostError, HostLocation, HostOrigin};
 pub use self::invariant::InvariantError;
 pub use self::panic::{BitArraySegmentPanicReason, Panic, PanicDetails, PanicKind, PanicMessage};
 
@@ -29,16 +29,31 @@ impl ExecutionError {
         function: &crate::plan::execution::host::HostedFunctionMetadata,
         site: crate::plan::HostCallSite,
         source_context: Option<&SourceContext>,
-        error: crate::HostCallError,
+        failure: crate::HostFailure,
     ) -> Self {
         Self::Host(Box::new(HostError::new(
             function.package().clone(),
             function.module().clone(),
             function.name().clone(),
             function.signature().clone(),
-            error.into_failure(),
+            failure,
             site,
             source_context,
+        )))
+    }
+
+    pub(crate) fn from_host_origin(
+        function: &crate::plan::execution::host::HostedFunctionMetadata,
+        caller: HostOrigin,
+        failure: crate::HostFailure,
+    ) -> Self {
+        Self::Host(Box::new(HostError::new_from_host(
+            function.package().clone(),
+            function.module().clone(),
+            function.name().clone(),
+            function.signature().clone(),
+            failure,
+            caller,
         )))
     }
 

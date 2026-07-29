@@ -1,7 +1,7 @@
 use geam::{
-    ExecutionError, HostFailure, HostModule, HostProviderModule, HostProviderSet, HostedExecution,
-    ModuleSource, PackageSource, StatelessHostProfile, Value, compile_typed_host_program,
-    plan_host_program,
+    ExecutionError, HostCall, HostCallError, HostFailure, HostModule, HostProvider,
+    HostProviderModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
+    StatelessHostProfile, Value, compile_typed_host_program, plan_host_program,
 };
 use num_bigint::BigInt;
 use std::convert::Infallible;
@@ -84,6 +84,60 @@ pub fn main() -> Int {
         );
         assert_eq!(error.location().line(), Some(expected_line));
     }
+}
+
+#[test]
+fn executes_a_scoped_diverging_provider_in_the_default_stateless_profile() {
+    struct Provider;
+
+    impl HostProvider<StatelessHostProfile> for Provider {
+        type State = ();
+
+        fn project(state: &mut ()) -> &mut Self::State {
+            state
+        }
+    }
+
+    fn stop<'call>(
+        _call: HostCall<'call, StatelessHostProfile, Provider, BigInt>,
+    ) -> Result<Infallible, HostCallError> {
+        Err(HostFailure::new("scoped stop").into())
+    }
+
+    let control = HostModule::new("host_support", "host/control")
+        .expect("host module should be valid")
+        .with_scoped_diverging_function::<Provider, (), BigInt, _>("stop", stop)
+        .expect("scoped diverging host should register");
+    let source = r#"
+import host/control
+
+pub fn main() {
+  control.stop()
+}
+"#;
+    let typed = compile_typed_host_program(
+        "application",
+        "main",
+        [PackageSource::new(
+            "application",
+            ["host_support"],
+            [ModuleSource::new("main", "main.gleam", source)],
+        )],
+        HostProviderSet::new([control]).expect("host module should be unique"),
+    )
+    .expect("scoped diverging source should compile");
+    let plan = plan_host_program(typed).expect("scoped diverging source should plan");
+    let execution = HostedExecution::try_from_module_plan(plan)
+        .expect("scoped diverging execution should seal");
+    let error = execution
+        .run_main(&mut (), &mut Vec::new())
+        .expect_err("scoped diverging host should fail");
+    let ExecutionError::Host(error) = error else {
+        panic!("scoped diverging host should preserve its host failure");
+    };
+
+    assert_eq!(error.function(), "stop");
+    assert_eq!(error.failure().message(), "scoped stop");
 }
 
 #[test]

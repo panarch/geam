@@ -1,7 +1,9 @@
+mod callable;
 mod list;
 mod returning_function;
 mod value;
 
+pub(in crate::runtime) use callable::{InvocableFunctionValue, invoke_callable};
 pub(in crate::runtime) use list::{
     run_bit_array_list, run_bool_list, run_custom_list, run_float_list, run_function_list,
     run_int_list, run_list, run_list_list, run_nil_list, run_parameter_list,

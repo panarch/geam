@@ -836,7 +836,8 @@ mod tests {
         EvaluatedIntFunction, EvaluatedValue,
     };
     use crate::{
-        HostCall, HostCallCompletion, HostCallError, HostFailure, HostList, HostListType,
+        HostCall, HostCallCompletion, HostCallError, HostCallable, HostFailure, HostFunctionType,
+        HostList, HostListType, HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue,
         StatelessHostProfile,
     };
     use num_bigint::BigInt;
@@ -855,6 +856,19 @@ mod tests {
         Err(HostFailure::new("stop").into())
     }
 
+    type CallbackValue = HostTypeParameter<0>;
+    type CallbackArguments = HostTypeList<CallbackValue, HostTypeListEnd>;
+    type Callback = HostFunctionType<CallbackArguments, CallbackValue>;
+
+    fn invoke_generic_callback<'call>(
+        mut call: HostCall<'call, StatelessHostProfile, StatelessTestProvider, CallbackValue>,
+        function: HostCallable<'call, CallbackArguments, CallbackValue>,
+        value: HostValue<'call, CallbackValue>,
+    ) -> Result<HostCallCompletion<'call, CallbackValue>, HostCallError> {
+        let returned = call.invoke(function, (value, ()))?;
+        Ok(call.return_value(returned))
+    }
+
     fn int_main(plan: &crate::ExecutionPlan) -> crate::plan::execution::function::IntFunctionId {
         match plan.main_runtime() {
             RuntimeFunctionId::Int(main) => main,
@@ -862,9 +876,7 @@ mod tests {
         }
     }
 
-    fn source_panic(
-        result: crate::runtime::error::ExecutionResult<num_bigint::BigInt>,
-    ) -> crate::runtime::Panic {
+    fn source_panic(result: Result<(), crate::runtime::ExecutionError>) -> crate::runtime::Panic {
         match result {
             Err(crate::runtime::ExecutionError::Panic(panic)) => panic,
             other => panic!("expected source panic, got {other:?}"),
@@ -1086,6 +1098,112 @@ pub fn main() {
     }
 
     #[test]
+    fn nested_callbacks_release_retained_custom_list_values_after_success() {
+        let host = crate::HostModule::new("host_support", "host/callback")
+            .expect("host module should be valid")
+            .with_scoped_function::<
+                StatelessTestProvider,
+                (Callback, CallbackValue),
+                CallbackValue,
+                _,
+            >("invoke", invoke_generic_callback)
+            .expect("generic callback should be valid");
+        let source = r#"
+import host/callback
+
+pub type Boxed {
+  Boxed(List(Int))
+}
+
+fn identity(value: Boxed) {
+  value
+}
+
+pub fn main() {
+  let _ = callback.invoke(identity, Boxed([1]))
+  0
+}
+"#;
+        let typed = crate::compile_typed_host_program(
+            "application",
+            "main",
+            [crate::PackageSource::new(
+                "application",
+                ["host_support"],
+                [crate::ModuleSource::new("main", "src/main.gleam", source)],
+            )],
+            crate::HostProviderSet::new([host]).expect("host module should be unique"),
+        )
+        .expect("successful callback source should compile");
+        let plan = crate::plan_host_program(typed).expect("successful callback source should plan");
+        let execution = crate::HostedExecution::try_from_module_plan(plan)
+            .expect("successful callback execution should seal");
+        let mut host_state = ();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::with_host(&mut echo, &mut host_state);
+
+        assert_eq!(
+            crate::runtime::run_program(&execution, &mut state),
+            Ok(crate::Value::Int(BigInt::from(0))),
+        );
+        assert_eq!(state.values.ints.slots.len(), 1);
+        assert_eq!(state.values.ints.free, [0]);
+        assert!(state.values.releases.borrow().is_empty());
+    }
+
+    #[test]
+    fn nested_callbacks_release_retained_custom_list_values_after_panic() {
+        let host = crate::HostModule::new("host_support", "host/callback")
+            .expect("host module should be valid")
+            .with_scoped_function::<
+                StatelessTestProvider,
+                (Callback, CallbackValue),
+                CallbackValue,
+                _,
+            >("invoke", invoke_generic_callback)
+            .expect("generic callback should be valid");
+        let source = r#"
+import host/callback
+
+pub type Boxed {
+  Boxed(List(Int))
+}
+
+fn stop(_value: Boxed) -> Boxed {
+  panic as "nested"
+}
+
+pub fn main() {
+  callback.invoke(stop, Boxed([1]))
+}
+"#;
+        let typed = crate::compile_typed_host_program(
+            "application",
+            "main",
+            [crate::PackageSource::new(
+                "application",
+                ["host_support"],
+                [crate::ModuleSource::new("main", "src/main.gleam", source)],
+            )],
+            crate::HostProviderSet::new([host]).expect("host module should be unique"),
+        )
+        .expect("panicking callback source should compile");
+        let plan = crate::plan_host_program(typed).expect("panicking callback source should plan");
+        let execution = crate::HostedExecution::try_from_module_plan(plan)
+            .expect("panicking callback execution should seal");
+        let mut host_state = ();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::with_host(&mut echo, &mut host_state);
+
+        let panic = source_panic(crate::runtime::run_program(&execution, &mut state).map(drop));
+        assert_eq!(panic.kind(), crate::PanicKind::Panic);
+        assert_eq!(panic.site().function(), "stop");
+        assert_eq!(state.values.ints.slots.len(), 1);
+        assert_eq!(state.values.ints.free, [0]);
+        assert!(state.values.releases.borrow().is_empty());
+    }
+
+    #[test]
     fn tail_recursive_block_replacement_reuses_a_fixed_list_slot_set() {
         let plan = crate::runtime::plan_src(include_str!(
             "../../tests/fixtures/execution/functions/tail_call/list_tail_recursion_replaces_allocations.gleam"
@@ -1133,13 +1251,16 @@ pub fn main() -> Int {
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
 
-        let panic = source_panic(crate::runtime::function::run_int(
-            &plan,
-            &mut state,
-            main,
-            crate::runtime::error::HostCallOrigin::Entry,
-            RetainedValues::empty(),
-        ));
+        let panic = source_panic(
+            crate::runtime::function::run_int(
+                &plan,
+                &mut state,
+                main,
+                crate::runtime::error::HostCallOrigin::Entry,
+                RetainedValues::empty(),
+            )
+            .map(drop),
+        );
 
         assert_eq!(panic.kind(), crate::runtime::PanicKind::Panic);
         assert_eq!(
@@ -1167,13 +1288,16 @@ pub fn main() -> Int {
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
 
-        let panic = source_panic(crate::runtime::function::run_int(
-            &plan,
-            &mut state,
-            main,
-            crate::runtime::error::HostCallOrigin::Entry,
-            RetainedValues::empty(),
-        ));
+        let panic = source_panic(
+            crate::runtime::function::run_int(
+                &plan,
+                &mut state,
+                main,
+                crate::runtime::error::HostCallOrigin::Entry,
+                RetainedValues::empty(),
+            )
+            .map(drop),
+        );
 
         assert_eq!(
             panic.message(),
@@ -1193,9 +1317,9 @@ pub fn main() -> Int {
     }
 
     #[test]
-    #[should_panic(expected = "expected source panic, got Ok(0)")]
+    #[should_panic(expected = "expected source panic, got Ok(())")]
     fn source_panic_guard_rejects_success() {
-        source_panic(Ok(0.into()));
+        source_panic(Ok(()));
     }
 
     #[test]

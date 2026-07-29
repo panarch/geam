@@ -6,13 +6,28 @@ use std::convert::Infallible;
 use std::sync::Arc;
 
 pub(crate) struct HostNeverFunction<Profile: HostProfile> {
-    implementation: Arc<HostCallback<Profile, Infallible>>,
+    implementation: HostNeverFunctionKind<Profile>,
 }
+
+enum HostNeverFunctionKind<Profile: HostProfile> {
+    Scalar(Arc<HostCallback<Profile, Infallible>>),
+    Scoped(Arc<HostScopedNeverCallback<Profile>>),
+}
+
+type HostScopedNeverCallback<Profile> =
+    dyn Fn(&mut dyn HostCallRuntime<Profile>) -> Result<Infallible, HostCallError> + Send + Sync;
 
 impl<Profile: HostProfile> Clone for HostNeverFunction<Profile> {
     fn clone(&self) -> Self {
         Self {
-            implementation: Arc::clone(&self.implementation),
+            implementation: match &self.implementation {
+                HostNeverFunctionKind::Scalar(function) => {
+                    HostNeverFunctionKind::Scalar(Arc::clone(function))
+                }
+                HostNeverFunctionKind::Scoped(function) => {
+                    HostNeverFunctionKind::Scoped(Arc::clone(function))
+                }
+            },
         }
     }
 }
@@ -22,8 +37,24 @@ impl<Profile: HostProfile> HostNeverFunction<Profile> {
         &self,
         runtime: &mut dyn HostCallRuntime<Profile>,
     ) -> Result<Infallible, HostCallError> {
-        let (state, arguments) = runtime.scalar_context();
-        (self.implementation)(state, arguments)
+        match &self.implementation {
+            HostNeverFunctionKind::Scalar(function) => {
+                let (state, arguments) = runtime.scalar_context();
+                function(state, arguments)
+            }
+            HostNeverFunctionKind::Scoped(function) => function(runtime),
+        }
+    }
+
+    pub(super) fn scoped(
+        function: impl Fn(&mut dyn HostCallRuntime<Profile>) -> Result<Infallible, HostCallError>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        Self {
+            implementation: HostNeverFunctionKind::Scoped(Arc::new(function)),
+        }
     }
 }
 
@@ -39,13 +70,13 @@ impl HostReturn for Infallible {
         + 'static,
     ) -> HostFunctionImplementation<Profile> {
         HostFunctionImplementation::Never(HostNeverFunction {
-            implementation: Arc::new(function),
+            implementation: HostNeverFunctionKind::Scalar(Arc::new(function)),
         })
     }
 }
 
 #[cfg(test)]
-pub(super) fn expect_never_implementation<Profile: HostProfile>(
+pub(crate) fn expect_never_implementation<Profile: HostProfile>(
     implementation: &HostFunctionImplementation<Profile>,
 ) -> &HostNeverFunction<Profile> {
     let HostFunctionImplementation::Never(implementation) = implementation else {

@@ -90,7 +90,19 @@ Owned scalar closures use `BigInt`, `f64`, `EcoString`, `BitArrayValue`,
 `HostList`, `HostTuple`, and ordinary-custom handles; these handles cannot
 escape their invocation, and compound returns are built explicitly through
 the same call. Generic providers register one Gleam type scheme and are
-specialized into concrete execution targets when used.
+specialized into concrete execution targets when used. `HostFunctionType`
+exposes a Gleam function as a call-scoped `HostCallable`; invoking it re-enters
+the existing typed Gleam function loops and may call another host provider.
+The borrow checker prevents re-entry while a provider-state borrow remains
+live. Compound values use runtime-owned token handles, so they may remain live
+across a nested call but cannot escape the host invocation.
+
+`HostedExecution::try_from_module_plan` seals the entry-reachable host ABI
+before runtime construction. It rejects only a reachable value return whose
+storage remains unresolved or a callback capability whose argument storage is
+uninhabited. Opaque function values can still pass through generic
+`HostTypeParameter` positions without becoming invocable. Nested source panics
+and host failures retain the actual failed source or provider identity.
 
 ## Upstream
 

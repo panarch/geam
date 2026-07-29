@@ -586,6 +586,10 @@ fn host_type(type_: &HostTypeDescriptor) -> std::sync::Arc<gleam_core::type_::Ty
         HostTypeDescriptor::Tuple(elements) => {
             tuple(elements.iter().map(host_type).collect::<Vec<_>>())
         }
+        HostTypeDescriptor::Function { arguments, return_ } => fn_(
+            arguments.iter().map(host_type).collect(),
+            host_type(return_),
+        ),
         HostTypeDescriptor::Custom { schema, arguments } => named(
             schema.package(),
             schema.module(),

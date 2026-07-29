@@ -1,8 +1,9 @@
 use crate::host::{
     HostCallArguments, HostCallCompletion, HostCustom, HostCustomArgumentSlot,
-    HostCustomConstructor, HostCustomToken, HostCustomType, HostList, HostListArgumentSlot,
-    HostListToken, HostListType, HostScopedValue, HostTuple, HostTupleArgumentSlot, HostTupleToken,
-    HostTupleType, HostType, HostTypeSequence, HostValue, HostValueArgumentSlot, HostValueToken,
+    HostCustomConstructor, HostCustomToken, HostCustomType, HostFunctionArgumentSlot,
+    HostFunctionToken, HostList, HostListArgumentSlot, HostListToken, HostListType,
+    HostScopedValue, HostTuple, HostTupleArgumentSlot, HostTupleToken, HostTupleType, HostType,
+    HostTypeSequence, HostValue, HostValueArgumentSlot, HostValueToken,
 };
 use std::marker::PhantomData;
 
@@ -37,6 +38,7 @@ pub(crate) trait HostCallRuntime<Profile: HostProfile> {
     fn list(&self, slot: HostListArgumentSlot) -> HostListToken;
     fn tuple(&self, slot: HostTupleArgumentSlot) -> HostTupleToken;
     fn custom(&self, slot: HostCustomArgumentSlot) -> HostCustomToken;
+    fn function(&self, slot: HostFunctionArgumentSlot) -> HostFunctionToken;
     fn int(&self, value: HostValueToken) -> num_bigint::BigInt;
     fn float(&self, value: HostValueToken) -> f64;
     fn string(&self, value: HostValueToken) -> ecow::EcoString;
@@ -47,12 +49,18 @@ pub(crate) trait HostCallRuntime<Profile: HostProfile> {
     fn list_token(&self, value: HostValueToken) -> HostListToken;
     fn tuple_token(&self, value: HostValueToken) -> HostTupleToken;
     fn custom_token(&self, value: HostValueToken) -> HostCustomToken;
+    fn function_token(&self, value: HostValueToken) -> HostFunctionToken;
     fn list_len(&self, value: HostListToken) -> usize;
     fn list_item(&mut self, value: HostListToken, index: usize) -> Option<HostValueToken>;
     fn tuple_len(&self, value: HostTupleToken) -> usize;
     fn tuple_values(&mut self, value: HostTupleToken) -> Box<[HostValueToken]>;
     fn custom_constructor(&self, value: HostCustomToken) -> usize;
     fn custom_fields(&mut self, value: HostCustomToken) -> Box<[HostValueToken]>;
+    fn invoke(
+        &mut self,
+        function: HostFunctionToken,
+        arguments: Box<[HostScopedValue]>,
+    ) -> Result<HostValueToken, crate::HostCallError>;
     fn equal(&self, left: HostScopedValue, right: HostScopedValue) -> bool;
     fn complete(&mut self, value: HostScopedValue) -> HostValueToken;
     fn build_list(&mut self, values: Box<[HostScopedValue]>) -> HostValueToken;
@@ -126,6 +134,13 @@ where
         HostCustom::new(self.runtime.custom(slot))
     }
 
+    pub(crate) fn function<Arguments, FunctionReturn>(
+        &self,
+        slot: HostFunctionArgumentSlot,
+    ) -> crate::host::HostCallable<'call, Arguments, FunctionReturn> {
+        crate::host::HostCallable::new(self.runtime.function(slot))
+    }
+
     pub fn list_len<Item>(&self, value: HostList<'call, Item>) -> usize {
         self.runtime.list_len(value.token)
     }
@@ -173,6 +188,64 @@ where
             Constructor::Fields,
             Profile,
         >(self.runtime, &fields))
+    }
+
+    /// Invokes a Gleam callable while this host call owns the active runtime.
+    ///
+    /// A provider-state borrow must end before re-entry.
+    ///
+    /// ```compile_fail
+    /// use geam::{
+    ///     HostCall, HostCallCompletion, HostCallError, HostCallable, HostProfile, HostProvider,
+    ///     HostTypeList, HostTypeListEnd,
+    /// };
+    /// use num_bigint::BigInt;
+    ///
+    /// struct Profile;
+    /// struct Provider;
+    ///
+    /// impl HostProfile for Profile {
+    ///     type RunState = usize;
+    /// }
+    ///
+    /// impl HostProvider<Profile> for Provider {
+    ///     type State = usize;
+    ///
+    ///     fn project(state: &mut usize) -> &mut Self::State {
+    ///         state
+    ///     }
+    /// }
+    ///
+    /// type Arguments = HostTypeList<BigInt, HostTypeListEnd>;
+    ///
+    /// fn reenter_with_live_state<'call>(
+    ///     mut call: HostCall<'call, Profile, Provider, BigInt>,
+    ///     callable: HostCallable<'call, Arguments, BigInt>,
+    /// ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+    ///     let state = call.state();
+    ///     let returned = call.invoke(callable, (BigInt::from(1), ()))?;
+    ///     *state += 1;
+    ///     Ok(call.return_value(returned))
+    /// }
+    /// ```
+    pub fn invoke<Arguments, FunctionReturn>(
+        &mut self,
+        function: crate::host::HostCallable<'call, Arguments, FunctionReturn>,
+        arguments: Arguments::Values<'call>,
+    ) -> Result<FunctionReturn::Value<'call>, crate::HostCallError>
+    where
+        Arguments: HostTypeSequence,
+        FunctionReturn: HostType,
+    {
+        let mut values = Vec::new();
+        crate::host::type_::into_scoped_values::<Arguments>(arguments, &mut values);
+        let returned = self
+            .runtime
+            .invoke(function.token, values.into_boxed_slice())?;
+        Ok(crate::host::type_::from_token::<FunctionReturn, Profile>(
+            self.runtime,
+            returned,
+        ))
     }
 }
 
@@ -241,9 +314,9 @@ pub(crate) mod test {
     use super::{HostCall, HostCallRuntime, HostProfile, HostProvider, StatelessHostProfile};
     use crate::host::{
         HostCallArguments, HostCallCompletion, HostCallError, HostCustomArgumentSlot,
-        HostCustomToken, HostListArgumentSlot, HostListToken, HostScopedValue,
-        HostTupleArgumentSlot, HostTupleToken, HostTypeParameter, HostValue, HostValueArgumentSlot,
-        HostValueFamily, HostValueToken,
+        HostCustomToken, HostFunctionArgumentSlot, HostFunctionToken, HostListArgumentSlot,
+        HostListToken, HostScopedValue, HostTupleArgumentSlot, HostTupleToken, HostTypeParameter,
+        HostValue, HostValueArgumentSlot, HostValueFamily, HostValueToken,
     };
 
     pub(crate) struct TestHostProfile;
@@ -330,6 +403,10 @@ pub(crate) mod test {
             HostCustomToken(0)
         }
 
+        fn function(&self, _slot: HostFunctionArgumentSlot) -> HostFunctionToken {
+            HostFunctionToken(0)
+        }
+
         fn int(&self, _value: HostValueToken) -> num_bigint::BigInt {
             0.into()
         }
@@ -368,6 +445,10 @@ pub(crate) mod test {
             HostCustomToken(0)
         }
 
+        fn function_token(&self, _value: HostValueToken) -> HostFunctionToken {
+            HostFunctionToken(0)
+        }
+
         fn list_len(&self, _value: HostListToken) -> usize {
             0
         }
@@ -392,6 +473,17 @@ pub(crate) mod test {
             Box::new([])
         }
 
+        fn invoke(
+            &mut self,
+            _function: HostFunctionToken,
+            arguments: Box<[HostScopedValue]>,
+        ) -> Result<HostValueToken, HostCallError> {
+            match arguments.into_vec().into_iter().next() {
+                Some(value) => Ok(self.complete(value)),
+                None => Ok(token(HostValueFamily::Nil)),
+            }
+        }
+
         fn equal(&self, _left: HostScopedValue, _right: HostScopedValue) -> bool {
             false
         }
@@ -409,6 +501,7 @@ pub(crate) mod test {
                 HostScopedValue::List(_) => token(HostValueFamily::List),
                 HostScopedValue::Tuple(_) => token(HostValueFamily::Tuple),
                 HostScopedValue::Custom(_) => token(HostValueFamily::Custom),
+                HostScopedValue::Function(_) => token(HostValueFamily::Function),
             };
             self.completed = Some(value);
             token
@@ -445,12 +538,13 @@ mod tests {
         StatelessTestProvider, TestHostCallRuntime, TestHostProfile, TestRunState,
     };
     use crate::host::{
-        HostCustom, HostCustomConstructorAt, HostCustomConstructorDefinition,
+        HostCallable, HostCustom, HostCustomConstructorAt, HostCustomConstructorDefinition,
         HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomConstructorSchema,
         HostCustomFieldListEnd, HostCustomFieldSchema, HostCustomIndex0, HostCustomIndexNext,
-        HostCustomSchema, HostCustomToken, HostCustomType, HostCustomTypeSchema, HostList,
-        HostListToken, HostListType, HostTuple, HostTupleToken, HostTupleType, HostTypeListEnd,
-        HostTypeParameter, HostValue, HostValueFamily, HostValueToken, StatelessHostProfile,
+        HostCustomSchema, HostCustomToken, HostCustomType, HostCustomTypeSchema, HostFunctionToken,
+        HostFunctionType, HostList, HostListToken, HostListType, HostScopedValue, HostTuple,
+        HostTupleToken, HostTupleType, HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue,
+        HostValueFamily, HostValueToken, StatelessHostProfile,
     };
     use ecow::EcoString;
     use num_bigint::BigInt;
@@ -660,5 +754,39 @@ mod tests {
         assert_eq!(list.family, HostValueFamily::List);
         assert_eq!(tuple.family, HostValueFamily::Tuple);
         assert_eq!(custom.family, HostValueFamily::Custom);
+    }
+
+    #[test]
+    fn host_call_invokes_and_completes_typed_function_handles() {
+        type Arguments = HostTypeList<BigInt, HostTypeListEnd>;
+        type Function = HostFunctionType<Arguments, BigInt>;
+
+        let mut state = TestRunState::default();
+        let arguments = CallArguments::new(Vec::new(), Vec::new());
+        let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
+        let callable = HostCallable::<Arguments, BigInt>::new(HostFunctionToken(0));
+        let returned = HostCall::<TestHostProfile, Counter, BigInt>::new(&mut runtime)
+            .invoke(callable, (BigInt::from(7), ()))
+            .expect("test runtime should return the first callback argument");
+
+        assert_eq!(returned, BigInt::from(0));
+        assert_eq!(
+            runtime.completed(),
+            Some(&HostScopedValue::Int(BigInt::from(7))),
+        );
+
+        let completion = HostCall::<TestHostProfile, Counter, Function>::new(&mut runtime)
+            .return_value(callable)
+            .token;
+        assert_eq!(completion.family, HostValueFamily::Function);
+        assert_eq!(
+            runtime.completed(),
+            Some(&HostScopedValue::Function(HostFunctionToken(0))),
+        );
+
+        let empty = HostCallable::<HostTypeListEnd, ()>::new(HostFunctionToken(1));
+        HostCall::<TestHostProfile, Counter, ()>::new(&mut runtime)
+            .invoke(empty, ())
+            .expect("zero-argument test callback should return Nil");
     }
 }

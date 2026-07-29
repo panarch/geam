@@ -125,6 +125,21 @@ construct a return only through the return-family-specific call builder.
 Tuple element types use a recursive `HostTypeList`, so tuple size is
 independent of the zero-through-seven Rust function argument boundary.
 
+`HostFunctionType<Arguments, Return>` exposes an invocation capability as a
+call-scoped `HostCallable`. `HostCall::invoke` routes that callable through the
+same family-specific loops used by ordinary direct, tail, and function-value
+calls. A nested host call projects its own provider state from the same
+caller-owned run state. A provider-state borrow must end before re-entry, which
+Rust enforces through the call lifetime. Callables, lists, tuples, and customs
+are runtime-owned token handles: they may remain live across a nested call but
+cannot escape the invocation that supplied them.
+
+Nested execution preserves its original failure domain. A source panic remains
+the existing source panic. A nested host failure names the provider that
+actually failed and records the invoking host as its caller; the outer
+provider does not wrap it in a new `HostFailure`. Retained arguments and
+scoped values are released before either error returns to the caller.
+
 An ordinary custom schema supplies its package, module, type parameters, and
 an ordered type-level constructor list. Each constructor owns an ordered
 type-level field list with exact labels and recursive field types. Constructor
@@ -143,9 +158,13 @@ host targets. `HostedModulePlan` owns the linked generic program;
 `HostedExecution::try_from_module_plan` seals only entry-reachable
 specializations. A reachable value-producing specialization whose successful
 return storage remains unresolved returns `HostSpecializationError`; an
-unused declaration does not. The runtime therefore performs no generic type
-lookup or shape validation. Typed Gleam callable invocation and host re-entry
-remain separate work.
+unused declaration does not. A function exposed through `HostFunctionType`
+must also have inhabited runtime argument storage. If its argument family
+remains symbolic, sealing rejects that invocation capability. The same
+function value may still cross an opaque `HostTypeParameter` position for
+pass-through or equality because that position does not expose invocation.
+The runtime therefore performs no generic type lookup, callback shape
+validation, or symbolic callback dispatch.
 
 ## Generic Values
 

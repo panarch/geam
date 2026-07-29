@@ -22,6 +22,7 @@ pub(crate) enum HostValueFamily {
     Tuple,
     Custom,
     Function,
+    SymbolicFunction,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,6 +36,9 @@ pub(crate) struct HostTupleToken(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct HostCustomToken(pub usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct HostFunctionToken(pub usize);
 
 /// A call-scoped value whose concrete runtime family is selected by `Type`.
 ///
@@ -61,6 +65,26 @@ pub struct HostTuple<'call, Elements> {
 pub struct HostCustom<'call, Custom> {
     pub(crate) token: HostCustomToken,
     marker: PhantomData<&'call Custom>,
+}
+
+/// A call-scoped Gleam function with an exact typed signature.
+///
+/// The callable belongs to one active [`crate::HostCall`] and cannot be
+/// retained after that invocation.
+///
+/// ```compile_fail
+/// use geam::{HostCallable, HostTypeListEnd};
+/// use num_bigint::BigInt;
+///
+/// fn escape<'call>(
+///     callable: HostCallable<'call, HostTypeListEnd, BigInt>,
+/// ) -> HostCallable<'static, HostTypeListEnd, BigInt> {
+///     callable
+/// }
+/// ```
+pub struct HostCallable<'call, Arguments, Return> {
+    pub(crate) token: HostFunctionToken,
+    marker: PhantomData<&'call (Arguments, Return)>,
 }
 
 /// A typed value completed by one active [`crate::HostCall`].
@@ -97,6 +121,7 @@ pub(crate) enum HostScopedValue {
     List(HostListToken),
     Tuple(HostTupleToken),
     Custom(HostCustomToken),
+    Function(HostFunctionToken),
 }
 
 impl<'call, Type> HostValue<'call, Type> {
@@ -167,6 +192,23 @@ impl<Custom> Clone for HostCustom<'_, Custom> {
 
 impl<Custom> Copy for HostCustom<'_, Custom> {}
 
+impl<'call, Arguments, Return> HostCallable<'call, Arguments, Return> {
+    pub(crate) fn new(token: HostFunctionToken) -> Self {
+        Self {
+            token,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<Arguments, Return> Clone for HostCallable<'_, Arguments, Return> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<Arguments, Return> Copy for HostCallable<'_, Arguments, Return> {}
+
 impl<'call, Return> HostCallCompletion<'call, Return> {
     pub(crate) fn new(token: HostValueToken) -> Self {
         Self {
@@ -180,8 +222,8 @@ impl<'call, Return> HostCallCompletion<'call, Return> {
 #[cfg(test)]
 mod tests {
     use super::{
-        HostCustom, HostCustomToken, HostList, HostListToken, HostTuple, HostTupleToken, HostValue,
-        HostValueFamily, HostValueToken,
+        HostCallable, HostCustom, HostCustomToken, HostFunctionToken, HostList, HostListToken,
+        HostTuple, HostTupleToken, HostValue, HostValueFamily, HostValueToken,
     };
 
     #[test]
@@ -197,11 +239,13 @@ mod tests {
         let list = HostList::<bool>::new(HostListToken::Stored(2));
         let tuple = HostTuple::<bool>::new(HostTupleToken(3));
         let custom = HostCustom::<bool>::new(HostCustomToken(4));
+        let callable = HostCallable::<bool, bool>::new(HostFunctionToken(5));
         let copied = value;
         let cloned_value = clone_handle(&value);
         let cloned_list = clone_handle(&list);
         let cloned_tuple = clone_handle(&tuple);
         let cloned_custom = clone_handle(&custom);
+        let cloned_callable = clone_handle(&callable);
 
         assert_eq!(
             value.token,
@@ -218,5 +262,7 @@ mod tests {
         assert_eq!(cloned_tuple.token, tuple.token);
         assert_eq!(custom.token, HostCustomToken(4));
         assert_eq!(cloned_custom.token, custom.token);
+        assert_eq!(callable.token, HostFunctionToken(5));
+        assert_eq!(cloned_callable.token, callable.token);
     }
 }
