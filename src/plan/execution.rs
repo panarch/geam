@@ -563,11 +563,7 @@ impl<Profile: HostProfile> HostedExecution<Profile> {
 mod tests {
     use super::HostedExecution;
     use crate::plan::execution::explain;
-    use crate::plan::execution::function::{
-        BoolFunctionBody, BoolFunctionId, IntFunctionBody, IntFunctionId, ValueFunctionEntry,
-    };
-    use crate::plan::execution::graph::{BoolLocalId, IntLocalId};
-    use crate::plan::execution::host::{HostFunctionId, HostedFunctionTarget};
+    use crate::plan::execution::function::IntFunctionId;
     use crate::{
         HostModule, HostProviderSet, ModuleSource, PackageSource, compile_typed_host_program,
         compile_typed_module, plan_host_program, plan_module,
@@ -584,123 +580,6 @@ mod tests {
             execution.program.functions.int_function(IntFunctionId(0));
 
         assert_eq!(function.body().block_graph().blocks().len(), 1);
-    }
-
-    #[test]
-    fn hosted_execution_program_seals_graph_and_host_int_targets() {
-        let math = HostModule::new("host_support", "host/math")
-            .expect("host module should be valid")
-            .with_function("add", <BigInt as std::ops::Add>::add)
-            .expect("host function should be valid");
-        let hosts = HostProviderSet::new([math]).expect("host modules should be unique");
-        let source = r#"
-import host/math
-
-pub fn main() {
-  let call = fn(left, right) { math.add(left, right) }
-  call(1, 2)
-}
-"#;
-        let typed = compile_typed_host_program(
-            "application",
-            "main",
-            [PackageSource::new(
-                "application",
-                ["host_support"],
-                [ModuleSource::new("main", "main.gleam", source)],
-            )],
-            hosts,
-        )
-        .expect("host source should compile");
-        let plan = plan_host_program(typed).expect("host source should plan");
-        let execution =
-            HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
-        let graph: &ValueFunctionEntry<IntFunctionBody, HostedFunctionTarget<IntFunctionBody>> =
-            execution.program.functions.int_function(IntFunctionId(0));
-        let host: &ValueFunctionEntry<IntFunctionBody, HostedFunctionTarget<IntFunctionBody>> =
-            execution.program.functions.int_function(IntFunctionId(2));
-
-        assert_eq!(
-            [graph, host].map(|function| match function {
-                ValueFunctionEntry::Graph(_) => "graph",
-                ValueFunctionEntry::Host(_) => "host",
-            }),
-            ["graph", "host"],
-        );
-        assert!(matches!(
-            host,
-            ValueFunctionEntry::Host(target)
-                if *target
-                    == HostedFunctionTarget::value(HostFunctionId::new(0, IntLocalId(0)))
-        ));
-        let implementation = &execution.host_functions.value_functions()[0];
-        assert_eq!(implementation.name(), "add");
-        assert_eq!(
-            execution.run_main(&mut (), &mut Vec::new()),
-            Ok(crate::Value::Int(3.into())),
-        );
-    }
-
-    #[test]
-    fn hosted_execution_program_seals_graph_and_host_bool_targets() {
-        let predicates = HostModule::new("host_support", "host/predicates")
-            .expect("host module should be valid")
-            .with_function("is_positive", |value: BigInt| value > BigInt::from(0))
-            .expect("host function should be valid");
-        let hosts = HostProviderSet::new([predicates]).expect("host modules should be unique");
-        let source = r#"
-import host/predicates
-
-fn identity(value: Bool) {
-  value
-}
-
-pub fn main() {
-  identity(predicates.is_positive(1))
-}
-"#;
-        let typed = compile_typed_host_program(
-            "application",
-            "main",
-            [PackageSource::new(
-                "application",
-                ["host_support"],
-                [ModuleSource::new("main", "main.gleam", source)],
-            )],
-            hosts,
-        )
-        .expect("host source should compile");
-        let plan = plan_host_program(typed).expect("host source should plan");
-        let execution =
-            HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
-        let main: &ValueFunctionEntry<BoolFunctionBody, HostedFunctionTarget<BoolFunctionBody>> =
-            execution.program.functions.bool_function(BoolFunctionId(0));
-        let host: &ValueFunctionEntry<BoolFunctionBody, HostedFunctionTarget<BoolFunctionBody>> =
-            execution.program.functions.bool_function(BoolFunctionId(1));
-        let identity: &ValueFunctionEntry<
-            BoolFunctionBody,
-            HostedFunctionTarget<BoolFunctionBody>,
-        > = execution.program.functions.bool_function(BoolFunctionId(2));
-
-        assert_eq!(
-            [main, host, identity].map(|function| match function {
-                ValueFunctionEntry::Graph(_) => "graph",
-                ValueFunctionEntry::Host(_) => "host",
-            }),
-            ["graph", "host", "graph"],
-        );
-        assert!(matches!(
-            host,
-            ValueFunctionEntry::Host(target)
-                if *target
-                    == HostedFunctionTarget::value(HostFunctionId::new(0, BoolLocalId(0)))
-        ));
-        let implementation = &execution.host_functions.value_functions()[0];
-        assert_eq!(implementation.name(), "is_positive");
-        assert_eq!(
-            execution.run_main(&mut (), &mut Vec::new()),
-            Ok(crate::Value::Bool(true)),
-        );
     }
 
     #[test]

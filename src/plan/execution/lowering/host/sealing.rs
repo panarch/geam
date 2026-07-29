@@ -1,15 +1,40 @@
 use super::super::specialization::{
-    FunctionRepresentation, RepresentationContext, SpecializedCustomValueShape,
+    FunctionRepresentation, RepresentationContext, SpecializationKey, SpecializedCustomValueShape,
     SpecializedFunctionShape, SpecializedTypeSubstitution, SpecializedValueShape,
 };
 use crate::host::{HostCustomTypeSchema, HostSchemaType, HostTypeDescriptor};
+use crate::plan::execution::host::HostSpecializationError;
 use crate::plan::{
     CustomConstructorRefinement, CustomTypeName, FunctionType, HostFunctionTemplate,
 };
 use ecow::EcoString;
 use std::collections::{HashMap, HashSet};
 
-pub(super) fn first_uninhabited_callback(
+pub(super) fn seal_callbacks(
+    template: &HostFunctionTemplate,
+    key: &SpecializationKey,
+    shape: &SpecializedFunctionShape,
+    representations: &RepresentationContext,
+    include_return: bool,
+) -> Result<(), HostSpecializationError> {
+    if let Some(callback) = first_uninhabited_callback(
+        template,
+        key.substitution(),
+        representations,
+        include_return,
+    ) {
+        return Err(HostSpecializationError::uninhabited_callback_arguments(
+            template.package().clone(),
+            template.site().module().clone(),
+            template.site().function().clone(),
+            shape.to_module_shape().type_(),
+            callback,
+        ));
+    }
+    Ok(())
+}
+
+fn first_uninhabited_callback(
     template: &HostFunctionTemplate,
     substitution: &SpecializedTypeSubstitution,
     representations: &RepresentationContext,
