@@ -11,7 +11,8 @@ pub use error::HostRegistrationError;
 pub(crate) use external::ExternalPayloadLease;
 pub use external::{
     HostExternalPayloadBuilder, HostExternalPayloadView, HostExternalSchema, HostExternalStorage,
-    HostExternalStore, HostExternalType, HostExternalTypeSchema, HostStoredType, HostStoredValue,
+    HostExternalStore, HostExternalType, HostExternalTypeSchema, HostStoredDynamic, HostStoredType,
+    HostStoredValue,
 };
 pub(crate) use failure::HostCallErrorKind;
 pub use failure::{HostCallError, HostFailure};

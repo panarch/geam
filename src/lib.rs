@@ -19,8 +19,8 @@ pub use host::{
     HostExternalStorage, HostExternalStore, HostExternalType, HostExternalTypeSchema, HostFailure,
     HostFunction, HostFunctionSchema, HostFunctionType, HostList, HostListType, HostModule,
     HostProfile, HostProvider, HostProviderModule, HostProviderSet, HostRegistrationError,
-    HostSchemaType, HostStoredType, HostStoredValue, HostTuple, HostTupleType, HostType,
-    HostTypeAt, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
+    HostSchemaType, HostStoredDynamic, HostStoredType, HostStoredValue, HostTuple, HostTupleType,
+    HostType, HostTypeAt, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
     HostTypeParameter, HostTypeSequence, HostValue, ScopedDivergingHostFunction,
     ScopedHostFunction, StatelessHostProfile,
 };

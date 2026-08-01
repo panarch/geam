@@ -93,8 +93,10 @@ Owned scalar closures use `BigInt`, `f64`, `EcoString`, `BitArrayValue`,
 cannot escape their invocation, and compound returns are built explicitly
 through the same call. An external payload can retain exact typed Gleam values
 with `HostStoredValue` and restore them only through a later active
-`HostCall`. Generic providers and Gleam function values use the same typed
-specialization and call paths as ordinary Gleam functions.
+`HostCall`. It can instead retain an existential `HostStoredDynamic` together
+with its exact specialized Gleam shape; a later typed decode returns `None`
+when that shape does not match. Generic providers and Gleam function values
+use the same typed specialization and call paths as ordinary Gleam functions.
 
 `HostedExecution::try_from_module_plan` seals the entry-reachable host ABI
 before runtime construction. Provider state remains caller-owned, and nested

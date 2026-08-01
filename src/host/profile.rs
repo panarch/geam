@@ -185,8 +185,25 @@ where
     where
         Type: HostType,
     {
-        let token = self.runtime.restore_stored(&value.value);
+        self.restore_runtime_value::<Type>(&value.value)
+    }
+
+    pub(in crate::host) fn restore_runtime_value<Type>(
+        &mut self,
+        value: &crate::runtime::StoredRuntimeValue,
+    ) -> Type::Value<'call>
+    where
+        Type: HostType,
+    {
+        let token = self.runtime.restore_stored(value);
         crate::host::type_::from_token::<Type, Profile>(self.runtime, token)
+    }
+
+    pub(in crate::host) fn resolve_host_type<Type: HostType>(
+        &self,
+    ) -> Option<crate::plan::ValueType> {
+        self.runtime
+            .resolve_host_type(&crate::host::HostTypeDescriptor::of::<Type>())
     }
 
     /// Invokes a Gleam callable while this host call owns the active runtime.

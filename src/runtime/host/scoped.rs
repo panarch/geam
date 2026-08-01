@@ -39,15 +39,12 @@ pub(super) struct ScopedValues {
 
 pub(crate) struct StoredRuntimeValue {
     value: EvaluatedValue,
-    _type: crate::plan::ValueType,
+    type_: crate::plan::ValueType,
 }
 
 impl StoredRuntimeValue {
     pub(in crate::runtime) fn new(value: EvaluatedValue, type_: crate::plan::ValueType) -> Self {
-        Self {
-            value,
-            _type: type_,
-        }
+        Self { value, type_ }
     }
 
     #[cfg(test)]
@@ -57,6 +54,10 @@ impl StoredRuntimeValue {
 
     pub(super) fn value(&self) -> &EvaluatedValue {
         &self.value
+    }
+
+    pub(crate) fn type_(&self) -> &crate::plan::ValueType {
+        &self.type_
     }
 }
 
@@ -643,7 +644,7 @@ mod tests {
 
         let restored = scoped.push(stored.value().clone());
 
-        assert_eq!(stored._type, crate::plan::ValueType::Int);
+        assert_eq!(stored.type_(), &crate::plan::ValueType::Int);
         assert_eq!(scoped.int(restored), BigInt::from(7));
     }
 

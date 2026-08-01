@@ -32,6 +32,7 @@ where
     external_arguments: Vec<HostExternalToken>,
     function_arguments: Vec<HostFunctionToken>,
     scoped: ScopedValues,
+    type_arguments: &'call [crate::plan::ValueType],
     return_lists: Box<[ListTypeId]>,
     return_customs: Box<[crate::plan::execution::type_::CustomTypeId]>,
     return_externals: Box<[crate::plan::execution::type_::ExternalTypeId]>,
@@ -61,7 +62,7 @@ where
     pub(super) fn new(
         plan: &'call crate::plan::execution::HostedExecution<Profile>,
         state: &'call mut RuntimeStateFor<'run, crate::plan::execution::HostedExecution<Profile>>,
-        function: &HostedFunction<impl Sized>,
+        function: &'call HostedFunction<impl Sized>,
         inputs: RetainedValues,
     ) -> Self {
         let PreparedHostCall {
@@ -94,6 +95,7 @@ where
             external_arguments,
             function_arguments,
             scoped,
+            type_arguments: function.type_arguments(),
             return_lists,
             return_customs,
             return_externals,
@@ -419,6 +421,13 @@ where
 
     fn external_lease(&self, value: HostExternalToken) -> ExternalPayloadLease {
         self.scoped.external(value).lease().clone()
+    }
+
+    fn resolve_host_type(
+        &self,
+        descriptor: &crate::host::HostTypeDescriptor,
+    ) -> Option<crate::plan::ValueType> {
+        descriptor.resolve(self.type_arguments)
     }
 
     fn retain_stored(&self, value: HostScopedValue) -> StoredRuntimeValue {

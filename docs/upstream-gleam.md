@@ -150,9 +150,11 @@ closures support the documented scalar families and zero through seven
 arguments; scoped registrations describe generic, compound, custom, and
 function values without exposing materialized runtime `Value`s. Source-backed
 constructorless external types can bind profile-owned Rust payloads, including
-exact typed Gleam values retained inside those payloads. These are Geam
-host-ABI constraints, not additions to Gleam's analyzer or typed AST. See
-[runtime semantics](runtime-semantics.md) for the value, state, specialization,
+exact typed Gleam values and existential values carrying their specialized
+Gleam shapes. Existential decode remains a typed host-call operation and shape
+mismatch is provider-level `Option` semantics. These are Geam host-ABI
+constraints, not additions to Gleam's analyzer or typed AST. See [runtime
+semantics](runtime-semantics.md) for the value, state, specialization,
 re-entry, and failure contracts.
 
 The current public execution APIs are:

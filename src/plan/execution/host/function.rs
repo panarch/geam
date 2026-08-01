@@ -22,6 +22,7 @@ pub(crate) struct HostedFunctionMetadata {
     package: EcoString,
     site: crate::plan::HostCallSite,
     signature: crate::plan::FunctionType,
+    type_arguments: Box<[crate::plan::ValueType]>,
     parameters: Box<[ParamLocal]>,
     call_parameters: Box<[HostCallParameter]>,
     type_: FunctionType,
@@ -176,23 +177,11 @@ impl<Body: ExecutionFunctionBody> HostedFunctionTarget<Body> {
 
 impl<Implementation> HostedFunction<Implementation> {
     pub(in crate::plan::execution) fn new(
-        package: EcoString,
-        site: crate::plan::HostCallSite,
-        signature: crate::plan::FunctionType,
-        parameters: Box<[ParamLocal]>,
-        call_parameters: Box<[HostCallParameter]>,
-        type_: FunctionType,
+        metadata: HostedFunctionMetadata,
         implementation: Implementation,
     ) -> Self {
         Self {
-            metadata: HostedFunctionMetadata {
-                package,
-                site,
-                signature,
-                parameters,
-                call_parameters,
-                type_,
-            },
+            metadata,
             implementation,
         }
     }
@@ -213,6 +202,10 @@ impl<Implementation> HostedFunction<Implementation> {
         self.metadata.parameters()
     }
 
+    pub(crate) fn type_arguments(&self) -> &[crate::plan::ValueType] {
+        self.metadata.type_arguments()
+    }
+
     pub(crate) fn call_parameters(&self) -> &[HostCallParameter] {
         self.metadata.call_parameters()
     }
@@ -231,6 +224,26 @@ impl<Implementation> HostedFunction<Implementation> {
 }
 
 impl HostedFunctionMetadata {
+    pub(in crate::plan::execution) fn new(
+        package: EcoString,
+        site: crate::plan::HostCallSite,
+        signature: crate::plan::FunctionType,
+        type_arguments: Box<[crate::plan::ValueType]>,
+        parameters: Box<[ParamLocal]>,
+        call_parameters: Box<[HostCallParameter]>,
+        type_: FunctionType,
+    ) -> Self {
+        Self {
+            package,
+            site,
+            signature,
+            type_arguments,
+            parameters,
+            call_parameters,
+            type_,
+        }
+    }
+
     pub(crate) fn package(&self) -> &EcoString {
         &self.package
     }
@@ -249,6 +262,10 @@ impl HostedFunctionMetadata {
 
     pub(crate) fn signature(&self) -> &crate::plan::FunctionType {
         &self.signature
+    }
+
+    fn type_arguments(&self) -> &[crate::plan::ValueType] {
+        &self.type_arguments
     }
 
     fn parameters(&self) -> &[ParamLocal] {

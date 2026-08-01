@@ -9,7 +9,7 @@ use crate::host::{
 };
 use crate::plan::execution::host::{
     HostFunctionTables, HostSpecializationError, HostedExecutionProfile, HostedFunction,
-    HostedNeverFunction, HostedValueFunction,
+    HostedFunctionMetadata, HostedNeverFunction, HostedValueFunction,
 };
 use crate::plan::{HostFunctionTemplate, HostImplementationBinding};
 use std::collections::HashMap;
@@ -115,6 +115,13 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
         let shape =
             SpecializedFunctionShape::instantiate(template.signature().shape(), key.substitution());
         let parameters = context.specialization_parameters(key).to_vec();
+        let type_arguments = key
+            .substitution()
+            .arguments()
+            .iter()
+            .map(|argument| argument.to_module_shape().value_type())
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
         let implementation = Arc::clone(&self.registered.functions[&template.id()]);
         let return_ = context.representations.inhabitation(shape.return_());
 
@@ -134,12 +141,15 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
                 let type_ = context.lower_concrete_function_type(&shape);
                 let host_index = self.value_functions.len();
                 self.value_functions.push(HostedFunction::new(
-                    template.package().clone(),
-                    template.site().clone(),
-                    shape.to_module_shape().type_(),
-                    parameters.entry,
-                    parameters.call,
-                    type_,
+                    HostedFunctionMetadata::new(
+                        template.package().clone(),
+                        template.site().clone(),
+                        shape.to_module_shape().type_(),
+                        type_arguments,
+                        parameters.entry,
+                        parameters.call,
+                        type_,
+                    ),
                     implementation.clone(),
                 ));
                 return_::lower_host_return(
@@ -158,12 +168,15 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
                 let type_ = context.lower_concrete_function_type(&shape);
                 let host_index = self.never_functions.len();
                 self.never_functions.push(HostedFunction::new(
-                    template.package().clone(),
-                    template.site().clone(),
-                    shape.to_module_shape().type_(),
-                    parameters.entry,
-                    parameters.call,
-                    type_,
+                    HostedFunctionMetadata::new(
+                        template.package().clone(),
+                        template.site().clone(),
+                        shape.to_module_shape().type_(),
+                        type_arguments,
+                        parameters.entry,
+                        parameters.call,
+                        type_,
+                    ),
                     implementation.clone(),
                 ));
                 match return_ {

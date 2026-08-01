@@ -233,6 +233,11 @@ values may be created and restored only through an external payload and an
 active typed host call; do not expose them through run state, public `Value`,
 Rust downcasts, or cross-execution import.
 
+Existential external storage must preserve the exact specialized Gleam shape.
+Typed decode compares that recursive shape, not Rust payload identity, and a
+shape mismatch remains ordinary provider-level absence rather than a runtime
+error, invariant, panic, or fallback.
+
 Treat callable invocation as an explicit call-scoped capability. A callback
 capability must have inhabited argument storage when hosted execution is
 sealed; an opaque function value may pass through generic storage without

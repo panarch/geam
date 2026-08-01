@@ -53,7 +53,7 @@ where
     Profile: HostProfile,
     Arguments: HostTypeSequence,
 {
-    runtime: &'runtime mut dyn HostCallRuntime<Profile>,
+    pub(super) runtime: &'runtime mut dyn HostCallRuntime<Profile>,
     arguments: PhantomData<Arguments>,
 }
 
@@ -72,7 +72,7 @@ pub struct HostExternalPayloadView<'call, Payload, Arguments>
 where
     Arguments: HostTypeSequence,
 {
-    value: ExternalPayloadView<Payload>,
+    pub(super) value: ExternalPayloadView<Payload>,
     call: PhantomData<&'call Arguments>,
 }
 

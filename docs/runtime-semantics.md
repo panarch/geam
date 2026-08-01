@@ -145,6 +145,15 @@ from the payload view of an active `HostCall`; provider run state and public
 functions, nested externals, and their runtime identities are retained without
 `Any`, Rust `TypeId`, downcasts, or runtime shape validation.
 
+An external payload can instead retain `HostStoredDynamic`, which seals the
+exact specialized Gleam shape beside the retained runtime value. A payload
+view may request a typed decode through the active `HostCall`. An exact shape
+match restores the typed handle; a mismatch or a type parameter not supplied
+by that host specialization returns `None` as ordinary provider semantics.
+Dynamic identity is the recursive Gleam shape, including nominal custom and
+external identities, rather than a Rust payload type. Public `Value` does not
+expose this decode surface.
+
 External leases determine payload lifetime; the profile store's typed index is
 removed when the last lease is released and does not keep a payload alive by
 itself. Retained list and capture graphs continue to use the shared iterative

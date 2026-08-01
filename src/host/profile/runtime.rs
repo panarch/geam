@@ -50,6 +50,10 @@ pub(crate) trait HostCallRuntime<Profile: HostProfile> {
     ) -> HostValueToken;
     fn build_external(&mut self, value: ExternalPayloadLease) -> HostExternalToken;
     fn external_lease(&self, value: HostExternalToken) -> ExternalPayloadLease;
+    fn resolve_host_type(
+        &self,
+        descriptor: &crate::host::HostTypeDescriptor,
+    ) -> Option<crate::plan::ValueType>;
     fn retain_stored(&self, value: HostScopedValue) -> crate::runtime::StoredRuntimeValue;
     fn restore_stored(&mut self, value: &crate::runtime::StoredRuntimeValue) -> HostValueToken;
 }
@@ -298,6 +302,13 @@ pub(crate) mod test {
             self.external_leases[value.0].clone()
         }
 
+        fn resolve_host_type(
+            &self,
+            descriptor: &crate::host::HostTypeDescriptor,
+        ) -> Option<crate::plan::ValueType> {
+            descriptor.resolve(&[])
+        }
+
         fn retain_stored(&self, _value: HostScopedValue) -> crate::runtime::StoredRuntimeValue {
             crate::runtime::StoredRuntimeValue::test_int(0.into())
         }
@@ -363,6 +374,28 @@ pub(crate) mod test {
         assert_eq!(
             HostCallRuntime::restore_stored(&mut runtime, &stored),
             token(HostValueFamily::Int),
+        );
+    }
+
+    #[test]
+    fn test_runtime_resolves_only_monomorphic_host_types() {
+        let mut state = TestRunState::default();
+        let arguments = crate::host::function::CallArguments::new(Vec::new(), Vec::new());
+        let runtime = TestHostCallRuntime::new(&mut state, arguments);
+
+        assert_eq!(
+            HostCallRuntime::resolve_host_type(
+                &runtime,
+                &crate::host::HostTypeDescriptor::of::<num_bigint::BigInt>(),
+            ),
+            Some(crate::plan::ValueType::Int),
+        );
+        assert_eq!(
+            HostCallRuntime::resolve_host_type(
+                &runtime,
+                &crate::host::HostTypeDescriptor::of::<HostTypeParameter<0>>(),
+            ),
+            None,
         );
     }
 
