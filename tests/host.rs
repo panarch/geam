@@ -18,3 +18,5 @@ mod registration;
 mod signature;
 #[path = "host/state.rs"]
 mod state;
+#[path = "host/stored.rs"]
+mod stored;

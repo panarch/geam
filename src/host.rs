@@ -10,8 +10,8 @@ mod value;
 pub use error::HostRegistrationError;
 pub(crate) use external::ExternalPayloadLease;
 pub use external::{
-    HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType,
-    HostExternalTypeSchema,
+    HostExternalPayloadBuilder, HostExternalPayloadView, HostExternalSchema, HostExternalStorage,
+    HostExternalStore, HostExternalType, HostExternalTypeSchema, HostStoredType, HostStoredValue,
 };
 pub(crate) use failure::HostCallErrorKind;
 pub use failure::{HostCallError, HostFailure};
@@ -26,8 +26,9 @@ pub use type_::{
     HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomConstructorSchema,
     HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomFieldSchema,
     HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType, HostCustomTypeSchema,
-    HostFunctionType, HostListType, HostSchemaType, HostTupleType, HostType, HostTypeList,
-    HostTypeListEnd, HostTypeParameter, HostTypeSequence,
+    HostFunctionType, HostListType, HostSchemaType, HostTupleType, HostType, HostTypeAt,
+    HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter,
+    HostTypeSequence,
 };
 pub use value::{
     HostCallCompletion, HostCallable, HostCustom, HostExternal, HostList, HostTuple, HostValue,

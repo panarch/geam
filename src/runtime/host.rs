@@ -1,6 +1,7 @@
 mod scoped;
 
 use self::scoped::ScopedValues;
+pub(crate) use self::scoped::StoredRuntimeValue;
 use crate::host::{
     ExternalPayloadLease, HostCallArguments, HostCallRuntime, HostCustomArgumentSlot,
     HostCustomToken, HostExternalArgumentSlot, HostExternalToken, HostFunctionArgumentSlot,
@@ -418,5 +419,15 @@ where
 
     fn external_lease(&self, value: HostExternalToken) -> ExternalPayloadLease {
         self.scoped.external(value).lease().clone()
+    }
+
+    fn retain_stored(&self, value: HostScopedValue) -> StoredRuntimeValue {
+        let value = self.scoped.value_from_scoped(value);
+        let type_ = value.value_type(self.plan.value_metadata());
+        StoredRuntimeValue::new(value, type_)
+    }
+
+    fn restore_stored(&mut self, value: &StoredRuntimeValue) -> HostValueToken {
+        self.scoped.push(value.value().clone())
     }
 }

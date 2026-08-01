@@ -120,6 +120,38 @@ Each `HostProfile` defines caller-owned `RunState`. A scoped callback can
 project only its declared `HostProvider::State` through the active `HostCall`;
 callback objects and mutable state are not stored in canonical plan nodes.
 
+### External Values And Retained Storage
+
+A source-backed provider can register a constructorless external type with
+`HostExternalStorage`. Planning links its exact package, module, type name, and
+parameter count. Canonical plan and graph nodes retain nominal type and storage
+IDs only; the Rust payload and its equality and inspection functions remain in
+the hosted execution sidecar.
+
+`HostExternal` is an invocation-scoped typed handle. A provider can create or
+inspect its Rust payload only through the active `HostCall`. The materialized
+public `ExternalValue` exposes nominal type, opaque instance identity, and
+canonical inspection, but never the Rust payload. Gleam equality remains owned
+by `HostExternalStorage` and is distinct from public Rust `PartialEq`. The
+payload lease is self-contained, so the value can be cloned, inspected, and
+dropped after the run state and `HostedExecution` have been dropped.
+
+An external payload can retain an exact Gleam value as `HostStoredValue`.
+Monomorphic fields preserve their declared host type marker. Generic payload
+fields use a stable external type-argument position that each provider
+function maps to its own local type parameters. Restoration is available only
+from the payload view of an active `HostCall`; provider run state and public
+`Value` have no retain or restore API. Lists, tuples, ordinary customs,
+functions, nested externals, and their runtime identities are retained without
+`Any`, Rust `TypeId`, downcasts, or runtime shape validation.
+
+External leases determine payload lifetime; the profile store's typed index is
+removed when the last lease is released and does not keep a payload alive by
+itself. Retained list and capture graphs continue to use the shared iterative
+release queue, including after the original runtime state has been dropped.
+Geam does not support cyclic evaluated graphs or moving stored values between
+hosted executions.
+
 ### Specialization And Re-entry
 
 A generic provider registers one source `TypeScheme`; first-use

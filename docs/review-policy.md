@@ -225,6 +225,14 @@ execution specialization seals concrete locals and return storage. Do not
 replace these boundaries with materialized public values, per-specialization
 user registration, or runtime shape validation.
 
+Keep external storage distinct from ordinary custom values and provider run
+state. Canonical plans may retain nominal external identity and typed storage
+IDs, but Rust payloads belong to the hosted sidecar. Public external values
+must own opaque payload leases without borrowing runtime state. Retained Gleam
+values may be created and restored only through an external payload and an
+active typed host call; do not expose them through run state, public `Value`,
+Rust downcasts, or cross-execution import.
+
 Treat callable invocation as an explicit call-scoped capability. A callback
 capability must have inhabited argument storage when hosted execution is
 sealed; an opaque function value may pass through generic storage without

@@ -1,4 +1,5 @@
 mod store;
+mod stored;
 
 use crate::host::{HostProfile, HostTypeListEnd};
 use ecow::EcoString;
@@ -6,6 +7,9 @@ use std::marker::PhantomData;
 
 pub(crate) use store::ExternalPayloadLease;
 pub use store::HostExternalStore;
+pub use stored::{
+    HostExternalPayloadBuilder, HostExternalPayloadView, HostStoredType, HostStoredValue,
+};
 
 /// A source-declared external Gleam type linked to Rust storage.
 pub trait HostExternalSchema: Send + Sync + 'static {

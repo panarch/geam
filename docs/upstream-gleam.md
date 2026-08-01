@@ -148,7 +148,9 @@ are not interpreted as pure Gleam definitions.
 Host registrations provide an exact typed schema to the frontend. Direct
 closures support the documented scalar families and zero through seven
 arguments; scoped registrations describe generic, compound, custom, and
-function values without exposing materialized runtime `Value`s. These are Geam
+function values without exposing materialized runtime `Value`s. Source-backed
+constructorless external types can bind profile-owned Rust payloads, including
+exact typed Gleam values retained inside those payloads. These are Geam
 host-ABI constraints, not additions to Gleam's analyzer or typed AST. See
 [runtime semantics](runtime-semantics.md) for the value, state, specialization,
 re-entry, and failure contracts.
@@ -231,8 +233,8 @@ milestone:
 - Code generation metadata.
 - Package resolution, dependency download, package cache mutation, and artifact
   writing.
-- External custom storage, async providers, retained or Rust-created
-  callbacks, and CLI behavior.
+- Source-less external type declarations, async providers, retained or
+  Rust-created callbacks, and CLI behavior.
 
 ## Current Source Boundary
 

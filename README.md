@@ -55,6 +55,8 @@ return successfully use Rust's return-only `Infallible` marker. Unsupported
 Rust types and arities are rejected by trait resolution rather than at runtime.
 Provider linkage selects an exact external declaration or its Gleam fallback
 during planning; ordinary Gleam functions cannot be overridden.
+Source-declared constructorless external types can be linked to profile-owned
+Rust payloads. Their public runtime values remain opaque and self-contained.
 
 The main public entry points are:
 
@@ -87,9 +89,11 @@ one run.
 
 Owned scalar closures use `BigInt`, `f64`, `EcoString`, `BitArrayValue`,
 `char`, `bool`, and `()`. Scoped providers use `HostCall` with typed
-`HostList`, `HostTuple`, and ordinary custom handles; these handles cannot
-escape their invocation, and compound returns are built explicitly through
-the same call. Generic providers and Gleam function values use the same typed
+`HostList`, `HostTuple`, ordinary custom, and external handles; these handles
+cannot escape their invocation, and compound returns are built explicitly
+through the same call. An external payload can retain exact typed Gleam values
+with `HostStoredValue` and restore them only through a later active
+`HostCall`. Generic providers and Gleam function values use the same typed
 specialization and call paths as ordinary Gleam functions.
 
 `HostedExecution::try_from_module_plan` seals the entry-reachable host ABI

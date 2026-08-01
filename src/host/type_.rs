@@ -17,7 +17,9 @@ pub use custom::{
 pub use function::HostFunctionType;
 pub use list::HostListType;
 pub use parameter::HostTypeParameter;
-pub use sequence::{HostTypeList, HostTypeListEnd, HostTypeSequence};
+pub use sequence::{
+    HostTypeAt, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeSequence,
+};
 pub use tuple::HostTupleType;
 
 pub(crate) use sequence::HostAbiTypeSequence;

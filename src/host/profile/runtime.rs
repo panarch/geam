@@ -50,6 +50,8 @@ pub(crate) trait HostCallRuntime<Profile: HostProfile> {
     ) -> HostValueToken;
     fn build_external(&mut self, value: ExternalPayloadLease) -> HostExternalToken;
     fn external_lease(&self, value: HostExternalToken) -> ExternalPayloadLease;
+    fn retain_stored(&self, value: HostScopedValue) -> crate::runtime::StoredRuntimeValue;
+    fn restore_stored(&mut self, value: &crate::runtime::StoredRuntimeValue) -> HostValueToken;
 }
 
 #[cfg(test)]
@@ -295,6 +297,17 @@ pub(crate) mod test {
         fn external_lease(&self, value: HostExternalToken) -> crate::host::ExternalPayloadLease {
             self.external_leases[value.0].clone()
         }
+
+        fn retain_stored(&self, _value: HostScopedValue) -> crate::runtime::StoredRuntimeValue {
+            crate::runtime::StoredRuntimeValue::test_int(0.into())
+        }
+
+        fn restore_stored(
+            &mut self,
+            _value: &crate::runtime::StoredRuntimeValue,
+        ) -> HostValueToken {
+            token(HostValueFamily::Int)
+        }
     }
 
     #[test]
@@ -337,6 +350,19 @@ pub(crate) mod test {
         assert_eq!(
             HostCallRuntime::complete(&mut runtime, HostScopedValue::External(external)).family,
             HostValueFamily::External,
+        );
+    }
+
+    #[test]
+    fn test_runtime_exposes_the_stored_value_protocol() {
+        let mut state = TestRunState::default();
+        let arguments = crate::host::function::CallArguments::new(Vec::new(), Vec::new());
+        let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
+        let stored = HostCallRuntime::retain_stored(&runtime, HostScopedValue::Int(0.into()));
+
+        assert_eq!(
+            HostCallRuntime::restore_stored(&mut runtime, &stored),
+            token(HostValueFamily::Int),
         );
     }
 

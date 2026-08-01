@@ -1127,11 +1127,12 @@ mod tests {
     use crate::plan::execution::function::{
         CoreRuntimeFunctionId, ListFunctionId, RuntimeFunctionId, RuntimeListFunctionId,
     };
+    use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::plan::execution::type_::ListStorageTypeId;
     use crate::runtime::graph::RetainedValues;
     use crate::runtime::{
         EvaluatedBitArray, EvaluatedCapture, EvaluatedCustomValue, EvaluatedFunctionValue,
-        EvaluatedIntFunction, EvaluatedValue,
+        EvaluatedIntFunction, EvaluatedValue, StoredRuntimeValue,
     };
     use crate::{
         HostCall, HostCallCompletion, HostCallError, HostCallable, HostFailure, HostFunctionType,
@@ -2052,6 +2053,52 @@ pub fn main() -> Int {
         let allocated_list_slots = state.values.storage.pools.borrow().lists.slots.len();
 
         drop(value);
+        state.values_mut().drain_releases();
+        let pools = state.values.storage.pools.borrow();
+        assert_eq!(pools.ints.free.len(), 1);
+        assert_eq!(pools.lists.free.len(), allocated_list_slots);
+        assert_eq!(state.values.storage.releases.borrow().as_slice(), &[]);
+    }
+
+    #[test]
+    fn stored_runtime_value_retains_and_iteratively_releases_nested_lists() {
+        let depth = 64;
+        let nested_type = "List(".repeat(depth) + "Int" + &")".repeat(depth);
+        let source = format!(
+            "fn ints() -> List(Int) {{ [] }} pub fn main() -> {nested_type} {{ let _ = ints [] }}"
+        );
+        let plan = crate::runtime::plan_src(&source);
+        let mut type_id = plan.list_list_function_id(0).type_id().list_type();
+        let mut parents = Vec::new();
+        let child_type = plan.int_list_function_id(0).type_id();
+        while type_id != child_type.list_type() {
+            let parent = nested_list_storage(plan.list_storage_type(type_id))
+                .expect("remaining recursive storage must be a nested list");
+            parents.push(parent);
+            type_id = parent.item_type();
+        }
+
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
+        let mut value: StoredListValueId =
+            state.values_mut().int(child_type, vec![1.into()]).into();
+        for parent in parents.into_iter().rev() {
+            value = state.values_mut().list(parent, vec![value]).into();
+        }
+        let allocated_list_slots = state.values.storage.pools.borrow().lists.slots.len();
+        let evaluated = EvaluatedValue::List(value.clone());
+        let value_type = evaluated.value_type(plan.value_metadata());
+        let stored = StoredRuntimeValue::new(evaluated, value_type);
+
+        drop(value);
+        state.values_mut().drain_releases();
+        {
+            let pools = state.values.storage.pools.borrow();
+            assert!(pools.ints.free.is_empty());
+            assert!(pools.lists.free.is_empty());
+        }
+
+        drop(stored);
         state.values_mut().drain_releases();
         let pools = state.values.storage.pools.borrow();
         assert_eq!(pools.ints.free.len(), 1);

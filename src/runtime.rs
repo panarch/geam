@@ -9,6 +9,8 @@ mod materialize;
 mod state;
 mod value;
 
+pub(crate) use host::StoredRuntimeValue;
+
 pub use echo::{EchoLocation, EchoOutput, EchoSink};
 pub use error::{
     BitArraySegmentPanicReason, ExecutionError, HostError, HostLocation, HostOrigin,

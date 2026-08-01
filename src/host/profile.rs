@@ -1,9 +1,10 @@
 use crate::host::{
     HostCallArguments, HostCallCompletion, HostCustom, HostCustomArgumentSlot,
     HostCustomConstructor, HostCustomType, HostExternal, HostExternalArgumentSlot,
-    HostExternalSchema, HostExternalStorage, HostExternalType, HostFunctionArgumentSlot, HostList,
-    HostListArgumentSlot, HostListType, HostTuple, HostTupleArgumentSlot, HostTupleType, HostType,
-    HostTypeSequence, HostValue, HostValueArgumentSlot,
+    HostExternalPayloadBuilder, HostExternalPayloadView, HostExternalSchema, HostExternalStorage,
+    HostExternalType, HostFunctionArgumentSlot, HostList, HostListArgumentSlot, HostListType,
+    HostStoredValue, HostTuple, HostTupleArgumentSlot, HostTupleType, HostType, HostTypeSequence,
+    HostValue, HostValueArgumentSlot,
 };
 use std::marker::PhantomData;
 
@@ -163,16 +164,29 @@ where
         >(self.runtime, &fields))
     }
 
+    /// Borrows the Rust payload behind one typed external value.
     pub fn external_payload<Schema, Arguments>(
         &self,
         value: HostExternal<'call, HostExternalType<Schema, Arguments>>,
-    ) -> impl std::ops::Deref<Target = <Profile as HostExternalStorage<Schema>>::Payload> + '_
+    ) -> HostExternalPayloadView<'call, <Profile as HostExternalStorage<Schema>>::Payload, Arguments>
     where
         Schema: HostExternalSchema,
         Profile: HostExternalStorage<Schema>,
+        Arguments: HostTypeSequence,
     {
         let lease = self.runtime.external_lease(value.token);
-        Profile::store(self.runtime.external_stores()).view(&lease)
+        HostExternalPayloadView::new(Profile::store(self.runtime.external_stores()).view(&lease))
+    }
+
+    pub(crate) fn restore_stored<Type, Stored>(
+        &mut self,
+        value: &HostStoredValue<Stored>,
+    ) -> Type::Value<'call>
+    where
+        Type: HostType,
+    {
+        let token = self.runtime.restore_stored(&value.value);
+        crate::host::type_::from_token::<Type, Profile>(self.runtime, token)
     }
 
     /// Invokes a Gleam callable while this host call owns the active runtime.
@@ -241,12 +255,32 @@ where
     Profile: HostProfile + HostExternalStorage<Schema>,
     Provider: HostProvider<Profile>,
     Schema: HostExternalSchema,
+    Arguments: HostTypeSequence,
     HostExternalType<Schema, Arguments>: HostType,
 {
     pub fn create_external(
         &mut self,
         value: <Profile as HostExternalStorage<Schema>>::Payload,
     ) -> HostExternal<'call, HostExternalType<Schema, Arguments>> {
+        let lease = Profile::store(self.runtime.external_stores()).insert(
+            value,
+            Profile::equal,
+            Profile::inspect,
+        );
+        HostExternal::new(self.runtime.build_external(lease))
+    }
+
+    /// Creates an external payload that may retain typed Gleam values.
+    pub fn create_external_with(
+        &mut self,
+        build: impl FnOnce(
+            &mut HostExternalPayloadBuilder<'_, Profile, Arguments>,
+        ) -> <Profile as HostExternalStorage<Schema>>::Payload,
+    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>> {
+        let value = {
+            let mut builder = HostExternalPayloadBuilder::new(self.runtime);
+            build(&mut builder)
+        };
         let lease = Profile::store(self.runtime.external_stores()).insert(
             value,
             Profile::equal,

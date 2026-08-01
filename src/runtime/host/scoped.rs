@@ -37,6 +37,29 @@ pub(super) struct ScopedValues {
     function_values: HashMap<HostValueToken, EvaluatedFunctionValue>,
 }
 
+pub(crate) struct StoredRuntimeValue {
+    value: EvaluatedValue,
+    _type: crate::plan::ValueType,
+}
+
+impl StoredRuntimeValue {
+    pub(in crate::runtime) fn new(value: EvaluatedValue, type_: crate::plan::ValueType) -> Self {
+        Self {
+            value,
+            _type: type_,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_int(value: BigInt) -> Self {
+        Self::new(EvaluatedValue::Int(value), crate::plan::ValueType::Int)
+    }
+
+    pub(super) fn value(&self) -> &EvaluatedValue {
+        &self.value
+    }
+}
+
 impl ScopedValues {
     pub(super) fn retain(&self, token: HostValueToken, retained: &mut RetainedValues) {
         match token.family {
@@ -600,7 +623,9 @@ impl ScopedValues {
 
 #[cfg(test)]
 mod tests {
+    use super::{ScopedValues, StoredRuntimeValue};
     use crate::host::test::{StatelessTestProvider, TestTypeParameter, stateless_identity};
+    use crate::runtime::EvaluatedValue;
     use crate::{
         BitArrayValue, HostCall, HostCallCompletion, HostCallError, HostList, HostListType,
         HostModule, HostProviderModule, HostProviderSet, HostTupleType, HostTypeList,
@@ -609,6 +634,18 @@ mod tests {
     };
     use ecow::EcoString;
     use num_bigint::BigInt;
+
+    #[test]
+    fn stored_runtime_value_preserves_its_exact_type_and_restores_its_value() {
+        let stored =
+            StoredRuntimeValue::new(EvaluatedValue::Int(7.into()), crate::plan::ValueType::Int);
+        let mut scoped = ScopedValues::default();
+
+        let restored = scoped.push(stored.value().clone());
+
+        assert_eq!(stored._type, crate::plan::ValueType::Int);
+        assert_eq!(scoped.int(restored), BigInt::from(7));
+    }
 
     #[test]
     fn runtime_host_call_reads_scoped_compound_values() {
