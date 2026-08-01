@@ -1,4 +1,5 @@
 mod custom;
+mod external;
 mod function;
 mod list;
 mod parameter;
@@ -51,6 +52,10 @@ pub(crate) enum HostTypeDescriptor {
     },
     Custom {
         schema: HostCustomTypeSchema,
+        arguments: Box<[HostTypeDescriptor]>,
+    },
+    External {
+        schema: crate::host::HostExternalTypeSchema,
         arguments: Box<[HostTypeDescriptor]>,
     },
 }
@@ -109,6 +114,58 @@ pub(crate) fn custom_constructor_index<Constructor: HostCustomConstructor>() -> 
 }
 
 impl HostTypeDescriptor {
+    pub(crate) fn collect_external_schemas(
+        &self,
+        output: &mut Vec<crate::host::HostExternalTypeSchema>,
+        visited: &mut HashSet<(EcoString, EcoString, EcoString)>,
+    ) {
+        match self {
+            Self::List(item) => item.collect_external_schemas(output, visited),
+            Self::Tuple(elements) => {
+                for element in elements {
+                    element.collect_external_schemas(output, visited);
+                }
+            }
+            Self::Function { arguments, return_ } => {
+                for argument in arguments {
+                    argument.collect_external_schemas(output, visited);
+                }
+                return_.collect_external_schemas(output, visited);
+            }
+            Self::Custom { schema, arguments } => {
+                for constructor in schema.constructors() {
+                    for field in constructor.fields() {
+                        field.type_().collect_external_schemas(output, visited);
+                    }
+                }
+                for argument in arguments {
+                    argument.collect_external_schemas(output, visited);
+                }
+            }
+            Self::External { schema, arguments } => {
+                let identity = (
+                    schema.package().clone(),
+                    schema.module().clone(),
+                    schema.name().clone(),
+                );
+                if visited.insert(identity) {
+                    output.push(schema.clone());
+                }
+                for argument in arguments {
+                    argument.collect_external_schemas(output, visited);
+                }
+            }
+            Self::Parameter(_)
+            | Self::Int
+            | Self::Float
+            | Self::String
+            | Self::BitArray
+            | Self::UtfCodepoint
+            | Self::Bool
+            | Self::Nil => {}
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn schema_type(&self) -> HostSchemaType {
         match self {
@@ -140,6 +197,14 @@ impl HostTypeDescriptor {
                 package: schema.package().clone(),
                 module: schema.module().clone(),
                 name: schema.name().clone(),
+                arguments: arguments
+                    .iter()
+                    .map(Self::schema_type)
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            },
+            Self::External { schema, arguments } => HostSchemaType::External {
+                schema: schema.clone(),
                 arguments: arguments
                     .iter()
                     .map(Self::schema_type)
@@ -185,6 +250,16 @@ impl HostTypeDescriptor {
                     arguments.iter().map(Self::value_type).collect(),
                 )),
             ),
+            Self::External { schema, arguments } => {
+                crate::plan::ValueShape::External(crate::plan::ExternalValueShape::new(
+                    crate::plan::ExternalTypeName::new(
+                        schema.package().clone(),
+                        schema.module().clone(),
+                        schema.name().clone(),
+                    ),
+                    arguments.iter().map(Self::value_shape).collect(),
+                ))
+            }
         }
     }
 
@@ -209,7 +284,7 @@ impl HostTypeDescriptor {
                 }
                 return_.collect_type_parameters(output);
             }
-            Self::Custom { arguments, .. } => {
+            Self::Custom { arguments, .. } | Self::External { arguments, .. } => {
                 for argument in arguments {
                     argument.collect_type_parameters(output);
                 }
@@ -306,8 +381,8 @@ mod tests {
     use crate::host::function::CallArguments;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{
-        HostCustom, HostCustomToken, HostList, HostListToken, HostScopedValue, HostTuple,
-        HostTupleToken, HostValue, HostValueFamily, HostValueToken,
+        HostCustom, HostCustomToken, HostExternalTypeSchema, HostList, HostListToken,
+        HostScopedValue, HostTuple, HostTupleToken, HostValue, HostValueFamily, HostValueToken,
     };
     use crate::runtime::BitArrayValue;
     use ecow::EcoString;
@@ -528,6 +603,18 @@ mod tests {
             HostSchemaType::Function {
                 arguments: vec![HostSchemaType::Int, HostSchemaType::Bool].into_boxed_slice(),
                 return_: Box::new(HostSchemaType::String),
+            },
+        );
+        let external = HostExternalTypeSchema::new("domain", "domain/resource", "Resource", 1);
+        assert_eq!(
+            HostTypeDescriptor::External {
+                schema: external.clone(),
+                arguments: vec![HostTypeDescriptor::Parameter(0)].into_boxed_slice(),
+            }
+            .schema_type(),
+            HostSchemaType::External {
+                schema: external,
+                arguments: vec![HostSchemaType::parameter(0)].into_boxed_slice(),
             },
         );
     }

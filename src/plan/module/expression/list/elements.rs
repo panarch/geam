@@ -1,15 +1,16 @@
 use super::{
     BitArrayListExpr, BitArrayListItem, BoolListExpr, BoolListItem, CustomListExpr, CustomListItem,
-    FloatListExpr, FloatListItem, FunctionListExpr, FunctionListItem, GenericListExpr,
-    GenericListItem, IntListExpr, IntListItem, ListExpr, ListItem, ListListExpr, ListListItem,
-    NilListExpr, NilListItem, ParameterListListExpr, ParameterListListItem, StoredListExpr,
-    StringListExpr, StringListItem, TupleListExpr, TupleListItem, UtfCodepointListExpr,
-    UtfCodepointListItem,
+    ExternalListExpr, ExternalListItem, FloatListExpr, FloatListItem, FunctionListExpr,
+    FunctionListItem, GenericListExpr, GenericListItem, IntListExpr, IntListItem, ListExpr,
+    ListItem, ListListExpr, ListListItem, NilListExpr, NilListItem, ParameterListListExpr,
+    ParameterListListItem, StoredListExpr, StringListExpr, StringListItem, TupleListExpr,
+    TupleListItem, UtfCodepointListExpr, UtfCodepointListItem,
 };
 use crate::plan::{
-    BitArrayExpr, BoolExpr, CustomExpr, CustomType, Expr, FloatExpr, FunctionExpr, FunctionType,
-    GenericExpr, IntExpr, NilExpr, StringExpr, TupleExpr, TypeParameterId, UtfCodepointExpr,
-    ValueRepresentation, ValueShape, ValueStorageShape, ValueType,
+    BitArrayExpr, BoolExpr, CustomExpr, CustomType, Expr, ExternalExpr, ExternalType, FloatExpr,
+    FunctionExpr, FunctionType, GenericExpr, IntExpr, NilExpr, StringExpr, TupleExpr,
+    TypeParameterId, UtfCodepointExpr, ValueRepresentation, ValueShape, ValueStorageShape,
+    ValueType,
 };
 use vec1::Vec1;
 
@@ -30,6 +31,10 @@ pub(crate) enum ListElements {
     Custom {
         item_type: CustomType,
         values: Vec<CustomExpr>,
+    },
+    External {
+        item_type: ExternalType,
+        values: Vec<ExternalExpr>,
     },
     Float(Vec<FloatExpr>),
     Bool(Vec<BoolExpr>),
@@ -77,6 +82,10 @@ pub(crate) enum ListSpreadElements {
     Custom {
         values: Vec1<CustomExpr>,
         tail: CustomListExpr,
+    },
+    External {
+        values: Vec1<ExternalExpr>,
+        tail: ExternalListExpr,
     },
     Float {
         values: Vec1<FloatExpr>,
@@ -132,6 +141,9 @@ impl ListElements {
             ValueType::Custom(item_type) => {
                 list_elements_from_exprs(CustomListItem { item_type }, values)
             }
+            ValueType::External(item_type) => {
+                list_elements_from_exprs(ExternalListItem { item_type }, values)
+            }
             ValueType::Float => list_elements_from_exprs(FloatListItem, values),
             ValueType::Bool => list_elements_from_exprs(BoolListItem, values),
             ValueType::Nil => list_elements_from_exprs(NilListItem, values),
@@ -168,6 +180,7 @@ impl ListElements {
             Self::BitArray(_) => ValueType::BitArray,
             Self::UtfCodepoint(_) => ValueType::UtfCodepoint,
             Self::Custom { item_type, .. } => ValueType::Custom(item_type.clone()),
+            Self::External { item_type, .. } => ValueType::External(item_type.clone()),
             Self::Float(_) => ValueType::Float,
             Self::Bool(_) => ValueType::Bool,
             Self::Nil(_) => ValueType::Nil,
@@ -253,6 +266,19 @@ impl ListSpreadElements {
                 }
                 let values = non_empty_spread_values(values)?;
                 Ok(Self::Custom { values, tail })
+            }
+            ListElements::External {
+                item_type: _,
+                values,
+            } => {
+                let Some(tail) = tail.into_external() else {
+                    return Err(spread_element_type_mismatch(expected, actual));
+                };
+                if tail.element_type() != expected {
+                    return Err(spread_element_type_mismatch(expected, tail.element_type()));
+                }
+                let values = non_empty_spread_values(values)?;
+                Ok(Self::External { values, tail })
             }
             ListElements::Float(values) => {
                 let Some(tail) = tail.into_float() else {
@@ -347,10 +373,11 @@ mod tests {
     use crate::plan::module::{GenericListExpr, GenericListItem};
     use crate::plan::{
         BitArrayExpr, BoolExpr, CustomExpr, CustomLocal, CustomLocalId, CustomType, CustomTypeName,
-        Expr, FloatExpr, FunctionExpr, FunctionReference, FunctionShape, FunctionType, GenericExpr,
-        GenericLocal, GenericLocalId, IntExpr, IntListExpr, IntListItem, ListExpr, NilExpr,
-        StoredListExpr, StringExpr, StringListExpr, StringListItem, TupleExpr, TypeParameterId,
-        UtfCodepointExpr, UtfCodepointLocalId, ValueStorageShape, ValueType,
+        Expr, ExternalExpr, ExternalLocal, ExternalLocalId, ExternalType, ExternalTypeName,
+        ExternalValueShape, FloatExpr, FunctionExpr, FunctionReference, FunctionShape,
+        FunctionType, GenericExpr, GenericLocal, GenericLocalId, IntExpr, IntListExpr, IntListItem,
+        ListExpr, NilExpr, StoredListExpr, StringExpr, StringListExpr, StringListItem, TupleExpr,
+        TypeParameterId, UtfCodepointExpr, UtfCodepointLocalId, ValueStorageShape, ValueType,
         monomorphic_function_instantiation,
     };
 
@@ -358,6 +385,23 @@ mod tests {
         CustomType::new(
             CustomTypeName::new("geam".into(), "main".into(), name.into()),
             Vec::new(),
+        )
+    }
+
+    fn external_type(name: &str) -> ExternalType {
+        ExternalType::new(
+            ExternalTypeName::new("geam".into(), "main".into(), name.into()),
+            Vec::new(),
+        )
+    }
+
+    fn external_value(name: &str, local: usize) -> ExternalExpr {
+        ExternalExpr::local_get(
+            ExternalLocal::from_shape(
+                ExternalLocalId(local),
+                ExternalValueShape::any(external_type(name)),
+            ),
+            "external".into(),
         )
     }
 
@@ -419,6 +463,19 @@ mod tests {
             Ok(ListElements::Custom {
                 item_type: custom_type,
                 values: vec![custom],
+            }),
+        );
+
+        let external_type = external_type("Token");
+        let external = external_value("Token", 0);
+        assert_eq!(
+            ListElements::from_exprs(
+                ValueType::External(external_type.clone()),
+                vec![Expr::external(external.clone())],
+            ),
+            Ok(ListElements::External {
+                item_type: external_type,
+                values: vec![external],
             }),
         );
 
@@ -490,6 +547,8 @@ mod tests {
     fn from_exprs_rejects_wrong_item_family_and_nested_metadata() {
         let first_custom = custom_type("First");
         let second_custom = custom_type("Second");
+        let first_external = external_type("First");
+        let second_external = external_type("Second");
         let first_parameter = TypeParameterId(0);
         let second_parameter = TypeParameterId(1);
 
@@ -528,6 +587,16 @@ mod tests {
             Err(ListElementTypeMismatch {
                 expected: ValueType::Custom(first_custom),
                 actual: ValueType::Custom(second_custom),
+            }),
+        );
+        assert_eq!(
+            ListElements::from_exprs(
+                ValueType::External(first_external.clone()),
+                vec![Expr::external(external_value("Second", 0))],
+            ),
+            Err(ListElementTypeMismatch {
+                expected: ValueType::External(first_external),
+                actual: ValueType::External(second_external),
             }),
         );
 
@@ -630,6 +699,14 @@ mod tests {
             ValueType::Custom(custom_type("Boxed")),
         );
         assert_eq!(
+            ListElements::External {
+                item_type: external_type("Token"),
+                values: Vec::new(),
+            }
+            .item_type(),
+            ValueType::External(external_type("Token")),
+        );
+        assert_eq!(
             ListElements::Tuple {
                 item_type: vec![ValueType::String],
                 values: Vec::new(),
@@ -659,6 +736,7 @@ mod tests {
     fn spread_parts_reject_empty_prefix_for_every_item_family() {
         let parameter = TypeParameterId(0);
         let custom = custom_type("Token");
+        let external = external_type("Token");
         let function = FunctionType::new(vec![ValueType::Int], ValueType::Int);
         let cases = vec![
             (
@@ -688,6 +766,13 @@ mod tests {
                     values: Vec::new(),
                 },
                 ValueType::Custom(custom),
+            ),
+            (
+                ListElements::External {
+                    item_type: external.clone(),
+                    values: Vec::new(),
+                },
+                ValueType::External(external),
             ),
             (ListElements::Float(Vec::new()), ValueType::Float),
             (ListElements::Bool(Vec::new()), ValueType::Bool),
@@ -724,9 +809,35 @@ mod tests {
     }
 
     #[test]
+    fn spread_parts_preserve_external_values_and_nominal_type() {
+        let item_type = external_type("Token");
+        let head = external_value("Token", 0);
+        let tail = crate::plan::module::ExternalListExpr::value(
+            crate::plan::module::ExternalListItem::new(item_type.clone()),
+            Vec::new(),
+        );
+
+        assert_eq!(
+            ListSpreadElements::from_parts(
+                ListElements::External {
+                    item_type: item_type.clone(),
+                    values: vec![head.clone()],
+                },
+                ListExpr::External(tail.clone()),
+            ),
+            Ok(ListSpreadElements::External {
+                values: vec1::vec1![head],
+                tail,
+            }),
+        );
+    }
+
+    #[test]
     fn spread_parts_reject_wrong_tail_family_and_nested_metadata() {
         let first_custom = custom_type("First");
         let second_custom = custom_type("Second");
+        let first_external = external_type("First");
+        let second_external = external_type("Second");
         let first_parameter = TypeParameterId(0);
         let second_parameter = TypeParameterId(1);
         let generic_value = GenericExpr::local_get(
@@ -739,6 +850,7 @@ mod tests {
             CustomLocal::new(CustomLocalId(0), first_custom.clone()),
             "custom".into(),
         );
+        let external_value = external_value("First", 0);
         let tuple_value = TupleExpr::value(
             vec![Expr::int(IntExpr::value(1.into()))],
             vec![ValueType::Int],
@@ -841,6 +953,36 @@ mod tests {
                 ListElementTypeMismatch {
                     expected: ValueType::Custom(first_custom.clone()),
                     actual: ValueType::Int,
+                },
+            )),
+        );
+        assert_eq!(
+            ListSpreadElements::from_parts(
+                ListElements::External {
+                    item_type: first_external.clone(),
+                    values: vec![external_value.clone()],
+                },
+                ListExpr::value(Vec::new(), ValueType::Int),
+            ),
+            Err(ListSpreadConstructionError::ElementTypeMismatch(
+                ListElementTypeMismatch {
+                    expected: ValueType::External(first_external.clone()),
+                    actual: ValueType::Int,
+                },
+            )),
+        );
+        assert_eq!(
+            ListSpreadElements::from_parts(
+                ListElements::External {
+                    item_type: first_external.clone(),
+                    values: vec![external_value],
+                },
+                ListExpr::value(Vec::new(), ValueType::External(second_external.clone()),),
+            ),
+            Err(ListSpreadConstructionError::ElementTypeMismatch(
+                ListElementTypeMismatch {
+                    expected: ValueType::External(first_external),
+                    actual: ValueType::External(second_external),
                 },
             )),
         );

@@ -1,9 +1,10 @@
 use super::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
-    CustomFunctionLocal, CustomLocal, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocal,
-    GenericFunctionLocal, IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal,
-    NeverFunctionLocal, NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId,
-    TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
+    CustomFunctionLocal, CustomLocal, ExternalFunctionLocal, ExternalLocal, FloatFunctionLocalId,
+    FloatLocalId, FunctionFunctionLocal, GenericFunctionLocal, IntFunctionLocalId, IntLocalId,
+    ListFunctionLocal, ListLocal, NeverFunctionLocal, NilFunctionLocalId, NilLocalId,
+    StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::graph::LocalLabel;
@@ -23,6 +24,7 @@ pub(crate) enum ParamLocal {
     BitArray(BitArrayLocalId),
     UtfCodepoint(UtfCodepointLocalId),
     Custom(CustomLocal),
+    External(ExternalLocal),
     Bool(BoolLocalId),
     Nil(NilLocalId),
     Tuple {
@@ -53,6 +55,7 @@ pub(crate) enum ParamLocal {
     GenericFunction(GenericFunctionLocal),
     NeverFunction(NeverFunctionLocal),
     CustomFunction(CustomFunctionLocal),
+    ExternalFunction(ExternalFunctionLocal),
     BoolFunction {
         local: BoolFunctionLocalId,
         type_: FunctionType,

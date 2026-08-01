@@ -2,48 +2,120 @@ mod scoped;
 
 use self::scoped::ScopedValues;
 use crate::host::{
-    HostCallArguments, HostCallRuntime, HostCustomArgumentSlot, HostCustomToken,
-    HostFunctionArgumentSlot, HostFunctionToken, HostListArgumentSlot, HostListToken, HostProfile,
-    HostScopedValue, HostTupleArgumentSlot, HostTupleToken, HostValueArgumentSlot, HostValueToken,
+    ExternalPayloadLease, HostCallArguments, HostCallRuntime, HostCustomArgumentSlot,
+    HostCustomToken, HostExternalArgumentSlot, HostExternalToken, HostFunctionArgumentSlot,
+    HostFunctionToken, HostListArgumentSlot, HostListToken, HostProfile, HostScopedValue,
+    HostTupleArgumentSlot, HostTupleToken, HostValueArgumentSlot, HostValueToken,
 };
 use crate::plan::execution::host::{HostCallParameter, HostedFunction};
+use crate::plan::execution::runtime::RuntimeExecutionPlan;
 use crate::plan::execution::type_::{ListTypeId, ValueType};
-use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::evaluated::EvaluatedCustomValue;
 use crate::runtime::graph::{BlockEnvironment, RetainedValues};
 use crate::runtime::state::RuntimeStateFor;
 use ecow::EcoString;
 use num_bigint::BigInt;
 
-pub(super) struct RuntimeHostCall<'call, 'run, Plan, Profile>
+pub(super) struct RuntimeHostCall<'call, 'run, Profile>
 where
-    Plan: ExecutableRuntimePlan<RunState = Profile::RunState> + 'run,
     Profile: HostProfile,
+    crate::plan::execution::HostedExecution<Profile>: 'run,
 {
-    plan: &'call Plan,
-    state: &'call mut RuntimeStateFor<'run, Plan>,
+    plan: &'call crate::plan::execution::HostedExecution<Profile>,
+    state: &'call mut RuntimeStateFor<'run, crate::plan::execution::HostedExecution<Profile>>,
     arguments: RetainedValues,
     value_arguments: Vec<HostValueToken>,
     list_arguments: Vec<HostListToken>,
     tuple_arguments: Vec<HostTupleToken>,
     custom_arguments: Vec<HostCustomToken>,
+    external_arguments: Vec<HostExternalToken>,
     function_arguments: Vec<HostFunctionToken>,
     scoped: ScopedValues,
     return_lists: Box<[ListTypeId]>,
     return_customs: Box<[crate::plan::execution::type_::CustomTypeId]>,
+    return_externals: Box<[crate::plan::execution::type_::ExternalTypeId]>,
     origin: crate::runtime::error::HostCallOrigin,
     profile: std::marker::PhantomData<Profile>,
 }
 
-impl<'call, 'run, Plan, Profile> RuntimeHostCall<'call, 'run, Plan, Profile>
+struct PreparedHostCall {
+    arguments: RetainedValues,
+    value_arguments: Vec<HostValueToken>,
+    list_arguments: Vec<HostListToken>,
+    tuple_arguments: Vec<HostTupleToken>,
+    custom_arguments: Vec<HostCustomToken>,
+    external_arguments: Vec<HostExternalToken>,
+    function_arguments: Vec<HostFunctionToken>,
+    scoped: ScopedValues,
+    return_lists: Box<[ListTypeId]>,
+    return_customs: Box<[crate::plan::execution::type_::CustomTypeId]>,
+    return_externals: Box<[crate::plan::execution::type_::ExternalTypeId]>,
+}
+
+impl<'call, 'run, Profile> RuntimeHostCall<'call, 'run, Profile>
 where
-    Plan: ExecutableRuntimePlan<RunState = Profile::RunState> + 'run,
     Profile: HostProfile,
+    crate::plan::execution::HostedExecution<Profile>: 'run,
 {
     pub(super) fn new(
-        plan: &'call Plan,
-        state: &'call mut RuntimeStateFor<'run, Plan>,
+        plan: &'call crate::plan::execution::HostedExecution<Profile>,
+        state: &'call mut RuntimeStateFor<'run, crate::plan::execution::HostedExecution<Profile>>,
         function: &HostedFunction<impl Sized>,
+        inputs: RetainedValues,
+    ) -> Self {
+        let PreparedHostCall {
+            arguments,
+            value_arguments,
+            list_arguments,
+            tuple_arguments,
+            custom_arguments,
+            external_arguments,
+            function_arguments,
+            scoped,
+            return_lists,
+            return_customs,
+            return_externals,
+        } = PreparedHostCall::new(
+            function.call_parameters(),
+            function.type_().return_(),
+            inputs,
+        );
+        state.values_mut().drain_releases();
+
+        Self {
+            plan,
+            state,
+            arguments,
+            value_arguments,
+            list_arguments,
+            tuple_arguments,
+            custom_arguments,
+            external_arguments,
+            function_arguments,
+            scoped,
+            return_lists,
+            return_customs,
+            return_externals,
+            origin: crate::runtime::error::HostCallOrigin::host(function.metadata()),
+            profile: std::marker::PhantomData,
+        }
+    }
+
+    pub(super) fn finish<Value: crate::runtime::graph::GraphValue>(
+        &self,
+        returned: HostValueToken,
+        local: &Value,
+    ) -> Value::Evaluated {
+        let mut retained = RetainedValues::empty();
+        self.scoped.retain(returned, &mut retained);
+        local.read(&BlockEnvironment::from_retained(retained))
+    }
+}
+
+impl PreparedHostCall {
+    fn new(
+        parameters: &[HostCallParameter],
+        return_type: &ValueType,
         inputs: RetainedValues,
     ) -> Self {
         let environment = BlockEnvironment::from_retained(inputs);
@@ -53,9 +125,10 @@ where
         let mut list_arguments = Vec::new();
         let mut tuple_arguments = Vec::new();
         let mut custom_arguments = Vec::new();
+        let mut external_arguments = Vec::new();
         let mut function_arguments = Vec::new();
 
-        for parameter in function.call_parameters() {
+        for parameter in parameters {
             match parameter {
                 HostCallParameter::Int(_)
                 | HostCallParameter::Float(_)
@@ -81,6 +154,10 @@ where
                     let token = scoped.push(environment.value(&parameter.local()));
                     custom_arguments.push(scoped.custom_token(token));
                 }
+                HostCallParameter::External(_) => {
+                    let token = scoped.push(environment.value(&parameter.local()));
+                    external_arguments.push(scoped.external_token(token));
+                }
                 HostCallParameter::Function(_) => {
                     let token = scoped.push(environment.value(&parameter.local()));
                     function_arguments.push(scoped.function_token(token));
@@ -88,14 +165,13 @@ where
             }
         }
 
-        drop(environment);
-        state.values_mut().drain_releases();
-
         let mut return_lists = Vec::new();
         let mut return_customs = Vec::new();
-        match function.type_().return_() {
+        let mut return_externals = Vec::new();
+        match return_type {
             ValueType::List(type_id) => return_lists.push(type_id.to_owned()),
             ValueType::Custom(type_id) => return_customs.push(type_id.to_owned()),
+            ValueType::External(type_id) => return_externals.push(type_id.to_owned()),
             ValueType::Parameter(_)
             | ValueType::Int
             | ValueType::Float
@@ -109,40 +185,32 @@ where
         }
 
         Self {
-            plan,
-            state,
             arguments,
             value_arguments,
             list_arguments,
             tuple_arguments,
             custom_arguments,
+            external_arguments,
             function_arguments,
             scoped,
             return_lists: return_lists.into_boxed_slice(),
             return_customs: return_customs.into_boxed_slice(),
-            origin: crate::runtime::error::HostCallOrigin::host(function.metadata()),
-            profile: std::marker::PhantomData,
+            return_externals: return_externals.into_boxed_slice(),
         }
-    }
-
-    pub(super) fn finish<Value: crate::runtime::graph::GraphValue>(
-        &self,
-        returned: HostValueToken,
-        local: &Value,
-    ) -> Value::Evaluated {
-        let mut retained = RetainedValues::empty();
-        self.scoped.retain(returned, &mut retained);
-        local.read(&BlockEnvironment::from_retained(retained))
     }
 }
 
-impl<'run, Plan, Profile> HostCallRuntime<Profile> for RuntimeHostCall<'_, 'run, Plan, Profile>
+impl<'run, Profile> HostCallRuntime<Profile> for RuntimeHostCall<'_, 'run, Profile>
 where
-    Plan: ExecutableRuntimePlan<RunState = Profile::RunState> + 'run,
     Profile: HostProfile,
+    crate::plan::execution::HostedExecution<Profile>: 'run,
 {
     fn state(&mut self) -> &mut Profile::RunState {
         self.state.host_state()
+    }
+
+    fn external_stores(&self) -> &Profile::ExternalStores {
+        self.plan.external_stores()
     }
 
     fn arguments(&self) -> &dyn HostCallArguments {
@@ -167,6 +235,10 @@ where
 
     fn custom(&self, slot: HostCustomArgumentSlot) -> HostCustomToken {
         self.custom_arguments[slot.index()]
+    }
+
+    fn external(&self, slot: HostExternalArgumentSlot) -> HostExternalToken {
+        self.external_arguments[slot.index()]
     }
 
     fn function(&self, slot: HostFunctionArgumentSlot) -> HostFunctionToken {
@@ -209,6 +281,10 @@ where
 
     fn custom_token(&self, value: HostValueToken) -> HostCustomToken {
         self.scoped.custom_token(value)
+    }
+
+    fn external_token(&self, value: HostValueToken) -> HostExternalToken {
+        self.scoped.external_token(value)
     }
 
     fn function_token(&self, value: HostValueToken) -> HostFunctionToken {
@@ -282,8 +358,7 @@ where
 
     fn equal(&self, left: HostScopedValue, right: HostScopedValue) -> bool {
         crate::runtime::evaluated::values_equal(
-            self.plan,
-            self.state,
+            self.state.values(),
             &self.scoped.value_from_scoped(left),
             &self.scoped.value_from_scoped(right),
         )
@@ -299,9 +374,10 @@ where
             .into_iter()
             .map(|value| self.scoped.push_scoped(value))
             .collect::<Vec<_>>();
+        let storage_type = self.plan.list_storage_type(self.return_lists[0]);
         let list = self
             .scoped
-            .allocate_list(self.plan, self.state, self.return_lists[0], &values);
+            .allocate_list(storage_type, self.state.values_mut(), &values);
         self.scoped.push_list(list)
     }
 
@@ -330,5 +406,17 @@ where
             .custom_constructor_id(self.return_customs[0], constructor);
         self.scoped
             .push_custom(EvaluatedCustomValue::from_fields(constructor, fields))
+    }
+
+    fn build_external(&mut self, value: ExternalPayloadLease) -> HostExternalToken {
+        self.scoped
+            .push_external(crate::runtime::evaluated::EvaluatedExternalValue::new(
+                self.return_externals[0],
+                value,
+            ))
+    }
+
+    fn external_lease(&self, value: HostExternalToken) -> ExternalPayloadLease {
+        self.scoped.external(value).lease().clone()
     }
 }

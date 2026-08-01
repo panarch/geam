@@ -1,8 +1,8 @@
-use super::super::{call_args, custom, list, lower_function_call, tuple};
+use super::super::{call_args, custom, list, tuple};
 use super::{closure, reference, source_stop};
-use crate::plan::execution::graph::FunctionTarget;
+use crate::plan::execution::lowering::graph::DraftFunctionTarget;
 use crate::plan::execution::lowering::graph::{
-    DraftCursor, DraftFlow, DraftFunctionFunction, DraftGraph,
+    DraftCursor, DraftFlow, DraftFunction, DraftFunctionFunction, DraftGraph,
 };
 use crate::plan::execution::lowering::specialization::{
     Representability, SpecializedFunctionShape, StoredValueShape,
@@ -37,7 +37,7 @@ pub(in crate::plan::execution::lowering) fn generic_function_function_expr(
     cursor: DraftCursor,
     graph: &mut DraftGraph,
     context: &mut super::super::super::LoweringContext,
-) -> Representability<DraftFlow<DraftFunctionFunction>> {
+) -> Representability<DraftFlow<DraftFunction>> {
     generic_function_function_expr_kind(
         expression.kind(),
         return_shape,
@@ -76,7 +76,7 @@ pub(in crate::plan::execution::lowering) fn function_function_expr_kind(
             .map(|target| {
                 reference(
                     shape.clone(),
-                    FunctionTarget::Function(target),
+                    DraftFunctionTarget::Function(target),
                     cursor,
                     graph,
                 )
@@ -89,7 +89,7 @@ pub(in crate::plan::execution::lowering) fn function_function_expr_kind(
                     function,
                     captures,
                     shape.clone(),
-                    FunctionTarget::Function(target),
+                    DraftFunctionTarget::Function(target),
                     cursor,
                     graph,
                     context,
@@ -134,28 +134,8 @@ pub(in crate::plan::execution::lowering) fn function_function_expr_kind(
             function,
             args,
             site,
-        } => lower_function_call(
-            args,
-            cursor,
-            graph,
-            context,
-            |cursor, graph, context| function_function_expr(function, cursor, graph, context),
-            |cursor, graph, context| {
-                super::evaluated_function_function_expr(function, cursor, graph, context)
-            },
-            |mut cursor, function, args, graph, _| {
-                let value = graph.function_instruction(
-                    &mut cursor,
-                    shape.clone(),
-                    I::FunctionCall {
-                        function: function.value().clone(),
-                        args,
-                        site: site.clone(),
-                    },
-                );
-                DraftFlow::value(cursor, DraftFunctionFunction::new(value))
-            },
-        ),
+        } => super::function_value_call(function, args, site, shape, cursor, graph, context)
+            .map(|flow| flow.map(DraftFunctionFunction::new)),
         E::TupleIndex {
             tuple: source,
             index,
@@ -303,7 +283,7 @@ pub(super) fn generic_function_function_expr_kind(
     cursor: DraftCursor,
     graph: &mut DraftGraph,
     context: &mut super::super::super::LoweringContext,
-) -> Representability<DraftFlow<DraftFunctionFunction>> {
+) -> Representability<DraftFlow<DraftFunction>> {
     super::generic::lower_executable_kind(
         kind,
         shape,
@@ -311,7 +291,7 @@ pub(super) fn generic_function_function_expr_kind(
         graph,
         context,
         super::generic::executable_kind_lowering(
-            DraftFunctionFunction::new,
+            std::convert::identity,
             |value, context| {
                 context
                     .generic_function_function_constant(value, return_shape, shape)
@@ -320,7 +300,7 @@ pub(super) fn generic_function_function_expr_kind(
             |function, context| {
                 context
                     .function_function_id(function, return_shape)
-                    .map(FunctionTarget::Function)
+                    .map(DraftFunctionTarget::Function)
             },
             |function, context| {
                 let type_ =

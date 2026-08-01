@@ -1,7 +1,8 @@
 use super::{
-    FallibleHostFunction, HostFunction, HostFunctionDefinition, HostFunctionImplementation,
-    HostFunctionSchema, HostProfile, HostProvider, HostRegistrationError,
-    ScopedDivergingHostFunction, ScopedHostFunction, StatelessHostProfile,
+    FallibleHostFunction, HostExternalSchema, HostExternalStorage, HostExternalTypeSchema,
+    HostFunction, HostFunctionDefinition, HostFunctionImplementation, HostFunctionSchema,
+    HostProfile, HostProvider, HostRegistrationError, ScopedDivergingHostFunction,
+    ScopedHostFunction, StatelessHostProfile,
 };
 use ecow::EcoString;
 use gleam_core::analyse::name::check_name_case;
@@ -20,6 +21,7 @@ pub struct HostModule<Profile: HostProfile = StatelessHostProfile> {
 pub struct HostProviderModule<Profile: HostProfile> {
     identity: HostModuleIdentity,
     functions: RegisteredFunctions<Profile>,
+    external_types: RegisteredExternalTypes,
 }
 
 pub struct HostProviderSet<Profile: HostProfile = StatelessHostProfile> {
@@ -42,6 +44,7 @@ pub(crate) struct RegisteredHostProviderModule {
     pub(crate) package: EcoString,
     pub(crate) module: EcoString,
     pub(crate) functions: Vec<RegisteredHostFunction>,
+    pub(crate) external_types: Vec<HostExternalTypeSchema>,
 }
 
 pub(crate) struct RegisteredHostFunction {
@@ -58,6 +61,10 @@ pub(crate) struct RegisteredHostImplementations<Profile: HostProfile> {
 
 struct RegisteredFunctions<Profile: HostProfile> {
     functions: Vec<HostFunctionDefinition<Profile>>,
+}
+
+struct RegisteredExternalTypes {
+    types: Vec<HostExternalTypeSchema>,
 }
 
 impl HostModule<StatelessHostProfile> {
@@ -163,6 +170,7 @@ impl<Profile: HostProfile> HostProviderModule<Profile> {
         HostModuleIdentity::new(package.into(), module.into()).map(|identity| Self {
             identity,
             functions: RegisteredFunctions::new(),
+            external_types: RegisteredExternalTypes::new(),
         })
     }
 
@@ -228,6 +236,17 @@ impl<Profile: HostProfile> HostProviderModule<Profile> {
             .map(|()| self)
     }
 
+    pub fn with_external_type<Schema>(mut self) -> Result<Self, HostRegistrationError>
+    where
+        Schema: HostExternalSchema,
+        Profile: HostExternalStorage<Schema>,
+    {
+        let schema = HostExternalTypeSchema::of::<Schema>();
+        self.external_types
+            .register(&self.identity.module, schema)
+            .map(|()| self)
+    }
+
     pub fn package(&self) -> &EcoString {
         &self.identity.package
     }
@@ -238,6 +257,10 @@ impl<Profile: HostProfile> HostProviderModule<Profile> {
 
     pub fn functions(&self) -> impl ExactSizeIterator<Item = &HostFunctionSchema> {
         self.functions.schemas()
+    }
+
+    pub fn external_types(&self) -> impl ExactSizeIterator<Item = &HostExternalTypeSchema> {
+        self.external_types.schemas()
     }
 }
 
@@ -296,6 +319,7 @@ impl<Profile: HostProfile> HostProviderSet<Profile> {
                 package: provider.identity.package,
                 module: provider.identity.module,
                 functions: provider.functions.into_registered(&mut implementations),
+                external_types: provider.external_types.into_vec(),
             });
         }
         (modules, providers, implementations)
@@ -380,6 +404,46 @@ impl<Profile: HostProfile> RegisteredFunctions<Profile> {
     }
 }
 
+impl RegisteredExternalTypes {
+    fn new() -> Self {
+        Self { types: Vec::new() }
+    }
+
+    fn register(
+        &mut self,
+        module: &EcoString,
+        schema: HostExternalTypeSchema,
+    ) -> Result<(), HostRegistrationError> {
+        let name = schema.name().clone();
+        if check_name_case(SrcSpan::new(0, 0), &name, Named::Type).is_err() {
+            return Err(HostRegistrationError::InvalidExternalTypeName {
+                module: module.clone(),
+                type_: name,
+            });
+        }
+        if self
+            .types
+            .iter()
+            .any(|registered| registered.name() == &name)
+        {
+            return Err(HostRegistrationError::DuplicateExternalType {
+                module: module.clone(),
+                type_: name,
+            });
+        }
+        self.types.push(schema);
+        Ok(())
+    }
+
+    fn schemas(&self) -> impl ExactSizeIterator<Item = &HostExternalTypeSchema> {
+        self.types.iter()
+    }
+
+    fn into_vec(self) -> Vec<HostExternalTypeSchema> {
+        self.types
+    }
+}
+
 impl RegisteredHostModule {
     pub(crate) fn package(&self) -> &EcoString {
         &self.package
@@ -399,8 +463,20 @@ impl RegisteredHostModule {
 }
 
 impl RegisteredHostProviderModule {
-    pub(crate) fn into_parts(self) -> (EcoString, EcoString, Vec<RegisteredHostFunction>) {
-        (self.package, self.module, self.functions)
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        EcoString,
+        EcoString,
+        Vec<RegisteredHostFunction>,
+        Vec<HostExternalTypeSchema>,
+    ) {
+        (
+            self.package,
+            self.module,
+            self.functions,
+            self.external_types,
+        )
     }
 }
 
@@ -467,9 +543,10 @@ mod tests {
     use crate::host::function::CallArguments;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{
-        HostCall, HostCallCompletion, HostCallError, HostFailure, HostFunctionDefinition,
-        HostProvider, HostRegistrationError, HostScopedValue, StatelessHostProfile,
-        expect_never_implementation, expect_value_implementation,
+        ExternalTestProfile, ExternalTestStores, HostCall, HostCallCompletion, HostCallError,
+        HostExternalSchema, HostExternalStorage, HostExternalStore, HostFailure,
+        HostFunctionDefinition, HostProvider, HostRegistrationError, HostScopedValue,
+        StatelessHostProfile, expect_never_implementation, expect_value_implementation,
     };
     use crate::plan::ValueType;
     use ecow::EcoString;
@@ -479,11 +556,61 @@ mod tests {
 
     struct Counter;
 
+    struct CounterSchema;
+
+    struct InvalidCounterSchema;
+
     impl HostProvider<TestHostProfile> for Counter {
         type State = usize;
 
         fn project(state: &mut TestRunState) -> &mut Self::State {
             &mut state.counter
+        }
+    }
+
+    impl HostExternalSchema for CounterSchema {
+        const PACKAGE: &'static str = "application";
+        const MODULE: &'static str = "main";
+        const NAME: &'static str = "Counter";
+        const PARAMETER_COUNT: usize = 1;
+    }
+
+    impl HostExternalStorage<CounterSchema> for ExternalTestProfile {
+        type Payload = usize;
+
+        fn store(stores: &Self::ExternalStores) -> &HostExternalStore<Self::Payload> {
+            &stores.indices
+        }
+
+        fn equal(left: &Self::Payload, right: &Self::Payload) -> bool {
+            left == right
+        }
+
+        fn inspect(value: &Self::Payload) -> EcoString {
+            value.to_string().into()
+        }
+    }
+
+    impl HostExternalSchema for InvalidCounterSchema {
+        const PACKAGE: &'static str = "application";
+        const MODULE: &'static str = "main";
+        const NAME: &'static str = "counter";
+        const PARAMETER_COUNT: usize = 0;
+    }
+
+    impl HostExternalStorage<InvalidCounterSchema> for ExternalTestProfile {
+        type Payload = usize;
+
+        fn store(stores: &Self::ExternalStores) -> &HostExternalStore<Self::Payload> {
+            &stores.indices
+        }
+
+        fn equal(left: &Self::Payload, right: &Self::Payload) -> bool {
+            left == right
+        }
+
+        fn inspect(value: &Self::Payload) -> EcoString {
+            value.to_string().into()
         }
     }
 
@@ -535,6 +662,93 @@ mod tests {
     }
 
     #[test]
+    fn provider_module_exposes_registered_external_type_schemas() {
+        let provider = HostProviderModule::<ExternalTestProfile>::new("application", "main")
+            .expect("provider module should be valid")
+            .with_external_type::<CounterSchema>()
+            .expect("external type should be valid");
+        let schema = provider
+            .external_types()
+            .next()
+            .expect("external type should be registered");
+
+        assert_eq!(schema.package(), "application");
+        assert_eq!(schema.module(), "main");
+        assert_eq!(schema.name(), "Counter");
+        assert_eq!(schema.parameter_count(), 1);
+
+        let hosts = HostProviderSet::with_providers(
+            Vec::<HostModule<ExternalTestProfile>>::new(),
+            [provider],
+        )
+        .expect("provider module should be unique");
+        let (_, mut providers, _) = hosts.into_registered();
+        let (_, _, _, external_types) = providers
+            .pop()
+            .expect("provider module should be registered")
+            .into_parts();
+
+        assert_eq!(
+            external_types,
+            [crate::host::HostExternalTypeSchema::of::<CounterSchema>()]
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_and_duplicate_external_type_registrations() {
+        assert_eq!(
+            HostProviderModule::<ExternalTestProfile>::new("application", "main")
+                .expect("provider module should be valid")
+                .with_external_type::<InvalidCounterSchema>()
+                .err(),
+            Some(HostRegistrationError::InvalidExternalTypeName {
+                module: "main".into(),
+                type_: "counter".into(),
+            }),
+        );
+        assert_eq!(
+            HostProviderModule::<ExternalTestProfile>::new("application", "main")
+                .expect("provider module should be valid")
+                .with_external_type::<CounterSchema>()
+                .expect("first external type should be valid")
+                .with_external_type::<CounterSchema>()
+                .err(),
+            Some(HostRegistrationError::DuplicateExternalType {
+                module: "main".into(),
+                type_: "Counter".into(),
+            }),
+        );
+    }
+
+    #[test]
+    fn external_storage_protocol_projects_payload_semantics() {
+        let stores = ExternalTestStores::default();
+
+        assert!(std::ptr::eq(
+            <ExternalTestProfile as HostExternalStorage<CounterSchema>>::store(&stores),
+            &stores.indices,
+        ));
+        assert!(<ExternalTestProfile as HostExternalStorage<
+            CounterSchema,
+        >>::equal(&7, &7),);
+        assert_eq!(
+            <ExternalTestProfile as HostExternalStorage<CounterSchema>>::inspect(&7),
+            "7",
+        );
+        assert!(std::ptr::eq(
+            <ExternalTestProfile as HostExternalStorage<InvalidCounterSchema>>::store(&stores),
+            &stores.indices,
+        ));
+        assert!(<ExternalTestProfile as HostExternalStorage<
+            InvalidCounterSchema,
+        >>::equal(&8, &8),);
+        assert_eq!(
+            <ExternalTestProfile as HostExternalStorage<InvalidCounterSchema>>::inspect(&8),
+            "8",
+        );
+    }
+
+    #[test]
     fn scoped_registration_projects_provider_state() {
         let provider = HostProviderModule::<TestHostProfile>::new("application", "main")
             .expect("provider module should be valid")
@@ -546,7 +760,7 @@ mod tests {
             HostProviderSet::with_providers(Vec::<HostModule<TestHostProfile>>::new(), [provider])
                 .expect("provider module should be unique");
         let (_, mut providers, implementations) = hosts.into_registered();
-        let (_, _, mut definitions) = providers
+        let (_, _, mut definitions, _) = providers
             .pop()
             .expect("provider module should be registered")
             .into_parts();
@@ -591,7 +805,7 @@ mod tests {
             HostProviderSet::with_providers(Vec::<HostModule<TestHostProfile>>::new(), [provider])
                 .expect("provider module should be unique");
         let (_, mut providers, implementations) = hosts.into_registered();
-        let (_, _, mut definitions) = providers
+        let (_, _, mut definitions, _) = providers
             .pop()
             .expect("provider module should be registered")
             .into_parts();

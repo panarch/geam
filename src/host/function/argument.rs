@@ -8,8 +8,9 @@ mod utf_codepoint;
 
 use crate::BitArrayValue;
 use crate::host::{
-    HostAbiType, HostAbiTypeSequence, HostCall, HostCustomSchema, HostCustomType, HostFunctionType,
-    HostListType, HostProfile, HostProvider, HostTupleType, HostTypeParameter,
+    HostAbiType, HostAbiTypeSequence, HostCall, HostCustomSchema, HostCustomType,
+    HostExternalSchema, HostExternalType, HostFunctionType, HostListType, HostProfile,
+    HostProvider, HostTupleType, HostTypeParameter,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -35,6 +36,7 @@ pub(crate) enum HostParameter {
     List(HostListArgumentSlot),
     Tuple(HostTupleArgumentSlot),
     Custom(HostCustomArgumentSlot),
+    External(HostExternalArgumentSlot),
     Function(HostFunctionArgumentSlot),
 }
 
@@ -49,6 +51,9 @@ pub(crate) struct HostTupleArgumentSlot(usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct HostCustomArgumentSlot(usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct HostExternalArgumentSlot(usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct HostFunctionArgumentSlot(usize);
@@ -67,6 +72,7 @@ pub(super) struct HostParameterLayout {
     next_list: usize,
     next_tuple: usize,
     next_custom: usize,
+    next_external: usize,
     next_function: usize,
 }
 
@@ -121,6 +127,12 @@ impl HostTupleArgumentSlot {
 }
 
 impl HostCustomArgumentSlot {
+    pub(crate) fn index(self) -> usize {
+        self.0
+    }
+}
+
+impl HostExternalArgumentSlot {
     pub(crate) fn index(self) -> usize {
         self.0
     }
@@ -262,6 +274,33 @@ where
     }
 }
 
+impl<Schema, Arguments> HostScopedArgument for HostExternalType<Schema, Arguments>
+where
+    Schema: HostExternalSchema,
+    Arguments: HostAbiTypeSequence,
+{
+    type Slot = HostExternalArgumentSlot;
+
+    fn register(layout: &mut HostParameterLayout) -> Self::Slot {
+        let slot = HostExternalArgumentSlot(layout.next_external);
+        layout.next_external += 1;
+        layout.parameters.push(HostParameter::External(slot));
+        slot
+    }
+
+    fn read<'call, Profile, Provider, Return>(
+        call: &HostCall<'call, Profile, Provider, Return>,
+        slot: Self::Slot,
+    ) -> Self::Value<'call>
+    where
+        Profile: HostProfile,
+        Provider: HostProvider<Profile>,
+        Return: HostAbiType,
+    {
+        call.external(slot)
+    }
+}
+
 impl<Arguments, Return> HostScopedArgument for HostFunctionType<Arguments, Return>
 where
     Arguments: HostAbiTypeSequence,
@@ -370,9 +409,10 @@ mod tests {
     use crate::host::{
         HostCall, HostCustomConstructorDefinition, HostCustomConstructorList,
         HostCustomConstructorListEnd, HostCustomFieldListEnd, HostCustomSchema, HostCustomType,
-        HostCustomTypeSchema, HostFunctionToken, HostFunctionType, HostListToken, HostListType,
-        HostProvider, HostTupleToken, HostTupleType, HostTypeList, HostTypeListEnd,
-        HostTypeParameter, HostValueFamily, HostValueToken,
+        HostCustomTypeSchema, HostExternalSchema, HostExternalToken, HostExternalType,
+        HostFunctionToken, HostFunctionType, HostListToken, HostListType, HostProvider,
+        HostTupleToken, HostTupleType, HostTypeList, HostTypeListEnd, HostTypeParameter,
+        HostValueFamily, HostValueToken,
     };
     use ecow::EcoString;
     use num_bigint::BigInt;
@@ -390,6 +430,15 @@ mod tests {
     struct MarkerSchema;
 
     struct MarkerConstructor;
+
+    struct ResourceSchema;
+
+    impl HostExternalSchema for ResourceSchema {
+        const PACKAGE: &'static str = "domain";
+        const MODULE: &'static str = "domain/resource";
+        const NAME: &'static str = "Resource";
+        const PARAMETER_COUNT: usize = 0;
+    }
 
     impl HostCustomConstructorDefinition for MarkerConstructor {
         const NAME: &'static str = "Marker";
@@ -466,6 +515,7 @@ mod tests {
         type List = HostListType<BigInt>;
         type Tuple = HostTupleType<HostTypeList<BigInt, HostTypeListEnd>>;
         type Custom = HostCustomType<MarkerSchema>;
+        type External = HostExternalType<ResourceSchema>;
         type Function = HostFunctionType<HostTypeList<BigInt, HostTypeListEnd>, bool>;
 
         let mut layout = HostParameterLayout::default();
@@ -480,6 +530,7 @@ mod tests {
         let list_slot = <List as HostScopedArgument>::register(&mut layout);
         let tuple_slot = <Tuple as HostScopedArgument>::register(&mut layout);
         let custom_slot = <Custom as HostScopedArgument>::register(&mut layout);
+        let external_slot = <External as HostScopedArgument>::register(&mut layout);
         let function_slot = <Function as HostScopedArgument>::register(&mut layout);
         assert_eq!(
             layout.finish().as_ref(),
@@ -495,6 +546,7 @@ mod tests {
                 HostParameter::List(list_slot),
                 HostParameter::Tuple(tuple_slot),
                 HostParameter::Custom(custom_slot),
+                HostParameter::External(external_slot),
                 HostParameter::Function(function_slot),
             ],
         );
@@ -525,6 +577,7 @@ mod tests {
             let list = <List as HostScopedArgument>::read(&call, list_slot);
             let tuple = <Tuple as HostScopedArgument>::read(&call, tuple_slot);
             let custom = <Custom as HostScopedArgument>::read(&call, custom_slot);
+            let external = <External as HostScopedArgument>::read(&call, external_slot);
             let function = <Function as HostScopedArgument>::read(&call, function_slot);
 
             assert_eq!(int, BigInt::from(42));
@@ -543,6 +596,7 @@ mod tests {
             assert_eq!(list.token, HostListToken::Stored(0));
             assert_eq!(tuple.token, HostTupleToken(0));
             assert_eq!(custom.token.0, 0);
+            assert_eq!(external.token, HostExternalToken(0));
             assert_eq!(function.token, HostFunctionToken(0));
         }
         assert_eq!(state.counter, 1);

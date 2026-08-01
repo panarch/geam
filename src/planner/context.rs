@@ -3,7 +3,8 @@ use crate::plan::{
     BoolListLocalId, BoolLocalId, CaptureArg, CustomConstructor, CustomConstructorField,
     CustomExpr, CustomFieldAccess, CustomFunctionLocal, CustomFunctionLocalId, CustomFunctionType,
     CustomListLocalId, CustomLocalId, CustomTypeDefinition, CustomTypeTemplate,
-    FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionFunctionLocal,
+    ExternalFunctionLocal, ExternalFunctionLocalId, ExternalFunctionType, ExternalListLocalId,
+    ExternalLocalId, FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionFunctionLocal,
     FunctionFunctionLocalId, FunctionFunctionType, FunctionListLocalId, FunctionReference,
     FunctionTemplate, FunctionTemplateSignature, FunctionType, IntFunctionLocalId, IntListLocalId,
     IntLocalId, ListExpr, ListFunctionLocal, ListListLocalId, ListLocal, ListLocalExpr, LocalId,
@@ -225,6 +226,7 @@ pub(super) struct PlanContext<'a> {
     next_bit_array_local: usize,
     next_utf_codepoint_local: usize,
     next_custom_local: usize,
+    next_external_local: usize,
     next_bool_local: usize,
     next_nil_local: usize,
     next_tuple_local: usize,
@@ -233,6 +235,7 @@ pub(super) struct PlanContext<'a> {
     next_bit_array_list_local: usize,
     next_utf_codepoint_list_local: usize,
     next_custom_list_local: usize,
+    next_external_list_local: usize,
     next_float_list_local: usize,
     next_bool_list_local: usize,
     next_nil_list_local: usize,
@@ -246,6 +249,7 @@ pub(super) struct PlanContext<'a> {
     next_bit_array_function_local: usize,
     next_utf_codepoint_function_local: usize,
     next_custom_function_local: usize,
+    next_external_function_local: usize,
     next_bool_function_local: usize,
     next_nil_function_local: usize,
     next_tuple_function_local: usize,
@@ -271,6 +275,7 @@ enum RegistryAccess<'a> {
 enum LocalBinding {
     Primitive(LocalId),
     Custom(crate::plan::CustomLocal),
+    External(crate::plan::ExternalLocal),
     Tuple {
         local: TupleLocalId,
         shape: Box<[ValueShape]>,
@@ -357,6 +362,15 @@ fn instantiate_custom_type_template(
                 .map(|argument| instantiate_custom_type_template(argument, custom_type))
                 .collect::<Result<Vec<_>, _>>()?,
         )),
+        CustomTypeTemplate::External { name, arguments } => {
+            ValueType::External(crate::plan::ExternalType::new(
+                name.clone(),
+                arguments
+                    .iter()
+                    .map(|argument| instantiate_custom_type_template(argument, custom_type))
+                    .collect::<Result<Vec<_>, _>>()?,
+            ))
+        }
         CustomTypeTemplate::Parameter(parameter) => {
             let Some(type_) = custom_type.arguments().get(parameter.0).cloned() else {
                 return Err(PlanError::InvalidTypedAst {
@@ -411,6 +425,15 @@ fn instantiate_custom_shape_template(
                     .map(|argument| instantiate_custom_shape_template(argument, custom_shape))
                     .collect::<Result<Vec<_>, _>>()?,
                 CustomConstructorRefinement::Any,
+            ))
+        }
+        CustomTypeTemplate::External { name, arguments } => {
+            ValueShape::External(crate::plan::ExternalValueShape::new(
+                name.clone(),
+                arguments
+                    .iter()
+                    .map(|argument| instantiate_custom_shape_template(argument, custom_shape))
+                    .collect::<Result<Vec<_>, _>>()?,
             ))
         }
         CustomTypeTemplate::Parameter(parameter) => custom_shape
@@ -521,6 +544,26 @@ fn collect_parameter_shapes(
                 collect_parameter_shapes(template, shape, arguments, owner)?;
             }
         }
+        CustomTypeTemplate::External {
+            name,
+            arguments: templates,
+        } => {
+            let ValueShape::External(shape) = shape else {
+                return Err(invalid_custom_type(
+                    owner,
+                    InvalidCustomTypeReason::ParameterType,
+                ));
+            };
+            if shape.type_name() != name || templates.len() != shape.arguments().len() {
+                return Err(invalid_custom_type(
+                    owner,
+                    InvalidCustomTypeReason::ParameterType,
+                ));
+            }
+            for (template, shape) in templates.iter().zip(shape.arguments()) {
+                collect_parameter_shapes(template, shape, arguments, owner)?;
+            }
+        }
         CustomTypeTemplate::Int
         | CustomTypeTemplate::Float
         | CustomTypeTemplate::String
@@ -552,6 +595,7 @@ pub(super) enum FunctionLocalBinding {
         type_: FunctionType,
     },
     Custom(CustomFunctionLocal),
+    External(ExternalFunctionLocal),
     Float {
         local: FloatFunctionLocalId,
         type_: FunctionType,
@@ -637,6 +681,7 @@ impl<'a> PlanContext<'a> {
             next_bit_array_local: 0,
             next_utf_codepoint_local: 0,
             next_custom_local: 0,
+            next_external_local: 0,
             next_bool_local: 0,
             next_nil_local: 0,
             next_tuple_local: 0,
@@ -645,6 +690,7 @@ impl<'a> PlanContext<'a> {
             next_bit_array_list_local: 0,
             next_utf_codepoint_list_local: 0,
             next_custom_list_local: 0,
+            next_external_list_local: 0,
             next_float_list_local: 0,
             next_bool_list_local: 0,
             next_nil_list_local: 0,
@@ -658,6 +704,7 @@ impl<'a> PlanContext<'a> {
             next_bit_array_function_local: 0,
             next_utf_codepoint_function_local: 0,
             next_custom_function_local: 0,
+            next_external_function_local: 0,
             next_bool_function_local: 0,
             next_nil_function_local: 0,
             next_tuple_function_local: 0,
@@ -684,12 +731,29 @@ impl<'a> PlanContext<'a> {
     }
 
     pub(super) fn value_shape(&mut self, type_: &Type) -> ValueShape {
-        ValueShape::from_gleam_in(type_, &mut self.type_parameters)
+        let registry = self.registry;
+        ValueShape::from_gleam_in_with_external(type_, &mut self.type_parameters, &|name| {
+            registry.is_external_type(name)
+        })
     }
 
     pub(super) fn value_shape_in_scope(&self, type_: &Type) -> ValueShape {
         let mut type_parameters = self.type_parameters.clone();
-        ValueShape::from_gleam_in(type_, &mut type_parameters)
+        self.value_shape_with_parameters(type_, &mut type_parameters)
+    }
+
+    pub(super) fn value_shape_with_parameters(
+        &self,
+        type_: &Type,
+        type_parameters: &mut super::type_parameter::TypeParameterScope,
+    ) -> ValueShape {
+        ValueShape::from_gleam_in_with_external(type_, type_parameters, &|name| {
+            self.registry.is_external_type(name)
+        })
+    }
+
+    pub(super) fn is_external_type(&self, name: &crate::plan::ExternalTypeName) -> bool {
+        self.registry.is_external_type(name)
     }
 
     pub(super) fn value_type(&mut self, type_: &Type) -> ValueType {
@@ -773,6 +837,10 @@ impl<'a> PlanContext<'a> {
                 let local = self.define_custom_local_shape(name, shape.clone());
                 ParamLocal::custom_shape(local, shape)
             }
+            ValueShape::External(shape) => {
+                let local = self.define_external_local_shape(name, shape.clone());
+                ParamLocal::external_shape(local, shape)
+            }
             ValueShape::Bool => ParamLocal::bool(self.define_bool_local(name)),
             ValueShape::Nil => ParamLocal::nil(self.define_nil_local(name)),
             ValueShape::Tuple(shape) => {
@@ -823,6 +891,15 @@ impl<'a> PlanContext<'a> {
                         );
                         ParamLocal::custom_function(
                             self.define_custom_function_local_shape(name, type_, shape),
+                        )
+                    }
+                    ValueShape::External(return_) => {
+                        let type_ = ExternalFunctionType::from_shapes(
+                            shape.argument_shapes().to_vec(),
+                            return_.clone(),
+                        );
+                        ParamLocal::external_function(
+                            self.define_external_function_local_shape(name, type_, shape),
                         )
                     }
                     ValueShape::Bool => ParamLocal::bool_function(
@@ -890,6 +967,13 @@ impl<'a> PlanContext<'a> {
                 self.next_custom_local = self.next_custom_local.max(local.id().0 + 1);
                 self.bindings
                     .insert(name, LocalBinding::Custom(local.clone()));
+            }
+            (ParamLocal::External(local), ValueShape::External(shape))
+                if local.shape() == &shape =>
+            {
+                self.next_external_local = self.next_external_local.max(local.id().0 + 1);
+                self.bindings
+                    .insert(name, LocalBinding::External(local.clone()));
             }
             (ParamLocal::Bool(local), ValueShape::Bool) => {
                 self.define_existing_local(name, LocalId::Bool(*local));
@@ -1010,6 +1094,19 @@ impl<'a> PlanContext<'a> {
                     name,
                     LocalBinding::Function {
                         binding: FunctionLocalBinding::Custom(local.clone()),
+                        shape: *shape,
+                    },
+                );
+            }
+            (ParamLocal::ExternalFunction(local), ValueShape::Function(shape))
+                if shape.type_() == local.type_().to_function_type() =>
+            {
+                self.next_external_function_local =
+                    self.next_external_function_local.max(local.id().0 + 1);
+                self.bindings.insert(
+                    name,
+                    LocalBinding::Function {
+                        binding: FunctionLocalBinding::External(local.clone()),
                         shape: *shape,
                     },
                 );
@@ -1274,6 +1371,39 @@ impl<'a> PlanContext<'a> {
             type_,
         );
         self.next_custom_function_local += 1;
+        local
+    }
+
+    pub(super) fn define_external_function_local_shape(
+        &mut self,
+        name: EcoString,
+        type_: ExternalFunctionType,
+        shape: FunctionShape,
+    ) -> ExternalFunctionLocal {
+        let local = ExternalFunctionLocal::new(
+            ExternalFunctionLocalId(self.next_external_function_local),
+            type_,
+        );
+        self.next_external_function_local += 1;
+        self.bindings.insert(
+            name,
+            LocalBinding::Function {
+                binding: FunctionLocalBinding::External(local.clone()),
+                shape,
+            },
+        );
+        local
+    }
+
+    pub(super) fn define_internal_external_function_local(
+        &mut self,
+        type_: ExternalFunctionType,
+    ) -> ExternalFunctionLocal {
+        let local = ExternalFunctionLocal::new(
+            ExternalFunctionLocalId(self.next_external_function_local),
+            type_,
+        );
+        self.next_external_function_local += 1;
         local
     }
 
@@ -1634,6 +1764,26 @@ impl<'a> PlanContext<'a> {
         local
     }
 
+    pub(super) fn define_external_local_shape(
+        &mut self,
+        name: EcoString,
+        shape: crate::plan::ExternalValueShape,
+    ) -> ExternalLocalId {
+        let local = ExternalLocalId(self.next_external_local);
+        self.next_external_local += 1;
+        self.bindings.insert(
+            name,
+            LocalBinding::External(crate::plan::ExternalLocal::from_shape(local, shape)),
+        );
+        local
+    }
+
+    pub(super) fn define_internal_external_local(&mut self) -> ExternalLocalId {
+        let local = ExternalLocalId(self.next_external_local);
+        self.next_external_local += 1;
+        local
+    }
+
     pub(super) fn define_float_local(&mut self, name: EcoString) -> FloatLocalId {
         let local = FloatLocalId(self.next_float_local);
         self.next_float_local += 1;
@@ -1809,6 +1959,11 @@ impl<'a> PlanContext<'a> {
                 self.next_custom_list_local += 1;
                 ListLocal::custom(local, item_type)
             }
+            ValueType::External(item_type) => {
+                let local = ExternalListLocalId(self.next_external_list_local);
+                self.next_external_list_local += 1;
+                ListLocal::external(local, item_type)
+            }
             ValueType::Float => {
                 let local = FloatListLocalId(self.next_float_list_local);
                 self.next_float_list_local += 1;
@@ -1912,6 +2067,19 @@ impl<'a> PlanContext<'a> {
                     },
                 )
             }
+            ListExpr::External(value) => {
+                let local = ExternalListLocalId(self.next_external_list_local);
+                self.next_external_list_local += 1;
+                let item_type = value.item().item_type();
+                (
+                    ListLocal::external(local, item_type.clone()),
+                    ListLocalExpr::External {
+                        local,
+                        item_type,
+                        value,
+                    },
+                )
+            }
             ListExpr::Float(value) => {
                 let local = FloatListLocalId(self.next_float_list_local);
                 self.next_float_list_local += 1;
@@ -1993,6 +2161,9 @@ impl<'a> PlanContext<'a> {
             ListLocal::Custom { local, .. } => {
                 self.next_custom_list_local = self.next_custom_list_local.max(local.0 + 1);
             }
+            ListLocal::External { local, .. } => {
+                self.next_external_list_local = self.next_external_list_local.max(local.0 + 1);
+            }
             ListLocal::Float(local) => {
                 self.next_float_list_local = self.next_float_list_local.max(local.0 + 1);
             }
@@ -2018,6 +2189,7 @@ impl<'a> PlanContext<'a> {
         match self.bindings.get(name)? {
             LocalBinding::Primitive(local) => Some((*local, local.value_type())),
             LocalBinding::Custom(_)
+            | LocalBinding::External(_)
             | LocalBinding::Tuple { .. }
             | LocalBinding::List { .. }
             | LocalBinding::Function { .. } => None,
@@ -2028,6 +2200,7 @@ impl<'a> PlanContext<'a> {
         match self.bindings.get(name)? {
             LocalBinding::Custom(local) => Some(local.clone()),
             LocalBinding::Primitive(_)
+            | LocalBinding::External(_)
             | LocalBinding::Tuple { .. }
             | LocalBinding::List { .. }
             | LocalBinding::Function { .. } => None,
@@ -2042,6 +2215,7 @@ impl<'a> PlanContext<'a> {
             LocalBinding::Tuple { local, shape } => Some((*local, shape.clone())),
             LocalBinding::Primitive(_)
             | LocalBinding::Custom(_)
+            | LocalBinding::External(_)
             | LocalBinding::List { .. }
             | LocalBinding::Function { .. } => None,
         }
@@ -2052,7 +2226,22 @@ impl<'a> PlanContext<'a> {
             LocalBinding::List { local, item_shape } => Some((local.clone(), item_shape.clone())),
             LocalBinding::Primitive(_)
             | LocalBinding::Custom(_)
+            | LocalBinding::External(_)
             | LocalBinding::Tuple { .. }
+            | LocalBinding::Function { .. } => None,
+        }
+    }
+
+    pub(super) fn lookup_external_local(
+        &self,
+        name: &EcoString,
+    ) -> Option<crate::plan::ExternalLocal> {
+        match self.bindings.get(name)? {
+            LocalBinding::External(local) => Some(local.clone()),
+            LocalBinding::Primitive(_)
+            | LocalBinding::Custom(_)
+            | LocalBinding::Tuple { .. }
+            | LocalBinding::List { .. }
             | LocalBinding::Function { .. } => None,
         }
     }
@@ -2231,7 +2420,11 @@ impl<'a> PlanContext<'a> {
             None => constructor_type,
         };
         let mut type_parameters = self.type_parameters.clone();
-        let type_ = match ValueShape::from_gleam_in(return_type, &mut type_parameters) {
+        let type_ = match ValueShape::from_gleam_in_with_external(
+            return_type,
+            &mut type_parameters,
+            &|name| self.registry.is_external_type(name),
+        ) {
             ValueShape::Custom(shape) => shape.type_().clone(),
             _ => {
                 return Err(PlanError::InvalidTypedAst {
@@ -2249,7 +2442,12 @@ impl<'a> PlanContext<'a> {
         let field_types = field_types
             .into_iter()
             .map(|field| {
-                ValueShape::from_gleam_in(field.as_ref(), &mut type_parameters).value_type()
+                ValueShape::from_gleam_in_with_external(
+                    field.as_ref(),
+                    &mut type_parameters,
+                    &|name| self.registry.is_external_type(name),
+                )
+                .value_type()
             })
             .collect();
 
@@ -2340,17 +2538,20 @@ impl<'a> PlanContext<'a> {
         field_types: Vec<ValueType>,
     ) -> Result<ResolvedCustomConstructor, PlanError> {
         let mut type_parameters = self.type_parameters.clone();
-        let type_ = match ValueShape::from_gleam_in(type_, &mut type_parameters) {
-            ValueShape::Custom(shape) => shape.type_().clone(),
-            _ => {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::CustomType {
-                        name: constructor.name.clone(),
-                        reason: InvalidCustomTypeReason::ConstructorType,
-                    },
-                });
-            }
-        };
+        let type_ =
+            match ValueShape::from_gleam_in_with_external(type_, &mut type_parameters, &|name| {
+                self.registry.is_external_type(name)
+            }) {
+                ValueShape::Custom(shape) => shape.type_().clone(),
+                _ => {
+                    return Err(PlanError::InvalidTypedAst {
+                        reason: InvalidTypedAstReason::CustomType {
+                            name: constructor.name.clone(),
+                            reason: InvalidCustomTypeReason::ConstructorType,
+                        },
+                    });
+                }
+            };
         self.custom_constructor_from_parts(
             type_,
             constructor.name.clone(),
@@ -2541,6 +2742,7 @@ impl<'a> PlanContext<'a> {
             LocalBinding::Function { binding, shape } => Some((binding.clone(), shape.clone())),
             LocalBinding::Primitive(_)
             | LocalBinding::Custom(_)
+            | LocalBinding::External(_)
             | LocalBinding::Tuple { .. }
             | LocalBinding::List { .. } => None,
         }
@@ -2587,6 +2789,7 @@ impl<'a> PlanContext<'a> {
             next_bit_array_local: 0,
             next_utf_codepoint_local: 0,
             next_custom_local: 0,
+            next_external_local: 0,
             next_bool_local: 0,
             next_nil_local: 0,
             next_tuple_local: 0,
@@ -2595,6 +2798,7 @@ impl<'a> PlanContext<'a> {
             next_bit_array_list_local: 0,
             next_utf_codepoint_list_local: 0,
             next_custom_list_local: 0,
+            next_external_list_local: 0,
             next_float_list_local: 0,
             next_bool_list_local: 0,
             next_nil_list_local: 0,
@@ -2608,6 +2812,7 @@ impl<'a> PlanContext<'a> {
             next_bit_array_function_local: 0,
             next_utf_codepoint_function_local: 0,
             next_custom_function_local: 0,
+            next_external_function_local: 0,
             next_bool_function_local: 0,
             next_nil_function_local: 0,
             next_tuple_function_local: 0,
@@ -2716,6 +2921,15 @@ impl<'a> PlanContext<'a> {
                     ParamLocal::custom_shape(target, shape.clone()),
                     ParamLocal::Custom(local),
                     ValueShape::Custom(shape),
+                )
+            }
+            LocalBinding::External(local) => {
+                let shape = local.shape().clone();
+                let target = self.define_external_local_shape(name, shape.clone());
+                Self::planned_capture(
+                    ParamLocal::external_shape(target, shape.clone()),
+                    ParamLocal::External(local),
+                    ValueShape::External(shape),
                 )
             }
             LocalBinding::Primitive(LocalId::Bool(local)) => {
@@ -2840,6 +3054,21 @@ impl<'a> PlanContext<'a> {
                 )
             }
             LocalBinding::Function {
+                binding: FunctionLocalBinding::External(local),
+                shape,
+            } => {
+                let target = self.define_external_function_local_shape(
+                    name,
+                    local.type_().clone(),
+                    shape.clone(),
+                );
+                Self::planned_capture(
+                    ParamLocal::external_function(target),
+                    ParamLocal::external_function(local),
+                    ValueShape::Function(Box::new(shape)),
+                )
+            }
+            LocalBinding::Function {
                 binding: FunctionLocalBinding::Bool { local, type_ },
                 shape,
             } => {
@@ -2913,6 +3142,16 @@ impl<'a> PlanContext<'a> {
         PlannedCapture {
             slot: ParamSlot::new(local, shape),
             source: CaptureArg::new(source),
+        }
+    }
+}
+
+impl RegistryAccess<'_> {
+    fn is_external_type(&self, name: &crate::plan::ExternalTypeName) -> bool {
+        match self {
+            Self::Program { registry } => registry.external_type(name).is_some(),
+            #[cfg(test)]
+            Self::Local { .. } => false,
         }
     }
 }
@@ -3032,16 +3271,17 @@ mod tests {
         CustomConstructorDefinition, CustomConstructorField, CustomConstructorRefinement,
         CustomFieldDefinition, CustomFunctionLocal, CustomFunctionLocalId, CustomFunctionType,
         CustomType, CustomTypeDefinition, CustomTypeName, CustomTypeParameterId,
-        CustomTypePublicity, CustomTypeTemplate, CustomValueShape, Expr, FloatFunctionLocalId,
-        FloatListLocalId, FloatLocalId, FunctionExpr, FunctionFunctionLocal,
-        FunctionFunctionLocalId, FunctionFunctionType, FunctionListLocalId, FunctionReference,
-        FunctionShape, FunctionType, GenericFunctionLocal, GenericFunctionLocalId,
-        GenericFunctionType, GenericListLocalId, IntExpr, IntFunctionLocalId, IntListLocalId,
-        IntLocalId, ListExpr, ListListLocalId, ListLocal, ListLocalExpr, LocalId,
-        NilFunctionLocalId, NilListLocalId, NilLocalId, ParamLocal, ParamSlot, StringExpr,
-        StringFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionLocalId,
-        TupleListLocalId, TupleLocalId, TypeParameterId, UtfCodepointListLocalId, ValueShape,
-        ValueType,
+        CustomTypePublicity, CustomTypeTemplate, CustomValueShape, Expr, ExternalFunctionLocal,
+        ExternalFunctionLocalId, ExternalFunctionType, ExternalListLocalId, ExternalLocalId,
+        ExternalTypeName, ExternalValueShape, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
+        FunctionExpr, FunctionFunctionLocal, FunctionFunctionLocalId, FunctionFunctionType,
+        FunctionListLocalId, FunctionReference, FunctionShape, FunctionType, GenericFunctionLocal,
+        GenericFunctionLocalId, GenericFunctionType, GenericListLocalId, IntExpr,
+        IntFunctionLocalId, IntListLocalId, IntLocalId, ListExpr, ListListLocalId, ListLocal,
+        ListLocalExpr, LocalId, NilFunctionLocalId, NilListLocalId, NilLocalId, ParamLocal,
+        ParamSlot, StringExpr, StringFunctionLocalId, StringListLocalId, StringLocalId,
+        TupleFunctionLocalId, TupleListLocalId, TupleLocalId, TypeParameterId,
+        UtfCodepointListLocalId, ValueShape, ValueType,
     };
     use crate::planner::{
         InvalidCustomTypeReason, InvalidModuleReferenceReason, InvalidTypedAstReason, PlanError,
@@ -3285,6 +3525,10 @@ mod tests {
                 name: CustomTypeName::new("geam".into(), "main".into(), "Nested".into()),
                 arguments: vec![CustomTypeTemplate::Parameter(CustomTypeParameterId(1))],
             },
+            CustomTypeTemplate::External {
+                name: ExternalTypeName::new("geam".into(), "main".into(), "Resource".into()),
+                arguments: vec![CustomTypeTemplate::Parameter(CustomTypeParameterId(1))],
+            },
         ] {
             assert_eq!(
                 instantiate_custom_shape_template(&template, &owner_shape),
@@ -3399,6 +3643,16 @@ mod tests {
                     CustomConstructorRefinement::Any,
                 )),
             ),
+            (
+                CustomTypeTemplate::External {
+                    name: ExternalTypeName::new("geam".into(), "main".into(), "Resource".into()),
+                    arguments: vec![CustomTypeTemplate::Parameter(CustomTypeParameterId(1))],
+                },
+                ValueShape::External(ExternalValueShape::new(
+                    ExternalTypeName::new("geam".into(), "main".into(), "Resource".into()),
+                    vec![ValueShape::Int],
+                )),
+            ),
         ] {
             let mut arguments = vec![None];
             assert_eq!(
@@ -3419,6 +3673,54 @@ mod tests {
             collect_parameter_shapes(
                 &list,
                 &ValueShape::List(Box::new(ValueShape::Int)),
+                &mut arguments,
+                &owner,
+            ),
+            Ok(()),
+        );
+        assert_eq!(arguments, vec![Some(ValueShape::Int)]);
+
+        let external_name = ExternalTypeName::new("geam".into(), "main".into(), "Resource".into());
+        let external = CustomTypeTemplate::External {
+            name: external_name.clone(),
+            arguments: vec![CustomTypeTemplate::Parameter(CustomTypeParameterId(0))],
+        };
+        let mut arguments = vec![None];
+        assert_eq!(
+            collect_parameter_shapes(&external, &ValueShape::Int, &mut arguments, &owner),
+            Err(expected.clone()),
+        );
+        assert_eq!(
+            collect_parameter_shapes(
+                &external,
+                &ValueShape::External(ExternalValueShape::new(
+                    ExternalTypeName::new("geam".into(), "main".into(), "Other".into()),
+                    vec![ValueShape::Int],
+                )),
+                &mut arguments,
+                &owner,
+            ),
+            Err(expected.clone()),
+        );
+        assert_eq!(
+            collect_parameter_shapes(
+                &external,
+                &ValueShape::External(ExternalValueShape::new(
+                    external_name.clone(),
+                    vec![ValueShape::Int, ValueShape::String],
+                )),
+                &mut arguments,
+                &owner,
+            ),
+            Err(expected.clone()),
+        );
+        assert_eq!(
+            collect_parameter_shapes(
+                &external,
+                &ValueShape::External(ExternalValueShape::new(
+                    external_name,
+                    vec![ValueShape::Int],
+                )),
                 &mut arguments,
                 &owner,
             ),
@@ -3501,7 +3803,7 @@ mod tests {
     fn custom_shape_templates_preserve_every_primitive_shape() {
         let owner_shape = CustomValueShape::new(
             CustomTypeName::new("geam".into(), "main".into(), "Owner".into()),
-            Vec::new(),
+            vec![ValueShape::Int],
             CustomConstructorRefinement::Any,
         );
 
@@ -3519,6 +3821,21 @@ mod tests {
                 Ok(expected),
             );
         }
+
+        let external_name = ExternalTypeName::new("geam".into(), "main".into(), "Resource".into());
+        assert_eq!(
+            instantiate_custom_shape_template(
+                &CustomTypeTemplate::External {
+                    name: external_name.clone(),
+                    arguments: vec![CustomTypeTemplate::Parameter(CustomTypeParameterId(0))],
+                },
+                &owner_shape,
+            ),
+            Ok(ValueShape::External(ExternalValueShape::new(
+                external_name,
+                vec![ValueShape::Int],
+            ))),
+        );
     }
 
     #[test]
@@ -4240,6 +4557,20 @@ mod tests {
                 },
                 &missing_parameter,
             ),
+            parameter_error.clone(),
+        );
+        assert_eq!(
+            instantiate_custom_type_template(
+                &CustomTypeTemplate::External {
+                    name: crate::plan::ExternalTypeName::new(
+                        "dependency".into(),
+                        "dependency/resource".into(),
+                        "Resource".into(),
+                    ),
+                    arguments: vec![CustomTypeTemplate::Parameter(CustomTypeParameterId(0))],
+                },
+                &missing_parameter,
+            ),
             parameter_error,
         );
     }
@@ -4399,6 +4730,139 @@ mod tests {
             ))
         );
         assert_eq!(context.lookup_local(&"f".into()), None);
+    }
+
+    #[test]
+    fn define_external_local_records_its_nominal_shape() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let shape = ExternalValueShape::new(
+            ExternalTypeName::new(
+                "dependency".into(),
+                "dependency/resource".into(),
+                "Resource".into(),
+            ),
+            vec![ValueShape::Int],
+        );
+
+        let local = context.define_external_local_shape("resource".into(), shape.clone());
+        context.define_int_local("count".into());
+
+        assert_eq!(
+            context.lookup_external_local(&"resource".into()),
+            Some(crate::plan::ExternalLocal::from_shape(local, shape)),
+        );
+        assert_eq!(context.lookup_external_local(&"missing".into()), None);
+        assert_eq!(context.lookup_external_local(&"count".into()), None);
+        assert_eq!(context.lookup_local(&"resource".into()), None);
+    }
+
+    #[test]
+    fn external_parameters_preserve_scalar_list_and_function_local_sequences() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let shape = ExternalValueShape::new(
+            ExternalTypeName::new(
+                "dependency".into(),
+                "dependency/resource".into(),
+                "Resource".into(),
+            ),
+            vec![ValueShape::Int],
+        );
+        let function_shape =
+            FunctionShape::new(vec![ValueShape::Int], ValueShape::External(shape.clone()));
+        let function_type = ExternalFunctionType::from_shapes(
+            function_shape.argument_shapes().to_vec(),
+            shape.clone(),
+        );
+
+        assert_eq!(
+            context
+                .define_param_local_shape("resource".into(), ValueShape::External(shape.clone()),),
+            ParamLocal::external_shape(ExternalLocalId(0), shape.clone()),
+        );
+        assert_eq!(
+            context.define_param_local_shape(
+                "resources".into(),
+                ValueShape::List(Box::new(ValueShape::External(shape.clone()))),
+            ),
+            ParamLocal::list(ListLocal::external(
+                ExternalListLocalId(0),
+                shape.type_().clone(),
+            )),
+        );
+        assert_eq!(
+            context.define_param_local_shape(
+                "factory".into(),
+                ValueShape::Function(Box::new(function_shape.clone())),
+            ),
+            ParamLocal::external_function(ExternalFunctionLocal::new(
+                ExternalFunctionLocalId(0),
+                function_type.clone(),
+            )),
+        );
+
+        context
+            .define_existing_param(
+                "existing_resource".into(),
+                &ParamLocal::external_shape(ExternalLocalId(4), shape.clone()),
+                ValueShape::External(shape.clone()),
+            )
+            .expect("an existing external scalar should retain its nominal shape");
+        context
+            .define_existing_param(
+                "existing_resources".into(),
+                &ParamLocal::list(ListLocal::external(
+                    ExternalListLocalId(4),
+                    shape.type_().clone(),
+                )),
+                ValueShape::List(Box::new(ValueShape::External(shape.clone()))),
+            )
+            .expect("an existing external list should retain its nominal shape");
+        context
+            .define_existing_param(
+                "existing_factory".into(),
+                &ParamLocal::external_function(ExternalFunctionLocal::new(
+                    ExternalFunctionLocalId(4),
+                    function_type,
+                )),
+                ValueShape::Function(Box::new(function_shape.clone())),
+            )
+            .expect("an existing external function should retain its exact shape");
+
+        assert_eq!(
+            context.define_param_local_shape(
+                "next_resource".into(),
+                ValueShape::External(shape.clone())
+            ),
+            ParamLocal::external_shape(ExternalLocalId(5), shape.clone()),
+        );
+        assert_eq!(
+            context.define_param_local_shape(
+                "next_resources".into(),
+                ValueShape::List(Box::new(ValueShape::External(shape.clone()))),
+            ),
+            ParamLocal::list(ListLocal::external(
+                ExternalListLocalId(5),
+                shape.type_().clone(),
+            )),
+        );
+        let next_function_type =
+            ExternalFunctionType::from_shapes(function_shape.argument_shapes().to_vec(), shape);
+        assert_eq!(
+            context.define_param_local_shape(
+                "next_factory".into(),
+                ValueShape::Function(Box::new(function_shape)),
+            ),
+            ParamLocal::external_function(ExternalFunctionLocal::new(
+                ExternalFunctionLocalId(5),
+                next_function_type,
+            )),
+        );
     }
 
     #[test]
@@ -4758,6 +5222,18 @@ mod tests {
                 .define_function_function_local("next_function_fn".into(), function_type)
                 .id(),
             FunctionFunctionLocalId(8),
+        );
+        assert_eq!(
+            context.define_existing_param(
+                "mismatch".into(),
+                &ParamLocal::int(IntLocalId(0)),
+                ValueShape::String,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: crate::planner::InvalidExpressionShapeKind::Invalid,
+                },
+            }),
         );
     }
 

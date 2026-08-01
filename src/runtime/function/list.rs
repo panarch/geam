@@ -1,18 +1,18 @@
 use super::{evaluate_entry, run_tail};
 use crate::plan::execution::function::{
-    BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId, FloatListFunctionId,
-    FunctionListFunctionId, IntListFunctionId, ListFunctionId, ListListFunctionId,
-    NilListFunctionId, ParameterListFunctionId, ParameterListListFunctionId, StringListFunctionId,
-    TupleListFunctionId, UtfCodepointListFunctionId,
+    BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId, ExternalListFunctionId,
+    FloatListFunctionId, FunctionListFunctionId, IntListFunctionId, ListFunctionId,
+    ListListFunctionId, NilListFunctionId, ParameterListFunctionId, ParameterListListFunctionId,
+    RuntimeListFunctionId, StringListFunctionId, TupleListFunctionId, UtfCodepointListFunctionId,
 };
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::graph::RetainedValues;
 use crate::runtime::state::{
-    BitArrayListValueId, BoolListValueId, CustomListValueId, FloatListValueId, FunctionListValueId,
-    IntListValueId, ListListValueId, ListValueId, NilListValueId, ParameterListListValueId,
-    ParameterListValueId, RuntimeStateFor, StringListValueId, TupleListValueId,
-    UtfCodepointListValueId,
+    BitArrayListValueId, BoolListValueId, CustomListValueId, ExternalListValueId, FloatListValueId,
+    FunctionListValueId, IntListValueId, ListListValueId, ListValueId, NilListValueId,
+    ParameterListListValueId, ParameterListValueId, RuntimeStateFor, StringListValueId,
+    TupleListValueId, UtfCodepointListValueId,
 };
 
 pub(in crate::runtime) fn run_parameter_list<Plan: ExecutableRuntimePlan>(
@@ -232,6 +232,37 @@ pub(in crate::runtime) fn run_custom_list<Plan: ExecutableRuntimePlan>(
     )
 }
 
+pub(in crate::runtime) fn run_external_list<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
+    function: ExternalListFunctionId,
+    origin: HostCallOrigin,
+    inputs: RetainedValues,
+) -> ExecutionResult<ExternalListValueId> {
+    run_tail(
+        plan,
+        state,
+        function,
+        origin,
+        inputs,
+        |plan, state, function, origin, inputs| {
+            evaluate_entry(
+                plan,
+                state,
+                plan.external_list_function(*function),
+                origin,
+                inputs,
+            )
+        },
+        |_, _, target| {
+            (
+                *target.function(),
+                HostCallOrigin::source(target.site().clone()),
+            )
+        },
+    )
+}
+
 pub(in crate::runtime) fn run_float_list<Plan: ExecutableRuntimePlan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
@@ -419,6 +450,23 @@ pub(in crate::runtime) fn run_function_list<Plan: ExecutableRuntimePlan>(
 }
 
 pub(in crate::runtime) fn run_list<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
+    function: RuntimeListFunctionId,
+    origin: HostCallOrigin,
+    inputs: RetainedValues,
+) -> ExecutionResult<ListValueId> {
+    match function {
+        RuntimeListFunctionId::Core(function) => {
+            run_core_list(plan, state, function, origin, inputs)
+        }
+        RuntimeListFunctionId::External(function) => {
+            run_external_list(plan, state, function, origin, inputs).map(ListValueId::External)
+        }
+    }
+}
+
+pub(in crate::runtime) fn run_core_list<Plan: ExecutableRuntimePlan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
     function: ListFunctionId,

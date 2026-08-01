@@ -4,8 +4,8 @@ use super::{
     ConstantStringValue, ConstantTupleValue,
 };
 use crate::plan::{
-    CustomValueShape, FunctionShape, TypeParameterId, TypeSubstitution, ValueRepresentation,
-    ValueShape, ValueStorageShape,
+    CustomValueShape, ExternalValueShape, FunctionShape, TypeParameterId, TypeSubstitution,
+    ValueRepresentation, ValueShape, ValueStorageShape,
 };
 use vec1::Vec1;
 
@@ -26,6 +26,9 @@ pub(crate) struct ConstantUtfCodepointListTemplateId(pub(super) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct ConstantCustomListTemplateId(pub(super) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct ConstantExternalListTemplateId(pub(super) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct ConstantFloatListTemplateId(pub(super) usize);
@@ -61,6 +64,10 @@ pub(super) enum ConstantListTemplate {
     Custom {
         id: ConstantCustomListTemplateId,
         shape: CustomValueShape,
+    },
+    External {
+        id: ConstantExternalListTemplateId,
+        shape: ExternalValueShape,
     },
     Float(ConstantFloatListTemplateId),
     Bool(ConstantBoolListTemplateId),
@@ -100,6 +107,10 @@ impl ConstantListTemplate {
                 id: ConstantCustomListTemplateId(index),
                 shape,
             },
+            ValueShape::External(shape) => Self::External {
+                id: ConstantExternalListTemplateId(index),
+                shape,
+            },
             ValueShape::Float => Self::Float(ConstantFloatListTemplateId(index)),
             ValueShape::Bool => Self::Bool(ConstantBoolListTemplateId(index)),
             ValueShape::Nil => Self::Nil(ConstantNilListTemplateId(index)),
@@ -132,6 +143,7 @@ impl ConstantListTemplate {
             Self::BitArray(_) => ValueShape::BitArray,
             Self::UtfCodepoint(_) => ValueShape::UtfCodepoint,
             Self::Custom { shape, .. } => ValueShape::Custom(shape.clone()),
+            Self::External { shape, .. } => ValueShape::External(shape.clone()),
             Self::Float(_) => ValueShape::Float,
             Self::Bool(_) => ValueShape::Bool,
             Self::Nil(_) => ValueShape::Nil,
@@ -182,6 +194,14 @@ impl ConstantListTemplate {
             ),
             Self::Custom { id, shape } => {
                 ConstantListInstantiation::Custom(TypedConstantListInstantiation::in_module(
+                    module,
+                    ConstantListTemplateSource::Exact(*id),
+                    substitution.clone(),
+                    shape.substitute(&substitution),
+                ))
+            }
+            Self::External { id, shape } => {
+                ConstantListInstantiation::External(TypedConstantListInstantiation::in_module(
                     module,
                     ConstantListTemplateSource::Exact(*id),
                     substitution.clone(),
@@ -316,6 +336,10 @@ pub(crate) type ConstantCustomListInstantiation = TypedConstantListInstantiation
     ConstantListTemplateSource<ConstantCustomListTemplateId>,
     CustomValueShape,
 >;
+pub(crate) type ConstantExternalListInstantiation = TypedConstantListInstantiation<
+    ConstantListTemplateSource<ConstantExternalListTemplateId>,
+    ExternalValueShape,
+>;
 pub(crate) type ConstantFloatListInstantiation =
     TypedConstantListInstantiation<ConstantListTemplateSource<ConstantFloatListTemplateId>, ()>;
 pub(crate) type ConstantBoolListInstantiation =
@@ -345,6 +369,7 @@ pub(crate) enum ConstantListInstantiation {
     BitArray(ConstantBitArrayListInstantiation),
     UtfCodepoint(ConstantUtfCodepointListInstantiation),
     Custom(ConstantCustomListInstantiation),
+    External(ConstantExternalListInstantiation),
     Float(ConstantFloatListInstantiation),
     Bool(ConstantBoolListInstantiation),
     Nil(ConstantNilListInstantiation),
@@ -375,6 +400,18 @@ pub(super) struct ConstantUtfCodepointListValue {
 pub(super) enum ConstantUtfCodepointListValueKind {
     Empty,
     Reference(ConstantUtfCodepointListInstantiation),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct ConstantExternalListValue {
+    item_shape: ExternalValueShape,
+    kind: ConstantExternalListValueKind,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(super) enum ConstantExternalListValueKind {
+    Empty,
+    Reference(ConstantExternalListInstantiation),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -469,6 +506,7 @@ pub(super) enum ConstantListValue {
     BitArray(ConstantBitArrayListValue),
     UtfCodepoint(ConstantUtfCodepointListValue),
     Custom(ConstantCustomListValue),
+    External(ConstantExternalListValue),
     Float(ConstantFloatListValue),
     Bool(ConstantBoolListValue),
     Nil(ConstantNilListValue),
@@ -485,6 +523,7 @@ pub(super) enum ConstantStoredListValue {
     BitArray(ConstantBitArrayListValue),
     UtfCodepoint(ConstantUtfCodepointListValue),
     Custom(ConstantCustomListValue),
+    External(ConstantExternalListValue),
     Float(ConstantFloatListValue),
     Bool(ConstantBoolListValue),
     Nil(ConstantNilListValue),
@@ -502,6 +541,7 @@ impl ConstantListInstantiation {
             Self::BitArray(value) => value.module(),
             Self::UtfCodepoint(value) => value.module(),
             Self::Custom(value) => value.module(),
+            Self::External(value) => value.module(),
             Self::Float(value) => value.module(),
             Self::Bool(value) => value.module(),
             Self::Nil(value) => value.module(),
@@ -525,6 +565,7 @@ impl ConstantListInstantiation {
             Self::BitArray(value) => Self::BitArray(value.substitute_leaf(outer)),
             Self::UtfCodepoint(value) => Self::UtfCodepoint(value.substitute_leaf(outer)),
             Self::Custom(value) => Self::Custom(value.substitute_custom(outer)),
+            Self::External(value) => Self::External(value.substitute_external(outer)),
             Self::Float(value) => Self::Float(value.substitute_leaf(outer)),
             Self::Bool(value) => Self::Bool(value.substitute_leaf(outer)),
             Self::Nil(value) => Self::Nil(value.substitute_leaf(outer)),
@@ -594,6 +635,14 @@ impl ConstantListInstantiation {
                 substitution,
                 shape,
             )),
+            ValueShape::External(shape) => {
+                Self::External(TypedConstantListInstantiation::in_module(
+                    module,
+                    ConstantListTemplateSource::Generic(template),
+                    substitution,
+                    shape,
+                ))
+            }
             ValueShape::Float => Self::Float(TypedConstantListInstantiation::in_module(
                 module,
                 ConstantListTemplateSource::Generic(template),
@@ -760,6 +809,22 @@ impl
 
 impl
     TypedConstantListInstantiation<
+        ConstantListTemplateSource<ConstantExternalListTemplateId>,
+        ExternalValueShape,
+    >
+{
+    pub(super) fn substitute_external(&self, outer: &TypeSubstitution) -> Self {
+        Self::in_module(
+            self.module,
+            self.source,
+            self.substitution.substitute(outer),
+            self.item_shape.substitute(outer),
+        )
+    }
+}
+
+impl
+    TypedConstantListInstantiation<
         ConstantListTemplateSource<ConstantTupleListTemplateId>,
         Box<[ValueShape]>,
     >
@@ -885,6 +950,10 @@ impl ConstantListValue {
         Self::Custom(TypedConstantListValue::value(item_shape, parts))
     }
 
+    pub(super) fn external(item_shape: ExternalValueShape) -> Self {
+        Self::External(ConstantExternalListValue::empty(item_shape))
+    }
+
     pub(super) fn float(
         parts: ConstantListParts<ConstantFloatValue, ConstantFloatListValue>,
     ) -> Self {
@@ -943,6 +1012,9 @@ impl ConstantListValue {
             ConstantListInstantiation::Custom(value) => Self::Custom(
                 TypedConstantListValue::reference(value.item_shape().clone(), value),
             ),
+            ConstantListInstantiation::External(value) => {
+                Self::External(ConstantExternalListValue::reference(value))
+            }
             ConstantListInstantiation::Float(value) => {
                 Self::Float(TypedConstantListValue::reference((), value))
             }
@@ -975,6 +1047,7 @@ impl ConstantListValue {
             Self::BitArray(_) => ValueShape::BitArray,
             Self::UtfCodepoint(_) => ValueShape::UtfCodepoint,
             Self::Custom(value) => ValueShape::Custom(value.item_shape().clone()),
+            Self::External(value) => ValueShape::External(value.item_shape().clone()),
             Self::Float(_) => ValueShape::Float,
             Self::Bool(_) => ValueShape::Bool,
             Self::Nil(_) => ValueShape::Nil,
@@ -1048,6 +1121,7 @@ impl ConstantListValue {
             Self::BitArray(value) => Ok(ConstantStoredListValue::BitArray(value)),
             Self::UtfCodepoint(value) => Ok(ConstantStoredListValue::UtfCodepoint(value)),
             Self::Custom(value) => Ok(ConstantStoredListValue::Custom(value)),
+            Self::External(value) => Ok(ConstantStoredListValue::External(value)),
             Self::Float(value) => Ok(ConstantStoredListValue::Float(value)),
             Self::Bool(value) => Ok(ConstantStoredListValue::Bool(value)),
             Self::Nil(value) => Ok(ConstantStoredListValue::Nil(value)),
@@ -1130,17 +1204,125 @@ impl ConstantUtfCodepointListValue {
     }
 }
 
+impl ConstantExternalListValue {
+    fn empty(item_shape: ExternalValueShape) -> Self {
+        Self {
+            item_shape,
+            kind: ConstantExternalListValueKind::Empty,
+        }
+    }
+
+    fn reference(reference: ConstantExternalListInstantiation) -> Self {
+        Self {
+            item_shape: reference.item_shape().clone(),
+            kind: ConstantExternalListValueKind::Reference(reference),
+        }
+    }
+
+    pub(super) fn item_shape(&self) -> &ExternalValueShape {
+        &self.item_shape
+    }
+
+    pub(super) fn kind(&self) -> &ConstantExternalListValueKind {
+        &self.kind
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::super::{
+        ConstantInstantiation, ConstantTemplate, ConstantTemplateId, ConstantTemplateSignature,
+        ConstantTemplates, ConstantValue,
+    };
     use super::{
-        ConstantGenericListTemplateId, ConstantListParts, ConstantListTemplateSource,
-        ConstantListValue, ConstantNestedListTemplateSource, ConstantParameterListListTemplateId,
+        ConstantExternalListTemplateId, ConstantGenericListTemplateId, ConstantListParts,
+        ConstantListTemplate, ConstantListTemplateSource, ConstantListValue,
+        ConstantNestedListTemplateSource, ConstantParameterListListTemplateId,
         ConstantStoredListValue, TypedConstantListInstantiation,
     };
+    use crate::plan::module::{ExternalListExpr, ExternalListItem};
     use crate::plan::{
-        CustomConstructorRefinement, CustomTypeName, CustomValueShape, FunctionShape,
-        TypeParameterId, TypeSubstitution, ValueShape, ValueStorageShape,
+        CustomConstructorRefinement, CustomTypeName, CustomValueShape, ExternalTypeName,
+        ExternalValueShape, FunctionShape, ModuleId, TypeParameterId, TypeScheme, TypeSubstitution,
+        ValueShape, ValueStorageShape,
     };
+
+    #[test]
+    fn external_list_materialization_preserves_local_and_foreign_owners() {
+        let shape = ExternalValueShape::new(
+            ExternalTypeName::new("dependency".into(), "resource".into(), "Handle".into()),
+            Vec::new(),
+        );
+        let foreign = TypedConstantListInstantiation::in_module(
+            ModuleId::new(1),
+            ConstantListTemplateSource::Exact(ConstantExternalListTemplateId(0)),
+            TypeSubstitution::from_arguments(Vec::new()),
+            shape.clone(),
+        );
+        let base_signature = ConstantTemplateSignature::list(
+            ConstantTemplateId::new(0),
+            0,
+            TypeScheme::new(0),
+            ValueShape::External(shape.clone()),
+        );
+        let base = TypedConstantListInstantiation::in_module(
+            ModuleId::root(),
+            ConstantListTemplateSource::Exact(ConstantExternalListTemplateId(0)),
+            TypeSubstitution::from_arguments(Vec::new()),
+            shape.clone(),
+        );
+        let alias = TypedConstantListInstantiation::in_module(
+            ModuleId::root(),
+            ConstantListTemplateSource::Exact(ConstantExternalListTemplateId(1)),
+            TypeSubstitution::from_arguments(Vec::new()),
+            shape.clone(),
+        );
+        let base_reference =
+            ConstantListTemplate::from_item_shape(ValueShape::External(shape.clone()), 0)
+                .instantiate(
+                    ModuleId::root(),
+                    TypeSubstitution::from_arguments(Vec::new()),
+                );
+        let alias_signature = ConstantTemplateSignature::list(
+            ConstantTemplateId::new(1),
+            1,
+            TypeScheme::new(0),
+            ValueShape::External(shape.clone()),
+        );
+        let templates = ConstantTemplates::from_module_entries(
+            ModuleId::root(),
+            vec![
+                (
+                    ConstantTemplate::new(base_signature, "empty".into()),
+                    ConstantValue::try_list(ValueShape::External(shape.clone()), Vec::new(), None)
+                        .expect("an external constant list may be empty"),
+                ),
+                (
+                    ConstantTemplate::new(alias_signature, "alias".into()),
+                    ConstantValue::reference(ConstantInstantiation::from_list(base_reference)),
+                ),
+            ],
+        );
+
+        assert_eq!(
+            templates.materialize_external_list(&foreign),
+            ExternalListExpr::constant(
+                ValueShape::External(shape.clone()),
+                ExternalListItem::new(shape.type_().clone()),
+                foreign,
+            ),
+        );
+        assert_eq!(
+            templates.materialize_external_list(&base),
+            ExternalListExpr::value(ExternalListItem::new(shape.type_().clone()), Vec::new(),)
+                .with_item_shape(ValueShape::External(shape.clone())),
+        );
+        assert_eq!(
+            templates.materialize_external_list(&alias),
+            ExternalListExpr::value(ExternalListItem::new(shape.type_().clone()), Vec::new(),)
+                .with_item_shape(ValueShape::External(shape)),
+        );
+    }
 
     #[test]
     fn spread_mapping_propagates_element_and_tail_failures() {
@@ -1200,6 +1382,10 @@ mod tests {
             CustomConstructorRefinement::Any,
         );
         let function = FunctionShape::new(Vec::new(), ValueShape::Int);
+        let external = ExternalValueShape::new(
+            ExternalTypeName::new("geam".into(), "main".into(), "Resource".into()),
+            Vec::new(),
+        );
         let cases = vec![
             (
                 ConstantListValue::generic(parameter),
@@ -1225,6 +1411,10 @@ mod tests {
             (
                 ConstantListValue::custom(custom.clone(), ConstantListParts::Value(Vec::new())),
                 ValueShape::Custom(custom),
+            ),
+            (
+                ConstantListValue::external(external.clone()),
+                ValueShape::External(external),
             ),
             (
                 ConstantListValue::float(ConstantListParts::Value(Vec::new())),
@@ -1271,6 +1461,9 @@ mod tests {
                     ConstantStoredListValue::UtfCodepoint(_) => ValueShape::UtfCodepoint,
                     ConstantStoredListValue::Custom(value) => {
                         ValueShape::Custom(value.item_shape().clone())
+                    }
+                    ConstantStoredListValue::External(value) => {
+                        ValueShape::External(value.item_shape().clone())
                     }
                     ConstantStoredListValue::Float(_) => ValueShape::Float,
                     ConstantStoredListValue::Bool(_) => ValueShape::Bool,

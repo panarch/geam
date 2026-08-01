@@ -1,17 +1,20 @@
 use crate::host::{
-    HostCallArguments, HostCustomArgumentSlot, HostCustomToken, HostFunctionArgumentSlot,
-    HostFunctionToken, HostListArgumentSlot, HostListToken, HostProfile, HostScopedValue,
-    HostTupleArgumentSlot, HostTupleToken, HostValueArgumentSlot, HostValueToken,
+    ExternalPayloadLease, HostCallArguments, HostCustomArgumentSlot, HostCustomToken,
+    HostExternalArgumentSlot, HostExternalToken, HostFunctionArgumentSlot, HostFunctionToken,
+    HostListArgumentSlot, HostListToken, HostProfile, HostScopedValue, HostTupleArgumentSlot,
+    HostTupleToken, HostValueArgumentSlot, HostValueToken,
 };
 
 pub(crate) trait HostCallRuntime<Profile: HostProfile> {
     fn state(&mut self) -> &mut Profile::RunState;
+    fn external_stores(&self) -> &Profile::ExternalStores;
     fn arguments(&self) -> &dyn HostCallArguments;
     fn scalar_context(&mut self) -> (&mut Profile::RunState, &dyn HostCallArguments);
     fn value(&self, slot: HostValueArgumentSlot) -> HostValueToken;
     fn list(&self, slot: HostListArgumentSlot) -> HostListToken;
     fn tuple(&self, slot: HostTupleArgumentSlot) -> HostTupleToken;
     fn custom(&self, slot: HostCustomArgumentSlot) -> HostCustomToken;
+    fn external(&self, slot: HostExternalArgumentSlot) -> HostExternalToken;
     fn function(&self, slot: HostFunctionArgumentSlot) -> HostFunctionToken;
     fn int(&self, value: HostValueToken) -> num_bigint::BigInt;
     fn float(&self, value: HostValueToken) -> f64;
@@ -23,6 +26,7 @@ pub(crate) trait HostCallRuntime<Profile: HostProfile> {
     fn list_token(&self, value: HostValueToken) -> HostListToken;
     fn tuple_token(&self, value: HostValueToken) -> HostTupleToken;
     fn custom_token(&self, value: HostValueToken) -> HostCustomToken;
+    fn external_token(&self, value: HostValueToken) -> HostExternalToken;
     fn function_token(&self, value: HostValueToken) -> HostFunctionToken;
     fn list_len(&self, value: HostListToken) -> usize;
     fn list_item(&mut self, value: HostListToken, index: usize) -> Option<HostValueToken>;
@@ -44,6 +48,8 @@ pub(crate) trait HostCallRuntime<Profile: HostProfile> {
         constructor: usize,
         fields: Box<[HostScopedValue]>,
     ) -> HostValueToken;
+    fn build_external(&mut self, value: ExternalPayloadLease) -> HostExternalToken;
+    fn external_lease(&self, value: HostExternalToken) -> ExternalPayloadLease;
 }
 
 #[cfg(test)]
@@ -51,10 +57,10 @@ pub(crate) mod test {
     use super::HostCallRuntime;
     use crate::host::{
         HostCall, HostCallArguments, HostCallCompletion, HostCallError, HostCustomArgumentSlot,
-        HostCustomToken, HostFunctionArgumentSlot, HostFunctionToken, HostListArgumentSlot,
-        HostListToken, HostProfile, HostProvider, HostScopedValue, HostTupleArgumentSlot,
-        HostTupleToken, HostTypeParameter, HostValue, HostValueArgumentSlot, HostValueFamily,
-        HostValueToken, StatelessHostProfile,
+        HostCustomToken, HostExternalArgumentSlot, HostExternalToken, HostFunctionArgumentSlot,
+        HostFunctionToken, HostListArgumentSlot, HostListToken, HostProfile, HostProvider,
+        HostScopedValue, HostTupleArgumentSlot, HostTupleToken, HostTypeParameter, HostValue,
+        HostValueArgumentSlot, HostValueFamily, HostValueToken, StatelessHostProfile,
     };
 
     pub(crate) struct TestHostProfile;
@@ -71,10 +77,12 @@ pub(crate) mod test {
         state: &'state mut TestRunState,
         arguments: Box<dyn HostCallArguments>,
         completed: Option<HostScopedValue>,
+        external_leases: Vec<crate::host::ExternalPayloadLease>,
     }
 
     impl HostProfile for TestHostProfile {
         type RunState = TestRunState;
+        type ExternalStores = ();
     }
 
     impl HostProvider<StatelessHostProfile> for StatelessTestProvider {
@@ -101,6 +109,7 @@ pub(crate) mod test {
                 state,
                 arguments: Box::new(arguments),
                 completed: None,
+                external_leases: Vec::new(),
             }
         }
 
@@ -112,6 +121,10 @@ pub(crate) mod test {
     impl HostCallRuntime<TestHostProfile> for TestHostCallRuntime<'_> {
         fn state(&mut self) -> &mut TestRunState {
             self.state
+        }
+
+        fn external_stores(&self) -> &() {
+            &()
         }
 
         fn arguments(&self) -> &dyn HostCallArguments {
@@ -139,6 +152,10 @@ pub(crate) mod test {
 
         fn custom(&self, _slot: HostCustomArgumentSlot) -> HostCustomToken {
             HostCustomToken(0)
+        }
+
+        fn external(&self, _slot: HostExternalArgumentSlot) -> HostExternalToken {
+            HostExternalToken(0)
         }
 
         fn function(&self, _slot: HostFunctionArgumentSlot) -> HostFunctionToken {
@@ -181,6 +198,10 @@ pub(crate) mod test {
 
         fn custom_token(&self, _value: HostValueToken) -> HostCustomToken {
             HostCustomToken(0)
+        }
+
+        fn external_token(&self, _value: HostValueToken) -> HostExternalToken {
+            HostExternalToken(0)
         }
 
         fn function_token(&self, _value: HostValueToken) -> HostFunctionToken {
@@ -239,6 +260,7 @@ pub(crate) mod test {
                 HostScopedValue::List(_) => token(HostValueFamily::List),
                 HostScopedValue::Tuple(_) => token(HostValueFamily::Tuple),
                 HostScopedValue::Custom(_) => token(HostValueFamily::Custom),
+                HostScopedValue::External(_) => token(HostValueFamily::External),
                 HostScopedValue::Function(_) => token(HostValueFamily::Function),
             };
             self.completed = Some(value);
@@ -260,6 +282,62 @@ pub(crate) mod test {
         ) -> HostValueToken {
             token(HostValueFamily::Custom)
         }
+
+        fn build_external(
+            &mut self,
+            value: crate::host::ExternalPayloadLease,
+        ) -> HostExternalToken {
+            let index = self.external_leases.len();
+            self.external_leases.push(value);
+            HostExternalToken(index)
+        }
+
+        fn external_lease(&self, value: HostExternalToken) -> crate::host::ExternalPayloadLease {
+            self.external_leases[value.0].clone()
+        }
+    }
+
+    #[test]
+    fn test_runtime_preserves_external_tokens_and_payload_leases() {
+        let store = crate::host::HostExternalStore::default();
+        let lease = store.insert(
+            7usize,
+            |left, right| left == right,
+            |value| format!("Resource({value})").into(),
+        );
+        let equal_lease = store.insert(
+            7usize,
+            |left, right| left == right,
+            |value| format!("Resource({value})").into(),
+        );
+        let identity = lease.id();
+        let mut state = TestRunState::default();
+        let arguments = crate::host::function::CallArguments::new(Vec::new(), Vec::new());
+        let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
+
+        assert_eq!(HostCallRuntime::external_stores(&runtime), &());
+        assert_eq!(
+            HostCallRuntime::external_token(
+                &runtime,
+                HostValueToken {
+                    family: HostValueFamily::External,
+                    index: 0,
+                },
+            ),
+            HostExternalToken(0),
+        );
+        let external = HostCallRuntime::build_external(&mut runtime, lease);
+        assert_eq!(external, HostExternalToken(0));
+        let stored = HostCallRuntime::external_lease(&runtime, external);
+        assert!(stored.source_equal(&equal_lease));
+        assert!(equal_lease.source_equal(&stored));
+        assert_eq!(stored.inspect(), "Resource(7)");
+        assert_eq!(equal_lease.inspect(), "Resource(7)");
+        assert_eq!(stored.id(), identity,);
+        assert_eq!(
+            HostCallRuntime::complete(&mut runtime, HostScopedValue::External(external)).family,
+            HostValueFamily::External,
+        );
     }
 
     fn token(family: HostValueFamily) -> HostValueToken {

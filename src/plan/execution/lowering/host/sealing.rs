@@ -82,7 +82,8 @@ impl CallbackSearch<'_> {
             | HostTypeDescriptor::BitArray
             | HostTypeDescriptor::UtfCodepoint
             | HostTypeDescriptor::Bool
-            | HostTypeDescriptor::Nil => None,
+            | HostTypeDescriptor::Nil
+            | HostTypeDescriptor::External { .. } => None,
             HostTypeDescriptor::List(item) => {
                 let item_shape =
                     SpecializedValueShape::instantiate(&item.value_shape(), self.substitution);
@@ -220,6 +221,17 @@ impl CallbackSearch<'_> {
                         .into_boxed_slice(),
                 }
             }
+            HostSchemaType::External {
+                schema,
+                arguments: external_arguments,
+            } => HostTypeDescriptor::External {
+                schema: schema.clone(),
+                arguments: external_arguments
+                    .iter()
+                    .map(|argument| self.descriptor(argument, arguments))
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            },
         }
     }
 }
@@ -230,4 +242,47 @@ fn identity(schema: &HostCustomTypeSchema) -> CustomIdentity {
         schema.module().clone(),
         schema.name().clone(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CallbackSearch;
+    use crate::host::{HostExternalTypeSchema, HostSchemaType, HostTypeDescriptor};
+    use crate::plan::execution::lowering::specialization::{
+        RepresentationContext, SpecializedTypeSubstitution,
+    };
+    use std::collections::{HashMap, HashSet};
+
+    #[test]
+    fn resolves_external_schema_arguments_inside_custom_fields() {
+        let schema = HostExternalTypeSchema::new("domain", "domain/resource", "Resource", 2);
+        let substitution = SpecializedTypeSubstitution::empty();
+        let representations = RepresentationContext::new(Vec::new());
+        let search = CallbackSearch {
+            substitution: &substitution,
+            representations: &representations,
+            schemas: HashMap::new(),
+            visiting: HashSet::new(),
+        };
+        let source = HostSchemaType::External {
+            schema: schema.clone(),
+            arguments: vec![
+                HostSchemaType::Parameter(0),
+                HostSchemaType::List(Box::new(HostSchemaType::Int)),
+            ]
+            .into_boxed_slice(),
+        };
+
+        assert_eq!(
+            search.descriptor(&source, &[HostTypeDescriptor::String]),
+            HostTypeDescriptor::External {
+                schema,
+                arguments: vec![
+                    HostTypeDescriptor::String,
+                    HostTypeDescriptor::List(Box::new(HostTypeDescriptor::Int)),
+                ]
+                .into_boxed_slice(),
+            },
+        );
+    }
 }

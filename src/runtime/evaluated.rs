@@ -5,20 +5,29 @@ use num_bigint::BigInt;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use super::state::{ListValueId, ParameterListValueId, RuntimeState, StoredListValueId};
+mod external;
+pub(in crate::runtime) use external::EvaluatedExternalValue;
+
+use super::state::{
+    ExternalListValueId, ListValueId, ParameterListValueId, RuntimeValueStorage, StoredListValueId,
+};
 use crate::plan::ValueType;
 use crate::plan::execution::function::{
-    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, FunctionFunctionId,
-    FunctionReturnFamily, GenericCallableId, IntFunctionId, ListFunctionId, NeverFunctionId,
-    NilFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
+    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, ExternalFunctionId,
+    ExternalListFunctionId, FloatFunctionId, FunctionFunctionId, FunctionReturnFamily,
+    GenericCallableId, IntFunctionId, ListFunctionId, NeverFunctionId, NilFunctionId,
+    ProfiledFunctionFunctionId, RuntimeListFunctionId, StringFunctionId, TupleFunctionId,
+    UtfCodepointFunctionId,
 };
 use crate::plan::execution::graph::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
-    CustomFunctionLocal, CustomLocal, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocal,
-    GenericFunctionLocal, IntFunctionLocalId, IntLocalId, ListFunctionLocal, NeverFunctionLocal,
-    NilFunctionLocalId, NilLocalId, ParamLocal, StringFunctionLocalId, StringLocalId,
-    TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
+    CustomFunctionLocal, CustomLocal, ExternalFunctionLocal, ExternalLocal, FloatFunctionLocalId,
+    FloatLocalId, FunctionFunctionLocal, GenericFunctionLocal, IntFunctionLocalId, IntLocalId,
+    ListFunctionLocal, NeverFunctionLocal, NilFunctionLocalId, NilLocalId, ParamLocal,
+    StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
+use crate::plan::execution::runtime::RuntimeValueMetadata;
 use crate::plan::execution::type_::{CustomConstructorId, CustomTypeId, FunctionType};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,6 +95,7 @@ pub(in crate::runtime) enum EvaluatedValue {
     BitArray(EvaluatedBitArray),
     UtfCodepoint(char),
     Custom(EvaluatedCustomValue),
+    External(EvaluatedExternalValue),
     Bool(bool),
     Nil,
     Tuple(Vec<EvaluatedValue>),
@@ -103,6 +113,7 @@ impl From<ListValueId> for EvaluatedValue {
             ListValueId::BitArray(value) => Self::List(StoredListValueId::BitArray(value)),
             ListValueId::UtfCodepoint(value) => Self::List(StoredListValueId::UtfCodepoint(value)),
             ListValueId::Custom(value) => Self::List(StoredListValueId::Custom(value)),
+            ListValueId::External(value) => Self::List(StoredListValueId::External(value)),
             ListValueId::Float(value) => Self::List(StoredListValueId::Float(value)),
             ListValueId::Bool(value) => Self::List(StoredListValueId::Bool(value)),
             ListValueId::Nil(value) => Self::List(StoredListValueId::Nil(value)),
@@ -157,6 +168,7 @@ pub(in crate::runtime) enum ListFunctionReturnFamily {
     BitArray,
     UtfCodepoint,
     Custom,
+    External,
     Float,
     Bool,
     Nil,
@@ -203,11 +215,23 @@ pub(in crate::runtime) enum EvaluatedCustomFunction {
     Function(EvaluatedFunction<CustomFunctionId>),
     Constructor(EvaluatedFunction<CustomConstructorId>),
 }
+pub(in crate::runtime) type EvaluatedExternalFunction = EvaluatedFunction<ExternalFunctionId>;
 pub(in crate::runtime) type EvaluatedBoolFunction = EvaluatedFunction<BoolFunctionId>;
 pub(in crate::runtime) type EvaluatedNilFunction = EvaluatedFunction<NilFunctionId>;
 pub(in crate::runtime) type EvaluatedTupleFunction = EvaluatedFunction<TupleFunctionId>;
-pub(in crate::runtime) type EvaluatedListFunction = EvaluatedFunction<ListFunctionId>;
-pub(in crate::runtime) type EvaluatedFunctionFunction = EvaluatedFunction<FunctionFunctionId>;
+pub(in crate::runtime) type EvaluatedListFunction = EvaluatedFunction<RuntimeListFunctionId>;
+pub(in crate::runtime) type EvaluatedExternalListFunction =
+    EvaluatedFunction<ExternalListFunctionId>;
+pub(in crate::runtime) type EvaluatedCoreFunctionFunction =
+    EvaluatedFunction<ProfiledFunctionFunctionId<std::convert::Infallible>>;
+pub(in crate::runtime) type EvaluatedExternalFunctionFunction =
+    EvaluatedFunction<crate::plan::execution::graph::ExternalFunctionCallTarget>;
+
+#[derive(Debug, Clone, PartialEq)]
+pub(in crate::runtime) enum EvaluatedFunctionFunction {
+    Core(EvaluatedCoreFunctionFunction),
+    External(EvaluatedExternalFunctionFunction),
+}
 
 impl FunctionReferenceIdentity {
     fn value(family: FunctionReturnFamily, index: usize) -> Self {
@@ -287,6 +311,12 @@ impl FunctionReferenceId for CustomFunctionId {
     }
 }
 
+impl FunctionReferenceId for ExternalFunctionId {
+    fn reference_identity(&self) -> FunctionReferenceIdentity {
+        FunctionReferenceIdentity::value(FunctionReturnFamily::External, self.index())
+    }
+}
+
 impl FunctionReferenceId for BoolFunctionId {
     fn reference_identity(&self) -> FunctionReferenceIdentity {
         FunctionReferenceIdentity::value(FunctionReturnFamily::Bool, self.0)
@@ -351,6 +381,17 @@ impl FunctionReferenceId for ListFunctionId {
     }
 }
 
+impl FunctionReferenceId for RuntimeListFunctionId {
+    fn reference_identity(&self) -> FunctionReferenceIdentity {
+        match self {
+            Self::Core(id) => id.reference_identity(),
+            Self::External(id) => {
+                FunctionReferenceIdentity::list(ListFunctionReturnFamily::External, id.index())
+            }
+        }
+    }
+}
+
 impl FunctionReferenceId for FunctionFunctionId {
     fn reference_identity(&self) -> FunctionReferenceIdentity {
         match self {
@@ -375,6 +416,9 @@ impl FunctionReferenceId for FunctionFunctionId {
             }
             Self::Custom(id) => {
                 FunctionReferenceIdentity::function(FunctionReturnFamily::Custom, id.index())
+            }
+            Self::External(id) => {
+                FunctionReferenceIdentity::function(FunctionReturnFamily::External, id.index())
             }
             Self::Bool(id) => FunctionReferenceIdentity::function(FunctionReturnFamily::Bool, id.0),
             Self::Nil(id) => FunctionReferenceIdentity::function(FunctionReturnFamily::Nil, id.0),
@@ -426,6 +470,12 @@ impl FunctionReferenceId for FunctionFunctionId {
                         id.0,
                     )
                 }
+                crate::plan::execution::function::ListFunctionFunctionId::External {
+                    id, ..
+                } => FunctionReferenceIdentity::returning_list_function(
+                    ListFunctionReturnFamily::External,
+                    id.0,
+                ),
                 crate::plan::execution::function::ListFunctionFunctionId::Float { id, .. } => {
                     FunctionReferenceIdentity::returning_list_function(
                         ListFunctionReturnFamily::Float,
@@ -470,6 +520,21 @@ impl FunctionReferenceId for FunctionFunctionId {
     }
 }
 
+impl FunctionReferenceId for ProfiledFunctionFunctionId<std::convert::Infallible> {
+    fn reference_identity(&self) -> FunctionReferenceIdentity {
+        use crate::plan::execution::function::ExecutionGraphProfile;
+
+        <std::convert::Infallible as ExecutionGraphProfile>::function_function(self)
+            .reference_identity()
+    }
+}
+
+impl FunctionReferenceId for crate::plan::execution::graph::ExternalFunctionCallTarget {
+    fn reference_identity(&self) -> FunctionReferenceIdentity {
+        self.runtime_id().reference_identity()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(in crate::runtime) struct EvaluatedFunctionValue {
     kind: EvaluatedFunctionValueKind,
@@ -485,6 +550,7 @@ pub(in crate::runtime) enum EvaluatedFunctionValueKind {
     BitArray(EvaluatedBitArrayFunction),
     UtfCodepoint(EvaluatedUtfCodepointFunction),
     Custom(EvaluatedCustomFunction),
+    External(EvaluatedExternalFunction),
     Bool(EvaluatedBoolFunction),
     Nil(EvaluatedNilFunction),
     Tuple(EvaluatedTupleFunction),
@@ -523,6 +589,10 @@ pub(in crate::runtime) enum EvaluatedCaptureKind {
         local: CustomLocal,
         value: EvaluatedCustomValue,
     },
+    External {
+        local: ExternalLocal,
+        value: EvaluatedExternalValue,
+    },
     Bool {
         local: BoolLocalId,
         value: bool,
@@ -558,6 +628,10 @@ pub(in crate::runtime) enum EvaluatedCaptureKind {
     CustomFunction {
         local: CustomFunctionLocal,
         value: EvaluatedCustomFunction,
+    },
+    ExternalFunction {
+        local: ExternalFunctionLocal,
+        value: EvaluatedExternalFunction,
     },
     BoolFunction {
         local: BoolFunctionLocalId,
@@ -619,6 +693,10 @@ pub(in crate::runtime) enum EvaluatedListCapture {
         local: crate::plan::execution::graph::CustomListLocalId,
         value: super::state::CustomListValueId,
     },
+    External {
+        local: crate::plan::execution::graph::ExternalListLocalId,
+        value: ExternalListValueId,
+    },
     Float {
         local: crate::plan::execution::graph::FloatListLocalId,
         value: super::state::FloatListValueId,
@@ -646,26 +724,29 @@ pub(in crate::runtime) enum EvaluatedListCapture {
 }
 
 impl EvaluatedValue {
-    pub(in crate::runtime) fn value_type(
-        &self,
-        plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
-    ) -> ValueType {
+    pub(in crate::runtime) fn value_type(&self, metadata: RuntimeValueMetadata<'_>) -> ValueType {
         match self {
             Self::Int(_) => ValueType::Int,
             Self::Float(_) => ValueType::Float,
             Self::String(_) => ValueType::String,
             Self::BitArray(_) => ValueType::BitArray,
             Self::UtfCodepoint(_) => ValueType::UtfCodepoint,
-            Self::Custom(value) => ValueType::Custom(plan.custom_value_type(value.type_id())),
+            Self::Custom(value) => ValueType::Custom(metadata.custom_value_type(value.type_id())),
+            Self::External(value) => {
+                ValueType::External(metadata.external_value_type(value.type_id()))
+            }
             Self::Bool(_) => ValueType::Bool,
             Self::Nil => ValueType::Nil,
-            Self::Tuple(values) => {
-                ValueType::Tuple(values.iter().map(|value| value.value_type(plan)).collect())
-            }
-            Self::ParameterList(value) => plan.list_value_type(value.type_id().list_type()),
-            Self::List(value) => plan.list_value_type(value.list_type()),
+            Self::Tuple(values) => ValueType::Tuple(
+                values
+                    .iter()
+                    .map(|value| value.value_type(metadata))
+                    .collect(),
+            ),
+            Self::ParameterList(value) => metadata.list_value_type(value.type_id().list_type()),
+            Self::List(value) => metadata.list_value_type(value.list_type()),
             Self::Function(value) => {
-                ValueType::Function(Box::new(plan.function_type(value.type_())))
+                ValueType::Function(Box::new(metadata.function_type(value.type_())))
             }
         }
     }
@@ -725,6 +806,19 @@ impl<Id: Clone> EvaluatedFunction<Id> {
         self.type_ = type_;
         self
     }
+
+    pub(in crate::runtime) fn map_runtime_id<NewId>(
+        self,
+        map: impl FnOnce(Id) -> NewId,
+    ) -> EvaluatedFunction<NewId> {
+        EvaluatedFunction {
+            identity: self.identity,
+            runtime_id: map(self.runtime_id),
+            params: self.params,
+            captures: self.captures,
+            type_: self.type_,
+        }
+    }
 }
 
 impl EvaluatedCustomFunction {
@@ -781,6 +875,43 @@ impl EvaluatedCustomFunction {
     }
 }
 
+impl EvaluatedFunctionFunction {
+    fn identity(&self) -> &EvaluatedFunctionIdentity {
+        match self {
+            Self::Core(value) => &value.identity,
+            Self::External(value) => &value.identity,
+        }
+    }
+
+    pub(in crate::runtime) fn type_(&self) -> &FunctionType {
+        match self {
+            Self::Core(value) => value.type_(),
+            Self::External(value) => value.type_(),
+        }
+    }
+
+    pub(in crate::runtime) fn params(&self) -> &[ParamLocal] {
+        match self {
+            Self::Core(value) => value.params(),
+            Self::External(value) => value.params(),
+        }
+    }
+
+    pub(in crate::runtime) fn captures(&self) -> &[EvaluatedCapture] {
+        match self {
+            Self::Core(value) => value.captures(),
+            Self::External(value) => value.captures(),
+        }
+    }
+
+    pub(in crate::runtime) fn with_type(self, type_: FunctionType) -> Self {
+        match self {
+            Self::Core(value) => Self::Core(value.with_type(type_)),
+            Self::External(value) => Self::External(value.with_type(type_)),
+        }
+    }
+}
+
 macro_rules! evaluated_function_value_from {
     ($function:ty, $variant:ident) => {
         impl From<$function> for EvaluatedFunctionValue {
@@ -799,6 +930,7 @@ evaluated_function_value_from!(EvaluatedStringFunction, String);
 evaluated_function_value_from!(EvaluatedBitArrayFunction, BitArray);
 evaluated_function_value_from!(EvaluatedUtfCodepointFunction, UtfCodepoint);
 evaluated_function_value_from!(EvaluatedCustomFunction, Custom);
+evaluated_function_value_from!(EvaluatedExternalFunction, External);
 evaluated_function_value_from!(EvaluatedBoolFunction, Bool);
 evaluated_function_value_from!(EvaluatedNilFunction, Nil);
 evaluated_function_value_from!(EvaluatedTupleFunction, Tuple);
@@ -824,6 +956,7 @@ impl EvaluatedFunctionValue {
             EvaluatedFunctionValueKind::BitArray(value) => value.type_(),
             EvaluatedFunctionValueKind::UtfCodepoint(value) => value.type_(),
             EvaluatedFunctionValueKind::Custom(value) => value.type_(),
+            EvaluatedFunctionValueKind::External(value) => value.type_(),
             EvaluatedFunctionValueKind::Bool(value) => value.type_(),
             EvaluatedFunctionValueKind::Nil(value) => value.type_(),
             EvaluatedFunctionValueKind::Tuple(value) => value.type_(),
@@ -858,6 +991,9 @@ impl EvaluatedFunctionValue {
             EvaluatedFunctionValueKind::Custom(value) => {
                 EvaluatedFunctionValueKind::Custom(value.with_type(type_))
             }
+            EvaluatedFunctionValueKind::External(value) => {
+                EvaluatedFunctionValueKind::External(value.with_type(type_))
+            }
             EvaluatedFunctionValueKind::Bool(value) => {
                 EvaluatedFunctionValueKind::Bool(value.with_type(type_))
             }
@@ -889,6 +1025,7 @@ impl EvaluatedFunctionValueKind {
             Self::BitArray(_) => FunctionReturnFamily::BitArray,
             Self::UtfCodepoint(_) => FunctionReturnFamily::UtfCodepoint,
             Self::Custom(_) => FunctionReturnFamily::Custom,
+            Self::External(_) => FunctionReturnFamily::External,
             Self::Bool(_) => FunctionReturnFamily::Bool,
             Self::Nil(_) => FunctionReturnFamily::Nil,
             Self::Tuple(_) => FunctionReturnFamily::Tuple,
@@ -929,6 +1066,13 @@ impl EvaluatedCapture {
 
     pub(in crate::runtime) fn custom(local: CustomLocal, value: EvaluatedCustomValue) -> Self {
         Self::from_kind(EvaluatedCaptureKind::Custom { local, value })
+    }
+
+    pub(in crate::runtime) fn external(
+        local: ExternalLocal,
+        value: EvaluatedExternalValue,
+    ) -> Self {
+        Self::from_kind(EvaluatedCaptureKind::External { local, value })
     }
 
     pub(in crate::runtime) fn bool(local: BoolLocalId, value: bool) -> Self {
@@ -1003,6 +1147,13 @@ impl EvaluatedCapture {
         Self::from_kind(EvaluatedCaptureKind::CustomFunction { local, value })
     }
 
+    pub(in crate::runtime) fn external_function(
+        local: ExternalFunctionLocal,
+        value: EvaluatedExternalFunction,
+    ) -> Self {
+        Self::from_kind(EvaluatedCaptureKind::ExternalFunction { local, value })
+    }
+
     pub(in crate::runtime) fn bool_function(
         local: BoolFunctionLocalId,
         value: EvaluatedBoolFunction,
@@ -1040,8 +1191,7 @@ impl EvaluatedCapture {
 }
 
 pub(in crate::runtime) fn values_equal(
-    plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
-    state: &RuntimeState<'_, impl Sized>,
+    storage: &RuntimeValueStorage,
     left: &EvaluatedValue,
     right: &EvaluatedValue,
 ) -> bool {
@@ -1058,7 +1208,10 @@ pub(in crate::runtime) fn values_equal(
                     .fields
                     .iter()
                     .zip(&right.fields)
-                    .all(|(left, right)| values_equal(plan, state, left, right))
+                    .all(|(left, right)| values_equal(storage, left, right))
+        }
+        (EvaluatedValue::External(left), EvaluatedValue::External(right)) => {
+            left.source_equal(right)
         }
         (EvaluatedValue::Bool(left), EvaluatedValue::Bool(right)) => left == right,
         (EvaluatedValue::Nil, EvaluatedValue::Nil) => true,
@@ -1067,13 +1220,13 @@ pub(in crate::runtime) fn values_equal(
                 && left
                     .iter()
                     .zip(right)
-                    .all(|(left, right)| values_equal(plan, state, left, right))
+                    .all(|(left, right)| values_equal(storage, left, right))
         }
         (EvaluatedValue::ParameterList(left), EvaluatedValue::ParameterList(right)) => {
             left.type_id() == right.type_id()
         }
         (EvaluatedValue::List(left), EvaluatedValue::List(right)) => {
-            lists_equal(plan, state, left, right)
+            lists_equal(storage, left, right)
         }
         (EvaluatedValue::Function(left), EvaluatedValue::Function(right)) => {
             functions_equal(left, right)
@@ -1083,8 +1236,7 @@ pub(in crate::runtime) fn values_equal(
 }
 
 fn lists_equal(
-    plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
-    state: &RuntimeState<'_, impl Sized>,
+    storage: &RuntimeValueStorage,
     left: &StoredListValueId,
     right: &StoredListValueId,
 ) -> bool {
@@ -1092,13 +1244,13 @@ fn lists_equal(
         return false;
     }
 
-    let left = state.values().evaluated_values(left);
-    let right = state.values().evaluated_values(right);
+    let left = storage.evaluated_values(left);
+    let right = storage.evaluated_values(right);
     left.len() == right.len()
         && left
             .iter()
             .zip(&right)
-            .all(|(left, right)| values_equal(plan, state, left, right))
+            .all(|(left, right)| values_equal(storage, left, right))
 }
 
 fn functions_equal(left: &EvaluatedFunctionValue, right: &EvaluatedFunctionValue) -> bool {
@@ -1129,6 +1281,10 @@ fn functions_equal(left: &EvaluatedFunctionValue, right: &EvaluatedFunctionValue
         (EvaluatedFunctionValueKind::Custom(left), EvaluatedFunctionValueKind::Custom(right)) => {
             custom_function_values_equal(left, right)
         }
+        (
+            EvaluatedFunctionValueKind::External(left),
+            EvaluatedFunctionValueKind::External(right),
+        ) => function_values_equal(left, right),
         (EvaluatedFunctionValueKind::Bool(left), EvaluatedFunctionValueKind::Bool(right)) => {
             function_values_equal(left, right)
         }
@@ -1144,7 +1300,7 @@ fn functions_equal(left: &EvaluatedFunctionValue, right: &EvaluatedFunctionValue
         (
             EvaluatedFunctionValueKind::Function(left),
             EvaluatedFunctionValueKind::Function(right),
-        ) => function_values_equal(left, right),
+        ) => function_function_values_equal(left, right),
         _ => false,
     }
 }
@@ -1169,15 +1325,23 @@ fn custom_function_values_equal(
     }
 }
 
+fn function_function_values_equal(
+    left: &EvaluatedFunctionFunction,
+    right: &EvaluatedFunctionFunction,
+) -> bool {
+    left.identity() == right.identity()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
-        EvaluatedCustomFunction, EvaluatedFloatFunction, EvaluatedFunctionFunction,
-        EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedListFunction,
-        EvaluatedNeverFunction, EvaluatedNilFunction, EvaluatedStringFunction,
-        EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue, FunctionReferenceId,
-        FunctionReferenceIdentity, ListFunctionReturnFamily, values_equal,
+        EvaluatedCustomFunction, EvaluatedFloatFunction, EvaluatedFunction,
+        EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedIntFunction,
+        EvaluatedListFunction, EvaluatedNeverFunction, EvaluatedNilFunction,
+        EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedUtfCodepointFunction,
+        EvaluatedValue, FunctionReferenceId, FunctionReferenceIdentity, ListFunctionReturnFamily,
+        values_equal,
     };
     use crate::plan::ValueType;
     use crate::plan::execution::function::{
@@ -1187,11 +1351,12 @@ mod tests {
         IntFunctionFunctionId, IntFunctionId, IntListFunctionFunctionId, ListFunctionFunctionId,
         ListFunctionId, ListListFunctionFunctionId, NeverFunctionId, NilFunctionId,
         NilListFunctionFunctionId, ParameterListFunctionFunctionId,
-        ParameterListListFunctionFunctionId, StringFunctionId, StringListFunctionFunctionId,
-        TupleFunctionId, TupleListFunctionFunctionId, UtfCodepointFunctionId,
-        UtfCodepointListFunctionFunctionId,
+        ParameterListListFunctionFunctionId, ProfiledFunctionFunctionId, RuntimeListFunctionId,
+        StringFunctionId, StringListFunctionFunctionId, TupleFunctionId,
+        TupleListFunctionFunctionId, UtfCodepointFunctionId, UtfCodepointListFunctionFunctionId,
     };
     use crate::plan::execution::graph::{IntLocalId, ParamLocal};
+    use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::runtime::state::{ListValueId, RuntimeState};
     use bitvec::order::Msb0;
     use bitvec::view::BitView;
@@ -1290,7 +1455,7 @@ pub fn main() {
         ];
 
         for (value, expected) in values.iter().zip(expected) {
-            assert_eq!(value.value_type(&plan), expected);
+            assert_eq!(value.value_type(plan.value_metadata()), expected);
         }
     }
 
@@ -1506,7 +1671,7 @@ pub fn main() {
             ),
             (
                 EvaluatedFunctionValue::from(EvaluatedListFunction::reference(
-                    ListFunctionId::Int(plan.int_list_function_id(0)),
+                    RuntimeListFunctionId::Core(ListFunctionId::Int(plan.int_list_function_id(0))),
                     Vec::new(),
                     Vec::new(),
                     crate::plan::execution::type_::FunctionType::new(
@@ -1517,7 +1682,7 @@ pub fn main() {
                     ),
                 )),
                 EvaluatedFunctionValue::from(EvaluatedListFunction::reference(
-                    ListFunctionId::Int(plan.int_list_function_id(0)),
+                    RuntimeListFunctionId::Core(ListFunctionId::Int(plan.int_list_function_id(0))),
                     Vec::new(),
                     Vec::new(),
                     crate::plan::execution::type_::FunctionType::new(
@@ -1529,26 +1694,34 @@ pub fn main() {
                 )),
             ),
             (
-                EvaluatedFunctionValue::from(EvaluatedFunctionFunction::reference(
-                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                    Vec::new(),
-                    Vec::new(),
-                    crate::plan::execution::type_::FunctionType::new(
+                EvaluatedFunctionValue::from(EvaluatedFunctionFunction::Core(
+                    EvaluatedFunction::reference(
+                        ProfiledFunctionFunctionId::<std::convert::Infallible>::Int(
+                            IntFunctionFunctionId(0),
+                        ),
                         Vec::new(),
-                        crate::plan::execution::type_::ValueType::Function(Box::new(
-                            execution_int_type.clone(),
-                        )),
+                        Vec::new(),
+                        crate::plan::execution::type_::FunctionType::new(
+                            Vec::new(),
+                            crate::plan::execution::type_::ValueType::Function(Box::new(
+                                execution_int_type.clone(),
+                            )),
+                        ),
                     ),
                 )),
-                EvaluatedFunctionValue::from(EvaluatedFunctionFunction::reference(
-                    FunctionFunctionId::Int(IntFunctionFunctionId(0)),
-                    Vec::new(),
-                    Vec::new(),
-                    crate::plan::execution::type_::FunctionType::new(
+                EvaluatedFunctionValue::from(EvaluatedFunctionFunction::Core(
+                    EvaluatedFunction::reference(
+                        ProfiledFunctionFunctionId::<std::convert::Infallible>::Int(
+                            IntFunctionFunctionId(0),
+                        ),
                         Vec::new(),
-                        crate::plan::execution::type_::ValueType::Function(Box::new(
-                            execution_int_type.clone(),
-                        )),
+                        Vec::new(),
+                        crate::plan::execution::type_::FunctionType::new(
+                            Vec::new(),
+                            crate::plan::execution::type_::ValueType::Function(Box::new(
+                                execution_int_type.clone(),
+                            )),
+                        ),
                     ),
                 )),
             ),
@@ -1558,21 +1731,18 @@ pub fn main() {
             let family = left.kind().family();
             assert_eq!(family, right.kind().family());
             assert!(values_equal(
-                &plan,
-                &state,
+                state.values(),
                 &EvaluatedValue::Function(left),
                 &EvaluatedValue::Function(right),
             ));
         }
         assert!(!values_equal(
-            &plan,
-            &state,
+            state.values(),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(custom_function)),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(constructor_function)),
         ));
         assert!(!values_equal(
-            &plan,
-            &state,
+            state.values(),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(int_function.clone())),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(
                 EvaluatedFloatFunction::reference(
@@ -1714,33 +1884,28 @@ pub fn main() {
 
         for (left, right) in list_pairs {
             assert!(values_equal(
-                &plan,
-                &state,
+                state.values(),
                 &EvaluatedValue::from(left),
                 &EvaluatedValue::from(right),
             ));
         }
         assert!(!values_equal(
-            &plan,
-            &state,
+            state.values(),
             &EvaluatedValue::from(ListValueId::Int(int_lists.0)),
             &EvaluatedValue::from(ListValueId::String(string_lists.0)),
         ));
         assert!(values_equal(
-            &plan,
-            &state,
+            state.values(),
             &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
             &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
         ));
         assert!(!values_equal(
-            &plan,
-            &state,
+            state.values(),
             &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
             &EvaluatedValue::Tuple(Vec::new()),
         ));
         assert!(!values_equal(
-            &plan,
-            &state,
+            state.values(),
             &EvaluatedValue::Int(1.into()),
             &EvaluatedValue::String("one".into()),
         ));
@@ -1748,7 +1913,6 @@ pub fn main() {
 
     #[test]
     fn function_identity_distinguishes_references_and_instances() {
-        let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
         let mut echo = Vec::new();
         let state = RuntimeState::new(&mut echo);
         let int_type = crate::plan::execution::type_::FunctionType::new(
@@ -1792,36 +1956,31 @@ pub fn main() {
         );
 
         assert!(values_equal(
-            &plan,
-            &state,
+            state.values(),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(reference.clone())),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(
                 same_target_with_different_metadata,
             )),
         ));
         assert!(!values_equal(
-            &plan,
-            &state,
+            state.values(),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(reference)),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(different_target)),
         ));
         assert!(!values_equal(
-            &plan,
-            &state,
+            state.values(),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(
                 reference_for_instance_comparison,
             )),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(closure.clone())),
         ));
         assert!(values_equal(
-            &plan,
-            &state,
+            state.values(),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(closure.clone())),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(same_closure)),
         ));
         assert!(!values_equal(
-            &plan,
-            &state,
+            state.values(),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(closure)),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(separate_closure)),
         ));
@@ -2020,14 +2179,12 @@ pub fn main() {
         let separate = EvaluatedCustomFunction::constructor(constructor_id, type_);
 
         assert!(values_equal(
-            &plan,
-            &state,
+            state.values(),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(first.clone())),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(same)),
         ));
         assert!(!values_equal(
-            &plan,
-            &state,
+            state.values(),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(first)),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(separate)),
         ));

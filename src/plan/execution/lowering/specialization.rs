@@ -1,5 +1,7 @@
 use crate::plan::module::{FunctionInstantiation, FunctionTemplateId, TypeSubstitution};
-use crate::plan::{CustomConstructorRefinement, CustomTypeName, FunctionShape, ValueShape};
+use crate::plan::{
+    CustomConstructorRefinement, CustomTypeName, ExternalTypeName, FunctionShape, ValueShape,
+};
 use ecow::EcoString;
 use std::collections::{HashMap, HashSet};
 
@@ -25,6 +27,12 @@ pub(super) struct SpecializedCustomValueShape {
     name: CustomTypeName,
     arguments: Box<[SpecializedValueShape]>,
     constructor: CustomConstructorRefinement,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(super) struct SpecializedExternalValueShape {
+    name: ExternalTypeName,
+    arguments: Box<[SpecializedValueShape]>,
 }
 
 pub(super) struct SpecializedCustomConstructor {
@@ -53,6 +61,7 @@ pub(super) enum SpecializedValueShape {
     List(Box<SpecializedValueShape>),
     Function(Box<SpecializedFunctionShape>),
     Custom(SpecializedCustomValueShape),
+    External(SpecializedExternalValueShape),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -68,6 +77,7 @@ pub(super) enum StoredValueShape {
     List(Box<SpecializedValueShape>),
     Function(Box<SpecializedFunctionShape>),
     Custom(SpecializedCustomValueShape),
+    External(SpecializedExternalValueShape),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -427,6 +437,33 @@ impl SpecializedCustomValueShape {
     }
 }
 
+impl SpecializedExternalValueShape {
+    pub(super) fn instantiate(
+        shape: &crate::plan::ExternalValueShape,
+        substitution: &SpecializedTypeSubstitution,
+    ) -> Self {
+        Self {
+            name: shape.type_name().clone(),
+            arguments: shape
+                .arguments()
+                .iter()
+                .map(|shape| SpecializedValueShape::instantiate(shape, substitution))
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        }
+    }
+
+    pub(super) fn to_module_shape(&self) -> crate::plan::ExternalValueShape {
+        crate::plan::ExternalValueShape::new(
+            self.name.clone(),
+            self.arguments
+                .iter()
+                .map(SpecializedValueShape::to_module_shape)
+                .collect(),
+        )
+    }
+}
+
 impl SpecializedCustomConstructor {
     pub(super) fn instantiate(
         constructor: crate::plan::CustomConstructor,
@@ -504,6 +541,9 @@ impl SpecializedValueShape {
                 custom,
                 substitution,
             )),
+            ValueShape::External(external) => Self::External(
+                SpecializedExternalValueShape::instantiate(external, substitution),
+            ),
         }
     }
 
@@ -527,6 +567,7 @@ impl SpecializedValueShape {
             Self::List(item) => ValueShape::List(Box::new(item.to_module_shape())),
             Self::Function(function) => ValueShape::Function(Box::new(function.to_module_shape())),
             Self::Custom(custom) => ValueShape::Custom(custom.to_module_shape()),
+            Self::External(external) => ValueShape::External(external.to_module_shape()),
         }
     }
 
@@ -549,6 +590,9 @@ impl SpecializedValueShape {
             }
             Self::Custom(custom) => {
                 StorageRepresentation::Stored(StoredValueShape::Custom(custom.clone()))
+            }
+            Self::External(external) => {
+                StorageRepresentation::Stored(StoredValueShape::External(external.clone()))
             }
         }
     }
@@ -686,6 +730,9 @@ impl RepresentationContext {
             SpecializedValueShape::Custom(custom) => {
                 ValueRepresentation::Stored(StoredValueShape::Custom(custom.clone()))
             }
+            SpecializedValueShape::External(external) => {
+                ValueRepresentation::Stored(StoredValueShape::External(external.clone()))
+            }
         }
     }
 
@@ -738,6 +785,9 @@ impl RepresentationContext {
                         }),
                     ),
                 }
+            }
+            SpecializedValueShape::External(external) => {
+                ValueInhabitation::Inhabited(StoredValueShape::External(external.clone()))
             }
         }
     }
@@ -872,7 +922,8 @@ impl RepresentationContext {
             | SpecializedValueShape::Bool
             | SpecializedValueShape::Nil
             | SpecializedValueShape::List(_)
-            | SpecializedValueShape::Function(_) => true,
+            | SpecializedValueShape::Function(_)
+            | SpecializedValueShape::External(_) => true,
             SpecializedValueShape::Tuple(elements) => elements
                 .iter()
                 .all(|element| self.shape_has_value(element, visiting, known_inhabited)),
@@ -968,7 +1019,8 @@ impl RepresentationContext {
             | T::Bool
             | T::Nil
             | T::List(_)
-            | T::Function { .. } => true,
+            | T::Function { .. }
+            | T::External { .. } => true,
             T::Tuple(elements) => elements.iter().all(|element| {
                 self.template_inhabited(element, arguments, visiting, known_inhabited)
             }),
@@ -1046,6 +1098,9 @@ impl StoredValueShape {
             crate::plan::ValueStorageShape::Custom(custom) => Self::Custom(
                 SpecializedCustomValueShape::instantiate(custom, substitution),
             ),
+            crate::plan::ValueStorageShape::External(external) => Self::External(
+                SpecializedExternalValueShape::instantiate(external, substitution),
+            ),
         }
     }
 
@@ -1062,6 +1117,7 @@ impl StoredValueShape {
             Self::List(item) => SpecializedValueShape::List(item.clone()),
             Self::Function(function) => SpecializedValueShape::Function(function.clone()),
             Self::Custom(custom) => SpecializedValueShape::Custom(custom.clone()),
+            Self::External(external) => SpecializedValueShape::External(external.clone()),
         }
     }
 }

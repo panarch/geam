@@ -5,49 +5,53 @@ use super::{
     BitArrayBitsSize, BitArrayExpr, BitArrayFunctionExpr, BitArrayListExpr, BitArrayListItem,
     BitArraySegment, BoolExpr, BoolFunctionExpr, BoolListExpr, BoolListItem, CustomConstruction,
     CustomConstructor, CustomExpr, CustomFunctionExpr, CustomListExpr, CustomListItem, Expr,
-    FloatExpr, FloatFunctionExpr, FloatListExpr, FloatListItem, FunctionExpr, FunctionFunctionExpr,
-    FunctionListExpr, FunctionListItem, FunctionReference, GenericFunctionExpr, GenericListExpr,
-    GenericListItem, IntExpr, IntFunctionExpr, IntListExpr, IntListItem, ListExpr,
-    ListFunctionExpr, ListListExpr, ListListItem, NilExpr, NilFunctionExpr, NilListExpr,
-    NilListItem, ParameterListListExpr, ParameterListListItem, StoredListExpr, StringExpr,
-    StringFunctionExpr, StringListExpr, StringListItem, TupleExpr, TupleFunctionExpr,
-    TupleListExpr, TupleListItem, TypeScheme, TypeSubstitution, TypedFunctionReference,
-    UtfCodepointFunctionExpr, UtfCodepointListExpr, UtfCodepointListItem,
+    ExternalFunctionExpr, ExternalListExpr, ExternalListItem, FloatExpr, FloatFunctionExpr,
+    FloatListExpr, FloatListItem, FunctionExpr, FunctionFunctionExpr, FunctionListExpr,
+    FunctionListItem, FunctionReference, GenericFunctionExpr, GenericListExpr, GenericListItem,
+    IntExpr, IntFunctionExpr, IntListExpr, IntListItem, ListExpr, ListFunctionExpr, ListListExpr,
+    ListListItem, NilExpr, NilFunctionExpr, NilListExpr, NilListItem, ParameterListListExpr,
+    ParameterListListItem, StoredListExpr, StringExpr, StringFunctionExpr, StringListExpr,
+    StringListItem, TupleExpr, TupleFunctionExpr, TupleListExpr, TupleListItem, TypeScheme,
+    TypeSubstitution, TypedFunctionReference, UtfCodepointFunctionExpr, UtfCodepointListExpr,
+    UtfCodepointListItem,
 };
 use crate::plan::{
-    CustomValueShape, Endianness, FloatBitSize, FunctionShape, PanicSite, StringEncoding,
-    ValueShape, ValueType,
+    CustomValueShape, Endianness, ExternalValueShape, FloatBitSize, FunctionShape, PanicSite,
+    StringEncoding, ValueShape, ValueType,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
 
 pub(crate) use function::{
     ConstantBitArrayFunctionInstantiation, ConstantBoolFunctionInstantiation,
-    ConstantCustomFunctionInstantiation, ConstantFloatFunctionInstantiation,
-    ConstantFunctionFunctionInstantiation, ConstantFunctionInstantiation,
-    ConstantFunctionTemplateSource, ConstantGenericFunctionInstantiation,
-    ConstantIntFunctionInstantiation, ConstantListFunctionInstantiation,
-    ConstantNilFunctionInstantiation, ConstantStringFunctionInstantiation,
-    ConstantTupleFunctionInstantiation, ConstantUtfCodepointFunctionInstantiation,
+    ConstantCustomFunctionInstantiation, ConstantExternalFunctionInstantiation,
+    ConstantFloatFunctionInstantiation, ConstantFunctionFunctionInstantiation,
+    ConstantFunctionInstantiation, ConstantFunctionTemplateSource,
+    ConstantGenericFunctionInstantiation, ConstantIntFunctionInstantiation,
+    ConstantListFunctionInstantiation, ConstantNilFunctionInstantiation,
+    ConstantStringFunctionInstantiation, ConstantTupleFunctionInstantiation,
+    ConstantUtfCodepointFunctionInstantiation,
 };
 use function::{
     ConstantBitArrayFunctionTemplateId, ConstantBitArrayFunctionValue,
     ConstantBoolFunctionTemplateId, ConstantBoolFunctionValue, ConstantCustomFunctionTarget,
-    ConstantCustomFunctionTemplateId, ConstantCustomFunctionValue, ConstantFloatFunctionTemplateId,
-    ConstantFloatFunctionValue, ConstantFunctionFunctionTemplateId, ConstantFunctionFunctionValue,
-    ConstantFunctionTemplate, ConstantFunctionValue, ConstantGenericFunctionTemplateId,
-    ConstantGenericFunctionValue, ConstantIntFunctionTemplateId, ConstantIntFunctionValue,
-    ConstantListFunctionTemplateId, ConstantListFunctionValue, ConstantNilFunctionTemplateId,
-    ConstantNilFunctionValue, ConstantStringFunctionTemplateId, ConstantStringFunctionValue,
-    ConstantTupleFunctionTemplateId, ConstantTupleFunctionValue,
-    ConstantUtfCodepointFunctionTemplateId, ConstantUtfCodepointFunctionValue,
-    TypedConstantFunctionValueKind,
+    ConstantCustomFunctionTemplateId, ConstantCustomFunctionValue,
+    ConstantExternalFunctionTemplateId, ConstantExternalFunctionValue,
+    ConstantFloatFunctionTemplateId, ConstantFloatFunctionValue,
+    ConstantFunctionFunctionTemplateId, ConstantFunctionFunctionValue, ConstantFunctionTemplate,
+    ConstantFunctionValue, ConstantGenericFunctionTemplateId, ConstantGenericFunctionValue,
+    ConstantIntFunctionTemplateId, ConstantIntFunctionValue, ConstantListFunctionTemplateId,
+    ConstantListFunctionValue, ConstantNilFunctionTemplateId, ConstantNilFunctionValue,
+    ConstantStringFunctionTemplateId, ConstantStringFunctionValue, ConstantTupleFunctionTemplateId,
+    ConstantTupleFunctionValue, ConstantUtfCodepointFunctionTemplateId,
+    ConstantUtfCodepointFunctionValue, TypedConstantFunctionValueKind,
 };
 
 pub(crate) use list::{
     ConstantBitArrayListInstantiation, ConstantBitArrayListTemplateId,
     ConstantBoolListInstantiation, ConstantBoolListTemplateId, ConstantCustomListInstantiation,
-    ConstantCustomListTemplateId, ConstantFloatListInstantiation, ConstantFloatListTemplateId,
+    ConstantCustomListTemplateId, ConstantExternalListInstantiation,
+    ConstantExternalListTemplateId, ConstantFloatListInstantiation, ConstantFloatListTemplateId,
     ConstantFunctionListInstantiation, ConstantFunctionListTemplateId,
     ConstantGenericListInstantiation, ConstantGenericListTemplateId, ConstantIntListInstantiation,
     ConstantIntListTemplateId, ConstantListInstantiation, ConstantListListInstantiation,
@@ -60,9 +64,10 @@ pub(crate) use list::{
 };
 use list::{
     ConstantBitArrayListValue, ConstantBoolListValue, ConstantCustomListValue,
-    ConstantFloatListValue, ConstantFunctionListValue, ConstantGenericListValue,
-    ConstantGenericListValueKind, ConstantIntListValue, ConstantListListValue, ConstantListParts,
-    ConstantListTemplate, ConstantListValue, ConstantNilListValue, ConstantParameterListListValue,
+    ConstantExternalListValue, ConstantExternalListValueKind, ConstantFloatListValue,
+    ConstantFunctionListValue, ConstantGenericListValue, ConstantGenericListValueKind,
+    ConstantIntListValue, ConstantListListValue, ConstantListParts, ConstantListTemplate,
+    ConstantListValue, ConstantNilListValue, ConstantParameterListListValue,
     ConstantStoredListValue, ConstantStringListValue, ConstantTupleListValue,
     ConstantUtfCodepointListValue, ConstantUtfCodepointListValueKind, TypedConstantListValueKind,
 };
@@ -97,6 +102,7 @@ pub(crate) struct ConstantTemplates {
     bit_array_lists: Vec<ConstantBitArrayListValue>,
     utf_codepoint_lists: Vec<ConstantUtfCodepointListValue>,
     custom_lists: Vec<ConstantCustomListValue>,
+    external_lists: Vec<ConstantExternalListValue>,
     float_lists: Vec<ConstantFloatListValue>,
     bool_lists: Vec<ConstantBoolListValue>,
     nil_lists: Vec<ConstantNilListValue>,
@@ -110,6 +116,7 @@ pub(crate) struct ConstantTemplates {
     bit_array_functions: Vec<ConstantBitArrayFunctionValue>,
     utf_codepoint_functions: Vec<ConstantUtfCodepointFunctionValue>,
     custom_functions: Vec<ConstantCustomFunctionValue>,
+    external_functions: Vec<ConstantExternalFunctionValue>,
     float_functions: Vec<ConstantFloatFunctionValue>,
     bool_functions: Vec<ConstantBoolFunctionValue>,
     nil_functions: Vec<ConstantNilFunctionValue>,
@@ -604,6 +611,7 @@ impl ConstantTemplates {
             bit_array_lists: Vec::new(),
             utf_codepoint_lists: Vec::new(),
             custom_lists: Vec::new(),
+            external_lists: Vec::new(),
             float_lists: Vec::new(),
             bool_lists: Vec::new(),
             nil_lists: Vec::new(),
@@ -617,6 +625,7 @@ impl ConstantTemplates {
             bit_array_functions: Vec::new(),
             utf_codepoint_functions: Vec::new(),
             custom_functions: Vec::new(),
+            external_functions: Vec::new(),
             float_functions: Vec::new(),
             bool_functions: Vec::new(),
             nil_functions: Vec::new(),
@@ -713,6 +722,10 @@ impl ConstantTemplates {
         &self.custom_lists[id.0]
     }
 
+    fn external_list(&self, id: ConstantExternalListTemplateId) -> &ConstantExternalListValue {
+        &self.external_lists[id.0]
+    }
+
     fn float_list(&self, id: ConstantFloatListTemplateId) -> &ConstantFloatListValue {
         &self.float_lists[id.0]
     }
@@ -783,6 +796,13 @@ impl ConstantTemplates {
         &self.custom_functions[id.0]
     }
 
+    fn external_function(
+        &self,
+        id: ConstantExternalFunctionTemplateId,
+    ) -> &ConstantExternalFunctionValue {
+        &self.external_functions[id.0]
+    }
+
     fn float_function(&self, id: ConstantFloatFunctionTemplateId) -> &ConstantFloatFunctionValue {
         &self.float_functions[id.0]
     }
@@ -826,6 +846,7 @@ impl ConstantTemplates {
                 ConstantListValue::BitArray(value) => self.bit_array_lists.push(value),
                 ConstantListValue::UtfCodepoint(value) => self.utf_codepoint_lists.push(value),
                 ConstantListValue::Custom(value) => self.custom_lists.push(value),
+                ConstantListValue::External(value) => self.external_lists.push(value),
                 ConstantListValue::Float(value) => self.float_lists.push(value),
                 ConstantListValue::Bool(value) => self.bool_lists.push(value),
                 ConstantListValue::Nil(value) => self.nil_lists.push(value),
@@ -844,6 +865,7 @@ impl ConstantTemplates {
                     self.utf_codepoint_functions.push(value)
                 }
                 ConstantFunctionValue::Custom(value) => self.custom_functions.push(value),
+                ConstantFunctionValue::External(value) => self.external_functions.push(value),
                 ConstantFunctionValue::Float(value) => self.float_functions.push(value),
                 ConstantFunctionValue::Bool(value) => self.bool_functions.push(value),
                 ConstantFunctionValue::Nil(value) => self.nil_functions.push(value),
@@ -1223,6 +1245,14 @@ impl ConstantTemplates {
                 )),
                 TypedConstantFunctionValueKind::Reference(reference) => FunctionExpr::constant(
                     ConstantFunctionInstantiation::Custom(reference.substitute(substitution)),
+                ),
+            },
+            ConstantFunctionValue::External(value) => match value.kind() {
+                TypedConstantFunctionValueKind::Target(reference) => {
+                    FunctionExpr::reference(reference.substitute(substitution))
+                }
+                TypedConstantFunctionValueKind::Reference(reference) => FunctionExpr::constant(
+                    ConstantFunctionInstantiation::External(reference.substitute(substitution)),
                 ),
             },
             ConstantFunctionValue::Float(value) => match value.kind() {
@@ -1717,6 +1747,52 @@ impl ConstantTemplates {
         }
     }
 
+    pub(crate) fn materialize_external_function(
+        &self,
+        value: &ConstantExternalFunctionInstantiation,
+    ) -> ExternalFunctionExpr {
+        let type_ = crate::plan::ExternalFunctionType::from_shapes(
+            value.shape().argument_shapes().to_vec(),
+            value.return_().clone(),
+        );
+        match value.source() {
+            ConstantFunctionTemplateSource::Generic(source) => {
+                match self.generic_function(*source).kind() {
+                    TypedConstantFunctionValueKind::Target(reference) => {
+                        ExternalFunctionExpr::reference(
+                            Self::typed_function_reference(reference, value.substitution()),
+                            value.return_().clone(),
+                        )
+                    }
+                    TypedConstantFunctionValueKind::Reference(reference) => {
+                        ExternalFunctionExpr::constant(
+                            reference.specialize(value.substitution(), value.return_().clone()),
+                            type_,
+                        )
+                    }
+                }
+            }
+            ConstantFunctionTemplateSource::Exact(source) => {
+                match self.external_function(*source).kind() {
+                    TypedConstantFunctionValueKind::Target(reference) => {
+                        ExternalFunctionExpr::reference(
+                            Self::typed_function_reference(reference, value.substitution()),
+                            value.return_().clone(),
+                        )
+                    }
+                    TypedConstantFunctionValueKind::Reference(reference) => {
+                        let reference = reference.substitute(value.substitution());
+                        let type_ = crate::plan::ExternalFunctionType::from_shapes(
+                            reference.shape().argument_shapes().to_vec(),
+                            reference.return_().clone(),
+                        );
+                        ExternalFunctionExpr::constant(reference, type_)
+                    }
+                }
+            }
+        }
+    }
+
     pub(crate) fn materialize_function_function(
         &self,
         value: &ConstantFunctionFunctionInstantiation,
@@ -1828,6 +1904,9 @@ impl ConstantTemplates {
             ConstantListValue::Custom(value) => {
                 ListExpr::Custom(self.materialize_custom_list_value(value, substitution))
             }
+            ConstantListValue::External(value) => {
+                ListExpr::External(self.materialize_external_list_value(value, substitution))
+            }
             ConstantListValue::Float(value) => {
                 ListExpr::Float(self.materialize_float_list_value(value, substitution))
             }
@@ -1874,6 +1953,9 @@ impl ConstantTemplates {
             ValueShape::Custom(shape) => {
                 ListExpr::Custom(self.materialize_generic_custom_list(value, substitution, shape))
             }
+            ValueShape::External(shape) => ListExpr::External(
+                self.materialize_generic_external_list(value, substitution, shape),
+            ),
             ValueShape::Float => {
                 ListExpr::Float(self.materialize_generic_float_list(value, substitution))
             }
@@ -1928,6 +2010,9 @@ impl ConstantTemplates {
             ),
             crate::plan::ValueStorageShape::Custom(shape) => StoredListExpr::Custom(
                 self.materialize_generic_custom_list(value, substitution, shape),
+            ),
+            crate::plan::ValueStorageShape::External(shape) => StoredListExpr::External(
+                self.materialize_generic_external_list(value, substitution, shape),
             ),
             crate::plan::ValueStorageShape::Bool => {
                 StoredListExpr::Bool(self.materialize_generic_bool_list(value, substitution))
@@ -2049,6 +2134,23 @@ impl ConstantTemplates {
             }
             ConstantGenericListValueKind::Reference(value) => {
                 self.materialize_custom_list(&value.retarget(substitution, shape.clone()))
+            }
+        }
+    }
+
+    fn materialize_generic_external_list(
+        &self,
+        value: &ConstantGenericListValue,
+        substitution: &TypeSubstitution,
+        shape: &ExternalValueShape,
+    ) -> ExternalListExpr {
+        match value.kind() {
+            ConstantGenericListValueKind::Empty => {
+                ExternalListExpr::value(ExternalListItem::new(shape.type_().clone()), Vec::new())
+                    .with_item_shape(ValueShape::External(shape.clone()))
+            }
+            ConstantGenericListValueKind::Reference(value) => {
+                self.materialize_external_list(&value.retarget(substitution, shape.clone()))
             }
         }
     }
@@ -2379,6 +2481,46 @@ impl ConstantTemplates {
         }
     }
 
+    pub(crate) fn materialize_external_list(
+        &self,
+        value: &ConstantExternalListInstantiation,
+    ) -> ExternalListExpr {
+        if !self.owns(value.module()) {
+            let shape = value.item_shape().clone();
+            return ExternalListExpr::constant(
+                ValueShape::External(shape.clone()),
+                ExternalListItem::new(shape.type_().clone()),
+                value.clone(),
+            );
+        }
+        match value.source() {
+            ConstantListTemplateSource::Generic(source) => self.materialize_generic_external_list(
+                self.generic_list(*source),
+                value.substitution(),
+                value.item_shape(),
+            ),
+            ConstantListTemplateSource::Exact(source) => self
+                .materialize_external_list_value(self.external_list(*source), value.substitution()),
+        }
+    }
+
+    fn materialize_external_list_value(
+        &self,
+        value: &ConstantExternalListValue,
+        substitution: &TypeSubstitution,
+    ) -> ExternalListExpr {
+        let shape = value.item_shape().substitute(substitution);
+        match value.kind() {
+            ConstantExternalListValueKind::Empty => {
+                ExternalListExpr::value(ExternalListItem::new(shape.type_().clone()), Vec::new())
+                    .with_item_shape(ValueShape::External(shape))
+            }
+            ConstantExternalListValueKind::Reference(value) => {
+                self.materialize_external_list(&value.substitute_external(substitution))
+            }
+        }
+    }
+
     pub(crate) fn materialize_float_list(
         &self,
         value: &ConstantFloatListInstantiation,
@@ -2680,6 +2822,9 @@ impl ConstantTemplates {
             ),
             ConstantStoredListValue::Custom(value) => {
                 StoredListExpr::Custom(self.materialize_custom_list_value(value, substitution))
+            }
+            ConstantStoredListValue::External(value) => {
+                StoredListExpr::External(self.materialize_external_list_value(value, substitution))
             }
             ConstantStoredListValue::Float(value) => {
                 StoredListExpr::Float(self.materialize_float_list_value(value, substitution))
@@ -3312,6 +3457,24 @@ impl ConstantValue {
                     },
                 )?,
             ),
+            ValueShape::External(shape) => {
+                match parts {
+                    ConstantListParts::Value(elements) if elements.is_empty() => {}
+                    ConstantListParts::Value(elements) => {
+                        return Err(constant_list_element_mismatch(
+                            &item_shape,
+                            elements[0].shape(),
+                        ));
+                    }
+                    ConstantListParts::Spread { elements, .. } => {
+                        return Err(constant_list_element_mismatch(
+                            &item_shape,
+                            elements.first().shape(),
+                        ));
+                    }
+                }
+                ConstantListValue::external(shape.clone())
+            }
             ValueShape::Float => ConstantListValue::float(parts.try_map(
                 |value| {
                     let actual = value.shape();
@@ -3442,6 +3605,9 @@ impl ConstantValue {
                                 }
                                 ConstantValueKind::List(ConstantListValue::Custom(value)) => {
                                     ConstantStoredListValue::Custom(value)
+                                }
+                                ConstantValueKind::List(ConstantListValue::External(value)) => {
+                                    ConstantStoredListValue::External(value)
                                 }
                                 ConstantValueKind::List(ConstantListValue::Float(value)) => {
                                     ConstantStoredListValue::Float(value)
@@ -3761,18 +3927,22 @@ mod tests {
         ConstantTemplates, ConstantTupleTemplateId, ConstantValue,
         MaterializedConstantCustomConstruction, TypedConstantInstantiation,
     };
-    use crate::plan::module::{CustomListExpr, CustomListItem, GenericListExpr, GenericListItem};
+    use crate::plan::module::{
+        CustomListExpr, CustomListItem, ExternalListExpr, ExternalListItem, GenericListExpr,
+        GenericListItem,
+    };
     use crate::plan::{
         BitArrayExpr, BitArrayListExpr, BitArrayListItem, BitArraySegment, BoolExpr, BoolListExpr,
         BoolListItem, CustomConstruction, CustomConstructor, CustomConstructorField,
         CustomConstructorRefinement, CustomExpr, CustomTypeName, CustomValueShape, Endianness,
-        Expr, FloatBitSize, FloatExpr, FloatListExpr, FloatListItem, FunctionExpr,
-        FunctionListExpr, FunctionListItem, FunctionReference, FunctionShape, IntExpr, ListExpr,
-        ListListExpr, ListListItem, ModuleId, NilExpr, NilListExpr, NilListItem, PanicSite,
-        ParameterListListExpr, ParameterListListItem, StoredListExpr, StringEncoding, StringExpr,
-        StringListExpr, StringListItem, TupleExpr, TupleListExpr, TupleListItem, TypeParameterId,
-        TypeScheme, TypeSubstitution, UtfCodepointListExpr, UtfCodepointListItem, ValueShape,
-        ValueStorageShape, ValueType, monomorphic_function_instantiation,
+        Expr, ExternalTypeName, ExternalValueShape, FloatBitSize, FloatExpr, FloatListExpr,
+        FloatListItem, FunctionExpr, FunctionListExpr, FunctionListItem, FunctionReference,
+        FunctionShape, IntExpr, ListExpr, ListListExpr, ListListItem, ModuleId, NilExpr,
+        NilListExpr, NilListItem, PanicSite, ParameterListListExpr, ParameterListListItem,
+        StoredListExpr, StringEncoding, StringExpr, StringListExpr, StringListItem, TupleExpr,
+        TupleListExpr, TupleListItem, TypeParameterId, TypeScheme, TypeSubstitution,
+        UtfCodepointListExpr, UtfCodepointListItem, ValueShape, ValueStorageShape, ValueType,
+        monomorphic_function_instantiation,
     };
 
     #[test]
@@ -3806,6 +3976,66 @@ mod tests {
         assert_eq!(
             templates.materialize_int(&local),
             IntExpr::constant(super::ConstantIntReference(foreign)),
+        );
+    }
+
+    #[test]
+    fn external_function_constants_materialize_targets_and_aliases() {
+        let external = ExternalValueShape::new(
+            ExternalTypeName::new("application".into(), "main".into(), "Resource".into()),
+            Vec::new(),
+        );
+        let shape = FunctionShape::new(Vec::new(), ValueShape::External(external));
+        let reference =
+            FunctionReference::new(monomorphic_function_instantiation(0, shape.clone()));
+        let scheme = TypeScheme::new(0);
+        let base = ConstantTemplateSignature::function(
+            ConstantTemplateId::new(0),
+            0,
+            scheme.clone(),
+            shape.clone(),
+        );
+        let alias = ConstantTemplateSignature::function(
+            ConstantTemplateId::new(1),
+            1,
+            scheme,
+            shape.clone(),
+        );
+        let base_instantiation = base
+            .try_instantiate(Vec::new())
+            .expect("a monomorphic external function constant should instantiate");
+        let alias_instantiation = alias
+            .try_instantiate(Vec::new())
+            .expect("a monomorphic external function alias should instantiate");
+        let substitution = TypeSubstitution::from_arguments(Vec::new());
+        let expected_alias = ConstantFunctionTemplate::from_shape(&shape, 1).instantiate(
+            ModuleId::root(),
+            substitution.clone(),
+            shape.clone(),
+        );
+        let templates = ConstantTemplates::from_entries(vec![
+            (
+                ConstantTemplate::new(base, "resource".into()),
+                ConstantValue::function(shape.clone(), reference.clone()),
+            ),
+            (
+                ConstantTemplate::new(alias, "resource_alias".into()),
+                ConstantValue::reference(base_instantiation),
+            ),
+        ]);
+        let expected_target = Expr::function(FunctionExpr::reference(reference.clone()));
+        let expected_alias = Expr::function(FunctionExpr::constant(expected_alias));
+
+        assert_eq!(
+            templates.materialize_value(&ConstantValue::function(shape, reference), &substitution,),
+            expected_target,
+        );
+        assert_eq!(
+            templates.materialize_value(
+                &ConstantValue::reference(alias_instantiation),
+                &substitution,
+            ),
+            expected_alias,
         );
     }
 
@@ -4438,6 +4668,10 @@ pub fn main() {
             CustomConstructorRefinement::Exact(0),
         );
         let function_shape = FunctionShape::new(vec![ValueShape::Int], ValueShape::String);
+        let external_shape = ExternalValueShape::new(
+            ExternalTypeName::new("geam".into(), "main".into(), "Resource".into()),
+            Vec::new(),
+        );
         let item_shapes = vec![
             ValueShape::Parameter(parameter),
             ValueShape::Int,
@@ -4445,6 +4679,7 @@ pub fn main() {
             ValueShape::BitArray,
             ValueShape::UtfCodepoint,
             ValueShape::Custom(custom_shape),
+            ValueShape::External(external_shape),
             ValueShape::Float,
             ValueShape::Bool,
             ValueShape::Nil,
@@ -4487,6 +4722,9 @@ pub fn main() {
                 }
                 ConstantListInstantiation::Custom(value) => {
                     ListExpr::Custom(templates.materialize_custom_list(&value))
+                }
+                ConstantListInstantiation::External(value) => {
+                    ListExpr::External(templates.materialize_external_list(&value))
                 }
                 ConstantListInstantiation::Float(value) => {
                     ListExpr::Float(templates.materialize_float_list(&value))
@@ -4632,6 +4870,10 @@ pub fn main() {
         );
         let tuple_shape = vec![ValueShape::Int, ValueShape::String].into_boxed_slice();
         let function_shape = FunctionShape::new(vec![ValueShape::Int], ValueShape::String);
+        let external_shape = ExternalValueShape::new(
+            ExternalTypeName::new("geam".into(), "main".into(), "Resource".into()),
+            Vec::new(),
+        );
         let stored = vec![
             (
                 ValueStorageShape::Int,
@@ -4667,6 +4909,16 @@ pub fn main() {
                         Vec::new(),
                     )
                     .with_item_shape(ValueShape::Custom(custom_shape.clone())),
+                ),
+            ),
+            (
+                ValueStorageShape::External(external_shape.clone()),
+                StoredListExpr::External(
+                    ExternalListExpr::value(
+                        ExternalListItem::new(external_shape.type_().clone()),
+                        Vec::new(),
+                    )
+                    .with_item_shape(ValueShape::External(external_shape.clone())),
                 ),
             ),
             (
@@ -4722,6 +4974,37 @@ pub fn main() {
                 expected,
             );
         }
+
+        let external_list = ConstantValue::try_list(
+            ValueShape::External(external_shape.clone()),
+            Vec::new(),
+            None,
+        )
+        .expect("an external constant list may be empty");
+        let nested_external_list = ConstantValue::try_list(
+            ValueShape::List(Box::new(ValueShape::External(external_shape.clone()))),
+            vec![external_list],
+            None,
+        )
+        .expect("a constant list may contain an external list")
+        .into_list()
+        .expect("the nested external constant should retain its list family");
+        assert_eq!(
+            templates.materialize_list_value(
+                &nested_external_list,
+                &TypeSubstitution::from_arguments(Vec::new()),
+            ),
+            ListExpr::List(ListListExpr::value(
+                ListListItem::new(ValueStorageShape::External(external_shape.clone())),
+                vec![StoredListExpr::External(
+                    ExternalListExpr::value(
+                        ExternalListItem::new(external_shape.type_().clone()),
+                        Vec::new(),
+                    )
+                    .with_item_shape(ValueShape::External(external_shape)),
+                )],
+            )),
+        );
 
         let deeply_nested = ConstantValue::try_list(
             ValueShape::List(Box::new(ValueShape::List(Box::new(ValueShape::Parameter(
@@ -5359,6 +5642,16 @@ pub fn main() {
         let utf_codepoint_list =
             ConstantValue::try_list(ValueShape::UtfCodepoint, Vec::new(), None)
                 .expect("a UtfCodepoint list may be empty");
+        let external_shape = ExternalValueShape::new(
+            ExternalTypeName::new("geam".into(), "main".into(), "Resource".into()),
+            Vec::new(),
+        );
+        let external_list = ConstantValue::try_list(
+            ValueShape::External(external_shape.clone()),
+            Vec::new(),
+            None,
+        )
+        .expect("an external constant list may be empty");
 
         assert_eq!(
             ConstantValue::try_list(ValueShape::Int, Vec::new(), Some(int_list.clone())),
@@ -5382,12 +5675,42 @@ pub fn main() {
         );
         assert_eq!(
             ConstantValue::try_list(
+                ValueShape::External(external_shape.clone()),
+                Vec::new(),
+                Some(external_list.clone()),
+            ),
+            Err(ConstantListConstructionError::SpreadWithoutElements),
+        );
+        assert_eq!(
+            ConstantValue::try_list(
                 ValueShape::Parameter(TypeParameterId(0)),
                 vec![ConstantValue::int(1.into())],
                 None,
             ),
             Err(ConstantListConstructionError::TypeMismatch {
                 expected: ValueType::Parameter(TypeParameterId(0)),
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ConstantValue::try_list(
+                ValueShape::External(external_shape.clone()),
+                vec![ConstantValue::int(1.into())],
+                None,
+            ),
+            Err(ConstantListConstructionError::TypeMismatch {
+                expected: ValueType::External(external_shape.type_().clone()),
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ConstantValue::try_list(
+                ValueShape::External(external_shape.clone()),
+                vec![ConstantValue::int(1.into())],
+                Some(external_list),
+            ),
+            Err(ConstantListConstructionError::TypeMismatch {
+                expected: ValueType::External(external_shape.type_().clone()),
                 actual: ValueType::Int,
             }),
         );

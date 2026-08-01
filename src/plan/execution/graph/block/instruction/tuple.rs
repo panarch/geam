@@ -66,7 +66,7 @@ impl Explain for TupleInstruction {
 mod explain_tests {
     use crate::plan::execution::explain;
     use crate::plan::execution::function::TupleFunctionId;
-    use crate::plan::execution::graph::InstructionKind;
+    use crate::plan::execution::graph::ProfiledInstructionKind;
 
     #[test]
     fn writes_tuple_construction() {
@@ -127,7 +127,7 @@ pub fn main() {
             let graph = plan.tuple_function(TupleFunctionId(0)).body().block_graph();
             let mut first = true;
             for instruction in graph.blocks().iter().flat_map(|block| block.instructions()) {
-                if let InstructionKind::Tuple(instruction) = instruction.kind() {
+                if let ProfiledInstructionKind::Tuple(instruction) = instruction.kind() {
                     if first {
                         first = false;
                     } else {

@@ -232,6 +232,10 @@ fn int_case_expr(
                     invalid_case_shape(InvalidCaseShapeReason::BranchReturnTypeMismatch)
                 })?,
         ),
+        ExprKind::External(fallback) => IntCaseBranches::External {
+            clauses: external_case_clauses(clauses)?,
+            fallback,
+        },
         ExprKind::Float(fallback) => IntCaseBranches::Float {
             clauses: float_case_clauses(clauses)?,
             fallback,
@@ -339,6 +343,21 @@ fn custom_case_clauses(
     let mut typed_clauses = Vec::with_capacity(clauses.len());
     for (value, clause) in clauses {
         let ExprKind::Custom(clause) = clause.into_kind() else {
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
+        };
+        typed_clauses.push((value, clause));
+    }
+    Ok(typed_clauses)
+}
+
+fn external_case_clauses(
+    clauses: Vec<(BigInt, Expr)>,
+) -> Result<Vec<(BigInt, crate::plan::ExternalExpr)>, PlanError> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (value, clause) in clauses {
+        let ExprKind::External(clause) = clause.into_kind() else {
             return Err(invalid_case_shape(
                 InvalidCaseShapeReason::BranchReturnTypeMismatch,
             ));
@@ -463,6 +482,12 @@ fn function_case_branches(
             clauses: custom_function_case_clauses(clauses)?,
             fallback,
         }),
+        crate::plan::FunctionExprKind::External(fallback) => {
+            Ok(IntCaseBranches::ExternalFunction {
+                clauses: external_function_case_clauses(clauses)?,
+                fallback,
+            })
+        }
         crate::plan::FunctionExprKind::Float(fallback) => Ok(IntCaseBranches::FloatFunction {
             clauses: float_function_case_clauses(clauses)?,
             fallback,
@@ -583,6 +608,26 @@ fn custom_function_case_clauses(
             ));
         };
         let Some(clause) = clause.into_custom() else {
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
+        };
+        typed_clauses.push((value, clause));
+    }
+    Ok(typed_clauses)
+}
+
+fn external_function_case_clauses(
+    clauses: Vec<(BigInt, Expr)>,
+) -> Result<Vec<(BigInt, crate::plan::ExternalFunctionExpr)>, PlanError> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (value, clause) in clauses {
+        let ExprKind::Function(clause) = clause.into_kind() else {
+            return Err(invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            ));
+        };
+        let Some(clause) = clause.into_external() else {
             return Err(invalid_case_shape(
                 InvalidCaseShapeReason::BranchReturnTypeMismatch,
             ));
@@ -715,7 +760,9 @@ fn function_function_case_clauses(
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        BoolExpr, BoolFunctionId, Expr, FloatExpr, FloatFunctionId, FunctionExpr,
+        BoolExpr, BoolFunctionId, Expr, ExternalExpr, ExternalFunctionExpr, ExternalFunctionLocal,
+        ExternalFunctionLocalId, ExternalFunctionType, ExternalLocal, ExternalLocalId,
+        ExternalTypeName, ExternalValueShape, FloatExpr, FloatFunctionId, FunctionExpr,
         FunctionFunctionId, FunctionType, IntCaseBranches, IntFunctionExpr, IntFunctionFunctionId,
         IntFunctionId, IntLocalId, IntReturn, ListFunctionId, LocalId, NilFunctionId,
         RuntimeFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointExpr,
@@ -1255,6 +1302,29 @@ pub fn main() {
                 ),
             ))
         };
+        let external_shape = ExternalValueShape::new(
+            ExternalTypeName::new(
+                "dependency".into(),
+                "dependency/token".into(),
+                "Token".into(),
+            ),
+            Vec::new(),
+        );
+        let external = |local| {
+            Expr::external(ExternalExpr::local_get(
+                ExternalLocal::from_shape(ExternalLocalId(local), external_shape.clone()),
+                "external".into(),
+            ))
+        };
+        let external_function = |local| {
+            Expr::function(FunctionExpr::external(ExternalFunctionExpr::local_get(
+                ExternalFunctionLocal::new(
+                    ExternalFunctionLocalId(local),
+                    ExternalFunctionType::from_shapes(Vec::new(), external_shape.clone()),
+                ),
+                "external_function".into(),
+            )))
+        };
 
         assert_eq!(
             super::int_case_expr(
@@ -1332,6 +1402,37 @@ pub fn main() {
         );
         assert_eq!(
             super::custom_function_case_clauses(vec![(BigInt::from(1), int_function_ref_expr(0),)]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::external_case_clauses(vec![(BigInt::from(1), Expr::from(int(1)))]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::external_function_case_clauses(vec![(BigInt::from(1), Expr::from(int(1)),)]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::external_function_case_clauses(vec![(
+                BigInt::from(1),
+                int_function_ref_expr(0),
+            )]),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::int_case_expr(
+                int(1).into(),
+                vec![(BigInt::from(1), Expr::from(int(1)))],
+                external(0),
+            ),
+            Err(case_branch_return_type_mismatch()),
+        );
+        assert_eq!(
+            super::int_case_expr(
+                int(1).into(),
+                vec![(BigInt::from(1), int_function_ref_expr(0))],
+                external_function(0),
+            ),
             Err(case_branch_return_type_mismatch()),
         );
 
@@ -1543,6 +1644,32 @@ pub fn main() {
 
     #[test]
     fn plan_int_case_function_branch_return_families_direct() {
+        let external_shape = ExternalValueShape::new(
+            ExternalTypeName::new(
+                "dependency".into(),
+                "dependency/token".into(),
+                "Token".into(),
+            ),
+            Vec::new(),
+        );
+        let external_clause = ExternalExpr::local_get(
+            ExternalLocal::from_shape(ExternalLocalId(0), external_shape.clone()),
+            "external_clause".into(),
+        );
+        let external_fallback = ExternalExpr::local_get(
+            ExternalLocal::from_shape(ExternalLocalId(1), external_shape.clone()),
+            "external_fallback".into(),
+        );
+        let external_function_type =
+            ExternalFunctionType::from_shapes(Vec::new(), external_shape.clone());
+        let external_function_clause = ExternalFunctionExpr::local_get(
+            ExternalFunctionLocal::new(ExternalFunctionLocalId(0), external_function_type.clone()),
+            "external_function_clause".into(),
+        );
+        let external_function_fallback = ExternalFunctionExpr::local_get(
+            ExternalFunctionLocal::new(ExternalFunctionLocalId(1), external_function_type),
+            "external_function_fallback".into(),
+        );
         let codepoint = |local| {
             Expr::utf_codepoint(UtfCodepointExpr::local_get(
                 UtfCodepointLocalId(local),
@@ -1576,6 +1703,35 @@ pub fn main() {
                 codepoint(1),
             ),
             Err(case_branch_return_type_mismatch()),
+        );
+
+        assert_eq!(
+            super::int_case_expr(
+                int(1).into(),
+                vec![(BigInt::from(1), Expr::external(external_clause.clone()),)],
+                Expr::external(external_fallback.clone()),
+            ),
+            Ok(Expr::int_case(
+                int(1).into(),
+                IntCaseBranches::External {
+                    clauses: vec![(BigInt::from(1), external_clause)],
+                    fallback: external_fallback,
+                },
+            )),
+        );
+
+        assert_eq!(
+            super::function_case_branches(
+                vec![(
+                    BigInt::from(1),
+                    Expr::function(FunctionExpr::external(external_function_clause.clone())),
+                )],
+                FunctionExpr::external(external_function_fallback.clone()),
+            ),
+            Ok(IntCaseBranches::ExternalFunction {
+                clauses: vec![(BigInt::from(1), external_function_clause)],
+                fallback: external_function_fallback,
+            }),
         );
 
         assert_eq!(

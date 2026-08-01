@@ -3,10 +3,11 @@ mod assert;
 use crate::plan::{
     AssertBinding, BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr,
     CustomBindingPattern, CustomConstructor, CustomExpr, CustomFunctionExpr, Expr, ExprKind,
-    FloatExpr, FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr,
-    ListAssertTail, ListExpr, ListFunctionExpr, NilExpr, NilFunctionExpr, Step, StringExpr,
-    StringFunctionExpr, TotalBindingPattern, TupleExpr, TupleFunctionExpr, TupleLocalId,
-    TypedFunctionExprKind, UtfCodepointExpr, UtfCodepointFunctionExpr, ValueShape, ValueType,
+    ExternalExpr, ExternalFunctionExpr, ExternalLocal, FloatExpr, FloatFunctionExpr, FunctionExpr,
+    FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListAssertTail, ListExpr, ListFunctionExpr,
+    NilExpr, NilFunctionExpr, Step, StringExpr, StringFunctionExpr, TotalBindingPattern, TupleExpr,
+    TupleFunctionExpr, TupleLocalId, TypedFunctionExprKind, UtfCodepointExpr,
+    UtfCodepointFunctionExpr, ValueShape, ValueType,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
@@ -498,6 +499,7 @@ fn value_type_expression_type(type_: ValueType) -> InvalidExpressionType {
         ValueType::BitArray => InvalidExpressionType::BitArray,
         ValueType::UtfCodepoint => InvalidExpressionType::UtfCodepoint,
         ValueType::Custom(_) => InvalidExpressionType::Custom,
+        ValueType::External(_) => InvalidExpressionType::External,
         ValueType::Float => InvalidExpressionType::Float,
         ValueType::Bool => InvalidExpressionType::Bool,
         ValueType::Nil => InvalidExpressionType::Nil,
@@ -563,6 +565,15 @@ fn plan_variable_runtime_step_and_return(
             (
                 Step::let_custom(local, name.clone(), value),
                 Expr::custom(CustomExpr::local_get(typed_local, name)),
+            )
+        }
+        ExprKind::External(value) => {
+            let shape = value.shape().clone();
+            let local = context.define_external_local_shape(name.clone(), shape.clone());
+            let typed_local = ExternalLocal::from_shape(local, shape);
+            (
+                Step::let_external(typed_local.clone(), name.clone(), value),
+                Expr::external(ExternalExpr::local_get(typed_local, name)),
             )
         }
         ExprKind::Float(value) => {
@@ -694,6 +705,18 @@ fn plan_variable_runtime_step_and_return(
                     (
                         Step::let_custom_function_expr(local.id(), name.clone(), value),
                         FunctionExpr::custom(CustomFunctionExpr::local_get(local, name)),
+                    )
+                }
+                TypedFunctionExprKind::External(value) => {
+                    let shape = value.shape().clone();
+                    let local = context.define_external_function_local_shape(
+                        name.clone(),
+                        value.expression().external_function_type().clone(),
+                        shape,
+                    );
+                    (
+                        Step::let_external_function_expr(local.id(), name.clone(), value),
+                        FunctionExpr::external(ExternalFunctionExpr::local_get(local, name)),
                     )
                 }
                 TypedFunctionExprKind::Float(value) => {
@@ -1069,9 +1092,9 @@ mod tests {
         AssertBinding, BoolLocalId, CustomBindingPattern, CustomConstructor,
         CustomConstructorDefinition, CustomConstructorField, CustomExpr, CustomLocal,
         CustomLocalId, CustomType, CustomTypeDefinition, CustomTypeName, CustomTypePublicity,
-        CustomValueShape, Expr, FunctionType, IntListLocalId, IntLocalId, ListAssertTail, ListExpr,
-        ListLocal, LocalId, NilLocalId, ParamLocal, StringLocalId, TotalBindingPattern,
-        TypeParameterId, ValueShape, ValueType,
+        CustomValueShape, Expr, ExternalType, ExternalTypeName, FunctionType, IntListLocalId,
+        IntLocalId, ListAssertTail, ListExpr, ListLocal, LocalId, NilLocalId, ParamLocal,
+        StringLocalId, TotalBindingPattern, TypeParameterId, ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
     use crate::planner::dsl::{
@@ -1741,6 +1764,13 @@ pub fn main() {
         )
     }
 
+    fn external_type(name: &str) -> ExternalType {
+        ExternalType::new(
+            ExternalTypeName::new("geam".into(), "main".into(), name.into()),
+            Vec::new(),
+        )
+    }
+
     #[test]
     fn plan_tuple_assignment_binds_projected_elements_from_internal_local() {
         let actual = plan_module(compile(
@@ -2297,6 +2327,10 @@ pub fn main() {
             (
                 ValueType::Custom(custom_type("Boxed")),
                 InvalidExpressionType::Custom,
+            ),
+            (
+                ValueType::External(external_type("Token")),
+                InvalidExpressionType::External,
             ),
             (ValueType::Float, InvalidExpressionType::Float),
             (ValueType::Bool, InvalidExpressionType::Bool),

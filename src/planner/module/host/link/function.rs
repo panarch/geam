@@ -117,6 +117,7 @@ pub(super) fn link_source_less_module(
         module_name,
         source_context: None,
         custom_types: Vec::new(),
+        external_types: Vec::new(),
         functions_by_name,
         functions: linked_functions,
         executable_externals: HashSet::new(),

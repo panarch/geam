@@ -1,6 +1,6 @@
 use super::super::{call_args, custom, list, tuple};
 use super::{closure, function_function_expr, reference, source_stop};
-use crate::plan::execution::graph::FunctionTarget;
+use crate::plan::execution::lowering::graph::DraftFunctionTarget;
 use crate::plan::execution::lowering::graph::{
     DraftCursor, DraftFlow, DraftGraph, DraftTupleFunction,
 };
@@ -33,8 +33,13 @@ pub(in crate::plan::execution::lowering) fn tuple_function_expr(
         E::Reference(value) => context
             .tuple_function_id(value.instantiation())
             .map(|target| {
-                reference(shape.clone(), FunctionTarget::Tuple(target), cursor, graph)
-                    .map(DraftTupleFunction::new)
+                reference(
+                    shape.clone(),
+                    DraftFunctionTarget::Tuple(target),
+                    cursor,
+                    graph,
+                )
+                .map(DraftTupleFunction::new)
             }),
         E::Closure {
             function,
@@ -45,7 +50,7 @@ pub(in crate::plan::execution::lowering) fn tuple_function_expr(
                 function,
                 captures,
                 shape.clone(),
-                FunctionTarget::Tuple(target),
+                DraftFunctionTarget::Tuple(target),
                 cursor,
                 graph,
                 context,

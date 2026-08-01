@@ -1,7 +1,7 @@
 mod custom;
 mod function;
 
-use super::super::{AnonymousFunctions, ModuleRole, function_table};
+use super::super::{AnonymousFunctions, ModuleRole};
 use super::declaration::HostedModuleDeclaration;
 use crate::host::RegisteredHostImplementationId;
 use crate::plan::{HostFunctionTemplate, ModuleId, SourceContext};
@@ -19,6 +19,7 @@ pub(super) struct LinkedModule {
     pub(super) module_name: EcoString,
     pub(super) source_context: Option<SourceContext>,
     pub(super) custom_types: Vec<crate::plan::CustomTypeDefinition>,
+    pub(super) external_types: Vec<crate::plan::ExternalTypeDefinition>,
     pub(super) functions_by_name: HashMap<EcoString, FunctionInfo>,
     pub(super) functions: Vec<LinkedFunction>,
     pub(super) executable_externals: HashSet<EcoString>,
@@ -46,15 +47,24 @@ pub(super) fn link_hosted_modules(
     root: ModuleId,
     declarations: Vec<HostedModuleDeclaration>,
 ) -> Result<Vec<LinkedModule>, PlanError> {
+    let external_types = declarations
+        .iter()
+        .flat_map(|declaration| match declaration {
+            HostedModuleDeclaration::Source { external_types, .. } => external_types.as_slice(),
+            HostedModuleDeclaration::Host { .. } => &[],
+        })
+        .map(|definition| definition.name().clone())
+        .collect::<HashSet<_>>();
     declarations
         .into_iter()
-        .map(|declaration| link_hosted_module(root, declaration))
+        .map(|declaration| link_hosted_module(root, declaration, &external_types))
         .collect()
 }
 
 fn link_hosted_module(
     root: ModuleId,
     declaration: HostedModuleDeclaration,
+    external_types: &HashSet<crate::plan::ExternalTypeName>,
 ) -> Result<LinkedModule, PlanError> {
     match declaration {
         HostedModuleDeclaration::Source {
@@ -63,6 +73,7 @@ fn link_hosted_module(
             module_name,
             source_context,
             custom_types,
+            external_types: module_external_types,
             functions,
             constants,
             providers,
@@ -72,26 +83,28 @@ fn link_hosted_module(
             } else {
                 ModuleRole::Dependency
             };
-            function_table(id, &functions, role).and_then(|table| {
-                function::link_source_functions(
-                    package.clone(),
-                    module_name.clone(),
-                    table.functions,
-                    providers,
-                )
-                .map(|(functions, executable_externals)| LinkedModule {
-                    id,
-                    package,
-                    module_name,
-                    source_context,
-                    custom_types,
-                    functions_by_name: table.by_name,
-                    functions,
-                    executable_externals,
-                    constants,
-                    anonymous_functions: table.anonymous_functions,
+            super::super::function_table_with_external_types(id, &functions, role, external_types)
+                .and_then(|table| {
+                    function::link_source_functions(
+                        package.clone(),
+                        module_name.clone(),
+                        table.functions,
+                        providers,
+                    )
+                    .map(|(functions, executable_externals)| LinkedModule {
+                        id,
+                        package,
+                        module_name,
+                        source_context,
+                        custom_types,
+                        external_types: module_external_types,
+                        functions_by_name: table.by_name,
+                        functions,
+                        executable_externals,
+                        constants,
+                        anonymous_functions: table.anonymous_functions,
+                    })
                 })
-            })
         }
         HostedModuleDeclaration::Host {
             id,

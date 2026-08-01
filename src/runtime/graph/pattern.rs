@@ -158,14 +158,14 @@ fn matches<Plan: ExecutableRuntimePlan>(
             for (index, pattern) in fields.iter().enumerate() {
                 let value = &value.fields()[index];
                 let expected = descriptor.fields()[index].type_();
-                if plan.value_type(expected) != value.value_type(plan) {
+                if plan.value_type(expected) != value.value_type(plan.value_metadata()) {
                     return Err(ExecutionError::Invariant(
                         InvariantError::CustomFieldFamilyMismatch {
                             custom_type: plan.custom_value_type(constructor.type_id()),
                             constructor: descriptor.name().clone(),
                             field_index: index,
                             expected: plan.value_type(expected),
-                            actual: value.value_type(plan),
+                            actual: value.value_type(plan.value_metadata()),
                         },
                     ));
                 }
@@ -448,7 +448,7 @@ mod tests {
     use super::{MatchPattern, match_pattern};
     use crate::plan::ValueType;
     use crate::plan::execution::ExecutionPlan;
-    use crate::plan::execution::function::RuntimeFunctionId;
+    use crate::plan::execution::function::{CoreRuntimeFunctionId, RuntimeFunctionId};
     use crate::plan::execution::graph::Terminator;
     use crate::runtime::evaluated::{EvaluatedCustomValue, EvaluatedValue};
     use crate::runtime::state::{
@@ -1061,7 +1061,7 @@ pub fn main() {
 
     fn main_pattern(plan: &ExecutionPlan) -> &MatchPattern {
         let main = match plan.main_runtime() {
-            RuntimeFunctionId::Int(id) => id,
+            RuntimeFunctionId::Core(CoreRuntimeFunctionId::Int(id)) => id,
             _ => panic!("fixture main should return Int"),
         };
         plan.int_function(main)

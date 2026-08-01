@@ -265,6 +265,22 @@ fn direct_call(
                 DraftFlow::value(cursor, value.erase())
             })
         }
+        StoredValueShape::External(shape) => {
+            context
+                .external_function_id(function, shape)
+                .map(|function| {
+                    let value = graph.external_instruction(
+                        &mut cursor,
+                        shape.clone(),
+                        super::super::instruction::DraftExternalInstruction::Call {
+                            function,
+                            args,
+                            site: site.clone(),
+                        },
+                    );
+                    DraftFlow::value(cursor, value.erase())
+                })
+        }
         StoredValueShape::Bool => context.bool_function_id(function).map(|function| {
             let value = graph.bool_instruction(
                 &mut cursor,
@@ -399,6 +415,18 @@ fn function_call(
             );
             DraftFlow::value(cursor, value.erase())
         }
+        StoredValueShape::External(shape) => {
+            let value = graph.external_instruction(
+                &mut cursor,
+                shape.clone(),
+                super::super::instruction::DraftExternalInstruction::FunctionCall {
+                    function,
+                    args,
+                    site: site.clone(),
+                },
+            );
+            DraftFlow::value(cursor, value.erase())
+        }
         StoredValueShape::Bool => {
             let value = graph.bool_instruction(
                 &mut cursor,
@@ -524,6 +552,16 @@ pub(in crate::plan::execution::lowering) fn tuple_index(
                 },
             )
             .erase(),
+        StoredValueShape::External(shape) => graph
+            .external_instruction(
+                &mut cursor,
+                shape.clone(),
+                super::super::instruction::DraftExternalInstruction::TupleIndex {
+                    tuple: source,
+                    index,
+                },
+            )
+            .erase(),
         StoredValueShape::Bool => graph
             .bool_instruction(
                 &mut cursor,
@@ -618,6 +656,13 @@ pub(in crate::plan::execution::lowering) fn custom_field(
                 super::super::instruction::DraftCustomInstruction::CustomField { source, index },
             )
             .erase(),
+        StoredValueShape::External(shape) => graph
+            .external_instruction(
+                &mut cursor,
+                shape.clone(),
+                super::super::instruction::DraftExternalInstruction::CustomField { source, index },
+            )
+            .erase(),
         StoredValueShape::Bool => graph
             .bool_instruction(
                 &mut cursor,
@@ -710,6 +755,16 @@ fn list_index(
                 &mut cursor,
                 shape.clone(),
                 super::super::instruction::DraftCustomInstruction::ListIndex {
+                    list: source,
+                    index,
+                },
+            )
+            .erase(),
+        StoredValueShape::External(shape) => graph
+            .external_instruction(
+                &mut cursor,
+                shape.clone(),
+                super::super::instruction::DraftExternalInstruction::ListIndex {
                     list: source,
                     index,
                 },

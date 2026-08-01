@@ -7,37 +7,43 @@ mod lowering;
 pub(crate) mod runtime;
 pub(crate) mod type_;
 
-use self::constant::ConstantTable;
+use self::constant::ProfiledConstantTable;
 #[cfg(test)]
-use self::constant::{ConstantId, ConstantProgram, ConstantValue};
+use self::constant::{ConstantId, ConstantValue};
 #[cfg(test)]
 use self::function::ExecutableFunction;
 #[cfg(test)]
 use self::function::{
-    BitArrayFunctionBody, BitArrayFunctionFunctionBody, BitArrayFunctionFunctionId,
-    BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionBody, BoolFunctionFunctionBody,
-    BoolFunctionFunctionId, BoolFunctionId, BoolListFunctionId, CustomFunctionBody,
-    CustomFunctionFunctionBody, CustomFunctionFunctionId, CustomFunctionId, CustomListFunctionId,
-    FloatFunctionFunctionBody, FloatFunctionFunctionId, FloatListFunctionId,
-    FunctionFunctionFunctionBody, FunctionFunctionFunctionId, FunctionListFunctionId,
-    GenericFunctionFunctionBody, GenericFunctionFunctionId, IntFunctionBody,
-    IntFunctionFunctionBody, IntFunctionFunctionId, IntFunctionId, IntListFunctionId,
-    ListFunctionFunctionBody, ListFunctionFunctionId, ListListFunctionId,
-    NeverFunctionFunctionBody, NeverFunctionFunctionId, NilFunctionBody, NilFunctionFunctionBody,
-    NilFunctionFunctionId, NilFunctionId, NilListFunctionId, ParameterListFunctionId,
-    ParameterListListFunctionId, StringFunctionFunctionBody, StringFunctionFunctionId,
-    StringListFunctionId, TupleFunctionBody, TupleFunctionFunctionBody, TupleFunctionFunctionId,
-    TupleFunctionId, TupleListFunctionId, UtfCodepointFunctionFunctionBody,
-    UtfCodepointFunctionFunctionId, UtfCodepointListFunctionId,
+    BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionFunctionId,
+    BoolFunctionId, BoolListFunctionId, CustomFunctionFunctionId, CustomFunctionId,
+    CustomListFunctionId, ExecutionBitArrayFunctionBody, ExecutionBitArrayFunctionFunctionBody,
+    ExecutionBoolFunctionBody, ExecutionBoolFunctionFunctionBody,
+    ExecutionCoreListFunctionFunctionBody, ExecutionCustomFunctionBody,
+    ExecutionCustomFunctionFunctionBody, ExecutionFloatFunctionFunctionBody,
+    ExecutionFunctionFunctionFunctionBody, ExecutionGenericFunctionFunctionBody,
+    ExecutionIntFunctionBody, ExecutionIntFunctionFunctionBody, ExecutionNeverFunctionFunctionBody,
+    ExecutionNilFunctionBody, ExecutionNilFunctionFunctionBody,
+    ExecutionStringFunctionFunctionBody, ExecutionTupleFunctionBody,
+    ExecutionTupleFunctionFunctionBody, ExecutionUtfCodepointFunctionFunctionBody,
+    FloatFunctionFunctionId, FloatListFunctionId, FunctionFunctionFunctionId,
+    FunctionListFunctionId, GenericFunctionFunctionId, IntFunctionFunctionId, IntFunctionId,
+    IntListFunctionId, ListListFunctionId, NeverFunctionFunctionId, NilFunctionFunctionId,
+    NilFunctionId, NilListFunctionId, ParameterListFunctionId, ParameterListListFunctionId,
+    ProfiledListFunctionFunctionId, StringFunctionFunctionId, StringListFunctionId,
+    TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionId, UtfCodepointFunctionFunctionId,
+    UtfCodepointListFunctionId,
 };
-use self::function::{ExecutionProfile, FunctionLabelSource, FunctionTables, RuntimeFunctionId};
+use self::function::{
+    ExecutionGraphProfile, ExecutionProfile, FunctionLabelSource, FunctionTables,
+    ProfiledRuntimeFunctionId,
+};
 #[cfg(test)]
 use self::type_::{
     CustomConstructorId, CustomConstructorRefinement, CustomTypeId, CustomValueShape,
     CustomValueShapeId, FunctionListTypeId, FunctionType, ListListTypeId, ListStorageTypeId,
-    ListTypeId, TupleListTypeId, ValueShapeDescriptor, ValueShapeId, ValueType,
+    ListTypeId, TupleListTypeId, ValueShapeId, ValueType,
 };
-use self::type_::{CustomTypeTable, ListTypeTable, ValueShapeTable};
+use self::type_::{CustomTypeTable, ExternalTypeTable, ListTypeTable, ValueShapeTable};
 use crate::host::HostProfile;
 use crate::plan::{HostedModulePlan, ModuleId, ModulePlan, SourceContext};
 use ecow::EcoString;
@@ -50,22 +56,24 @@ pub struct ExecutionPlan {
 }
 
 pub struct HostedExecution<Profile: HostProfile> {
-    program: ExecutionProgram<host::HostedExecutionProfile<Profile>>,
+    program: ExecutionProgram<host::HostedExecutionProfile>,
     host_functions: host::HostFunctionTables<Profile>,
+    external_stores: Profile::ExternalStores,
 }
 
 pub(crate) struct ExecutionProgram<Profile: ExecutionProfile> {
-    common: ExecutionProgramCommon,
+    common: ExecutionProgramCommon<Profile::Graph>,
     functions: FunctionTables<Profile>,
 }
 
-struct ExecutionProgramCommon {
+struct ExecutionProgramCommon<Graph: ExecutionGraphProfile> {
     root: ModuleId,
     modules: Box<[ExecutionModuleContext]>,
-    main: RuntimeFunctionId,
-    constants: ConstantTable,
+    main: ProfiledRuntimeFunctionId<Graph>,
+    constants: ProfiledConstantTable<Graph>,
     list_types: ListTypeTable,
     custom_types: CustomTypeTable,
+    external_types: ExternalTypeTable,
     value_shapes: ValueShapeTable,
 }
 
@@ -152,22 +160,23 @@ impl ExecutionPlan {
 
 #[cfg(test)]
 impl ExecutionPlan {
-    pub(crate) fn main_runtime(&self) -> RuntimeFunctionId {
-        self.program.common.main.clone()
+    pub(crate) fn main_runtime(&self) -> self::function::RuntimeFunctionId {
+        self.program.common.main.runtime_id()
     }
 
     pub(crate) fn constant<Return: ConstantValue>(
         &self,
         id: ConstantId<Return>,
-    ) -> &ConstantProgram<Return> {
+    ) -> &self::constant::ProfiledConstantProgram<Return, Infallible> {
         self.program.common.constants.get(id)
     }
 
     pub(crate) fn list_value_type(&self, id: ListTypeId) -> crate::plan::ValueType {
-        self.program
-            .common
-            .list_types
-            .list_value_type(id, &self.program.common.custom_types)
+        self.program.common.list_types.list_value_type(
+            id,
+            &self.program.common.custom_types,
+            &self.program.common.external_types,
+        )
     }
 
     #[cfg(test)]
@@ -176,34 +185,38 @@ impl ExecutionPlan {
     }
 
     pub(crate) fn tuple_list_item_type(&self, id: TupleListTypeId) -> Vec<crate::plan::ValueType> {
-        self.program
-            .common
-            .list_types
-            .tuple_item_type(id, &self.program.common.custom_types)
+        self.program.common.list_types.tuple_item_type(
+            id,
+            &self.program.common.custom_types,
+            &self.program.common.external_types,
+        )
     }
 
     pub(crate) fn nested_list_item_type(&self, id: ListListTypeId) -> crate::plan::ValueType {
-        self.program
-            .common
-            .list_types
-            .nested_list_item_type(id, &self.program.common.custom_types)
+        self.program.common.list_types.nested_list_item_type(
+            id,
+            &self.program.common.custom_types,
+            &self.program.common.external_types,
+        )
     }
 
     pub(crate) fn function_list_item_type(
         &self,
         id: FunctionListTypeId,
     ) -> crate::plan::FunctionType {
-        self.program
-            .common
-            .list_types
-            .function_item_type(id, &self.program.common.custom_types)
+        self.program.common.list_types.function_item_type(
+            id,
+            &self.program.common.custom_types,
+            &self.program.common.external_types,
+        )
     }
 
     pub(crate) fn function_type(&self, type_: &FunctionType) -> crate::plan::FunctionType {
-        self.program
-            .common
-            .list_types
-            .function_type(type_, &self.program.common.custom_types)
+        self.program.common.list_types.function_type(
+            type_,
+            &self.program.common.custom_types,
+            &self.program.common.external_types,
+        )
     }
 
     pub(crate) fn custom_value_type(&self, id: CustomTypeId) -> crate::plan::CustomType {
@@ -239,46 +252,15 @@ impl ExecutionPlan {
             shape
                 .arguments()
                 .iter()
-                .map(|argument| self.value_shape_type(*argument))
+                .map(|argument| {
+                    self.program.common.list_types.value_type(
+                        self.program.common.value_shapes.value_type(*argument),
+                        &self.program.common.custom_types,
+                        &self.program.common.external_types,
+                    )
+                })
                 .collect(),
         )
-    }
-
-    #[cfg(test)]
-    fn value_shape_type(&self, id: ValueShapeId) -> crate::plan::ValueType {
-        match self.program.common.value_shapes.get(id) {
-            ValueShapeDescriptor::Parameter(parameter) => {
-                crate::plan::ValueType::Parameter(*parameter)
-            }
-            ValueShapeDescriptor::Int => crate::plan::ValueType::Int,
-            ValueShapeDescriptor::Float => crate::plan::ValueType::Float,
-            ValueShapeDescriptor::String => crate::plan::ValueType::String,
-            ValueShapeDescriptor::BitArray => crate::plan::ValueType::BitArray,
-            ValueShapeDescriptor::UtfCodepoint => crate::plan::ValueType::UtfCodepoint,
-            ValueShapeDescriptor::Bool => crate::plan::ValueType::Bool,
-            ValueShapeDescriptor::Nil => crate::plan::ValueType::Nil,
-            ValueShapeDescriptor::Tuple(elements) => crate::plan::ValueType::Tuple(
-                elements
-                    .iter()
-                    .map(|element| self.value_shape_type(*element))
-                    .collect(),
-            ),
-            ValueShapeDescriptor::List(item) => {
-                crate::plan::ValueType::List(Box::new(self.value_shape_type(*item)))
-            }
-            ValueShapeDescriptor::Function { arguments, return_ } => {
-                crate::plan::ValueType::Function(Box::new(crate::plan::FunctionType::new(
-                    arguments
-                        .iter()
-                        .map(|argument| self.value_shape_type(*argument))
-                        .collect(),
-                    self.value_shape_type(*return_),
-                )))
-            }
-            ValueShapeDescriptor::Custom(custom) => {
-                crate::plan::ValueType::Custom(self.custom_shape_type(*custom))
-            }
-        }
     }
 
     pub(crate) fn shape_value_type(&self, id: ValueShapeId) -> ValueType {
@@ -304,21 +286,24 @@ impl ExecutionPlan {
             .constructor_id(type_index, constructor_index)
     }
 
-    pub(crate) fn int_function(&self, id: IntFunctionId) -> &ExecutableFunction<IntFunctionBody> {
+    pub(crate) fn int_function(
+        &self,
+        id: IntFunctionId,
+    ) -> &ExecutableFunction<ExecutionIntFunctionBody<Infallible>> {
         self.program.functions.int_function(id)
     }
 
     pub(crate) fn bit_array_function(
         &self,
         id: BitArrayFunctionId,
-    ) -> &ExecutableFunction<BitArrayFunctionBody> {
+    ) -> &ExecutableFunction<ExecutionBitArrayFunctionBody<Infallible>> {
         self.program.functions.bit_array_function(id)
     }
 
     pub(crate) fn custom_function(
         &self,
         id: CustomFunctionId,
-    ) -> &ExecutableFunction<CustomFunctionBody> {
+    ) -> &ExecutableFunction<ExecutionCustomFunctionBody<Infallible>> {
         self.program.functions.custom_function(id)
     }
 
@@ -330,18 +315,21 @@ impl ExecutionPlan {
     pub(crate) fn bool_function(
         &self,
         id: BoolFunctionId,
-    ) -> &ExecutableFunction<BoolFunctionBody> {
+    ) -> &ExecutableFunction<ExecutionBoolFunctionBody<Infallible>> {
         self.program.functions.bool_function(id)
     }
 
-    pub(crate) fn nil_function(&self, id: NilFunctionId) -> &ExecutableFunction<NilFunctionBody> {
+    pub(crate) fn nil_function(
+        &self,
+        id: NilFunctionId,
+    ) -> &ExecutableFunction<ExecutionNilFunctionBody<Infallible>> {
         self.program.functions.nil_function(id)
     }
 
     pub(crate) fn tuple_function(
         &self,
         id: TupleFunctionId,
-    ) -> &ExecutableFunction<TupleFunctionBody> {
+    ) -> &ExecutableFunction<ExecutionTupleFunctionBody<Infallible>> {
         self.program.functions.tuple_function(id)
     }
 
@@ -421,91 +409,91 @@ impl ExecutionPlan {
     pub(crate) fn int_function_function(
         &self,
         id: IntFunctionFunctionId,
-    ) -> &ExecutableFunction<IntFunctionFunctionBody> {
+    ) -> &ExecutableFunction<ExecutionIntFunctionFunctionBody<Infallible>> {
         self.program.functions.int_function_function(id)
     }
 
     pub(crate) fn float_function_function(
         &self,
         id: FloatFunctionFunctionId,
-    ) -> &ExecutableFunction<FloatFunctionFunctionBody> {
+    ) -> &ExecutableFunction<ExecutionFloatFunctionFunctionBody<Infallible>> {
         self.program.functions.float_function_function(id)
     }
 
     pub(crate) fn string_function_function(
         &self,
         id: StringFunctionFunctionId,
-    ) -> &ExecutableFunction<StringFunctionFunctionBody> {
+    ) -> &ExecutableFunction<ExecutionStringFunctionFunctionBody<Infallible>> {
         self.program.functions.string_function_function(id)
     }
 
     pub(crate) fn bit_array_function_function(
         &self,
         id: BitArrayFunctionFunctionId,
-    ) -> &ExecutableFunction<BitArrayFunctionFunctionBody> {
+    ) -> &ExecutableFunction<ExecutionBitArrayFunctionFunctionBody<Infallible>> {
         self.program.functions.bit_array_function_function(id)
     }
 
     pub(crate) fn utf_codepoint_function_function(
         &self,
         id: UtfCodepointFunctionFunctionId,
-    ) -> &ExecutableFunction<UtfCodepointFunctionFunctionBody> {
+    ) -> &ExecutableFunction<ExecutionUtfCodepointFunctionFunctionBody<Infallible>> {
         self.program.functions.utf_codepoint_function_function(id)
     }
 
     pub(crate) fn custom_function_function(
         &self,
         id: &CustomFunctionFunctionId,
-    ) -> &ExecutableFunction<CustomFunctionFunctionBody> {
+    ) -> &ExecutableFunction<ExecutionCustomFunctionFunctionBody<Infallible>> {
         self.program.functions.custom_function_function(id)
     }
 
     pub(crate) fn generic_function_function(
         &self,
         id: &GenericFunctionFunctionId,
-    ) -> &ExecutableFunction<GenericFunctionFunctionBody> {
+    ) -> &ExecutableFunction<ExecutionGenericFunctionFunctionBody<Infallible>> {
         self.program.functions.generic_function_function(id)
     }
 
     pub(crate) fn never_function_function(
         &self,
         id: &NeverFunctionFunctionId,
-    ) -> &ExecutableFunction<NeverFunctionFunctionBody> {
+    ) -> &ExecutableFunction<ExecutionNeverFunctionFunctionBody<Infallible>> {
         self.program.functions.never_function_function(id)
     }
 
     pub(crate) fn bool_function_function(
         &self,
         id: BoolFunctionFunctionId,
-    ) -> &ExecutableFunction<BoolFunctionFunctionBody> {
+    ) -> &ExecutableFunction<ExecutionBoolFunctionFunctionBody<Infallible>> {
         self.program.functions.bool_function_function(id)
     }
 
     pub(crate) fn nil_function_function(
         &self,
         id: NilFunctionFunctionId,
-    ) -> &ExecutableFunction<NilFunctionFunctionBody> {
+    ) -> &ExecutableFunction<ExecutionNilFunctionFunctionBody<Infallible>> {
         self.program.functions.nil_function_function(id)
     }
 
     pub(crate) fn tuple_function_function(
         &self,
         id: TupleFunctionFunctionId,
-    ) -> &ExecutableFunction<TupleFunctionFunctionBody> {
+    ) -> &ExecutableFunction<ExecutionTupleFunctionFunctionBody<Infallible>> {
         self.program.functions.tuple_function_function(id)
     }
 
-    pub(crate) fn list_function_function(
+    pub(crate) fn core_list_function_function(
         &self,
-        id: &ListFunctionFunctionId,
-    ) -> &ExecutableFunction<ListFunctionFunctionBody> {
-        self.program.functions.list_function_function(id)
+        id: &ProfiledListFunctionFunctionId<Infallible>,
+    ) -> &ExecutableFunction<ExecutionCoreListFunctionFunctionBody<Infallible>> {
+        self.program.functions.core_list_function_function(id)
     }
 
     pub(crate) fn function_function_function(
         &self,
         id: &FunctionFunctionFunctionId,
-    ) -> &ExecutableFunction<FunctionFunctionFunctionBody> {
+    ) -> &ExecutableFunction<ExecutionFunctionFunctionFunctionBody<Infallible>> {
         self.program.functions.function_function_function(id)
     }
 
@@ -526,6 +514,7 @@ impl<Profile: HostProfile> HostedExecution<Profile> {
         Ok(Self {
             program,
             host_functions,
+            external_stores: Profile::ExternalStores::default(),
         })
     }
 
@@ -557,6 +546,10 @@ impl<Profile: HostProfile> HostedExecution<Profile> {
     ) -> &host::HostedNeverFunction<Profile> {
         self.host_functions.never(id)
     }
+
+    pub(crate) fn external_stores(&self) -> &Profile::ExternalStores {
+        &self.external_stores
+    }
 }
 
 #[cfg(test)]
@@ -569,6 +562,7 @@ mod tests {
         compile_typed_module, plan_host_program, plan_module,
     };
     use num_bigint::BigInt;
+    use std::convert::Infallible;
 
     #[test]
     fn plain_execution_program_keeps_host_targets_uninhabited() {
@@ -576,8 +570,9 @@ mod tests {
             .expect("source should compile");
         let plan = plan_module(typed).expect("source should plan");
         let execution = super::ExecutionPlan::from_module_plan(plan);
-        let function: &super::ExecutableFunction<super::IntFunctionBody> =
-            execution.program.functions.int_function(IntFunctionId(0));
+        let function: &super::ExecutableFunction<
+            super::function::ExecutionIntFunctionBody<Infallible>,
+        > = execution.program.functions.int_function(IntFunctionId(0));
 
         assert_eq!(function.body().block_graph().blocks().len(), 1);
     }

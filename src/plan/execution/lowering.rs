@@ -6,7 +6,7 @@ mod local;
 mod specialization;
 mod value_type;
 
-use super::type_::{CustomTypeTable, ListTypeTable, ValueShapeTable};
+use super::type_::{CustomTypeTable, ExternalTypeTable, ListTypeTable, ValueShapeTable};
 use super::{ExecutionProgram, ExecutionProgramCommon};
 use crate::plan::execution::function::ExecutionProfile;
 use crate::plan::{ModulePlan, ValueShape};
@@ -39,13 +39,15 @@ struct SpecializationState {
 }
 
 struct LoweredExecution<Profile: ExecutionProfile> {
-    constants: super::constant::ConstantTable,
+    constants: super::constant::ProfiledConstantTable<Profile::Graph>,
     functions: super::function::FunctionTables<Profile>,
     list_types: ListTypeTable,
     custom_types: CustomTypeTable,
+    external_types: ExternalTypeTable,
     value_shapes: ValueShapeTable,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 enum SpecializationOutcome<T> {
     Complete(T),
     RequiresErasure(HashSet<SpecializationKey>),
@@ -73,11 +75,43 @@ struct ProvisionalSpecialization {
 }
 
 impl<T> SpecializationOutcome<T> {
+    fn from_representability(
+        value: specialization::Representability<T>,
+        owner: SpecializationKey,
+    ) -> Self {
+        match value {
+            specialization::Representability::Inhabited(value) => Self::Complete(value),
+            specialization::Representability::Uninhabited => {
+                Self::RequiresErasure(HashSet::from([owner]))
+            }
+        }
+    }
+
     fn complete_unless_erased(value: T, erased: HashSet<SpecializationKey>) -> Self {
         if erased.is_empty() {
             Self::Complete(value)
         } else {
             Self::RequiresErasure(erased)
+        }
+    }
+
+    fn zip_with<U, V>(
+        self,
+        other: SpecializationOutcome<U>,
+        map: impl FnOnce(T, U) -> V,
+    ) -> SpecializationOutcome<V> {
+        match (self, other) {
+            (Self::Complete(left), SpecializationOutcome::Complete(right)) => {
+                SpecializationOutcome::Complete(map(left, right))
+            }
+            (Self::RequiresErasure(mut left), SpecializationOutcome::RequiresErasure(right)) => {
+                left.extend(right);
+                SpecializationOutcome::RequiresErasure(left)
+            }
+            (Self::RequiresErasure(erased), SpecializationOutcome::Complete(_))
+            | (Self::Complete(_), SpecializationOutcome::RequiresErasure(erased)) => {
+                SpecializationOutcome::RequiresErasure(erased)
+            }
         }
     }
 
@@ -149,6 +183,7 @@ struct LoweringContext {
     erased_specializations: HashSet<SpecializationKey>,
     pending: VecDeque<SpecializationKey>,
     substitution: SpecializedTypeSubstitution,
+    current_specialization: SpecializationKey,
 }
 
 struct StoredTargetLocal {
@@ -171,6 +206,7 @@ impl LoweringContext {
         entry_templates: HashMap<crate::plan::FunctionTemplateId, local::FunctionEntryTemplate>,
         representations: RepresentationContext,
         constant_templates: ProgramConstantTemplates,
+        current_specialization: SpecializationKey,
         erased_specializations: HashSet<SpecializationKey>,
     ) -> Self {
         Self {
@@ -185,6 +221,7 @@ impl LoweringContext {
             erased_specializations,
             pending: VecDeque::new(),
             substitution: SpecializedTypeSubstitution::empty(),
+            current_specialization,
         }
     }
 
@@ -238,6 +275,14 @@ impl LoweringContext {
         return_: &SpecializedCustomValueShape,
     ) -> super::type_::CustomFunctionType {
         self.types.custom_function_type(arguments, return_)
+    }
+
+    fn specialized_external_function_type(
+        &mut self,
+        arguments: &[SpecializedValueShape],
+        return_: &specialization::SpecializedExternalValueShape,
+    ) -> super::type_::ExternalFunctionType {
+        self.types.external_function_type(arguments, return_)
     }
 
     fn specialized_function_function_type(
@@ -343,6 +388,24 @@ impl LoweringContext {
         self.types.custom_list_type(item)
     }
 
+    fn specialized_external_list_type(
+        &mut self,
+        item: &specialization::SpecializedExternalValueShape,
+    ) -> super::type_::ExternalListTypeId {
+        self.types.external_list_type(item)
+    }
+
+    fn external_list_type(
+        &mut self,
+        item: crate::plan::ExternalType,
+    ) -> super::type_::ExternalListTypeId {
+        let shape = specialization::SpecializedExternalValueShape::instantiate(
+            &crate::plan::ExternalValueShape::any(item),
+            &self.substitution,
+        );
+        self.types.external_list_type(&shape)
+    }
+
     fn float_list_type(&mut self) -> super::type_::FloatListTypeId {
         self.types.float_list_type()
     }
@@ -444,9 +507,11 @@ impl LoweringContext {
                     function::FunctionTableFamily::Never,
                     Box::new([]),
                 );
-                super::function::RuntimeFunctionId::Never(super::function::NeverFunctionId(
-                    specialization.index,
-                ))
+                super::function::RuntimeFunctionId::Core(
+                    super::function::CoreRuntimeFunctionId::Never(
+                        super::function::NeverFunctionId(specialization.index),
+                    ),
+                )
             }
             specialization::ValueInhabitation::Inhabited(return_shape) => {
                 let family =
@@ -610,6 +675,20 @@ impl LoweringContext {
         )
     }
 
+    fn external_function_id(
+        &mut self,
+        function: &crate::plan::FunctionInstantiation,
+        shape: &specialization::SpecializedExternalValueShape,
+    ) -> specialization::Representability<super::function::ExternalFunctionId> {
+        self.reserve_function_id(
+            function,
+            function::FunctionTableFamily::External,
+            |index, context| {
+                super::function::ExternalFunctionId::new(index, context.types.external_type(shape))
+            },
+        )
+    }
+
     fn bool_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
@@ -643,7 +722,7 @@ impl LoweringContext {
         &mut self,
         function: &crate::plan::FunctionInstantiation,
         item: &SpecializedValueShape,
-    ) -> specialization::Representability<super::function::ListFunctionId> {
+    ) -> specialization::Representability<super::function::RuntimeListFunctionId> {
         self.reserve_function_id(
             function,
             function::list_function_table_family(item),
@@ -735,6 +814,18 @@ impl LoweringContext {
             function,
             function::FunctionTableFamily::CustomList,
             |index, _| super::function::CustomListFunctionId::new(index, type_id),
+        )
+    }
+
+    fn external_list_function_id(
+        &mut self,
+        function: &crate::plan::FunctionInstantiation,
+        type_id: super::type_::ExternalListTypeId,
+    ) -> specialization::Representability<super::function::ExternalListFunctionId> {
+        self.reserve_function_id(
+            function,
+            function::FunctionTableFamily::ExternalList,
+            |index, _| super::function::ExternalListFunctionId::new(index, type_id),
         )
     }
 
@@ -911,6 +1002,18 @@ impl LoweringContext {
         )
     }
 
+    fn external_function_function_id(
+        &mut self,
+        function: &crate::plan::FunctionInstantiation,
+        type_: super::type_::ExternalFunctionType,
+    ) -> specialization::Representability<super::function::ExternalFunctionFunctionId> {
+        self.reserve_function_id(
+            function,
+            function::FunctionTableFamily::ExternalFunction,
+            |index, _| super::function::ExternalFunctionFunctionId::new(index, type_),
+        )
+    }
+
     fn bool_function_function_id(
         &mut self,
         function: &crate::plan::FunctionInstantiation,
@@ -950,12 +1053,40 @@ impl LoweringContext {
         type_: &SpecializedFunctionShape,
         item: &SpecializedValueShape,
     ) -> specialization::Representability<super::function::ListFunctionFunctionId> {
+        let signature = self.list_function_function_signature(type_, item);
+        self.reserve_function_id(function, signature.table_family(), |index, _| {
+            signature.hosted_id(index)
+        })
+    }
+
+    fn list_function_function_signature(
+        &mut self,
+        function: &SpecializedFunctionShape,
+        item: &SpecializedValueShape,
+    ) -> function::ListFunctionFunctionSignature {
+        function::list_function_function_signature(function, item, &mut self.types)
+    }
+
+    fn core_list_function_function_id(
+        &mut self,
+        function: &crate::plan::FunctionInstantiation,
+        signature: &function::CoreListFunctionFunctionSignature,
+    ) -> specialization::Representability<super::function::ProfiledListFunctionFunctionId<Infallible>>
+    {
+        self.reserve_function_id(function, signature.table_family(), |index, _| {
+            signature.profiled_id(index)
+        })
+    }
+
+    fn external_list_function_function_id(
+        &mut self,
+        function: &crate::plan::FunctionInstantiation,
+        signature: &function::ExternalListFunctionFunctionSignature,
+    ) -> specialization::Representability<super::function::ExternalListFunctionFunctionId> {
         self.reserve_function_id(
             function,
-            function::list_function_function_table_family(item),
-            |index, context| {
-                function::list_function_function_id(type_, item, index, &mut context.types)
-            },
+            function::FunctionTableFamily::ExternalListFunction,
+            |index, _| signature.id(index),
         )
     }
 
@@ -1013,6 +1144,13 @@ impl LoweringContext {
         self.types.custom_value_shape(shape)
     }
 
+    fn lower_concrete_external_type(
+        &mut self,
+        shape: &specialization::SpecializedExternalValueShape,
+    ) -> super::type_::ExternalTypeId {
+        self.types.external_type(shape)
+    }
+
     fn lower_concrete_function_type(
         &mut self,
         shape: &SpecializedFunctionShape,
@@ -1034,6 +1172,13 @@ impl LoweringContext {
         SpecializedCustomValueShape::instantiate(shape, &self.substitution)
     }
 
+    fn concrete_external_value_shape(
+        &self,
+        shape: &crate::plan::ExternalValueShape,
+    ) -> specialization::SpecializedExternalValueShape {
+        specialization::SpecializedExternalValueShape::instantiate(shape, &self.substitution)
+    }
+
     fn concrete_function_shape(
         &self,
         shape: &crate::plan::FunctionShape,
@@ -1043,6 +1188,7 @@ impl LoweringContext {
 
     fn begin(&mut self, key: &SpecializationKey) {
         self.substitution = key.substitution().clone();
+        self.current_specialization = key.clone();
     }
 
     fn specialization_index(&self, key: &SpecializationKey) -> usize {
@@ -1061,13 +1207,14 @@ impl LoweringContext {
         } = self;
         let outcome = functions
             .finish()
-            .map(|functions| {
-                let (list_types, custom_types, value_shapes) = types.into_tables();
+            .zip_with(constants.finish_plain(), |functions, constants| {
+                let (list_types, custom_types, external_types, value_shapes) = types.into_tables();
                 Box::new(LoweredExecution {
-                    constants: constants.finish(),
+                    constants,
                     functions: *functions,
                     list_types,
                     custom_types,
+                    external_types,
                     value_shapes,
                 })
             })
@@ -1131,6 +1278,7 @@ pub(super) fn lower(module_plan: ModulePlan) -> ExecutionProgram<Infallible> {
             templates.entry_templates(),
             representations,
             constant_templates,
+            main_key.clone(),
             erased_specializations,
         );
 
@@ -1141,15 +1289,18 @@ pub(super) fn lower(module_plan: ModulePlan) -> ExecutionProgram<Infallible> {
             function::lower_specialized(templates.get(key.template()), &key, &mut context);
         }
 
-        let (constant_templates, representations, outcome) = context.finish();
+        let (constant_templates, representations, lowered) = context.finish();
+        let outcome = SpecializationOutcome::from_representability(
+            graph::seal_plain_runtime_function_id(main),
+            main_key.clone(),
+        )
+        .zip_with(lowered, |main, lowered| (main, lowered));
         let erased_specializations = outcome.erased_specializations();
-        outcome
-            .map(|lowered| (main, lowered))
-            .into_fixed_point(SpecializationState {
-                constant_templates,
-                representations,
-                erased_specializations,
-            })
+        outcome.into_fixed_point(SpecializationState {
+            constant_templates,
+            representations,
+            erased_specializations,
+        })
     });
 
     ExecutionProgram {
@@ -1160,6 +1311,7 @@ pub(super) fn lower(module_plan: ModulePlan) -> ExecutionProgram<Infallible> {
             constants: lowered.constants,
             list_types: lowered.list_types,
             custom_types: lowered.custom_types,
+            external_types: lowered.external_types,
             value_shapes: lowered.value_shapes,
         },
         functions: lowered.functions,
@@ -1246,6 +1398,7 @@ pub(super) mod test_support {
             ProgramConstantTemplates {
                 modules: vec![crate::plan::ConstantTemplates::from_entries(Vec::new())],
             },
+            super::SpecializationKey::monomorphic(main_id),
             HashSet::new(),
         )
     }
@@ -1362,6 +1515,59 @@ mod tests {
                 .provisional_specialization(erased, super::function::FunctionTableFamily::Never)
                 .map(|_| ()),
             Representability::Uninhabited,
+        );
+    }
+
+    #[test]
+    fn specialization_outcome_combines_representability() {
+        let first = SpecializationKey::monomorphic(crate::plan::FunctionTemplateId::new(3));
+        let second = SpecializationKey::monomorphic(crate::plan::FunctionTemplateId::new(5));
+
+        assert_eq!(
+            SpecializationOutcome::from_representability(
+                Representability::Inhabited(2_usize),
+                first.clone(),
+            ),
+            SpecializationOutcome::Complete(2),
+        );
+        assert_eq!(
+            SpecializationOutcome::<usize>::from_representability(
+                Representability::Uninhabited,
+                first.clone(),
+            ),
+            SpecializationOutcome::RequiresErasure(HashSet::from([first.clone()])),
+        );
+        assert_eq!(
+            SpecializationOutcome::Complete(2_usize).zip_with(
+                SpecializationOutcome::Complete(3_usize),
+                usize::wrapping_add,
+            ),
+            SpecializationOutcome::Complete(5),
+        );
+        assert_eq!(
+            SpecializationOutcome::<usize>::RequiresErasure(HashSet::from([first.clone()]))
+                .zip_with(
+                    SpecializationOutcome::<usize>::RequiresErasure(HashSet::from(
+                        [second.clone()],
+                    )),
+                    usize::wrapping_add,
+                ),
+            SpecializationOutcome::RequiresErasure(HashSet::from([first.clone(), second.clone(),])),
+        );
+        assert_eq!(
+            SpecializationOutcome::<usize>::RequiresErasure(HashSet::from([first.clone()]))
+                .zip_with(
+                    SpecializationOutcome::Complete(3_usize),
+                    usize::wrapping_add,
+                ),
+            SpecializationOutcome::RequiresErasure(HashSet::from([first])),
+        );
+        assert_eq!(
+            SpecializationOutcome::Complete(2_usize).zip_with(
+                SpecializationOutcome::<usize>::RequiresErasure(HashSet::from([second.clone()])),
+                usize::wrapping_add,
+            ),
+            SpecializationOutcome::RequiresErasure(HashSet::from([second])),
         );
     }
 

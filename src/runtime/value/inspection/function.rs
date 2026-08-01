@@ -31,19 +31,21 @@ fn write_argument_name(output: &mut String, index: usize) {
 #[cfg(test)]
 mod tests {
     use super::super::super::{FunctionValue, Value};
-    use crate::plan::execution::function::{IntFunctionId, RuntimeFunctionId};
+    use crate::plan::execution::function::{
+        CoreRuntimeFunctionId, IntFunctionId, RuntimeFunctionId,
+    };
     use crate::plan::{FunctionType, ValueType};
     use crate::runtime::run_main;
 
     #[test]
     fn writes_arity_without_runtime_identity_or_captures() {
         let function = FunctionValue::new(
-            RuntimeFunctionId::Int(IntFunctionId(0)),
+            RuntimeFunctionId::Core(CoreRuntimeFunctionId::Int(IntFunctionId(0))),
             Vec::new(),
             FunctionType::new(vec![ValueType::Int, ValueType::String], ValueType::Int),
         );
         let other_runtime_target = FunctionValue::new(
-            RuntimeFunctionId::Int(IntFunctionId(99)),
+            RuntimeFunctionId::Core(CoreRuntimeFunctionId::Int(IntFunctionId(99))),
             Vec::new(),
             FunctionType::new(vec![ValueType::Int], ValueType::Int),
         );
@@ -79,7 +81,7 @@ pub fn main() {
     #[test]
     fn writes_argument_names_beyond_the_alphabet() {
         let function = FunctionValue::new(
-            RuntimeFunctionId::Int(IntFunctionId(0)),
+            RuntimeFunctionId::Core(CoreRuntimeFunctionId::Int(IntFunctionId(0))),
             Vec::new(),
             FunctionType::new(vec![ValueType::Int; 27], ValueType::Int),
         );

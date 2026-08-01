@@ -3,10 +3,11 @@ use super::{
     String, TupleFunction, UtfCodepoint,
 };
 use crate::plan::{
-    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomFunctionExpr, FloatExpr,
-    FloatFunctionExpr, FunctionExpr, FunctionExprKind, FunctionFunctionExpr, GenericFunctionExpr,
-    IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr, NilFunctionExpr, Step,
-    StringExpr, StringFunctionExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomFunctionExpr,
+    ExternalFunctionExpr, FloatExpr, FloatFunctionExpr, FunctionExpr, FunctionExprKind,
+    FunctionFunctionExpr, GenericFunctionExpr, IntExpr, IntFunctionExpr, ListExpr,
+    ListFunctionExpr, NilExpr, NilFunctionExpr, Step, StringExpr, StringFunctionExpr,
+    TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
 
 pub(crate) fn block_int(steps: impl IntoIterator<Item = Step>, return_: Int) -> Int {
@@ -76,6 +77,9 @@ pub(crate) fn block_function(steps: Vec<Step>, return_: Function) -> Function {
         }
         FunctionExprKind::Custom(return_) => {
             FunctionExpr::custom(CustomFunctionExpr::block(steps, return_))
+        }
+        FunctionExprKind::External(return_) => {
+            FunctionExpr::external(ExternalFunctionExpr::block(steps, return_))
         }
         FunctionExprKind::Float(return_) => {
             FunctionExpr::float(FloatFunctionExpr::block(steps, return_))

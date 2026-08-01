@@ -1,23 +1,31 @@
+use crate::plan::execution::explain::Explain;
 use crate::plan::execution::explain::{ExplainContext, FunctionLabel};
 use crate::plan::execution::function::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionFunctionId,
-    BoolFunctionId, BoolListFunctionId, CustomListFunctionId, FloatFunctionFunctionId,
-    FloatFunctionId, FloatListFunctionId, FunctionListFunctionId, GenericFunctionFunctionId,
-    IntFunctionFunctionId, IntFunctionId, IntListFunctionId, ListFunctionFunctionId,
-    ListListFunctionId, NeverFunctionFunctionId, NeverFunctionId, NilFunctionFunctionId,
-    NilFunctionId, NilListFunctionId, ParameterListFunctionId, ParameterListListFunctionId,
-    StringFunctionFunctionId, StringFunctionId, StringListFunctionId, TupleFunctionFunctionId,
-    TupleFunctionId, TupleListFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
+    BoolFunctionId, BoolListFunctionId, CustomListFunctionId, ExternalListFunctionFunctionId,
+    ExternalListFunctionId, FloatFunctionFunctionId, FloatFunctionId, FloatListFunctionId,
+    FunctionListFunctionId, GenericFunctionFunctionId, IntFunctionFunctionId, IntFunctionId,
+    IntListFunctionId, ListListFunctionId, NeverFunctionFunctionId, NeverFunctionId,
+    NilFunctionFunctionId, NilFunctionId, NilListFunctionId, ParameterListFunctionId,
+    ParameterListListFunctionId, ProfiledListFunctionFunctionId, StringFunctionFunctionId,
+    StringFunctionId, StringListFunctionId, TupleFunctionFunctionId, TupleFunctionId,
+    TupleListFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
     UtfCodepointListFunctionId,
 };
+use crate::plan::execution::function::{
+    ExecutionGraphProfile, FunctionLabelSource, HostedExecutionGraph,
+};
 use crate::plan::execution::graph::{
-    BlockGraph, BlockGraphExitExplanation, BlockGraphExitId, LocalLabel, ParamSlot,
+    BlockGraphExitExplanation, BlockGraphExitId, LocalLabel, ParamSlot, ProfiledBlockGraph,
 };
 
-pub(crate) struct FunctionBody<Return, TailCall> {
-    block_graph: BlockGraph,
+pub(crate) struct ProfiledFunctionBody<Return, TailCall, Graph: ExecutionGraphProfile> {
+    block_graph: ProfiledBlockGraph<Graph>,
     exits: Box<[FunctionExit<Return, TailCall>]>,
 }
+
+pub(crate) type FunctionBody<Return, TailCall> =
+    ProfiledFunctionBody<Return, TailCall, HostedExecutionGraph>;
 
 pub(crate) enum FunctionExit<Return, TailCall> {
     Return(Return),
@@ -30,18 +38,19 @@ pub(crate) enum FunctionExit<Return, TailCall> {
 pub(crate) trait FunctionBodyOwner {
     type Return;
     type TailCall;
+    type Graph: ExecutionGraphProfile;
 
-    fn function_body(&self) -> &FunctionBody<Self::Return, Self::TailCall>;
+    fn function_body(&self) -> &ProfiledFunctionBody<Self::Return, Self::TailCall, Self::Graph>;
 }
 
-struct FunctionExitExplanation<'a, Return, TailCall> {
-    body: &'a FunctionBody<Return, TailCall>,
+struct FunctionExitExplanation<'a, Return, TailCall, Graph: ExecutionGraphProfile> {
+    body: &'a ProfiledFunctionBody<Return, TailCall, Graph>,
     family: &'static str,
 }
 
-impl<Return, TailCall> FunctionBody<Return, TailCall> {
+impl<Return, TailCall, Graph: ExecutionGraphProfile> ProfiledFunctionBody<Return, TailCall, Graph> {
     pub(in crate::plan::execution) fn from_parts(
-        block_graph: BlockGraph,
+        block_graph: ProfiledBlockGraph<Graph>,
         exits: Vec<FunctionExit<Return, TailCall>>,
     ) -> Self {
         Self {
@@ -50,12 +59,21 @@ impl<Return, TailCall> FunctionBody<Return, TailCall> {
         }
     }
 
-    pub(crate) fn block_graph(&self) -> &BlockGraph {
+    pub(crate) fn block_graph(&self) -> &ProfiledBlockGraph<Graph> {
         &self.block_graph
     }
 
     pub(crate) fn exit(&self, id: BlockGraphExitId) -> &FunctionExit<Return, TailCall> {
         &self.exits[id.index()]
+    }
+
+    pub(in crate::plan::execution) fn into_parts(
+        self,
+    ) -> (
+        ProfiledBlockGraph<Graph>,
+        Box<[FunctionExit<Return, TailCall>]>,
+    ) {
+        (self.block_graph, self.exits)
     }
 
     pub(in crate::plan::execution) fn write_explanation(
@@ -67,6 +85,13 @@ impl<Return, TailCall> FunctionBody<Return, TailCall> {
     ) where
         Return: LocalLabel,
         TailCall: TailCallLabelIndex,
+        Graph::ExternalFunctionId: FunctionLabelSource,
+        Graph::ExternalListFunctionId: FunctionLabelSource,
+        Graph::ExternalFunctionFunctionId: FunctionLabelSource,
+        Graph::ExternalListFunctionFunctionId: FunctionLabelSource,
+        Graph::ExternalInstruction: Explain,
+        Graph::ExternalListInstruction: Explain,
+        Graph::ExternalFunctionInstruction: Explain,
     {
         let exits = FunctionExitExplanation { body: self, family };
         self.block_graph()
@@ -74,16 +99,20 @@ impl<Return, TailCall> FunctionBody<Return, TailCall> {
     }
 }
 
-impl<Return, TailCall> FunctionBodyOwner for FunctionBody<Return, TailCall> {
+impl<Return, TailCall, Graph: ExecutionGraphProfile> FunctionBodyOwner
+    for ProfiledFunctionBody<Return, TailCall, Graph>
+{
     type Return = Return;
     type TailCall = TailCall;
+    type Graph = Graph;
 
-    fn function_body(&self) -> &FunctionBody<Self::Return, Self::TailCall> {
+    fn function_body(&self) -> &ProfiledFunctionBody<Self::Return, Self::TailCall, Self::Graph> {
         self
     }
 }
 
-impl<Return, TailCall> BlockGraphExitExplanation for FunctionExitExplanation<'_, Return, TailCall>
+impl<Return, TailCall, Graph: ExecutionGraphProfile> BlockGraphExitExplanation
+    for FunctionExitExplanation<'_, Return, TailCall, Graph>
 where
     Return: LocalLabel,
     TailCall: TailCallLabelIndex,
@@ -261,6 +290,12 @@ impl TailCallLabelIndex for CustomListFunctionId {
     }
 }
 
+impl TailCallLabelIndex for ExternalListFunctionId {
+    fn tail_call_label_index(&self) -> usize {
+        self.index()
+    }
+}
+
 impl TailCallLabelIndex for FloatListFunctionId {
     fn tail_call_label_index(&self) -> usize {
         self.index()
@@ -315,7 +350,17 @@ impl TailCallLabelIndex for NeverFunctionFunctionId {
     }
 }
 
-impl TailCallLabelIndex for ListFunctionFunctionId {
+impl TailCallLabelIndex for ExternalListFunctionFunctionId {
+    fn tail_call_label_index(&self) -> usize {
+        self.0
+    }
+}
+
+impl<Graph: crate::plan::execution::function::ExecutionGraphProfile> TailCallLabelIndex
+    for ProfiledListFunctionFunctionId<Graph>
+where
+    Graph::ExternalListFunctionFunctionId: TailCallLabelIndex,
+{
     fn tail_call_label_index(&self) -> usize {
         match self {
             Self::Parameter { id, .. } => id.0,
@@ -325,6 +370,7 @@ impl TailCallLabelIndex for ListFunctionFunctionId {
             Self::BitArray { id, .. } => id.0,
             Self::UtfCodepoint { id, .. } => id.0,
             Self::Custom { id, .. } => id.0,
+            Self::External { id, .. } => id.tail_call_label_index(),
             Self::Float { id, .. } => id.0,
             Self::Bool { id, .. } => id.0,
             Self::Nil { id, .. } => id.0,
@@ -375,13 +421,14 @@ pub fn main() { loop(2) }
             BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionFunctionId,
             BitArrayListFunctionId, BoolFunctionFunctionId, BoolFunctionId,
             BoolListFunctionFunctionId, BoolListFunctionId, CustomListFunctionFunctionId,
-            CustomListFunctionId, FloatFunctionFunctionId, FloatFunctionId,
-            FloatListFunctionFunctionId, FloatListFunctionId, FunctionListFunctionFunctionId,
-            FunctionListFunctionId, GenericFunctionFunctionId, IntFunctionFunctionId,
-            IntListFunctionFunctionId, IntListFunctionId, ListFunctionFunctionId,
-            ListListFunctionFunctionId, ListListFunctionId, NeverFunctionFunctionId,
-            NeverFunctionId, NilFunctionFunctionId, NilFunctionId, NilListFunctionFunctionId,
-            NilListFunctionId, ParameterListFunctionFunctionId, ParameterListFunctionId,
+            CustomListFunctionId, ExternalListFunctionFunctionId, ExternalListFunctionId,
+            FloatFunctionFunctionId, FloatFunctionId, FloatListFunctionFunctionId,
+            FloatListFunctionId, FunctionListFunctionFunctionId, FunctionListFunctionId,
+            GenericFunctionFunctionId, IntFunctionFunctionId, IntListFunctionFunctionId,
+            IntListFunctionId, ListFunctionFunctionId, ListListFunctionFunctionId,
+            ListListFunctionId, NeverFunctionFunctionId, NeverFunctionId, NilFunctionFunctionId,
+            NilFunctionId, NilListFunctionFunctionId, NilListFunctionId,
+            ParameterListFunctionFunctionId, ParameterListFunctionId,
             ParameterListListFunctionFunctionId, ParameterListListFunctionId,
             StringFunctionFunctionId, StringFunctionId, StringListFunctionFunctionId,
             StringListFunctionId, TupleFunctionFunctionId, TupleFunctionId,
@@ -389,11 +436,11 @@ pub fn main() { loop(2) }
             UtfCodepointFunctionId, UtfCodepointListFunctionFunctionId, UtfCodepointListFunctionId,
         };
         use crate::plan::execution::type_::{
-            BitArrayListTypeId, BoolListTypeId, CustomListTypeId, CustomTypeId, FloatListTypeId,
-            FunctionListTypeId, FunctionShape, FunctionType, GenericFunctionType, IntListTypeId,
-            ListListTypeId, ListTypeId, NilListTypeId, ParameterListListTypeId,
-            ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
-            ValueShapeId, ValueType,
+            BitArrayListTypeId, BoolListTypeId, CustomListTypeId, CustomTypeId, ExternalListTypeId,
+            ExternalTypeId, FloatListTypeId, FunctionListTypeId, FunctionShape, FunctionType,
+            GenericFunctionType, IntListTypeId, ListListTypeId, ListTypeId, NilListTypeId,
+            ParameterListListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
+            UtfCodepointListTypeId, ValueShapeId, ValueType,
         };
 
         assert_tail_call_label_index(&0usize, 0);
@@ -438,117 +485,124 @@ pub fn main() { loop(2) }
             &CustomListFunctionId::new(16, CustomListTypeId::new(list_type, custom_type)),
             16,
         );
+        let external_list_type = ExternalListTypeId::new(list_type, ExternalTypeId::new(0));
+        assert_tail_call_label_index(&ExternalListFunctionId::new(17, external_list_type), 17);
         assert_tail_call_label_index(
-            &FloatListFunctionId::new(17, FloatListTypeId::new(list_type)),
-            17,
-        );
-        assert_tail_call_label_index(
-            &BoolListFunctionId::new(18, BoolListTypeId::new(list_type)),
+            &FloatListFunctionId::new(18, FloatListTypeId::new(list_type)),
             18,
         );
         assert_tail_call_label_index(
-            &NilListFunctionId::new(19, NilListTypeId::new(list_type)),
+            &BoolListFunctionId::new(19, BoolListTypeId::new(list_type)),
             19,
         );
         assert_tail_call_label_index(
-            &TupleListFunctionId::new(20, TupleListTypeId::new(list_type, 0)),
+            &NilListFunctionId::new(20, NilListTypeId::new(list_type)),
             20,
         );
         assert_tail_call_label_index(
-            &ListListFunctionId::new(21, ListListTypeId::new(list_type, list_type)),
+            &TupleListFunctionId::new(21, TupleListTypeId::new(list_type, 0)),
             21,
         );
         assert_tail_call_label_index(
-            &FunctionListFunctionId::new(22, FunctionListTypeId::new(list_type, 0)),
+            &ListListFunctionId::new(22, ListListTypeId::new(list_type, list_type)),
             22,
+        );
+        assert_tail_call_label_index(
+            &FunctionListFunctionId::new(23, FunctionListTypeId::new(list_type, 0)),
+            23,
         );
 
         let function_type = FunctionType::new(Vec::new(), ValueType::Int);
         let function_shape = FunctionShape::new(ValueShapeId::new(0), function_type.clone());
         let generic_type = GenericFunctionType::from_shapes(function_type.clone(), function_shape);
         assert_tail_call_label_index(
-            &GenericFunctionFunctionId::new(23, generic_type.clone()),
-            23,
+            &GenericFunctionFunctionId::new(24, generic_type.clone()),
+            24,
         );
-        assert_tail_call_label_index(&NeverFunctionFunctionId::new(24, generic_type), 24);
-        assert_tail_call_label_index(&IntFunctionFunctionId(25), 25);
-        assert_tail_call_label_index(&FloatFunctionFunctionId(26), 26);
-        assert_tail_call_label_index(&StringFunctionFunctionId(27), 27);
-        assert_tail_call_label_index(&BitArrayFunctionFunctionId(28), 28);
-        assert_tail_call_label_index(&UtfCodepointFunctionFunctionId(29), 29);
-        assert_tail_call_label_index(&BoolFunctionFunctionId(30), 30);
-        assert_tail_call_label_index(&NilFunctionFunctionId(31), 31);
-        assert_tail_call_label_index(&TupleFunctionFunctionId(32), 32);
+        assert_tail_call_label_index(&NeverFunctionFunctionId::new(25, generic_type), 25);
+        assert_tail_call_label_index(&IntFunctionFunctionId(26), 26);
+        assert_tail_call_label_index(&FloatFunctionFunctionId(27), 27);
+        assert_tail_call_label_index(&StringFunctionFunctionId(28), 28);
+        assert_tail_call_label_index(&BitArrayFunctionFunctionId(29), 29);
+        assert_tail_call_label_index(&UtfCodepointFunctionFunctionId(30), 30);
+        assert_tail_call_label_index(&BoolFunctionFunctionId(31), 31);
+        assert_tail_call_label_index(&NilFunctionFunctionId(32), 32);
+        assert_tail_call_label_index(&TupleFunctionFunctionId(33), 33);
 
         let list_function_functions = [
             ListFunctionFunctionId::Parameter {
-                id: ParameterListFunctionFunctionId(33),
+                id: ParameterListFunctionFunctionId(34),
                 type_: function_type.clone(),
                 list_type: parameter_type,
             },
             ListFunctionFunctionId::ParameterList {
-                id: ParameterListListFunctionFunctionId(34),
+                id: ParameterListListFunctionFunctionId(35),
                 type_: function_type.clone(),
                 list_type: ParameterListListTypeId::new(list_type, parameter_type),
             },
             ListFunctionFunctionId::Int {
-                id: IntListFunctionFunctionId(35),
+                id: IntListFunctionFunctionId(36),
                 type_: function_type.clone(),
                 list_type: IntListTypeId::new(list_type),
             },
             ListFunctionFunctionId::String {
-                id: StringListFunctionFunctionId(36),
+                id: StringListFunctionFunctionId(37),
                 type_: function_type.clone(),
                 list_type: StringListTypeId::new(list_type),
             },
             ListFunctionFunctionId::BitArray {
-                id: BitArrayListFunctionFunctionId(37),
+                id: BitArrayListFunctionFunctionId(38),
                 type_: function_type.clone(),
                 list_type: BitArrayListTypeId::new(list_type),
             },
             ListFunctionFunctionId::UtfCodepoint {
-                id: UtfCodepointListFunctionFunctionId(38),
+                id: UtfCodepointListFunctionFunctionId(39),
                 type_: function_type.clone(),
                 list_type: UtfCodepointListTypeId::new(list_type),
             },
             ListFunctionFunctionId::Custom {
-                id: CustomListFunctionFunctionId(39),
+                id: CustomListFunctionFunctionId(40),
                 type_: function_type.clone(),
                 list_type: CustomListTypeId::new(list_type, custom_type),
             },
+            ListFunctionFunctionId::External {
+                id: ExternalListFunctionFunctionId(41),
+                type_: function_type.clone(),
+                list_type: external_list_type,
+            },
             ListFunctionFunctionId::Float {
-                id: FloatListFunctionFunctionId(40),
+                id: FloatListFunctionFunctionId(42),
                 type_: function_type.clone(),
                 list_type: FloatListTypeId::new(list_type),
             },
             ListFunctionFunctionId::Bool {
-                id: BoolListFunctionFunctionId(41),
+                id: BoolListFunctionFunctionId(43),
                 type_: function_type.clone(),
                 list_type: BoolListTypeId::new(list_type),
             },
             ListFunctionFunctionId::Nil {
-                id: NilListFunctionFunctionId(42),
+                id: NilListFunctionFunctionId(44),
                 type_: function_type.clone(),
                 list_type: NilListTypeId::new(list_type),
             },
             ListFunctionFunctionId::Tuple {
-                id: TupleListFunctionFunctionId(43),
+                id: TupleListFunctionFunctionId(45),
                 type_: function_type.clone(),
                 list_type: TupleListTypeId::new(list_type, 0),
             },
             ListFunctionFunctionId::List {
-                id: ListListFunctionFunctionId(44),
+                id: ListListFunctionFunctionId(46),
                 type_: function_type.clone(),
                 list_type: ListListTypeId::new(list_type, list_type),
             },
             ListFunctionFunctionId::Function {
-                id: FunctionListFunctionFunctionId(45),
+                id: FunctionListFunctionFunctionId(47),
                 type_: function_type,
                 list_type: FunctionListTypeId::new(list_type, 0),
             },
         ];
 
-        for (expected, function) in (33..).zip(list_function_functions) {
+        for (expected, function) in (34..).zip(list_function_functions) {
             assert_tail_call_label_index(&function, expected);
         }
     }

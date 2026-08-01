@@ -152,6 +152,8 @@ pub enum InvalidExpressionType {
     UtfCodepoint,
     #[error("custom type")]
     Custom,
+    #[error("external type")]
+    External,
     #[error("Float")]
     Float,
     #[error("Bool")]
@@ -175,6 +177,7 @@ impl InvalidExpressionType {
             ValueType::BitArray => Self::BitArray,
             ValueType::UtfCodepoint => Self::UtfCodepoint,
             ValueType::Custom(_) => Self::Custom,
+            ValueType::External(_) => Self::External,
             ValueType::Float => Self::Float,
             ValueType::Bool => Self::Bool,
             ValueType::Nil => Self::Nil,
@@ -182,6 +185,25 @@ impl InvalidExpressionType {
             ValueType::List(_) => Self::List,
             ValueType::Function(_) => Self::Function,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::InvalidExpressionType;
+    use crate::plan::{ExternalType, ExternalTypeName, ValueType};
+
+    #[test]
+    fn classifies_external_value_types() {
+        let type_ = ExternalType::new(
+            ExternalTypeName::new("application".into(), "main".into(), "Token".into()),
+            Vec::new(),
+        );
+
+        assert_eq!(
+            InvalidExpressionType::from_value_type(ValueType::External(type_)),
+            InvalidExpressionType::External,
+        );
     }
 }
 

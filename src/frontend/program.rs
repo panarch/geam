@@ -597,6 +597,13 @@ fn host_type(type_: &HostTypeDescriptor) -> std::sync::Arc<gleam_core::type_::Ty
             Publicity::Public,
             arguments.iter().map(host_type).collect(),
         ),
+        HostTypeDescriptor::External { schema, arguments } => named(
+            schema.package(),
+            schema.module(),
+            schema.name(),
+            Publicity::Public,
+            arguments.iter().map(host_type).collect(),
+        ),
     }
 }
 

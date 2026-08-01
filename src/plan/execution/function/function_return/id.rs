@@ -1,13 +1,16 @@
 use crate::plan::execution::explain::FunctionLabel;
-use crate::plan::execution::function::FunctionLabelSource;
+use crate::plan::execution::function::{
+    ExecutionGraphProfile, FunctionLabelSource, HostedExecutionGraph,
+};
 use crate::plan::execution::type_::{
-    BitArrayListTypeId, BoolListTypeId, CustomListTypeId, FloatListTypeId, FunctionListTypeId,
-    FunctionType, IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId,
-    ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
+    BitArrayListTypeId, BoolListTypeId, CustomListTypeId, ExternalListTypeId, FloatListTypeId,
+    FunctionListTypeId, FunctionType, IntListTypeId, ListListTypeId, NilListTypeId,
+    ParameterListListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
+    UtfCodepointListTypeId,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum FunctionFunctionId {
+pub(crate) enum ProfiledFunctionFunctionId<Graph: ExecutionGraphProfile> {
     Generic(GenericFunctionFunctionId),
     Never(NeverFunctionFunctionId),
     Int(IntFunctionFunctionId),
@@ -16,12 +19,15 @@ pub(crate) enum FunctionFunctionId {
     BitArray(BitArrayFunctionFunctionId),
     UtfCodepoint(UtfCodepointFunctionFunctionId),
     Custom(CustomFunctionFunctionId),
+    External(Graph::ExternalFunctionFunctionId),
     Bool(BoolFunctionFunctionId),
     Nil(NilFunctionFunctionId),
     Tuple(TupleFunctionFunctionId),
-    List(ListFunctionFunctionId),
+    List(ProfiledListFunctionFunctionId<Graph>),
     Function(FunctionFunctionFunctionId),
 }
+
+pub(crate) type FunctionFunctionId = ProfiledFunctionFunctionId<HostedExecutionGraph>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IntFunctionFunctionId(pub(crate) usize);
@@ -56,6 +62,12 @@ pub struct CustomFunctionFunctionId {
     type_: crate::plan::execution::type_::CustomFunctionType,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExternalFunctionFunctionId {
+    index: usize,
+    type_: crate::plan::execution::type_::ExternalFunctionType,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoolFunctionFunctionId(pub(crate) usize);
 
@@ -87,6 +99,9 @@ pub struct ParameterListListFunctionFunctionId(pub(crate) usize);
 pub struct CustomListFunctionFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExternalListFunctionFunctionId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FloatListFunctionFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,7 +120,7 @@ pub struct ListListFunctionFunctionId(pub(crate) usize);
 pub struct FunctionListFunctionFunctionId(pub(crate) usize);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ListFunctionFunctionId {
+pub(crate) enum ProfiledListFunctionFunctionId<Graph: ExecutionGraphProfile> {
     Parameter {
         id: ParameterListFunctionFunctionId,
         type_: FunctionType,
@@ -141,6 +156,11 @@ pub enum ListFunctionFunctionId {
         type_: FunctionType,
         list_type: CustomListTypeId,
     },
+    External {
+        id: Graph::ExternalListFunctionFunctionId,
+        type_: FunctionType,
+        list_type: ExternalListTypeId,
+    },
     Float {
         id: FloatListFunctionFunctionId,
         type_: FunctionType,
@@ -173,6 +193,8 @@ pub enum ListFunctionFunctionId {
     },
 }
 
+pub(crate) type ListFunctionFunctionId = ProfiledListFunctionFunctionId<HostedExecutionGraph>;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionFunctionFunctionId {
     index: usize,
@@ -196,6 +218,38 @@ impl CustomFunctionFunctionId {
             index,
             type_: self.type_.clone(),
         }
+    }
+}
+
+impl ExternalFunctionFunctionId {
+    pub(in crate::plan::execution) fn new(
+        index: usize,
+        type_: crate::plan::execution::type_::ExternalFunctionType,
+    ) -> Self {
+        Self { index, type_ }
+    }
+
+    pub(crate) fn index(&self) -> usize {
+        self.index
+    }
+
+    pub(crate) fn with_index(&self, index: usize) -> Self {
+        Self {
+            index,
+            type_: self.type_.clone(),
+        }
+    }
+}
+
+impl FunctionLabelSource for ExternalFunctionFunctionId {
+    fn function_label(&self) -> FunctionLabel {
+        FunctionLabel::new("function.external", self.index())
+    }
+}
+
+impl FunctionLabelSource for ExternalListFunctionFunctionId {
+    fn function_label(&self) -> FunctionLabel {
+        FunctionLabel::new("function.list.external", self.0)
     }
 }
 
@@ -251,7 +305,7 @@ impl FunctionFunctionFunctionId {
 }
 
 #[cfg(test)]
-impl FunctionFunctionId {
+impl<Graph: ExecutionGraphProfile> ProfiledFunctionFunctionId<Graph> {
     pub(crate) fn generic(&self) -> Option<GenericFunctionFunctionId> {
         match self {
             Self::Generic(id) => Some(id.clone()),
@@ -289,7 +343,7 @@ impl FunctionFunctionId {
 }
 
 #[cfg(test)]
-impl ListFunctionFunctionId {
+impl<Graph: ExecutionGraphProfile> ProfiledListFunctionFunctionId<Graph> {
     pub(crate) fn type_(&self) -> &FunctionType {
         match self {
             Self::Parameter { type_, .. }
@@ -299,6 +353,7 @@ impl ListFunctionFunctionId {
             | Self::BitArray { type_, .. }
             | Self::UtfCodepoint { type_, .. }
             | Self::Custom { type_, .. }
+            | Self::External { type_, .. }
             | Self::Float { type_, .. }
             | Self::Bool { type_, .. }
             | Self::Nil { type_, .. }
@@ -309,7 +364,11 @@ impl ListFunctionFunctionId {
     }
 }
 
-impl FunctionLabelSource for FunctionFunctionId {
+impl<Graph: ExecutionGraphProfile> FunctionLabelSource for ProfiledFunctionFunctionId<Graph>
+where
+    Graph::ExternalFunctionFunctionId: FunctionLabelSource,
+    Graph::ExternalListFunctionFunctionId: FunctionLabelSource,
+{
     fn function_label(&self) -> FunctionLabel {
         match self {
             Self::Generic(id) => FunctionLabel::new("function.generic", id.index()),
@@ -320,6 +379,7 @@ impl FunctionLabelSource for FunctionFunctionId {
             Self::BitArray(id) => FunctionLabel::new("function.bit_array", id.0),
             Self::UtfCodepoint(id) => FunctionLabel::new("function.utf_codepoint", id.0),
             Self::Custom(id) => FunctionLabel::new("function.custom", id.index()),
+            Self::External(id) => id.function_label(),
             Self::Bool(id) => FunctionLabel::new("function.bool", id.0),
             Self::Nil(id) => FunctionLabel::new("function.nil", id.0),
             Self::Tuple(id) => FunctionLabel::new("function.tuple", id.0),
@@ -329,7 +389,10 @@ impl FunctionLabelSource for FunctionFunctionId {
     }
 }
 
-impl FunctionLabelSource for ListFunctionFunctionId {
+impl<Graph: ExecutionGraphProfile> FunctionLabelSource for ProfiledListFunctionFunctionId<Graph>
+where
+    Graph::ExternalListFunctionFunctionId: FunctionLabelSource,
+{
     fn function_label(&self) -> FunctionLabel {
         match self {
             Self::Parameter { id, .. } => FunctionLabel::new("function.list.parameter", id.0),
@@ -343,6 +406,7 @@ impl FunctionLabelSource for ListFunctionFunctionId {
                 FunctionLabel::new("function.list.utf_codepoint", id.0)
             }
             Self::Custom { id, .. } => FunctionLabel::new("function.list.custom", id.0),
+            Self::External { id, .. } => id.function_label(),
             Self::Float { id, .. } => FunctionLabel::new("function.list.float", id.0),
             Self::Bool { id, .. } => FunctionLabel::new("function.list.bool", id.0),
             Self::Nil { id, .. } => FunctionLabel::new("function.list.nil", id.0),
@@ -355,10 +419,12 @@ impl FunctionLabelSource for ListFunctionFunctionId {
 
 #[cfg(test)]
 mod explain_tests {
-    use super::FunctionFunctionId;
     use crate::plan::execution::ExecutionPlan;
     use crate::plan::execution::explain;
-    use crate::plan::execution::function::{FunctionLabelSource, RuntimeFunctionId};
+    use crate::plan::execution::function::{
+        CoreRuntimeFunctionId, FunctionLabelSource, RuntimeFunctionFunctionTarget,
+        RuntimeFunctionId,
+    };
 
     #[test]
     fn labels_function_return_families() {
@@ -490,8 +556,10 @@ mod explain_tests {
         explain::with_execution_plan("pub fn main() { 1 }", main_function_id);
     }
 
-    fn main_function_id(plan: &ExecutionPlan) -> FunctionFunctionId {
-        let RuntimeFunctionId::Function { id, .. } = plan.main_runtime() else {
+    fn main_function_id(plan: &ExecutionPlan) -> RuntimeFunctionFunctionTarget {
+        let RuntimeFunctionId::Core(CoreRuntimeFunctionId::Function { id, .. }) =
+            plan.main_runtime()
+        else {
             panic!("source should lower a function-returning main function");
         };
         id
@@ -508,14 +576,19 @@ mod explain_tests {
 mod tests {
     use super::{
         BitArrayFunctionFunctionId, BoolListFunctionFunctionId, CustomFunctionFunctionId,
-        FloatListFunctionFunctionId, FunctionFunctionId, FunctionListFunctionFunctionId,
-        IntFunctionFunctionId, IntListFunctionFunctionId, ListFunctionFunctionId,
-        ListListFunctionFunctionId, NeverFunctionFunctionId, NilListFunctionFunctionId,
-        ParameterListFunctionFunctionId, ParameterListListFunctionFunctionId,
-        StringListFunctionFunctionId, TupleListFunctionFunctionId, UtfCodepointFunctionFunctionId,
+        ExternalFunctionFunctionId, ExternalListFunctionFunctionId, FloatListFunctionFunctionId,
+        FunctionFunctionId, FunctionListFunctionFunctionId, IntFunctionFunctionId,
+        IntListFunctionFunctionId, ListFunctionFunctionId, ListListFunctionFunctionId,
+        NeverFunctionFunctionId, NilListFunctionFunctionId, ParameterListFunctionFunctionId,
+        ParameterListListFunctionFunctionId, StringListFunctionFunctionId,
+        TupleListFunctionFunctionId, UtfCodepointFunctionFunctionId,
     };
-    use crate::plan::execution::function::RuntimeFunctionId;
+    use crate::plan::execution::function::{
+        CoreRuntimeFunctionId, FunctionLabelSource, ProfiledFunctionFunctionId,
+        ProfiledListFunctionFunctionId, RuntimeFunctionFunctionTarget, RuntimeFunctionId,
+    };
     use crate::plan::{CustomType, CustomTypeName, ValueType};
+    use std::convert::Infallible;
 
     fn custom_type() -> CustomType {
         CustomType::new(
@@ -648,6 +721,50 @@ mod tests {
     }
 
     #[test]
+    fn external_function_function_id_preserves_its_index_and_label() {
+        let external_type = crate::plan::execution::type_::ExternalTypeId::new(0);
+        let function_type = crate::plan::execution::type_::ExternalFunctionType::from_shapes(
+            crate::plan::execution::type_::FunctionType::new(
+                Vec::new(),
+                crate::plan::execution::type_::ValueType::External(external_type),
+            ),
+            Vec::new(),
+            external_type,
+        );
+        let id = ExternalFunctionFunctionId::new(2, function_type);
+
+        assert_eq!(id.index(), 2);
+        assert_eq!(id.with_index(4).index(), 4);
+        crate::plan::execution::explain::assert_written("function.external#2", |output| {
+            FunctionFunctionId::External(id.clone())
+                .function_label()
+                .write(output);
+        });
+    }
+
+    #[test]
+    fn external_list_function_function_id_preserves_its_type_and_label() {
+        let list_type = crate::plan::execution::type_::ExternalListTypeId::new(
+            crate::plan::execution::type_::ListTypeId::new(0),
+            crate::plan::execution::type_::ExternalTypeId::new(0),
+        );
+        let function_type = crate::plan::execution::type_::FunctionType::new(
+            Vec::new(),
+            crate::plan::execution::type_::ValueType::List(list_type.list_type()),
+        );
+        let id = ListFunctionFunctionId::External {
+            id: ExternalListFunctionFunctionId(3),
+            type_: function_type.clone(),
+            list_type,
+        };
+
+        assert_eq!(id.type_(), &function_type);
+        crate::plan::execution::explain::assert_written("function.list.external#3", |output| {
+            id.function_label().write(output)
+        });
+    }
+
+    #[test]
     fn bit_array_list_function_function_id_preserves_exact_return_type() {
         let plan = execution_plan("pub fn main() -> fn() -> List(BitArray) { fn() { [] } }");
         let list_type = plan.bit_array_list_function_id(0).type_id();
@@ -660,13 +777,20 @@ mod tests {
             type_: return_type.clone(),
             list_type,
         };
+        let plain_id = ProfiledListFunctionFunctionId::<Infallible>::BitArray {
+            id: super::BitArrayListFunctionFunctionId(0),
+            type_: return_type.clone(),
+            list_type,
+        };
 
         assert_eq!(
             plan.main_runtime(),
-            RuntimeFunctionId::Function {
-                id: FunctionFunctionId::List(id.clone()),
+            RuntimeFunctionId::Core(CoreRuntimeFunctionId::Function {
+                id: RuntimeFunctionFunctionTarget::Core(
+                    ProfiledFunctionFunctionId::List(plain_id,)
+                ),
                 return_type: return_type.clone(),
-            },
+            }),
         );
 
         assert_eq!(
@@ -691,13 +815,20 @@ mod tests {
             type_: return_type.clone(),
             list_type,
         };
+        let plain_id = ProfiledListFunctionFunctionId::<Infallible>::UtfCodepoint {
+            id: super::UtfCodepointListFunctionFunctionId(0),
+            type_: return_type.clone(),
+            list_type,
+        };
 
         assert_eq!(
             plan.main_runtime(),
-            RuntimeFunctionId::Function {
-                id: FunctionFunctionId::List(id.clone()),
+            RuntimeFunctionId::Core(CoreRuntimeFunctionId::Function {
+                id: RuntimeFunctionFunctionTarget::Core(
+                    ProfiledFunctionFunctionId::List(plain_id,)
+                ),
                 return_type: return_type.clone(),
-            },
+            }),
         );
         assert_eq!(
             plan.function_type(id.type_()),
@@ -723,13 +854,20 @@ mod tests {
             type_: return_type.clone(),
             list_type,
         };
+        let plain_id = ProfiledListFunctionFunctionId::<Infallible>::Custom {
+            id: super::CustomListFunctionFunctionId(0),
+            type_: return_type.clone(),
+            list_type,
+        };
 
         assert_eq!(
             plan.main_runtime(),
-            RuntimeFunctionId::Function {
-                id: FunctionFunctionId::List(id.clone()),
+            RuntimeFunctionId::Core(CoreRuntimeFunctionId::Function {
+                id: RuntimeFunctionFunctionTarget::Core(
+                    ProfiledFunctionFunctionId::List(plain_id,)
+                ),
                 return_type: return_type.clone(),
-            },
+            }),
         );
         assert_eq!(
             plan.function_type(id.type_()),

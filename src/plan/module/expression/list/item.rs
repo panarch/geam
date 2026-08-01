@@ -5,15 +5,16 @@ use super::{
 use crate::plan::{
     BitArrayExpr, BitArrayListLocalId, BoolExpr, BoolListLocalId,
     ConstantBitArrayListInstantiation, ConstantBoolListInstantiation,
-    ConstantCustomListInstantiation, ConstantFloatListInstantiation,
-    ConstantFunctionListInstantiation, ConstantGenericListInstantiation,
-    ConstantIntListInstantiation, ConstantListListInstantiation, ConstantNilListInstantiation,
-    ConstantParameterListListInstantiation, ConstantStringListInstantiation,
-    ConstantTupleListInstantiation, ConstantUtfCodepointListInstantiation, CustomExpr,
-    CustomListLocalId, CustomType, Expr, ExprKind, FloatExpr, FloatListLocalId, FunctionExpr,
-    FunctionInstantiation, FunctionListLocalId, FunctionType, GenericExpr, GenericListLocalId,
-    IntExpr, IntListLocalId, ListListLocalId, NilExpr, NilListLocalId, StringExpr,
-    StringListLocalId, TupleExpr, TupleListLocalId, TypeParameterId, UtfCodepointExpr,
+    ConstantCustomListInstantiation, ConstantExternalListInstantiation,
+    ConstantFloatListInstantiation, ConstantFunctionListInstantiation,
+    ConstantGenericListInstantiation, ConstantIntListInstantiation, ConstantListListInstantiation,
+    ConstantNilListInstantiation, ConstantParameterListListInstantiation,
+    ConstantStringListInstantiation, ConstantTupleListInstantiation,
+    ConstantUtfCodepointListInstantiation, CustomExpr, CustomListLocalId, CustomType, Expr,
+    ExprKind, ExternalExpr, ExternalListLocalId, ExternalType, FloatExpr, FloatListLocalId,
+    FunctionExpr, FunctionInstantiation, FunctionListLocalId, FunctionType, GenericExpr,
+    GenericListLocalId, IntExpr, IntListLocalId, ListListLocalId, NilExpr, NilListLocalId,
+    StringExpr, StringListLocalId, TupleExpr, TupleListLocalId, TypeParameterId, UtfCodepointExpr,
     UtfCodepointListLocalId, ValueStorageShape, ValueType,
 };
 use std::fmt::Debug;
@@ -83,6 +84,11 @@ pub(crate) struct CustomListItem {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ExternalListItem {
+    pub(super) item_type: ExternalType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FloatListItem;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -146,6 +152,16 @@ impl CustomListItem {
     }
 
     pub(crate) fn item_type(&self) -> CustomType {
+        self.item_type.clone()
+    }
+}
+
+impl ExternalListItem {
+    pub(in crate::plan::module) fn new(item_type: ExternalType) -> Self {
+        Self { item_type }
+    }
+
+    pub(crate) fn item_type(&self) -> ExternalType {
         self.item_type.clone()
     }
 }
@@ -413,6 +429,44 @@ impl ListItem for CustomListItem {
 
     fn elements_to_facade(item: Self, values: Vec<Self::ElementExpr>) -> ListElements {
         ListElements::Custom {
+            item_type: item.item_type,
+            values,
+        }
+    }
+}
+
+impl ListItem for ExternalListItem {
+    type ElementExpr = ExternalExpr;
+    type IndexSource = ListListExpr;
+    type Local = ExternalListLocalId;
+    type Function = FunctionInstantiation;
+    type Constant = ConstantExternalListInstantiation;
+
+    fn value_type(&self) -> ValueType {
+        ValueType::External(self.item_type.clone())
+    }
+
+    fn elements_from_exprs(
+        item: &Self,
+        values: Vec<Expr>,
+    ) -> Result<Vec<Self::ElementExpr>, ListElementTypeMismatch> {
+        values
+            .into_iter()
+            .map(|value| match value {
+                Expr {
+                    kind: ExprKind::External(value),
+                    ..
+                } if value.type_() == &item.item_type => Ok(value),
+                value => Err(ListElementTypeMismatch {
+                    expected: item.value_type(),
+                    actual: value.value_type(),
+                }),
+            })
+            .collect()
+    }
+
+    fn elements_to_facade(item: Self, values: Vec<Self::ElementExpr>) -> ListElements {
+        ListElements::External {
             item_type: item.item_type,
             values,
         }

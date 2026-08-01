@@ -428,7 +428,8 @@ fn seals_an_explicit_non_returning_provider_with_an_unresolved_source_return() {
 fn stop() -> value
 
 pub fn main() {
-  stop()
+  let stop_function = stop
+  stop_function()
 }
 "#;
     let typed = compile_typed_host_program(
@@ -453,7 +454,8 @@ main never#0
 function never#0
   entry b0 params=[] captures=[]
   block b0 params=[]
-    tail never#1 args=[]
+    %function.never#0:shape#1(fn() -> param#0) = function[Never] reference never#1
+    never_call %function.never#0 args=[]
 
 function never#1
   host application::main.stop signature=fn() -> param#0

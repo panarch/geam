@@ -132,6 +132,9 @@ fn invalid_host_custom_type_argument_count(
                 }
                 pending.extend(custom.arguments().iter().rev());
             }
+            crate::plan::ValueShape::External(external) => {
+                pending.extend(external.arguments().iter().rev());
+            }
             crate::plan::ValueShape::Parameter(_)
             | crate::plan::ValueShape::Int
             | crate::plan::ValueShape::Float
@@ -210,6 +213,19 @@ fn host_schema_type(type_: &crate::plan::CustomTypeTemplate) -> crate::host::Hos
             name.name().clone(),
             arguments.iter().map(host_schema_type),
         ),
+        T::External { name, arguments } => H::External {
+            schema: crate::host::HostExternalTypeSchema::new(
+                name.package().clone(),
+                name.module().clone(),
+                name.name().clone(),
+                arguments.len(),
+            ),
+            arguments: arguments
+                .iter()
+                .map(host_schema_type)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        },
         T::Parameter(parameter) => H::parameter(parameter.0),
     }
 }
@@ -223,9 +239,9 @@ mod tests {
     use crate::plan::{
         CustomConstructorDefinition, CustomConstructorRefinement, CustomFieldDefinition,
         CustomTypeDefinition, CustomTypeName, CustomTypeParameterId, CustomTypePublicity,
-        CustomTypeTemplate, CustomValueShape, FunctionShape, FunctionTemplateId,
-        FunctionTemplateSignature, HostCallSite, ModuleId, SourceSpan, TypeParameterId, TypeScheme,
-        ValueShape,
+        CustomTypeTemplate, CustomValueShape, ExternalTypeName, ExternalValueShape, FunctionShape,
+        FunctionTemplateId, FunctionTemplateSignature, HostCallSite, ModuleId, SourceSpan,
+        TypeParameterId, TypeScheme, ValueShape,
     };
     use crate::planner::module::constant::ConstantSignatures;
     use crate::planner::module::registry::{ModuleRegistry, ProgramRegistry};
@@ -275,6 +291,25 @@ mod tests {
                     "Tree",
                     [HostSchemaType::parameter(0)],
                 ),
+            ),
+            (
+                CustomTypeTemplate::External {
+                    name: ExternalTypeName::new(
+                        "storage".into(),
+                        "storage/cell".into(),
+                        "Cell".into(),
+                    ),
+                    arguments: vec![CustomTypeTemplate::Int],
+                },
+                HostSchemaType::External {
+                    schema: crate::host::HostExternalTypeSchema::new(
+                        "storage",
+                        "storage/cell",
+                        "Cell",
+                        1,
+                    ),
+                    arguments: vec![HostSchemaType::Int].into_boxed_slice(),
+                },
             ),
             (
                 CustomTypeTemplate::Parameter(CustomTypeParameterId(1)),
@@ -344,6 +379,7 @@ mod tests {
         let registry = ProgramRegistry::new(vec![ModuleRegistry::new(
             "main".into(),
             vec![definition],
+            Vec::new(),
             std::collections::HashMap::new(),
             ConstantSignatures::default(),
         )]);
@@ -362,13 +398,16 @@ mod tests {
         );
         let parameter = TypeParameterId(0);
         let shape = FunctionShape::new(
-            vec![ValueShape::List(Box::new(ValueShape::Custom(
-                CustomValueShape::new(
-                    custom_type,
-                    vec![ValueShape::Parameter(parameter)],
-                    CustomConstructorRefinement::Any,
-                ),
-            )))],
+            vec![ValueShape::External(ExternalValueShape::new(
+                ExternalTypeName::new("storage".into(), "storage/cell".into(), "Cell".into()),
+                vec![ValueShape::List(Box::new(ValueShape::Custom(
+                    CustomValueShape::new(
+                        custom_type,
+                        vec![ValueShape::Parameter(parameter)],
+                        CustomConstructorRefinement::Any,
+                    ),
+                )))],
+            ))],
             ValueShape::Bool,
         );
         let module = ModuleId::new(0);
@@ -414,6 +453,7 @@ mod tests {
         let registry = ProgramRegistry::new(vec![ModuleRegistry::new(
             "domain/marker".into(),
             vec![definition],
+            Vec::new(),
             std::collections::HashMap::new(),
             ConstantSignatures::default(),
         )]);
@@ -573,6 +613,7 @@ mod tests {
             let registry = ProgramRegistry::new(vec![ModuleRegistry::new(
                 "domain/marker".into(),
                 vec![definition],
+                Vec::new(),
                 std::collections::HashMap::new(),
                 ConstantSignatures::default(),
             )]);
@@ -631,6 +672,7 @@ mod tests {
             let registry = ProgramRegistry::new(vec![ModuleRegistry::new(
                 "domain/marker".into(),
                 vec![definition],
+                Vec::new(),
                 std::collections::HashMap::new(),
                 ConstantSignatures::default(),
             )]);
@@ -677,6 +719,7 @@ mod tests {
         let registry = ProgramRegistry::new(vec![ModuleRegistry::new(
             "domain/marker".into(),
             vec![definition],
+            Vec::new(),
             std::collections::HashMap::new(),
             ConstantSignatures::default(),
         )]);
@@ -737,6 +780,7 @@ mod tests {
         let registry = ProgramRegistry::new(vec![ModuleRegistry::new(
             "domain/box".into(),
             vec![definition],
+            Vec::new(),
             std::collections::HashMap::new(),
             ConstantSignatures::default(),
         )]);

@@ -1,5 +1,4 @@
 use super::{AdditionalFunctions, FunctionTableBuilder, LoweredSpecialization};
-use crate::host::HostProfile;
 use crate::plan::execution::function::{FunctionTables, ValueFunctionEntry};
 use crate::plan::execution::host::HostedExecutionProfile;
 use crate::plan::execution::lowering::SpecializationOutcome;
@@ -16,10 +15,10 @@ pub(in crate::plan::execution::lowering) fn lowered_host_function<Body, Host>(
 }
 
 impl FunctionTableBuilder {
-    pub(in crate::plan::execution::lowering) fn finish_hosted<Profile: HostProfile>(
+    pub(in crate::plan::execution::lowering) fn finish_hosted(
         self,
-        functions: AdditionalFunctions<HostedExecutionProfile<Profile>>,
-    ) -> SpecializationOutcome<Box<FunctionTables<HostedExecutionProfile<Profile>>>> {
-        self.finish_profile(functions)
+        functions: AdditionalFunctions<HostedExecutionProfile>,
+    ) -> SpecializationOutcome<Box<FunctionTables<HostedExecutionProfile>>> {
+        FunctionTableBuilder::finish_profile(self.profile_hosted(), functions)
     }
 }

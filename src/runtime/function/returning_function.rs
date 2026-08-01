@@ -1,22 +1,25 @@
 use super::{evaluate_entry, run_tail};
 use crate::plan::execution::function::{
     BitArrayFunctionFunctionId, BoolFunctionFunctionId, CustomFunctionFunctionId,
-    FloatFunctionFunctionId, FunctionFunctionFunctionId, FunctionFunctionId,
-    GenericFunctionFunctionId, IntFunctionFunctionId, ListFunctionFunctionId,
-    NeverFunctionFunctionId, NilFunctionFunctionId, StringFunctionFunctionId,
-    TupleFunctionFunctionId, UtfCodepointFunctionFunctionId,
+    ExternalFunctionFunctionId, ExternalListFunctionFunctionId, FloatFunctionFunctionId,
+    FunctionFunctionFunctionId, GenericFunctionFunctionId, IntFunctionFunctionId,
+    NeverFunctionFunctionId, NilFunctionFunctionId, ProfiledFunctionFunctionId,
+    ProfiledListFunctionFunctionId, StringFunctionFunctionId, TupleFunctionFunctionId,
+    UtfCodepointFunctionFunctionId,
 };
+use crate::plan::execution::graph::ExternalFunctionCallTarget;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::evaluated::{
     EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCustomFunction,
-    EvaluatedFloatFunction, EvaluatedFunctionFunction, EvaluatedFunctionValue,
-    EvaluatedGenericFunction, EvaluatedIntFunction, EvaluatedListFunction, EvaluatedNeverFunction,
-    EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
+    EvaluatedExternalFunction, EvaluatedFloatFunction, EvaluatedFunctionFunction,
+    EvaluatedFunctionValue, EvaluatedGenericFunction, EvaluatedIntFunction, EvaluatedListFunction,
+    EvaluatedNeverFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
     EvaluatedUtfCodepointFunction,
 };
 use crate::runtime::graph::RetainedValues;
 use crate::runtime::state::RuntimeStateFor;
+use std::convert::Infallible;
 
 pub(in crate::runtime) fn run_int_function<Plan: ExecutableRuntimePlan>(
     plan: &Plan,
@@ -266,6 +269,37 @@ pub(in crate::runtime) fn run_custom_function<Plan: ExecutableRuntimePlan>(
     )
 }
 
+pub(in crate::runtime) fn run_external_function<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
+    function: ExternalFunctionFunctionId,
+    origin: HostCallOrigin,
+    inputs: RetainedValues,
+) -> ExecutionResult<EvaluatedExternalFunction> {
+    run_tail(
+        plan,
+        state,
+        function,
+        origin,
+        inputs,
+        |plan, state, function, origin, inputs| {
+            evaluate_entry(
+                plan,
+                state,
+                plan.external_function_function(function),
+                origin,
+                inputs,
+            )
+        },
+        |_, function, target| {
+            (
+                function.with_index(*target.function()),
+                HostCallOrigin::source(target.site().clone()),
+            )
+        },
+    )
+}
+
 pub(in crate::runtime) fn run_bool_function<Plan: ExecutableRuntimePlan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
@@ -359,10 +393,10 @@ pub(in crate::runtime) fn run_tuple_function<Plan: ExecutableRuntimePlan>(
     )
 }
 
-pub(in crate::runtime) fn run_list_function<Plan: ExecutableRuntimePlan>(
+fn run_core_list_function<Plan: ExecutableRuntimePlan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
-    function: ListFunctionFunctionId,
+    function: ProfiledListFunctionFunctionId<Infallible>,
     origin: HostCallOrigin,
     inputs: RetainedValues,
 ) -> ExecutionResult<EvaluatedListFunction> {
@@ -376,7 +410,7 @@ pub(in crate::runtime) fn run_list_function<Plan: ExecutableRuntimePlan>(
             evaluate_entry(
                 plan,
                 state,
-                plan.list_function_function(function),
+                plan.core_list_function_function(function),
                 origin,
                 inputs,
             )
@@ -384,6 +418,37 @@ pub(in crate::runtime) fn run_list_function<Plan: ExecutableRuntimePlan>(
         |_, _, target| {
             (
                 target.function().clone(),
+                HostCallOrigin::source(target.site().clone()),
+            )
+        },
+    )
+}
+
+fn run_external_list_function<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
+    function: ExternalListFunctionFunctionId,
+    origin: HostCallOrigin,
+    inputs: RetainedValues,
+) -> ExecutionResult<EvaluatedListFunction> {
+    run_tail(
+        plan,
+        state,
+        function,
+        origin,
+        inputs,
+        |plan, state, function, origin, inputs| {
+            evaluate_entry(
+                plan,
+                state,
+                plan.external_list_function_function(*function),
+                origin,
+                inputs,
+            )
+        },
+        |_, _, target| {
+            (
+                *target.function(),
                 HostCallOrigin::source(target.site().clone()),
             )
         },
@@ -421,52 +486,68 @@ pub(in crate::runtime) fn run_function_function<Plan: ExecutableRuntimePlan>(
     )
 }
 
-pub(in crate::runtime) fn run_function<Plan: ExecutableRuntimePlan>(
+pub(in crate::runtime) fn run_core_function<Plan: ExecutableRuntimePlan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
-    function: FunctionFunctionId,
+    function: ProfiledFunctionFunctionId<Infallible>,
+    origin: HostCallOrigin,
+    inputs: RetainedValues,
+) -> ExecutionResult<EvaluatedFunctionValue> {
+    use ProfiledFunctionFunctionId as F;
+
+    match function {
+        F::Generic(function) => {
+            run_generic_function(plan, state, function, origin, inputs).map(Into::into)
+        }
+        F::Never(function) => {
+            run_never_function(plan, state, function, origin, inputs).map(Into::into)
+        }
+        F::Int(function) => run_int_function(plan, state, function, origin, inputs).map(Into::into),
+        F::Float(function) => {
+            run_float_function(plan, state, function, origin, inputs).map(Into::into)
+        }
+        F::String(function) => {
+            run_string_function(plan, state, function, origin, inputs).map(Into::into)
+        }
+        F::BitArray(function) => {
+            run_bit_array_function(plan, state, function, origin, inputs).map(Into::into)
+        }
+        F::UtfCodepoint(function) => {
+            run_utf_codepoint_function(plan, state, function, origin, inputs).map(Into::into)
+        }
+        F::Custom(function) => {
+            run_custom_function(plan, state, function, origin, inputs).map(Into::into)
+        }
+        F::External(function) => match function {},
+        F::Bool(function) => {
+            run_bool_function(plan, state, function, origin, inputs).map(Into::into)
+        }
+        F::Nil(function) => run_nil_function(plan, state, function, origin, inputs).map(Into::into),
+        F::Tuple(function) => {
+            run_tuple_function(plan, state, function, origin, inputs).map(Into::into)
+        }
+        F::List(function) => {
+            run_core_list_function(plan, state, function, origin, inputs).map(Into::into)
+        }
+        F::Function(function) => {
+            run_function_function(plan, state, function, origin, inputs).map(Into::into)
+        }
+    }
+}
+
+pub(in crate::runtime) fn run_external_function_function<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
+    function: ExternalFunctionCallTarget,
     origin: HostCallOrigin,
     inputs: RetainedValues,
 ) -> ExecutionResult<EvaluatedFunctionValue> {
     match function {
-        FunctionFunctionId::Generic(function) => {
-            run_generic_function(plan, state, function, origin, inputs).map(Into::into)
+        ExternalFunctionCallTarget::Function(function) => {
+            run_external_function(plan, state, function, origin, inputs).map(Into::into)
         }
-        FunctionFunctionId::Never(function) => {
-            run_never_function(plan, state, function, origin, inputs).map(Into::into)
-        }
-        FunctionFunctionId::Int(function) => {
-            run_int_function(plan, state, function, origin, inputs).map(Into::into)
-        }
-        FunctionFunctionId::Float(function) => {
-            run_float_function(plan, state, function, origin, inputs).map(Into::into)
-        }
-        FunctionFunctionId::String(function) => {
-            run_string_function(plan, state, function, origin, inputs).map(Into::into)
-        }
-        FunctionFunctionId::BitArray(function) => {
-            run_bit_array_function(plan, state, function, origin, inputs).map(Into::into)
-        }
-        FunctionFunctionId::UtfCodepoint(function) => {
-            run_utf_codepoint_function(plan, state, function, origin, inputs).map(Into::into)
-        }
-        FunctionFunctionId::Custom(function) => {
-            run_custom_function(plan, state, function, origin, inputs).map(Into::into)
-        }
-        FunctionFunctionId::Bool(function) => {
-            run_bool_function(plan, state, function, origin, inputs).map(Into::into)
-        }
-        FunctionFunctionId::Nil(function) => {
-            run_nil_function(plan, state, function, origin, inputs).map(Into::into)
-        }
-        FunctionFunctionId::Tuple(function) => {
-            run_tuple_function(plan, state, function, origin, inputs).map(Into::into)
-        }
-        FunctionFunctionId::List(function) => {
-            run_list_function(plan, state, function, origin, inputs).map(Into::into)
-        }
-        FunctionFunctionId::Function(function) => {
-            run_function_function(plan, state, function, origin, inputs).map(Into::into)
+        ExternalFunctionCallTarget::ListFunction { id, .. } => {
+            run_external_list_function(plan, state, id, origin, inputs).map(Into::into)
         }
     }
 }

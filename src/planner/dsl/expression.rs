@@ -44,7 +44,7 @@ pub(crate) struct Tuple(TupleExpr);
 
 pub(crate) struct List(ListExpr);
 
-pub(crate) struct Function(FunctionExpr);
+pub(crate) struct Function(pub(in crate::planner::dsl) FunctionExpr);
 
 pub(crate) struct IntFunction(IntFunctionExpr);
 

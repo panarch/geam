@@ -32,6 +32,9 @@ pub(super) fn function_return_expr(
         (ExprKind::Custom(actual), ValueShape::Custom(signature_shape)) if compatible => Ok(
             ReturnExpr::custom_body(primitive::custom_return(signature_shape.clone(), actual)),
         ),
+        (ExprKind::External(actual), ValueShape::External(signature_shape)) if compatible => Ok(
+            ReturnExpr::external_body(primitive::external_return(signature_shape.clone(), actual)),
+        ),
         (ExprKind::Float(actual), _) if compatible => {
             Ok(ReturnExpr::float_body(primitive::float_return(actual)))
         }
@@ -91,6 +94,10 @@ fn list_return_expr(actual: ListExpr) -> ReturnExpr {
         ListExpr::Custom(actual) => {
             let item_type = actual.item().item_type();
             ReturnExpr::custom_list_body(item_type, primitive::typed_list_return_body(actual))
+        }
+        ListExpr::External(actual) => {
+            let item_type = actual.item().item_type();
+            ReturnExpr::external_list_body(item_type, primitive::typed_list_return_body(actual))
         }
         ListExpr::Float(actual) => {
             ReturnExpr::float_list_body(primitive::typed_list_return_body(actual))

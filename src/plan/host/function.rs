@@ -11,6 +11,7 @@ pub struct HostFunctionTemplate {
     parameters: Box<[crate::host::HostTypeDescriptor]>,
     return_: crate::host::HostTypeDescriptor,
     custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
+    external_schemas: Box<[crate::host::HostExternalTypeSchema]>,
     type_: FunctionType,
 }
 
@@ -29,6 +30,7 @@ impl HostFunctionTemplate {
             parameters: schema.parameters().to_vec().into_boxed_slice(),
             return_: schema.return_type().clone(),
             custom_schemas: schema.custom_schemas().to_vec().into_boxed_slice(),
+            external_schemas: schema.external_schemas().to_vec().into_boxed_slice(),
             type_: schema.type_().clone(),
         }
     }
@@ -67,6 +69,10 @@ impl HostFunctionTemplate {
 
     pub(crate) fn custom_schemas(&self) -> &[crate::host::HostCustomTypeSchema] {
         &self.custom_schemas
+    }
+
+    pub(crate) fn external_schemas(&self) -> &[crate::host::HostExternalTypeSchema] {
+        &self.external_schemas
     }
 
     pub fn scheme(&self) -> &TypeScheme {

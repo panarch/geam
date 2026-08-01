@@ -1,11 +1,11 @@
-use super::super::{call_args, custom, list, lower_function_call, tuple};
+use super::super::{call_args, custom, list, tuple};
 use super::{
-    DraftCursor, DraftFlow, DraftGraph, FunctionTarget, Representability, SpecializedFunctionShape,
-    closure, function_function_expr, reference, source_stop,
+    DraftCursor, DraftFlow, DraftFunctionTarget, DraftGraph, Representability,
+    SpecializedFunctionShape, closure, reference, source_stop,
 };
 use crate::plan::execution::lowering::graph::{
     DraftBitArrayFunction, DraftBoolFunction, DraftFloatFunction, DraftFunction,
-    DraftGenericFunction, DraftGraphValue, DraftIntFunction, DraftNilFunction, DraftStringFunction,
+    DraftGenericFunction, DraftIntFunction, DraftNilFunction, DraftStringFunction,
     DraftTupleFunction, DraftUtfCodepointFunction,
 };
 use crate::plan::execution::lowering::specialization::StoredValueShape;
@@ -38,6 +38,9 @@ pub(in crate::plan::execution::lowering) fn executable_function_expr(
             expression, return_, shape, cursor, graph, context,
         )
         .map(|flow| flow.map(|value| value.value().clone())),
+        S::External(return_) => super::external::generic_external_function_expr(
+            expression, return_, shape, cursor, graph, context,
+        ),
         S::Bool => generic_bool_function_expr(expression, shape, cursor, graph, context)
             .map(|flow| flow.map(|value| value.value().clone())),
         S::Nil => generic_nil_function_expr(expression, shape, cursor, graph, context)
@@ -46,12 +49,10 @@ pub(in crate::plan::execution::lowering) fn executable_function_expr(
             .map(|flow| flow.map(|value| value.value().clone())),
         S::List(item) => {
             super::list::generic_list_function_expr(expression, item, shape, cursor, graph, context)
-                .map(|flow| flow.map(|value| value.value().clone()))
         }
         S::Function(return_) => super::returning_function::generic_function_function_expr(
             expression, return_, shape, cursor, graph, context,
-        )
-        .map(|flow| flow.map(|value| value.value().clone())),
+        ),
     }
 }
 
@@ -71,7 +72,7 @@ pub(super) fn executable_kind_lowering<Value, Make, Constant, Target, Direct, Br
     branch: Branch,
 ) -> ExecutableKindLowering<Make, Constant, Target, Direct, Branch>
 where
-    Value: DraftGraphValue,
+    Value: crate::plan::execution::lowering::graph::DraftGraphValue,
     Make: Copy + Fn(DraftFunction) -> Value,
     Constant: Copy
         + Fn(
@@ -82,7 +83,7 @@ where
         + Fn(
             &module::FunctionInstantiation,
             &mut super::super::super::LoweringContext,
-        ) -> Representability<FunctionTarget>,
+        ) -> Representability<DraftFunctionTarget>,
     Direct: Copy
         + Fn(
             &module::FunctionInstantiation,
@@ -114,7 +115,7 @@ pub(super) fn lower_executable_kind<Value, Make, Constant, Target, Direct, Branc
     lowering: ExecutableKindLowering<Make, Constant, Target, Direct, Branch>,
 ) -> Representability<DraftFlow<Value>>
 where
-    Value: DraftGraphValue,
+    Value: crate::plan::execution::lowering::graph::DraftGraphValue,
     Make: Copy + Fn(DraftFunction) -> Value,
     Constant: Copy
         + Fn(
@@ -125,7 +126,7 @@ where
         + Fn(
             &module::FunctionInstantiation,
             &mut super::super::super::LoweringContext,
-        ) -> Representability<FunctionTarget>,
+        ) -> Representability<DraftFunctionTarget>,
     Direct: Copy
         + Fn(
             &module::FunctionInstantiation,
@@ -207,28 +208,8 @@ where
             function,
             args,
             site,
-        } => lower_function_call(
-            args,
-            cursor,
-            graph,
-            context,
-            |cursor, graph, context| function_function_expr(function, cursor, graph, context),
-            |cursor, graph, context| {
-                super::evaluated_function_function_expr(function, cursor, graph, context)
-            },
-            |mut cursor, function, args, graph, _| {
-                let value = graph.function_instruction(
-                    &mut cursor,
-                    shape.clone(),
-                    I::FunctionCall {
-                        function: function.value().clone(),
-                        args,
-                        site: site.clone(),
-                    },
-                );
-                DraftFlow::value(cursor, make(value))
-            },
-        ),
+        } => super::function_value_call(function, args, site, shape, cursor, graph, context)
+            .map(|flow| flow.map(make)),
         E::TupleIndex {
             tuple: source,
             index,
@@ -376,7 +357,9 @@ macro_rules! generic_primitive_function {
                         <$value>::new,
                         |value, context| context.$constant(value, shape).map(|id| id.index()),
                         |function, context| {
-                            context.$function_id(function).map(FunctionTarget::$target)
+                            context
+                                .$function_id(function)
+                                .map(DraftFunctionTarget::$target)
                         },
                         |function, context| {
                             context
@@ -492,8 +475,9 @@ macro_rules! define_symbolic_fixed_function {
                     DraftFlow::value(cursor, DraftGenericFunction::new(value))
                 }),
                 E::Reference(value) => {
-                    let target =
-                        FunctionTarget::Generic(context.generic_callable_id(value.instantiation()));
+                    let target = DraftFunctionTarget::Generic(
+                        context.generic_callable_id(value.instantiation()),
+                    );
                     Representability::Inhabited(
                         reference(shape.clone(), target, cursor, graph)
                             .map(DraftGenericFunction::new),
@@ -502,7 +486,8 @@ macro_rules! define_symbolic_fixed_function {
                 E::Closure {
                     function, captures, ..
                 } => {
-                    let target = FunctionTarget::Generic(context.generic_callable_id(function));
+                    let target =
+                        DraftFunctionTarget::Generic(context.generic_callable_id(function));
                     closure(
                         function,
                         captures,
@@ -561,30 +546,10 @@ macro_rules! define_symbolic_fixed_function {
                     args,
                     site,
                     ..
-                } => lower_function_call(
-                    args,
-                    cursor,
-                    graph,
-                    context,
-                    |cursor, graph, context| {
-                        function_function_expr(function, cursor, graph, context)
-                    },
-                    |cursor, graph, context| {
-                        super::evaluated_function_function_expr(function, cursor, graph, context)
-                    },
-                    |mut cursor, function, args, graph, _| {
-                        let value = graph.function_instruction(
-                            &mut cursor,
-                            shape.clone(),
-                            I::FunctionCall {
-                                function: function.value().clone(),
-                                args,
-                                site: site.clone(),
-                            },
-                        );
-                        DraftFlow::value(cursor, DraftGenericFunction::new(value))
-                    },
-                ),
+                } => {
+                    super::function_value_call(function, args, site, shape, cursor, graph, context)
+                        .map(|flow| flow.map(DraftGenericFunction::new))
+                }
                 E::TupleIndex {
                     tuple: source,
                     index,
@@ -789,7 +754,7 @@ fn symbolic_custom_kind(
                 &mut cursor,
                 shape.clone(),
                 I::Closure {
-                    target: FunctionTarget::Generic(
+                    target: DraftFunctionTarget::Generic(
                         context.generic_constructor_callable_id(constructor.clone()),
                     ),
                     captures: Vec::new(),
@@ -799,13 +764,13 @@ fn symbolic_custom_kind(
         }
         E::Reference(value) => {
             let target =
-                FunctionTarget::Generic(context.generic_callable_id(value.instantiation()));
+                DraftFunctionTarget::Generic(context.generic_callable_id(value.instantiation()));
             Representability::Inhabited(
                 reference(shape.clone(), target, cursor, graph).map(DraftGenericFunction::new),
             )
         }
         E::Closure { function, captures } => {
-            let target = FunctionTarget::Generic(context.generic_callable_id(function));
+            let target = DraftFunctionTarget::Generic(context.generic_callable_id(function));
             closure(
                 function,
                 captures,
@@ -830,12 +795,8 @@ fn symbolic_custom_kind(
             function,
             args,
             site,
-        } => call_args(args, cursor, graph, context).and_then(|flow| match flow {
-            DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
-            DraftFlow::Value {
-                mut cursor,
-                value: args,
-            } => {
+        } => call_args(args, cursor, graph, context).and_then(|flow| {
+            flow.and_then(|mut cursor, args| {
                 let type_ = context.generic_function_type(shape);
                 context
                     .generic_function_function_id(function, type_)
@@ -853,92 +814,60 @@ fn symbolic_custom_kind(
                         );
                         DraftFlow::value(cursor, DraftGenericFunction::new(value))
                     })
-            }
+            })
         }),
         E::FunctionCall {
             function,
             args,
             site,
-        } => lower_function_call(
-            args,
-            cursor,
-            graph,
-            context,
-            |cursor, graph, context| function_function_expr(function, cursor, graph, context),
-            |cursor, graph, context| {
-                super::evaluated_function_function_expr(function, cursor, graph, context)
-            },
-            |mut cursor, function, args, graph, _| {
-                let value = graph.function_instruction(
-                    &mut cursor,
-                    shape.clone(),
-                    I::FunctionCall {
-                        function: function.value().clone(),
-                        args,
-                        site: site.clone(),
-                    },
-                );
-                DraftFlow::value(cursor, DraftGenericFunction::new(value))
-            },
-        ),
+        } => super::function_value_call(function, args, site, shape, cursor, graph, context)
+            .map(|flow| flow.map(DraftGenericFunction::new)),
         E::TupleIndex {
             tuple: source,
             index,
-        } => tuple::tuple_expr(source, cursor, graph, context).map(|flow| match flow {
-            DraftFlow::Diverged => DraftFlow::Diverged,
-            DraftFlow::Value {
-                mut cursor,
-                value: tuple,
-            } => {
+        } => tuple::tuple_expr(source, cursor, graph, context).map(|flow| {
+            flow.map_cursor(|cursor, tuple| {
                 let value = graph.function_instruction(
-                    &mut cursor,
+                    cursor,
                     shape.clone(),
                     I::TupleIndex {
                         tuple,
                         index: *index,
                     },
                 );
-                DraftFlow::value(cursor, DraftGenericFunction::new(value))
-            }
+                DraftGenericFunction::new(value)
+            })
         }),
         E::CustomField(access) => {
-            custom::custom_expr(access.source(), cursor, graph, context).map(|flow| match flow {
-                DraftFlow::Diverged => DraftFlow::Diverged,
-                DraftFlow::Value {
-                    mut cursor,
-                    value: source,
-                } => {
+            custom::custom_expr(access.source(), cursor, graph, context).map(|flow| {
+                flow.map_cursor(|cursor, source| {
                     let value = graph.function_instruction(
-                        &mut cursor,
+                        cursor,
                         shape.clone(),
                         I::CustomField {
                             source,
                             index: access.index(),
                         },
                     );
-                    DraftFlow::value(cursor, DraftGenericFunction::new(value))
-                }
+                    DraftGenericFunction::new(value)
+                })
             })
         }
         E::ListIndex {
             list: source,
             index,
-        } => list::function_list_expr(source, cursor, graph, context).map(|flow| match flow {
-            DraftFlow::Diverged => DraftFlow::Diverged,
-            DraftFlow::Value {
-                mut cursor,
-                value: list,
-            } => {
+        } => list::function_list_expr(source, cursor, graph, context).map(|flow| {
+            flow.map_cursor(|cursor, list| {
                 let value = graph.function_instruction(
-                    &mut cursor,
+                    cursor,
                     shape.clone(),
                     I::ListIndex {
                         list: list.value().clone(),
                         index: *index,
                     },
                 );
-                DraftFlow::value(cursor, DraftGenericFunction::new(value))
-            }
+                DraftGenericFunction::new(value)
+            })
         }),
         E::Panic(value) => source_stop(value, cursor, graph, context)
             .map(|flow| flow.map(DraftGenericFunction::new)),
@@ -1001,12 +930,216 @@ fn symbolic_custom_kind(
         ),
         E::Block { steps, return_ } => {
             super::super::super::step::steps(steps, cursor, graph, context).and_then(|flow| {
-                match flow {
-                    DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
-                    DraftFlow::Value { cursor, value: () } => {
-                        symbolic_custom_kind(return_, shape, cursor, graph, context)
-                    }
+                flow.and_then(|cursor, ()| {
+                    symbolic_custom_kind(return_, shape, cursor, graph, context)
+                })
+            })
+        }
+    }
+}
+
+fn symbolic_external_kind(
+    kind: &module::ExternalFunctionExprKind,
+    shape: &SpecializedFunctionShape,
+    cursor: DraftCursor,
+    graph: &mut DraftGraph,
+    context: &mut super::super::super::LoweringContext,
+) -> Representability<DraftFlow<DraftGenericFunction>> {
+    use super::super::super::instruction::DraftFunctionInstruction as I;
+    use module::ExternalFunctionExprKind as E;
+
+    let stored = StoredValueShape::Function(Box::new(shape.clone()));
+    match kind {
+        E::Constant(value) => context
+            .symbolic_external_function_constant(value, shape)
+            .map(|id| {
+                let mut cursor = cursor;
+                let value = graph.function_instruction(
+                    &mut cursor,
+                    shape.clone(),
+                    I::Constant(execution::constant::ConstantId::new(id.index())),
+                );
+                DraftFlow::value(cursor, DraftGenericFunction::new(value))
+            }),
+        E::Reference(value) => {
+            let target =
+                DraftFunctionTarget::Generic(context.generic_callable_id(value.instantiation()));
+            Representability::Inhabited(
+                reference(shape.clone(), target, cursor, graph).map(DraftGenericFunction::new),
+            )
+        }
+        E::Closure { function, captures } => {
+            let target = DraftFunctionTarget::Generic(context.generic_callable_id(function));
+            closure(
+                function,
+                captures,
+                shape.clone(),
+                target,
+                cursor,
+                graph,
+                context,
+            )
+            .map(|flow| flow.map(DraftGenericFunction::new))
+        }
+        E::LocalGet { local, name: _ } => {
+            let value = cursor
+                .scope()
+                .function(super::super::super::local::LocalKey::new(
+                    super::super::super::local::LocalKind::ExternalFunction,
+                    local.id().0,
+                ));
+            Representability::Inhabited(DraftFlow::value(cursor, DraftGenericFunction::new(value)))
+        }
+        E::Call {
+            function,
+            args,
+            site,
+        } => call_args(args, cursor, graph, context).and_then(|flow| {
+            flow.and_then(|mut cursor, args| {
+                let type_ = context.generic_function_type(shape);
+                context
+                    .generic_function_function_id(function, type_)
+                    .map(|function| {
+                        let value = graph.function_instruction(
+                            &mut cursor,
+                            shape.clone(),
+                            I::Call {
+                                function: execution::function::FunctionFunctionId::Generic(
+                                    function,
+                                ),
+                                args,
+                                site: site.clone(),
+                            },
+                        );
+                        DraftFlow::value(cursor, DraftGenericFunction::new(value))
+                    })
+            })
+        }),
+        E::FunctionCall {
+            function,
+            args,
+            site,
+        } => super::function_value_call(function, args, site, shape, cursor, graph, context)
+            .map(|flow| flow.map(DraftGenericFunction::new)),
+        E::TupleIndex {
+            tuple: source,
+            index,
+        } => tuple::tuple_expr(source, cursor, graph, context).map(|flow| match flow {
+            DraftFlow::Diverged => DraftFlow::Diverged,
+            DraftFlow::Value {
+                mut cursor,
+                value: tuple,
+            } => {
+                let value = graph.function_instruction(
+                    &mut cursor,
+                    shape.clone(),
+                    I::TupleIndex {
+                        tuple,
+                        index: *index,
+                    },
+                );
+                DraftFlow::value(cursor, DraftGenericFunction::new(value))
+            }
+        }),
+        E::CustomField(access) => {
+            custom::custom_expr(access.source(), cursor, graph, context).map(|flow| match flow {
+                DraftFlow::Diverged => DraftFlow::Diverged,
+                DraftFlow::Value {
+                    mut cursor,
+                    value: source,
+                } => {
+                    let value = graph.function_instruction(
+                        &mut cursor,
+                        shape.clone(),
+                        I::CustomField {
+                            source,
+                            index: access.index(),
+                        },
+                    );
+                    DraftFlow::value(cursor, DraftGenericFunction::new(value))
                 }
+            })
+        }
+        E::ListIndex {
+            list: source,
+            index,
+        } => list::function_list_expr(source, cursor, graph, context).map(|flow| {
+            flow.map_cursor(|cursor, list| {
+                let value = graph.function_instruction(
+                    cursor,
+                    shape.clone(),
+                    I::ListIndex {
+                        list: list.value().clone(),
+                        index: *index,
+                    },
+                );
+                DraftGenericFunction::new(value)
+            })
+        }),
+        E::Panic(value) => source_stop(value, cursor, graph, context)
+            .map(|flow| flow.map(DraftGenericFunction::new)),
+        E::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => super::super::bool_case(
+            subject,
+            cursor,
+            super::super::case_lowering(graph, context, stored),
+            |cursor, graph, context| symbolic_external_kind(true_, shape, cursor, graph, context),
+            |cursor, graph, context| symbolic_external_kind(false_, shape, cursor, graph, context),
+            DraftGenericFunction::from_ref,
+        ),
+        E::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => super::super::int_case(
+            subject,
+            clauses,
+            fallback,
+            cursor,
+            super::super::case_lowering(graph, context, stored),
+            |branch, cursor, graph, context| {
+                symbolic_external_kind(branch, shape, cursor, graph, context)
+            },
+            DraftGenericFunction::from_ref,
+        ),
+        E::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => super::super::string_case(
+            subject,
+            clauses,
+            fallback,
+            cursor,
+            super::super::case_lowering(graph, context, stored),
+            |branch, cursor, graph, context| {
+                symbolic_external_kind(branch, shape, cursor, graph, context)
+            },
+            DraftGenericFunction::from_ref,
+        ),
+        E::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => super::super::float_case(
+            subject,
+            clauses,
+            fallback,
+            cursor,
+            super::super::case_lowering(graph, context, stored),
+            |branch, cursor, graph, context| {
+                symbolic_external_kind(branch, shape, cursor, graph, context)
+            },
+            DraftGenericFunction::from_ref,
+        ),
+        E::Block { steps, return_ } => {
+            super::super::super::step::steps(steps, cursor, graph, context).and_then(|flow| {
+                flow.and_then(|cursor, ()| {
+                    symbolic_external_kind(return_, shape, cursor, graph, context)
+                })
             })
         }
     }
@@ -1037,13 +1170,13 @@ fn symbolic_list_kind(
             }),
         E::Reference(value) => {
             let target =
-                FunctionTarget::Generic(context.generic_callable_id(value.instantiation()));
+                DraftFunctionTarget::Generic(context.generic_callable_id(value.instantiation()));
             Representability::Inhabited(
                 reference(shape.clone(), target, cursor, graph).map(DraftGenericFunction::new),
             )
         }
         E::Closure { function, captures } => {
-            let target = FunctionTarget::Generic(context.generic_callable_id(function));
+            let target = DraftFunctionTarget::Generic(context.generic_callable_id(function));
             closure(
                 function,
                 captures,
@@ -1096,28 +1229,8 @@ fn symbolic_list_kind(
             args,
             site,
             ..
-        } => lower_function_call(
-            args,
-            cursor,
-            graph,
-            context,
-            |cursor, graph, context| function_function_expr(function, cursor, graph, context),
-            |cursor, graph, context| {
-                super::evaluated_function_function_expr(function, cursor, graph, context)
-            },
-            |mut cursor, function, args, graph, _| {
-                let value = graph.function_instruction(
-                    &mut cursor,
-                    shape.clone(),
-                    I::FunctionCall {
-                        function: function.value().clone(),
-                        args,
-                        site: site.clone(),
-                    },
-                );
-                DraftFlow::value(cursor, DraftGenericFunction::new(value))
-            },
-        ),
+        } => super::function_value_call(function, args, site, shape, cursor, graph, context)
+            .map(|flow| flow.map(DraftGenericFunction::new)),
         E::TupleIndex {
             tuple: source,
             index,
@@ -1244,12 +1357,9 @@ fn symbolic_list_kind(
         ),
         E::Block { steps, return_ } => {
             super::super::super::step::steps(steps, cursor, graph, context).and_then(|flow| {
-                match flow {
-                    DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
-                    DraftFlow::Value { cursor, value: () } => {
-                        symbolic_list_kind(return_.kind(), shape, cursor, graph, context)
-                    }
-                }
+                flow.and_then(|cursor, ()| {
+                    symbolic_list_kind(return_.kind(), shape, cursor, graph, context)
+                })
             })
         }
     }
@@ -1280,13 +1390,13 @@ fn symbolic_returning_function_kind(
             }),
         E::Reference(value) => {
             let target =
-                FunctionTarget::Generic(context.generic_callable_id(value.instantiation()));
+                DraftFunctionTarget::Generic(context.generic_callable_id(value.instantiation()));
             Representability::Inhabited(
                 reference(shape.clone(), target, cursor, graph).map(DraftGenericFunction::new),
             )
         }
         E::Closure { function, captures } => {
-            let target = FunctionTarget::Generic(context.generic_callable_id(function));
+            let target = DraftFunctionTarget::Generic(context.generic_callable_id(function));
             closure(
                 function,
                 captures,
@@ -1340,28 +1450,8 @@ fn symbolic_returning_function_kind(
             function,
             args,
             site,
-        } => lower_function_call(
-            args,
-            cursor,
-            graph,
-            context,
-            |cursor, graph, context| function_function_expr(function, cursor, graph, context),
-            |cursor, graph, context| {
-                super::evaluated_function_function_expr(function, cursor, graph, context)
-            },
-            |mut cursor, function, args, graph, _| {
-                let value = graph.function_instruction(
-                    &mut cursor,
-                    shape.clone(),
-                    I::FunctionCall {
-                        function: function.value().clone(),
-                        args,
-                        site: site.clone(),
-                    },
-                );
-                DraftFlow::value(cursor, DraftGenericFunction::new(value))
-            },
-        ),
+        } => super::function_value_call(function, args, site, shape, cursor, graph, context)
+            .map(|flow| flow.map(DraftGenericFunction::new)),
         E::TupleIndex {
             tuple: source,
             index,
@@ -1486,12 +1576,9 @@ fn symbolic_returning_function_kind(
         ),
         E::Block { steps, return_ } => {
             super::super::super::step::steps(steps, cursor, graph, context).and_then(|flow| {
-                match flow {
-                    DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
-                    DraftFlow::Value { cursor, value: () } => {
-                        symbolic_returning_function_kind(return_, shape, cursor, graph, context)
-                    }
-                }
+                flow.and_then(|cursor, ()| {
+                    symbolic_returning_function_kind(return_, shape, cursor, graph, context)
+                })
             })
         }
     }
@@ -1566,6 +1653,16 @@ pub(in crate::plan::execution::lowering) fn symbolic_custom_function_expr_kind(
     context: &mut super::super::super::LoweringContext,
 ) -> Representability<DraftFlow<DraftGenericFunction>> {
     symbolic_custom_kind(kind, shape, cursor, graph, context)
+}
+
+pub(in crate::plan::execution::lowering) fn symbolic_external_function_expr_kind(
+    kind: &module::ExternalFunctionExprKind,
+    shape: &SpecializedFunctionShape,
+    cursor: DraftCursor,
+    graph: &mut DraftGraph,
+    context: &mut super::super::super::LoweringContext,
+) -> Representability<DraftFlow<DraftGenericFunction>> {
+    symbolic_external_kind(kind, shape, cursor, graph, context)
 }
 
 pub(in crate::plan::execution::lowering) fn symbolic_bool_function_expr(
@@ -1658,6 +1755,9 @@ fn symbolic_kind_from_function(
         module::FunctionExprKind::Custom(value) => {
             symbolic_custom_kind(value.kind(), shape, cursor, graph, context)
         }
+        module::FunctionExprKind::External(value) => {
+            symbolic_external_kind(value.kind(), shape, cursor, graph, context)
+        }
         module::FunctionExprKind::Bool(value) => {
             symbolic_bool_kind(value.kind(), shape, cursor, graph, context)
         }
@@ -1697,7 +1797,7 @@ fn symbolic_generic_kind(
                     .map(|id| id.index())
             },
             |function, context| {
-                Representability::Inhabited(FunctionTarget::Generic(
+                Representability::Inhabited(DraftFunctionTarget::Generic(
                     context.generic_callable_id(function),
                 ))
             },
@@ -1717,27 +1817,32 @@ fn symbolic_generic_kind(
 #[cfg(test)]
 mod tests {
     use super::{
-        generic_int_function_expr, symbolic_bit_array_kind, symbolic_bool_kind,
-        symbolic_custom_kind, symbolic_float_kind, symbolic_int_kind, symbolic_list_kind,
-        symbolic_nil_kind, symbolic_returning_function_kind, symbolic_string_kind,
-        symbolic_tuple_kind, symbolic_utf_codepoint_kind,
+        executable_function_expr, generic_int_function_expr, symbolic_bit_array_kind,
+        symbolic_bool_kind, symbolic_custom_kind, symbolic_external_kind, symbolic_float_kind,
+        symbolic_function_expr, symbolic_int_kind, symbolic_list_kind, symbolic_nil_kind,
+        symbolic_returning_function_kind, symbolic_string_kind, symbolic_tuple_kind,
+        symbolic_utf_codepoint_kind,
     };
     use crate::plan::execution::lowering::graph::draft::DraftGraphBuilder;
     use crate::plan::execution::lowering::graph::{
-        DraftFlow, DraftGenericFunction, DraftGraph, DraftValueRef,
+        DraftFlow, DraftFunction, DraftGenericFunction, DraftGraph, DraftValueRef,
     };
     use crate::plan::execution::lowering::specialization::{
-        Representability, SpecializedFunctionShape,
+        Representability, SpecializedExternalValueShape, SpecializedFunctionShape,
+        SpecializedTypeSubstitution, SpecializedValueShape, StoredValueShape,
     };
     use crate::plan::{
-        self, BitArrayFunctionExpr, BoolFunctionExpr, CustomConstructorRefinement,
+        self, BitArrayFunctionExpr, BoolFunctionExpr, CallArg, CustomConstructorRefinement,
         CustomFieldAccess, CustomFunctionExpr, CustomFunctionType, CustomType,
         CustomTypeDefinition, CustomTypeName, CustomTypeParameterId, CustomTypePublicity,
-        CustomTypeTemplate, CustomValueShape, FloatFunctionExpr, FunctionFunctionExpr,
-        FunctionFunctionType, FunctionShape, FunctionType, GenericFunctionExpr,
-        GenericFunctionType, IntFunctionExpr, ListExpr, ListFunctionExpr, NilFunctionExpr,
-        PanicExpr, PanicSite, StringFunctionExpr, TupleFunctionExpr, TypeParameterId,
-        UtfCodepointFunctionExpr, ValueShape, ValueType,
+        CustomTypeTemplate, CustomValueShape, Expr, ExternalFunctionExpr,
+        ExternalFunctionReference, ExternalFunctionType, ExternalTypeName, ExternalValueShape,
+        FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionType, FunctionShape,
+        FunctionType, GenericExpr, GenericFunctionExpr, GenericFunctionType, GenericLocal,
+        GenericLocalId, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, NilFunctionExpr,
+        PanicExpr, PanicSite, Step, StringFunctionExpr, TupleFunctionExpr, TypeParameterId,
+        TypeSubstitution, UtfCodepointFunctionExpr, ValueShape, ValueType,
+        monomorphic_function_instantiation,
     };
 
     #[test]
@@ -1754,6 +1859,114 @@ mod tests {
             crate::run_main(&execution, &mut Vec::new()),
             Ok(crate::Value::Tuple(vec![crate::Value::Bool(true); 48])),
         );
+    }
+
+    #[test]
+    fn executable_generic_function_uses_external_return_storage() {
+        let parameter = TypeParameterId(0);
+        let external = ExternalValueShape::new(
+            ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into()),
+            Vec::new(),
+        );
+        let external = SpecializedExternalValueShape::instantiate(
+            &external,
+            &SpecializedTypeSubstitution::empty(),
+        );
+        let expression = GenericFunctionExpr::panic(
+            PanicExpr::panic_at(None, PanicSite::unknown()),
+            GenericFunctionType::new(Vec::new(), parameter),
+        );
+        let shape = SpecializedFunctionShape::new(
+            Vec::new(),
+            SpecializedValueShape::External(external.clone()),
+        );
+        let mut context =
+            crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
+        let (mut graph, _) = DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
+        let cursor = graph.empty_block(Default::default());
+
+        assert_diverged(
+            executable_function_expr(
+                &expression,
+                &shape,
+                &StoredValueShape::External(external),
+                cursor,
+                &mut graph,
+                &mut context,
+            )
+            .map(|flow| flow.map(|_| ())),
+        );
+    }
+
+    #[test]
+    fn external_return_function_call_evaluates_source_before_uninhabited_argument() {
+        let trigger = TypeParameterId(0);
+        let output = TypeParameterId(1);
+        let never_name = CustomTypeName::new("application".into(), "main".into(), "Never".into());
+        let never = CustomTypeDefinition::new(
+            never_name.clone(),
+            CustomTypePublicity::Private,
+            false,
+            Vec::new(),
+            Vec::new(),
+        );
+        let never_shape = ValueShape::Custom(CustomValueShape::new(
+            never_name,
+            Vec::new(),
+            CustomConstructorRefinement::Any,
+        ));
+        let external = ExternalValueShape::new(
+            ExternalTypeName::new("application".into(), "main".into(), "Counter".into()),
+            Vec::new(),
+        );
+        let specialized_external = SpecializedExternalValueShape::instantiate(
+            &external,
+            &SpecializedTypeSubstitution::empty(),
+        );
+        let returned_function =
+            FunctionShape::new(vec![ValueShape::Int], ValueShape::Parameter(output));
+        let function_source = FunctionFunctionExpr::panic(
+            PanicExpr::panic_at(None, PanicSite::unknown()),
+            FunctionFunctionType::from_shapes(
+                vec![ValueShape::Parameter(trigger)],
+                returned_function,
+            ),
+        );
+        let argument = Expr::generic(GenericExpr::local_get(
+            GenericLocal::new(GenericLocalId(0), trigger),
+            "trigger".into(),
+        ));
+        let expression = GenericFunctionExpr::function_call(
+            function_source,
+            vec![CallArg::new(argument)],
+            GenericFunctionType::new(vec![ValueShape::Int], output),
+        );
+        let shape = SpecializedFunctionShape::new(
+            vec![SpecializedValueShape::Int],
+            SpecializedValueShape::External(specialized_external.clone()),
+        );
+        let mut context =
+            crate::plan::execution::lowering::test_support::lowering_context(vec![never]);
+        context.substitution = SpecializedTypeSubstitution::instantiate(
+            &TypeSubstitution::from_arguments(vec![never_shape, ValueShape::External(external)]),
+            &SpecializedTypeSubstitution::empty(),
+        );
+        let (mut graph, _) = DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
+        let cursor = graph.empty_block(Default::default());
+
+        let lowered = executable_function_expr(
+            &expression,
+            &shape,
+            &StoredValueShape::External(specialized_external),
+            cursor,
+            &mut graph,
+            &mut context,
+        );
+
+        let expected = std::mem::discriminant(&DraftFlow::<DraftFunction>::Diverged);
+        let actual = lowered.map(|flow| std::mem::discriminant(&flow));
+
+        assert_eq!(actual, Representability::Inhabited(expected));
     }
 
     #[test]
@@ -1795,11 +2008,17 @@ mod tests {
         let list_type = FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int)));
         let returning_type =
             FunctionFunctionType::new(Vec::new(), FunctionType::new(Vec::new(), ValueType::Int));
+        let external_shape = ExternalValueShape::new(
+            ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into()),
+            Vec::new(),
+        );
+        let external_type = ExternalFunctionType::from_shapes(Vec::new(), external_shape.clone());
         let target_types = [
             FunctionType::new(Vec::new(), ValueType::Int),
             custom_type.to_function_type(),
             list_type.clone(),
             returning_type.to_function_type(),
+            external_type.to_function_type(),
         ];
 
         let accesses = target_types.clone().map(|type_| {
@@ -1822,6 +2041,7 @@ mod tests {
             FunctionShape::from_function_type(custom_type.to_function_type()),
             FunctionShape::from_function_type(list_type.clone()),
             FunctionShape::from_function_type(returning_type.to_function_type()),
+            FunctionShape::from_function_type(external_type.to_function_type()),
         ]
         .map(|shape| context.concrete_function_shape(&shape));
         let expressions = [
@@ -1890,6 +2110,24 @@ mod tests {
                 symbolic_returning_function_kind(
                     expression.kind(),
                     &shapes[3],
+                    cursor,
+                    &mut graph,
+                    &mut context,
+                )
+                .map(|flow| flow.map(|_| ())),
+            );
+        }
+
+        let external_expressions = [
+            ExternalFunctionExpr::custom_field(accesses[4].clone(), external_type.clone()),
+            ExternalFunctionExpr::list_index(lists[4].clone(), 0, external_type),
+        ];
+        for expression in external_expressions {
+            let cursor = graph.empty_block(Default::default());
+            assert_diverged(
+                symbolic_external_kind(
+                    expression.kind(),
+                    &shapes[4],
                     cursor,
                     &mut graph,
                     &mut context,
@@ -2041,6 +2279,108 @@ mod tests {
                 symbolic_tuple_kind(expression.kind(), shape, cursor, graph, context)
             },
         );
+    }
+
+    #[test]
+    fn symbolic_external_callable_stops_before_unreachable_call_results() {
+        let external_shape = ExternalValueShape::new(
+            ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into()),
+            Vec::new(),
+        );
+        let external_type = ExternalFunctionType::from_shapes(Vec::new(), external_shape.clone());
+        let parameter = TypeParameterId(0);
+        let panic = || PanicExpr::panic_at(None, PanicSite::unknown());
+        let function_shape = FunctionShape::from_function_type(external_type.to_function_type());
+        let direct_target = monomorphic_function_instantiation(
+            0,
+            FunctionShape::new(
+                vec![ValueShape::Int],
+                ValueShape::Function(Box::new(function_shape.clone())),
+            ),
+        );
+        let direct = ExternalFunctionExpr::call_at(
+            direct_target,
+            vec![CallArg::new(Expr::int(IntExpr::panic(panic())))],
+            external_type.clone(),
+            plan::HostCallSite::unknown(),
+        );
+        let callable = FunctionFunctionExpr::panic(
+            panic(),
+            FunctionFunctionType::from_shapes(
+                vec![ValueShape::Parameter(parameter)],
+                function_shape.clone(),
+            ),
+        );
+        let function_value = ExternalFunctionExpr::try_function_call_at(
+            callable,
+            vec![CallArg::new(Expr::generic(GenericExpr::local_get(
+                GenericLocal::new(GenericLocalId(0), parameter),
+                "value".into(),
+            )))],
+            plan::HostCallSite::unknown(),
+        )
+        .expect("one symbolic argument should match the callable");
+        let block = FunctionExpr::external(ExternalFunctionExpr::block(
+            vec![Step::evaluate(Expr::int(IntExpr::panic(panic())))],
+            ExternalFunctionExpr::panic(panic(), external_type),
+        ));
+        let mut context =
+            crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
+        let shape = context.concrete_function_shape(&function_shape);
+        let (mut graph, _) = DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
+
+        for expression in [direct, function_value] {
+            let cursor = graph.empty_block(Default::default());
+            assert_diverged(
+                symbolic_external_kind(expression.kind(), &shape, cursor, &mut graph, &mut context)
+                    .map(|flow| flow.map(|_| ())),
+            );
+        }
+        let cursor = graph.empty_block(Default::default());
+        assert_diverged(
+            symbolic_function_expr(&block, &shape, cursor, &mut graph, &mut context)
+                .map(|flow| flow.map(|_| ())),
+        );
+    }
+
+    #[test]
+    fn symbolic_external_block_returns_its_callable_after_completed_steps() {
+        let external_shape = ExternalValueShape::new(
+            ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into()),
+            Vec::new(),
+        );
+        let function_shape = FunctionShape::new(
+            vec![ValueShape::Int],
+            ValueShape::External(external_shape.clone()),
+        );
+        let reference = ExternalFunctionExpr::reference(
+            ExternalFunctionReference::new(monomorphic_function_instantiation(
+                0,
+                function_shape.clone(),
+            )),
+            external_shape,
+        );
+        let expression = ExternalFunctionExpr::block(Vec::new(), reference.clone());
+        let mut context =
+            crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
+        let shape = context.concrete_function_shape(&function_shape);
+        let (mut graph, _) = DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
+        let expected_cursor = graph.empty_block(Default::default());
+        let expected = symbolic_external_kind(
+            reference.kind(),
+            &shape,
+            expected_cursor,
+            &mut graph,
+            &mut context,
+        )
+        .map(|flow| std::mem::discriminant(&flow));
+        let cursor = graph.empty_block(Default::default());
+
+        let lowered =
+            symbolic_external_kind(expression.kind(), &shape, cursor, &mut graph, &mut context);
+        let actual = lowered.map(|flow| std::mem::discriminant(&flow));
+
+        assert_eq!(actual, expected);
     }
 
     fn assert_projection_sources_diverge<Expression>(

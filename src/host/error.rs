@@ -18,6 +18,12 @@ pub enum HostRegistrationError {
         function: EcoString,
     },
 
+    #[error("host external type name {type_} in module {module} is invalid")]
+    InvalidExternalTypeName { module: EcoString, type_: EcoString },
+
+    #[error("host external type {type_} was registered more than once in module {module}")]
+    DuplicateExternalType { module: EcoString, type_: EcoString },
+
     #[error(
         "host function {function} uses type parameter indices {parameters:?}; indices must be contiguous from zero"
     )]

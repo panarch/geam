@@ -66,6 +66,9 @@ fn host_call_parameter(
         HostParameter::Custom(_) => {
             HostCallParameter::Custom(local::stored_value_local_at(shape, index, context))
         }
+        HostParameter::External(_) => {
+            HostCallParameter::External(local::stored_value_local_at(shape, index, context))
+        }
         HostParameter::Function(_) => {
             HostCallParameter::Function(local::stored_value_local_at(shape, index, context))
         }

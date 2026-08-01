@@ -139,6 +139,15 @@ fn match_shape(
             }
             Some(())
         }
+        (ValueShape::External(template), ValueShape::External(actual))
+            if template.type_name() == actual.type_name()
+                && template.arguments().len() == actual.arguments().len() =>
+        {
+            for (template, actual) in template.arguments().iter().zip(actual.arguments()) {
+                match_shape(template, actual, bindings)?;
+            }
+            Some(())
+        }
         _ => None,
     }
 }
@@ -161,8 +170,8 @@ mod tests {
     };
     use crate::plan::{
         ConstantTemplateId, ConstantTemplateSignature, ConstantValue, CustomConstructorRefinement,
-        CustomTypeName, CustomValueShape, FunctionShape, FunctionTemplateId,
-        FunctionTemplateSignature, TypeParameterId, TypeScheme, ValueShape,
+        CustomTypeName, CustomValueShape, ExternalTypeName, ExternalValueShape, FunctionShape,
+        FunctionTemplateId, FunctionTemplateSignature, TypeParameterId, TypeScheme, ValueShape,
     };
 
     fn function_signature(
@@ -412,6 +421,30 @@ mod tests {
                         CustomConstructorRefinement::Exact(0),
                         vec![ValueShape::String, ValueShape::String],
                     )],
+                    ValueShape::String,
+                ),
+            ),
+            Err(FunctionInstantiationMismatch::ArgumentShape),
+        );
+
+        let external_name =
+            ExternalTypeName::new("dependency".into(), "dependency/box".into(), "Box".into());
+        let external_signature = function_signature(
+            1,
+            vec![ValueShape::External(ExternalValueShape::new(
+                external_name.clone(),
+                vec![ValueShape::Parameter(TypeParameterId(0)), ValueShape::Int],
+            ))],
+            ValueShape::Parameter(TypeParameterId(0)),
+        );
+        assert_eq!(
+            instantiate(
+                &external_signature,
+                &FunctionShape::new(
+                    vec![ValueShape::External(ExternalValueShape::new(
+                        external_name,
+                        vec![ValueShape::String, ValueShape::String],
+                    ))],
                     ValueShape::String,
                 ),
             ),

@@ -54,7 +54,7 @@ pub(super) fn int<Plan: ExecutableRuntimePlan>(
             )
         }
         I::TupleIndex { tuple, index } => tuple_projection(
-            plan,
+            plan.value_metadata(),
             environment,
             *tuple,
             *index,
@@ -76,10 +76,9 @@ pub(super) fn int<Plan: ExecutableRuntimePlan>(
             },
         ),
         I::ListIndex { list, index } => list_element(
-            plan,
             expected,
             *index,
-            state.values().int_values(&environment.int_list(*list)),
+            &state.values().int_values(&environment.int_list(*list)),
         ),
         I::Add { left, right } => Ok(environment.int(*left) + environment.int(*right)),
         I::Sub { left, right } => Ok(environment.int(*left) - environment.int(*right)),
@@ -142,7 +141,7 @@ pub(super) fn float<Plan: ExecutableRuntimePlan>(
             )
         }
         I::TupleIndex { tuple, index } => tuple_projection(
-            plan,
+            plan.value_metadata(),
             environment,
             *tuple,
             *index,
@@ -164,10 +163,9 @@ pub(super) fn float<Plan: ExecutableRuntimePlan>(
             },
         ),
         I::ListIndex { list, index } => list_element(
-            plan,
             expected,
             *index,
-            state.values().float_values(&environment.float_list(*list)),
+            &state.values().float_values(&environment.float_list(*list)),
         ),
         I::Add { left, right } => Ok(environment.float(*left) + environment.float(*right)),
         I::Sub { left, right } => Ok(environment.float(*left) - environment.float(*right)),
@@ -221,7 +219,7 @@ pub(super) fn string<Plan: ExecutableRuntimePlan>(
             )
         }
         I::TupleIndex { tuple, index } => tuple_projection(
-            plan,
+            plan.value_metadata(),
             environment,
             *tuple,
             *index,
@@ -243,10 +241,9 @@ pub(super) fn string<Plan: ExecutableRuntimePlan>(
             },
         ),
         I::ListIndex { list, index } => list_element(
-            plan,
             expected,
             *index,
-            state
+            &state
                 .values()
                 .string_values(&environment.string_list(*list)),
         ),
@@ -301,7 +298,7 @@ pub(super) fn bit_array<Plan: ExecutableRuntimePlan>(
             )
         }
         I::TupleIndex { tuple, index } => tuple_projection(
-            plan,
+            plan.value_metadata(),
             environment,
             *tuple,
             *index,
@@ -323,10 +320,9 @@ pub(super) fn bit_array<Plan: ExecutableRuntimePlan>(
             },
         ),
         I::ListIndex { list, index } => list_element(
-            plan,
             expected,
             *index,
-            state
+            &state
                 .values()
                 .bit_array_values(&environment.bit_array_list(*list)),
         ),
@@ -369,7 +365,7 @@ pub(super) fn utf_codepoint<Plan: ExecutableRuntimePlan>(
             )
         }
         I::TupleIndex { tuple, index } => tuple_projection(
-            plan,
+            plan.value_metadata(),
             environment,
             *tuple,
             *index,
@@ -391,10 +387,9 @@ pub(super) fn utf_codepoint<Plan: ExecutableRuntimePlan>(
             },
         ),
         I::ListIndex { list, index } => list_element(
-            plan,
             expected,
             *index,
-            state
+            &state
                 .values()
                 .utf_codepoint_values(&environment.utf_codepoint_list(*list)),
         ),
@@ -455,7 +450,7 @@ pub(super) fn custom<Plan: ExecutableRuntimePlan>(
             }
         }
         I::TupleIndex { tuple, index } => tuple_projection(
-            plan,
+            plan.value_metadata(),
             environment,
             *tuple,
             *index,
@@ -477,10 +472,9 @@ pub(super) fn custom<Plan: ExecutableRuntimePlan>(
             },
         ),
         I::ListIndex { list, index } => list_element(
-            plan,
             expected,
             *index,
-            state
+            &state
                 .values()
                 .custom_values(&environment.custom_list(*list)),
         ),
@@ -525,7 +519,7 @@ pub(super) fn bool<Plan: ExecutableRuntimePlan>(
             )
         }
         I::TupleIndex { tuple, index } => tuple_projection(
-            plan,
+            plan.value_metadata(),
             environment,
             *tuple,
             *index,
@@ -547,10 +541,9 @@ pub(super) fn bool<Plan: ExecutableRuntimePlan>(
             },
         ),
         I::ListIndex { list, index } => list_element(
-            plan,
             expected,
             *index,
-            state.values().bool_values(&environment.bool_list(*list)),
+            &state.values().bool_values(&environment.bool_list(*list)),
         ),
         I::Not(value) => Ok(!environment.bool(*value)),
         I::LtInt { left, right } => Ok(environment.int(*left) < environment.int(*right)),
@@ -562,14 +555,12 @@ pub(super) fn bool<Plan: ExecutableRuntimePlan>(
         I::GtFloat { left, right } => Ok(environment.float(*left) > environment.float(*right)),
         I::GtEqFloat { left, right } => Ok(environment.float(*left) >= environment.float(*right)),
         I::Equal { left, right } => Ok(values_equal(
-            plan,
-            state,
+            state.values(),
             &environment.value(left),
             &environment.value(right),
         )),
         I::NotEqual { left, right } => Ok(!values_equal(
-            plan,
-            state,
+            state.values(),
             &environment.value(left),
             &environment.value(right),
         )),
@@ -622,11 +613,14 @@ pub(super) fn nil<Plan: ExecutableRuntimePlan>(
                 inputs_with_captures(environment, args, function.captures()),
             )
         }
-        I::TupleIndex { tuple, index } => {
-            tuple_projection(plan, environment, *tuple, *index, expected, |value| {
-                matches!(value, EvaluatedValue::Nil).then_some(())
-            })
-        }
+        I::TupleIndex { tuple, index } => tuple_projection(
+            plan.value_metadata(),
+            environment,
+            *tuple,
+            *index,
+            expected,
+            |value| matches!(value, EvaluatedValue::Nil).then_some(()),
+        ),
         I::CustomField { source, index } => {
             custom_projection(plan, environment, source, *index, expected, |value| {
                 matches!(value, EvaluatedValue::Nil).then_some(())
@@ -677,7 +671,7 @@ pub(super) fn tuple<Plan: ExecutableRuntimePlan>(
             )
         }
         I::TupleIndex { tuple, index } => tuple_projection(
-            plan,
+            plan.value_metadata(),
             environment,
             *tuple,
             *index,
@@ -699,10 +693,9 @@ pub(super) fn tuple<Plan: ExecutableRuntimePlan>(
             },
         ),
         I::ListIndex { list, index } => list_element(
-            plan,
             expected,
             *index,
-            state.values().tuple_values(&environment.tuple_list(*list)),
+            &state.values().tuple_values(&environment.tuple_list(*list)),
         ),
     }
 }
@@ -720,7 +713,7 @@ where
 }
 
 pub(super) fn tuple_projection<Value>(
-    plan: &impl ExecutableRuntimePlan,
+    metadata: crate::plan::execution::runtime::RuntimeValueMetadata<'_>,
     environment: &BlockEnvironment,
     tuple: crate::plan::execution::graph::TupleLocalId,
     index: usize,
@@ -733,12 +726,15 @@ pub(super) fn tuple_projection<Value>(
             InvariantError::TupleIndexFamilyMismatch {
                 expected: expected.clone(),
                 actual: ValueType::Tuple(
-                    values.iter().map(|value| value.value_type(plan)).collect(),
+                    values
+                        .iter()
+                        .map(|value| value.value_type(metadata))
+                        .collect(),
                 ),
             },
         ));
     };
-    let actual = value.value_type(plan);
+    let actual = value.value_type(metadata);
     if let Some(value) = project(value)
         && actual == *expected
     {
@@ -764,7 +760,7 @@ pub(super) fn custom_projection<Value>(
     let source = environment.custom(*source);
     let constructor = source.constructor();
     let value = &source.fields()[index];
-    let actual = value.value_type(plan);
+    let actual = value.value_type(plan.value_metadata());
     if let Some(value) = project(value)
         && actual == *expected
     {
@@ -784,7 +780,6 @@ pub(super) fn custom_projection<Value>(
 }
 
 pub(super) fn list_element<Value: Clone>(
-    _plan: &impl ExecutableRuntimePlan,
     item_type: &ValueType,
     index: usize,
     values: &[Value],
@@ -819,7 +814,7 @@ pub(super) fn ensure_list_index(
     }
 }
 
-fn inputs_with_captures(
+pub(super) fn inputs_with_captures(
     environment: &BlockEnvironment,
     args: &[ParamLocal],
     captures: &[crate::runtime::EvaluatedCapture],
@@ -834,13 +829,14 @@ mod tests {
     use super::super::super::environment::{BlockEnvironment, RetainedValues};
     use super::{ensure_list_index, list_element, tuple_projection};
     use crate::plan::execution::graph::TupleLocalId;
+    use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::plan::{
         CustomConstructor, CustomConstructorDefinition, CustomConstructorField, CustomExpr,
         CustomFieldAccess, CustomFieldDefinition, CustomType, CustomTypeDefinition, CustomTypeName,
-        CustomTypePublicity, CustomTypeTemplate, Expr, FunctionExpr, FunctionReference,
-        FunctionShape, FunctionTemplate, FunctionTemplateId, FunctionType, IntExpr, ListExpr,
-        ModulePlan, ReturnBody, ReturnExpr, StringExpr, TupleExpr, ValueType,
-        monomorphic_function_instantiation,
+        CustomTypePublicity, CustomTypeTemplate, Expr, ExternalType, ExternalTypeName,
+        FunctionExpr, FunctionReference, FunctionShape, FunctionTemplate, FunctionTemplateId,
+        FunctionType, IntExpr, ListExpr, ModulePlan, ReturnBody, ReturnExpr, StringExpr, TupleExpr,
+        ValueType, monomorphic_function_instantiation,
     };
     use crate::runtime::{
         EvaluatedBitArray, EvaluatedCustomValue, EvaluatedFunctionValue, EvaluatedValue,
@@ -865,7 +861,7 @@ mod tests {
 
         assert_eq!(
             tuple_projection(
-                &plan,
+                plan.value_metadata(),
                 &environment,
                 TupleLocalId(0),
                 1,
@@ -892,7 +888,14 @@ mod tests {
         )]));
         let valid = BlockEnvironment::from_retained(valid);
         assert_eq!(
-            tuple_projection(&plan, &valid, TupleLocalId(0), 0, &expected, string_value,),
+            tuple_projection(
+                plan.value_metadata(),
+                &valid,
+                TupleLocalId(0),
+                0,
+                &expected,
+                string_value,
+            ),
             Ok("value".into()),
         );
 
@@ -900,7 +903,14 @@ mod tests {
         wrong.push_evaluated(EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]));
         let wrong = BlockEnvironment::from_retained(wrong);
         assert_eq!(
-            tuple_projection(&plan, &wrong, TupleLocalId(0), 0, &expected, string_value,),
+            tuple_projection(
+                plan.value_metadata(),
+                &wrong,
+                TupleLocalId(0),
+                0,
+                &expected,
+                string_value,
+            ),
             Err(ExecutionError::Invariant(
                 InvariantError::TupleIndexFamilyMismatch {
                     expected,
@@ -912,22 +922,17 @@ mod tests {
 
     #[test]
     fn every_leaf_list_storage_reports_the_exact_missing_index() {
-        let plan = crate::runtime::plan_src("pub fn main() { 0 }");
-        assert_missing_list_element::<BigInt>(&plan, ValueType::Int);
-        assert_missing_list_element::<f64>(&plan, ValueType::Float);
-        assert_missing_list_element::<EcoString>(&plan, ValueType::String);
-        assert_missing_list_element::<EvaluatedBitArray>(&plan, ValueType::BitArray);
-        assert_missing_list_element::<char>(&plan, ValueType::UtfCodepoint);
-        assert_missing_list_element::<EvaluatedCustomValue>(&plan, ValueType::Custom(boxed_type()));
-        assert_missing_list_element::<bool>(&plan, ValueType::Bool);
-        assert_missing_list_element::<Vec<EvaluatedValue>>(
-            &plan,
-            ValueType::Tuple(vec![ValueType::Int]),
-        );
-        assert_missing_list_element::<EvaluatedFunctionValue>(
-            &plan,
-            ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
-        );
+        assert_missing_list_element::<BigInt>(ValueType::Int);
+        assert_missing_list_element::<f64>(ValueType::Float);
+        assert_missing_list_element::<EcoString>(ValueType::String);
+        assert_missing_list_element::<EvaluatedBitArray>(ValueType::BitArray);
+        assert_missing_list_element::<char>(ValueType::UtfCodepoint);
+        assert_missing_list_element::<EvaluatedCustomValue>(ValueType::Custom(boxed_type()));
+        assert_missing_list_element::<bool>(ValueType::Bool);
+        assert_missing_list_element::<Vec<EvaluatedValue>>(ValueType::Tuple(vec![ValueType::Int]));
+        assert_missing_list_element::<EvaluatedFunctionValue>(ValueType::Function(Box::new(
+            FunctionType::new(Vec::new(), ValueType::Int),
+        )));
 
         assert_eq!(
             ensure_list_index(&ValueType::Nil, 2, 0),
@@ -941,10 +946,10 @@ mod tests {
         );
     }
 
-    fn assert_missing_list_element<Value: Clone>(plan: &crate::ExecutionPlan, type_: ValueType) {
+    fn assert_missing_list_element<Value: Clone>(type_: ValueType) {
         let values: &[Value] = &[];
         assert_eq!(
-            list_element(plan, &type_, 2, values).map(|_| ()),
+            list_element(&type_, 2, values).map(|_| ()),
             Err(ExecutionError::Invariant(
                 InvariantError::ListIndexOutOfBounds {
                     item_type: type_,
@@ -1648,6 +1653,14 @@ pub fn main() -> {return_type} {{ {expression} }}
                     .map(custom_type_template)
                     .collect(),
             },
+            ValueType::External(external) => CustomTypeTemplate::External {
+                name: external.type_name().clone(),
+                arguments: external
+                    .arguments()
+                    .iter()
+                    .map(custom_type_template)
+                    .collect(),
+            },
         }
     }
 
@@ -1656,6 +1669,18 @@ pub fn main() -> {return_type} {{ {expression} }}
         assert_eq!(
             custom_type_template(&ValueType::Parameter(crate::plan::TypeParameterId(3))),
             CustomTypeTemplate::Parameter(crate::plan::CustomTypeParameterId(3)),
+        );
+        let name =
+            ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into());
+        assert_eq!(
+            custom_type_template(&ValueType::External(ExternalType::new(
+                name.clone(),
+                vec![ValueType::Int],
+            ))),
+            CustomTypeTemplate::External {
+                name,
+                arguments: vec![CustomTypeTemplate::Int],
+            },
         );
     }
 

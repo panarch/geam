@@ -1,6 +1,7 @@
 mod bit_array;
 mod bool;
 mod custom;
+mod external;
 mod float;
 mod generic;
 mod int;
@@ -14,22 +15,23 @@ mod utf_codepoint;
 
 use crate::plan::{
     BitArrayFunctionReference, BoolFunctionReference, ConstantFunctionInstantiation,
-    CustomFieldAccess, CustomFunctionReference, FloatFunctionReference, FunctionFunctionReference,
-    FunctionReference, FunctionShape, FunctionType, IntFunctionReference, ListFunctionReference,
-    NilFunctionReference, StringFunctionReference, TupleFunctionReference,
-    UtfCodepointFunctionReference, ValueShape,
+    CustomFieldAccess, CustomFunctionReference, ExternalFunctionReference, FloatFunctionReference,
+    FunctionFunctionReference, FunctionReference, FunctionShape, FunctionType,
+    IntFunctionReference, ListFunctionReference, NilFunctionReference, StringFunctionReference,
+    TupleFunctionReference, UtfCodepointFunctionReference, ValueShape,
 };
 
 pub use self::{
     bit_array::BitArrayFunctionExpr, bool::BoolFunctionExpr, custom::CustomFunctionExpr,
-    float::FloatFunctionExpr, int::IntFunctionExpr, list::ListFunctionExpr, nil::NilFunctionExpr,
-    returning_function::FunctionFunctionExpr, string::StringFunctionExpr, tuple::TupleFunctionExpr,
-    utf_codepoint::UtfCodepointFunctionExpr,
+    external::ExternalFunctionExpr, float::FloatFunctionExpr, int::IntFunctionExpr,
+    list::ListFunctionExpr, nil::NilFunctionExpr, returning_function::FunctionFunctionExpr,
+    string::StringFunctionExpr, tuple::TupleFunctionExpr, utf_codepoint::UtfCodepointFunctionExpr,
 };
 pub(crate) use self::{
     bit_array::BitArrayFunctionExprKind,
     bool::BoolFunctionExprKind,
     custom::CustomFunctionExprKind,
+    external::ExternalFunctionExprKind,
     float::FloatFunctionExprKind,
     generic::{GenericFunctionExpr, GenericFunctionExprKind},
     int::IntFunctionExprKind,
@@ -56,6 +58,7 @@ pub(crate) enum FunctionExprKind {
     BitArray(BitArrayFunctionExpr),
     UtfCodepoint(UtfCodepointFunctionExpr),
     Custom(CustomFunctionExpr),
+    External(ExternalFunctionExpr),
     Float(FloatFunctionExpr),
     Bool(BoolFunctionExpr),
     Nil(NilFunctionExpr),
@@ -72,6 +75,7 @@ pub(crate) enum TypedFunctionExprKind {
     BitArray(TypedFunctionExpr<BitArrayFunctionExpr>),
     UtfCodepoint(TypedFunctionExpr<UtfCodepointFunctionExpr>),
     Custom(TypedFunctionExpr<CustomFunctionExpr>),
+    External(TypedFunctionExpr<ExternalFunctionExpr>),
     Float(TypedFunctionExpr<FloatFunctionExpr>),
     Bool(TypedFunctionExpr<BoolFunctionExpr>),
     Nil(TypedFunctionExpr<NilFunctionExpr>),
@@ -121,6 +125,17 @@ impl FunctionExpr {
                 );
                 Self::with_typed_shape(
                     FunctionExprKind::Custom(CustomFunctionExpr::constant(value, type_)),
+                    shape,
+                )
+            }
+            ConstantFunctionInstantiation::External(value) => {
+                let shape = value.shape().clone();
+                let type_ = crate::plan::ExternalFunctionType::from_shapes(
+                    shape.argument_shapes().to_vec(),
+                    value.return_().clone(),
+                );
+                Self::with_typed_shape(
+                    FunctionExprKind::External(ExternalFunctionExpr::constant(value, type_)),
                     shape,
                 )
             }
@@ -176,6 +191,15 @@ impl FunctionExpr {
                 expression.custom_function_type().argument_shapes().to_vec(),
                 crate::plan::ValueShape::Custom(
                     expression.custom_function_type().return_().clone(),
+                ),
+            ),
+            FunctionExprKind::External(expression) => crate::plan::FunctionShape::new(
+                expression
+                    .external_function_type()
+                    .argument_shapes()
+                    .to_vec(),
+                crate::plan::ValueShape::External(
+                    expression.external_function_type().return_().clone(),
                 ),
             ),
             FunctionExprKind::Float(expression) => {
@@ -236,6 +260,15 @@ impl FunctionExpr {
                     return_shape,
                 ),
             )),
+            ValueShape::External(return_shape) => {
+                Self::external(ExternalFunctionExpr::custom_field(
+                    access,
+                    crate::plan::ExternalFunctionType::from_shapes(
+                        shape.argument_shapes().to_vec(),
+                        return_shape,
+                    ),
+                ))
+            }
             ValueShape::Float => {
                 Self::float_with_shape(FloatFunctionExpr::custom_field(access, type_), shape)
             }
@@ -305,6 +338,16 @@ impl FunctionExpr {
                     return_shape,
                 ),
             )),
+            ValueShape::External(return_shape) => {
+                Self::external(ExternalFunctionExpr::tuple_index(
+                    tuple,
+                    index,
+                    crate::plan::ExternalFunctionType::from_shapes(
+                        shape.argument_shapes().to_vec(),
+                        return_shape,
+                    ),
+                ))
+            }
             ValueShape::Float => {
                 Self::float_with_shape(FloatFunctionExpr::tuple_index(tuple, index, type_), shape)
             }
@@ -381,6 +424,13 @@ impl FunctionExpr {
                 )),
                 shape,
             ),
+            ValueShape::External(return_shape) => Self::with_typed_shape(
+                FunctionExprKind::External(ExternalFunctionExpr::reference(
+                    ExternalFunctionReference::new(instantiation),
+                    return_shape,
+                )),
+                shape,
+            ),
             ValueShape::Bool => Self::bool_with_shape(
                 BoolFunctionExpr::reference(BoolFunctionReference::new(instantiation)),
                 shape,
@@ -443,6 +493,15 @@ impl FunctionExpr {
                 function,
                 args,
                 crate::plan::CustomFunctionType::from_shapes(
+                    shape.argument_shapes().to_vec(),
+                    return_,
+                ),
+                site,
+            )),
+            ValueShape::External(return_) => Self::external(ExternalFunctionExpr::call_at(
+                function,
+                args,
+                crate::plan::ExternalFunctionType::from_shapes(
                     shape.argument_shapes().to_vec(),
                     return_,
                 ),
@@ -541,6 +600,10 @@ impl FunctionExpr {
         Self::new(FunctionExprKind::Custom(expression))
     }
 
+    pub(crate) fn external(expression: ExternalFunctionExpr) -> Self {
+        Self::new(FunctionExprKind::External(expression))
+    }
+
     pub(crate) fn float(expression: FloatFunctionExpr) -> Self {
         Self::new(FunctionExprKind::Float(expression))
     }
@@ -632,6 +695,9 @@ impl FunctionExpr {
             FunctionExprKind::Custom(return_) => {
                 FunctionExprKind::Custom(CustomFunctionExpr::block(steps, return_))
             }
+            FunctionExprKind::External(return_) => {
+                FunctionExprKind::External(ExternalFunctionExpr::block(steps, return_))
+            }
             FunctionExprKind::Float(return_) => {
                 FunctionExprKind::Float(FloatFunctionExpr::block(steps, return_))
             }
@@ -694,6 +760,15 @@ impl FunctionExpr {
                 ))
             }
             (
+                FunctionExprKind::External(expression),
+                crate::plan::ValueShape::External(return_),
+            ) => FunctionExprKind::External(expression.with_type(
+                crate::plan::ExternalFunctionType::from_shapes(
+                    shape.argument_shapes().to_vec(),
+                    return_,
+                ),
+            )),
+            (
                 FunctionExprKind::Function(expression),
                 crate::plan::ValueShape::Function(return_),
             ) => FunctionExprKind::Function(expression.with_type(
@@ -744,6 +819,9 @@ impl FunctionExpr {
             }
             FunctionExprKind::Custom(expression) => {
                 TypedFunctionExprKind::Custom(TypedFunctionExpr::new(shape, expression))
+            }
+            FunctionExprKind::External(expression) => {
+                TypedFunctionExprKind::External(TypedFunctionExpr::new(shape, expression))
             }
             FunctionExprKind::Float(expression) => {
                 TypedFunctionExprKind::Float(TypedFunctionExpr::new(shape, expression))
@@ -804,6 +882,13 @@ impl FunctionExpr {
     pub(crate) fn into_custom(self) -> Option<CustomFunctionExpr> {
         match self.kind {
             FunctionExprKind::Custom(expression) => Some(expression),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn into_external(self) -> Option<ExternalFunctionExpr> {
+        match self.kind {
+            FunctionExprKind::External(expression) => Some(expression),
             _ => None,
         }
     }

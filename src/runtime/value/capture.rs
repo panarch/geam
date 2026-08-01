@@ -3,18 +3,19 @@ use num_bigint::BigInt;
 
 use super::{
     BitArrayFunctionValue, BitArrayValue, BoolFunctionValue, CustomFunctionValue, CustomValue,
-    FloatFunctionValue, FunctionFunctionValue, GenericFunctionValue, IntFunctionValue,
-    ListFunctionValue, ListValue, NeverFunctionValue, NilFunctionValue, StringFunctionValue,
-    TupleFunctionValue, UtfCodepointFunctionValue, Value,
+    ExternalFunctionValue, ExternalValue, FloatFunctionValue, FunctionFunctionValue,
+    GenericFunctionValue, IntFunctionValue, ListFunctionValue, ListValue, NeverFunctionValue,
+    NilFunctionValue, StringFunctionValue, TupleFunctionValue, UtfCodepointFunctionValue, Value,
 };
 use crate::plan::execution::graph::{
     BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
     BoolListLocalId, BoolLocalId, CustomFunctionLocalId, CustomListLocalId, CustomLocal,
-    FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionFunctionLocalId,
-    FunctionListLocalId, GenericFunctionLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId,
-    ListFunctionLocal, ListListLocalId, NeverFunctionLocalId, NilFunctionLocalId, NilListLocalId,
-    NilLocalId, ParameterListListLocalId, ParameterListLocalId, StringFunctionLocalId,
-    StringListLocalId, StringLocalId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
+    ExternalFunctionLocalId, ExternalListLocalId, ExternalLocal, FloatFunctionLocalId,
+    FloatListLocalId, FloatLocalId, FunctionFunctionLocal, FunctionListLocalId,
+    GenericFunctionLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionLocal,
+    ListListLocalId, NeverFunctionLocalId, NilFunctionLocalId, NilListLocalId, NilLocalId,
+    ParameterListListLocalId, ParameterListLocalId, StringFunctionLocalId, StringListLocalId,
+    StringLocalId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
     UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
 };
 use crate::plan::{FunctionType, ValueType};
@@ -49,6 +50,10 @@ pub(crate) enum CaptureValueKind {
     Custom {
         local: CustomLocal,
         value: CustomValue,
+    },
+    External {
+        local: ExternalLocal,
+        value: ExternalValue,
     },
     Bool {
         local: BoolLocalId,
@@ -86,6 +91,10 @@ pub(crate) enum CaptureValueKind {
         local: CustomFunctionLocalId,
         value: CustomFunctionValue,
     },
+    ExternalFunction {
+        local: ExternalFunctionLocalId,
+        value: ExternalFunctionValue,
+    },
     GenericFunction {
         local: GenericFunctionLocalId,
         value: GenericFunctionValue,
@@ -111,7 +120,7 @@ pub(crate) enum CaptureValueKind {
         value: ListFunctionValue,
     },
     FunctionFunction {
-        local: FunctionFunctionLocalId,
+        local: FunctionFunctionLocal,
         value: FunctionFunctionValue,
     },
 }
@@ -147,6 +156,11 @@ pub(crate) enum CaptureListValue {
         local: CustomListLocalId,
         item_type: crate::plan::CustomType,
         value: Vec<CustomValue>,
+    },
+    External {
+        local: ExternalListLocalId,
+        item_type: crate::plan::ExternalType,
+        value: Vec<ExternalValue>,
     },
     Float {
         local: FloatListLocalId,
@@ -211,6 +225,12 @@ impl CaptureValue {
     pub(crate) fn custom(local: CustomLocal, value: CustomValue) -> Self {
         Self {
             kind: CaptureValueKind::Custom { local, value },
+        }
+    }
+
+    pub(crate) fn external(local: ExternalLocal, value: ExternalValue) -> Self {
+        Self {
+            kind: CaptureValueKind::External { local, value },
         }
     }
 
@@ -286,6 +306,15 @@ impl CaptureValue {
         }
     }
 
+    pub(crate) fn external_function(
+        local: ExternalFunctionLocalId,
+        value: ExternalFunctionValue,
+    ) -> Self {
+        Self {
+            kind: CaptureValueKind::ExternalFunction { local, value },
+        }
+    }
+
     pub(crate) fn generic_function(
         local: GenericFunctionLocalId,
         value: GenericFunctionValue,
@@ -326,7 +355,7 @@ impl CaptureValue {
     }
 
     pub(crate) fn function_function(
-        local: FunctionFunctionLocalId,
+        local: FunctionFunctionLocal,
         value: FunctionFunctionValue,
     ) -> Self {
         Self {
@@ -340,14 +369,14 @@ mod tests {
     use super::{CaptureListValue, CaptureValue, CaptureValueKind};
     use crate::plan::execution::function::{
         BitArrayFunctionId, BoolFunctionId, FloatFunctionId, FunctionFunctionId,
-        IntFunctionFunctionId, IntFunctionId, ListFunctionId, NilFunctionId, StringFunctionId,
-        TupleFunctionId, UtfCodepointFunctionId,
+        IntFunctionFunctionId, IntFunctionId, ListFunctionId, NilFunctionId, RuntimeListFunctionId,
+        StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
     };
     use crate::plan::execution::graph::{
         BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
-        BoolLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocalId,
-        IntFunctionLocalId, IntListFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionLocal,
-        NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId,
+        BoolLocalId, FloatFunctionLocalId, FloatLocalId, IntFunctionLocalId,
+        IntListFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionLocal, NilFunctionLocalId,
+        NilLocalId, ParamLocal, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId,
         TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
     };
     use crate::plan::{FunctionType, ValueType};
@@ -360,7 +389,8 @@ mod tests {
     #[test]
     fn capture_value_constructors_preserve_every_output_family() {
         let list_plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [] }");
-        let list_function_id = ListFunctionId::Int(list_plan.int_list_function_id(0));
+        let list_function_id =
+            RuntimeListFunctionId::Core(ListFunctionId::Int(list_plan.int_list_function_id(0)));
         let list_type_id = list_plan.int_list_function_id(0).type_id();
         let module_int_function_type = FunctionType::new(Vec::new(), ValueType::Int);
         let execution_int_function_type = crate::plan::execution::type_::FunctionType::new(
@@ -434,6 +464,12 @@ mod tests {
             type_: execution_int_function_type,
             list_type: list_type_id,
         };
+        let function_function_local = function_function_parameter(
+            r#"
+fn take(value: fn() -> fn() -> Int) { 0 }
+pub fn main() { take }
+"#,
+        );
 
         let captures = [
             CaptureValue::int(IntLocalId(0), 1.into()),
@@ -471,7 +507,10 @@ mod tests {
             CaptureValue::nil_function(NilFunctionLocalId(0), nil_function.clone()),
             CaptureValue::tuple_function(TupleFunctionLocalId(0), tuple_function.clone()),
             CaptureValue::list_function(list_function_local.clone(), list_function.clone()),
-            CaptureValue::function_function(FunctionFunctionLocalId(0), function_function.clone()),
+            CaptureValue::function_function(
+                function_function_local.clone(),
+                function_function.clone(),
+            ),
         ];
         let expected = [
             CaptureValueKind::Int {
@@ -554,7 +593,7 @@ mod tests {
                 value: list_function,
             },
             CaptureValueKind::FunctionFunction {
-                local: FunctionFunctionLocalId(0),
+                local: function_function_local,
                 value: function_function,
             },
         ];
@@ -562,5 +601,41 @@ mod tests {
         for (capture, expected) in captures.iter().zip(expected) {
             assert_eq!(capture.kind, expected);
         }
+    }
+
+    #[test]
+    #[should_panic(expected = "take should have one function parameter")]
+    fn function_function_parameter_rejects_other_parameter_counts() {
+        function_function_parameter(
+            r#"
+fn take() { 0 }
+pub fn main() { take }
+"#,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "take should receive a function-returning function")]
+    fn function_function_parameter_rejects_other_parameter_families() {
+        function_function_parameter(
+            r#"
+fn take(value: Int) { 0 }
+pub fn main() { take }
+"#,
+        );
+    }
+
+    fn function_function_parameter(
+        source: &str,
+    ) -> crate::plan::execution::graph::FunctionFunctionLocal {
+        let plan = crate::runtime::plan_src(source);
+        let owner = plan.int_function(IntFunctionId(0));
+        let [parameter] = owner.entry().params(owner.body()) else {
+            panic!("take should have one function parameter");
+        };
+        let ParamLocal::FunctionFunction(local) = parameter.local() else {
+            panic!("take should receive a function-returning function");
+        };
+        local.clone()
     }
 }

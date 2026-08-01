@@ -1,6 +1,7 @@
 mod bit_array;
 mod capture;
 mod custom;
+mod external;
 mod function;
 mod inspection;
 mod list;
@@ -13,12 +14,13 @@ use crate::plan::ValueType;
 pub use self::bit_array::{BitArrayValue, BitArrayValueLengthError};
 pub(crate) use self::capture::{CaptureListValue, CaptureValue};
 pub use self::custom::{CustomFieldValue, CustomValue};
+pub use self::external::{ExternalValue, ExternalValueIdentity};
 pub use self::function::FunctionValue;
 pub(crate) use self::function::{
     BitArrayFunctionValue, BoolFunctionValue, CustomFunctionValue, CustomFunctionValueTarget,
-    FloatFunctionValue, FunctionFunctionValue, FunctionValueKind, GenericFunctionValue,
-    IntFunctionValue, ListFunctionValue, NeverFunctionValue, NilFunctionValue, StringFunctionValue,
-    TupleFunctionValue, UtfCodepointFunctionValue,
+    ExternalFunctionValue, FloatFunctionValue, FunctionFunctionValue, FunctionValueKind,
+    GenericFunctionValue, IntFunctionValue, ListFunctionValue, NeverFunctionValue,
+    NilFunctionValue, StringFunctionValue, TupleFunctionValue, UtfCodepointFunctionValue,
 };
 pub use self::inspection::ValueInspection;
 pub use self::list::{ListValue, ListValueItemTypeMismatch};
@@ -31,6 +33,7 @@ pub enum Value {
     BitArray(BitArrayValue),
     UtfCodepoint(char),
     Custom(CustomValue),
+    External(ExternalValue),
     Bool(bool),
     Nil,
     Tuple(Vec<Value>),
@@ -51,6 +54,7 @@ impl Value {
             Self::BitArray(_) => ValueType::BitArray,
             Self::UtfCodepoint(_) => ValueType::UtfCodepoint,
             Self::Custom(value) => ValueType::Custom(value.type_().clone()),
+            Self::External(value) => ValueType::External(value.type_().clone()),
             Self::Bool(_) => ValueType::Bool,
             Self::Nil => ValueType::Nil,
             Self::Tuple(values) => ValueType::Tuple(values.iter().map(Self::value_type).collect()),
@@ -62,8 +66,9 @@ impl Value {
 
 #[cfg(test)]
 mod tests {
-    use super::{BitArrayValue, CustomValue, ListValue, Value, ValueType};
-    use crate::plan::{CustomType, CustomTypeName};
+    use super::{BitArrayValue, CustomValue, ExternalValue, ListValue, Value, ValueType};
+    use crate::host::HostExternalStore;
+    use crate::plan::{CustomType, CustomTypeName, ExternalType, ExternalTypeName};
 
     #[test]
     fn value_type_preserves_tuple_element_families() {
@@ -91,6 +96,22 @@ mod tests {
             .value_type(),
             ValueType::Custom(custom_type),
         );
+        let external_type = ExternalType::new(
+            ExternalTypeName::new("application".into(), "main".into(), "Resource".into()),
+            Vec::new(),
+        );
+        let store = HostExternalStore::default();
+        assert_eq!(
+            Value::External(ExternalValue::from_evaluated(
+                external_type.clone(),
+                store.insert(7usize, <usize as PartialEq>::eq, |value| format!(
+                    "Resource({value})"
+                )
+                .into(),),
+            ))
+            .value_type(),
+            ValueType::External(external_type),
+        );
         assert_eq!(Value::Bool(true).value_type(), ValueType::Bool);
         assert_eq!(Value::Nil.value_type(), ValueType::Nil);
         assert_eq!(
@@ -102,8 +123,10 @@ mod tests {
             ValueType::List(Box::new(ValueType::Int)),
         );
         let function = super::FunctionValue::new(
-            crate::plan::execution::function::RuntimeFunctionId::Int(
-                crate::plan::execution::function::IntFunctionId(0),
+            crate::plan::execution::function::RuntimeFunctionId::Core(
+                crate::plan::execution::function::CoreRuntimeFunctionId::Int(
+                    crate::plan::execution::function::IntFunctionId(0),
+                ),
             ),
             Vec::new(),
             crate::plan::FunctionType::new(Vec::new(), ValueType::Int),

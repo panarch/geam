@@ -1,6 +1,7 @@
 use crate::host::{
     HostCallArguments, HostCallCompletion, HostCustom, HostCustomArgumentSlot,
-    HostCustomConstructor, HostCustomType, HostFunctionArgumentSlot, HostList,
+    HostCustomConstructor, HostCustomType, HostExternal, HostExternalArgumentSlot,
+    HostExternalSchema, HostExternalStorage, HostExternalType, HostFunctionArgumentSlot, HostList,
     HostListArgumentSlot, HostListType, HostTuple, HostTupleArgumentSlot, HostTupleType, HostType,
     HostTypeSequence, HostValue, HostValueArgumentSlot,
 };
@@ -14,6 +15,7 @@ pub(crate) use runtime::test;
 
 pub trait HostProfile: Send + Sync + 'static {
     type RunState;
+    type ExternalStores: Default + 'static;
 }
 
 pub trait HostProvider<Profile: HostProfile>: Send + Sync + 'static {
@@ -37,6 +39,7 @@ where
 
 impl HostProfile for StatelessHostProfile {
     type RunState = ();
+    type ExternalStores = ();
 }
 
 impl<'call, Profile, Provider, Return> HostCall<'call, Profile, Provider, Return>
@@ -97,6 +100,13 @@ where
         HostCustom::new(self.runtime.custom(slot))
     }
 
+    pub(crate) fn external<Type>(
+        &self,
+        slot: HostExternalArgumentSlot,
+    ) -> HostExternal<'call, Type> {
+        HostExternal::new(self.runtime.external(slot))
+    }
+
     pub(crate) fn function<Arguments, FunctionReturn>(
         &self,
         slot: HostFunctionArgumentSlot,
@@ -153,6 +163,18 @@ where
         >(self.runtime, &fields))
     }
 
+    pub fn external_payload<Schema, Arguments>(
+        &self,
+        value: HostExternal<'call, HostExternalType<Schema, Arguments>>,
+    ) -> impl std::ops::Deref<Target = <Profile as HostExternalStorage<Schema>>::Payload> + '_
+    where
+        Schema: HostExternalSchema,
+        Profile: HostExternalStorage<Schema>,
+    {
+        let lease = self.runtime.external_lease(value.token);
+        Profile::store(self.runtime.external_stores()).view(&lease)
+    }
+
     /// Invokes a Gleam callable while this host call owns the active runtime.
     ///
     /// A provider-state borrow must end before re-entry.
@@ -169,6 +191,7 @@ where
     ///
     /// impl HostProfile for Profile {
     ///     type RunState = usize;
+    ///     type ExternalStores = ();
     /// }
     ///
     /// impl HostProvider<Profile> for Provider {
@@ -209,6 +232,27 @@ where
             self.runtime,
             returned,
         ))
+    }
+}
+
+impl<'call, Profile, Provider, Schema, Arguments>
+    HostCall<'call, Profile, Provider, HostExternalType<Schema, Arguments>>
+where
+    Profile: HostProfile + HostExternalStorage<Schema>,
+    Provider: HostProvider<Profile>,
+    Schema: HostExternalSchema,
+    HostExternalType<Schema, Arguments>: HostType,
+{
+    pub fn create_external(
+        &mut self,
+        value: <Profile as HostExternalStorage<Schema>>::Payload,
+    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>> {
+        let lease = Profile::store(self.runtime.external_stores()).insert(
+            value,
+            Profile::equal,
+            Profile::inspect,
+        );
+        HostExternal::new(self.runtime.build_external(lease))
     }
 }
 

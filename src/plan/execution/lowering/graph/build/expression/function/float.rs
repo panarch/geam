@@ -1,6 +1,6 @@
 use super::super::{call_args, custom, list, tuple};
 use super::{closure, function_function_expr, reference, source_stop};
-use crate::plan::execution::graph::FunctionTarget;
+use crate::plan::execution::lowering::graph::DraftFunctionTarget;
 use crate::plan::execution::lowering::graph::{
     DraftCursor, DraftFloatFunction, DraftFlow, DraftGraph,
 };
@@ -33,8 +33,13 @@ pub(in crate::plan::execution::lowering) fn float_function_expr(
         E::Reference(value) => context
             .float_function_id(value.instantiation())
             .map(|target| {
-                reference(shape.clone(), FunctionTarget::Float(target), cursor, graph)
-                    .map(DraftFloatFunction::new)
+                reference(
+                    shape.clone(),
+                    DraftFunctionTarget::Float(target),
+                    cursor,
+                    graph,
+                )
+                .map(DraftFloatFunction::new)
             }),
         E::Closure { function, captures } => {
             context.float_function_id(function).and_then(|target| {
@@ -42,7 +47,7 @@ pub(in crate::plan::execution::lowering) fn float_function_expr(
                     function,
                     captures,
                     shape.clone(),
-                    FunctionTarget::Float(target),
+                    DraftFunctionTarget::Float(target),
                     cursor,
                     graph,
                     context,

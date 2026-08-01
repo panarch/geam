@@ -1,16 +1,149 @@
 use super::specialization::{
-    SpecializedCustomValueShape, SpecializedFunctionShape, SpecializedValueShape,
+    SpecializationKey, SpecializedCustomValueShape, SpecializedFunctionShape, SpecializedValueShape,
 };
-use super::{LoweringContext, graph, specialization};
+use super::{LoweringContext, SpecializationOutcome, graph, specialization};
 use crate::plan::execution;
-use crate::plan::execution::constant::{ConstantId, ConstantProgram, ConstantTable, ConstantValue};
+use crate::plan::execution::constant::{
+    ConstantId, ConstantProgram, ConstantTable, ConstantValue, ProfiledConstantProgram,
+    ProfiledConstantTable,
+};
 use crate::plan::module::ConstantInstantiation;
 use std::collections::HashMap;
 
 #[derive(Default)]
 pub(super) struct ConstantLowering {
     indices: HashMap<ConstantInstantiation, usize>,
+    owners: HashMap<ConstantLocation, SpecializationKey>,
     table: ConstantTable,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum ConstantFamily {
+    Int,
+    String,
+    BitArray,
+    Custom,
+    Float,
+    Bool,
+    Nil,
+    Tuple,
+    ParameterList,
+    ParameterListList,
+    IntList,
+    StringList,
+    BitArrayList,
+    UtfCodepointList,
+    CustomList,
+    ExternalList,
+    FloatList,
+    BoolList,
+    NilList,
+    TupleList,
+    ListList,
+    FunctionList,
+    Function,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ConstantLocation {
+    family: ConstantFamily,
+    index: usize,
+}
+
+trait LoweredConstantValue: ConstantValue {
+    const FAMILY: ConstantFamily;
+}
+
+impl LoweredConstantValue for execution::graph::IntLocalId {
+    const FAMILY: ConstantFamily = ConstantFamily::Int;
+}
+
+impl LoweredConstantValue for execution::graph::StringLocalId {
+    const FAMILY: ConstantFamily = ConstantFamily::String;
+}
+
+impl LoweredConstantValue for execution::graph::BitArrayLocalId {
+    const FAMILY: ConstantFamily = ConstantFamily::BitArray;
+}
+
+impl LoweredConstantValue for execution::graph::CustomLocal {
+    const FAMILY: ConstantFamily = ConstantFamily::Custom;
+}
+
+impl LoweredConstantValue for execution::graph::FloatLocalId {
+    const FAMILY: ConstantFamily = ConstantFamily::Float;
+}
+
+impl LoweredConstantValue for execution::graph::BoolLocalId {
+    const FAMILY: ConstantFamily = ConstantFamily::Bool;
+}
+
+impl LoweredConstantValue for execution::graph::NilLocalId {
+    const FAMILY: ConstantFamily = ConstantFamily::Nil;
+}
+
+impl LoweredConstantValue for execution::graph::TupleLocalId {
+    const FAMILY: ConstantFamily = ConstantFamily::Tuple;
+}
+
+impl LoweredConstantValue for execution::graph::ParameterListLocalId {
+    const FAMILY: ConstantFamily = ConstantFamily::ParameterList;
+}
+
+impl LoweredConstantValue for execution::graph::ParameterListListLocalId {
+    const FAMILY: ConstantFamily = ConstantFamily::ParameterListList;
+}
+
+impl LoweredConstantValue for execution::graph::IntListLocalId {
+    const FAMILY: ConstantFamily = ConstantFamily::IntList;
+}
+
+impl LoweredConstantValue for execution::graph::StringListLocalId {
+    const FAMILY: ConstantFamily = ConstantFamily::StringList;
+}
+
+impl LoweredConstantValue for execution::graph::BitArrayListLocalId {
+    const FAMILY: ConstantFamily = ConstantFamily::BitArrayList;
+}
+
+impl LoweredConstantValue for execution::graph::UtfCodepointListLocalId {
+    const FAMILY: ConstantFamily = ConstantFamily::UtfCodepointList;
+}
+
+impl LoweredConstantValue for execution::graph::CustomListLocalId {
+    const FAMILY: ConstantFamily = ConstantFamily::CustomList;
+}
+
+impl LoweredConstantValue for execution::graph::ExternalListLocalId {
+    const FAMILY: ConstantFamily = ConstantFamily::ExternalList;
+}
+
+impl LoweredConstantValue for execution::graph::FloatListLocalId {
+    const FAMILY: ConstantFamily = ConstantFamily::FloatList;
+}
+
+impl LoweredConstantValue for execution::graph::BoolListLocalId {
+    const FAMILY: ConstantFamily = ConstantFamily::BoolList;
+}
+
+impl LoweredConstantValue for execution::graph::NilListLocalId {
+    const FAMILY: ConstantFamily = ConstantFamily::NilList;
+}
+
+impl LoweredConstantValue for execution::graph::TupleListLocalId {
+    const FAMILY: ConstantFamily = ConstantFamily::TupleList;
+}
+
+impl LoweredConstantValue for execution::graph::ListListLocalId {
+    const FAMILY: ConstantFamily = ConstantFamily::ListList;
+}
+
+impl LoweredConstantValue for execution::graph::FunctionListLocalId {
+    const FAMILY: ConstantFamily = ConstantFamily::FunctionList;
+}
+
+impl LoweredConstantValue for execution::graph::FunctionLocal {
+    const FAMILY: ConstantFamily = ConstantFamily::Function;
 }
 
 impl ConstantLowering {
@@ -18,19 +151,162 @@ impl ConstantLowering {
         self.indices.get(key).copied().map(ConstantId::new)
     }
 
-    fn insert<Return: ConstantValue>(
+    fn insert<Return: LoweredConstantValue>(
         &mut self,
         key: ConstantInstantiation,
+        owner: SpecializationKey,
         program: ConstantProgram<Return>,
     ) -> ConstantId<Return> {
         let id = self.table.push(program);
+        self.owners.insert(
+            ConstantLocation {
+                family: Return::FAMILY,
+                index: id.index(),
+            },
+            owner,
+        );
         self.indices.insert(key, id.index());
         id
     }
 
-    pub(super) fn finish(self) -> ConstantTable {
+    pub(super) fn finish_plain(
+        mut self,
+    ) -> SpecializationOutcome<ProfiledConstantTable<std::convert::Infallible>> {
+        let mut sealed = ProfiledConstantTable::default();
+        let mut outcome = SpecializationOutcome::Complete(());
+
+        outcome = outcome.zip_with(
+            self.seal_plain_family::<execution::graph::IntLocalId>(&mut sealed),
+            |(), ()| (),
+        );
+        outcome = outcome.zip_with(
+            self.seal_plain_family::<execution::graph::StringLocalId>(&mut sealed),
+            |(), ()| (),
+        );
+        outcome = outcome.zip_with(
+            self.seal_plain_family::<execution::graph::BitArrayLocalId>(&mut sealed),
+            |(), ()| (),
+        );
+        outcome = outcome.zip_with(
+            self.seal_plain_family::<execution::graph::CustomLocal>(&mut sealed),
+            |(), ()| (),
+        );
+        outcome = outcome.zip_with(
+            self.seal_plain_family::<execution::graph::FloatLocalId>(&mut sealed),
+            |(), ()| (),
+        );
+        outcome = outcome.zip_with(
+            self.seal_plain_family::<execution::graph::BoolLocalId>(&mut sealed),
+            |(), ()| (),
+        );
+        outcome = outcome.zip_with(
+            self.seal_plain_family::<execution::graph::NilLocalId>(&mut sealed),
+            |(), ()| (),
+        );
+        outcome = outcome.zip_with(
+            self.seal_plain_family::<execution::graph::TupleLocalId>(&mut sealed),
+            |(), ()| (),
+        );
+        outcome = outcome.zip_with(
+            self.seal_plain_family::<execution::graph::ParameterListLocalId>(&mut sealed),
+            |(), ()| (),
+        );
+        outcome = outcome.zip_with(
+            self.seal_plain_family::<execution::graph::ParameterListListLocalId>(&mut sealed),
+            |(), ()| (),
+        );
+        outcome = outcome.zip_with(
+            self.seal_plain_family::<execution::graph::IntListLocalId>(&mut sealed),
+            |(), ()| (),
+        );
+        outcome = outcome.zip_with(
+            self.seal_plain_family::<execution::graph::StringListLocalId>(&mut sealed),
+            |(), ()| (),
+        );
+        outcome = outcome.zip_with(
+            self.seal_plain_family::<execution::graph::BitArrayListLocalId>(&mut sealed),
+            |(), ()| (),
+        );
+        outcome = outcome.zip_with(
+            self.seal_plain_family::<execution::graph::UtfCodepointListLocalId>(&mut sealed),
+            |(), ()| (),
+        );
+        outcome = outcome.zip_with(
+            self.seal_plain_family::<execution::graph::CustomListLocalId>(&mut sealed),
+            |(), ()| (),
+        );
+        outcome = outcome.zip_with(
+            self.seal_plain_family::<execution::graph::FloatListLocalId>(&mut sealed),
+            |(), ()| (),
+        );
+        outcome = outcome.zip_with(
+            self.seal_plain_family::<execution::graph::BoolListLocalId>(&mut sealed),
+            |(), ()| (),
+        );
+        outcome = outcome.zip_with(
+            self.seal_plain_family::<execution::graph::NilListLocalId>(&mut sealed),
+            |(), ()| (),
+        );
+        outcome = outcome.zip_with(
+            self.seal_plain_family::<execution::graph::TupleListLocalId>(&mut sealed),
+            |(), ()| (),
+        );
+        outcome = outcome.zip_with(
+            self.seal_plain_family::<execution::graph::ListListLocalId>(&mut sealed),
+            |(), ()| (),
+        );
+        outcome = outcome.zip_with(
+            self.seal_plain_family::<execution::graph::FunctionListLocalId>(&mut sealed),
+            |(), ()| (),
+        );
+        outcome = outcome.zip_with(
+            self.seal_plain_family::<execution::graph::FunctionLocal>(&mut sealed),
+            |(), ()| (),
+        );
+
+        outcome.map(|()| sealed)
+    }
+
+    pub(super) fn finish_hosted(self) -> ConstantTable {
         self.table
     }
+
+    fn seal_plain_family<Return>(
+        &mut self,
+        sealed: &mut ProfiledConstantTable<std::convert::Infallible>,
+    ) -> SpecializationOutcome<()>
+    where
+        Return: LoweredConstantValue,
+    {
+        let programs = std::mem::take(Return::programs_mut(&mut self.table));
+        programs.into_iter().enumerate().fold(
+            SpecializationOutcome::Complete(()),
+            |outcome, (index, program)| {
+                let owner = self.owners[&ConstantLocation {
+                    family: Return::FAMILY,
+                    index,
+                }]
+                    .clone();
+                outcome.zip_with(
+                    SpecializationOutcome::from_representability(
+                        seal_plain_constant_program(program),
+                        owner,
+                    ),
+                    |(), program| {
+                        sealed.push(program);
+                    },
+                )
+            },
+        )
+    }
+}
+
+fn seal_plain_constant_program<Return>(
+    program: ProfiledConstantProgram<Return, execution::function::HostedExecutionGraph>,
+) -> specialization::Representability<ProfiledConstantProgram<Return, std::convert::Infallible>> {
+    let (block_graph, returns) = program.into_parts();
+    graph::seal_plain_block_graph(block_graph)
+        .map(|block_graph| ProfiledConstantProgram::from_parts(block_graph, returns.into_vec()))
 }
 
 impl LoweringContext {
@@ -48,7 +324,7 @@ impl LoweringContext {
     ) -> specialization::Representability<execution::constant::ConstantId<Return>>
     where
         DraftValue: graph::DraftGraphValue + graph::FreezeGraphValue<Frozen = Return>,
-        Return: execution::constant::ConstantValue,
+        Return: LoweredConstantValue,
     {
         let outer = self.substitution.to_module_substitution();
         let key = instantiation.substitute(&outer);
@@ -57,8 +333,9 @@ impl LoweringContext {
         }
 
         let value = materialize(self.constant_templates.get(key.module()));
+        let owner = self.current_specialization.clone();
         graph::lower_constant_graph(&value, self, lower)
-            .map(|program| self.constants.insert(key, program))
+            .map(|program| self.constants.insert(key, owner, program))
     }
 
     pub(super) fn int_constant(
@@ -253,6 +530,22 @@ impl LoweringContext {
         )
     }
 
+    pub(super) fn external_list_constant(
+        &mut self,
+        reference: &crate::plan::ConstantExternalListInstantiation,
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::ExternalListLocalId>,
+    > {
+        let instantiation = reference.clone();
+        self.lower_constant(
+            crate::plan::ConstantInstantiation::from_list(
+                crate::plan::ConstantListInstantiation::External(instantiation.clone()),
+            ),
+            |templates| templates.materialize_external_list(&instantiation),
+            graph::external_list_expr,
+        )
+    }
+
     pub(super) fn float_list_constant(
         &mut self,
         reference: &crate::plan::ConstantFloatListInstantiation,
@@ -377,7 +670,7 @@ impl LoweringContext {
     ) -> specialization::Representability<execution::constant::ConstantId<Value>>
     where
         DraftValue: graph::DraftGraphValue + graph::FreezeGraphValue<Frozen = Value>,
-        Value: execution::constant::ConstantValue,
+        Value: LoweredConstantValue,
     {
         let instantiation = reference.clone();
         self.lower_constant(
@@ -446,6 +739,16 @@ impl LoweringContext {
         execution::constant::ConstantId<execution::graph::CustomListLocalId>,
     > {
         self.lower_generic_list_constant(reference, graph::DraftCustomList::new)
+    }
+
+    pub(super) fn generic_external_list_constant(
+        &mut self,
+        reference: &crate::plan::ConstantGenericListInstantiation,
+        _shape: &specialization::SpecializedExternalValueShape,
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::ExternalListLocalId>,
+    > {
+        self.lower_generic_list_constant(reference, graph::DraftExternalList::new)
     }
 
     pub(super) fn generic_float_list_constant(
@@ -559,11 +862,12 @@ impl LoweringContext {
         }
 
         let value = materialize(self.constant_templates.get(key.module()));
+        let owner = self.current_specialization.clone();
         graph::lower_constant_graph(&value, self, |expression, cursor, graph, context| {
             lower(expression, cursor, graph, context)
                 .map(|flow| flow.map(graph::DraftFunctionValue::into_function))
         })
-        .map(|program| self.constants.insert(key, program))
+        .map(|program| self.constants.insert(key, owner, program))
     }
 
     pub(super) fn generic_function_constant(
@@ -779,6 +1083,33 @@ impl LoweringContext {
         )
     }
 
+    pub(super) fn generic_external_function_constant(
+        &mut self,
+        reference: &crate::plan::ConstantGenericFunctionInstantiation,
+        return_shape: &specialization::SpecializedExternalValueShape,
+        shape: &SpecializedFunctionShape,
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
+        let instantiation = reference.clone();
+        self.lower_function_constant(
+            crate::plan::ConstantInstantiation::from_function(
+                crate::plan::ConstantFunctionInstantiation::Generic(instantiation.clone()),
+            ),
+            |templates| templates.materialize_generic_function(&instantiation),
+            |expression, cursor, graph, context| {
+                graph::generic_external_function_expr(
+                    expression,
+                    return_shape,
+                    shape,
+                    cursor,
+                    graph,
+                    context,
+                )
+            },
+        )
+    }
+
     pub(super) fn generic_list_function_constant(
         &mut self,
         reference: &crate::plan::ConstantGenericFunctionInstantiation,
@@ -843,6 +1174,31 @@ impl LoweringContext {
             |templates| templates.materialize_custom_function(&instantiation),
             |expression, cursor, graph, context| {
                 graph::symbolic_custom_function_expr_kind(
+                    expression.kind(),
+                    shape,
+                    cursor,
+                    graph,
+                    context,
+                )
+            },
+        )
+    }
+
+    pub(super) fn symbolic_external_function_constant(
+        &mut self,
+        reference: &crate::plan::ConstantExternalFunctionInstantiation,
+        shape: &SpecializedFunctionShape,
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
+        let instantiation = reference.clone();
+        self.lower_function_constant(
+            crate::plan::ConstantInstantiation::from_function(
+                crate::plan::ConstantFunctionInstantiation::External(instantiation.clone()),
+            ),
+            |templates| templates.materialize_external_function(&instantiation),
+            |expression, cursor, graph, context| {
+                graph::symbolic_external_function_expr_kind(
                     expression.kind(),
                     shape,
                     cursor,
@@ -1144,6 +1500,22 @@ impl LoweringContext {
             ),
             |templates| templates.materialize_custom_function(&instantiation),
             graph::custom_function_expr,
+        )
+    }
+
+    pub(super) fn external_function_constant(
+        &mut self,
+        reference: &crate::plan::ConstantExternalFunctionInstantiation,
+    ) -> specialization::Representability<
+        execution::constant::ConstantId<execution::graph::FunctionLocal>,
+    > {
+        let instantiation = reference.clone();
+        self.lower_function_constant(
+            crate::plan::ConstantInstantiation::from_function(
+                crate::plan::ConstantFunctionInstantiation::External(instantiation.clone()),
+            ),
+            |templates| templates.materialize_external_function(&instantiation),
+            graph::external_function_expr,
         )
     }
 

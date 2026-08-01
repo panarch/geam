@@ -1,6 +1,7 @@
 mod bit_array;
 mod bool;
 mod custom;
+mod external;
 mod float;
 mod function;
 mod int;
@@ -15,12 +16,18 @@ pub(crate) use bit_array::{
 };
 pub(crate) use bool::BoolInstruction;
 pub(crate) use custom::CustomInstruction;
+pub(crate) use external::{ExternalInstruction, ExternalInstructionRef, ExternalInstructionView};
 pub(crate) use float::FloatInstruction;
 pub(crate) use function::{
-    FunctionCapture, FunctionInstruction, FunctionInstructionKind, FunctionTarget,
+    ExternalFunctionCallTarget, ExternalFunctionInstruction, ExternalFunctionInstructionKind,
+    ExternalFunctionInstructionView, ExternalFunctionTarget, FunctionCapture, FunctionInstruction,
+    FunctionInstructionKind, FunctionTarget,
 };
 pub(crate) use int::IntInstruction;
-pub(crate) use list::{ListInstruction, ParameterListInstruction, TypedListInstruction};
+pub(crate) use list::{
+    ExternalListInstruction, ExternalListInstructionView, ListInstruction,
+    ParameterListInstruction, TypedListInstruction,
+};
 pub(crate) use nil::NilInstruction;
 pub(crate) use string::StringInstruction;
 pub(crate) use tuple::TupleInstruction;
@@ -28,21 +35,25 @@ pub(crate) use utf_codepoint::UtfCodepointInstruction;
 
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::FunctionLabelSource;
+use crate::plan::execution::function::{ExecutionGraphProfile, HostedExecutionGraph};
 use crate::plan::execution::graph::ParamSlot;
 use crate::plan::execution::graph::{LocalLabel, ParamLocal, write_local_labels};
 
-pub(crate) struct Instruction {
+pub(crate) struct ProfiledInstruction<Graph: ExecutionGraphProfile> {
     output: ParamSlot,
-    kind: InstructionKind,
+    kind: ProfiledInstructionKind<Graph>,
 }
 
-pub(crate) enum InstructionKind {
+pub(crate) enum ProfiledInstructionKind<Graph: ExecutionGraphProfile> {
     Int(IntInstruction),
     Float(FloatInstruction),
     String(StringInstruction),
     BitArray(BitArrayInstruction),
     UtfCodepoint(UtfCodepointInstruction),
     Custom(CustomInstruction),
+    External(Graph::ExternalInstruction),
+    ExternalList(Graph::ExternalListInstruction),
+    ExternalFunction(Graph::ExternalFunctionInstruction),
     Bool(BoolInstruction),
     Nil(NilInstruction),
     Tuple(TupleInstruction),
@@ -50,8 +61,14 @@ pub(crate) enum InstructionKind {
     Function(FunctionInstruction),
 }
 
-impl Instruction {
-    pub(in crate::plan::execution) fn new(output: ParamSlot, kind: InstructionKind) -> Self {
+pub(crate) type Instruction = ProfiledInstruction<HostedExecutionGraph>;
+pub(crate) type InstructionKind = ProfiledInstructionKind<HostedExecutionGraph>;
+
+impl<Graph: ExecutionGraphProfile> ProfiledInstruction<Graph> {
+    pub(in crate::plan::execution) fn new(
+        output: ParamSlot,
+        kind: ProfiledInstructionKind<Graph>,
+    ) -> Self {
         Self { output, kind }
     }
 
@@ -59,12 +76,23 @@ impl Instruction {
         &self.output
     }
 
-    pub(crate) fn kind(&self) -> &InstructionKind {
+    pub(crate) fn kind(&self) -> &ProfiledInstructionKind<Graph> {
         &self.kind
+    }
+
+    pub(in crate::plan::execution) fn into_parts(
+        self,
+    ) -> (ParamSlot, ProfiledInstructionKind<Graph>) {
+        (self.output, self.kind)
     }
 }
 
-impl Explain for Instruction {
+impl<Graph: ExecutionGraphProfile> Explain for ProfiledInstruction<Graph>
+where
+    Graph::ExternalInstruction: Explain,
+    Graph::ExternalListInstruction: Explain,
+    Graph::ExternalFunctionInstruction: Explain,
+{
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
         context.push_str("    ");
         context.write(self.output());
@@ -74,7 +102,12 @@ impl Explain for Instruction {
     }
 }
 
-impl Explain for InstructionKind {
+impl<Graph: ExecutionGraphProfile> Explain for ProfiledInstructionKind<Graph>
+where
+    Graph::ExternalInstruction: Explain,
+    Graph::ExternalListInstruction: Explain,
+    Graph::ExternalFunctionInstruction: Explain,
+{
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
         match self {
             Self::Int(instruction) => context.write(instruction),
@@ -83,6 +116,9 @@ impl Explain for InstructionKind {
             Self::BitArray(instruction) => context.write(instruction),
             Self::UtfCodepoint(instruction) => context.write(instruction),
             Self::Custom(instruction) => context.write(instruction),
+            Self::External(instruction) => context.write(instruction),
+            Self::ExternalList(instruction) => context.write(instruction),
+            Self::ExternalFunction(instruction) => context.write(instruction),
             Self::Bool(instruction) => context.write(instruction),
             Self::Nil(instruction) => context.write(instruction),
             Self::Tuple(instruction) => context.write(instruction),
@@ -121,8 +157,10 @@ mod instruction_explain_tests {
 
 #[cfg(test)]
 mod instruction_kind_explain_tests {
+    use super::{ExternalInstruction, InstructionKind};
     use crate::plan::execution::explain;
-    use crate::plan::execution::function::TupleFunctionId;
+    use crate::plan::execution::function::{ExternalFunctionId, TupleFunctionId};
+    use crate::plan::execution::type_::ExternalTypeId;
 
     #[test]
     fn dispatches_every_typed_instruction_family() {
@@ -164,6 +202,22 @@ pub fn main() { #(Boxed) }
         for (source, expected) in cases {
             assert_explanation(source, expected);
         }
+    }
+
+    #[test]
+    fn dispatches_external_instructions() {
+        let source = "pub fn main() { 1 }";
+        let expected = "external.call external#13 args=[]";
+
+        explain::assert_rendered(source, expected, |plan, output| {
+            let instruction = InstructionKind::External(ExternalInstruction::Call {
+                function: ExternalFunctionId::new(13, ExternalTypeId::new(0)),
+                args: Box::new([]),
+                site: crate::plan::HostCallSite::unknown(),
+            });
+            let mut context = explain::ExplainContext::new(plan, output);
+            context.write(&instruction);
+        });
     }
 
     fn assert_explanation(source: &str, expected: &str) {

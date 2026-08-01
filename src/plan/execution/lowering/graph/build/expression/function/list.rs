@@ -1,8 +1,8 @@
 use super::super::{call_args, custom, list, tuple};
 use super::{closure, function_function_expr, reference, source_stop};
-use crate::plan::execution::graph::FunctionTarget;
+use crate::plan::execution::lowering::graph::DraftFunctionTarget;
 use crate::plan::execution::lowering::graph::{
-    DraftCursor, DraftFlow, DraftGraph, DraftListFunction,
+    DraftCursor, DraftFlow, DraftFunction, DraftGraph, DraftListFunction,
 };
 use crate::plan::execution::lowering::specialization::{Representability, StoredValueShape};
 use crate::plan::{execution, module};
@@ -36,8 +36,13 @@ pub(in crate::plan::execution::lowering) fn list_function_expr(
         E::Reference(value) => context
             .list_function_id(value.instantiation(), &item_shape)
             .map(|target| {
-                reference(shape.clone(), FunctionTarget::List(target), cursor, graph)
-                    .map(DraftListFunction::new)
+                reference(
+                    shape.clone(),
+                    DraftFunctionTarget::List(target),
+                    cursor,
+                    graph,
+                )
+                .map(DraftListFunction::new)
             }),
         E::Closure { function, captures } => context
             .list_function_id(function, &item_shape)
@@ -46,7 +51,7 @@ pub(in crate::plan::execution::lowering) fn list_function_expr(
                     function,
                     captures,
                     shape.clone(),
-                    FunctionTarget::List(target),
+                    DraftFunctionTarget::List(target),
                     cursor,
                     graph,
                     context,
@@ -249,7 +254,7 @@ pub(in crate::plan::execution::lowering) fn generic_list_function_expr(
     cursor: DraftCursor,
     graph: &mut DraftGraph,
     context: &mut super::super::super::LoweringContext,
-) -> Representability<DraftFlow<DraftListFunction>> {
+) -> Representability<DraftFlow<DraftFunction>> {
     generic_list_function_expr_kind(expression.kind(), item_shape, shape, cursor, graph, context)
 }
 
@@ -260,7 +265,7 @@ fn generic_list_function_expr_kind(
     cursor: DraftCursor,
     graph: &mut DraftGraph,
     context: &mut super::super::super::LoweringContext,
-) -> Representability<DraftFlow<DraftListFunction>> {
+) -> Representability<DraftFlow<DraftFunction>> {
     super::generic::lower_executable_kind(
         kind,
         shape,
@@ -268,7 +273,7 @@ fn generic_list_function_expr_kind(
         graph,
         context,
         super::generic::executable_kind_lowering(
-            DraftListFunction::new,
+            std::convert::identity,
             |value, context| {
                 context
                     .generic_list_function_constant(value, item_shape, shape)
@@ -277,7 +282,7 @@ fn generic_list_function_expr_kind(
             |function, context| {
                 context
                     .list_function_id(function, item_shape)
-                    .map(FunctionTarget::List)
+                    .map(DraftFunctionTarget::List)
             },
             |function, context| {
                 context

@@ -1,6 +1,7 @@
 mod constant;
 mod custom_type;
 mod expression;
+mod external_type;
 mod function;
 mod id;
 mod pattern;
@@ -16,6 +17,7 @@ pub(crate) use constant::{
     ConstantBitArrayReference, ConstantBitArraySegment, ConstantBitArrayValue,
     ConstantBoolFunctionInstantiation, ConstantBoolListInstantiation, ConstantBoolReference,
     ConstantCustomFunctionInstantiation, ConstantCustomListInstantiation, ConstantCustomReference,
+    ConstantExternalFunctionInstantiation, ConstantExternalListInstantiation,
     ConstantFloatFunctionInstantiation, ConstantFloatListInstantiation, ConstantFloatReference,
     ConstantFloatValue, ConstantFunctionFunctionInstantiation, ConstantFunctionInstantiation,
     ConstantFunctionListInstantiation, ConstantGenericFunctionInstantiation,
@@ -36,6 +38,8 @@ pub use custom_type::{
     CustomConstructorDefinition, CustomFieldDefinition, CustomTypeDefinition,
     CustomTypeParameterId, CustomTypePublicity, CustomTypeTemplate,
 };
+pub(crate) use external_type::ExternalValueShape;
+pub use external_type::{ExternalType, ExternalTypeDefinition, ExternalTypeName};
 
 #[cfg(test)]
 pub(crate) use expression::TypedFunctionExpr;
@@ -44,37 +48,41 @@ pub(crate) use expression::{
     BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayExprKind, BitArrayFunctionExprKind,
     BitArraySegment, BoolCaseBranches, BoolExprKind, BoolFunctionExprKind, CallArgStorage,
     CaptureArg, CustomBoolCaseBranches, CustomCaseBranches, CustomConstruction, CustomExprKind,
-    CustomFieldAccess, CustomFunctionExprKind, CustomLocalExpr, Endianness, ExprKind, FloatBitSize,
-    FloatCaseBranches, FloatExprKind, FloatFunctionExprKind, FunctionExprKind,
-    FunctionFunctionCallMismatch, FunctionFunctionExprKind, GenericExpr, GenericExprKind,
-    GenericFunctionExpr, GenericFunctionExprKind, IntCaseBranches, IntExprKind,
-    IntFunctionExprKind, ListElements, ListFunctionExprKind, NilExprKind, NilFunctionExprKind,
-    PanicExpr, PanicExprKind, PotentiallyUninhabitedCallArg, StringCaseBranches, StringEncoding,
-    StringExprKind, StringFunctionExprKind, TupleExprKind, TupleFunctionExprKind,
-    TypedFunctionExprKind, UtfCodepointExprKind, UtfCodepointFunctionExprKind,
+    CustomFieldAccess, CustomFunctionExprKind, CustomLocalExpr, Endianness, ExprKind,
+    ExternalExprKind, ExternalFunctionExprKind, FloatBitSize, FloatCaseBranches, FloatExprKind,
+    FloatFunctionExprKind, FunctionExprKind, FunctionFunctionCallMismatch,
+    FunctionFunctionExprKind, GenericExpr, GenericExprKind, GenericFunctionExpr,
+    GenericFunctionExprKind, IntCaseBranches, IntExprKind, IntFunctionExprKind, ListElements,
+    ListFunctionExprKind, NilExprKind, NilFunctionExprKind, PanicExpr, PanicExprKind,
+    PotentiallyUninhabitedCallArg, StringCaseBranches, StringEncoding, StringExprKind,
+    StringFunctionExprKind, TupleExprKind, TupleFunctionExprKind, TypedFunctionExprKind,
+    UtfCodepointExprKind, UtfCodepointFunctionExprKind,
 };
 pub use expression::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CallArg, CustomExpr,
-    CustomFunctionExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr,
-    IntExpr, IntFunctionExpr, ListFunctionExpr, NilExpr, NilFunctionExpr, StringExpr,
-    StringFunctionExpr, TupleExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    CustomFunctionExpr, Expr, ExternalExpr, ExternalFunctionExpr, FloatExpr, FloatFunctionExpr,
+    FunctionExpr, FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListFunctionExpr, NilExpr,
+    NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
+    UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
 pub(crate) use expression::{
     BitArrayListExpr, BitArrayListItem, BoolListCaseBranches, BoolListExpr, BoolListItem,
-    CustomListExpr, CustomListItem, FloatListExpr, FloatListItem, FunctionListExpr,
-    FunctionListItem, GenericListExpr, GenericListItem, IntListExpr, IntListItem, ListCaseBranches,
-    ListExpr, ListItem, ListListExpr, ListListItem, ListLocalExpr, ListSpreadConstructionError,
-    ListSpreadElements, NilListExpr, NilListItem, ParameterListListExpr, ParameterListListItem,
-    StoredListExpr, StringListExpr, StringListItem, TupleListExpr, TupleListItem, TypedListExpr,
-    TypedListExprKind, TypedListReturnKind, UtfCodepointListExpr, UtfCodepointListItem,
+    CustomListExpr, CustomListItem, ExternalListExpr, ExternalListItem, FloatListExpr,
+    FloatListItem, FunctionListExpr, FunctionListItem, GenericListExpr, GenericListItem,
+    IntListExpr, IntListItem, ListCaseBranches, ListExpr, ListItem, ListListExpr, ListListItem,
+    ListLocalExpr, ListSpreadConstructionError, ListSpreadElements, NilListExpr, NilListItem,
+    ParameterListListExpr, ParameterListListItem, StoredListExpr, StringListExpr, StringListItem,
+    TupleListExpr, TupleListItem, TypedListExpr, TypedListExprKind, TypedListReturnKind,
+    UtfCodepointListExpr, UtfCodepointListItem,
 };
 pub(crate) use function::{
     BitArrayFunctionReturn, BitArrayReturn, BoolFunctionReturn, BoolReturn, CapturePosition,
-    CustomFunctionReturn, CustomReturn, FloatFunctionReturn, FloatReturn, FunctionFunctionReturn,
-    GenericFunctionReturn, GenericListReturn, GenericReturn, IntFunctionReturn, IntReturn,
-    ListFunctionReturn, NilFunctionReturn, NilReturn, ParamLocal, ParamSlot,
-    ParameterListListReturn, ReturnBody, ReturnBodyKind, ReturnExprKind, StringFunctionReturn,
-    StringReturn, TupleFunctionReturn, TupleReturn, UtfCodepointFunctionReturn, UtfCodepointReturn,
+    CustomFunctionReturn, CustomReturn, ExternalFunctionReturn, ExternalReturn,
+    FloatFunctionReturn, FloatReturn, FunctionFunctionReturn, GenericFunctionReturn,
+    GenericListReturn, GenericReturn, IntFunctionReturn, IntReturn, ListFunctionReturn,
+    NilFunctionReturn, NilReturn, ParamLocal, ParamSlot, ParameterListListReturn, ReturnBody,
+    ReturnBodyKind, ReturnExprKind, StringFunctionReturn, StringReturn, TupleFunctionReturn,
+    TupleReturn, UtfCodepointFunctionReturn, UtfCodepointReturn,
 };
 #[cfg(test)]
 pub(crate) use function::{
@@ -96,6 +104,7 @@ pub use id::{
     BitArrayFunctionLocalId, BitArrayListFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
     BoolFunctionLocalId, BoolListFunctionLocalId, BoolListLocalId, BoolLocalId,
     CustomFunctionLocalId, CustomListFunctionLocalId, CustomListLocalId, CustomLocalId,
+    ExternalFunctionLocalId, ExternalListFunctionLocalId, ExternalListLocalId, ExternalLocalId,
     FloatFunctionLocalId, FloatListFunctionLocalId, FloatListLocalId, FloatLocalId,
     FunctionFunctionLocalId, FunctionListFunctionLocalId, FunctionListLocalId,
     FunctionReturnFamily, FunctionTemplateId, GenericFunctionLocalId, GenericListFunctionLocalId,
@@ -108,7 +117,8 @@ pub use id::{
     UtfCodepointLocalId,
 };
 pub(crate) use id::{
-    CustomFunctionLocal, CustomLocal, FunctionFunctionLocal, GenericFunctionLocal,
+    CustomFunctionLocal, CustomLocal, ExternalFunctionLocal, ExternalLocal, FunctionFunctionLocal,
+    GenericFunctionLocal,
 };
 pub(crate) use pattern::{
     BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
@@ -117,9 +127,10 @@ pub(crate) use pattern::{
 };
 pub(crate) use reference::{
     BitArrayFunctionReference, BoolFunctionReference, CustomFunctionReference,
-    FloatFunctionReference, FunctionFunctionReference, FunctionReference, GenericFunctionReference,
-    IntFunctionReference, ListFunctionReference, NilFunctionReference, StringFunctionReference,
-    TupleFunctionReference, TypedFunctionReference, UtfCodepointFunctionReference,
+    ExternalFunctionReference, FloatFunctionReference, FunctionFunctionReference,
+    FunctionReference, GenericFunctionReference, IntFunctionReference, ListFunctionReference,
+    NilFunctionReference, StringFunctionReference, TupleFunctionReference, TypedFunctionReference,
+    UtfCodepointFunctionReference,
 };
 pub use step::Step;
 pub(crate) use step::{

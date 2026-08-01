@@ -1,15 +1,18 @@
-use super::super::graph::{BlockGraph, BlockGraphExitId};
+use super::super::function::{ExecutionGraphProfile, FunctionLabelSource, HostedExecutionGraph};
+use super::super::graph::{BlockGraphExitId, ProfiledBlockGraph};
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::graph::{BlockGraphExitExplanation, LocalLabel};
 
-pub(crate) struct ConstantProgram<Return> {
-    block_graph: BlockGraph,
+pub(crate) struct ProfiledConstantProgram<Return, Graph: ExecutionGraphProfile> {
+    block_graph: ProfiledBlockGraph<Graph>,
     returns: Box<[Return]>,
 }
 
-impl<Return> ConstantProgram<Return> {
+pub(crate) type ConstantProgram<Return> = ProfiledConstantProgram<Return, HostedExecutionGraph>;
+
+impl<Return, Graph: ExecutionGraphProfile> ProfiledConstantProgram<Return, Graph> {
     pub(in crate::plan::execution) fn from_parts(
-        block_graph: BlockGraph,
+        block_graph: ProfiledBlockGraph<Graph>,
         returns: Vec<Return>,
     ) -> Self {
         Self {
@@ -18,18 +21,32 @@ impl<Return> ConstantProgram<Return> {
         }
     }
 
-    pub(crate) fn block_graph(&self) -> &BlockGraph {
+    pub(crate) fn block_graph(&self) -> &ProfiledBlockGraph<Graph> {
         &self.block_graph
     }
 
     pub(crate) fn return_(&self, id: BlockGraphExitId) -> &Return {
         &self.returns[id.index()]
     }
+
+    pub(in crate::plan::execution) fn into_parts(
+        self,
+    ) -> (ProfiledBlockGraph<Graph>, Box<[Return]>) {
+        (self.block_graph, self.returns)
+    }
 }
 
-impl<Return> Explain for ConstantProgram<Return>
+impl<Return, Graph> Explain for ProfiledConstantProgram<Return, Graph>
 where
     Return: LocalLabel,
+    Graph: ExecutionGraphProfile,
+    Graph::ExternalFunctionId: FunctionLabelSource,
+    Graph::ExternalListFunctionId: FunctionLabelSource,
+    Graph::ExternalFunctionFunctionId: FunctionLabelSource,
+    Graph::ExternalListFunctionFunctionId: FunctionLabelSource,
+    Graph::ExternalInstruction: Explain,
+    Graph::ExternalListInstruction: Explain,
+    Graph::ExternalFunctionInstruction: Explain,
 {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
         self.block_graph()
@@ -37,9 +54,10 @@ where
     }
 }
 
-impl<Return> BlockGraphExitExplanation for ConstantProgram<Return>
+impl<Return, Graph> BlockGraphExitExplanation for ProfiledConstantProgram<Return, Graph>
 where
     Return: LocalLabel,
+    Graph: ExecutionGraphProfile,
 {
     fn write_exit(&self, context: &mut ExplainContext<'_, '_>, exit: BlockGraphExitId) {
         context.push_str("return ");

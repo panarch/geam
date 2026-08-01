@@ -1,14 +1,14 @@
 use crate::plan::{
     BitArrayFunctionExpr, BitArrayFunctionExprKind, BitArrayFunctionReturn, BoolFunctionExpr,
     BoolFunctionExprKind, BoolFunctionReturn, CustomFunctionExpr, CustomFunctionReturn,
-    FloatFunctionExpr, FloatFunctionExprKind, FloatFunctionReturn, FunctionExpr, FunctionExprKind,
-    FunctionFunctionExpr, FunctionFunctionReturn, GenericFunctionExpr, GenericFunctionExprKind,
-    GenericFunctionReturn, IntFunctionExpr, IntFunctionExprKind, IntFunctionReturn,
-    ListFunctionExpr, ListFunctionExprKind, ListFunctionReturn, NilFunctionExpr,
-    NilFunctionExprKind, NilFunctionReturn, ReturnBody, ReturnExpr, StringFunctionExpr,
-    StringFunctionExprKind, StringFunctionReturn, TupleFunctionExpr, TupleFunctionExprKind,
-    TupleFunctionReturn, UtfCodepointFunctionExpr, UtfCodepointFunctionExprKind,
-    UtfCodepointFunctionReturn,
+    ExternalFunctionExpr, ExternalFunctionReturn, FloatFunctionExpr, FloatFunctionExprKind,
+    FloatFunctionReturn, FunctionExpr, FunctionExprKind, FunctionFunctionExpr,
+    FunctionFunctionReturn, GenericFunctionExpr, GenericFunctionExprKind, GenericFunctionReturn,
+    IntFunctionExpr, IntFunctionExprKind, IntFunctionReturn, ListFunctionExpr,
+    ListFunctionExprKind, ListFunctionReturn, NilFunctionExpr, NilFunctionExprKind,
+    NilFunctionReturn, ReturnBody, ReturnExpr, StringFunctionExpr, StringFunctionExprKind,
+    StringFunctionReturn, TupleFunctionExpr, TupleFunctionExprKind, TupleFunctionReturn,
+    UtfCodepointFunctionExpr, UtfCodepointFunctionExprKind, UtfCodepointFunctionReturn,
 };
 pub(super) fn function_returning_function_expr(actual: FunctionExpr) -> ReturnExpr {
     let (shape, kind) = actual.into_parts();
@@ -31,6 +31,9 @@ pub(super) fn function_returning_function_expr(actual: FunctionExpr) -> ReturnEx
         ),
         FunctionExprKind::Custom(actual) => {
             ReturnExpr::custom_function_shape_body(shape, custom_function_return(actual))
+        }
+        FunctionExprKind::External(actual) => {
+            ReturnExpr::external_function_shape_body(shape, external_function_return(actual))
         }
         FunctionExprKind::Float(actual) => {
             ReturnExpr::float_function_shape_body(shape, float_function_return(actual))
@@ -118,6 +121,10 @@ fn generic_function_return(expression: GenericFunctionExpr) -> GenericFunctionRe
 
 fn custom_function_return(expression: CustomFunctionExpr) -> CustomFunctionReturn {
     CustomFunctionReturn::expr(expression)
+}
+
+fn external_function_return(expression: ExternalFunctionExpr) -> ExternalFunctionReturn {
+    ExternalFunctionReturn::expr(expression)
 }
 
 fn int_function_return(expression: IntFunctionExpr) -> IntFunctionReturn {

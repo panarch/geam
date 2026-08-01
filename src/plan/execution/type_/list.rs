@@ -1,4 +1,6 @@
-use super::{CustomTypeId, CustomTypeTable, FunctionType, ValueType};
+use super::{
+    CustomTypeId, CustomTypeTable, ExternalTypeId, ExternalTypeTable, FunctionType, ValueType,
+};
 use crate::plan;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -82,6 +84,12 @@ pub(crate) struct CustomListTypeId {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct ExternalListTypeId {
+    list_type: ListTypeId,
+    item_type: ExternalTypeId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum ListStorageTypeId {
     Parameter(ParameterListTypeId),
     Int(IntListTypeId),
@@ -96,6 +104,7 @@ pub(crate) enum ListStorageTypeId {
     List(ListListTypeId),
     Function(FunctionListTypeId),
     Custom(CustomListTypeId),
+    External(ExternalListTypeId),
 }
 
 #[derive(Default)]
@@ -283,6 +292,26 @@ impl CustomListTypeId {
     }
 }
 
+impl ExternalListTypeId {
+    pub(in crate::plan::execution) fn new(
+        list_type: ListTypeId,
+        item_type: ExternalTypeId,
+    ) -> Self {
+        Self {
+            list_type,
+            item_type,
+        }
+    }
+
+    pub(crate) fn list_type(self) -> ListTypeId {
+        self.list_type
+    }
+
+    pub(crate) fn item_type(self) -> ExternalTypeId {
+        self.item_type
+    }
+}
+
 impl ListTypeTable {
     pub(in crate::plan::execution) fn from_parts(
         types: Vec<ListStorageTypeId>,
@@ -319,6 +348,7 @@ impl ListTypeTable {
         &self,
         value: &ValueType,
         custom_types: &CustomTypeTable,
+        external_types: &ExternalTypeTable,
     ) -> plan::ValueType {
         match value {
             ValueType::Parameter(parameter) => plan::ValueType::Parameter(*parameter),
@@ -332,14 +362,17 @@ impl ListTypeTable {
             ValueType::Tuple(elements) => plan::ValueType::Tuple(
                 elements
                     .iter()
-                    .map(|element| self.value_type(element, custom_types))
+                    .map(|element| self.value_type(element, custom_types, external_types))
                     .collect(),
             ),
-            ValueType::List(id) => self.list_value_type(*id, custom_types),
-            ValueType::Function(type_) => {
-                plan::ValueType::Function(Box::new(self.function_type(type_, custom_types)))
-            }
+            ValueType::List(id) => self.list_value_type(*id, custom_types, external_types),
+            ValueType::Function(type_) => plan::ValueType::Function(Box::new(self.function_type(
+                type_,
+                custom_types,
+                external_types,
+            ))),
             ValueType::Custom(id) => plan::ValueType::Custom(custom_types.value_type(*id)),
+            ValueType::External(id) => plan::ValueType::External(external_types.value_type(*id)),
         }
     }
 
@@ -347,14 +380,15 @@ impl ListTypeTable {
         &self,
         type_: &FunctionType,
         custom_types: &CustomTypeTable,
+        external_types: &ExternalTypeTable,
     ) -> plan::FunctionType {
         plan::FunctionType::new(
             type_
                 .argument_types()
                 .iter()
-                .map(|argument| self.value_type(argument, custom_types))
+                .map(|argument| self.value_type(argument, custom_types, external_types))
                 .collect(),
-            self.value_type(type_.return_(), custom_types),
+            self.value_type(type_.return_(), custom_types, external_types),
         )
     }
 
@@ -362,14 +396,20 @@ impl ListTypeTable {
         &self,
         id: ListTypeId,
         custom_types: &CustomTypeTable,
+        external_types: &ExternalTypeTable,
     ) -> plan::ValueType {
-        plan::ValueType::List(Box::new(self.item_value_type(id, custom_types)))
+        plan::ValueType::List(Box::new(self.item_value_type(
+            id,
+            custom_types,
+            external_types,
+        )))
     }
 
     pub(crate) fn item_value_type(
         &self,
         id: ListTypeId,
         custom_types: &CustomTypeTable,
+        external_types: &ExternalTypeTable,
     ) -> plan::ValueType {
         match self.storage_type(id) {
             ListStorageTypeId::Parameter(id) => plan::ValueType::Parameter(id.item()),
@@ -381,19 +421,22 @@ impl ListTypeTable {
             ListStorageTypeId::Bool(_) => plan::ValueType::Bool,
             ListStorageTypeId::Nil(_) => plan::ValueType::Nil,
             ListStorageTypeId::Tuple(id) => {
-                plan::ValueType::Tuple(self.tuple_item_type(id, custom_types))
+                plan::ValueType::Tuple(self.tuple_item_type(id, custom_types, external_types))
             }
             ListStorageTypeId::ParameterList(id) => {
                 plan::ValueType::List(Box::new(plan::ValueType::Parameter(id.item_type().item())))
             }
-            ListStorageTypeId::List(id) => {
-                plan::ValueType::List(Box::new(self.nested_list_item_type(id, custom_types)))
-            }
-            ListStorageTypeId::Function(id) => {
-                plan::ValueType::Function(Box::new(self.function_item_type(id, custom_types)))
-            }
+            ListStorageTypeId::List(id) => plan::ValueType::List(Box::new(
+                self.nested_list_item_type(id, custom_types, external_types),
+            )),
+            ListStorageTypeId::Function(id) => plan::ValueType::Function(Box::new(
+                self.function_item_type(id, custom_types, external_types),
+            )),
             ListStorageTypeId::Custom(id) => {
                 plan::ValueType::Custom(custom_types.value_type(id.item_type()))
+            }
+            ListStorageTypeId::External(id) => {
+                plan::ValueType::External(external_types.value_type(id.item_type()))
             }
         }
     }
@@ -402,10 +445,11 @@ impl ListTypeTable {
         &self,
         id: TupleListTypeId,
         custom_types: &CustomTypeTable,
+        external_types: &ExternalTypeTable,
     ) -> Vec<plan::ValueType> {
         self.tuple_items[id.item_type.0]
             .iter()
-            .map(|type_| self.value_type(type_, custom_types))
+            .map(|type_| self.value_type(type_, custom_types, external_types))
             .collect()
     }
 
@@ -413,15 +457,21 @@ impl ListTypeTable {
         &self,
         id: ListListTypeId,
         custom_types: &CustomTypeTable,
+        external_types: &ExternalTypeTable,
     ) -> plan::ValueType {
-        self.item_value_type(id.item_type, custom_types)
+        self.item_value_type(id.item_type, custom_types, external_types)
     }
 
     pub(crate) fn function_item_type(
         &self,
         id: FunctionListTypeId,
         custom_types: &CustomTypeTable,
+        external_types: &ExternalTypeTable,
     ) -> plan::FunctionType {
-        self.function_type(&self.function_items[id.item_type.0], custom_types)
+        self.function_type(
+            &self.function_items[id.item_type.0],
+            custom_types,
+            external_types,
+        )
     }
 }

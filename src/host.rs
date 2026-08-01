@@ -1,4 +1,5 @@
 mod error;
+mod external;
 mod failure;
 mod function;
 mod module;
@@ -7,6 +8,11 @@ mod type_;
 mod value;
 
 pub use error::HostRegistrationError;
+pub(crate) use external::ExternalPayloadLease;
+pub use external::{
+    HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType,
+    HostExternalTypeSchema,
+};
 pub(crate) use failure::HostCallErrorKind;
 pub use failure::{HostCallError, HostFailure};
 pub use function::{
@@ -23,14 +29,18 @@ pub use type_::{
     HostFunctionType, HostListType, HostSchemaType, HostTupleType, HostType, HostTypeList,
     HostTypeListEnd, HostTypeParameter, HostTypeSequence,
 };
-pub use value::{HostCallCompletion, HostCallable, HostCustom, HostList, HostTuple, HostValue};
+pub use value::{
+    HostCallCompletion, HostCallable, HostCustom, HostExternal, HostList, HostTuple, HostValue,
+};
 
+#[cfg(test)]
+pub(crate) use external::{ExternalTestProfile, ExternalTestRunState, ExternalTestStores};
 pub(crate) use function::{
     HostBitArrayArgumentSlot, HostBoolArgumentSlot, HostCallArguments, HostCustomArgumentSlot,
-    HostFloatArgumentSlot, HostFunctionArgumentSlot, HostFunctionDefinition,
-    HostFunctionImplementation, HostIntArgumentSlot, HostListArgumentSlot, HostNeverFunction,
-    HostNilArgumentSlot, HostParameter, HostStringArgumentSlot, HostTupleArgumentSlot,
-    HostUtfCodepointArgumentSlot, HostValueArgumentSlot, HostValueFunction,
+    HostExternalArgumentSlot, HostFloatArgumentSlot, HostFunctionArgumentSlot,
+    HostFunctionDefinition, HostFunctionImplementation, HostIntArgumentSlot, HostListArgumentSlot,
+    HostNeverFunction, HostNilArgumentSlot, HostParameter, HostStringArgumentSlot,
+    HostTupleArgumentSlot, HostUtfCodepointArgumentSlot, HostValueArgumentSlot, HostValueFunction,
 };
 #[cfg(test)]
 pub(crate) use function::{expect_never_implementation, expect_value_implementation};
@@ -43,6 +53,6 @@ pub(crate) use profile::HostCallRuntime;
 pub(crate) use profile::test;
 pub(crate) use type_::{HostAbiType, HostAbiTypeSequence, HostTypeDescriptor};
 pub(crate) use value::{
-    HostCustomToken, HostFunctionToken, HostListToken, HostScopedValue, HostTupleToken,
-    HostValueFamily, HostValueToken,
+    HostCustomToken, HostExternalToken, HostFunctionToken, HostListToken, HostScopedValue,
+    HostTupleToken, HostValueFamily, HostValueToken,
 };

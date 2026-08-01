@@ -165,6 +165,10 @@ pub enum HostSchemaType {
         name: EcoString,
         arguments: Box<[HostSchemaType]>,
     },
+    External {
+        schema: crate::host::HostExternalTypeSchema,
+        arguments: Box<[HostSchemaType]>,
+    },
 }
 
 impl HostCustomTypeSchema {
@@ -286,6 +290,53 @@ impl HostSchemaType {
             module: module.into(),
             name: name.into(),
             arguments: arguments.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+        }
+    }
+
+    pub(crate) fn collect_external_schemas(
+        &self,
+        output: &mut Vec<crate::host::HostExternalTypeSchema>,
+        visited: &mut HashSet<(EcoString, EcoString, EcoString)>,
+    ) {
+        match self {
+            Self::List(item) => item.collect_external_schemas(output, visited),
+            Self::Tuple(elements) => {
+                for element in elements {
+                    element.collect_external_schemas(output, visited);
+                }
+            }
+            Self::Function { arguments, return_ } => {
+                for argument in arguments {
+                    argument.collect_external_schemas(output, visited);
+                }
+                return_.collect_external_schemas(output, visited);
+            }
+            Self::Custom { arguments, .. } => {
+                for argument in arguments {
+                    argument.collect_external_schemas(output, visited);
+                }
+            }
+            Self::External { schema, arguments } => {
+                let identity = (
+                    schema.package().clone(),
+                    schema.module().clone(),
+                    schema.name().clone(),
+                );
+                if visited.insert(identity) {
+                    output.push(schema.clone());
+                }
+                for argument in arguments {
+                    argument.collect_external_schemas(output, visited);
+                }
+            }
+            Self::Parameter(_)
+            | Self::Int
+            | Self::Float
+            | Self::String
+            | Self::BitArray
+            | Self::UtfCodepoint
+            | Self::Bool
+            | Self::Nil => {}
         }
     }
 }
@@ -581,9 +632,9 @@ mod tests {
     use crate::host::function::CallArguments;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{
-        HostAbiType, HostCustom, HostCustomToken, HostSchemaType, HostScopedValue,
-        HostTypeDescriptor, HostTypeList, HostTypeListEnd, HostTypeParameter, HostValueFamily,
-        HostValueToken,
+        HostAbiType, HostCustom, HostCustomToken, HostExternalTypeSchema, HostSchemaType,
+        HostScopedValue, HostTypeDescriptor, HostTypeList, HostTypeListEnd, HostTypeParameter,
+        HostValueFamily, HostValueToken,
     };
 
     struct BoxedValueField;
@@ -670,5 +721,47 @@ mod tests {
             crate::host::type_::from_token::<Boxed, TestHostProfile>(&runtime, token).token,
             HostCustomToken(0),
         );
+    }
+
+    #[test]
+    fn external_schema_collection_follows_nested_host_schema_types() {
+        let resource = HostExternalTypeSchema::new("domain", "domain/resource", "Resource", 0);
+        let box_ = HostExternalTypeSchema::new("domain", "domain/box", "Box", 1);
+        let type_ = HostSchemaType::tuple([
+            HostSchemaType::External {
+                schema: resource.clone(),
+                arguments: Vec::new().into_boxed_slice(),
+            },
+            HostSchemaType::function(
+                [
+                    HostSchemaType::list(HostSchemaType::External {
+                        schema: box_.clone(),
+                        arguments: vec![HostSchemaType::Int].into_boxed_slice(),
+                    }),
+                    HostSchemaType::External {
+                        schema: resource.clone(),
+                        arguments: Vec::new().into_boxed_slice(),
+                    },
+                ],
+                HostSchemaType::custom(
+                    "domain",
+                    "domain/wrapper",
+                    "Wrapper",
+                    [
+                        HostSchemaType::External {
+                            schema: box_.clone(),
+                            arguments: vec![HostSchemaType::Bool].into_boxed_slice(),
+                        },
+                        HostSchemaType::Nil,
+                    ],
+                ),
+            ),
+        ]);
+        let mut schemas = Vec::new();
+        let mut visited = std::collections::HashSet::new();
+
+        type_.collect_external_schemas(&mut schemas, &mut visited);
+
+        assert_eq!(schemas, [resource, box_]);
     }
 }

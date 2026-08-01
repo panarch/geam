@@ -2,8 +2,8 @@ use ecow::EcoString;
 use num_bigint::BigInt;
 use thiserror::Error;
 
-use super::{BitArrayValue, CustomValue, FunctionValue, Value};
-use crate::plan::{CustomType, FunctionType, TypeParameterId, ValueType};
+use super::{BitArrayValue, CustomValue, ExternalValue, FunctionValue, Value};
+use crate::plan::{CustomType, ExternalType, FunctionType, TypeParameterId, ValueType};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ListValue {
@@ -30,6 +30,10 @@ pub(super) enum ListValueKind {
     Custom {
         item_type: CustomType,
         values: Vec<CustomValue>,
+    },
+    External {
+        item_type: ExternalType,
+        values: Vec<ExternalValue>,
     },
     Float(Vec<f64>),
     Bool(Vec<bool>),
@@ -96,6 +100,31 @@ impl ListValue {
     pub(crate) fn from_evaluated_custom(item_type: CustomType, values: Vec<CustomValue>) -> Self {
         Self {
             kind: ListValueKind::Custom { item_type, values },
+        }
+    }
+
+    pub fn try_external(
+        item_type: ExternalType,
+        values: Vec<ExternalValue>,
+    ) -> Result<Self, ListValueItemTypeMismatch> {
+        let expected = ValueType::External(item_type.clone());
+        ensure_item_types(
+            &expected,
+            values
+                .iter()
+                .map(|value| ValueType::External(value.type_().clone())),
+        )?;
+        Ok(Self {
+            kind: ListValueKind::External { item_type, values },
+        })
+    }
+
+    pub(crate) fn from_evaluated_external(
+        item_type: ExternalType,
+        values: Vec<ExternalValue>,
+    ) -> Self {
+        Self {
+            kind: ListValueKind::External { item_type, values },
         }
     }
 
@@ -207,6 +236,12 @@ impl ListValue {
                     values: Vec::new(),
                 },
             },
+            ValueType::External(item_type) => Self {
+                kind: ListValueKind::External {
+                    item_type,
+                    values: Vec::new(),
+                },
+            },
             ValueType::Float => Self::float(Vec::new()),
             ValueType::Bool => Self::bool(Vec::new()),
             ValueType::Nil => Self::nil(0),
@@ -239,6 +274,7 @@ impl ListValue {
             ListValueKind::BitArray(_) => ValueType::BitArray,
             ListValueKind::UtfCodepoint(_) => ValueType::UtfCodepoint,
             ListValueKind::Custom { item_type, .. } => ValueType::Custom(item_type.clone()),
+            ListValueKind::External { item_type, .. } => ValueType::External(item_type.clone()),
             ListValueKind::Float(_) => ValueType::Float,
             ListValueKind::Bool(_) => ValueType::Bool,
             ListValueKind::Nil(_) => ValueType::Nil,
@@ -258,6 +294,7 @@ impl ListValue {
             ListValueKind::BitArray(values) => values.len(),
             ListValueKind::UtfCodepoint(values) => values.len(),
             ListValueKind::Custom { values, .. } => values.len(),
+            ListValueKind::External { values, .. } => values.len(),
             ListValueKind::Float(values) => values.len(),
             ListValueKind::Bool(values) => values.len(),
             ListValueKind::Nil(len) => *len,
@@ -284,6 +321,9 @@ impl ListValue {
             }
             ListValueKind::Custom { values, .. } => {
                 values.iter().cloned().map(Value::Custom).collect()
+            }
+            ListValueKind::External { values, .. } => {
+                values.iter().cloned().map(Value::External).collect()
             }
             ListValueKind::Float(values) => values.iter().copied().map(Value::Float).collect(),
             ListValueKind::Bool(values) => values.iter().copied().map(Value::Bool).collect(),
@@ -319,8 +359,12 @@ fn ensure_item_types(
 #[cfg(test)]
 mod tests {
     use super::{ListValue, ListValueItemTypeMismatch};
-    use crate::plan::{CustomType, CustomTypeName, FunctionType, TypeParameterId, ValueType};
-    use crate::runtime::{BitArrayValue, CustomValue, FunctionValue, Value};
+    use crate::host::HostExternalStore;
+    use crate::plan::{
+        CustomType, CustomTypeName, ExternalType, ExternalTypeName, FunctionType, TypeParameterId,
+        ValueType,
+    };
+    use crate::runtime::{BitArrayValue, CustomValue, ExternalValue, FunctionValue, Value};
 
     #[test]
     fn list_value_operations_preserve_every_storage_family() {
@@ -328,6 +372,9 @@ mod tests {
         let function_type = function.type_();
         let custom_type = sample_custom_type("Boxed");
         let custom = sample_custom_value(custom_type.clone(), "Boxed");
+        let external_type = sample_external_type("Resource");
+        let first_external = sample_external_value(external_type.clone(), 1);
+        let second_external = sample_external_value(external_type.clone(), 2);
         let cases = [
             (
                 ListValue::int(vec![1.into(), 2.into()]),
@@ -362,6 +409,17 @@ mod tests {
                 ),
                 ValueType::Custom(custom_type.clone()),
                 vec![Value::Custom(custom.clone()), Value::Custom(custom.clone())],
+            ),
+            (
+                ListValue::from_evaluated_external(
+                    external_type.clone(),
+                    vec![first_external.clone(), second_external.clone()],
+                ),
+                ValueType::External(external_type.clone()),
+                vec![
+                    Value::External(first_external),
+                    Value::External(second_external),
+                ],
             ),
             (
                 ListValue::float(vec![1.5, 2.5]),
@@ -430,6 +488,7 @@ mod tests {
             ValueType::BitArray,
             ValueType::UtfCodepoint,
             ValueType::Custom(custom_type),
+            ValueType::External(external_type),
             ValueType::Float,
             ValueType::Bool,
             ValueType::Nil,
@@ -451,6 +510,10 @@ mod tests {
         let actual_custom_type = sample_custom_type("Actual");
         let expected_custom_value = sample_custom_value(expected_custom_type.clone(), "Expected");
         let actual_custom_value = sample_custom_value(actual_custom_type.clone(), "Actual");
+        let expected_external_type = sample_external_type("ExpectedResource");
+        let actual_external_type = sample_external_type("ActualResource");
+        let expected_external_value = sample_external_value(expected_external_type.clone(), 1);
+        let actual_external_value = sample_external_value(actual_external_type.clone(), 2);
 
         assert_eq!(
             ListValue::try_custom(
@@ -475,6 +538,17 @@ mod tests {
                 index: 1,
                 expected: ValueType::Tuple(vec![ValueType::Int]),
                 actual: ValueType::Tuple(vec![ValueType::String]),
+            }),
+        );
+        assert_eq!(
+            ListValue::try_external(
+                expected_external_type.clone(),
+                vec![expected_external_value.clone(), actual_external_value],
+            ),
+            Err(ListValueItemTypeMismatch {
+                index: 1,
+                expected: ValueType::External(expected_external_type.clone()),
+                actual: ValueType::External(actual_external_type),
             }),
         );
         assert_eq!(
@@ -526,6 +600,23 @@ mod tests {
             )),
         );
         assert_eq!(
+            ListValue::try_external(
+                expected_external_type.clone(),
+                vec![expected_external_value.clone()],
+            ),
+            Ok(ListValue::from_evaluated_external(
+                expected_external_type.clone(),
+                vec![expected_external_value],
+            )),
+        );
+        assert_eq!(
+            ListValue::try_external(expected_external_type.clone(), Vec::new()),
+            Ok(ListValue::from_evaluated_external(
+                expected_external_type,
+                Vec::new(),
+            )),
+        );
+        assert_eq!(
             ListValue::try_tuple(vec![ValueType::Int], Vec::new()),
             Ok(ListValue::from_evaluated_tuple(
                 vec![ValueType::Int],
@@ -561,8 +652,10 @@ mod tests {
 
     fn sample_function() -> FunctionValue {
         FunctionValue::new(
-            crate::plan::execution::function::RuntimeFunctionId::Int(
-                crate::plan::execution::function::IntFunctionId(0),
+            crate::plan::execution::function::RuntimeFunctionId::Core(
+                crate::plan::execution::function::CoreRuntimeFunctionId::Int(
+                    crate::plan::execution::function::IntFunctionId(0),
+                ),
             ),
             Vec::new(),
             FunctionType::new(Vec::new(), ValueType::Int),
@@ -578,5 +671,22 @@ mod tests {
 
     fn sample_custom_value(type_: CustomType, constructor_name: &str) -> CustomValue {
         CustomValue::from_evaluated(type_, constructor_name.into(), 0, Vec::new())
+    }
+
+    fn sample_external_type(name: &str) -> ExternalType {
+        ExternalType::new(
+            ExternalTypeName::new("geam".into(), "main".into(), name.into()),
+            Vec::new(),
+        )
+    }
+
+    fn sample_external_value(type_: ExternalType, payload: usize) -> ExternalValue {
+        let store = HostExternalStore::default();
+        ExternalValue::from_evaluated(
+            type_,
+            store.insert(payload, <usize as PartialEq>::eq, |value| {
+                format!("Resource({value})").into()
+            }),
+        )
     }
 }

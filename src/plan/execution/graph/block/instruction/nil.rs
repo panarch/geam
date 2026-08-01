@@ -62,7 +62,7 @@ impl Explain for NilInstruction {
 mod explain_tests {
     use crate::plan::execution::explain;
     use crate::plan::execution::function::NilFunctionId;
-    use crate::plan::execution::graph::InstructionKind;
+    use crate::plan::execution::graph::ProfiledInstructionKind;
 
     #[test]
     fn writes_nil_value() {
@@ -119,7 +119,7 @@ pub fn main() {
             let graph = plan.nil_function(NilFunctionId(0)).body().block_graph();
             let mut first = true;
             for instruction in graph.blocks().iter().flat_map(|block| block.instructions()) {
-                if let InstructionKind::Nil(instruction) = instruction.kind() {
+                if let ProfiledInstructionKind::Nil(instruction) = instruction.kind() {
                     if first {
                         first = false;
                     } else {

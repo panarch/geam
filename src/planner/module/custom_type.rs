@@ -8,7 +8,7 @@ use crate::planner::error::{
 use ecow::EcoString;
 use gleam_core::ast::{Publicity, TypedCustomType};
 use gleam_core::type_::{Type, TypeVar};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 
 pub(super) fn plan_custom_types(
@@ -16,9 +16,18 @@ pub(super) fn plan_custom_types(
     module: &EcoString,
     types: Vec<TypedCustomType>,
 ) -> Result<Vec<CustomTypeDefinition>, PlanError> {
+    plan_custom_types_with_external(package, module, types, &HashSet::new())
+}
+
+pub(super) fn plan_custom_types_with_external(
+    package: &EcoString,
+    module: &EcoString,
+    types: Vec<TypedCustomType>,
+    external_types: &HashSet<crate::plan::ExternalTypeName>,
+) -> Result<Vec<CustomTypeDefinition>, PlanError> {
     types
         .into_iter()
-        .map(|type_| plan_custom_type(package, module, type_))
+        .map(|type_| plan_custom_type(package, module, type_, external_types))
         .collect()
 }
 
@@ -26,6 +35,7 @@ fn plan_custom_type(
     package: &EcoString,
     module: &EcoString,
     type_: TypedCustomType,
+    external_types: &HashSet<crate::plan::ExternalTypeName>,
 ) -> Result<CustomTypeDefinition, PlanError> {
     if type_.external_erlang.is_some() || type_.external_javascript.is_some() {
         return Err(PlanError::UnsupportedTopLevel {
@@ -43,24 +53,23 @@ fn plan_custom_type(
         .into_iter()
         .enumerate()
         .map(|(index, constructor)| {
-            let fields =
-                constructor
-                    .arguments
-                    .into_iter()
-                    .map(|field| {
-                        let type_ = type_template(field.type_.as_ref(), &parameter_ids)
-                            .ok_or_else(|| PlanError::InvalidTypedAst {
-                                reason: InvalidTypedAstReason::CustomType {
-                                    name: type_.name.clone(),
-                                    reason: InvalidCustomTypeReason::FieldType,
-                                },
-                            })?;
-                        Ok(CustomFieldDefinition::new(
-                            field.label.map(|(_, name)| name),
-                            type_,
-                        ))
-                    })
-                    .collect::<Result<Vec<_>, PlanError>>()?;
+            let fields = constructor
+                .arguments
+                .into_iter()
+                .map(|field| {
+                    let type_ = type_template(field.type_.as_ref(), &parameter_ids, external_types)
+                        .ok_or_else(|| PlanError::InvalidTypedAst {
+                            reason: InvalidTypedAstReason::CustomType {
+                                name: type_.name.clone(),
+                                reason: InvalidCustomTypeReason::FieldType,
+                            },
+                        })?;
+                    Ok(CustomFieldDefinition::new(
+                        field.label.map(|(_, name)| name),
+                        type_,
+                    ))
+                })
+                .collect::<Result<Vec<_>, PlanError>>()?;
             Ok(CustomConstructorDefinition::new(
                 constructor.name,
                 index,
@@ -113,10 +122,11 @@ fn invalid_parameter(name: &EcoString) -> PlanError {
 fn type_template(
     type_: &Type,
     parameters: &HashMap<u64, CustomTypeParameterId>,
+    external_types: &HashSet<crate::plan::ExternalTypeName>,
 ) -> Option<CustomTypeTemplate> {
     match type_ {
         Type::Var { type_ } => match type_.borrow().deref() {
-            TypeVar::Link { type_ } => type_template(type_.as_ref(), parameters),
+            TypeVar::Link { type_ } => type_template(type_.as_ref(), parameters, external_types),
             TypeVar::Generic { id } => parameters
                 .get(id)
                 .copied()
@@ -126,15 +136,15 @@ fn type_template(
         Type::Tuple { elements } => Some(CustomTypeTemplate::Tuple(
             elements
                 .iter()
-                .map(|element| type_template(element.as_ref(), parameters))
+                .map(|element| type_template(element.as_ref(), parameters, external_types))
                 .collect::<Option<Vec<_>>>()?,
         )),
         Type::Fn { arguments, return_ } => Some(CustomTypeTemplate::Function {
             arguments: arguments
                 .iter()
-                .map(|argument| type_template(argument.as_ref(), parameters))
+                .map(|argument| type_template(argument.as_ref(), parameters, external_types))
                 .collect::<Option<Vec<_>>>()?,
-            return_: Box::new(type_template(return_.as_ref(), parameters)?),
+            return_: Box::new(type_template(return_.as_ref(), parameters, external_types)?),
         }),
         Type::Named {
             package,
@@ -161,15 +171,29 @@ fn type_template(
                 Some(CustomTypeTemplate::List(Box::new(type_template(
                     element.as_ref(),
                     parameters,
+                    external_types,
                 )?)))
             } else {
-                Some(CustomTypeTemplate::Custom {
-                    name: CustomTypeName::new(package.clone(), module.clone(), name.clone()),
-                    arguments: arguments
-                        .iter()
-                        .map(|argument| type_template(argument.as_ref(), parameters))
-                        .collect::<Option<Vec<_>>>()?,
-                })
+                let external_name = crate::plan::ExternalTypeName::new(
+                    package.clone(),
+                    module.clone(),
+                    name.clone(),
+                );
+                let arguments = arguments
+                    .iter()
+                    .map(|argument| type_template(argument.as_ref(), parameters, external_types))
+                    .collect::<Option<Vec<_>>>()?;
+                if external_types.contains(&external_name) {
+                    Some(CustomTypeTemplate::External {
+                        name: external_name,
+                        arguments,
+                    })
+                } else {
+                    Some(CustomTypeTemplate::Custom {
+                        name: CustomTypeName::new(package.clone(), module.clone(), name.clone()),
+                        arguments,
+                    })
+                }
             }
         }
     }

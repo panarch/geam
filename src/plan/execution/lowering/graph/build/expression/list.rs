@@ -1,11 +1,11 @@
-use super::{call_args, custom, function, generic, panic_expr, tuple};
+use super::{call_args, custom, external, function, generic, panic_expr, tuple};
 use crate::plan::execution::lowering::graph::draft::{DraftStoredList, DraftTypedList};
 use crate::plan::execution::lowering::graph::{
     DraftBitArray, DraftBitArrayList, DraftBool, DraftBoolList, DraftCursor, DraftCustom,
-    DraftCustomList, DraftFloat, DraftFloatList, DraftFlow, DraftFunction, DraftFunctionList,
-    DraftGraph, DraftGraphValue, DraftInt, DraftIntList, DraftList, DraftListList, DraftNil,
-    DraftNilList, DraftString, DraftStringList, DraftTuple, DraftTupleList, DraftUtfCodepoint,
-    DraftUtfCodepointList, DraftValueRef,
+    DraftCustomList, DraftExternal, DraftExternalList, DraftFloat, DraftFloatList, DraftFlow,
+    DraftFunction, DraftFunctionList, DraftGraph, DraftGraphValue, DraftInt, DraftIntList,
+    DraftList, DraftListList, DraftNil, DraftNilList, DraftString, DraftStringList, DraftTuple,
+    DraftTupleList, DraftUtfCodepoint, DraftUtfCodepointList, DraftValueRef,
 };
 use crate::plan::execution::lowering::specialization::{
     Representability, SpecializedValueShape, StorageRepresentation, StoredValueShape,
@@ -164,6 +164,10 @@ fn generic_list_operation(
             context.specialized_custom_list_type(item),
             typed_generic_list_operation(operation),
         ),
+        SpecializedValueShape::External(item) => I::External(
+            context.specialized_external_list_type(item),
+            typed_generic_list_operation(operation),
+        ),
         SpecializedValueShape::Float => I::Float(
             context.float_list_type(),
             typed_generic_list_operation(operation),
@@ -221,6 +225,8 @@ pub(in crate::plan::execution::lowering) fn list_expr(
         }
         module::ListExpr::Custom(value) => custom_list_expr(value, cursor, graph, context)
             .map(|flow| flow.map(|value| value.value().clone())),
+        module::ListExpr::External(value) => external_list_expr(value, cursor, graph, context)
+            .map(|flow| flow.map(|value| value.value().clone())),
         module::ListExpr::Float(value) => float_list_expr(value, cursor, graph, context)
             .map(|flow| flow.map(|value| value.value().clone())),
         module::ListExpr::Bool(value) => bool_list_expr(value, cursor, graph, context)
@@ -252,103 +258,113 @@ pub(super) fn generic_direct_call(
 
     context.list_function_id(target, item).map(|function| {
         let kind = match function {
-            execution::function::ListFunctionId::Parameter(function) => I::Parameter(
-                function.type_id(),
-                P::Call {
-                    function,
-                    args,
-                    site: site.clone(),
-                },
-            ),
-            execution::function::ListFunctionId::ParameterList(function) => I::ParameterList(
-                function.type_id(),
-                T::Call {
-                    function,
-                    args,
-                    site: site.clone(),
-                },
-            ),
-            execution::function::ListFunctionId::Int(function) => I::Int(
-                function.type_id(),
-                T::Call {
-                    function,
-                    args,
-                    site: site.clone(),
-                },
-            ),
-            execution::function::ListFunctionId::String(function) => I::String(
-                function.type_id(),
-                T::Call {
-                    function,
-                    args,
-                    site: site.clone(),
-                },
-            ),
-            execution::function::ListFunctionId::BitArray(function) => I::BitArray(
-                function.type_id(),
-                T::Call {
-                    function,
-                    args,
-                    site: site.clone(),
-                },
-            ),
-            execution::function::ListFunctionId::UtfCodepoint(function) => I::UtfCodepoint(
-                function.type_id(),
-                T::Call {
-                    function,
-                    args,
-                    site: site.clone(),
-                },
-            ),
-            execution::function::ListFunctionId::Custom(function) => I::Custom(
-                function.type_id(),
-                T::Call {
-                    function,
-                    args,
-                    site: site.clone(),
-                },
-            ),
-            execution::function::ListFunctionId::Float(function) => I::Float(
-                function.type_id(),
-                T::Call {
-                    function,
-                    args,
-                    site: site.clone(),
-                },
-            ),
-            execution::function::ListFunctionId::Bool(function) => I::Bool(
-                function.type_id(),
-                T::Call {
-                    function,
-                    args,
-                    site: site.clone(),
-                },
-            ),
-            execution::function::ListFunctionId::Nil(function) => I::Nil(
-                function.type_id(),
-                T::Call {
-                    function,
-                    args,
-                    site: site.clone(),
-                },
-            ),
-            execution::function::ListFunctionId::Tuple(function) => I::Tuple(
-                function.type_id(),
-                T::Call {
-                    function,
-                    args,
-                    site: site.clone(),
-                },
-            ),
-            execution::function::ListFunctionId::List(function) => I::List(
-                function.type_id(),
-                T::Call {
-                    function,
-                    args,
-                    site: site.clone(),
-                },
-            ),
-            execution::function::ListFunctionId::Function(function) => I::Function(
+            execution::function::RuntimeListFunctionId::Core(function) => match function {
+                execution::function::ListFunctionId::Parameter(function) => I::Parameter(
+                    function.type_id(),
+                    P::Call {
+                        function,
+                        args,
+                        site: site.clone(),
+                    },
+                ),
+                execution::function::ListFunctionId::ParameterList(function) => I::ParameterList(
+                    function.type_id(),
+                    T::Call {
+                        function,
+                        args,
+                        site: site.clone(),
+                    },
+                ),
+                execution::function::ListFunctionId::Int(function) => I::Int(
+                    function.type_id(),
+                    T::Call {
+                        function,
+                        args,
+                        site: site.clone(),
+                    },
+                ),
+                execution::function::ListFunctionId::String(function) => I::String(
+                    function.type_id(),
+                    T::Call {
+                        function,
+                        args,
+                        site: site.clone(),
+                    },
+                ),
+                execution::function::ListFunctionId::BitArray(function) => I::BitArray(
+                    function.type_id(),
+                    T::Call {
+                        function,
+                        args,
+                        site: site.clone(),
+                    },
+                ),
+                execution::function::ListFunctionId::UtfCodepoint(function) => I::UtfCodepoint(
+                    function.type_id(),
+                    T::Call {
+                        function,
+                        args,
+                        site: site.clone(),
+                    },
+                ),
+                execution::function::ListFunctionId::Custom(function) => I::Custom(
+                    function.type_id(),
+                    T::Call {
+                        function,
+                        args,
+                        site: site.clone(),
+                    },
+                ),
+                execution::function::ListFunctionId::Float(function) => I::Float(
+                    function.type_id(),
+                    T::Call {
+                        function,
+                        args,
+                        site: site.clone(),
+                    },
+                ),
+                execution::function::ListFunctionId::Bool(function) => I::Bool(
+                    function.type_id(),
+                    T::Call {
+                        function,
+                        args,
+                        site: site.clone(),
+                    },
+                ),
+                execution::function::ListFunctionId::Nil(function) => I::Nil(
+                    function.type_id(),
+                    T::Call {
+                        function,
+                        args,
+                        site: site.clone(),
+                    },
+                ),
+                execution::function::ListFunctionId::Tuple(function) => I::Tuple(
+                    function.type_id(),
+                    T::Call {
+                        function,
+                        args,
+                        site: site.clone(),
+                    },
+                ),
+                execution::function::ListFunctionId::List(function) => I::List(
+                    function.type_id(),
+                    T::Call {
+                        function,
+                        args,
+                        site: site.clone(),
+                    },
+                ),
+                execution::function::ListFunctionId::Function(function) => I::Function(
+                    function.type_id(),
+                    T::Call {
+                        function,
+                        args,
+                        site: site.clone(),
+                    },
+                ),
+            },
+            execution::function::RuntimeListFunctionId::External(function) => I::External(
                 function.type_id(),
                 T::Call {
                     function,
@@ -745,6 +761,15 @@ fn typed_generic_list_value(
             context.specialized_custom_list_type(item),
             T::Value(elements.into_iter().map(DraftCustom::from_owned).collect()),
         ),
+        StoredValueShape::External(item) => I::External(
+            context.specialized_external_list_type(item),
+            T::Value(
+                elements
+                    .into_iter()
+                    .map(DraftExternal::from_owned)
+                    .collect(),
+            ),
+        ),
         StoredValueShape::Float => I::Float(
             context.float_list_type(),
             T::Value(elements.into_iter().map(DraftFloat::from_owned).collect()),
@@ -838,6 +863,16 @@ fn typed_generic_list_spread(
                 tail,
             },
         ),
+        StoredValueShape::External(item) => I::External(
+            context.specialized_external_list_type(item),
+            T::Spread {
+                elements: elements
+                    .into_iter()
+                    .map(DraftExternal::from_owned)
+                    .collect(),
+                tail,
+            },
+        ),
         StoredValueShape::Float => I::Float(
             context.float_list_type(),
             T::Spread {
@@ -907,6 +942,7 @@ fn draft_stored_list(item: &StoredValueShape, value: DraftValueRef) -> DraftStor
             DraftStoredList::UtfCodepoint(DraftList::from_owned(value))
         }
         StoredValueShape::Custom(_) => DraftStoredList::Custom(DraftList::from_owned(value)),
+        StoredValueShape::External(_) => DraftStoredList::External(DraftList::from_owned(value)),
         StoredValueShape::Float => DraftStoredList::Float(DraftList::from_owned(value)),
         StoredValueShape::Bool => DraftStoredList::Bool(DraftList::from_owned(value)),
         StoredValueShape::Nil => DraftStoredList::Nil(DraftList::from_owned(value)),
@@ -943,6 +979,10 @@ fn typed_generic_list_drop_first(
         ),
         StoredValueShape::Custom(item) => I::Custom(
             context.specialized_custom_list_type(item),
+            T::DropFirst { list, count },
+        ),
+        StoredValueShape::External(item) => I::External(
+            context.specialized_external_list_type(item),
             T::DropFirst { list, count },
         ),
         StoredValueShape::Float => {
@@ -1023,6 +1063,17 @@ fn stored_generic_list_constant(
                 .generic_custom_list_constant(constant, shape)
                 .map(|id| {
                     I::Custom(
+                        type_id,
+                        T::Constant(execution::constant::ConstantId::new(id.index())),
+                    )
+                })
+        }
+        StoredValueShape::External(shape) => {
+            let type_id = context.specialized_external_list_type(shape);
+            context
+                .generic_external_list_constant(constant, shape)
+                .map(|id| {
+                    I::External(
                         type_id,
                         T::Constant(execution::constant::ConstantId::new(id.index())),
                     )
@@ -1595,6 +1646,10 @@ fn stored_list_expr(
         }
         module::StoredListExpr::Custom(value) => custom_list_expr(value, cursor, graph, context)
             .map(|flow| flow.map(|value| DraftStoredList::Custom(value.value().clone()))),
+        module::StoredListExpr::External(value) => {
+            external_list_expr(value, cursor, graph, context)
+                .map(|flow| flow.map(|value| DraftStoredList::External(value.value().clone())))
+        }
         module::StoredListExpr::Float(value) => float_list_expr(value, cursor, graph, context)
             .map(|flow| flow.map(|value| DraftStoredList::Float(value.value().clone()))),
         module::StoredListExpr::Bool(value) => bool_list_expr(value, cursor, graph, context)
@@ -2211,6 +2266,68 @@ impl GraphListItem for module::CustomListItem {
     }
 }
 
+impl GraphListItem for module::ExternalListItem {
+    type DraftElement = DraftExternal;
+    type DraftList = DraftExternalList;
+    type ExecutionLocal = execution::graph::ExternalListLocalId;
+    type ExecutionFunction = execution::function::ExternalListFunctionId;
+    type ExecutionType = execution::type_::ExternalListTypeId;
+
+    fn lower_element(
+        element: &Self::ElementExpr,
+        cursor: DraftCursor,
+        graph: &mut DraftGraph,
+        context: &mut super::super::LoweringContext,
+    ) -> Lowered<Self::DraftElement> {
+        external::external_expr(element, cursor, graph, context)
+    }
+
+    fn lower_constant(
+        constant: &Self::Constant,
+        context: &mut super::super::LoweringContext,
+    ) -> Representability<execution::constant::ConstantId<Self::ExecutionLocal>> {
+        context
+            .external_list_constant(constant)
+            .map(|id| execution::constant::ConstantId::new(id.index()))
+    }
+
+    fn local_key(local: &<Self as module::ListItem>::Local) -> super::super::local::LocalKey {
+        super::super::local::LocalKey::new(super::super::local::LocalKind::ExternalList, local.0)
+    }
+
+    fn lower_function(
+        &self,
+        function: &module::FunctionInstantiation,
+        context: &mut super::super::LoweringContext,
+    ) -> Representability<Self::ExecutionFunction> {
+        let type_id = context.external_list_type(self.item_type());
+        context.external_list_function_id(function, type_id)
+    }
+
+    fn list_type(&self, context: &mut super::super::LoweringContext) -> Self::ExecutionType {
+        context.external_list_type(self.item_type())
+    }
+
+    fn instruction(
+        type_id: Self::ExecutionType,
+        instruction: super::super::instruction::DraftTypedListInstruction<
+            Self::DraftElement,
+            Self::ExecutionLocal,
+            Self::ExecutionFunction,
+        >,
+    ) -> super::super::instruction::DraftListInstruction {
+        super::super::instruction::DraftListInstruction::External(type_id, instruction)
+    }
+
+    fn wrap(value: DraftList) -> Self::DraftList {
+        DraftExternalList::new(value)
+    }
+
+    fn from_ref(value: &DraftValueRef) -> Self::DraftList {
+        DraftExternalList::from_ref(value)
+    }
+}
+
 impl GraphListItem for module::TupleListItem {
     type DraftElement = DraftTuple;
     type DraftList = DraftTupleList;
@@ -2469,6 +2586,15 @@ pub(in crate::plan::execution::lowering) fn custom_list_expr(
     typed_list_expr(expression, cursor, graph, context)
 }
 
+pub(in crate::plan::execution::lowering) fn external_list_expr(
+    expression: &module::ExternalListExpr,
+    cursor: DraftCursor,
+    graph: &mut DraftGraph,
+    context: &mut super::super::LoweringContext,
+) -> Lowered<DraftExternalList> {
+    typed_list_expr(expression, cursor, graph, context)
+}
+
 pub(in crate::plan::execution::lowering) fn tuple_list_expr(
     expression: &module::TupleListExpr,
     cursor: DraftCursor,
@@ -2501,11 +2627,14 @@ mod tests {
     use crate::Value;
     use crate::plan::execution::lowering::graph::draft::DraftGraphBuilder;
     use crate::plan::execution::lowering::graph::{DraftFlow, DraftValueRef};
-    use crate::plan::execution::lowering::specialization::{Representability, SpecializationKey};
+    use crate::plan::execution::lowering::specialization::{
+        Representability, SpecializationKey, SpecializedValueShape, StoredValueShape,
+    };
     use crate::plan::{
         CustomConstructorDefinition, CustomType, CustomTypeDefinition, CustomTypeName,
-        CustomTypePublicity, Expr, FunctionShape, FunctionTemplateId, FunctionType, IntExpr,
-        ListExpr, PanicExpr, PanicSite, TypeParameterId, ValueShape, ValueType,
+        CustomTypePublicity, Expr, ExternalTypeName, ExternalValueShape, FunctionShape,
+        FunctionTemplateId, FunctionType, IntExpr, ListExpr, PanicExpr, PanicSite, TypeParameterId,
+        ValueShape, ValueType,
     };
 
     #[derive(Debug, PartialEq, Eq)]
@@ -2871,6 +3000,25 @@ pub fn main() {
                 FlowOutcome::Diverged,
             );
         }
+    }
+
+    #[test]
+    fn external_list_item_preserves_a_joined_draft_value() {
+        let shape = ExternalValueShape::new(
+            ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into()),
+            Vec::new(),
+        );
+        let context = crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
+        let shape = context.concrete_external_value_shape(&shape);
+        let (mut graph, _) = DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
+        let source = graph.value_ref(StoredValueShape::List(Box::new(
+            SpecializedValueShape::External(shape),
+        )));
+
+        let list =
+            <crate::plan::module::ExternalListItem as super::GraphListItem>::from_ref(&source);
+
+        assert_eq!(list.value().erase(), source);
     }
 
     fn source(family: &ListFamily, expression: &str) -> String {

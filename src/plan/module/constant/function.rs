@@ -1,6 +1,6 @@
 use crate::plan::{
-    CustomConstructor, CustomValueShape, FunctionReference, FunctionShape, TypeParameterId,
-    TypeSubstitution, ValueShape,
+    CustomConstructor, CustomValueShape, ExternalValueShape, FunctionReference, FunctionShape,
+    TypeParameterId, TypeSubstitution, ValueShape,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -20,6 +20,9 @@ pub(crate) struct ConstantUtfCodepointFunctionTemplateId(pub(super) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct ConstantCustomFunctionTemplateId(pub(super) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct ConstantExternalFunctionTemplateId(pub(super) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct ConstantFloatFunctionTemplateId(pub(super) usize);
@@ -49,6 +52,10 @@ pub(super) enum ConstantFunctionTemplate {
     Custom {
         template: ConstantCustomFunctionTemplateId,
         return_: CustomValueShape,
+    },
+    External {
+        template: ConstantExternalFunctionTemplateId,
+        return_: ExternalValueShape,
     },
     Float(ConstantFloatFunctionTemplateId),
     Bool(ConstantBoolFunctionTemplateId),
@@ -104,6 +111,10 @@ pub(crate) type ConstantCustomFunctionInstantiation = TypedConstantFunctionInsta
     ConstantFunctionTemplateSource<ConstantCustomFunctionTemplateId>,
     CustomValueShape,
 >;
+pub(crate) type ConstantExternalFunctionInstantiation = TypedConstantFunctionInstantiation<
+    ConstantFunctionTemplateSource<ConstantExternalFunctionTemplateId>,
+    ExternalValueShape,
+>;
 pub(crate) type ConstantFloatFunctionInstantiation = TypedConstantFunctionInstantiation<
     ConstantFunctionTemplateSource<ConstantFloatFunctionTemplateId>,
     (),
@@ -137,6 +148,7 @@ pub(crate) enum ConstantFunctionInstantiation {
     BitArray(ConstantBitArrayFunctionInstantiation),
     UtfCodepoint(ConstantUtfCodepointFunctionInstantiation),
     Custom(ConstantCustomFunctionInstantiation),
+    External(ConstantExternalFunctionInstantiation),
     Float(ConstantFloatFunctionInstantiation),
     Bool(ConstantBoolFunctionInstantiation),
     Nil(ConstantNilFunctionInstantiation),
@@ -182,6 +194,11 @@ pub(super) type ConstantCustomFunctionValue = TypedConstantFunctionValue<
     ConstantCustomFunctionInstantiation,
     CustomValueShape,
 >;
+pub(super) type ConstantExternalFunctionValue = TypedConstantFunctionValue<
+    FunctionReference,
+    ConstantExternalFunctionInstantiation,
+    ExternalValueShape,
+>;
 pub(super) type ConstantFloatFunctionValue =
     TypedConstantFunctionValue<FunctionReference, ConstantFloatFunctionInstantiation, ()>;
 pub(super) type ConstantBoolFunctionValue =
@@ -212,6 +229,7 @@ pub(super) enum ConstantFunctionValue {
     BitArray(ConstantBitArrayFunctionValue),
     UtfCodepoint(ConstantUtfCodepointFunctionValue),
     Custom(ConstantCustomFunctionValue),
+    External(ConstantExternalFunctionValue),
     Float(ConstantFloatFunctionValue),
     Bool(ConstantBoolFunctionValue),
     Nil(ConstantNilFunctionValue),
@@ -232,6 +250,10 @@ impl ConstantFunctionTemplate {
             }
             ValueShape::Custom(return_) => Self::Custom {
                 template: ConstantCustomFunctionTemplateId(index),
+                return_: return_.clone(),
+            },
+            ValueShape::External(return_) => Self::External {
+                template: ConstantExternalFunctionTemplateId(index),
                 return_: return_.clone(),
             },
             ValueShape::Float => Self::Float(ConstantFloatFunctionTemplateId(index)),
@@ -302,6 +324,15 @@ impl ConstantFunctionTemplate {
                 ),
             ),
             Self::Custom { template, return_ } => ConstantFunctionInstantiation::Custom(
+                TypedConstantFunctionInstantiation::in_module(
+                    module,
+                    ConstantFunctionTemplateSource::Exact(*template),
+                    substitution.clone(),
+                    shape,
+                    return_.substitute(&substitution),
+                ),
+            ),
+            Self::External { template, return_ } => ConstantFunctionInstantiation::External(
                 TypedConstantFunctionInstantiation::in_module(
                     module,
                     ConstantFunctionTemplateSource::Exact(*template),
@@ -440,6 +471,12 @@ impl SubstituteFunctionReturn for CustomValueShape {
     }
 }
 
+impl SubstituteFunctionReturn for ExternalValueShape {
+    fn substitute(&self, substitution: &TypeSubstitution) -> Self {
+        self.substitute(substitution)
+    }
+}
+
 impl SubstituteFunctionReturn for Box<[ValueShape]> {
     fn substitute(&self, substitution: &TypeSubstitution) -> Self {
         self.iter()
@@ -514,6 +551,7 @@ impl ConstantFunctionInstantiation {
             Self::BitArray(value) => value.module(),
             Self::UtfCodepoint(value) => value.module(),
             Self::Custom(value) => value.module(),
+            Self::External(value) => value.module(),
             Self::Float(value) => value.module(),
             Self::Bool(value) => value.module(),
             Self::Nil(value) => value.module(),
@@ -571,6 +609,15 @@ impl ConstantFunctionInstantiation {
             }
             ValueShape::Custom(return_) => {
                 Self::Custom(TypedConstantFunctionInstantiation::in_module(
+                    module,
+                    ConstantFunctionTemplateSource::Generic(source),
+                    substitution,
+                    shape,
+                    return_,
+                ))
+            }
+            ValueShape::External(return_) => {
+                Self::External(TypedConstantFunctionInstantiation::in_module(
                     module,
                     ConstantFunctionTemplateSource::Generic(source),
                     substitution,
@@ -640,6 +687,7 @@ impl ConstantFunctionInstantiation {
             Self::BitArray(value) => Self::BitArray(value.substitute(outer)),
             Self::UtfCodepoint(value) => Self::UtfCodepoint(value.substitute(outer)),
             Self::Custom(value) => Self::Custom(value.substitute(outer)),
+            Self::External(value) => Self::External(value.substitute(outer)),
             Self::Float(value) => Self::Float(value.substitute(outer)),
             Self::Bool(value) => Self::Bool(value.substitute(outer)),
             Self::Nil(value) => Self::Nil(value.substitute(outer)),
@@ -697,6 +745,9 @@ impl ConstantFunctionValue {
                 return_,
                 ConstantCustomFunctionTarget::Reference(target),
             )),
+            ValueShape::External(return_) => {
+                Self::External(TypedConstantFunctionValue::target(shape, return_, target))
+            }
             ValueShape::Float => Self::Float(TypedConstantFunctionValue::target(shape, (), target)),
             ValueShape::Bool => Self::Bool(TypedConstantFunctionValue::target(shape, (), target)),
             ValueShape::Nil => Self::Nil(TypedConstantFunctionValue::target(shape, (), target)),
@@ -752,6 +803,11 @@ impl ConstantFunctionValue {
                 let return_ = value.return_().clone();
                 Self::Custom(TypedConstantFunctionValue::reference(shape, return_, value))
             }
+            ConstantFunctionInstantiation::External(value) => {
+                let shape = value.shape().clone();
+                let return_ = value.return_().clone();
+                Self::External(TypedConstantFunctionValue::reference(shape, return_, value))
+            }
             ConstantFunctionInstantiation::Float(value) => {
                 let shape = value.shape().clone();
                 Self::Float(TypedConstantFunctionValue::reference(shape, (), value))
@@ -790,6 +846,7 @@ impl ConstantFunctionValue {
             Self::BitArray(value) => value.shape(),
             Self::UtfCodepoint(value) => value.shape(),
             Self::Custom(value) => value.shape(),
+            Self::External(value) => value.shape(),
             Self::Float(value) => value.shape(),
             Self::Bool(value) => value.shape(),
             Self::Nil(value) => value.shape(),

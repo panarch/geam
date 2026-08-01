@@ -4,10 +4,10 @@ use gleam_core::ast::TypedExpr;
 use super::{plan_expr, plan_string_expr};
 use crate::plan::{
     BitArrayExpr, BoolExpr, CustomExpr, CustomFunctionExpr, CustomLocal, CustomLocalExpr,
-    EchoSubject, Expr, ExprKind, FloatExpr, FunctionExpr, FunctionFunctionExpr, GenericExpr,
-    GenericFunctionExpr, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, NilExpr, Step,
-    StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr, TypedFunctionExprKind,
-    UtfCodepointExpr, UtfCodepointFunctionExpr,
+    EchoSubject, Expr, ExprKind, ExternalExpr, ExternalFunctionExpr, ExternalLocal, FloatExpr,
+    FunctionExpr, FunctionFunctionExpr, GenericExpr, GenericFunctionExpr, IntExpr, IntFunctionExpr,
+    ListExpr, ListFunctionExpr, NilExpr, Step, StringExpr, StringFunctionExpr, TupleExpr,
+    TupleFunctionExpr, TypedFunctionExprKind, UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
@@ -100,6 +100,18 @@ fn store_subject(value: Expr, context: &mut PlanContext<'_>) -> (EchoSubject, Ex
             (
                 EchoSubject::Custom(CustomLocalExpr::from_value(local, value)),
                 Expr::custom(CustomExpr::local_get(typed_local, name)),
+            )
+        }
+        ExprKind::External(value) => {
+            let shape = value.shape().clone();
+            let local = context.define_internal_external_local();
+            let typed_local = ExternalLocal::from_shape(local, shape);
+            (
+                EchoSubject::External {
+                    local: typed_local.clone(),
+                    value,
+                },
+                Expr::external(ExternalExpr::local_get(typed_local, name)),
             )
         }
         ExprKind::Bool(value) => {
@@ -220,6 +232,18 @@ fn store_subject(value: Expr, context: &mut PlanContext<'_>) -> (EchoSubject, Ex
                             value,
                         },
                         FunctionExpr::custom(CustomFunctionExpr::local_get(local, name)),
+                    )
+                }
+                TypedFunctionExprKind::External(value) => {
+                    let local = context.define_internal_external_function_local(
+                        value.expression().external_function_type().clone(),
+                    );
+                    (
+                        EchoSubject::ExternalFunction {
+                            local: local.clone(),
+                            value,
+                        },
+                        FunctionExpr::external(ExternalFunctionExpr::local_get(local, name)),
                     )
                 }
                 TypedFunctionExprKind::Bool(value) => {

@@ -1,7 +1,7 @@
 use super::{
-    BitArrayListExpr, BoolListExpr, CustomListExpr, FloatListExpr, FunctionListExpr,
-    GenericListExpr, IntListExpr, ListExpr, ListListExpr, NilListExpr, ParameterListListExpr,
-    StringListExpr, TupleListExpr, UtfCodepointListExpr,
+    BitArrayListExpr, BoolListExpr, CustomListExpr, ExternalListExpr, FloatListExpr,
+    FunctionListExpr, GenericListExpr, IntListExpr, ListExpr, ListListExpr, NilListExpr,
+    ParameterListListExpr, StringListExpr, TupleListExpr, UtfCodepointListExpr,
 };
 use crate::plan::ValueType;
 
@@ -34,6 +34,10 @@ pub(crate) enum BoolListCaseBranches {
     Custom {
         true_: CustomListExpr,
         false_: CustomListExpr,
+    },
+    External {
+        true_: ExternalListExpr,
+        false_: ExternalListExpr,
     },
     Float {
         true_: FloatListExpr,
@@ -90,6 +94,10 @@ pub(crate) enum ListCaseBranches<Pattern> {
     Custom {
         clauses: Vec<(Pattern, CustomListExpr)>,
         fallback: CustomListExpr,
+    },
+    External {
+        clauses: Vec<(Pattern, ExternalListExpr)>,
+        fallback: ExternalListExpr,
     },
     Float {
         clauses: Vec<(Pattern, FloatListExpr)>,
@@ -155,6 +163,10 @@ impl<Pattern> ListCaseBranches<Pattern> {
             }),
             ListExpr::Custom(fallback) => Ok(Self::Custom {
                 clauses: typed_custom_clauses(clauses, fallback.element_type())?,
+                fallback,
+            }),
+            ListExpr::External(fallback) => Ok(Self::External {
+                clauses: typed_external_clauses(clauses, fallback.element_type())?,
                 fallback,
             }),
             ListExpr::Float(fallback) => Ok(Self::Float {
@@ -328,6 +340,27 @@ fn typed_custom_clauses<Pattern>(
     Ok(typed_clauses)
 }
 
+fn typed_external_clauses<Pattern>(
+    clauses: Vec<(Pattern, ListExpr)>,
+    expected: ValueType,
+) -> Result<Vec<(Pattern, ExternalListExpr)>, ListCaseBranchTypeMismatch> {
+    let mut typed_clauses = Vec::with_capacity(clauses.len());
+    for (pattern, branch) in clauses {
+        let actual = branch.element_type();
+        let Some(branch) = branch.into_external() else {
+            return Err(list_case_branch_type_mismatch(expected, actual));
+        };
+        if branch.element_type() != expected {
+            return Err(list_case_branch_type_mismatch(
+                expected,
+                branch.element_type(),
+            ));
+        }
+        typed_clauses.push((pattern, branch));
+    }
+    Ok(typed_clauses)
+}
+
 fn typed_bool_clauses<Pattern>(
     clauses: Vec<(Pattern, ListExpr)>,
 ) -> Result<Vec<(Pattern, BoolListExpr)>, ListCaseBranchTypeMismatch> {
@@ -423,15 +456,22 @@ fn typed_function_clauses<Pattern>(
 mod tests {
     use super::{BoolListCaseBranches, ListCaseBranchTypeMismatch, ListCaseBranches};
     use crate::plan::{
-        BoolExpr, Expr, FunctionExpr, FunctionReference, FunctionShape, FunctionType, IntExpr,
-        ListExpr, NilExpr, StringExpr, TupleExpr, TypeParameterId, ValueType,
-        monomorphic_function_instantiation,
+        BoolExpr, Expr, ExternalType, ExternalTypeName, FunctionExpr, FunctionReference,
+        FunctionShape, FunctionType, IntExpr, ListExpr, NilExpr, StringExpr, TupleExpr,
+        TypeParameterId, ValueType, monomorphic_function_instantiation,
     };
     use num_bigint::BigInt;
 
     fn custom_type(name: &str) -> crate::plan::CustomType {
         crate::plan::CustomType::new(
             crate::plan::CustomTypeName::new("geam".into(), "main".into(), name.into()),
+            Vec::new(),
+        )
+    }
+
+    fn external_type(name: &str) -> ExternalType {
+        ExternalType::new(
+            ExternalTypeName::new("geam".into(), "main".into(), name.into()),
             Vec::new(),
         )
     }
@@ -653,6 +693,7 @@ mod tests {
     #[test]
     fn list_case_branches_preserve_all_item_family_metadata() {
         let function_type = FunctionType::new(Vec::new(), ValueType::Bool);
+        let external_type = external_type("Token");
 
         assert_eq!(
             ListCaseBranches::<BigInt>::from_exprs(
@@ -664,6 +705,26 @@ mod tests {
                 fallback: ListExpr::value(Vec::new(), ValueType::String)
                     .into_string()
                     .expect("string list"),
+            }),
+        );
+        assert_eq!(
+            ListCaseBranches::<BigInt>::from_exprs(
+                vec![(
+                    BigInt::from(1),
+                    ListExpr::value(Vec::new(), ValueType::External(external_type.clone()),),
+                )],
+                ListExpr::value(Vec::new(), ValueType::External(external_type.clone()),),
+            ),
+            Ok(ListCaseBranches::External {
+                clauses: vec![(
+                    BigInt::from(1),
+                    ListExpr::value(Vec::new(), ValueType::External(external_type.clone()),)
+                        .into_external()
+                        .expect("external list"),
+                )],
+                fallback: ListExpr::value(Vec::new(), ValueType::External(external_type),)
+                    .into_external()
+                    .expect("external list"),
             }),
         );
         assert_eq!(
@@ -858,6 +919,8 @@ mod tests {
         let int_to_string = FunctionType::new(vec![ValueType::Int], ValueType::String);
         let first_custom = custom_type("First");
         let second_custom = custom_type("Second");
+        let first_external = external_type("First");
+        let second_external = external_type("Second");
         let first_parameter = crate::plan::TypeParameterId(0);
         let second_parameter = crate::plan::TypeParameterId(1);
 
@@ -906,6 +969,29 @@ mod tests {
             Err(ListCaseBranchTypeMismatch {
                 expected: ValueType::Custom(first_custom.clone()),
                 actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ListCaseBranches::from_exprs(
+                vec![(BigInt::from(1), ListExpr::value(Vec::new(), ValueType::Int))],
+                ListExpr::value(Vec::new(), ValueType::External(first_external.clone()),),
+            ),
+            Err(ListCaseBranchTypeMismatch {
+                expected: ValueType::External(first_external.clone()),
+                actual: ValueType::Int,
+            }),
+        );
+        assert_eq!(
+            ListCaseBranches::from_exprs(
+                vec![(
+                    BigInt::from(1),
+                    ListExpr::value(Vec::new(), ValueType::External(second_external.clone()),),
+                )],
+                ListExpr::value(Vec::new(), ValueType::External(first_external.clone()),),
+            ),
+            Err(ListCaseBranchTypeMismatch {
+                expected: ValueType::External(first_external),
+                actual: ValueType::External(second_external),
             }),
         );
         assert_eq!(

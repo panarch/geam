@@ -66,6 +66,14 @@ impl GraphValue for crate::plan::execution::graph::CustomLocal {
     }
 }
 
+impl GraphValue for crate::plan::execution::graph::ExternalLocal {
+    type Evaluated = crate::runtime::EvaluatedExternalValue;
+
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
+        environment.external(*self)
+    }
+}
+
 impl GraphValue for crate::plan::execution::graph::BoolLocalId {
     type Evaluated = bool;
 
@@ -131,6 +139,11 @@ list_graph_value!(
     crate::plan::execution::graph::CustomListLocalId,
     crate::runtime::state::CustomListValueId,
     custom_list
+);
+list_graph_value!(
+    crate::plan::execution::graph::ExternalListLocalId,
+    crate::runtime::state::ExternalListValueId,
+    external_list
 );
 list_graph_value!(
     crate::plan::execution::graph::FloatListLocalId,
@@ -245,6 +258,14 @@ impl GraphValue for crate::plan::execution::graph::CustomFunctionLocal {
     }
 }
 
+impl GraphValue for crate::plan::execution::graph::ExternalFunctionLocal {
+    type Evaluated = crate::runtime::EvaluatedExternalFunction;
+
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
+        environment.external_function(self)
+    }
+}
+
 impl GraphValue for crate::plan::execution::graph::ListFunctionLocal {
     type Evaluated = crate::runtime::EvaluatedListFunction;
 
@@ -274,6 +295,7 @@ impl GraphValue for crate::plan::execution::graph::FunctionLocal {
             Self::BitArray(local) => environment.bit_array_function(*local).into(),
             Self::UtfCodepoint(local) => environment.utf_codepoint_function(*local).into(),
             Self::Custom(local) => environment.custom_function(local).into(),
+            Self::External(local) => environment.external_function(local).into(),
             Self::Bool(local) => environment.bool_function(*local).into(),
             Self::Nil(local) => environment.nil_function(*local).into(),
             Self::Tuple(local) => environment.tuple_function(*local).into(),

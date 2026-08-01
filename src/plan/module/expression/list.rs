@@ -10,9 +10,9 @@ pub(crate) use self::{
         ListElementTypeMismatch, ListElements, ListSpreadConstructionError, ListSpreadElements,
     },
     item::{
-        BitArrayListItem, BoolListItem, CustomListItem, FloatListItem, FunctionListItem,
-        GenericListItem, IntListItem, ListItem, ListListItem, NilListItem, ParameterListListItem,
-        StringListItem, TupleListItem, UtfCodepointListItem,
+        BitArrayListItem, BoolListItem, CustomListItem, ExternalListItem, FloatListItem,
+        FunctionListItem, GenericListItem, IntListItem, ListItem, ListListItem, NilListItem,
+        ParameterListListItem, StringListItem, TupleListItem, UtfCodepointListItem,
     },
     local::ListLocalExpr,
     typed::{ListIndexSource, TypedListExpr, TypedListExprKind, TypedListReturnKind},
@@ -34,6 +34,7 @@ pub(crate) enum ListExpr {
     BitArray(BitArrayListExpr),
     UtfCodepoint(UtfCodepointListExpr),
     Custom(CustomListExpr),
+    External(ExternalListExpr),
     Float(FloatListExpr),
     Bool(BoolListExpr),
     Nil(NilListExpr),
@@ -50,6 +51,7 @@ pub(crate) enum StoredListExpr {
     BitArray(BitArrayListExpr),
     UtfCodepoint(UtfCodepointListExpr),
     Custom(CustomListExpr),
+    External(ExternalListExpr),
     Float(FloatListExpr),
     Bool(BoolListExpr),
     Nil(NilListExpr),
@@ -66,6 +68,7 @@ pub(crate) type StringListExpr = TypedListExpr<StringListItem>;
 pub(crate) type BitArrayListExpr = TypedListExpr<BitArrayListItem>;
 pub(crate) type UtfCodepointListExpr = TypedListExpr<UtfCodepointListItem>;
 pub(crate) type CustomListExpr = TypedListExpr<CustomListItem>;
+pub(crate) type ExternalListExpr = TypedListExpr<ExternalListItem>;
 pub(crate) type FloatListExpr = TypedListExpr<FloatListItem>;
 pub(crate) type BoolListExpr = TypedListExpr<BoolListItem>;
 pub(crate) type NilListExpr = TypedListExpr<NilListItem>;
@@ -113,6 +116,14 @@ impl ListExpr {
                 Self::Custom(CustomListExpr::constant(
                     crate::plan::ValueShape::Custom(shape.clone()),
                     CustomListItem::new(shape.type_().clone()),
+                    reference,
+                ))
+            }
+            ConstantListInstantiation::External(reference) => {
+                let shape = reference.item_shape().clone();
+                Self::External(ExternalListExpr::constant(
+                    crate::plan::ValueShape::External(shape.clone()),
+                    ExternalListItem::new(shape.type_().clone()),
                     reference,
                 ))
             }
@@ -205,6 +216,9 @@ impl ListExpr {
             ListElements::Custom { item_type, values } => {
                 Self::Custom(CustomListExpr::value(CustomListItem { item_type }, values))
             }
+            ListElements::External { item_type, values } => Self::External(
+                ExternalListExpr::value(ExternalListItem { item_type }, values),
+            ),
             ListElements::Float(values) => Self::Float(FloatListExpr::value(FloatListItem, values)),
             ListElements::Bool(values) => Self::Bool(BoolListExpr::value(BoolListItem, values)),
             ListElements::Nil(values) => Self::Nil(NilListExpr::value(NilListItem, values)),
@@ -245,6 +259,9 @@ impl ListExpr {
             }
             ListSpreadElements::Custom { values, tail } => {
                 Self::Custom(CustomListExpr::spread(values, tail))
+            }
+            ListSpreadElements::External { values, tail } => {
+                Self::External(ExternalListExpr::spread(values, tail))
             }
             ListSpreadElements::Float { values, tail } => {
                 Self::Float(FloatListExpr::spread(values, tail))
@@ -291,6 +308,9 @@ impl ListExpr {
                 local,
                 name,
             )),
+            ListLocal::External { local, item_type } => Self::External(
+                ExternalListExpr::local_get(ExternalListItem { item_type }, local, name),
+            ),
             ListLocal::Float(local) => {
                 Self::Float(FloatListExpr::local_get(FloatListItem, local, name))
             }
@@ -368,6 +388,14 @@ impl ListExpr {
             ),
             crate::plan::ValueShape::Custom(shape) => Self::Custom(CustomListExpr::call_at(
                 CustomListItem {
+                    item_type: shape.type_().clone(),
+                },
+                function,
+                args,
+                site,
+            )),
+            crate::plan::ValueShape::External(shape) => Self::External(ExternalListExpr::call_at(
+                ExternalListItem {
                     item_type: shape.type_().clone(),
                 },
                 function,
@@ -466,6 +494,12 @@ impl ListExpr {
                 args,
                 site,
             )),
+            ValueType::External(item_type) => Self::External(ExternalListExpr::function_call_at(
+                ExternalListItem { item_type },
+                function,
+                args,
+                site,
+            )),
             ValueType::Float => Self::Float(FloatListExpr::function_call_at(
                 FloatListItem,
                 function,
@@ -541,6 +575,11 @@ impl ListExpr {
                 tuple,
                 index,
             )),
+            ValueType::External(item_type) => Self::External(ExternalListExpr::tuple_index(
+                ExternalListItem { item_type },
+                tuple,
+                index,
+            )),
             ValueType::Float => {
                 Self::Float(FloatListExpr::tuple_index(FloatListItem, tuple, index))
             }
@@ -591,6 +630,10 @@ impl ListExpr {
             )),
             ValueType::Custom(item_type) => Self::Custom(CustomListExpr::custom_field(
                 CustomListItem { item_type },
+                access,
+            )),
+            ValueType::External(item_type) => Self::External(ExternalListExpr::custom_field(
+                ExternalListItem { item_type },
                 access,
             )),
             ValueType::Float => Self::Float(FloatListExpr::custom_field(FloatListItem, access)),
@@ -660,6 +703,15 @@ impl ListExpr {
                     ListIndexSource::new(list, index),
                 ))
             }
+            crate::plan::ValueStorageShape::External(shape) => {
+                let item = ExternalListItem {
+                    item_type: shape.type_().clone(),
+                };
+                Self::External(ExternalListExpr::from_list_index(
+                    item,
+                    ListIndexSource::new(list, index),
+                ))
+            }
             crate::plan::ValueStorageShape::Float => Self::Float(FloatListExpr::from_list_index(
                 FloatListItem,
                 ListIndexSource::new(list, index),
@@ -722,6 +774,7 @@ impl ListExpr {
                 Self::UtfCodepoint(UtfCodepointListExpr::drop_first(list, count))
             }
             Self::Custom(list) => Self::Custom(CustomListExpr::drop_first(list, count)),
+            Self::External(list) => Self::External(ExternalListExpr::drop_first(list, count)),
             Self::Float(list) => Self::Float(FloatListExpr::drop_first(list, count)),
             Self::Bool(list) => Self::Bool(BoolListExpr::drop_first(list, count)),
             Self::Nil(list) => Self::Nil(NilListExpr::drop_first(list, count)),
@@ -746,6 +799,10 @@ impl ListExpr {
             ValueType::Custom(item_type) => {
                 Self::Custom(CustomListExpr::panic(CustomListItem { item_type }, panic))
             }
+            ValueType::External(item_type) => Self::External(ExternalListExpr::panic(
+                ExternalListItem { item_type },
+                panic,
+            )),
             ValueType::Float => Self::Float(FloatListExpr::panic(FloatListItem, panic)),
             ValueType::Bool => Self::Bool(BoolListExpr::panic(BoolListItem, panic)),
             ValueType::Nil => Self::Nil(NilListExpr::panic(NilListItem, panic)),
@@ -797,6 +854,9 @@ impl ListExpr {
             BoolListCaseBranches::Custom { true_, false_ } => {
                 Self::Custom(CustomListExpr::bool_case(subject, true_, false_))
             }
+            BoolListCaseBranches::External { true_, false_ } => {
+                Self::External(ExternalListExpr::bool_case(subject, true_, false_))
+            }
             BoolListCaseBranches::Float { true_, false_ } => {
                 Self::Float(FloatListExpr::bool_case(subject, true_, false_))
             }
@@ -840,6 +900,9 @@ impl ListExpr {
             }
             ListCaseBranches::Custom { clauses, fallback } => {
                 Self::Custom(CustomListExpr::int_case(subject, clauses, fallback))
+            }
+            ListCaseBranches::External { clauses, fallback } => {
+                Self::External(ExternalListExpr::int_case(subject, clauses, fallback))
             }
             ListCaseBranches::Float { clauses, fallback } => {
                 Self::Float(FloatListExpr::int_case(subject, clauses, fallback))
@@ -885,6 +948,9 @@ impl ListExpr {
             ListCaseBranches::Custom { clauses, fallback } => {
                 Self::Custom(CustomListExpr::string_case(subject, clauses, fallback))
             }
+            ListCaseBranches::External { clauses, fallback } => {
+                Self::External(ExternalListExpr::string_case(subject, clauses, fallback))
+            }
             ListCaseBranches::Float { clauses, fallback } => {
                 Self::Float(FloatListExpr::string_case(subject, clauses, fallback))
             }
@@ -929,6 +995,9 @@ impl ListExpr {
             ListCaseBranches::Custom { clauses, fallback } => {
                 Self::Custom(CustomListExpr::float_case(subject, clauses, fallback))
             }
+            ListCaseBranches::External { clauses, fallback } => {
+                Self::External(ExternalListExpr::float_case(subject, clauses, fallback))
+            }
             ListCaseBranches::Float { clauses, fallback } => {
                 Self::Float(FloatListExpr::float_case(subject, clauses, fallback))
             }
@@ -963,6 +1032,7 @@ impl ListExpr {
                 Self::UtfCodepoint(UtfCodepointListExpr::block(steps, return_))
             }
             Self::Custom(return_) => Self::Custom(CustomListExpr::block(steps, return_)),
+            Self::External(return_) => Self::External(ExternalListExpr::block(steps, return_)),
             Self::Float(return_) => Self::Float(FloatListExpr::block(steps, return_)),
             Self::Bool(return_) => Self::Bool(BoolListExpr::block(steps, return_)),
             Self::Nil(return_) => Self::Nil(NilListExpr::block(steps, return_)),
@@ -981,6 +1051,7 @@ impl ListExpr {
             Self::BitArray(expression) => expression.element_type(),
             Self::UtfCodepoint(expression) => expression.element_type(),
             Self::Custom(expression) => expression.element_type(),
+            Self::External(expression) => expression.element_type(),
             Self::Float(expression) => expression.element_type(),
             Self::Bool(expression) => expression.element_type(),
             Self::Nil(expression) => expression.element_type(),
@@ -999,6 +1070,7 @@ impl ListExpr {
             Self::BitArray(expression) => expression.item_shape(),
             Self::UtfCodepoint(expression) => expression.item_shape(),
             Self::Custom(expression) => expression.item_shape(),
+            Self::External(expression) => expression.item_shape(),
             Self::Float(expression) => expression.item_shape(),
             Self::Bool(expression) => expression.item_shape(),
             Self::Nil(expression) => expression.item_shape(),
@@ -1021,6 +1093,7 @@ impl ListExpr {
                 Self::UtfCodepoint(expression.with_item_shape(item_shape))
             }
             Self::Custom(expression) => Self::Custom(expression.with_item_shape(item_shape)),
+            Self::External(expression) => Self::External(expression.with_item_shape(item_shape)),
             Self::Float(expression) => Self::Float(expression.with_item_shape(item_shape)),
             Self::Bool(expression) => Self::Bool(expression.with_item_shape(item_shape)),
             Self::Nil(expression) => Self::Nil(expression.with_item_shape(item_shape)),
@@ -1079,6 +1152,13 @@ impl ListExpr {
         }
     }
 
+    pub(crate) fn into_external(self) -> Option<ExternalListExpr> {
+        match self {
+            Self::External(expression) => Some(expression),
+            _ => None,
+        }
+    }
+
     pub(crate) fn into_float(self) -> Option<FloatListExpr> {
         match self {
             Self::Float(expression) => Some(expression),
@@ -1132,6 +1212,7 @@ impl StoredListExpr {
             ListExpr::BitArray(expression) => Some(Self::BitArray(expression)),
             ListExpr::UtfCodepoint(expression) => Some(Self::UtfCodepoint(expression)),
             ListExpr::Custom(expression) => Some(Self::Custom(expression)),
+            ListExpr::External(expression) => Some(Self::External(expression)),
             ListExpr::Float(expression) => Some(Self::Float(expression)),
             ListExpr::Bool(expression) => Some(Self::Bool(expression)),
             ListExpr::Nil(expression) => Some(Self::Nil(expression)),
@@ -1202,21 +1283,22 @@ impl ListExpr {
 mod tests {
     use super::{
         BitArrayListExpr, BitArrayListItem, BoolListCaseBranches, BoolListExpr, BoolListItem,
-        CustomListExpr, CustomListItem, FloatListExpr, FloatListItem, FunctionListExpr,
-        FunctionListItem, GenericListExpr, GenericListItem, IntListExpr, IntListItem,
-        ListCaseBranches, ListElementTypeMismatch, ListElements, ListExpr, ListIndexSource,
-        ListListExpr, ListListItem, ListSpreadConstructionError, NilListExpr, NilListItem,
-        ParameterListListExpr, ParameterListListItem, StoredListExpr, StringListExpr,
-        StringListItem, TupleListExpr, TupleListItem, UtfCodepointListExpr, UtfCodepointListItem,
+        CustomListExpr, CustomListItem, ExternalListExpr, ExternalListItem, FloatListExpr,
+        FloatListItem, FunctionListExpr, FunctionListItem, GenericListExpr, GenericListItem,
+        IntListExpr, IntListItem, ListCaseBranches, ListElementTypeMismatch, ListElements,
+        ListExpr, ListIndexSource, ListListExpr, ListListItem, ListSpreadConstructionError,
+        NilListExpr, NilListItem, ParameterListListExpr, ParameterListListItem, StoredListExpr,
+        StringListExpr, StringListItem, TupleListExpr, TupleListItem, UtfCodepointListExpr,
+        UtfCodepointListItem,
     };
     use crate::plan::{
         BitArrayExpr, BoolExpr, CustomConstructorRefinement, CustomExpr, CustomFieldAccess,
-        CustomLocalId, CustomType, CustomTypeName, CustomValueShape, Expr, FloatExpr, FunctionExpr,
-        FunctionReference, FunctionShape, FunctionType, GenericExpr, GenericLocal, GenericLocalId,
-        IntExpr, IntListLocalId, ListFunctionExpr, ListFunctionReference, ListLocal, NilExpr,
-        PanicExpr, PanicSite, Step, StringExpr, TupleExpr, TypeParameterId, UtfCodepointExpr,
-        UtfCodepointLocalId, ValueShape, ValueStorageShape, ValueType,
-        monomorphic_function_instantiation,
+        CustomLocalId, CustomType, CustomTypeName, CustomValueShape, Expr, ExternalTypeName,
+        ExternalValueShape, FloatExpr, FunctionExpr, FunctionReference, FunctionShape,
+        FunctionType, GenericExpr, GenericLocal, GenericLocalId, IntExpr, IntListLocalId,
+        ListFunctionExpr, ListFunctionReference, ListLocal, NilExpr, PanicExpr, PanicSite, Step,
+        StringExpr, TupleExpr, TypeParameterId, UtfCodepointExpr, UtfCodepointLocalId, ValueShape,
+        ValueStorageShape, ValueType, monomorphic_function_instantiation,
     };
     use num_bigint::BigInt;
 
@@ -1567,6 +1649,10 @@ mod tests {
             Some("value".into()),
         );
         let function_type = FunctionType::new(Vec::new(), ValueType::Int);
+        let external_type = crate::plan::ExternalType::new(
+            crate::plan::ExternalTypeName::new("geam".into(), "main".into(), "Resource".into()),
+            Vec::new(),
+        );
 
         assert_eq!(
             ListExpr::custom_field(access.clone(), ValueType::Parameter(TypeParameterId(0)),),
@@ -1603,6 +1689,15 @@ mod tests {
             ListExpr::Custom(CustomListExpr::custom_field(
                 CustomListItem {
                     item_type: custom_type,
+                },
+                access.clone(),
+            )),
+        );
+        assert_eq!(
+            ListExpr::custom_field(access.clone(), ValueType::External(external_type.clone())),
+            ListExpr::External(ExternalListExpr::custom_field(
+                ExternalListItem {
+                    item_type: external_type,
                 },
                 access.clone(),
             )),
@@ -1890,12 +1985,17 @@ mod tests {
             crate::plan::CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
             Vec::new(),
         );
+        let external_shape = ExternalValueShape::new(
+            ExternalTypeName::new("geam".into(), "main".into(), "Token".into()),
+            Vec::new(),
+        );
         let item_shapes = vec![
             ValueStorageShape::Int,
             ValueStorageShape::String,
             ValueStorageShape::BitArray,
             ValueStorageShape::UtfCodepoint,
             ValueStorageShape::Custom(CustomValueShape::any(custom_type)),
+            ValueStorageShape::External(external_shape),
             ValueStorageShape::Float,
             ValueStorageShape::Bool,
             ValueStorageShape::Nil,
@@ -1938,6 +2038,12 @@ mod tests {
                 ValueStorageShape::Custom(shape) => {
                     ListExpr::Custom(CustomListExpr::from_list_index(
                         CustomListItem::new(shape.type_().clone()),
+                        ListIndexSource::new(list.clone(), 3),
+                    ))
+                }
+                ValueStorageShape::External(shape) => {
+                    ListExpr::External(ExternalListExpr::from_list_index(
+                        ExternalListItem::new(shape.type_().clone()),
                         ListIndexSource::new(list.clone(), 3),
                     ))
                 }
@@ -1984,6 +2090,10 @@ mod tests {
         );
         assert_eq!(
             ListExpr::value(Vec::new(), ValueType::Int).into_parameter_list(),
+            None,
+        );
+        assert_eq!(
+            ListExpr::value(Vec::new(), ValueType::Int).into_external(),
             None,
         );
         assert_eq!(

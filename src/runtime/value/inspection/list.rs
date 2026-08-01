@@ -28,6 +28,11 @@ pub(super) fn write(output: &mut String, value: &ListValue) {
             });
         }
         ListValueKind::Custom { values, .. } => write_items(output, values, custom::write),
+        ListValueKind::External { values, .. } => {
+            write_items(output, values, |output, value| {
+                output.push_str(value.inspection());
+            });
+        }
         ListValueKind::Float(values) => write_items(output, values, |output, value| {
             output.push_str(&format!("{value:?}"));
         }),
@@ -81,8 +86,15 @@ fn write_items<T>(output: &mut String, values: &[T], mut write_item: impl FnMut(
 #[cfg(test)]
 mod tests {
     use super::super::super::{BitArrayValue, CustomValue, FunctionValue, ListValue, Value};
-    use crate::plan::execution::function::{IntFunctionId, RuntimeFunctionId};
-    use crate::plan::{CustomType, CustomTypeName, FunctionType, TypeParameterId, ValueType};
+    use crate::host::HostExternalStore;
+    use crate::plan::execution::function::{
+        CoreRuntimeFunctionId, IntFunctionId, RuntimeFunctionId,
+    };
+    use crate::plan::{
+        CustomType, CustomTypeName, ExternalType, ExternalTypeName, FunctionType, TypeParameterId,
+        ValueType,
+    };
+    use crate::runtime::ExternalValue;
 
     #[test]
     fn writes_empty_printable_and_non_printable_int_lists() {
@@ -116,9 +128,20 @@ mod tests {
         let custom =
             CustomValue::from_evaluated(custom_type.clone(), "Boxed".into(), 0, Vec::new());
         let function = FunctionValue::new(
-            RuntimeFunctionId::Int(IntFunctionId(0)),
+            RuntimeFunctionId::Core(CoreRuntimeFunctionId::Int(IntFunctionId(0))),
             Vec::new(),
             FunctionType::new(Vec::new(), ValueType::Int),
+        );
+        let external_type = ExternalType::new(
+            ExternalTypeName::new("application".into(), "main".into(), "Resource".into()),
+            Vec::new(),
+        );
+        let store = HostExternalStore::default();
+        let external = ExternalValue::from_evaluated(
+            external_type.clone(),
+            store.insert(7usize, <usize as PartialEq>::eq, |value| {
+                format!("Resource({value})").into()
+            }),
         );
         let cases = [
             (ListValue::string(vec!["one".into()]), r#"["one"]"#),
@@ -130,6 +153,10 @@ mod tests {
             (
                 ListValue::from_evaluated_custom(custom_type, vec![custom]),
                 "[Boxed]",
+            ),
+            (
+                ListValue::from_evaluated_external(external_type, vec![external]),
+                "[Resource(7)]",
             ),
             (ListValue::float(vec![1.5]), "[1.5]"),
             (ListValue::bool(vec![true, false]), "[True, False]"),

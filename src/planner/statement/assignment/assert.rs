@@ -276,11 +276,12 @@ fn plan_assert_subject(
                 Expr::list(local_value),
             ))
         }
-        ExprKind::Generic(_) | ExprKind::UtfCodepoint(_) | ExprKind::Function(_) => {
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
-            })
-        }
+        ExprKind::Generic(_)
+        | ExprKind::UtfCodepoint(_)
+        | ExprKind::External(_)
+        | ExprKind::Function(_) => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::InvalidPattern,
+        }),
     }
 }
 

@@ -1,4 +1,7 @@
-use super::table::{FunctionTableBuilder, lowered_function, push_list_function_function};
+use super::table::{
+    FunctionTableBuilder, ListFunctionFunctionSignature, lowered_function,
+    push_core_list_function_function, push_external_list_function_function,
+};
 use crate::plan::execution::lowering::LoweringContext;
 use crate::plan::execution::lowering::graph;
 use crate::plan::execution::lowering::specialization::{
@@ -130,6 +133,9 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
         }
         R::Custom { body } => {
             lower_custom_return(template, key, index, body, &mut functions, context)
+        }
+        R::External { body } => {
+            lower_external_return(template, key, index, body, &mut functions, context)
         }
         R::Bool { body } => {
             let lowered = graph::lower_function_graph(
@@ -265,6 +271,24 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
             );
             functions
                 .custom_list_functions
+                .push((id, lowered_function(key, lowered)));
+        }
+        R::ExternalList { item_type, body } => {
+            let type_id = context.external_list_type(item_type.clone());
+            let id = execution::function::ExternalListFunctionId::new(index, type_id);
+            let lowered = graph::lower_function_graph(
+                template,
+                body,
+                context,
+                graph::external_list_expr,
+                move |target, context| {
+                    lower_call_target(target, context, |function, context| {
+                        context.external_list_function_id(function, type_id)
+                    })
+                },
+            );
+            functions
+                .external_list_functions
                 .push((id, lowered_function(key, lowered)));
         }
         R::FloatList { body } => {
@@ -403,6 +427,9 @@ pub(in crate::plan::execution::lowering) fn lower_specialized(
         R::CustomFunction { shape, body } => {
             lower_custom_function(template, key, index, shape, body, &mut functions, context)
         }
+        R::ExternalFunction { shape, body } => {
+            lower_external_function(template, key, index, shape, body, &mut functions, context)
+        }
         R::BoolFunction { shape, body } => {
             lower_bool_function(template, key, index, shape, body, &mut functions, context)
         }
@@ -496,6 +523,43 @@ fn lower_custom_return(
                 .push((index, lowered_function(key, graph)));
         }
     }
+}
+
+fn lower_external_return(
+    template: &module::FunctionTemplate,
+    key: &super::super::specialization::SpecializationKey,
+    index: usize,
+    body: &module::ExternalReturn,
+    functions: &mut FunctionTableBuilder,
+    context: &mut LoweringContext,
+) {
+    let signature_shape = context.concrete_external_value_shape(body.signature_shape());
+    let body_shape = context.concrete_external_value_shape(body.shape());
+    let signature_type = context.lower_concrete_external_type(&signature_shape);
+    let body_type = context.lower_concrete_external_type(&body_shape);
+    let graph = graph::lower_function_graph(
+        template,
+        body.body(),
+        context,
+        |kind, cursor, graph, context| {
+            graph::external_expr_kind(kind, &body_shape, cursor, graph, context)
+        },
+        |target, context| {
+            lower_call_target(target, context, |function, context| {
+                context
+                    .external_function_id(function, &signature_shape)
+                    .map(|function| function.index())
+            })
+        },
+    )
+    .map(|graph| {
+        graph.map(|body| {
+            execution::function::ExternalFunctionBody::from_parts(signature_type, body_type, body)
+        })
+    });
+    functions
+        .external_functions
+        .push((index, lowered_function(key, graph)));
 }
 
 fn lower_tuple_return(
@@ -741,6 +805,42 @@ fn lower_generic_value(
             });
             functions
                 .custom_functions
+                .push((index, lowered_function(key, graph)));
+        }
+        S::External(shape) => {
+            let lowered_type = context.lower_concrete_external_type(shape);
+            let graph = graph::lower_function_graph(
+                template,
+                body,
+                context,
+                |expression, cursor, graph, context| {
+                    lower_generic_as(
+                        expression,
+                        cursor,
+                        graph,
+                        context,
+                        graph::DraftExternal::from_owned,
+                    )
+                },
+                |target, context| {
+                    lower_call_target(target, context, |function, context| {
+                        context
+                            .external_function_id(function, shape)
+                            .map(|function| function.index())
+                    })
+                },
+            )
+            .map(|graph| {
+                graph.map(|body| {
+                    execution::function::ExternalFunctionBody::from_parts(
+                        lowered_type,
+                        lowered_type,
+                        body,
+                    )
+                })
+            });
+            functions
+                .external_functions
                 .push((index, lowered_function(key, graph)));
         }
         S::Bool => {
@@ -1013,6 +1113,20 @@ fn lower_generic_item_list(
                 .custom_list_functions
                 .push((id, lowered_function(key, graph)));
         }
+        S::External(shape) => {
+            let type_id = context.specialized_external_list_type(shape);
+            let id = execution::function::ExternalListFunctionId::new(index, type_id);
+            let graph = generic_item_list_graph(
+                template,
+                body,
+                context,
+                graph::DraftExternalList::new,
+                move |function, context| context.external_list_function_id(function, type_id),
+            );
+            functions
+                .external_list_functions
+                .push((id, lowered_function(key, graph)));
+        }
         S::Float => {
             let id =
                 execution::function::FloatListFunctionId::new(index, context.float_list_type());
@@ -1241,6 +1355,20 @@ fn lower_generic_value_list(
             );
             functions
                 .custom_list_functions
+                .push((id, lowered_function(key, graph)));
+        }
+        SpecializedValueShape::External(item) => {
+            let type_id = context.specialized_external_list_type(item);
+            let id = execution::function::ExternalListFunctionId::new(index, type_id);
+            let graph = generic_value_list_graph(
+                template,
+                body,
+                context,
+                graph::DraftExternalList::new,
+                move |function, context| context.external_list_function_id(function, type_id),
+            );
+            functions
+                .external_list_functions
                 .push((id, lowered_function(key, graph)));
         }
         SpecializedValueShape::Float => {
@@ -1918,6 +2046,83 @@ fn lower_custom_function(
     }
 }
 
+fn lower_external_function(
+    template: &module::FunctionTemplate,
+    key: &super::super::specialization::SpecializationKey,
+    index: usize,
+    shape: &crate::plan::FunctionShape,
+    body: &module::ExternalFunctionReturn,
+    functions: &mut FunctionTableBuilder,
+    context: &mut LoweringContext,
+) {
+    let function = context.concrete_function_shape(&crate::plan::FunctionShape::new(
+        body.type_().argument_shapes().to_vec(),
+        crate::plan::ValueShape::External(body.type_().return_().clone()),
+    ));
+    match context.function_arguments_representation(&function) {
+        FunctionArgumentsRepresentation::Symbolic => {
+            let generic_type = context.generic_function_type(&function);
+            let graph = graph::lower_function_graph(
+                template,
+                body.body(),
+                context,
+                |kind, cursor, graph, context| {
+                    graph::symbolic_external_function_expr_kind(
+                        kind, &function, cursor, graph, context,
+                    )
+                },
+                |tail, context| {
+                    lower_call_target(tail, context, |function, context| {
+                        context.generic_function_function_id(function, generic_type.clone())
+                    })
+                },
+            );
+            let graph = typed_function_return(&function, graph, context);
+            functions
+                .generic_function_functions
+                .push((index, lowered_function(key, graph)));
+        }
+        FunctionArgumentsRepresentation::Inhabited => {
+            let return_shape = context.concrete_external_value_shape(body.type_().return_());
+            let type_ =
+                context.specialized_external_function_type(function.arguments(), &return_shape);
+            let graph = graph::lower_function_graph(
+                template,
+                body.body(),
+                context,
+                |kind, cursor, graph, context| {
+                    graph::external_function_expr_kind(
+                        kind,
+                        &return_shape,
+                        &function,
+                        cursor,
+                        graph,
+                        context,
+                    )
+                },
+                |tail, context| {
+                    lower_call_target(tail, context, |function, context| {
+                        context
+                            .external_function_function_id(function, type_.clone())
+                            .map(|function| function.index())
+                    })
+                },
+            );
+            let shape = context.function_shape(shape.clone());
+            let graph = graph.map(|graph| {
+                graph.map(|body| {
+                    execution::function::ExternalFunctionFunctionBody::from_parts(
+                        shape, type_, body,
+                    )
+                })
+            });
+            functions
+                .external_function_functions
+                .push((index, lowered_function(key, graph)));
+        }
+    }
+}
+
 struct ListFunctionDefinition<'a> {
     shape: &'a crate::plan::FunctionShape,
     item_type: &'a crate::plan::ValueType,
@@ -1964,19 +2169,47 @@ fn lower_list_function(
         FunctionArgumentsRepresentation::Inhabited => {
             let item = context
                 .concrete_value_shape(&crate::plan::ValueShape::from_value_type(item_type.clone()));
-            let graph = graph::lower_function_graph(
-                template,
-                body,
-                context,
-                graph::list_function_expr,
-                |tail, context| {
-                    lower_call_target(tail, context, |target, context| {
-                        context.list_function_function_id(target, &function, &item)
-                    })
-                },
-            );
-            let graph = typed_function_return(&function, graph, context);
-            push_list_function_function(functions, index, &item, lowered_function(key, graph));
+            match context.list_function_function_signature(&function, &item) {
+                ListFunctionFunctionSignature::Core(signature) => {
+                    let graph = graph::lower_function_graph(
+                        template,
+                        body,
+                        context,
+                        graph::list_function_expr,
+                        |tail, context| {
+                            lower_call_target(tail, context, |target, context| {
+                                context.core_list_function_function_id(target, &signature)
+                            })
+                        },
+                    );
+                    let graph = typed_function_return(&function, graph, context);
+                    push_core_list_function_function(
+                        functions,
+                        index,
+                        &signature,
+                        lowered_function(key, graph),
+                    );
+                }
+                ListFunctionFunctionSignature::External(signature) => {
+                    let graph = graph::lower_function_graph(
+                        template,
+                        body,
+                        context,
+                        graph::list_function_expr,
+                        |tail, context| {
+                            lower_call_target(tail, context, |target, context| {
+                                context.external_list_function_function_id(target, &signature)
+                            })
+                        },
+                    );
+                    let graph = typed_function_return(&function, graph, context);
+                    push_external_list_function_function(
+                        functions,
+                        index,
+                        lowered_function(key, graph),
+                    );
+                }
+            }
         }
     }
 }
@@ -2358,6 +2591,41 @@ fn lower_polymorphic_function<Expression, ModuleFunction, Lower>(
                     .custom_function_functions
                     .push((index, lowered_function(key, graph)));
             }
+            StoredValueShape::External(return_shape) => {
+                let type_ =
+                    context.specialized_external_function_type(function.arguments(), &return_shape);
+                let graph = graph::lower_function_graph(
+                    template,
+                    body,
+                    context,
+                    |expression, cursor, graph, context| {
+                        Lower::lower(expression, cursor, graph, context)
+                            .map(|flow| flow.map(graph::DraftExternalFunction::new))
+                    },
+                    |tail, context| {
+                        lower_call_target(
+                            Lower::function_target(tail),
+                            context,
+                            |function, context| {
+                                context
+                                    .external_function_function_id(function, type_.clone())
+                                    .map(|function| function.index())
+                            },
+                        )
+                    },
+                );
+                let shape = context.lower_concrete_function_shape(function);
+                let graph = graph.map(|graph| {
+                    graph.map(|body| {
+                        execution::function::ExternalFunctionFunctionBody::from_parts(
+                            shape, type_, body,
+                        )
+                    })
+                });
+                functions
+                    .external_function_functions
+                    .push((index, lowered_function(key, graph)));
+            }
             StoredValueShape::Bool => {
                 let graph = graph::lower_function_graph(
                     template,
@@ -2425,26 +2693,62 @@ fn lower_polymorphic_function<Expression, ModuleFunction, Lower>(
                     .push((index, lowered_function(key, graph)));
             }
             StoredValueShape::List(item) => {
-                let graph = graph::lower_function_graph(
-                    template,
-                    body,
-                    context,
-                    |expression, cursor, graph, context| {
-                        Lower::lower(expression, cursor, graph, context)
-                            .map(|flow| flow.map(graph::DraftListFunction::new))
-                    },
-                    |tail, context| {
-                        lower_call_target(
-                            Lower::function_target(tail),
+                match context.list_function_function_signature(function, &item) {
+                    ListFunctionFunctionSignature::Core(signature) => {
+                        let graph = graph::lower_function_graph(
+                            template,
+                            body,
                             context,
-                            |target, context| {
-                                context.list_function_function_id(target, function, &item)
+                            |expression, cursor, graph, context| {
+                                Lower::lower(expression, cursor, graph, context)
+                                    .map(|flow| flow.map(graph::DraftListFunction::new))
                             },
-                        )
-                    },
-                );
-                let graph = typed_function_return(function, graph, context);
-                push_list_function_function(functions, index, &item, lowered_function(key, graph));
+                            |tail, context| {
+                                lower_call_target(
+                                    Lower::function_target(tail),
+                                    context,
+                                    |target, context| {
+                                        context.core_list_function_function_id(target, &signature)
+                                    },
+                                )
+                            },
+                        );
+                        let graph = typed_function_return(function, graph, context);
+                        push_core_list_function_function(
+                            functions,
+                            index,
+                            &signature,
+                            lowered_function(key, graph),
+                        );
+                    }
+                    ListFunctionFunctionSignature::External(signature) => {
+                        let graph = graph::lower_function_graph(
+                            template,
+                            body,
+                            context,
+                            |expression, cursor, graph, context| {
+                                Lower::lower(expression, cursor, graph, context)
+                                    .map(|flow| flow.map(graph::DraftListFunction::new))
+                            },
+                            |tail, context| {
+                                lower_call_target(
+                                    Lower::function_target(tail),
+                                    context,
+                                    |target, context| {
+                                        context
+                                            .external_list_function_function_id(target, &signature)
+                                    },
+                                )
+                            },
+                        );
+                        let graph = typed_function_return(function, graph, context);
+                        push_external_list_function_function(
+                            functions,
+                            index,
+                            lowered_function(key, graph),
+                        );
+                    }
+                }
             }
             StoredValueShape::Function(return_shape) => {
                 let type_ =

@@ -10,8 +10,39 @@ pub(super) use value::GraphValue;
 
 pub(in crate::runtime) use self::environment::BlockEnvironment;
 use self::terminator::{GraphAction, NeverCall, terminator_action};
-use crate::plan::execution::graph::{BlockGraph, BlockGraphExitId, ParamLocal};
-use crate::runtime::ExecutableRuntimePlan;
+use crate::plan::execution::graph::{BlockGraphExitId, ParamLocal, ProfiledBlockGraph};
+use crate::runtime::{ExecutableRuntimePlan, RuntimeGraph};
+
+pub(in crate::runtime) fn execute_external_list_instruction<Plan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
+    environment: &mut BlockEnvironment,
+    instruction: &crate::plan::execution::graph::ExternalListInstruction,
+    expected: &crate::plan::ValueType,
+) -> ExecutionResult<()>
+where
+    Plan: ExecutableRuntimePlan
+        + crate::plan::execution::runtime::RuntimeExecutionPlan<
+            Profile = crate::plan::execution::host::HostedExecutionProfile,
+        >,
+{
+    instruction::execute_external_list(plan, state, environment, instruction, expected)
+}
+
+pub(in crate::runtime) fn execute_external_function_instruction<Plan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
+    environment: &mut BlockEnvironment,
+    instruction: &crate::plan::execution::graph::ExternalFunctionInstruction,
+) -> ExecutionResult<()>
+where
+    Plan: ExecutableRuntimePlan
+        + crate::plan::execution::runtime::RuntimeExecutionPlan<
+            Profile = crate::plan::execution::host::HostedExecutionProfile,
+        >,
+{
+    instruction::execute_external_function(plan, state, environment, instruction)
+}
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::state::{RuntimeState, RuntimeStateFor};
 
@@ -54,7 +85,7 @@ impl CompletedGraph {
 pub(super) fn execute<Plan: ExecutableRuntimePlan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
-    graph: &BlockGraph,
+    graph: &ProfiledBlockGraph<RuntimeGraph<Plan>>,
     inputs: RetainedValues,
 ) -> ExecutionResult<CompletedGraph> {
     let mut block_id = graph.entry();

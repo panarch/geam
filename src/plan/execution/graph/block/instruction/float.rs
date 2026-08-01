@@ -88,7 +88,7 @@ impl Explain for FloatInstruction {
 mod explain_tests {
     use crate::plan::execution::explain;
     use crate::plan::execution::function::TupleFunctionId;
-    use crate::plan::execution::graph::InstructionKind;
+    use crate::plan::execution::graph::ProfiledInstructionKind;
 
     #[test]
     fn writes_float_arithmetic() {
@@ -169,7 +169,7 @@ pub fn main() {
             let graph = plan.tuple_function(TupleFunctionId(0)).body().block_graph();
             let mut first = true;
             for instruction in graph.blocks().iter().flat_map(|block| block.instructions()) {
-                if let InstructionKind::Float(instruction) = instruction.kind() {
+                if let ProfiledInstructionKind::Float(instruction) = instruction.kind() {
                     write_separator(output, &mut first);
                     let mut context = explain::ExplainContext::new(plan, output);
                     context.write(instruction);

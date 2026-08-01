@@ -9,11 +9,15 @@ pub(crate) use block::{
     BitArrayBindingPattern, BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayInstruction,
     BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize, BitArrayPatternSizeExpr,
     BitArrayPatternValue, BitArraySegment, BitArrayStringPattern, Block, BlockId, BoolBranch,
-    BoolInstruction, CustomInstruction, Echo, Edge, FloatInstruction, FloatSwitch, FunctionCapture,
-    FunctionInstruction, FunctionInstructionKind, FunctionTarget, Instruction, InstructionKind,
-    IntInstruction, IntSwitch, Jump, LetAssertPanic, ListInstruction, Match, MatchEdge,
-    MatchEdgeArgument, MatchIntBindingId, MatchPattern, MatchPatternBinding, MatchPatternList,
-    MatchPatternListTail, NeverCall, NeverCallTarget, NilInstruction, ParameterListInstruction,
+    BoolInstruction, CustomInstruction, Echo, Edge, ExternalFunctionCallTarget,
+    ExternalFunctionInstruction, ExternalFunctionInstructionKind, ExternalFunctionInstructionView,
+    ExternalFunctionTarget, ExternalInstruction, ExternalInstructionRef, ExternalInstructionView,
+    ExternalListInstruction, ExternalListInstructionView, FloatInstruction, FloatSwitch,
+    FunctionCapture, FunctionInstruction, FunctionInstructionKind, FunctionTarget, Instruction,
+    InstructionKind, IntInstruction, IntSwitch, Jump, LetAssertPanic, ListInstruction, Match,
+    MatchEdge, MatchEdgeArgument, MatchIntBindingId, MatchPattern, MatchPatternBinding,
+    MatchPatternList, MatchPatternListTail, NeverCall, NeverCallTarget, NilInstruction,
+    ParameterListInstruction, ProfiledBlock, ProfiledInstruction, ProfiledInstructionKind,
     Signedness, SourceStop, SourceStopKind, StringInstruction, StringSwitch, Terminator,
     TupleInstruction, TypedListInstruction, UtfCodepointInstruction,
 };
@@ -21,27 +25,35 @@ pub(crate) use exit::BlockGraphExitId;
 pub(crate) use value::{
     BitArrayFunctionLocalId, BitArrayListFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
     BoolFunctionLocalId, BoolListFunctionLocalId, BoolListLocalId, BoolLocalId,
-    CustomFunctionLocal, CustomFunctionLocalId, CustomListFunctionLocalId, CustomListLocalId,
-    CustomLocal, CustomLocalId, FloatFunctionLocalId, FloatListFunctionLocalId, FloatListLocalId,
-    FloatLocalId, FunctionFunctionLocal, FunctionFunctionLocalId, FunctionListFunctionLocalId,
-    FunctionListLocalId, FunctionLocal, GenericFunctionLocal, GenericFunctionLocalId,
-    IntFunctionLocalId, IntListFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionLocal,
-    ListListFunctionLocalId, ListListLocalId, ListLocal, NeverFunctionLocal, NeverFunctionLocalId,
-    NilFunctionLocalId, NilListFunctionLocalId, NilListLocalId, NilLocalId, ParamLocal, ParamSlot,
-    ParameterListFunctionLocalId, ParameterListListFunctionLocalId, ParameterListListLocalId,
-    ParameterListLocalId, StoredListLocal, StringFunctionLocalId, StringListFunctionLocalId,
-    StringListLocalId, StringLocalId, TupleFunctionLocalId, TupleListFunctionLocalId,
-    TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointListFunctionLocalId,
-    UtfCodepointListLocalId, UtfCodepointLocalId,
+    CoreFunctionFunctionLocal, CoreFunctionFunctionLocalId, CustomFunctionLocal,
+    CustomFunctionLocalId, CustomListFunctionLocalId, CustomListLocalId, CustomLocal,
+    CustomLocalId, ExternalFunctionFunctionLocal, ExternalFunctionFunctionLocalId,
+    ExternalFunctionLocal, ExternalFunctionLocalId, ExternalListFunctionLocalId,
+    ExternalListLocalId, ExternalLocal, ExternalLocalId, FloatFunctionLocalId,
+    FloatListFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionFunctionLocal,
+    FunctionListFunctionLocalId, FunctionListLocalId, FunctionLocal, GenericFunctionLocal,
+    GenericFunctionLocalId, IntFunctionLocalId, IntListFunctionLocalId, IntListLocalId, IntLocalId,
+    ListFunctionLocal, ListListFunctionLocalId, ListListLocalId, ListLocal, NeverFunctionLocal,
+    NeverFunctionLocalId, NilFunctionLocalId, NilListFunctionLocalId, NilListLocalId, NilLocalId,
+    ParamLocal, ParamSlot, ParameterListFunctionLocalId, ParameterListListFunctionLocalId,
+    ParameterListListLocalId, ParameterListLocalId, StoredListLocal, StringFunctionLocalId,
+    StringListFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionLocalId,
+    TupleListFunctionLocalId, TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId,
+    UtfCodepointListFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
 };
 pub(in crate::plan::execution) use value::{LocalLabel, write_local_labels};
 
 use crate::plan::execution::explain::{Explain, ExplainContext};
+use crate::plan::execution::function::{
+    ExecutionGraphProfile, FunctionLabelSource, HostedExecutionGraph,
+};
 
-pub(crate) struct BlockGraph {
+pub(crate) struct ProfiledBlockGraph<Graph: ExecutionGraphProfile> {
     entry: BlockId,
-    blocks: Box<[Block]>,
+    blocks: Box<[ProfiledBlock<Graph>]>,
 }
+
+pub(crate) type BlockGraph = ProfiledBlockGraph<HostedExecutionGraph>;
 
 pub(in crate::plan::execution) trait BlockGraphExitExplanation {
     fn write_exit(&self, context: &mut ExplainContext<'_, '_>, exit: BlockGraphExitId);
@@ -52,8 +64,11 @@ pub(in crate::plan::execution::graph) struct BlockGraphExplainContext<'a, 'plan,
     exits: &'a dyn BlockGraphExitExplanation,
 }
 
-impl BlockGraph {
-    pub(in crate::plan::execution) fn from_parts(entry: BlockId, blocks: Vec<Block>) -> Self {
+impl<Graph: ExecutionGraphProfile> ProfiledBlockGraph<Graph> {
+    pub(in crate::plan::execution) fn from_parts(
+        entry: BlockId,
+        blocks: Vec<ProfiledBlock<Graph>>,
+    ) -> Self {
         Self {
             entry,
             blocks: blocks.into_boxed_slice(),
@@ -64,12 +79,16 @@ impl BlockGraph {
         self.entry
     }
 
-    pub(crate) fn blocks(&self) -> &[Block] {
+    pub(crate) fn blocks(&self) -> &[ProfiledBlock<Graph>] {
         &self.blocks
     }
 
-    pub(crate) fn block(&self, id: BlockId) -> &Block {
+    pub(crate) fn block(&self, id: BlockId) -> &ProfiledBlock<Graph> {
         &self.blocks[id.index()]
+    }
+
+    pub(in crate::plan::execution) fn into_parts(self) -> (BlockId, Box<[ProfiledBlock<Graph>]>) {
+        (self.entry, self.blocks)
     }
 
     pub(in crate::plan::execution) fn write_explanation(
@@ -78,7 +97,15 @@ impl BlockGraph {
         entry_params: &[ParamSlot],
         entry_captures: &[ParamSlot],
         exits: &dyn BlockGraphExitExplanation,
-    ) {
+    ) where
+        Graph::ExternalFunctionId: FunctionLabelSource,
+        Graph::ExternalListFunctionId: FunctionLabelSource,
+        Graph::ExternalFunctionFunctionId: FunctionLabelSource,
+        Graph::ExternalListFunctionFunctionId: FunctionLabelSource,
+        Graph::ExternalInstruction: Explain,
+        Graph::ExternalListInstruction: Explain,
+        Graph::ExternalFunctionInstruction: Explain,
+    {
         context.push_str("  entry b");
         context.push_str(&self.entry().index().to_string());
         context.push_str(" params=");
@@ -196,13 +223,18 @@ pub fn main() {
 #[cfg(test)]
 mod tests {
     use super::{
-        BlockGraphExitId, BlockId, Edge, Instruction, InstructionKind, IntInstruction, MatchEdge,
-        MatchEdgeArgument, MatchPattern, MatchPatternList, Terminator,
+        BlockGraphExitId, BlockId, Edge, IntInstruction, MatchEdge, MatchEdgeArgument,
+        MatchPattern, MatchPatternList, ProfiledInstruction, ProfiledInstructionKind, Terminator,
     };
     use crate::plan::FunctionCallTarget;
     use crate::plan::execution::ExecutionPlan;
-    use crate::plan::execution::function::{FunctionBody, FunctionExit, IntFunctionId};
+    use crate::plan::execution::function::{FunctionExit, IntFunctionId, ProfiledFunctionBody};
     use crate::plan::execution::graph::{BoolLocalId, IntLocalId, ListLocal, ParamLocal};
+    use std::convert::Infallible;
+
+    type Instruction = ProfiledInstruction<Infallible>;
+    type InstructionKind = ProfiledInstructionKind<Infallible>;
+    type FunctionBody<Return, TailCall> = ProfiledFunctionBody<Return, TailCall, Infallible>;
 
     #[derive(Clone, Copy)]
     enum IntBinaryOperation {
@@ -501,7 +533,7 @@ pub fn main() { loop(1) }
 
     fn assert_int_value(
         plan: &ExecutionPlan,
-        instruction: &super::Instruction,
+        instruction: &Instruction,
         output: IntLocalId,
         value: i64,
     ) {

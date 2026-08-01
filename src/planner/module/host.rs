@@ -53,7 +53,7 @@ mod tests {
     use crate::plan::{
         FunctionShape, FunctionTemplateId, FunctionType, ModuleId, ValueShape, ValueType,
     };
-    use crate::planner::{PlanError, UnsupportedFunctionReason};
+    use crate::planner::{ExternalTypeProviderLinkReason, PlanError, UnsupportedFunctionReason};
     use ecow::EcoString;
     use num_bigint::BigInt;
 
@@ -351,8 +351,11 @@ pub type Thing
 
 pub fn main() { 1 }
 "#,
-                PlanError::UnsupportedTopLevel {
-                    kind: crate::planner::UnsupportedTopLevelKind::ExternalCustomType,
+                PlanError::ExternalTypeProviderLink {
+                    package: "application".into(),
+                    module: "main".into(),
+                    type_: "Thing".into(),
+                    reason: Box::new(ExternalTypeProviderLinkReason::MissingRegistration),
                 },
             ),
             (

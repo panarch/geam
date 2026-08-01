@@ -38,6 +38,7 @@ fn write_value(output: &mut String, value: &Value) {
         Value::BitArray(value) => bit_array::write(output, value),
         Value::UtfCodepoint(value) => output.push_str(&format!("{value:?}")),
         Value::Custom(value) => custom::write(output, value),
+        Value::External(value) => output.push_str(value.inspection()),
         Value::Bool(true) => output.push_str("True"),
         Value::Bool(false) => output.push_str("False"),
         Value::Nil => output.push_str("Nil"),

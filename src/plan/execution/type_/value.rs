@@ -1,4 +1,4 @@
-use super::{CustomTypeId, FunctionType, ListTypeId};
+use super::{CustomTypeId, ExternalTypeId, FunctionType, ListTypeId};
 use crate::plan;
 use crate::plan::execution::explain::{Explain, ExplainContext};
 
@@ -16,6 +16,7 @@ pub(crate) enum ValueType {
     List(ListTypeId),
     Function(Box<FunctionType>),
     Custom(CustomTypeId),
+    External(ExternalTypeId),
 }
 
 impl Explain for ValueType {
@@ -51,6 +52,10 @@ impl Explain for ValueType {
             }
             Self::Custom(id) => {
                 context.push_str("custom_type#");
+                context.push_str(&id.index().to_string());
+            }
+            Self::External(id) => {
+                context.push_str("external_type#");
                 context.push_str(&id.index().to_string());
             }
         }

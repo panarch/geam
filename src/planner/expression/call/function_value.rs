@@ -130,6 +130,16 @@ fn function_call_expr_at(
                 }),
             None => Err(function_call_return_type_mismatch()),
         },
+        ValueShape::External(_) => match function.into_external() {
+            Some(function) => crate::plan::ExternalExpr::try_function_call_at(function, args, site)
+                .map(Expr::external)
+                .map_err(|_| PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::CallShape {
+                        reason: InvalidCallShapeReason::FunctionCallArityMismatch,
+                    },
+                }),
+            None => Err(function_call_return_type_mismatch()),
+        },
         ValueShape::Float => match function.into_float() {
             Some(function) => Ok(Expr::float(crate::plan::FloatExpr::function_call_at(
                 function, args, site,
@@ -227,6 +237,12 @@ fn function_returning_function_value_call_expr(
                 .map(Expr::function)
                 .map_err(function_function_call_mismatch);
         }
+        ValueShape::External(_) => {
+            return crate::plan::ExternalFunctionExpr::try_function_call_at(function, args, site)
+                .map(FunctionExpr::external)
+                .map(Expr::function)
+                .map_err(function_function_call_mismatch);
+        }
         ValueShape::Float => Expr::function(FunctionExpr::float_with_shape(
             crate::plan::FloatFunctionExpr::function_call_at(function, args, return_type, site),
             return_shape,
@@ -287,7 +303,8 @@ mod tests {
     use crate::plan::{
         BitArrayFunctionFunctionId, BitArrayFunctionId, BoolFunctionFunctionId, BoolFunctionId,
         CustomConstructor, CustomConstructorField, CustomFunctionExpr, CustomFunctionFunctionId,
-        CustomFunctionType, CustomType, CustomTypeName, Expr, FloatFunctionFunctionId,
+        CustomFunctionType, CustomType, CustomTypeName, Expr, ExternalFunctionExpr,
+        ExternalFunctionType, ExternalTypeName, ExternalValueShape, FloatFunctionFunctionId,
         FloatFunctionId, FunctionExpr, FunctionFunctionExpr, FunctionFunctionFunctionId,
         FunctionFunctionId, FunctionFunctionType, FunctionShape, FunctionType, GenericExpr,
         GenericFunctionExpr, GenericFunctionType, IntFunctionFunctionId, IntLocalId, LocalId,
@@ -997,6 +1014,27 @@ pub fn main() {
 
     #[test]
     fn function_call_expr_preserves_return_family() {
+        let external_shape = ExternalValueShape::new(
+            ExternalTypeName::new("geam".into(), "main".into(), "Token".into()),
+            Vec::new(),
+        );
+        assert_eq!(
+            function_call_expr(
+                FunctionExpr::external(ExternalFunctionExpr::panic(
+                    PanicExpr::panic_at(None, PanicSite::unknown()),
+                    ExternalFunctionType::from_shapes(Vec::new(), external_shape.clone()),
+                )),
+                Vec::new(),
+                ValueShape::External(external_shape),
+            )
+            .expect("external function call")
+            .value_type(),
+            ValueType::External(crate::plan::ExternalType::new(
+                ExternalTypeName::new("geam".into(), "main".into(), "Token".into()),
+                Vec::new(),
+            )),
+        );
+
         assert_eq!(
             function_call_expr(
                 FunctionExpr::from(function_ref(
@@ -1246,6 +1284,17 @@ pub fn main() {
         );
         assert_eq!(
             function_call_expr(
+                FunctionExpr::from(int_function_ref(0, Vec::<ParamLocal>::new())),
+                Vec::new(),
+                ValueShape::External(ExternalValueShape::new(
+                    ExternalTypeName::new("geam".into(), "main".into(), "Token".into()),
+                    Vec::new(),
+                )),
+            ),
+            Err(function_call_return_type_mismatch()),
+        );
+        assert_eq!(
+            function_call_expr(
                 FunctionExpr::from(function_ref(
                     RuntimeFunctionId::String(StringFunctionId(0)),
                     Vec::<ParamLocal>::new(),
@@ -1375,6 +1424,27 @@ pub fn main() {
                 Vec::new(),
                 ValueShape::from_value_type(ValueType::Custom(custom_type)),
             ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::FunctionCallArityMismatch,
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn reject_margin_external_function_call_argument_count() {
+        let external_shape = ExternalValueShape::new(
+            ExternalTypeName::new("geam".into(), "main".into(), "Token".into()),
+            Vec::new(),
+        );
+        let function = FunctionExpr::external(ExternalFunctionExpr::panic(
+            PanicExpr::panic_at(None, PanicSite::unknown()),
+            ExternalFunctionType::from_shapes(vec![ValueShape::Int], external_shape.clone()),
+        ));
+
+        assert_eq!(
+            function_call_expr(function, Vec::new(), ValueShape::External(external_shape),),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
                     reason: InvalidCallShapeReason::FunctionCallArityMismatch,

@@ -2,7 +2,7 @@ use super::super::function;
 use super::super::specialization::{
     SpecializationKey, SpecializedFunctionShape, ValueInhabitation,
 };
-use super::super::{LoweredExecution, LoweringCompletion, LoweringContext};
+use super::super::{LoweredExecution, LoweringCompletion, LoweringContext, SpecializationOutcome};
 use super::{parameter, return_, sealing};
 use crate::host::{
     HostFunctionImplementation as RegisteredHostFunctionImplementation, HostProfile,
@@ -15,7 +15,7 @@ use crate::plan::{HostFunctionTemplate, HostImplementationBinding};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-type HostedLoweredExecution<Profile> = LoweredExecution<HostedExecutionProfile<Profile>>;
+type HostedLoweredExecution = LoweredExecution<HostedExecutionProfile>;
 
 pub(super) struct HostFunctionRegistry<Profile: HostProfile> {
     functions: HashMap<
@@ -28,7 +28,7 @@ pub(super) struct HostFunctionLowering<'registry, Profile: HostProfile> {
     registered: &'registry HostFunctionRegistry<Profile>,
     value_functions: Vec<HostedValueFunction<Profile>>,
     never_functions: Vec<HostedNeverFunction<Profile>>,
-    additional: function::AdditionalFunctions<HostedExecutionProfile<Profile>>,
+    additional: function::AdditionalFunctions<HostedExecutionProfile>,
 }
 
 impl<Profile: HostProfile> HostFunctionRegistry<Profile> {
@@ -49,6 +49,7 @@ impl<Profile: HostProfile> HostFunctionRegistry<Profile> {
             additional: function::AdditionalFunctions {
                 never: Vec::new(),
                 custom: Vec::new(),
+                external: Vec::new(),
                 int: Vec::new(),
                 float: Vec::new(),
                 string: Vec::new(),
@@ -63,6 +64,7 @@ impl<Profile: HostProfile> HostFunctionRegistry<Profile> {
                 bit_array_list: Vec::new(),
                 utf_codepoint_list: Vec::new(),
                 custom_list: Vec::new(),
+                external_list: Vec::new(),
                 float_list: Vec::new(),
                 bool_list: Vec::new(),
                 nil_list: Vec::new(),
@@ -76,6 +78,7 @@ impl<Profile: HostProfile> HostFunctionRegistry<Profile> {
                 bit_array_function_functions: Vec::new(),
                 utf_codepoint_function_functions: Vec::new(),
                 custom_function_functions: Vec::new(),
+                external_function_functions: Vec::new(),
                 bool_function_functions: Vec::new(),
                 nil_function_functions: Vec::new(),
                 tuple_function_functions: Vec::new(),
@@ -88,6 +91,7 @@ impl<Profile: HostProfile> HostFunctionRegistry<Profile> {
                 bit_array_list_function_functions: Vec::new(),
                 utf_codepoint_list_function_functions: Vec::new(),
                 custom_list_function_functions: Vec::new(),
+                external_list_function_functions: Vec::new(),
                 float_list_function_functions: Vec::new(),
                 bool_list_function_functions: Vec::new(),
                 nil_list_function_functions: Vec::new(),
@@ -189,7 +193,7 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
         self,
         context: LoweringContext,
     ) -> (
-        LoweringCompletion<HostedLoweredExecution<Profile>>,
+        LoweringCompletion<HostedLoweredExecution>,
         HostFunctionTables<Profile>,
     ) {
         let Self {
@@ -208,10 +212,10 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
 }
 
 impl LoweringContext {
-    fn finish_hosted<Profile: HostProfile>(
+    fn finish_hosted(
         self,
-        additional: function::AdditionalFunctions<HostedExecutionProfile<Profile>>,
-    ) -> LoweringCompletion<HostedLoweredExecution<Profile>> {
+        additional: function::AdditionalFunctions<HostedExecutionProfile>,
+    ) -> LoweringCompletion<HostedLoweredExecution> {
         let Self {
             constant_templates,
             constants,
@@ -223,16 +227,21 @@ impl LoweringContext {
         } = self;
         let outcome = functions
             .finish_hosted(additional)
-            .map(|functions| {
-                let (list_types, custom_types, value_shapes) = types.into_tables();
-                Box::new(LoweredExecution {
-                    constants: constants.finish(),
-                    functions: *functions,
-                    list_types,
-                    custom_types,
-                    value_shapes,
-                })
-            })
+            .zip_with(
+                SpecializationOutcome::Complete(constants.finish_hosted()),
+                |functions, constants| {
+                    let (list_types, custom_types, external_types, value_shapes) =
+                        types.into_tables();
+                    Box::new(LoweredExecution {
+                        constants,
+                        functions: *functions,
+                        list_types,
+                        custom_types,
+                        external_types,
+                        value_shapes,
+                    })
+                },
+            )
             .include_prior_erasure(erased_specializations);
         (constant_templates, representations, outcome)
     }

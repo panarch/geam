@@ -1,4 +1,4 @@
-use super::{CustomValueShape, ValueShape};
+use super::{CustomValueShape, ExternalType, ExternalValueShape, ValueShape};
 use ecow::EcoString;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -15,6 +15,7 @@ pub enum ValueType {
     List(Box<ValueType>),
     Function(Box<FunctionType>),
     Custom(CustomType),
+    External(ExternalType),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -49,6 +50,12 @@ pub struct FunctionType {
 pub(crate) struct CustomFunctionType {
     arguments: Vec<ValueShape>,
     return_: CustomValueShape,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct ExternalFunctionType {
+    arguments: Vec<ValueShape>,
+    return_: ExternalValueShape,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -129,6 +136,31 @@ impl CustomFunctionType {
         FunctionType::new(
             self.argument_types(),
             ValueType::Custom(self.return_.type_().clone()),
+        )
+    }
+}
+
+impl ExternalFunctionType {
+    pub(crate) fn from_shapes(arguments: Vec<ValueShape>, return_: ExternalValueShape) -> Self {
+        Self { arguments, return_ }
+    }
+
+    pub(crate) fn return_(&self) -> &ExternalValueShape {
+        &self.return_
+    }
+
+    pub(crate) fn argument_shapes(&self) -> &[ValueShape] {
+        &self.arguments
+    }
+
+    pub(crate) fn argument_types(&self) -> Vec<ValueType> {
+        self.arguments.iter().map(ValueShape::value_type).collect()
+    }
+
+    pub(crate) fn to_function_type(&self) -> FunctionType {
+        FunctionType::new(
+            self.argument_types(),
+            ValueType::External(self.return_.type_().clone()),
         )
     }
 }

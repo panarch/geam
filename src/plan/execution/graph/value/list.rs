@@ -1,9 +1,9 @@
 #[cfg(test)]
 use crate::plan::execution::type_::ListTypeId;
 use crate::plan::execution::type_::{
-    BitArrayListTypeId, BoolListTypeId, CustomListTypeId, FloatListTypeId, FunctionListTypeId,
-    IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId, ParameterListTypeId,
-    StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
+    BitArrayListTypeId, BoolListTypeId, CustomListTypeId, ExternalListTypeId, FloatListTypeId,
+    FunctionListTypeId, IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId,
+    ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,6 +23,9 @@ pub struct ParameterListLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CustomListLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExternalListLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FloatListLocalId(pub(crate) usize);
@@ -75,6 +78,10 @@ pub enum ListLocal {
         local: CustomListLocalId,
         type_id: CustomListTypeId,
     },
+    External {
+        local: ExternalListLocalId,
+        type_id: ExternalListTypeId,
+    },
     Float {
         local: FloatListLocalId,
         type_id: FloatListTypeId,
@@ -108,6 +115,7 @@ pub(crate) enum StoredListLocal {
     BitArray(BitArrayListLocalId),
     UtfCodepoint(UtfCodepointListLocalId),
     Custom(CustomListLocalId),
+    External(ExternalListLocalId),
     Float(FloatListLocalId),
     Bool(BoolListLocalId),
     Nil(NilListLocalId),
@@ -127,6 +135,7 @@ impl ListLocal {
             Self::BitArray { type_id, .. } => type_id.list_type(),
             Self::UtfCodepoint { type_id, .. } => type_id.list_type(),
             Self::Custom { type_id, .. } => type_id.list_type(),
+            Self::External { type_id, .. } => type_id.list_type(),
             Self::Float { type_id, .. } => type_id.list_type(),
             Self::Bool { type_id, .. } => type_id.list_type(),
             Self::Nil { type_id, .. } => type_id.list_type(),
@@ -140,11 +149,12 @@ impl ListLocal {
 #[cfg(test)]
 mod tests {
     use crate::plan::execution::graph::{
-        BitArrayListLocalId, BoolListLocalId, CustomListLocalId, FloatListLocalId,
-        FunctionListLocalId, IntListLocalId, ListListLocalId, ListLocal, NilListLocalId,
-        ParameterListListLocalId, ParameterListLocalId, StringListLocalId, TupleListLocalId,
-        UtfCodepointListLocalId,
+        BitArrayListLocalId, BoolListLocalId, CustomListLocalId, ExternalListLocalId,
+        FloatListLocalId, FunctionListLocalId, IntListLocalId, ListListLocalId, ListLocal,
+        NilListLocalId, ParameterListListLocalId, ParameterListLocalId, StringListLocalId,
+        TupleListLocalId, UtfCodepointListLocalId,
     };
+    use crate::plan::execution::type_::{ExternalListTypeId, ExternalTypeId, ListTypeId};
     use crate::plan::{TypeParameterId, ValueType};
 
     #[test]
@@ -264,6 +274,16 @@ pub fn main() {
                 plan.function_list_function_id(0).type_id().list_type(),
             ],
         );
+    }
+
+    #[test]
+    fn external_list_locals_preserve_storage_type() {
+        let local = ListLocal::External {
+            local: ExternalListLocalId(3),
+            type_id: ExternalListTypeId::new(ListTypeId::new(19), ExternalTypeId::new(5)),
+        };
+
+        assert_eq!(local.list_type(), ListTypeId::new(19));
     }
 
     fn execution_plan(source: &str) -> crate::ExecutionPlan {

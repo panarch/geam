@@ -6,6 +6,8 @@ mod compound;
 mod error;
 #[path = "host/execution.rs"]
 mod execution;
+#[path = "host/external.rs"]
+mod external;
 #[path = "host/non_returning.rs"]
 mod non_returning;
 #[path = "host/provider.rs"]

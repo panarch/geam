@@ -40,6 +40,7 @@ pub(crate) enum HostCallParameter {
     List(ParamLocal),
     Tuple(ParamLocal),
     Custom(ParamLocal),
+    External(ParamLocal),
     Function(ParamLocal),
 }
 
@@ -277,6 +278,7 @@ impl HostCallParameter {
             Self::List(local) => local.clone(),
             Self::Tuple(local) => local.clone(),
             Self::Custom(local) => local.clone(),
+            Self::External(local) => local.clone(),
             Self::Function(local) => local.clone(),
         }
     }
