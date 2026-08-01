@@ -157,6 +157,10 @@ constraints, not additions to Gleam's analyzer or typed AST. See [runtime
 semantics](runtime-semantics.md) for the value, state, specialization,
 re-entry, and failure contracts.
 
+Private transient-style external APIs can be represented by returning new
+persistent payload versions that share immutable retained entries. This does
+not add a general mutable external-value model or cyclic runtime graph support.
+
 The current public execution APIs are:
 
 ```rust

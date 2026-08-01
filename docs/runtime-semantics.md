@@ -161,6 +161,14 @@ release queue, including after the original runtime state has been dropped.
 Geam does not support cyclic evaluated graphs or moving stored values between
 hosted executions.
 
+Private transient-style provider APIs use persistent external payload
+versions. Each operation may share immutable retained entries with its input,
+but it returns a new payload and never mutates a version already visible to
+Gleam. Aliases therefore continue to observe their original values, and the
+retained graph remains acyclic. Geam does not enforce a consumed-token state at
+runtime and does not provide general mutable external references or cycle
+collection.
+
 ### Specialization And Re-entry
 
 A generic provider registers one source `TypeScheme`; first-use

@@ -97,6 +97,8 @@ with `HostStoredValue` and restore them only through a later active
 with its exact specialized Gleam shape; a later typed decode returns `None`
 when that shape does not match. Generic providers and Gleam function values
 use the same typed specialization and call paths as ordinary Gleam functions.
+Private transient-style containers can use this storage through immutable
+persistent versions; Geam does not expose general mutable external graphs.
 
 `HostedExecution::try_from_module_plan` seals the entry-reachable host ABI
 before runtime construction. Provider state remains caller-owned, and nested

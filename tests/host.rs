@@ -22,3 +22,5 @@ mod signature;
 mod state;
 #[path = "host/stored.rs"]
 mod stored;
+#[path = "host/transient.rs"]
+mod transient;

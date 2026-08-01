@@ -238,6 +238,11 @@ Typed decode compares that recursive shape, not Rust payload identity, and a
 shape mismatch remains ordinary provider-level absence rather than a runtime
 error, invariant, panic, or fallback.
 
+Model transient-style external storage as immutable persistent versions.
+Operations may share acyclic retained entries, but must not mutate published
+payloads or introduce consumed-token validation, general external references,
+or cycle collection as hidden runtime margins.
+
 Treat callable invocation as an explicit call-scoped capability. A callback
 capability must have inhabited argument storage when hosted execution is
 sealed; an opaque function value may pass through generic storage without
