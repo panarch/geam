@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+base64 = "0.22"
 bitvec = "1.1.1"
 camino = "1"
 # Keep this aligned with the Gleam v1.17.0 dependency graph. gleam-core does not
@@ -11,6 +12,7 @@ camino = "1"
 ecow = "=0.2.6"
 gleam-core = { git = "https://github.com/gleam-lang/gleam", rev = "afc1b7d956b433e638d52dbd06470f53a0b26f6a", package = "gleam-core" }
 half = { version = "2.7.1", default-features = false }
+hex = "0.4"
 im = "15"
 miette = "7"
 num-bigint = "0.4.6"

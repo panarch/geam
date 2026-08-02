@@ -6,6 +6,7 @@ use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError};
 use ecow::EcoString;
 use gleam_core::ast::{AssignName, Pattern, TypedExpr};
+use gleam_core::strings::convert_string_escape_chars;
 use gleam_core::type_::Type;
 use std::sync::Arc;
 
@@ -243,7 +244,7 @@ fn plan_literal_string_case_pattern(
 ) -> Result<LiteralStringCasePattern, PlanError> {
     match pattern {
         Pattern::String { value, .. } => Ok(LiteralStringCasePattern::Literal {
-            value,
+            value: convert_string_escape_chars(&value),
             subject_bindings: Vec::new(),
         }),
         Pattern::Variable { name, type_, .. } if type_.is_string() => {
@@ -297,7 +298,7 @@ fn prefix_bindings(
 fn plan_string_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<StringCasePattern, PlanError> {
     match pattern {
         Pattern::String { value, .. } => Ok(StringCasePattern::Literal {
-            value,
+            value: convert_string_escape_chars(&value),
             subject_bindings: Vec::new(),
         }),
         Pattern::Variable { name, type_, .. } if type_.is_string() => Ok(StringCasePattern::Any {
@@ -323,7 +324,7 @@ fn plan_string_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<StringCasePat
             right_side_assignment,
             ..
         } => Ok(StringCasePattern::Prefix {
-            prefix: left_side_string,
+            prefix: convert_string_escape_chars(&left_side_string),
             prefix_bindings: prefix_bindings(left_side_assignment, right_side_assignment),
             subject_bindings: Vec::new(),
         }),

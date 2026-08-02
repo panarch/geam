@@ -364,6 +364,7 @@ mod control_flow {
             string_prefix_empty,
             tuple_inner_string_prefix_pattern,
             string_prefix_closure_capture,
+            string_escape_semantics,
             alternative_patterns,
             alternative_guard_fallthrough,
             alternative_tuple_binding_positions,

@@ -11,6 +11,7 @@ use crate::planner::error::{InvalidCaseShapeReason, PlanError};
 use crate::planner::pattern::plan_custom_subject_pattern;
 use ecow::EcoString;
 use gleam_core::ast::{AssignName, Pattern, SrcSpan, TailPattern, TypedExpr};
+use gleam_core::strings::convert_string_escape_chars;
 use gleam_core::type_::Type;
 use std::sync::Arc;
 
@@ -241,9 +242,12 @@ pub(super) fn plan_list_case_pattern_with_context(
         Pattern::Float { float_value, .. } if subject_type == ValueType::Float => Ok(
             ListCasePattern::literal(value, Expr::float(FloatExpr::value(float_value.value()))),
         ),
-        Pattern::String { value: literal, .. } if subject_type == ValueType::String => Ok(
-            ListCasePattern::literal(value, Expr::string(StringExpr::value(literal))),
-        ),
+        Pattern::String { value: literal, .. } if subject_type == ValueType::String => {
+            Ok(ListCasePattern::literal(
+                value,
+                Expr::string(StringExpr::value(convert_string_escape_chars(&literal))),
+            ))
+        }
         Pattern::Constructor {
             name,
             arguments,
@@ -318,7 +322,7 @@ pub(super) fn plan_list_case_pattern_with_context(
             ..
         } if subject_type == ValueType::String => ListCasePattern::string_prefix(
             value,
-            left_side_string,
+            convert_string_escape_chars(&left_side_string),
             left_side_assignment,
             right_side_assignment,
         ),

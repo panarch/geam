@@ -1,5 +1,6 @@
 use crate::{HostProfile, HostProviderModule, HostRegistrationError};
 
+mod bit_array;
 mod dict;
 mod dynamic;
 mod float;
@@ -57,8 +58,11 @@ where
             float::host_provider::<Profile>().and_then(|float| {
                 int::host_provider::<Profile>().and_then(|int| {
                     string_tree::host_provider::<Profile>().and_then(|string_tree| {
-                        string::host_provider::<Profile>()
-                            .map(|string| vec![dict, dynamic, float, int, string_tree, string])
+                        string::host_provider::<Profile>().and_then(|string| {
+                            bit_array::host_provider::<Profile>().map(|bit_array| {
+                                vec![dict, dynamic, float, int, string_tree, string, bit_array]
+                            })
+                        })
                     })
                 })
             })
@@ -117,6 +121,7 @@ mod tests {
                 "gleam/int",
                 "gleam/string_tree",
                 "gleam/string",
+                "gleam/bit_array",
             ],
         );
         let provider = &providers[0];

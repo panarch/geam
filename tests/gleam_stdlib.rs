@@ -5,6 +5,8 @@ use geam::{
 };
 use gleam_core::type_::printer::Printer;
 
+#[path = "gleam_stdlib/gleam_bit_array.rs"]
+mod gleam_bit_array;
 #[path = "gleam_stdlib/gleam_bool.rs"]
 mod gleam_bool;
 #[path = "gleam_stdlib/gleam_dict.rs"]

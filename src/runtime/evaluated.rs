@@ -2,7 +2,6 @@ use bitvec::order::Msb0;
 use bitvec::vec::BitVec;
 use ecow::EcoString;
 use num_bigint::BigInt;
-use std::sync::Arc;
 
 mod capture;
 mod external;
@@ -65,11 +64,9 @@ impl EvaluatedCustomValue {
 }
 
 impl EvaluatedBitArray {
-    pub(in crate::runtime) fn new(mut bits: BitVec<u8, Msb0>) -> Self {
-        bits.force_align();
-        bits.set_uninitialized(false);
+    pub(in crate::runtime) fn new(bits: BitVec<u8, Msb0>) -> Self {
         Self {
-            value: crate::BitArrayValue::from_evaluated(Arc::new(bits)),
+            value: crate::BitArrayValue::from_evaluated(bits),
         }
     }
 

@@ -23,6 +23,7 @@ use crate::planner::error::{
 };
 use gleam_core::ast::TodoKind;
 use gleam_core::ast::TypedExpr;
+use gleam_core::strings::convert_string_escape_chars;
 
 pub(super) fn plan_expr(
     expression: TypedExpr,
@@ -31,7 +32,9 @@ pub(super) fn plan_expr(
     let shape = context.value_shape(&expression.type_());
     let expression = match expression {
         TypedExpr::Int { int_value, .. } => Ok(Expr::int(IntExpr::value(int_value))),
-        TypedExpr::String { value, .. } => Ok(Expr::string(StringExpr::value(value))),
+        TypedExpr::String { value, .. } => Ok(Expr::string(StringExpr::value(
+            convert_string_escape_chars(&value),
+        ))),
         TypedExpr::Float { float_value, .. } => {
             Ok(Expr::float(FloatExpr::value(float_value.value())))
         }

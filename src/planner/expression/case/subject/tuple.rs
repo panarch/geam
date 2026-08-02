@@ -11,6 +11,7 @@ use crate::planner::error::{InvalidCaseShapeReason, PlanError};
 use crate::planner::pattern::plan_custom_subject_pattern;
 use ecow::EcoString;
 use gleam_core::ast::{AssignName, Pattern, SrcSpan, TypedExpr};
+use gleam_core::strings::convert_string_escape_chars;
 use gleam_core::type_::Type;
 use std::sync::Arc;
 
@@ -190,9 +191,12 @@ fn plan_tuple_case_pattern_with_context(
         Pattern::Float { float_value, .. } if subject_type == ValueType::Float => Ok(
             TupleCasePattern::literal(value, Expr::float(FloatExpr::value(float_value.value()))),
         ),
-        Pattern::String { value: literal, .. } if subject_type == ValueType::String => Ok(
-            TupleCasePattern::literal(value, Expr::string(StringExpr::value(literal))),
-        ),
+        Pattern::String { value: literal, .. } if subject_type == ValueType::String => {
+            Ok(TupleCasePattern::literal(
+                value,
+                Expr::string(StringExpr::value(convert_string_escape_chars(&literal))),
+            ))
+        }
         Pattern::Constructor {
             name,
             arguments,
@@ -278,7 +282,7 @@ fn plan_tuple_case_pattern_with_context(
             ..
         } if subject_type == ValueType::String => TupleCasePattern::string_prefix(
             value,
-            left_side_string,
+            convert_string_escape_chars(&left_side_string),
             left_side_assignment,
             right_side_assignment,
         ),

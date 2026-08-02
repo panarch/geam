@@ -14,6 +14,7 @@ use ecow::EcoString;
 use gleam_core::ast::{
     BitArrayOption, BitArraySegment as GleamBitArraySegment, Constant, TypedModuleConstant,
 };
+use gleam_core::strings::convert_string_escape_chars;
 use gleam_core::type_::{PRELUDE_MODULE_NAME, Type, ValueConstructor, ValueConstructorVariant};
 use num_bigint::BigInt;
 use std::collections::HashMap;
@@ -311,7 +312,9 @@ fn plan_value(
     match value {
         Constant::Int { int_value, .. } => Ok(ConstantValue::int(int_value)),
         Constant::Float { float_value, .. } => Ok(ConstantValue::float(float_value.value())),
-        Constant::String { value, .. } => Ok(ConstantValue::string(value)),
+        Constant::String { value, .. } => {
+            Ok(ConstantValue::string(convert_string_escape_chars(&value)))
+        }
         Constant::StringConcatenation { left, right, .. } => {
             let left = into_string(plan_value(*left, context)?)?;
             let right = into_string(plan_value(*right, context)?)?;

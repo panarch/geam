@@ -9,6 +9,7 @@ use crate::planner::error::{
 };
 use crate::planner::expression::record_constructor::ResolvedRecordConstructor;
 use gleam_core::ast::Constant;
+use gleam_core::strings::convert_string_escape_chars;
 use gleam_core::type_::{PRELUDE_MODULE_NAME, Type, ValueConstructor, ValueConstructorVariant};
 use std::sync::Arc;
 
@@ -21,7 +22,9 @@ pub(in crate::planner::expression) fn plan(
         Constant::Float { float_value, .. } => {
             Ok(Expr::float(FloatExpr::value(float_value.value())))
         }
-        Constant::String { value, .. } => Ok(Expr::string(StringExpr::value(value))),
+        Constant::String { value, .. } => Ok(Expr::string(StringExpr::value(
+            convert_string_escape_chars(&value),
+        ))),
         Constant::StringConcatenation { left, right, .. } => {
             let left = plan_string(*left, context)?;
             let right = plan_string(*right, context)?;

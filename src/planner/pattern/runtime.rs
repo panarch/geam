@@ -9,6 +9,7 @@ use crate::planner::error::{InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
 use gleam_core::analyse::Inferred;
 use gleam_core::ast::{AssignName, Pattern, TailPattern, TypedPattern};
+use gleam_core::strings::convert_string_escape_chars;
 use gleam_core::type_::Type;
 use std::sync::Arc;
 
@@ -149,7 +150,7 @@ pub(in crate::planner) fn plan_runtime_pattern(
             custom_binding: None,
         }),
         Pattern::String { value, .. } => Ok(PlannedRuntimePattern {
-            pattern: AssertPattern::String(value),
+            pattern: AssertPattern::String(convert_string_escape_chars(&value)),
             is_total: false,
             total_binding: None,
             custom_binding: None,
@@ -229,7 +230,7 @@ pub(in crate::planner) fn plan_runtime_pattern(
             };
             Ok(PlannedRuntimePattern {
                 pattern: AssertPattern::StringPrefix {
-                    prefix: left_side_string,
+                    prefix: convert_string_escape_chars(&left_side_string),
                     left,
                     right,
                 },

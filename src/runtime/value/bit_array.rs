@@ -1,11 +1,15 @@
 use bitvec::order::Msb0;
 use bitvec::vec::BitVec;
+use bitvec::view::BitView;
+use std::fmt::{self, Debug, Formatter};
 use std::sync::Arc;
 use thiserror::Error;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct BitArrayValue {
-    bits: Arc<BitVec<u8, Msb0>>,
+    bytes: Arc<[u8]>,
+    byte_offset: usize,
+    bit_len: usize,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
@@ -17,8 +21,11 @@ pub struct BitArrayValueLengthError {
 
 impl BitArrayValue {
     pub fn from_bytes(bytes: Vec<u8>) -> Self {
+        let bit_len = bytes.len().saturating_mul(8);
         Self {
-            bits: Arc::new(BitVec::from_vec(bytes)),
+            bytes: bytes.into(),
+            byte_offset: 0,
+            bit_len,
         }
     }
 
@@ -34,35 +41,86 @@ impl BitArrayValue {
             });
         }
 
-        let mut bits = BitVec::from_vec(bytes);
-        bits.truncate(bit_len);
+        let mut bytes = bytes;
+        bytes.truncate(bit_len.div_ceil(8));
         let remaining = bit_len % 8;
-        if let Some(last) = bits.as_raw_mut_slice().last_mut()
+        if let Some(last) = bytes.last_mut()
             && remaining != 0
         {
             *last &= u8::MAX << (8 - remaining);
         }
         Ok(Self {
-            bits: Arc::new(bits),
+            bytes: bytes.into(),
+            byte_offset: 0,
+            bit_len,
         })
     }
 
     pub fn bytes(&self) -> &[u8] {
-        self.bits.as_raw_slice()
+        let byte_len = self.bit_len.div_ceil(8);
+        &self.bytes[self.byte_offset..self.byte_offset + byte_len]
     }
 
     pub fn bit_len(&self) -> usize {
-        self.bits.len()
+        self.bit_len
     }
 
     pub(crate) fn bits(&self) -> &bitvec::slice::BitSlice<u8, Msb0> {
-        &self.bits
+        &self.bytes().view_bits::<Msb0>()[..self.bit_len]
     }
 
-    pub(crate) fn from_evaluated(bits: Arc<BitVec<u8, Msb0>>) -> Self {
-        Self { bits }
+    pub(crate) fn from_evaluated(mut bits: BitVec<u8, Msb0>) -> Self {
+        let bit_len = bits.len();
+        bits.force_align();
+        bits.set_uninitialized(false);
+        Self {
+            bytes: bits.into_vec().into(),
+            byte_offset: 0,
+            bit_len,
+        }
+    }
+
+    pub(crate) fn byte_slice(&self, start: usize, length: usize) -> Option<Self> {
+        if !self.bit_len.is_multiple_of(8) {
+            return None;
+        }
+        let end = start.checked_add(length)?;
+        if end > self.bit_len / 8 {
+            return None;
+        }
+        Some(Self {
+            bytes: Arc::clone(&self.bytes),
+            byte_offset: self.byte_offset + start,
+            bit_len: length * 8,
+        })
+    }
+
+    pub(crate) fn pad_to_bytes(&self) -> Self {
+        Self {
+            bytes: Arc::clone(&self.bytes),
+            byte_offset: self.byte_offset,
+            bit_len: self.bit_len.div_ceil(8) * 8,
+        }
     }
 }
+
+impl Debug for BitArrayValue {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("BitArrayValue")
+            .field("bytes", &self.bytes())
+            .field("bit_len", &self.bit_len)
+            .finish()
+    }
+}
+
+impl PartialEq for BitArrayValue {
+    fn eq(&self, other: &Self) -> bool {
+        self.bits() == other.bits()
+    }
+}
+
+impl Eq for BitArrayValue {}
 
 #[cfg(test)]
 mod tests {
@@ -82,7 +140,7 @@ mod tests {
         let value = BitArrayValue::from_bytes(vec![0xa5]);
         let clone = value.clone();
 
-        assert!(Arc::ptr_eq(&value.bits, &clone.bits));
+        assert!(Arc::ptr_eq(&value.bytes, &clone.bytes));
         assert_send_sync::<BitArrayValue>();
     }
 
@@ -118,6 +176,41 @@ mod tests {
                 bit_len: 9,
                 available_bits: 8,
             }),
+        );
+    }
+
+    #[test]
+    fn byte_slices_and_padding_share_the_backing_storage() {
+        let value = BitArrayValue::from_bytes(vec![1, 2, 3, 4]);
+        let slice = value
+            .byte_slice(1, 2)
+            .expect("aligned in-bounds byte slice should exist");
+        let unaligned = BitArrayValue::try_from_parts(vec![0b1010_0000], 4)
+            .expect("four supplied bits should be valid");
+        let padded = unaligned.pad_to_bytes();
+
+        assert_eq!(slice.bytes(), &[2, 3]);
+        assert_eq!(slice.bit_len(), 16);
+        assert!(Arc::ptr_eq(&value.bytes, &slice.bytes));
+        assert_eq!(padded.bytes(), &[0b1010_0000]);
+        assert_eq!(padded.bit_len(), 8);
+        assert!(Arc::ptr_eq(&unaligned.bytes, &padded.bytes));
+        assert_eq!(unaligned.byte_slice(0, 0), None);
+        assert_eq!(value.byte_slice(usize::MAX, 1), None);
+        assert_eq!(value.byte_slice(3, 2), None);
+    }
+
+    #[test]
+    fn equality_and_debug_use_only_the_logical_range() {
+        let value = BitArrayValue::from_bytes(vec![1, 2, 3]);
+        let slice = value
+            .byte_slice(1, 1)
+            .expect("middle byte should be sliceable");
+
+        assert_eq!(slice, BitArrayValue::from_bytes(vec![2]));
+        assert_eq!(
+            format!("{slice:?}"),
+            "BitArrayValue { bytes: [2], bit_len: 8 }",
         );
     }
 
