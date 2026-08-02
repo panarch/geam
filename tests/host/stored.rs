@@ -1,11 +1,12 @@
 use ecow::EcoString;
 use geam::{
     ExecutionError, HostCall, HostCallCompletion, HostCallError, HostCallable, HostExternal,
-    HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType, HostFailure,
-    HostFunctionType, HostProfile, HostProvider, HostProviderModule, HostProviderSet,
-    HostStoredType, HostStoredValue, HostTypeIndex0, HostTypeIndexNext, HostTypeList,
-    HostTypeListEnd, HostTypeParameter, HostValue, HostedExecution, ListValue, ModuleSource,
-    PackageSource, PanicKind, Value, compile_typed_host_program, plan_host_program,
+    HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalSchema,
+    HostExternalStorage, HostExternalStore, HostExternalType, HostFailure, HostFunctionType,
+    HostProfile, HostProvider, HostProviderModule, HostProviderSet, HostStoredType,
+    HostStoredValue, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
+    HostTypeParameter, HostValue, HostedExecution, ListValue, ModuleSource, PackageSource,
+    PanicKind, Value, compile_typed_host_program, plan_host_program,
 };
 use num_bigint::BigInt;
 use std::sync::Arc;
@@ -91,12 +92,27 @@ impl HostExternalStorage<StoredMapSchema> for StoredProfile {
         &stores.maps
     }
 
-    fn equal(_left: &Self::Payload, _right: &Self::Payload) -> bool {
-        false
+    fn source_equal(
+        context: &HostExternalEquality<'_>,
+        left: &Self::Payload,
+        right: &Self::Payload,
+    ) -> bool {
+        context.stored_values_equal(&left.key, &right.key)
+            && context.stored_values_equal(&left.value, &right.value)
     }
 
-    fn inspect(_value: &Self::Payload) -> EcoString {
-        "StoredMap".into()
+    fn source_hash(context: &HostExternalHashing<'_>, value: &Self::Payload) -> u64 {
+        context.stored_value_hash(&value.key).rotate_left(1)
+            ^ context.stored_value_hash(&value.value)
+    }
+
+    fn inspect(context: &HostExternalInspection<'_>, value: &Self::Payload) -> EcoString {
+        format!(
+            "StoredMap({}, {})",
+            context.inspect_stored_value(&value.key),
+            context.inspect_stored_value(&value.value),
+        )
+        .into()
     }
 }
 
@@ -114,12 +130,24 @@ impl HostExternalStorage<StoredCallbackSchema> for StoredProfile {
         &stores.callbacks
     }
 
-    fn equal(_left: &Self::Payload, _right: &Self::Payload) -> bool {
-        false
+    fn source_equal(
+        context: &HostExternalEquality<'_>,
+        left: &Self::Payload,
+        right: &Self::Payload,
+    ) -> bool {
+        context.stored_values_equal(&left.function, &right.function)
     }
 
-    fn inspect(_value: &Self::Payload) -> EcoString {
-        "StoredCallback".into()
+    fn source_hash(context: &HostExternalHashing<'_>, value: &Self::Payload) -> u64 {
+        context.stored_value_hash(&value.function)
+    }
+
+    fn inspect(context: &HostExternalInspection<'_>, value: &Self::Payload) -> EcoString {
+        format!(
+            "StoredCallback({})",
+            context.inspect_stored_value(&value.function),
+        )
+        .into()
     }
 }
 
@@ -524,7 +552,10 @@ pub fn main() {
         .run_main(&mut state, &mut Vec::new())
         .expect("stored graph should escape as an opaque value");
 
-    assert_eq!(result.inspect().to_string(), "StoredMap");
+    assert_eq!(
+        result.inspect().to_string(),
+        r#"StoredMap([StoredMap(1, "one")], #(StoredMap(1, "one")))"#,
+    );
     assert_eq!(drops.load(Ordering::Relaxed), 0);
 
     drop(state);

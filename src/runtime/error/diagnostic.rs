@@ -477,14 +477,39 @@ mod tests {
     #[test]
     fn render_value_preserves_every_runtime_value_family() {
         let external_store = HostExternalStore::default();
+        let source_equal =
+            |context: &crate::host::HostExternalEquality<'_>,
+             left: &crate::host::HostStoredValue<num_bigint::BigInt>,
+             right: &crate::host::HostStoredValue<num_bigint::BigInt>| {
+                context.stored_values_equal(left, right)
+            };
+        let first = external_store.insert(
+            crate::host::HostStoredValue::new(crate::runtime::StoredRuntimeValue::test_int(
+                7.into(),
+            )),
+            source_equal,
+            7,
+            "Resource(7)".into(),
+        );
+        let equal = external_store.insert(
+            crate::host::HostStoredValue::new(crate::runtime::StoredRuntimeValue::test_int(
+                7.into(),
+            )),
+            source_equal,
+            7,
+            "Resource(7)".into(),
+        );
+        let stored_equal =
+            |left: &crate::runtime::StoredRuntimeValue,
+             right: &crate::runtime::StoredRuntimeValue| left.value() == right.value();
+        let equality = crate::host::HostExternalEquality::new(&stored_equal);
+        assert!(first.source_equal(&equality, &equal));
         let external = ExternalValue::from_evaluated(
             ExternalType::new(
                 ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into()),
                 Vec::new(),
             ),
-            external_store.insert(7usize, usize::eq, |value| {
-                format!("Resource({value})").into()
-            }),
+            first,
         );
         let function = Value::Function(FunctionValue::new(
             RuntimeFunctionId::Core(CoreRuntimeFunctionId::Int(IntFunctionId(0))),

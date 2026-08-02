@@ -56,7 +56,10 @@ Rust types and arities are rejected by trait resolution rather than at runtime.
 Provider linkage selects an exact external declaration or its Gleam fallback
 during planning; ordinary Gleam functions cannot be overridden.
 Source-declared constructorless external types can be linked to profile-owned
-Rust payloads. Their public runtime values remain opaque and self-contained.
+Rust payloads. Providers define Gleam equality, runtime hashing, and canonical
+inspection through narrow retained-value contexts; equal payloads must hash
+equally, while collisions are resolved by equality. Their public runtime
+values remain opaque and self-contained.
 
 The main public entry points are:
 

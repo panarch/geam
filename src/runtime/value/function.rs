@@ -722,11 +722,19 @@ mod tests {
             &stores.units
         }
 
-        fn equal(_: &Self::Payload, _: &Self::Payload) -> bool {
+        fn source_equal(
+            _: &crate::host::HostExternalEquality<'_>,
+            _: &Self::Payload,
+            _: &Self::Payload,
+        ) -> bool {
             true
         }
 
-        fn inspect(_: &Self::Payload) -> EcoString {
+        fn source_hash(_: &crate::host::HostExternalHashing<'_>, _: &Self::Payload) -> u64 {
+            0
+        }
+
+        fn inspect(_: &crate::host::HostExternalInspection<'_>, _: &Self::Payload) -> EcoString {
             "Resource".into()
         }
     }

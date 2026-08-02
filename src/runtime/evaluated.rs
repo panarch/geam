@@ -2,8 +2,13 @@ use bitvec::order::Msb0;
 use bitvec::vec::BitVec;
 use ecow::EcoString;
 use num_bigint::BigInt;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static NEXT_FUNCTION_INSTANCE_ID: AtomicU64 = AtomicU64::new(0);
 
 mod external;
 pub(in crate::runtime) use external::EvaluatedExternalValue;
@@ -142,7 +147,7 @@ pub(in crate::runtime) struct EvaluatedFunction<Id> {
     type_: FunctionType,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(in crate::runtime) enum FunctionReferenceIdentity {
     Table {
         table: FunctionTableIdentity,
@@ -151,7 +156,7 @@ pub(in crate::runtime) enum FunctionReferenceIdentity {
     Generic(GenericCallableId),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(in crate::runtime) enum FunctionTableIdentity {
     Value(FunctionReturnFamily),
     List(ListFunctionReturnFamily),
@@ -159,7 +164,7 @@ pub(in crate::runtime) enum FunctionTableIdentity {
     ReturningListFunction(ListFunctionReturnFamily),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(in crate::runtime) enum ListFunctionReturnFamily {
     Parameter,
     ParameterList,
@@ -184,7 +189,7 @@ enum EvaluatedFunctionIdentity {
 }
 
 #[derive(Debug)]
-struct FunctionInstance;
+struct FunctionInstance(u64);
 
 impl PartialEq for EvaluatedFunctionIdentity {
     fn eq(&self, other: &Self) -> bool {
@@ -778,7 +783,9 @@ impl<Id: Clone> EvaluatedFunction<Id> {
         type_: FunctionType,
     ) -> Self {
         Self {
-            identity: EvaluatedFunctionIdentity::Instance(Rc::new(FunctionInstance)),
+            identity: EvaluatedFunctionIdentity::Instance(Rc::new(FunctionInstance(
+                NEXT_FUNCTION_INSTANCE_ID.fetch_add(1, Ordering::Relaxed),
+            ))),
             runtime_id,
             params,
             captures,
@@ -1211,7 +1218,11 @@ pub(in crate::runtime) fn values_equal(
                     .all(|(left, right)| values_equal(storage, left, right))
         }
         (EvaluatedValue::External(left), EvaluatedValue::External(right)) => {
-            left.source_equal(right)
+            let equal = |left: &crate::runtime::StoredRuntimeValue,
+                         right: &crate::runtime::StoredRuntimeValue| {
+                values_equal(storage, left.value(), right.value())
+            };
+            left.source_equal(&crate::host::HostExternalEquality::new(&equal), right)
         }
         (EvaluatedValue::Bool(left), EvaluatedValue::Bool(right)) => left == right,
         (EvaluatedValue::Nil, EvaluatedValue::Nil) => true,
@@ -1232,6 +1243,172 @@ pub(in crate::runtime) fn values_equal(
             functions_equal(left, right)
         }
         _ => false,
+    }
+}
+
+pub(in crate::runtime) fn value_source_hash(
+    storage: &RuntimeValueStorage,
+    value: &EvaluatedValue,
+) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    hash_value(storage, value, &mut hasher);
+    hasher.finish()
+}
+
+fn hash_value(storage: &RuntimeValueStorage, value: &EvaluatedValue, hasher: &mut DefaultHasher) {
+    match value {
+        EvaluatedValue::Int(value) => {
+            0u8.hash(hasher);
+            value.hash(hasher);
+        }
+        EvaluatedValue::Float(value) => {
+            1u8.hash(hasher);
+            if *value == 0.0 {
+                0u64.hash(hasher);
+            } else {
+                value.to_bits().hash(hasher);
+            }
+        }
+        EvaluatedValue::String(value) => {
+            2u8.hash(hasher);
+            value.hash(hasher);
+        }
+        EvaluatedValue::BitArray(value) => {
+            3u8.hash(hasher);
+            value.bits().len().hash(hasher);
+            value.value.bytes().hash(hasher);
+        }
+        EvaluatedValue::UtfCodepoint(value) => {
+            4u8.hash(hasher);
+            value.hash(hasher);
+        }
+        EvaluatedValue::Custom(value) => {
+            5u8.hash(hasher);
+            value.constructor().hash(hasher);
+            value.fields().len().hash(hasher);
+            for field in value.fields() {
+                hash_value(storage, field, hasher);
+            }
+        }
+        EvaluatedValue::External(value) => {
+            6u8.hash(hasher);
+            value.type_id().hash(hasher);
+            value.source_hash().hash(hasher);
+        }
+        EvaluatedValue::Bool(value) => {
+            7u8.hash(hasher);
+            value.hash(hasher);
+        }
+        EvaluatedValue::Nil => {
+            8u8.hash(hasher);
+        }
+        EvaluatedValue::Tuple(values) => {
+            9u8.hash(hasher);
+            values.len().hash(hasher);
+            for value in values {
+                hash_value(storage, value, hasher);
+            }
+        }
+        EvaluatedValue::ParameterList(value) => {
+            10u8.hash(hasher);
+            value.type_id().hash(hasher);
+        }
+        EvaluatedValue::List(value) => {
+            11u8.hash(hasher);
+            value.list_type().hash(hasher);
+            let values = storage.evaluated_values(value);
+            values.len().hash(hasher);
+            for value in &values {
+                hash_value(storage, value, hasher);
+            }
+        }
+        EvaluatedValue::Function(value) => {
+            12u8.hash(hasher);
+            hash_function(value, hasher);
+        }
+    }
+}
+
+fn hash_function(value: &EvaluatedFunctionValue, hasher: &mut DefaultHasher) {
+    match value.kind() {
+        EvaluatedFunctionValueKind::Generic(value) => {
+            0u8.hash(hasher);
+            hash_function_identity(&value.identity, hasher);
+        }
+        EvaluatedFunctionValueKind::Never(value) => {
+            1u8.hash(hasher);
+            hash_function_identity(&value.identity, hasher);
+        }
+        EvaluatedFunctionValueKind::Int(value) => {
+            2u8.hash(hasher);
+            hash_function_identity(&value.identity, hasher);
+        }
+        EvaluatedFunctionValueKind::Float(value) => {
+            3u8.hash(hasher);
+            hash_function_identity(&value.identity, hasher);
+        }
+        EvaluatedFunctionValueKind::String(value) => {
+            4u8.hash(hasher);
+            hash_function_identity(&value.identity, hasher);
+        }
+        EvaluatedFunctionValueKind::BitArray(value) => {
+            5u8.hash(hasher);
+            hash_function_identity(&value.identity, hasher);
+        }
+        EvaluatedFunctionValueKind::UtfCodepoint(value) => {
+            6u8.hash(hasher);
+            hash_function_identity(&value.identity, hasher);
+        }
+        EvaluatedFunctionValueKind::Custom(value) => {
+            7u8.hash(hasher);
+            match value {
+                EvaluatedCustomFunction::Function(value) => {
+                    0u8.hash(hasher);
+                    hash_function_identity(&value.identity, hasher);
+                }
+                EvaluatedCustomFunction::Constructor(value) => {
+                    1u8.hash(hasher);
+                    hash_function_identity(&value.identity, hasher);
+                }
+            }
+        }
+        EvaluatedFunctionValueKind::External(value) => {
+            8u8.hash(hasher);
+            hash_function_identity(&value.identity, hasher);
+        }
+        EvaluatedFunctionValueKind::Bool(value) => {
+            9u8.hash(hasher);
+            hash_function_identity(&value.identity, hasher);
+        }
+        EvaluatedFunctionValueKind::Nil(value) => {
+            10u8.hash(hasher);
+            hash_function_identity(&value.identity, hasher);
+        }
+        EvaluatedFunctionValueKind::Tuple(value) => {
+            11u8.hash(hasher);
+            hash_function_identity(&value.identity, hasher);
+        }
+        EvaluatedFunctionValueKind::List(value) => {
+            12u8.hash(hasher);
+            hash_function_identity(&value.identity, hasher);
+        }
+        EvaluatedFunctionValueKind::Function(value) => {
+            13u8.hash(hasher);
+            hash_function_identity(value.identity(), hasher);
+        }
+    }
+}
+
+fn hash_function_identity(value: &EvaluatedFunctionIdentity, hasher: &mut DefaultHasher) {
+    match value {
+        EvaluatedFunctionIdentity::Reference(value) => {
+            0u8.hash(hasher);
+            value.hash(hasher);
+        }
+        EvaluatedFunctionIdentity::Instance(value) => {
+            1u8.hash(hasher);
+            value.0.hash(hasher);
+        }
     }
 }
 
@@ -1336,12 +1513,12 @@ fn function_function_values_equal(
 mod tests {
     use super::{
         EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
-        EvaluatedCustomFunction, EvaluatedFloatFunction, EvaluatedFunction,
-        EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedIntFunction,
-        EvaluatedListFunction, EvaluatedNeverFunction, EvaluatedNilFunction,
-        EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedUtfCodepointFunction,
-        EvaluatedValue, FunctionReferenceId, FunctionReferenceIdentity, ListFunctionReturnFamily,
-        values_equal,
+        EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedExternalValue,
+        EvaluatedFloatFunction, EvaluatedFunction, EvaluatedFunctionFunction,
+        EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedListFunction,
+        EvaluatedNeverFunction, EvaluatedNilFunction, EvaluatedStringFunction,
+        EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue, FunctionReferenceId,
+        FunctionReferenceIdentity, ListFunctionReturnFamily, value_source_hash, values_equal,
     };
     use crate::plan::ValueType;
     use crate::plan::execution::function::{
@@ -1357,7 +1534,7 @@ mod tests {
     };
     use crate::plan::execution::graph::{IntLocalId, ParamLocal};
     use crate::plan::execution::runtime::RuntimeExecutionPlan;
-    use crate::runtime::state::{ListValueId, RuntimeState};
+    use crate::runtime::state::{ListValueId, ParameterListValueId, RuntimeState};
     use bitvec::order::Msb0;
     use bitvec::view::BitView;
 
@@ -1461,6 +1638,14 @@ pub fn main() {
 
     #[test]
     fn semantic_value_equality_covers_every_list_and_function_family() {
+        fn external_equal(
+            context: &crate::host::HostExternalEquality<'_>,
+            left: &crate::host::HostStoredValue<num_bigint::BigInt>,
+            right: &crate::host::HostStoredValue<num_bigint::BigInt>,
+        ) -> bool {
+            context.stored_values_equal(left, right)
+        }
+
         let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
@@ -1730,11 +1915,13 @@ pub fn main() {
         for (left, right) in function_pairs {
             let family = left.kind().family();
             assert_eq!(family, right.kind().family());
-            assert!(values_equal(
-                state.values(),
-                &EvaluatedValue::Function(left),
-                &EvaluatedValue::Function(right),
-            ));
+            let left = EvaluatedValue::Function(left);
+            let right = EvaluatedValue::Function(right);
+            assert!(values_equal(state.values(), &left, &right,));
+            assert_eq!(
+                value_source_hash(state.values(), &left),
+                value_source_hash(state.values(), &right),
+            );
         }
         assert!(!values_equal(
             state.values(),
@@ -1883,12 +2070,105 @@ pub fn main() {
         ];
 
         for (left, right) in list_pairs {
-            assert!(values_equal(
-                state.values(),
-                &EvaluatedValue::from(left),
-                &EvaluatedValue::from(right),
-            ));
+            let left = EvaluatedValue::from(left);
+            let right = EvaluatedValue::from(right);
+            assert!(values_equal(state.values(), &left, &right,));
+            assert_eq!(
+                value_source_hash(state.values(), &left),
+                value_source_hash(state.values(), &right),
+            );
         }
+
+        let bit_array = EvaluatedBitArray::new(bitvec::bitvec![u8, Msb0; 1, 0, 1]);
+        let scalar_and_compound_pairs = vec![
+            (EvaluatedValue::Int(1.into()), EvaluatedValue::Int(1.into())),
+            (EvaluatedValue::Float(0.0), EvaluatedValue::Float(-0.0)),
+            (EvaluatedValue::Float(1.5), EvaluatedValue::Float(1.5)),
+            (
+                EvaluatedValue::String("one".into()),
+                EvaluatedValue::String("one".into()),
+            ),
+            (
+                EvaluatedValue::BitArray(bit_array.clone()),
+                EvaluatedValue::BitArray(bit_array),
+            ),
+            (
+                EvaluatedValue::UtfCodepoint('A'),
+                EvaluatedValue::UtfCodepoint('A'),
+            ),
+            (EvaluatedValue::Bool(true), EvaluatedValue::Bool(true)),
+            (EvaluatedValue::Nil, EvaluatedValue::Nil),
+            (
+                EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
+                EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
+            ),
+            (
+                EvaluatedValue::ParameterList(ParameterListValueId::new(
+                    plan.parameter_list_function_id(0).type_id(),
+                )),
+                EvaluatedValue::ParameterList(ParameterListValueId::new(
+                    plan.parameter_list_function_id(0).type_id(),
+                )),
+            ),
+            (
+                EvaluatedValue::Custom(EvaluatedCustomValue::from_fields(
+                    constructor_id,
+                    vec![EvaluatedValue::Int(1.into())].into_boxed_slice(),
+                )),
+                EvaluatedValue::Custom(EvaluatedCustomValue::from_fields(
+                    constructor_id,
+                    vec![EvaluatedValue::Int(1.into())].into_boxed_slice(),
+                )),
+            ),
+        ];
+        for (left, right) in scalar_and_compound_pairs {
+            assert!(values_equal(state.values(), &left, &right));
+            assert_eq!(
+                value_source_hash(state.values(), &left),
+                value_source_hash(state.values(), &right),
+            );
+        }
+
+        let external_store = crate::host::HostExternalStore::default();
+        let first = external_store.insert(
+            crate::host::HostStoredValue::<num_bigint::BigInt>::new(
+                crate::runtime::StoredRuntimeValue::test_int(7.into()),
+            ),
+            external_equal,
+            41,
+            "External(7)".into(),
+        );
+        let equal = external_store.insert(
+            crate::host::HostStoredValue::<num_bigint::BigInt>::new(
+                crate::runtime::StoredRuntimeValue::test_int(7.into()),
+            ),
+            external_equal,
+            41,
+            "External(7)".into(),
+        );
+        let collision = external_store.insert(
+            crate::host::HostStoredValue::<num_bigint::BigInt>::new(
+                crate::runtime::StoredRuntimeValue::test_int(8.into()),
+            ),
+            external_equal,
+            41,
+            "External(8)".into(),
+        );
+        let external_type = crate::plan::execution::type_::ExternalTypeId::new(0);
+        let first = EvaluatedValue::External(EvaluatedExternalValue::new(external_type, first));
+        let equal = EvaluatedValue::External(EvaluatedExternalValue::new(external_type, equal));
+        let collision =
+            EvaluatedValue::External(EvaluatedExternalValue::new(external_type, collision));
+        assert!(values_equal(state.values(), &first, &equal));
+        assert_eq!(
+            value_source_hash(state.values(), &first),
+            value_source_hash(state.values(), &equal),
+        );
+        assert!(!values_equal(state.values(), &first, &collision));
+        assert_eq!(
+            value_source_hash(state.values(), &first),
+            value_source_hash(state.values(), &collision),
+        );
         assert!(!values_equal(
             state.values(),
             &EvaluatedValue::from(ListValueId::Int(int_lists.0)),

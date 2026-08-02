@@ -552,11 +552,24 @@ mod tests {
             &stores.integers
         }
 
-        fn equal(left: &Self::Payload, right: &Self::Payload) -> bool {
+        fn source_equal(
+            _: &crate::host::HostExternalEquality<'_>,
+            left: &Self::Payload,
+            right: &Self::Payload,
+        ) -> bool {
             left == right
         }
 
-        fn inspect(value: &Self::Payload) -> EcoString {
+        fn source_hash(_: &crate::host::HostExternalHashing<'_>, value: &Self::Payload) -> u64 {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            std::hash::Hash::hash(value, &mut hasher);
+            std::hash::Hasher::finish(&hasher)
+        }
+
+        fn inspect(
+            _: &crate::host::HostExternalInspection<'_>,
+            value: &Self::Payload,
+        ) -> EcoString {
             format!("Counter({value})").into()
         }
     }

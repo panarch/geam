@@ -1,11 +1,11 @@
 use ecow::EcoString;
 use geam::{
     BitArrayValue, ExecutionError, HostCall, HostCallCompletion, HostCallError, HostExternal,
-    HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType, HostFailure,
-    HostFunctionType, HostProfile, HostProvider, HostProviderModule, HostProviderSet,
-    HostStoredDynamic, HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue,
-    HostedExecution, ModuleSource, PackageSource, PanicKind, Value, compile_typed_host_program,
-    plan_host_program,
+    HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalSchema,
+    HostExternalStorage, HostExternalStore, HostExternalType, HostFailure, HostFunctionType,
+    HostProfile, HostProvider, HostProviderModule, HostProviderSet, HostStoredDynamic,
+    HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue, HostedExecution, ModuleSource,
+    PackageSource, PanicKind, Value, compile_typed_host_program, plan_host_program,
 };
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -71,12 +71,20 @@ impl HostExternalStorage<DynamicSchema> for DynamicProfile {
         &stores.values
     }
 
-    fn equal(_left: &Self::Payload, _right: &Self::Payload) -> bool {
-        false
+    fn source_equal(
+        context: &HostExternalEquality<'_>,
+        left: &Self::Payload,
+        right: &Self::Payload,
+    ) -> bool {
+        context.dynamic_values_equal(&left.value, &right.value)
     }
 
-    fn inspect(_value: &Self::Payload) -> EcoString {
-        "Dynamic".into()
+    fn source_hash(context: &HostExternalHashing<'_>, value: &Self::Payload) -> u64 {
+        context.dynamic_value_hash(&value.value)
+    }
+
+    fn inspect(context: &HostExternalInspection<'_>, value: &Self::Payload) -> EcoString {
+        format!("Dynamic({})", context.inspect_dynamic_value(&value.value)).into()
     }
 }
 
@@ -537,7 +545,10 @@ pub fn main() {
         .run_main(&mut state, &mut Vec::new())
         .expect("dynamic value should escape");
 
-    assert_eq!(result.inspect().to_string(), "#(Dynamic, True, False)");
+    assert_eq!(
+        result.inspect().to_string(),
+        "#(Dynamic([1, 2]), True, True)",
+    );
     assert_eq!(drops.load(Ordering::Relaxed), 1);
 
     drop(state);

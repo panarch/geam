@@ -1,3 +1,4 @@
+use crate::host::HostExternalEquality;
 use ecow::EcoString;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -24,8 +25,9 @@ struct StoredExternalPayload<Payload> {
     id: u64,
     value: Payload,
     values: Weak<RefCell<HashMap<u64, Rc<StoredExternalPayload<Payload>>>>>,
-    equal: fn(&Payload, &Payload) -> bool,
-    inspect: fn(&Payload) -> EcoString,
+    source_equal: for<'context> fn(&HostExternalEquality<'context>, &Payload, &Payload) -> bool,
+    source_hash: u64,
+    inspection: EcoString,
 }
 
 struct ExternalPayloadReleaseGuard<Payload> {
@@ -35,8 +37,13 @@ struct ExternalPayloadReleaseGuard<Payload> {
 
 trait ExternalPayload {
     fn id(&self) -> u64;
-    fn inspect(&self) -> EcoString;
-    fn source_equal(&self, other: &ExternalPayloadLease) -> bool;
+    fn source_hash(&self) -> u64;
+    fn inspection(&self) -> &EcoString;
+    fn source_equal(
+        &self,
+        context: &HostExternalEquality<'_>,
+        other: &ExternalPayloadLease,
+    ) -> bool;
 }
 
 trait ExternalPayloadRelease {}
@@ -56,16 +63,18 @@ where
     pub(crate) fn insert(
         &self,
         value: Payload,
-        equal: fn(&Payload, &Payload) -> bool,
-        inspect: fn(&Payload) -> EcoString,
+        source_equal: for<'context> fn(&HostExternalEquality<'context>, &Payload, &Payload) -> bool,
+        source_hash: u64,
+        inspection: EcoString,
     ) -> ExternalPayloadLease {
         let id = NEXT_EXTERNAL_VALUE_ID.fetch_add(1, Ordering::Relaxed);
         let value = Rc::new(StoredExternalPayload {
             id,
             value,
             values: Rc::downgrade(&self.values),
-            equal,
-            inspect,
+            source_equal,
+            source_hash,
+            inspection,
         });
         self.values.borrow_mut().insert(id, Rc::clone(&value));
         ExternalPayloadLease {
@@ -88,12 +97,16 @@ impl ExternalPayloadLease {
         self.value.id()
     }
 
-    pub(crate) fn inspect(&self) -> EcoString {
-        self.value.inspect()
+    pub(crate) fn source_hash(&self) -> u64 {
+        self.value.source_hash()
     }
 
-    pub(crate) fn source_equal(&self, other: &Self) -> bool {
-        self.value.source_equal(other)
+    pub(crate) fn inspect(&self) -> &EcoString {
+        self.value.inspection()
+    }
+
+    pub(crate) fn source_equal(&self, context: &HostExternalEquality<'_>, other: &Self) -> bool {
+        self.value.source_equal(context, other)
     }
 }
 
@@ -122,13 +135,21 @@ where
         self.id
     }
 
-    fn inspect(&self) -> EcoString {
-        (self.inspect)(&self.value)
+    fn source_hash(&self) -> u64 {
+        self.source_hash
     }
 
-    fn source_equal(&self, other: &ExternalPayloadLease) -> bool {
+    fn inspection(&self) -> &EcoString {
+        &self.inspection
+    }
+
+    fn source_equal(
+        &self,
+        context: &HostExternalEquality<'_>,
+        other: &ExternalPayloadLease,
+    ) -> bool {
         if self.id == other.id() {
-            return true;
+            return (self.source_equal)(context, &self.value, &self.value);
         }
         let Some(values) = self.values.upgrade() else {
             return false;
@@ -136,7 +157,7 @@ where
         values
             .borrow()
             .get(&other.id())
-            .is_some_and(|other| (self.equal)(&self.value, &other.value))
+            .is_some_and(|other| (self.source_equal)(context, &self.value, &other.value))
     }
 }
 
@@ -153,7 +174,6 @@ impl<Payload> Drop for ExternalPayloadReleaseGuard<Payload> {
 #[cfg(test)]
 mod tests {
     use super::HostExternalStore;
-    use ecow::EcoString;
     use std::cell::Cell;
     use std::rc::Rc;
 
@@ -168,12 +188,8 @@ mod tests {
         }
     }
 
-    fn equal(left: &Payload, right: &Payload) -> bool {
+    fn equal(_: &crate::host::HostExternalEquality<'_>, left: &Payload, right: &Payload) -> bool {
         left.value == right.value
-    }
-
-    fn inspect(value: &Payload) -> EcoString {
-        format!("Payload({})", value.value).into()
     }
 
     #[test]
@@ -186,7 +202,8 @@ mod tests {
                 drops: Rc::clone(&drops),
             },
             equal,
-            inspect,
+            7,
+            "Payload(7)".into(),
         );
         let clone = lease.clone();
 
@@ -211,7 +228,8 @@ mod tests {
                 drops: Rc::clone(&drops),
             },
             equal,
-            inspect,
+            7,
+            "Payload(7)".into(),
         );
         let second = store.insert(
             Payload {
@@ -219,16 +237,22 @@ mod tests {
                 drops: Rc::clone(&drops),
             },
             equal,
-            inspect,
+            7,
+            "Payload(7)".into(),
         );
 
-        assert!(first.source_equal(&first));
-        assert!(first.source_equal(&second));
+        let stored_equal =
+            |_: &crate::runtime::StoredRuntimeValue, _: &crate::runtime::StoredRuntimeValue| false;
+        let equality = crate::host::HostExternalEquality::new(&stored_equal);
+
+        assert!(first.source_equal(&equality, &first));
+        assert!(first.source_equal(&equality, &second));
+        assert_eq!(first.source_hash(), 7);
         assert_eq!(first.inspect(), "Payload(7)");
 
         drop(store);
 
-        assert!(!first.source_equal(&second));
+        assert!(!first.source_equal(&equality, &second));
         assert_eq!(first.inspect(), "Payload(7)");
         drop(first);
         drop(second);
@@ -246,7 +270,8 @@ mod tests {
                 drops: Rc::clone(&drops),
             },
             equal,
-            inspect,
+            7,
+            "Payload(7)".into(),
         );
         let second = second_store.insert(
             Payload {
@@ -254,9 +279,32 @@ mod tests {
                 drops: Rc::clone(&drops),
             },
             equal,
-            inspect,
+            7,
+            "Payload(7)".into(),
         );
 
-        assert!(!first.source_equal(&second));
+        let stored_equal =
+            |_: &crate::runtime::StoredRuntimeValue, _: &crate::runtime::StoredRuntimeValue| false;
+        let equality = crate::host::HostExternalEquality::new(&stored_equal);
+
+        assert!(!first.source_equal(&equality, &second));
+    }
+
+    #[test]
+    fn source_equality_does_not_assume_opaque_identity_is_reflexive() {
+        let store = HostExternalStore::default();
+        let lease = store.insert(
+            crate::host::HostStoredValue::<num_bigint::BigInt>::new(
+                crate::runtime::StoredRuntimeValue::test_int(7.into()),
+            ),
+            |context, left, right| context.stored_values_equal(left, right),
+            7,
+            "Payload(7)".into(),
+        );
+        let stored_equal =
+            |_: &crate::runtime::StoredRuntimeValue, _: &crate::runtime::StoredRuntimeValue| false;
+        let equality = crate::host::HostExternalEquality::new(&stored_equal);
+
+        assert!(!lease.source_equal(&equality, &lease));
     }
 }

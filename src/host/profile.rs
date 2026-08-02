@@ -1,10 +1,11 @@
 use crate::host::{
     HostCallArguments, HostCallCompletion, HostCustom, HostCustomArgumentSlot,
     HostCustomConstructor, HostCustomType, HostExternal, HostExternalArgumentSlot,
-    HostExternalPayloadBuilder, HostExternalPayloadView, HostExternalSchema, HostExternalStorage,
-    HostExternalType, HostFunctionArgumentSlot, HostList, HostListArgumentSlot, HostListType,
-    HostStoredValue, HostTuple, HostTupleArgumentSlot, HostTupleType, HostType, HostTypeSequence,
-    HostValue, HostValueArgumentSlot,
+    HostExternalHashing, HostExternalInspection, HostExternalPayloadBuilder,
+    HostExternalPayloadView, HostExternalSchema, HostExternalStorage, HostExternalType,
+    HostFunctionArgumentSlot, HostList, HostListArgumentSlot, HostListType, HostStoredValue,
+    HostTuple, HostTupleArgumentSlot, HostTupleType, HostType, HostTypeSequence, HostValue,
+    HostValueArgumentSlot,
 };
 use std::marker::PhantomData;
 
@@ -76,6 +77,15 @@ where
             crate::host::type_::into_scoped::<Type>(left),
             crate::host::type_::into_scoped::<Type>(right),
         )
+    }
+
+    /// Hashes a call-scoped value consistently with Gleam source equality.
+    ///
+    /// The result is intended for runtime lookup within this execution. It is
+    /// not a stable serialization or a process-independent value.
+    pub fn source_hash<Type: HostType>(&self, value: Type::Value<'call>) -> u64 {
+        self.runtime
+            .source_hash(crate::host::type_::into_scoped::<Type>(value))
     }
 
     pub(crate) fn arguments(&self) -> &dyn HostCallArguments {
@@ -279,12 +289,7 @@ where
         &mut self,
         value: <Profile as HostExternalStorage<Schema>>::Payload,
     ) -> HostExternal<'call, HostExternalType<Schema, Arguments>> {
-        let lease = Profile::store(self.runtime.external_stores()).insert(
-            value,
-            Profile::equal,
-            Profile::inspect,
-        );
-        HostExternal::new(self.runtime.build_external(lease))
+        self.seal_external_payload(value)
     }
 
     /// Creates an external payload that may retain typed Gleam values.
@@ -298,10 +303,29 @@ where
             let mut builder = HostExternalPayloadBuilder::new(self.runtime);
             build(&mut builder)
         };
+        self.seal_external_payload(value)
+    }
+
+    fn seal_external_payload(
+        &mut self,
+        value: <Profile as HostExternalStorage<Schema>>::Payload,
+    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>> {
+        let source_hash = {
+            let source_hash =
+                |value: &crate::runtime::StoredRuntimeValue| self.runtime.stored_value_hash(value);
+            Profile::source_hash(&HostExternalHashing::new(&source_hash), &value)
+        };
+        let inspection = {
+            let inspect = |value: &crate::runtime::StoredRuntimeValue| {
+                self.runtime.stored_value_inspection(value)
+            };
+            Profile::inspect(&HostExternalInspection::new(&inspect), &value)
+        };
         let lease = Profile::store(self.runtime.external_stores()).insert(
             value,
-            Profile::equal,
-            Profile::inspect,
+            Profile::source_equal,
+            source_hash,
+            inspection,
         );
         HostExternal::new(self.runtime.build_external(lease))
     }
@@ -496,6 +520,7 @@ mod tests {
         assert!(!call.equal::<HostListType<BigInt>>(list, list));
         assert!(!call.equal::<EmptyTuple>(tuple, tuple));
         assert!(!call.equal::<MarkerType>(custom, custom));
+        assert_eq!(call.source_hash::<BigInt>(1.into()), 17);
     }
 
     #[test]

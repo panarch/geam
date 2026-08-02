@@ -682,11 +682,33 @@ mod tests {
 
     fn sample_external_value(type_: ExternalType, payload: usize) -> ExternalValue {
         let store = HostExternalStore::default();
-        ExternalValue::from_evaluated(
-            type_,
-            store.insert(payload, <usize as PartialEq>::eq, |value| {
-                format!("Resource({value})").into()
-            }),
-        )
+        let source_equal =
+            |context: &crate::host::HostExternalEquality<'_>,
+             left: &crate::host::HostStoredValue<num_bigint::BigInt>,
+             right: &crate::host::HostStoredValue<num_bigint::BigInt>| {
+                context.stored_values_equal(left, right)
+            };
+        let first = store.insert(
+            crate::host::HostStoredValue::new(crate::runtime::StoredRuntimeValue::test_int(
+                payload.into(),
+            )),
+            source_equal,
+            payload as u64,
+            format!("Resource({payload})").into(),
+        );
+        let equal = store.insert(
+            crate::host::HostStoredValue::new(crate::runtime::StoredRuntimeValue::test_int(
+                payload.into(),
+            )),
+            source_equal,
+            payload as u64,
+            format!("Resource({payload})").into(),
+        );
+        let stored_equal =
+            |left: &crate::runtime::StoredRuntimeValue,
+             right: &crate::runtime::StoredRuntimeValue| left.value() == right.value();
+        let equality = crate::host::HostExternalEquality::new(&stored_equal);
+        assert!(first.source_equal(&equality, &equal));
+        ExternalValue::from_evaluated(type_, first)
     }
 }

@@ -80,7 +80,33 @@ mod tests {
     #[test]
     fn extracts_external_instruction_values() {
         let store = HostExternalStore::default();
-        let lease = store.insert(7usize, usize::eq, |value| value.to_string().into());
+        let source_equal =
+            |context: &crate::host::HostExternalEquality<'_>,
+             left: &crate::host::HostStoredValue<num_bigint::BigInt>,
+             right: &crate::host::HostStoredValue<num_bigint::BigInt>| {
+                context.stored_values_equal(left, right)
+            };
+        let lease = store.insert(
+            crate::host::HostStoredValue::new(crate::runtime::StoredRuntimeValue::test_int(
+                7.into(),
+            )),
+            source_equal,
+            7,
+            "7".into(),
+        );
+        let equal = store.insert(
+            crate::host::HostStoredValue::new(crate::runtime::StoredRuntimeValue::test_int(
+                7.into(),
+            )),
+            source_equal,
+            7,
+            "7".into(),
+        );
+        let stored_equal =
+            |left: &crate::runtime::StoredRuntimeValue,
+             right: &crate::runtime::StoredRuntimeValue| left.value() == right.value();
+        let equality = crate::host::HostExternalEquality::new(&stored_equal);
+        assert!(lease.source_equal(&equality, &equal));
         let expected = EvaluatedExternalValue::new(ExternalTypeId::new(0), lease);
 
         assert_eq!(expected.lease().inspect(), "7");

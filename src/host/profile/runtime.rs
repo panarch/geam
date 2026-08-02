@@ -40,6 +40,12 @@ pub(crate) trait HostCallRuntime<Profile: HostProfile> {
         arguments: Box<[HostScopedValue]>,
     ) -> Result<HostValueToken, crate::HostCallError>;
     fn equal(&self, left: HostScopedValue, right: HostScopedValue) -> bool;
+    fn source_hash(&self, value: HostScopedValue) -> u64;
+    fn stored_value_hash(&self, value: &crate::runtime::StoredRuntimeValue) -> u64;
+    fn stored_value_inspection(
+        &self,
+        value: &crate::runtime::StoredRuntimeValue,
+    ) -> ecow::EcoString;
     fn complete(&mut self, value: HostScopedValue) -> HostValueToken;
     fn build_list(&mut self, values: Box<[HostScopedValue]>) -> HostValueToken;
     fn build_tuple(&mut self, values: Box<[HostScopedValue]>) -> HostValueToken;
@@ -65,8 +71,8 @@ pub(crate) mod test {
         HostCall, HostCallArguments, HostCallCompletion, HostCallError, HostCustomArgumentSlot,
         HostCustomToken, HostExternalArgumentSlot, HostExternalToken, HostFunctionArgumentSlot,
         HostFunctionToken, HostListArgumentSlot, HostListToken, HostProfile, HostProvider,
-        HostScopedValue, HostTupleArgumentSlot, HostTupleToken, HostTypeParameter, HostValue,
-        HostValueArgumentSlot, HostValueFamily, HostValueToken, StatelessHostProfile,
+        HostScopedValue, HostStoredValue, HostTupleArgumentSlot, HostTupleToken, HostTypeParameter,
+        HostValue, HostValueArgumentSlot, HostValueFamily, HostValueToken, StatelessHostProfile,
     };
 
     pub(crate) struct TestHostProfile;
@@ -253,6 +259,21 @@ pub(crate) mod test {
             false
         }
 
+        fn source_hash(&self, _value: HostScopedValue) -> u64 {
+            17
+        }
+
+        fn stored_value_hash(&self, _value: &crate::runtime::StoredRuntimeValue) -> u64 {
+            23
+        }
+
+        fn stored_value_inspection(
+            &self,
+            _value: &crate::runtime::StoredRuntimeValue,
+        ) -> ecow::EcoString {
+            "stored".into()
+        }
+
         fn complete(&mut self, value: HostScopedValue) -> HostValueToken {
             let token = match &value {
                 HostScopedValue::Value(token) => *token,
@@ -326,13 +347,15 @@ pub(crate) mod test {
         let store = crate::host::HostExternalStore::default();
         let lease = store.insert(
             7usize,
-            |left, right| left == right,
-            |value| format!("Resource({value})").into(),
+            |_, left, right| left == right,
+            7,
+            "Resource(7)".into(),
         );
         let equal_lease = store.insert(
             7usize,
-            |left, right| left == right,
-            |value| format!("Resource({value})").into(),
+            |_, left, right| left == right,
+            7,
+            "Resource(7)".into(),
         );
         let identity = lease.id();
         let mut state = TestRunState::default();
@@ -353,8 +376,23 @@ pub(crate) mod test {
         let external = HostCallRuntime::build_external(&mut runtime, lease);
         assert_eq!(external, HostExternalToken(0));
         let stored = HostCallRuntime::external_lease(&runtime, external);
-        assert!(stored.source_equal(&equal_lease));
-        assert!(equal_lease.source_equal(&stored));
+        {
+            let stored_equal =
+                |_: &crate::runtime::StoredRuntimeValue, _: &crate::runtime::StoredRuntimeValue| {
+                    false
+                };
+            let equality = crate::host::HostExternalEquality::new(&stored_equal);
+            let left = HostStoredValue::<num_bigint::BigInt>::new(
+                crate::runtime::StoredRuntimeValue::test_int(7.into()),
+            );
+            let right = HostStoredValue::<num_bigint::BigInt>::new(
+                crate::runtime::StoredRuntimeValue::test_int(7.into()),
+            );
+            assert!(!equality.stored_values_equal(&left, &right));
+            assert!(stored.source_equal(&equality, &equal_lease));
+            assert!(equal_lease.source_equal(&equality, &stored));
+        }
+        assert_eq!(stored.source_hash(), 7);
         assert_eq!(stored.inspect(), "Resource(7)");
         assert_eq!(equal_lease.inspect(), "Resource(7)");
         assert_eq!(stored.id(), identity,);
@@ -371,6 +409,11 @@ pub(crate) mod test {
         let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
         let stored = HostCallRuntime::retain_stored(&runtime, HostScopedValue::Int(0.into()));
 
+        assert_eq!(HostCallRuntime::stored_value_hash(&runtime, &stored), 23);
+        assert_eq!(
+            HostCallRuntime::stored_value_inspection(&runtime, &stored),
+            "stored",
+        );
         assert_eq!(
             HostCallRuntime::restore_stored(&mut runtime, &stored),
             token(HostValueFamily::Int),

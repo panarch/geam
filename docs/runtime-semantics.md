@@ -126,9 +126,18 @@ A source-backed provider can register a constructorless external type with
 `HostExternalStorage`. Planning links its exact package, module, type name, and
 parameter count. Canonical plan and graph nodes retain nominal type and storage
 IDs only. `HostedExecution` owns the profile's typed stores used for payload
-creation and access, while `HostExternalStorage` supplies payload equality and
-inspection behavior. Neither Rust payloads nor storage behavior become
-canonical plan metadata.
+creation and access, while `HostExternalStorage` supplies payload source
+equality, hashing, and inspection behavior. These operations receive narrow
+contexts that can compare, hash, or inspect retained typed and existential
+Gleam values without exposing runtime storage. Neither Rust payloads nor
+storage behavior become canonical plan metadata.
+
+Source hashing follows Gleam equality: equal values always have equal hashes,
+while a matching hash still requires source equality to resolve collisions.
+Hashes are runtime indexes and are not stable across processes or releases.
+An immutable external payload's source hash and inspection are computed when
+the payload is created and cached in its lease. They are not derived from Rust
+`TypeId`, allocation addresses, public opaque identity, or inspection text.
 
 `HostExternal` is an invocation-scoped typed handle. A provider can create or
 inspect its Rust payload only through the active `HostCall`. The materialized

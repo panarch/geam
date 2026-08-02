@@ -39,12 +39,16 @@ pub struct HostStoredDynamic {
 }
 
 impl HostStoredDynamic {
-    fn new(value: crate::runtime::StoredRuntimeValue) -> Self {
+    pub(super) fn new(value: crate::runtime::StoredRuntimeValue) -> Self {
         Self { value }
     }
 
     fn has_type(&self, type_: &crate::plan::ValueType) -> bool {
         self.value.type_() == type_
+    }
+
+    pub(super) fn runtime_value(&self) -> &crate::runtime::StoredRuntimeValue {
+        &self.value
     }
 
     fn decode<'call, Profile, Provider, Return, Type>(

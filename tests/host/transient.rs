@@ -1,12 +1,12 @@
 use ecow::EcoString;
 use geam::{
     ExecutionError, HostCall, HostCallCompletion, HostCallError, HostCallable, HostExternal,
-    HostExternalPayloadBuilder, HostExternalSchema, HostExternalStorage, HostExternalStore,
-    HostExternalType, HostFailure, HostFunctionType, HostListType, HostProfile, HostProvider,
-    HostProviderModule, HostProviderSet, HostStoredType, HostStoredValue, HostTypeIndex0,
-    HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue,
-    HostedExecution, ListValue, ModuleSource, PackageSource, PanicKind, Value,
-    compile_typed_host_program, plan_host_program,
+    HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalPayloadBuilder,
+    HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType, HostFailure,
+    HostFunctionType, HostListType, HostProfile, HostProvider, HostProviderModule, HostProviderSet,
+    HostStoredType, HostStoredValue, HostTypeIndex0, HostTypeIndexNext, HostTypeList,
+    HostTypeListEnd, HostTypeParameter, HostValue, HostedExecution, ListValue, ModuleSource,
+    PackageSource, PanicKind, Value, compile_typed_host_program, plan_host_program,
 };
 use num_bigint::BigInt;
 use std::rc::Rc;
@@ -115,12 +115,44 @@ impl HostExternalStorage<TransientMapSchema> for TransientProfile {
         &stores.maps
     }
 
-    fn equal(_left: &Self::Payload, _right: &Self::Payload) -> bool {
-        false
+    fn source_equal(
+        context: &HostExternalEquality<'_>,
+        left: &Self::Payload,
+        right: &Self::Payload,
+    ) -> bool {
+        left.entries.len() == right.entries.len()
+            && left
+                .entries
+                .iter()
+                .zip(&right.entries)
+                .all(|(left, right)| {
+                    context.stored_values_equal(&left.key, &right.key)
+                        && context.stored_values_equal(&left.value, &right.value)
+                })
     }
 
-    fn inspect(value: &Self::Payload) -> EcoString {
-        format!("TransientMap({})", value.entries.len()).into()
+    fn source_hash(context: &HostExternalHashing<'_>, value: &Self::Payload) -> u64 {
+        value.entries.iter().fold(0, |hash, entry| {
+            hash.rotate_left(1)
+                ^ context.stored_value_hash(&entry.key).rotate_left(1)
+                ^ context.stored_value_hash(&entry.value)
+        })
+    }
+
+    fn inspect(context: &HostExternalInspection<'_>, value: &Self::Payload) -> EcoString {
+        let entries = value
+            .entries
+            .iter()
+            .map(|entry| {
+                format!(
+                    "#({}, {})",
+                    context.inspect_stored_value(&entry.key),
+                    context.inspect_stored_value(&entry.value),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("TransientMap([{entries}])").into()
     }
 }
 
@@ -138,11 +170,21 @@ impl HostExternalStorage<TokenSchema> for TransientProfile {
         &stores.tokens
     }
 
-    fn equal(left: &Self::Payload, right: &Self::Payload) -> bool {
+    fn source_equal(
+        _: &HostExternalEquality<'_>,
+        left: &Self::Payload,
+        right: &Self::Payload,
+    ) -> bool {
         left.value == right.value
     }
 
-    fn inspect(value: &Self::Payload) -> EcoString {
+    fn source_hash(_: &HostExternalHashing<'_>, value: &Self::Payload) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        std::hash::Hash::hash(&value.value, &mut hasher);
+        std::hash::Hasher::finish(&hasher)
+    }
+
+    fn inspect(_: &HostExternalInspection<'_>, value: &Self::Payload) -> EcoString {
         format!("Token({})", value.value).into()
     }
 }

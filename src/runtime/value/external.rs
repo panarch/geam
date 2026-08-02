@@ -18,7 +18,7 @@ impl ExternalValue {
         Self {
             type_,
             identity: ExternalValueIdentity(lease.id()),
-            inspection: lease.inspect(),
+            inspection: lease.inspect().clone(),
             _lease: lease,
         }
     }
@@ -64,20 +64,26 @@ mod tests {
         let store = HostExternalStore::default();
         let first = store.insert(
             7usize,
-            |left, right| left == right,
-            |value| format!("Resource({value})").into(),
+            |_, left, right| left == right,
+            7,
+            "Resource(7)".into(),
         );
         let second = store.insert(
             7usize,
-            |left, right| left == right,
-            |value| format!("Resource({value})").into(),
+            |_, left, right| left == right,
+            7,
+            "Resource(7)".into(),
         );
         let type_ = ExternalType::new(
             ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into()),
             Vec::new(),
         );
-        assert!(first.source_equal(&second));
-        assert!(second.source_equal(&first));
+        let stored_equal =
+            |_: &crate::runtime::StoredRuntimeValue, _: &crate::runtime::StoredRuntimeValue| false;
+        let equality = crate::host::HostExternalEquality::new(&stored_equal);
+        assert!(first.source_equal(&equality, &second));
+        assert!(second.source_equal(&equality, &first));
+        assert_eq!(first.source_hash(), 7);
         assert_eq!(first.inspect(), "Resource(7)");
         assert_eq!(second.inspect(), "Resource(7)");
         let first = ExternalValue::from_evaluated(type_.clone(), first);

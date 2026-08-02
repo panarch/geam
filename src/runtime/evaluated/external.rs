@@ -20,8 +20,16 @@ impl EvaluatedExternalValue {
         &self.lease
     }
 
-    pub(in crate::runtime) fn source_equal(&self, other: &Self) -> bool {
-        self.type_id == other.type_id && self.lease.source_equal(&other.lease)
+    pub(in crate::runtime) fn source_equal(
+        &self,
+        context: &crate::host::HostExternalEquality<'_>,
+        other: &Self,
+    ) -> bool {
+        self.type_id == other.type_id && self.lease.source_equal(context, &other.lease)
+    }
+
+    pub(in crate::runtime) fn source_hash(&self) -> u64 {
+        self.lease.source_hash()
     }
 
     pub(in crate::runtime) fn into_parts(self) -> (ExternalTypeId, ExternalPayloadLease) {
@@ -56,23 +64,29 @@ mod tests {
         let store = HostExternalStore::default();
         let first = store.insert(
             7usize,
-            |left, right| left == right,
-            |value| format!("Resource({value})").into(),
+            |_, left, right| left == right,
+            7,
+            "Resource(7)".into(),
         );
         let second = store.insert(
             7usize,
-            |left, right| left == right,
-            |value| format!("Resource({value})").into(),
+            |_, left, right| left == right,
+            7,
+            "Resource(7)".into(),
         );
         let first = EvaluatedExternalValue::new(ExternalTypeId::new(0), first);
         let second = EvaluatedExternalValue::new(ExternalTypeId::new(0), second);
         let other_type =
             EvaluatedExternalValue::new(ExternalTypeId::new(1), second.lease().clone());
+        let stored_equal =
+            |_: &crate::runtime::StoredRuntimeValue, _: &crate::runtime::StoredRuntimeValue| false;
+        let equality = crate::host::HostExternalEquality::new(&stored_equal);
 
         assert_ne!(first, second);
-        assert!(first.source_equal(&second));
-        assert!(second.source_equal(&first));
-        assert!(!first.source_equal(&other_type));
+        assert!(first.source_equal(&equality, &second));
+        assert!(second.source_equal(&equality, &first));
+        assert!(!first.source_equal(&equality, &other_type));
+        assert_eq!(first.source_hash(), 7);
         assert_eq!(first.lease().inspect(), "Resource(7)");
         assert_eq!(second.lease().inspect(), "Resource(7)");
         assert!(format!("{first:?}").contains("EvaluatedExternalValue"));

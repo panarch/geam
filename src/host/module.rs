@@ -546,7 +546,8 @@ mod tests {
         ExternalTestProfile, ExternalTestStores, HostCall, HostCallCompletion, HostCallError,
         HostExternalSchema, HostExternalStorage, HostExternalStore, HostFailure,
         HostFunctionDefinition, HostProvider, HostRegistrationError, HostScopedValue,
-        StatelessHostProfile, expect_never_implementation, expect_value_implementation,
+        HostStoredValue, StatelessHostProfile, expect_never_implementation,
+        expect_value_implementation,
     };
     use crate::plan::ValueType;
     use ecow::EcoString;
@@ -582,11 +583,22 @@ mod tests {
             &stores.indices
         }
 
-        fn equal(left: &Self::Payload, right: &Self::Payload) -> bool {
+        fn source_equal(
+            _: &crate::host::HostExternalEquality<'_>,
+            left: &Self::Payload,
+            right: &Self::Payload,
+        ) -> bool {
             left == right
         }
 
-        fn inspect(value: &Self::Payload) -> EcoString {
+        fn source_hash(_: &crate::host::HostExternalHashing<'_>, value: &Self::Payload) -> u64 {
+            *value as u64
+        }
+
+        fn inspect(
+            _: &crate::host::HostExternalInspection<'_>,
+            value: &Self::Payload,
+        ) -> EcoString {
             value.to_string().into()
         }
     }
@@ -605,11 +617,22 @@ mod tests {
             &stores.indices
         }
 
-        fn equal(left: &Self::Payload, right: &Self::Payload) -> bool {
+        fn source_equal(
+            _: &crate::host::HostExternalEquality<'_>,
+            left: &Self::Payload,
+            right: &Self::Payload,
+        ) -> bool {
             left == right
         }
 
-        fn inspect(value: &Self::Payload) -> EcoString {
+        fn source_hash(_: &crate::host::HostExternalHashing<'_>, value: &Self::Payload) -> u64 {
+            *value as u64
+        }
+
+        fn inspect(
+            _: &crate::host::HostExternalInspection<'_>,
+            value: &Self::Payload,
+        ) -> EcoString {
             value.to_string().into()
         }
     }
@@ -723,16 +746,31 @@ mod tests {
     #[test]
     fn external_storage_protocol_projects_payload_semantics() {
         let stores = ExternalTestStores::default();
+        let equal =
+            |_: &crate::runtime::StoredRuntimeValue, _: &crate::runtime::StoredRuntimeValue| false;
+        let source_hash = |_: &crate::runtime::StoredRuntimeValue| 0;
+        let inspect = |_: &crate::runtime::StoredRuntimeValue| EcoString::new();
+        let equality = crate::host::HostExternalEquality::new(&equal);
+        let hashing = crate::host::HostExternalHashing::new(&source_hash);
+        let inspection = crate::host::HostExternalInspection::new(&inspect);
+        let stored = HostStoredValue::<BigInt>::new(crate::runtime::StoredRuntimeValue::test_int(
+            BigInt::from(7),
+        ));
 
+        assert_eq!(inspection.inspect_stored_value(&stored), "");
         assert!(std::ptr::eq(
             <ExternalTestProfile as HostExternalStorage<CounterSchema>>::store(&stores),
             &stores.indices,
         ));
         assert!(<ExternalTestProfile as HostExternalStorage<
             CounterSchema,
-        >>::equal(&7, &7),);
+        >>::source_equal(&equality, &7, &7),);
         assert_eq!(
-            <ExternalTestProfile as HostExternalStorage<CounterSchema>>::inspect(&7),
+            <ExternalTestProfile as HostExternalStorage<CounterSchema>>::source_hash(&hashing, &7,),
+            7,
+        );
+        assert_eq!(
+            <ExternalTestProfile as HostExternalStorage<CounterSchema>>::inspect(&inspection, &7,),
             "7",
         );
         assert!(std::ptr::eq(
@@ -741,9 +779,18 @@ mod tests {
         ));
         assert!(<ExternalTestProfile as HostExternalStorage<
             InvalidCounterSchema,
-        >>::equal(&8, &8),);
+        >>::source_equal(&equality, &8, &8),);
         assert_eq!(
-            <ExternalTestProfile as HostExternalStorage<InvalidCounterSchema>>::inspect(&8),
+            <ExternalTestProfile as HostExternalStorage<InvalidCounterSchema>>::source_hash(
+                &hashing, &8,
+            ),
+            8,
+        );
+        assert_eq!(
+            <ExternalTestProfile as HostExternalStorage<InvalidCounterSchema>>::inspect(
+                &inspection,
+                &8,
+            ),
             "8",
         );
     }

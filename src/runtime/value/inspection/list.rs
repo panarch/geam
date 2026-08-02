@@ -137,12 +137,34 @@ mod tests {
             Vec::new(),
         );
         let store = HostExternalStore::default();
-        let external = ExternalValue::from_evaluated(
-            external_type.clone(),
-            store.insert(7usize, <usize as PartialEq>::eq, |value| {
-                format!("Resource({value})").into()
-            }),
+        let source_equal =
+            |context: &crate::host::HostExternalEquality<'_>,
+             left: &crate::host::HostStoredValue<num_bigint::BigInt>,
+             right: &crate::host::HostStoredValue<num_bigint::BigInt>| {
+                context.stored_values_equal(left, right)
+            };
+        let first = store.insert(
+            crate::host::HostStoredValue::new(crate::runtime::StoredRuntimeValue::test_int(
+                7.into(),
+            )),
+            source_equal,
+            7,
+            "Resource(7)".into(),
         );
+        let equal = store.insert(
+            crate::host::HostStoredValue::new(crate::runtime::StoredRuntimeValue::test_int(
+                7.into(),
+            )),
+            source_equal,
+            7,
+            "Resource(7)".into(),
+        );
+        let stored_equal =
+            |left: &crate::runtime::StoredRuntimeValue,
+             right: &crate::runtime::StoredRuntimeValue| left.value() == right.value();
+        let equality = crate::host::HostExternalEquality::new(&stored_equal);
+        assert!(first.source_equal(&equality, &equal));
+        let external = ExternalValue::from_evaluated(external_type.clone(), first);
         let cases = [
             (ListValue::string(vec!["one".into()]), r#"["one"]"#),
             (

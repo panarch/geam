@@ -157,6 +157,12 @@ constraints, not additions to Gleam's analyzer or typed AST. See [runtime
 semantics](runtime-semantics.md) for the value, state, specialization,
 re-entry, and failure contracts.
 
+External storage providers also define source equality, runtime hashing, and
+canonical inspection. Equal payloads must hash equally, collisions are checked
+with source equality, and retained Gleam values are available only through the
+narrow operation-specific contexts. Hashes are runtime indexes rather than a
+stable package or serialization contract.
+
 Private transient-style external APIs can be represented by returning new
 persistent payload versions that share immutable retained entries. This does
 not add a general mutable external-value model or cyclic runtime graph support.

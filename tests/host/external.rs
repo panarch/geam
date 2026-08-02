@@ -4,14 +4,17 @@ use geam::{
     HostCustom, HostCustomConstructorAt, HostCustomConstructorDefinition,
     HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomField, HostCustomFieldList,
     HostCustomFieldListEnd, HostCustomIndex0, HostCustomSchema, HostCustomType, HostExternal,
-    HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType, HostFailure,
-    HostFunctionType, HostList, HostListType, HostModule, HostProfile, HostProvider,
-    HostProviderLinkReason, HostProviderModule, HostProviderSet, HostTupleType, HostTypeList,
-    HostTypeListEnd, HostTypeParameter, HostValue, HostedExecution, ModuleSource, PackageSource,
-    PanicKind, PlanError, Value, compile_typed_host_program, plan_host_program,
+    HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalSchema,
+    HostExternalStorage, HostExternalStore, HostExternalType, HostFailure, HostFunctionType,
+    HostList, HostListType, HostModule, HostProfile, HostProvider, HostProviderLinkReason,
+    HostProviderModule, HostProviderSet, HostTupleType, HostTypeList, HostTypeListEnd,
+    HostTypeParameter, HostValue, HostedExecution, ModuleSource, PackageSource, PanicKind,
+    PlanError, Value, compile_typed_host_program, plan_host_program,
 };
 use num_bigint::BigInt;
+use std::collections::hash_map::DefaultHasher;
 use std::convert::Infallible;
+use std::hash::{Hash, Hasher};
 
 struct ExternalProfile;
 
@@ -103,11 +106,21 @@ impl HostExternalStorage<CounterSchema> for ExternalProfile {
         &stores.counters
     }
 
-    fn equal(left: &Self::Payload, right: &Self::Payload) -> bool {
+    fn source_equal(
+        _: &HostExternalEquality<'_>,
+        left: &Self::Payload,
+        right: &Self::Payload,
+    ) -> bool {
         left.value == right.value
     }
 
-    fn inspect(value: &Self::Payload) -> EcoString {
+    fn source_hash(_: &HostExternalHashing<'_>, value: &Self::Payload) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        value.value.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn inspect(_: &HostExternalInspection<'_>, value: &Self::Payload) -> EcoString {
         format!("Counter({})", value.value).into()
     }
 }
@@ -126,11 +139,21 @@ impl HostExternalStorage<DependencyCounterSchema> for ExternalProfile {
         &stores.dependency_counters
     }
 
-    fn equal(left: &Self::Payload, right: &Self::Payload) -> bool {
+    fn source_equal(
+        _: &HostExternalEquality<'_>,
+        left: &Self::Payload,
+        right: &Self::Payload,
+    ) -> bool {
         left.value == right.value
     }
 
-    fn inspect(value: &Self::Payload) -> EcoString {
+    fn source_hash(_: &HostExternalHashing<'_>, value: &Self::Payload) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        value.value.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn inspect(_: &HostExternalInspection<'_>, value: &Self::Payload) -> EcoString {
         format!("SupportCounter({})", value.value).into()
     }
 }
@@ -149,11 +172,21 @@ impl HostExternalStorage<GenericCounterSchema> for ExternalProfile {
         &stores.generic_counters
     }
 
-    fn equal(left: &Self::Payload, right: &Self::Payload) -> bool {
+    fn source_equal(
+        _: &HostExternalEquality<'_>,
+        left: &Self::Payload,
+        right: &Self::Payload,
+    ) -> bool {
         left.value == right.value
     }
 
-    fn inspect(value: &Self::Payload) -> EcoString {
+    fn source_hash(_: &HostExternalHashing<'_>, value: &Self::Payload) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        value.value.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn inspect(_: &HostExternalInspection<'_>, value: &Self::Payload) -> EcoString {
         format!("GenericCounter({})", value.value).into()
     }
 }
@@ -293,6 +326,128 @@ pub fn main() {
             .inspect()
             .to_string(),
         r#"#(1, 1.5, "text", <<1>>, 'A', Marker(2), Marker(7), Counter(3), True, Nil, #(4, False), [5, 6], 9, [Counter(10)], Counter(11), Counter(12))"#,
+    );
+}
+
+#[test]
+fn hashes_symbolic_and_external_function_values_through_the_host_call() {
+    fn new_counter<'call>(
+        mut call: HostCall<'call, ExternalProfile, CounterProvider, HostCounter>,
+        value: BigInt,
+    ) -> Result<HostCallCompletion<'call, HostCounter>, HostCallError> {
+        let counter = call.create_external(Counter { value });
+        Ok(call.return_value(counter))
+    }
+
+    fn source_hash<'call>(
+        call: HostCall<'call, ExternalProfile, CounterProvider, BigInt>,
+        value: HostValue<'call, GenericValue>,
+    ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+        let hash = call.source_hash::<GenericValue>(value);
+        Ok(call.return_value(BigInt::from(hash)))
+    }
+
+    let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
+        .expect("provider module should be valid")
+        .with_external_type::<CounterSchema>()
+        .expect("external type should be valid")
+        .with_scoped_function::<CounterProvider, (BigInt,), HostCounter, _>(
+            "new_counter",
+            new_counter,
+        )
+        .expect("external constructor should be valid")
+        .with_scoped_function::<CounterProvider, (GenericValue,), BigInt, _>(
+            "source_hash",
+            source_hash,
+        )
+        .expect("source hash should be valid");
+    let source = r#"
+@external(erlang, "host", "Counter")
+pub type Counter
+
+@external(erlang, "host", "new_counter")
+fn new_counter(value: Int) -> Counter
+
+@external(erlang, "host", "source_hash")
+fn source_hash(value: value) -> Int
+
+pub type Marker {
+  Marker(Int)
+}
+
+fn identity(value) {
+  value
+}
+
+fn never() -> value {
+  panic as "source hash must not invoke its argument"
+}
+
+fn int_value() { 1 }
+fn float_value() { 1.5 }
+fn string_value() { "text" }
+fn bit_array_value() { <<1>> }
+fn utf_codepoint_value() -> UtfCodepoint {
+  let assert <<value:utf8_codepoint>> = <<65>>
+  value
+}
+fn custom_value() { Marker(2) }
+fn external(value: Int) {
+  new_counter(value)
+}
+fn bool_value() { True }
+fn nil_value() { Nil }
+fn tuple_value() { #(4, False) }
+fn list_value() { [5, 6] }
+fn function_value() { int_value }
+fn parameter_list() -> List(value) { [] }
+
+pub fn main() {
+  let parameters = parameter_list()
+  let generic = identity
+  let no_return = never
+  let constructor = Marker
+  let closure = fn(value) { value + 1 }
+  #(
+    source_hash(parameters) == source_hash(parameters),
+    source_hash(generic) == source_hash(generic),
+    source_hash(no_return) == source_hash(no_return),
+    source_hash(int_value) == source_hash(int_value),
+    source_hash(float_value) == source_hash(float_value),
+    source_hash(string_value) == source_hash(string_value),
+    source_hash(bit_array_value) == source_hash(bit_array_value),
+    source_hash(utf_codepoint_value) == source_hash(utf_codepoint_value),
+    source_hash(custom_value) == source_hash(custom_value),
+    source_hash(constructor) == source_hash(constructor),
+    source_hash(external) == source_hash(external),
+    source_hash(bool_value) == source_hash(bool_value),
+    source_hash(nil_value) == source_hash(nil_value),
+    source_hash(tuple_value) == source_hash(tuple_value),
+    source_hash(list_value) == source_hash(list_value),
+    source_hash(function_value) == source_hash(function_value),
+    source_hash(closure) == source_hash(closure),
+  )
+}
+"#;
+    let typed = compile_typed_host_program(
+        "application",
+        "main",
+        [PackageSource::new(
+            "application",
+            Vec::<EcoString>::new(),
+            [ModuleSource::new("main", "src/main.gleam", source)],
+        )],
+        HostProviderSet::with_providers(Vec::new(), [provider])
+            .expect("provider module should be unique"),
+    )
+    .expect("source hash source should compile");
+    let plan = plan_host_program(typed).expect("source hash source should plan");
+    let execution =
+        HostedExecution::try_from_module_plan(plan).expect("source hash execution should seal");
+
+    assert_eq!(
+        execution.run_main(&mut ExternalRunState::default(), &mut Vec::new()),
+        Ok(Value::Tuple(vec![Value::Bool(true); 17])),
     );
 }
 

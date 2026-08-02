@@ -52,7 +52,7 @@ impl StoredRuntimeValue {
         Self::new(EvaluatedValue::Int(value), crate::plan::ValueType::Int)
     }
 
-    pub(super) fn value(&self) -> &EvaluatedValue {
+    pub(in crate::runtime) fn value(&self) -> &EvaluatedValue {
         &self.value
     }
 
