@@ -379,6 +379,17 @@ where
         )
     }
 
+    fn inspect(&self, value: HostScopedValue) -> EcoString {
+        crate::runtime::materialize::value(
+            self.plan.value_metadata(),
+            self.state.lists(),
+            self.scoped.value_from_scoped(value),
+        )
+        .inspect()
+        .to_string()
+        .into()
+    }
+
     fn complete(&mut self, value: HostScopedValue) -> HostValueToken {
         self.scoped.push_scoped(value)
     }

@@ -41,6 +41,7 @@ pub(crate) trait HostCallRuntime<Profile: HostProfile> {
     ) -> Result<HostValueToken, crate::HostCallError>;
     fn equal(&self, left: HostScopedValue, right: HostScopedValue) -> bool;
     fn source_hash(&self, value: HostScopedValue) -> u64;
+    fn inspect(&self, value: HostScopedValue) -> ecow::EcoString;
     fn complete(&mut self, value: HostScopedValue) -> HostValueToken;
     fn build_list(&mut self, values: Box<[HostScopedValue]>) -> HostValueToken;
     fn build_tuple(&mut self, values: Box<[HostScopedValue]>) -> HostValueToken;
@@ -257,6 +258,10 @@ pub(crate) mod test {
 
         fn source_hash(&self, _value: HostScopedValue) -> u64 {
             17
+        }
+
+        fn inspect(&self, _value: HostScopedValue) -> ecow::EcoString {
+            "inspected".into()
         }
 
         fn complete(&mut self, value: HostScopedValue) -> HostValueToken {

@@ -15,12 +15,12 @@ pub(in crate::gleam_stdlib) struct Stores {
     values: HostExternalStore<StringTreePayload>,
 }
 
-pub(super) struct StringTreePayload {
-    pub(super) tree: StringTree,
+pub(in crate::gleam_stdlib) struct StringTreePayload {
+    pub(in crate::gleam_stdlib) tree: StringTree,
 }
 
 #[derive(Clone)]
-pub(super) struct StringTree {
+pub(in crate::gleam_stdlib) struct StringTree {
     root: Rc<StringTreeNode>,
 }
 
@@ -35,7 +35,7 @@ enum StringTreeNodeKind {
 }
 
 impl StringTree {
-    pub(super) fn text(text: EcoString) -> Self {
+    pub(in crate::gleam_stdlib) fn text(text: EcoString) -> Self {
         Self {
             root: Rc::new(StringTreeNode {
                 byte_len: text.len(),

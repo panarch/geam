@@ -2,13 +2,14 @@ mod function;
 mod schema;
 mod storage;
 
-pub(super) use storage::Stores;
+pub(in crate::gleam_stdlib) use schema::{StringTree, StringTreeSchema};
+pub(super) use storage::{Stores, StringTree as StoredStringTree, StringTreePayload};
 
 use self::function::{
     StringTreeProvider, append_tree, byte_size, concat, do_to_graphemes, erl_split, from_string,
     from_strings, is_empty, is_equal, lowercase, replace, to_string, uppercase,
 };
-use self::schema::{Direction, StringList, StringTree, StringTreeList, StringTreeSchema};
+use self::schema::{Direction, StringList, StringTreeList};
 use super::GleamStdlibHostProfile;
 use crate::{HostProviderModule, HostRegistrationError};
 use ecow::EcoString;

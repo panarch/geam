@@ -6,6 +6,7 @@ mod float;
 mod int;
 mod result;
 mod run_state;
+mod string;
 mod string_tree;
 
 pub use run_state::{GleamStdlibRunState, GleamStdlibRunStateError};
@@ -55,8 +56,10 @@ where
         dynamic::host_provider::<Profile>().and_then(|dynamic| {
             float::host_provider::<Profile>().and_then(|float| {
                 int::host_provider::<Profile>().and_then(|int| {
-                    string_tree::host_provider::<Profile>()
-                        .map(|string_tree| vec![dict, dynamic, float, int, string_tree])
+                    string_tree::host_provider::<Profile>().and_then(|string_tree| {
+                        string::host_provider::<Profile>()
+                            .map(|string| vec![dict, dynamic, float, int, string_tree, string])
+                    })
                 })
             })
         })
@@ -113,6 +116,7 @@ mod tests {
                 "gleam/float",
                 "gleam/int",
                 "gleam/string_tree",
+                "gleam/string",
             ],
         );
         let provider = &providers[0];

@@ -87,6 +87,12 @@ where
             .source_hash(crate::host::type_::into_scoped::<Type>(value))
     }
 
+    /// Returns the canonical Gleam-facing inspection of a call-scoped value.
+    pub fn inspect<Type: HostType>(&self, value: Type::Value<'call>) -> ecow::EcoString {
+        self.runtime
+            .inspect(crate::host::type_::into_scoped::<Type>(value))
+    }
+
     pub(crate) fn arguments(&self) -> &dyn HostCallArguments {
         self.runtime.arguments()
     }
@@ -148,6 +154,16 @@ where
     ) -> Elements::Values<'call> {
         let values = self.runtime.tuple_values(value.token);
         crate::host::type_::from_tokens::<Elements, Profile>(self.runtime, &values)
+    }
+
+    pub(crate) fn create_tuple<Elements: HostTypeSequence>(
+        &mut self,
+        values: Elements::Values<'call>,
+    ) -> HostTuple<'call, Elements> {
+        let mut output = Vec::new();
+        crate::host::type_::into_scoped_values::<Elements>(values, &mut output);
+        let value = self.runtime.build_tuple(output.into_boxed_slice());
+        HostTuple::new(self.runtime.tuple_token(value))
     }
 
     pub fn custom_constructor<Custom>(&self, value: HostCustom<'call, Custom>) -> usize {
@@ -547,6 +563,7 @@ mod tests {
         assert!(!call.equal::<EmptyTuple>(tuple, tuple));
         assert!(!call.equal::<MarkerType>(custom, custom));
         assert_eq!(call.source_hash::<BigInt>(1.into()), 17);
+        assert_eq!(call.inspect::<BigInt>(1.into()), "inspected");
     }
 
     #[test]
@@ -633,9 +650,10 @@ mod tests {
         let list = HostCall::<TestHostProfile, Counter, List>::new(&mut runtime)
             .return_list([BigInt::from(1), BigInt::from(2)])
             .token;
-        let tuple = HostCall::<TestHostProfile, Counter, Tuple>::new(&mut runtime)
-            .return_tuple(())
-            .token;
+        let mut call = HostCall::<TestHostProfile, Counter, Tuple>::new(&mut runtime);
+        let nested_tuple = call.create_tuple::<HostTypeListEnd>(());
+        assert_eq!(nested_tuple.token, HostTupleToken(0));
+        let tuple = call.return_tuple(()).token;
         let custom = HostCall::<TestHostProfile, Counter, MarkerType>::new(&mut runtime)
             .return_custom::<Marker>(())
             .token;
