@@ -10,7 +10,7 @@ use gleam_core::ast::SrcSpan;
 use gleam_core::parse::lexer::string_to_keyword;
 use gleam_core::type_::PRELUDE_MODULE_NAME;
 use gleam_core::type_::error::Named;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 pub struct HostModule<Profile: HostProfile = StatelessHostProfile> {
@@ -297,6 +297,19 @@ impl<Profile: HostProfile> HostProviderSet<Profile> {
         self.providers.iter()
     }
 
+    pub(crate) fn select_source_providers(
+        mut self,
+        source_modules: &BTreeSet<(EcoString, EcoString)>,
+    ) -> Self {
+        self.providers.retain(|provider| {
+            source_modules.contains(&(
+                provider.identity.package.clone(),
+                provider.identity.module.clone(),
+            ))
+        });
+        self
+    }
+
     pub(crate) fn into_registered(
         self,
     ) -> (
@@ -553,6 +566,7 @@ mod tests {
     use ecow::EcoString;
     use num_bigint::BigInt;
     use std::cell::Cell;
+    use std::collections::BTreeSet;
     use std::convert::Infallible;
 
     struct Counter;
@@ -682,6 +696,44 @@ mod tests {
                 .return_(),
             &ValueType::Int,
         );
+    }
+
+    #[test]
+    fn source_provider_selection_precedes_compact_implementation_registration() {
+        let module = HostModule::new("host_support", "host/math")
+            .expect("source-less module should be valid")
+            .with_function("add", <BigInt as std::ops::Add>::add)
+            .expect("source-less function should be valid");
+        let unused = HostProviderModule::<StatelessHostProfile>::new("application", "unused")
+            .expect("unused provider should be valid")
+            .with_function("value", BigInt::default)
+            .expect("unused provider function should be valid");
+        let first = HostProviderModule::<StatelessHostProfile>::new("application", "first")
+            .expect("first provider should be valid")
+            .with_function("value", BigInt::default)
+            .expect("first provider function should be valid");
+        let second = HostProviderModule::<StatelessHostProfile>::new("dependency", "second")
+            .expect("second provider should be valid")
+            .with_function("value", BigInt::default)
+            .expect("second provider function should be valid");
+        let selected = BTreeSet::from([
+            (EcoString::from("application"), EcoString::from("first")),
+            (EcoString::from("dependency"), EcoString::from("second")),
+        ]);
+        let hosts = HostProviderSet::with_providers([module], [unused, first, second])
+            .expect("host module identities should be unique")
+            .select_source_providers(&selected);
+        let (modules, providers, implementations) = hosts.into_registered();
+
+        assert_eq!(modules.len(), 1);
+        assert_eq!(providers.len(), 2);
+        assert_eq!(providers[0].package, "application");
+        assert_eq!(providers[0].module, "first");
+        assert_eq!(providers[0].functions[0].implementation.0, 1);
+        assert_eq!(providers[1].package, "dependency");
+        assert_eq!(providers[1].module, "second");
+        assert_eq!(providers[1].functions[0].implementation.0, 2);
+        assert_eq!(implementations.functions.len(), 3);
     }
 
     #[test]

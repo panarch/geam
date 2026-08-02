@@ -105,6 +105,12 @@ pub fn compile_typed_host_project<Profile: HostProfile>(
     hosts: HostProviderSet<Profile>,
 ) -> Result<HostedTypedProgram<Profile>, ProjectError> {
     let project = load_project(project_root.into(), root_module.into())?;
+    let selected_source_modules = project
+        .modules
+        .iter()
+        .map(|module| (module.package.clone(), module.module.name.clone()))
+        .collect::<BTreeSet<_>>();
+    let hosts = hosts.select_source_providers(&selected_source_modules);
     compile_parsed_host_package_program(
         project.root_package,
         project.root_module,
@@ -741,6 +747,62 @@ pub fn answer() -> Int
 
         let execution = HostedExecution::try_from_module_plan(plan)
             .expect("hosted project execution should seal");
+        assert_eq!(
+            execution.run_main(&mut (), &mut Vec::new()),
+            Ok(Value::Int(42.into())),
+        );
+    }
+
+    #[test]
+    fn selects_only_provider_modules_in_the_resolved_source_closure() {
+        let project = tempdir().expect("temporary project should be created");
+        let root = project_root(&project);
+        write_file(
+            &root,
+            "gleam.toml",
+            "name = \"application\"\nversion = \"1.0.0\"\n",
+        );
+        write_file(&root, "manifest.toml", "packages = []\n\n[requirements]\n");
+        write_file(
+            &root,
+            "src/main.gleam",
+            "import used\npub fn main() { used.value() }",
+        );
+        write_file(
+            &root,
+            "src/used.gleam",
+            r#"
+@external(erlang, "host", "value")
+pub fn value() -> Int
+"#,
+        );
+        write_file(
+            &root,
+            "src/unused.gleam",
+            r#"
+@external(erlang, "host", "value")
+pub fn value() -> Int
+"#,
+        );
+        let unused = HostProviderModule::<StatelessHostProfile>::new("application", "unused")
+            .expect("unused provider should be valid")
+            .with_function("value", BigInt::default)
+            .expect("unused provider function should be valid");
+        let selected = HostProviderModule::<StatelessHostProfile>::new("application", "used")
+            .expect("selected provider should be valid")
+            .with_function("value", || BigInt::from(42))
+            .expect("selected provider function should be valid");
+        let typed = compile_typed_host_project(
+            root,
+            "main",
+            HostProviderSet::with_providers(Vec::<HostModule>::new(), [unused, selected])
+                .expect("provider modules should be unique"),
+        )
+        .expect("unselected source providers should not enter the hosted program");
+        let plan = plan_host_program(typed).expect("selected provider should plan");
+        let execution = HostedExecution::try_from_module_plan(plan)
+            .expect("selected provider should seal for execution");
+
         assert_eq!(
             execution.run_main(&mut (), &mut Vec::new()),
             Ok(Value::Int(42.into())),
