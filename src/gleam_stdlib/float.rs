@@ -2,9 +2,11 @@ mod function;
 mod parse;
 mod schema;
 
+pub(super) use self::function::do_to_float;
+
 use self::function::{
-    FloatProvider, ceiling, do_log, do_power, do_to_float, exponential, floor, js_round, parse,
-    random, to_string, truncate,
+    FloatProvider, ceiling, do_log, do_power, exponential, floor, js_round, parse, random,
+    to_string, truncate,
 };
 use self::schema::ParseResult;
 use super::GleamStdlibHostProfile;

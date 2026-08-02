@@ -3,6 +3,7 @@ use crate::{HostProfile, HostProviderModule, HostRegistrationError};
 mod dict;
 mod dynamic;
 mod float;
+mod int;
 mod result;
 mod run_state;
 
@@ -50,7 +51,9 @@ where
 {
     dict::host_provider::<Profile>().and_then(|dict| {
         dynamic::host_provider::<Profile>().and_then(|dynamic| {
-            float::host_provider::<Profile>().map(|float| vec![dict, dynamic, float])
+            float::host_provider::<Profile>().and_then(|float| {
+                int::host_provider::<Profile>().map(|int| vec![dict, dynamic, float, int])
+            })
         })
     })
 }
@@ -99,7 +102,7 @@ mod tests {
                 .iter()
                 .map(|provider| provider.module().as_str())
                 .collect::<Vec<_>>(),
-            ["gleam/dict", "gleam/dynamic", "gleam/float"],
+            ["gleam/dict", "gleam/dynamic", "gleam/float", "gleam/int"],
         );
         let provider = &providers[0];
         assert_eq!(provider.package(), "gleam_stdlib");

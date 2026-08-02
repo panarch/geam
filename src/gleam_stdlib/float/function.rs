@@ -55,7 +55,7 @@ pub(super) fn truncate(value: f64) -> Result<BigInt, HostFailure> {
         .ok_or_else(|| HostFailure::new("float cannot be represented as an Int"))
 }
 
-pub(super) fn do_to_float(value: BigInt) -> Result<f64, HostFailure> {
+pub(in crate::gleam_stdlib) fn do_to_float(value: BigInt) -> Result<f64, HostFailure> {
     value
         .to_f64()
         .filter(|value| value.is_finite())
