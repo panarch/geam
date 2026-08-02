@@ -681,6 +681,20 @@ mod tests {
     }
 
     fn sample_external_value(type_: ExternalType, payload: usize) -> ExternalValue {
+        fn source_hash(
+            context: &crate::host::HostExternalHashing<'_>,
+            value: &crate::host::HostStoredValue<num_bigint::BigInt>,
+        ) -> u64 {
+            context.stored_value_hash(value)
+        }
+
+        fn inspect(
+            context: &crate::host::HostExternalInspection<'_>,
+            value: &crate::host::HostStoredValue<num_bigint::BigInt>,
+        ) -> ecow::EcoString {
+            context.inspect_stored_value(value)
+        }
+
         let store = HostExternalStore::default();
         let source_equal =
             |context: &crate::host::HostExternalEquality<'_>,
@@ -693,22 +707,36 @@ mod tests {
                 payload.into(),
             )),
             source_equal,
-            payload as u64,
-            format!("Resource({payload})").into(),
+            source_hash,
+            inspect,
         );
         let equal = store.insert(
             crate::host::HostStoredValue::new(crate::runtime::StoredRuntimeValue::test_int(
                 payload.into(),
             )),
             source_equal,
-            payload as u64,
-            format!("Resource({payload})").into(),
+            source_hash,
+            inspect,
         );
         let stored_equal =
             |left: &crate::runtime::StoredRuntimeValue,
              right: &crate::runtime::StoredRuntimeValue| left.value() == right.value();
         let equality = crate::host::HostExternalEquality::new(&stored_equal);
         assert!(first.source_equal(&equality, &equal));
-        ExternalValue::from_evaluated(type_, first)
+        let stored_hash = |_: &crate::runtime::StoredRuntimeValue| payload as u64;
+        let stored_inspect =
+            |_: &crate::runtime::StoredRuntimeValue| format!("Resource({payload})").into();
+        assert_eq!(
+            first.source_hash(&crate::host::HostExternalHashing::new(&stored_hash)),
+            payload as u64,
+        );
+        let expected_inspection = format!("Resource({payload})");
+        assert_eq!(
+            first
+                .inspection(&crate::host::HostExternalInspection::new(&stored_inspect))
+                .as_str(),
+            expected_inspection,
+        );
+        ExternalValue::from_evaluated(type_, first, format!("Resource({payload})").into())
     }
 }

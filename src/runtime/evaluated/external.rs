@@ -28,8 +28,11 @@ impl EvaluatedExternalValue {
         self.type_id == other.type_id && self.lease.source_equal(context, &other.lease)
     }
 
-    pub(in crate::runtime) fn source_hash(&self) -> u64 {
-        self.lease.source_hash()
+    pub(in crate::runtime) fn source_hash(
+        &self,
+        context: &crate::host::HostExternalHashing<'_>,
+    ) -> u64 {
+        self.lease.source_hash(context)
     }
 
     pub(in crate::runtime) fn into_parts(self) -> (ExternalTypeId, ExternalPayloadLease) {
@@ -62,18 +65,15 @@ mod tests {
     #[test]
     fn evaluated_external_value_separates_source_equality_from_runtime_identity() {
         let store = HostExternalStore::default();
-        let first = store.insert(
-            7usize,
-            |_, left, right| left == right,
-            7,
-            "Resource(7)".into(),
-        );
-        let second = store.insert(
-            7usize,
-            |_, left, right| left == right,
-            7,
-            "Resource(7)".into(),
-        );
+        let source_hash = |_: &crate::host::HostExternalHashing<'_>, value: &usize| *value as u64;
+        let inspect = |context: &crate::host::HostExternalInspection<'_>, value: &usize| {
+            let stored = crate::host::HostStoredValue::<num_bigint::BigInt>::new(
+                crate::runtime::StoredRuntimeValue::test_int((*value).into()),
+            );
+            format!("Resource({})", context.inspect_stored_value(&stored)).into()
+        };
+        let first = store.insert(7usize, |_, left, right| left == right, source_hash, inspect);
+        let second = store.insert(7usize, |_, left, right| left == right, source_hash, inspect);
         let first = EvaluatedExternalValue::new(ExternalTypeId::new(0), first);
         let second = EvaluatedExternalValue::new(ExternalTypeId::new(0), second);
         let other_type =
@@ -81,14 +81,18 @@ mod tests {
         let stored_equal =
             |_: &crate::runtime::StoredRuntimeValue, _: &crate::runtime::StoredRuntimeValue| false;
         let equality = crate::host::HostExternalEquality::new(&stored_equal);
+        let stored_hash = |_: &crate::runtime::StoredRuntimeValue| 17;
+        let stored_inspect = |_: &crate::runtime::StoredRuntimeValue| "7".into();
+        let hashing = crate::host::HostExternalHashing::new(&stored_hash);
+        let inspection = crate::host::HostExternalInspection::new(&stored_inspect);
 
         assert_ne!(first, second);
         assert!(first.source_equal(&equality, &second));
         assert!(second.source_equal(&equality, &first));
         assert!(!first.source_equal(&equality, &other_type));
-        assert_eq!(first.source_hash(), 7);
-        assert_eq!(first.lease().inspect(), "Resource(7)");
-        assert_eq!(second.lease().inspect(), "Resource(7)");
+        assert_eq!(first.source_hash(&hashing), 7);
+        assert_eq!(first.lease().inspection(&inspection), "Resource(7)");
+        assert_eq!(second.lease().inspection(&inspection), "Resource(7)");
         assert!(format!("{first:?}").contains("EvaluatedExternalValue"));
 
         let (type_id, lease) = first.clone().into_parts();

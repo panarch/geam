@@ -184,6 +184,17 @@ mod tests {
     }
 
     #[test]
+    fn token_fixture_source_hash_is_exact() {
+        let retained_hash = |_: &crate::runtime::StoredRuntimeValue| 7;
+        let hashing = crate::host::HostExternalHashing::new(&retained_hash);
+
+        assert_eq!(
+            <ExternalTestProfile as HostExternalStorage<TokenSchema>>::source_hash(&hashing, &()),
+            0,
+        );
+    }
+
+    #[test]
     fn external_case_rejects_malformed_subject_and_pattern_shapes() {
         let module = EcoString::from("main");
         let functions = HashMap::new();

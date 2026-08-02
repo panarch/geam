@@ -79,6 +79,20 @@ mod tests {
 
     #[test]
     fn extracts_external_instruction_values() {
+        fn source_hash(
+            context: &crate::host::HostExternalHashing<'_>,
+            value: &crate::host::HostStoredValue<num_bigint::BigInt>,
+        ) -> u64 {
+            context.stored_value_hash(value)
+        }
+
+        fn inspect(
+            context: &crate::host::HostExternalInspection<'_>,
+            value: &crate::host::HostStoredValue<num_bigint::BigInt>,
+        ) -> ecow::EcoString {
+            context.inspect_stored_value(value)
+        }
+
         let store = HostExternalStore::default();
         let source_equal =
             |context: &crate::host::HostExternalEquality<'_>,
@@ -91,16 +105,16 @@ mod tests {
                 7.into(),
             )),
             source_equal,
-            7,
-            "7".into(),
+            source_hash,
+            inspect,
         );
         let equal = store.insert(
             crate::host::HostStoredValue::new(crate::runtime::StoredRuntimeValue::test_int(
                 7.into(),
             )),
             source_equal,
-            7,
-            "7".into(),
+            source_hash,
+            inspect,
         );
         let stored_equal =
             |left: &crate::runtime::StoredRuntimeValue,
@@ -108,8 +122,13 @@ mod tests {
         let equality = crate::host::HostExternalEquality::new(&stored_equal);
         assert!(lease.source_equal(&equality, &equal));
         let expected = EvaluatedExternalValue::new(ExternalTypeId::new(0), lease);
+        let stored_inspect = |_: &crate::runtime::StoredRuntimeValue| "7".into();
+        let inspection = crate::host::HostExternalInspection::new(&stored_inspect);
 
-        assert_eq!(expected.lease().inspect(), "7");
+        let stored_hash = |_: &crate::runtime::StoredRuntimeValue| 7;
+        let hashing = crate::host::HostExternalHashing::new(&stored_hash);
+        assert_eq!(expected.source_hash(&hashing), 7);
+        assert_eq!(expected.lease().inspection(&inspection), "7");
         assert_eq!(
             external_value(&EvaluatedValue::External(expected.clone())),
             Some(expected),

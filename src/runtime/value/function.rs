@@ -756,6 +756,20 @@ mod tests {
     }
 
     #[test]
+    fn resource_fixture_source_hash_is_exact() {
+        let retained_hash = |_: &crate::runtime::StoredRuntimeValue| 7;
+        let hashing = crate::host::HostExternalHashing::new(&retained_hash);
+
+        assert_eq!(
+            <ExternalTestProfile as HostExternalStorage<ResourceSchema>>::source_hash(
+                &hashing,
+                &(),
+            ),
+            0,
+        );
+    }
+
+    #[test]
     fn function_value_preserves_every_lowered_return_family() {
         let cases = [
             (

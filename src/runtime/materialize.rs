@@ -29,7 +29,7 @@ pub(super) fn value(
         EvaluatedValue::BitArray(value) => Value::BitArray(value.value()),
         EvaluatedValue::UtfCodepoint(value) => Value::UtfCodepoint(value),
         EvaluatedValue::Custom(value) => Value::Custom(custom(plan, state, value)),
-        EvaluatedValue::External(value) => Value::External(external(plan, value)),
+        EvaluatedValue::External(value) => Value::External(external(plan, state, value)),
         EvaluatedValue::Bool(value) => Value::Bool(value),
         EvaluatedValue::Nil => Value::Nil,
         EvaluatedValue::Tuple(values) => Value::Tuple(
@@ -44,9 +44,22 @@ pub(super) fn value(
     }
 }
 
-fn external(plan: RuntimeValueMetadata<'_>, value: EvaluatedExternalValue) -> ExternalValue {
+fn external(
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
+    value: EvaluatedExternalValue,
+) -> ExternalValue {
     let (type_id, lease) = value.into_parts();
-    ExternalValue::from_evaluated(plan.external_value_type(type_id), lease)
+    let inspect = |value: &crate::runtime::StoredRuntimeValue| {
+        self::value(plan, state, value.value().clone())
+            .inspect()
+            .to_string()
+            .into()
+    };
+    let inspection = lease
+        .inspection(&crate::host::HostExternalInspection::new(&inspect))
+        .clone();
+    ExternalValue::from_evaluated(plan.external_value_type(type_id), lease, inspection)
 }
 
 fn list(
@@ -82,7 +95,7 @@ fn list(
                 .external_values(value)
                 .iter()
                 .cloned()
-                .map(|value| external(plan, value))
+                .map(|value| external(plan, state, value))
                 .collect(),
         ),
         StoredListValueId::Float(value) => ListValue::float(state.float_values(value).to_vec()),
@@ -452,7 +465,7 @@ fn capture(
             CaptureValue::custom(*local, custom(plan, state, value.clone()))
         }
         EvaluatedCaptureKind::External { local, value } => {
-            CaptureValue::external(*local, external(plan, value.clone()))
+            CaptureValue::external(*local, external(plan, state, value.clone()))
         }
         EvaluatedCaptureKind::Bool { local, value } => CaptureValue::bool(*local, *value),
         EvaluatedCaptureKind::Nil { local } => CaptureValue::nil(*local),
@@ -562,7 +575,7 @@ fn list_capture(
                 .external_values(value)
                 .iter()
                 .cloned()
-                .map(|value| external(plan, value))
+                .map(|value| external(plan, state, value))
                 .collect(),
         },
         EvaluatedListCapture::Float { local, value } => CaptureListValue::Float {

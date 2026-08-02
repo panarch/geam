@@ -236,9 +236,11 @@ through run state, public `Value`, Rust downcasts, or cross-execution import.
 External source equality, hashing, and inspection must use narrow
 operation-specific contexts for retained values. Equal payloads must produce
 equal source hashes, and hash collisions must still be resolved through source
-equality. Cache hash and inspection only after immutable payload construction;
-do not derive source hashes from Rust type identity, allocation addresses,
-public opaque identity, or inspection output.
+equality. Cache hash and inspection on demand after immutable payload
+construction, so persistent updates do not acquire whole-payload traversal as
+a construction cost. Seal an owned inspection before a value escapes runtime
+context. Do not derive source hashes from Rust type identity, allocation
+addresses, public opaque identity, or inspection output.
 
 Existential external storage must preserve the exact specialized Gleam shape.
 Typed decode compares that recursive shape, not Rust payload identity, and a

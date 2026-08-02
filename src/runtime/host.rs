@@ -377,21 +377,6 @@ where
         )
     }
 
-    fn stored_value_hash(&self, value: &StoredRuntimeValue) -> u64 {
-        crate::runtime::evaluated::value_source_hash(self.state.lists(), value.value())
-    }
-
-    fn stored_value_inspection(&self, value: &StoredRuntimeValue) -> EcoString {
-        crate::runtime::materialize::value(
-            self.plan.value_metadata(),
-            self.state.lists(),
-            value.value().clone(),
-        )
-        .inspect()
-        .to_string()
-        .into()
-    }
-
     fn complete(&mut self, value: HostScopedValue) -> HostValueToken {
         self.scoped.push_scoped(value)
     }

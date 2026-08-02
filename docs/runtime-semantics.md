@@ -145,9 +145,12 @@ storage behavior become canonical plan metadata.
 Source hashing follows Gleam equality: equal values always have equal hashes,
 while a matching hash still requires source equality to resolve collisions.
 Hashes are runtime indexes and are not stable across processes or releases.
-An immutable external payload's source hash and inspection are computed when
-the payload is created and cached in its lease. They are not derived from Rust
-`TypeId`, allocation addresses, public opaque identity, or inspection text.
+An immutable external payload's source hash and inspection are computed on
+first demand and cached in its lease. Payload creation does not traverse
+retained values merely to prepare either semantic. Before an external value is
+materialized beyond the runtime, its canonical inspection is sealed into the
+owned public value. Neither semantic is derived from Rust `TypeId`, allocation
+addresses, public opaque identity, or inspection text.
 
 `HostExternal` is an invocation-scoped typed handle. A provider can create or
 inspect its Rust payload only through the active `HostCall`. The materialized

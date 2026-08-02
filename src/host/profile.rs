@@ -1,11 +1,10 @@
 use crate::host::{
     HostCallArguments, HostCallCompletion, HostCustom, HostCustomArgumentSlot,
     HostCustomConstructor, HostCustomType, HostExternal, HostExternalArgumentSlot,
-    HostExternalHashing, HostExternalInspection, HostExternalPayloadBuilder,
-    HostExternalPayloadView, HostExternalSchema, HostExternalStorage, HostExternalType,
-    HostFunctionArgumentSlot, HostList, HostListArgumentSlot, HostListType, HostStoredValue,
-    HostTuple, HostTupleArgumentSlot, HostTupleType, HostType, HostTypeSequence, HostValue,
-    HostValueArgumentSlot,
+    HostExternalPayloadBuilder, HostExternalPayloadView, HostExternalSchema, HostExternalStorage,
+    HostExternalType, HostFunctionArgumentSlot, HostList, HostListArgumentSlot, HostListType,
+    HostStoredValue, HostTuple, HostTupleArgumentSlot, HostTupleType, HostType, HostTypeSequence,
+    HostValue, HostValueArgumentSlot,
 };
 use std::marker::PhantomData;
 
@@ -310,22 +309,11 @@ where
         &mut self,
         value: <Profile as HostExternalStorage<Schema>>::Payload,
     ) -> HostExternal<'call, HostExternalType<Schema, Arguments>> {
-        let source_hash = {
-            let source_hash =
-                |value: &crate::runtime::StoredRuntimeValue| self.runtime.stored_value_hash(value);
-            Profile::source_hash(&HostExternalHashing::new(&source_hash), &value)
-        };
-        let inspection = {
-            let inspect = |value: &crate::runtime::StoredRuntimeValue| {
-                self.runtime.stored_value_inspection(value)
-            };
-            Profile::inspect(&HostExternalInspection::new(&inspect), &value)
-        };
         let lease = Profile::store(self.runtime.external_stores()).insert(
             value,
             Profile::source_equal,
-            source_hash,
-            inspection,
+            Profile::source_hash,
+            Profile::inspect,
         );
         HostExternal::new(self.runtime.build_external(lease))
     }

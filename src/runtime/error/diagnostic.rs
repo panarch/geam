@@ -476,6 +476,20 @@ mod tests {
 
     #[test]
     fn render_value_preserves_every_runtime_value_family() {
+        fn source_hash(
+            context: &crate::host::HostExternalHashing<'_>,
+            value: &crate::host::HostStoredValue<num_bigint::BigInt>,
+        ) -> u64 {
+            context.stored_value_hash(value)
+        }
+
+        fn inspect(
+            context: &crate::host::HostExternalInspection<'_>,
+            value: &crate::host::HostStoredValue<num_bigint::BigInt>,
+        ) -> ecow::EcoString {
+            context.inspect_stored_value(value)
+        }
+
         let external_store = HostExternalStore::default();
         let source_equal =
             |context: &crate::host::HostExternalEquality<'_>,
@@ -488,28 +502,39 @@ mod tests {
                 7.into(),
             )),
             source_equal,
-            7,
-            "Resource(7)".into(),
+            source_hash,
+            inspect,
         );
         let equal = external_store.insert(
             crate::host::HostStoredValue::new(crate::runtime::StoredRuntimeValue::test_int(
                 7.into(),
             )),
             source_equal,
-            7,
-            "Resource(7)".into(),
+            source_hash,
+            inspect,
         );
         let stored_equal =
             |left: &crate::runtime::StoredRuntimeValue,
              right: &crate::runtime::StoredRuntimeValue| left.value() == right.value();
         let equality = crate::host::HostExternalEquality::new(&stored_equal);
         assert!(first.source_equal(&equality, &equal));
+        let stored_hash = |_: &crate::runtime::StoredRuntimeValue| 7;
+        let stored_inspect = |_: &crate::runtime::StoredRuntimeValue| "Resource(7)".into();
+        assert_eq!(
+            first.source_hash(&crate::host::HostExternalHashing::new(&stored_hash)),
+            7,
+        );
+        assert_eq!(
+            first.inspection(&crate::host::HostExternalInspection::new(&stored_inspect)),
+            "Resource(7)",
+        );
         let external = ExternalValue::from_evaluated(
             ExternalType::new(
                 ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into()),
                 Vec::new(),
             ),
             first,
+            "Resource(7)".into(),
         );
         let function = Value::Function(FunctionValue::new(
             RuntimeFunctionId::Core(CoreRuntimeFunctionId::Int(IntFunctionId(0))),

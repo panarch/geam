@@ -72,6 +72,20 @@ mod tests {
 
     #[test]
     fn value_type_preserves_tuple_element_families() {
+        fn source_hash(
+            context: &crate::host::HostExternalHashing<'_>,
+            value: &crate::host::HostStoredValue<num_bigint::BigInt>,
+        ) -> u64 {
+            context.stored_value_hash(value)
+        }
+
+        fn inspect(
+            context: &crate::host::HostExternalInspection<'_>,
+            value: &crate::host::HostStoredValue<num_bigint::BigInt>,
+        ) -> ecow::EcoString {
+            context.inspect_stored_value(value)
+        }
+
         assert_eq!(Value::Float(1.0).value_type(), ValueType::Float);
         assert_eq!(Value::String("one".into()).value_type(), ValueType::String);
         assert_eq!(
@@ -112,25 +126,39 @@ mod tests {
                 7.into(),
             )),
             source_equal,
-            7,
-            "Resource(7)".into(),
+            source_hash,
+            inspect,
         );
         let equal = store.insert(
             crate::host::HostStoredValue::new(crate::runtime::StoredRuntimeValue::test_int(
                 7.into(),
             )),
             source_equal,
-            7,
-            "Resource(7)".into(),
+            source_hash,
+            inspect,
         );
         let stored_equal =
             |left: &crate::runtime::StoredRuntimeValue,
              right: &crate::runtime::StoredRuntimeValue| left.value() == right.value();
         let equality = crate::host::HostExternalEquality::new(&stored_equal);
         assert!(first.source_equal(&equality, &equal));
+        let stored_hash = |_: &crate::runtime::StoredRuntimeValue| 7;
+        let stored_inspect = |_: &crate::runtime::StoredRuntimeValue| "Resource(7)".into();
         assert_eq!(
-            Value::External(ExternalValue::from_evaluated(external_type.clone(), first,))
-                .value_type(),
+            first.source_hash(&crate::host::HostExternalHashing::new(&stored_hash)),
+            7,
+        );
+        assert_eq!(
+            first.inspection(&crate::host::HostExternalInspection::new(&stored_inspect)),
+            "Resource(7)",
+        );
+        assert_eq!(
+            Value::External(ExternalValue::from_evaluated(
+                external_type.clone(),
+                first,
+                "Resource(7)".into(),
+            ))
+            .value_type(),
             ValueType::External(external_type),
         );
         assert_eq!(Value::Bool(true).value_type(), ValueType::Bool);

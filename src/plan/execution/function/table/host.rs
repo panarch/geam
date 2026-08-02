@@ -573,6 +573,22 @@ mod tests {
     }
 
     #[test]
+    fn counter_fixture_source_semantics_are_exact() {
+        let retained_hash = |_: &crate::runtime::StoredRuntimeValue| 0;
+        let hashing = crate::host::HostExternalHashing::new(&retained_hash);
+        let value = BigInt::from(7);
+        let mut expected = std::collections::hash_map::DefaultHasher::new();
+        std::hash::Hash::hash(&value, &mut expected);
+
+        assert_eq!(
+            <ExternalTestProfile as HostExternalStorage<CounterSchema>>::source_hash(
+                &hashing, &value,
+            ),
+            std::hash::Hasher::finish(&expected),
+        );
+    }
+
+    #[test]
     fn writes_every_scalar_host_target_in_family_order() {
         let scalars = HostModule::new("host_support", "host/scalars")
             .expect("host module should be valid")

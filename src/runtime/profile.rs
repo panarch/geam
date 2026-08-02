@@ -317,6 +317,22 @@ pub(in crate::runtime) mod external_test {
             &mut state.provider
         }
     }
+
+    #[test]
+    fn runtime_counter_fixture_source_hash_is_exact() {
+        let retained_hash = |_: &crate::runtime::StoredRuntimeValue| 0;
+        let hashing = crate::host::HostExternalHashing::new(&retained_hash);
+        let value = BigInt::from(7);
+        let mut expected = std::collections::hash_map::DefaultHasher::new();
+        std::hash::Hash::hash(&value, &mut expected);
+
+        assert_eq!(
+            <ExternalTestProfile as HostExternalStorage<RuntimeCounterSchema>>::source_hash(
+                &hashing, &value,
+            ),
+            std::hash::Hasher::finish(&expected),
+        );
+    }
 }
 
 #[cfg(test)]

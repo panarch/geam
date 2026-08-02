@@ -104,7 +104,12 @@ fn hash_value(storage: &RuntimeListStorage, value: &EvaluatedValue, hasher: &mut
         EvaluatedValue::External(value) => {
             6u8.hash(hasher);
             value.type_id().hash(hasher);
-            value.source_hash().hash(hasher);
+            let source_hash = |value: &crate::runtime::StoredRuntimeValue| {
+                value_source_hash(storage, value.value())
+            };
+            value
+                .source_hash(&crate::host::HostExternalHashing::new(&source_hash))
+                .hash(hasher);
         }
         EvaluatedValue::Bool(value) => {
             7u8.hash(hasher);
@@ -388,6 +393,13 @@ pub fn main() {
             right: &crate::host::HostStoredValue<num_bigint::BigInt>,
         ) -> bool {
             context.stored_values_equal(left, right)
+        }
+
+        fn inspect(
+            context: &crate::host::HostExternalInspection<'_>,
+            value: &crate::host::HostStoredValue<num_bigint::BigInt>,
+        ) -> ecow::EcoString {
+            context.inspect_stored_value(value)
         }
 
         let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
@@ -879,25 +891,28 @@ pub fn main() {
                 crate::runtime::StoredRuntimeValue::test_int(7.into()),
             ),
             external_equal,
-            41,
-            "External(7)".into(),
+            |_, _| 41,
+            inspect,
         );
         let equal = external_store.insert(
             crate::host::HostStoredValue::<num_bigint::BigInt>::new(
                 crate::runtime::StoredRuntimeValue::test_int(7.into()),
             ),
             external_equal,
-            41,
-            "External(7)".into(),
+            |_, _| 41,
+            inspect,
         );
         let collision = external_store.insert(
             crate::host::HostStoredValue::<num_bigint::BigInt>::new(
                 crate::runtime::StoredRuntimeValue::test_int(8.into()),
             ),
             external_equal,
-            41,
-            "External(8)".into(),
+            |_, _| 41,
+            inspect,
         );
+        let stored_inspect = |_: &crate::runtime::StoredRuntimeValue| "stored".into();
+        let inspection = crate::host::HostExternalInspection::new(&stored_inspect);
+        assert_eq!(first.inspection(&inspection), "stored");
         let external_type = crate::plan::execution::type_::ExternalTypeId::new(0);
         let first = EvaluatedValue::External(EvaluatedExternalValue::new(external_type, first));
         let equal = EvaluatedValue::External(EvaluatedExternalValue::new(external_type, equal));

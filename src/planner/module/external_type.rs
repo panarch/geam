@@ -299,6 +299,17 @@ mod tests {
     }
 
     #[test]
+    fn thing_fixture_source_hash_is_exact() {
+        let retained_hash = |_: &crate::runtime::StoredRuntimeValue| 7;
+        let hashing = crate::host::HostExternalHashing::new(&retained_hash);
+
+        assert_eq!(
+            <ExternalTestProfile as HostExternalStorage<ThingSchema>>::source_hash(&hashing, &()),
+            0,
+        );
+    }
+
+    #[test]
     fn host_external_schema_requires_a_planned_external_type() {
         let registry = ProgramRegistry::new(Vec::new());
         let package = EcoString::from("application");

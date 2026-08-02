@@ -222,6 +222,7 @@ mod tests {
     };
     use ecow::EcoString;
     use num_bigint::BigInt;
+    use std::cell::Cell;
     use std::rc::Rc;
 
     fn entry(key_hash: u64, key: i64, value: i64) -> Rc<DictEntry> {
@@ -288,6 +289,67 @@ mod tests {
             ),
             "dict.from_list([#(stored, stored)])",
         );
+    }
+
+    #[test]
+    fn persistent_updates_defer_external_hashing_and_inspection_until_demanded() {
+        let stores = GleamStdlibStores::default();
+        let first = entry(7, 1, 10);
+        let replacement = entry(7, 1, 20);
+        let initial = DictStorage::default().with_entry(7, None, first);
+        let updated = initial.with_entry(7, Some(0), replacement);
+        let removed = updated.without_entry(7, 0);
+        let store = <GleamStdlibProfile as HostExternalStorage<DictSchema>>::store(&stores);
+        let initial = store.insert(
+            DictPayload { storage: initial },
+            <GleamStdlibProfile as HostExternalStorage<DictSchema>>::source_equal,
+            <GleamStdlibProfile as HostExternalStorage<DictSchema>>::source_hash,
+            <GleamStdlibProfile as HostExternalStorage<DictSchema>>::inspect,
+        );
+        let updated = store.insert(
+            DictPayload { storage: updated },
+            <GleamStdlibProfile as HostExternalStorage<DictSchema>>::source_equal,
+            <GleamStdlibProfile as HostExternalStorage<DictSchema>>::source_hash,
+            <GleamStdlibProfile as HostExternalStorage<DictSchema>>::inspect,
+        );
+        let removed = store.insert(
+            DictPayload { storage: removed },
+            <GleamStdlibProfile as HostExternalStorage<DictSchema>>::source_equal,
+            <GleamStdlibProfile as HostExternalStorage<DictSchema>>::source_hash,
+            <GleamStdlibProfile as HostExternalStorage<DictSchema>>::inspect,
+        );
+        let hash_calls = Cell::new(0);
+        let inspection_calls = Cell::new(0);
+        let stored_hash = |_: &crate::runtime::StoredRuntimeValue| {
+            hash_calls.set(hash_calls.get() + 1);
+            11
+        };
+        let inspect = |_: &crate::runtime::StoredRuntimeValue| {
+            inspection_calls.set(inspection_calls.get() + 1);
+            EcoString::from("stored")
+        };
+        let hashing = HostExternalHashing::new(&stored_hash);
+        let inspection = HostExternalInspection::new(&inspect);
+
+        assert_eq!(hash_calls.get(), 0);
+        assert_eq!(inspection_calls.get(), 0);
+        assert_eq!(
+            removed.source_hash(&hashing),
+            storage_hash(&hashing, &DictStorage::default()),
+        );
+        assert_eq!(hash_calls.get(), 0);
+        assert_eq!(
+            updated.inspection(&inspection),
+            "dict.from_list([#(stored, stored)])"
+        );
+        assert_eq!(
+            updated.inspection(&inspection),
+            "dict.from_list([#(stored, stored)])"
+        );
+        assert_eq!(inspection_calls.get(), 2);
+        let initial_hash = initial.source_hash(&hashing);
+        assert_eq!(initial.source_hash(&hashing), initial_hash);
+        assert_eq!(hash_calls.get(), 1);
     }
 
     #[test]
