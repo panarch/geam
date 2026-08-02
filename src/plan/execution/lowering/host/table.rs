@@ -28,7 +28,7 @@ pub(super) struct HostFunctionLowering<'registry, Profile: HostProfile> {
     registered: &'registry HostFunctionRegistry<Profile>,
     value_functions: Vec<HostedValueFunction<Profile>>,
     never_functions: Vec<HostedNeverFunction<Profile>>,
-    additional: function::AdditionalFunctions<HostedExecutionProfile>,
+    additional: function::ProfiledFunctionEntries<HostedExecutionProfile>,
 }
 
 impl<Profile: HostProfile> HostFunctionRegistry<Profile> {
@@ -46,7 +46,7 @@ impl<Profile: HostProfile> HostFunctionRegistry<Profile> {
             registered: self,
             value_functions: Vec::new(),
             never_functions: Vec::new(),
-            additional: function::AdditionalFunctions {
+            additional: function::ProfiledFunctionEntries {
                 never: Vec::new(),
                 custom: Vec::new(),
                 external: Vec::new(),
@@ -227,7 +227,7 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
 impl LoweringContext {
     fn finish_hosted(
         self,
-        additional: function::AdditionalFunctions<HostedExecutionProfile>,
+        additional: function::ProfiledFunctionEntries<HostedExecutionProfile>,
     ) -> LoweringCompletion<HostedLoweredExecution> {
         let Self {
             constant_templates,

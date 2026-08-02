@@ -240,18 +240,18 @@ mod tests {
     fn external_storage_protocols_project_and_render_both_nominal_payloads() {
         let stores = GleamStdlibStores::default();
         let stored_equal =
-            |_: &crate::runtime::StoredRuntimeValue, _: &crate::runtime::StoredRuntimeValue| false;
-        let stored_hash = |_: &crate::runtime::StoredRuntimeValue| 0;
-        let inspect = |_: &crate::runtime::StoredRuntimeValue| EcoString::new();
+            |left: &crate::runtime::StoredRuntimeValue,
+             right: &crate::runtime::StoredRuntimeValue| { std::ptr::eq(left, right) };
+        let stored_hash = |_: &crate::runtime::StoredRuntimeValue| 7;
+        let inspect = |_: &crate::runtime::StoredRuntimeValue| EcoString::from("stored");
         let equality = HostExternalEquality::new(&stored_equal);
         let hashing = HostExternalHashing::new(&stored_hash);
         let inspection = HostExternalInspection::new(&inspect);
+        let storage = DictStorage::default().with_entry(11, None, entry(11, 1, 10));
         let dict = DictPayload {
-            storage: DictStorage::default(),
+            storage: storage.clone(),
         };
-        let transient = TransientDictPayload {
-            storage: DictStorage::default(),
-        };
+        let transient = TransientDictPayload { storage };
 
         assert!(std::ptr::eq(dict.storage(), &dict.storage));
         assert!(std::ptr::eq(transient.storage(), &transient.storage));
@@ -279,14 +279,14 @@ mod tests {
         );
         assert_eq!(
             <GleamStdlibProfile as HostExternalStorage<DictSchema>>::inspect(&inspection, &dict),
-            "dict.from_list([])",
+            "dict.from_list([#(stored, stored)])",
         );
         assert_eq!(
             <GleamStdlibProfile as HostExternalStorage<TransientDictSchema>>::inspect(
                 &inspection,
                 &transient,
             ),
-            "dict.from_list([])",
+            "dict.from_list([#(stored, stored)])",
         );
     }
 

@@ -19,7 +19,7 @@ pub(super) fn lower_host_return(
     key: &SpecializationKey,
     return_: StoredValueShape,
     specialization: HostTargetIndex,
-    functions: &mut function::AdditionalFunctions<HostedExecutionProfile>,
+    functions: &mut function::ProfiledFunctionEntries<HostedExecutionProfile>,
     context: &mut LoweringContext,
 ) {
     use execution_function::ListFunctionId as L;
@@ -271,7 +271,7 @@ fn lower_host_function_return(
     key: &SpecializationKey,
     function: &SpecializedFunctionShape,
     specialization: HostTargetIndex,
-    functions: &mut function::AdditionalFunctions<HostedExecutionProfile>,
+    functions: &mut function::ProfiledFunctionEntries<HostedExecutionProfile>,
     context: &mut LoweringContext,
 ) {
     use local::SpecializedFunctionLocal as F;
@@ -542,7 +542,7 @@ pub(super) fn lower_uninhabited_never_return(
     index: usize,
     key: &SpecializationKey,
     host_index: usize,
-    functions: &mut function::AdditionalFunctions<HostedExecutionProfile>,
+    functions: &mut function::ProfiledFunctionEntries<HostedExecutionProfile>,
 ) {
     functions
         .never
