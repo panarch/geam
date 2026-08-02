@@ -1,4 +1,4 @@
-use geam::gleam_stdlib::{GleamStdlibProfile, host_providers};
+use geam::gleam_stdlib::{GleamStdlibProfile, GleamStdlibRunState, host_providers};
 use geam::{HostModule, HostProviderSet, Value};
 
 use super::{ExpectedSurface, assert_surface, run_hosted_fixture};
@@ -76,7 +76,7 @@ fn runs_official_gleam_dict_behavior() {
         "gleam_dict",
         &["gleam/option", "gleam/dict"],
         hosts,
-        &mut (),
+        &mut GleamStdlibRunState::from_seed([0; 32]),
     );
 
     assert!(matches!(value, Value::External(_)));

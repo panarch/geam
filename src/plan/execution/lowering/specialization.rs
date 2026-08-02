@@ -465,6 +465,20 @@ impl SpecializedExternalValueShape {
 }
 
 impl SpecializedCustomConstructor {
+    pub(super) fn new(
+        type_: SpecializedCustomValueShape,
+        name: EcoString,
+        index: usize,
+        fields: Box<[SpecializedCustomConstructorField]>,
+    ) -> Self {
+        Self {
+            type_,
+            name,
+            index,
+            fields,
+        }
+    }
+
     pub(super) fn instantiate(
         constructor: crate::plan::CustomConstructor,
         substitution: &SpecializedTypeSubstitution,
@@ -507,6 +521,10 @@ impl SpecializedCustomConstructor {
 }
 
 impl SpecializedCustomConstructorField {
+    pub(super) fn new(label: Option<EcoString>, shape: SpecializedValueShape) -> Self {
+        Self { label, shape }
+    }
+
     pub(super) fn into_parts(self) -> (Option<EcoString>, SpecializedValueShape) {
         (self.label, self.shape)
     }

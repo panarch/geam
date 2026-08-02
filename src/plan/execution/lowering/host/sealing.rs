@@ -1,6 +1,8 @@
+use super::super::LoweringContext;
 use super::super::specialization::{
-    FunctionRepresentation, RepresentationContext, SpecializationKey, SpecializedCustomValueShape,
-    SpecializedFunctionShape, SpecializedTypeSubstitution, SpecializedValueShape,
+    FunctionRepresentation, RepresentationContext, SpecializationKey, SpecializedCustomConstructor,
+    SpecializedCustomConstructorField, SpecializedCustomValueShape, SpecializedFunctionShape,
+    SpecializedTypeSubstitution, SpecializedValueShape,
 };
 use crate::host::{HostCustomTypeSchema, HostSchemaType, HostTypeDescriptor};
 use crate::plan::execution::host::HostSpecializationError;
@@ -32,6 +34,61 @@ pub(super) fn seal_callbacks(
         ));
     }
     Ok(())
+}
+
+pub(super) fn seal_custom_return_constructors(
+    template: &HostFunctionTemplate,
+    key: &SpecializationKey,
+    context: &mut LoweringContext,
+) {
+    let HostTypeDescriptor::Custom { schema, arguments } = template.return_type() else {
+        return;
+    };
+    let schemas = template
+        .custom_schemas()
+        .iter()
+        .map(|schema| (identity(schema), schema))
+        .collect::<HashMap<_, _>>();
+    let type_ = SpecializedCustomValueShape::new(
+        CustomTypeName::new(
+            schema.package().clone(),
+            schema.module().clone(),
+            schema.name().clone(),
+        ),
+        arguments
+            .iter()
+            .map(|argument| {
+                SpecializedValueShape::instantiate(&argument.value_shape(), key.substitution())
+            })
+            .collect(),
+        CustomConstructorRefinement::Any,
+    );
+
+    for (index, constructor) in schema.constructors().iter().enumerate() {
+        let fields = constructor
+            .fields()
+            .iter()
+            .map(|field| {
+                let descriptor = schema_descriptor(&schemas, field.type_(), arguments);
+                SpecializedCustomConstructorField::new(
+                    field.label().cloned(),
+                    SpecializedValueShape::instantiate(
+                        &descriptor.value_shape(),
+                        key.substitution(),
+                    ),
+                )
+            })
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        context
+            .types
+            .custom_constructor(SpecializedCustomConstructor::new(
+                type_.clone(),
+                constructor.name().clone(),
+                index,
+                fields,
+            ));
+    }
 }
 
 fn first_uninhabited_callback(
@@ -150,7 +207,7 @@ impl CallbackSearch<'_> {
             let fields = constructor
                 .fields()
                 .iter()
-                .map(|field| self.descriptor(field.type_(), arguments))
+                .map(|field| schema_descriptor(&self.schemas, field.type_(), arguments))
                 .collect::<Vec<_>>();
             if fields.iter().all(|field| {
                 let shape =
@@ -169,70 +226,70 @@ impl CallbackSearch<'_> {
         self.visiting.remove(&concrete);
         None
     }
+}
 
-    fn descriptor(
-        &self,
-        type_: &HostSchemaType,
-        arguments: &[HostTypeDescriptor],
-    ) -> HostTypeDescriptor {
-        match type_ {
-            HostSchemaType::Parameter(index) => arguments[*index].clone(),
-            HostSchemaType::Int => HostTypeDescriptor::Int,
-            HostSchemaType::Float => HostTypeDescriptor::Float,
-            HostSchemaType::String => HostTypeDescriptor::String,
-            HostSchemaType::BitArray => HostTypeDescriptor::BitArray,
-            HostSchemaType::UtfCodepoint => HostTypeDescriptor::UtfCodepoint,
-            HostSchemaType::Bool => HostTypeDescriptor::Bool,
-            HostSchemaType::Nil => HostTypeDescriptor::Nil,
-            HostSchemaType::List(item) => {
-                HostTypeDescriptor::List(Box::new(self.descriptor(item, arguments)))
-            }
-            HostSchemaType::Tuple(elements) => HostTypeDescriptor::Tuple(
-                elements
-                    .iter()
-                    .map(|element| self.descriptor(element, arguments))
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice(),
-            ),
-            HostSchemaType::Function {
-                arguments: function_arguments,
-                return_,
-            } => HostTypeDescriptor::Function {
-                arguments: function_arguments
-                    .iter()
-                    .map(|argument| self.descriptor(argument, arguments))
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice(),
-                return_: Box::new(self.descriptor(return_, arguments)),
-            },
-            HostSchemaType::Custom {
-                package,
-                module,
-                name,
-                arguments: custom_arguments,
-            } => {
-                let identity = (package.clone(), module.clone(), name.clone());
-                HostTypeDescriptor::Custom {
-                    schema: self.schemas[&identity].clone(),
-                    arguments: custom_arguments
-                        .iter()
-                        .map(|argument| self.descriptor(argument, arguments))
-                        .collect::<Vec<_>>()
-                        .into_boxed_slice(),
-                }
-            }
-            HostSchemaType::External {
-                schema,
-                arguments: external_arguments,
-            } => HostTypeDescriptor::External {
-                schema: schema.clone(),
-                arguments: external_arguments
-                    .iter()
-                    .map(|argument| self.descriptor(argument, arguments))
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice(),
-            },
+fn schema_descriptor(
+    schemas: &HashMap<CustomIdentity, &HostCustomTypeSchema>,
+    type_: &HostSchemaType,
+    arguments: &[HostTypeDescriptor],
+) -> HostTypeDescriptor {
+    match type_ {
+        HostSchemaType::Parameter(index) => arguments[*index].clone(),
+        HostSchemaType::Int => HostTypeDescriptor::Int,
+        HostSchemaType::Float => HostTypeDescriptor::Float,
+        HostSchemaType::String => HostTypeDescriptor::String,
+        HostSchemaType::BitArray => HostTypeDescriptor::BitArray,
+        HostSchemaType::UtfCodepoint => HostTypeDescriptor::UtfCodepoint,
+        HostSchemaType::Bool => HostTypeDescriptor::Bool,
+        HostSchemaType::Nil => HostTypeDescriptor::Nil,
+        HostSchemaType::List(item) => {
+            HostTypeDescriptor::List(Box::new(schema_descriptor(schemas, item, arguments)))
         }
+        HostSchemaType::Tuple(elements) => HostTypeDescriptor::Tuple(
+            elements
+                .iter()
+                .map(|element| schema_descriptor(schemas, element, arguments))
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        ),
+        HostSchemaType::Function {
+            arguments: function_arguments,
+            return_,
+        } => HostTypeDescriptor::Function {
+            arguments: function_arguments
+                .iter()
+                .map(|argument| schema_descriptor(schemas, argument, arguments))
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+            return_: Box::new(schema_descriptor(schemas, return_, arguments)),
+        },
+        HostSchemaType::Custom {
+            package,
+            module,
+            name,
+            arguments: custom_arguments,
+        } => {
+            let identity = (package.clone(), module.clone(), name.clone());
+            HostTypeDescriptor::Custom {
+                schema: schemas[&identity].clone(),
+                arguments: custom_arguments
+                    .iter()
+                    .map(|argument| schema_descriptor(schemas, argument, arguments))
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            }
+        }
+        HostSchemaType::External {
+            schema,
+            arguments: external_arguments,
+        } => HostTypeDescriptor::External {
+            schema: schema.clone(),
+            arguments: external_arguments
+                .iter()
+                .map(|argument| schema_descriptor(schemas, argument, arguments))
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        },
     }
 }
 
@@ -246,12 +303,55 @@ fn identity(schema: &HostCustomTypeSchema) -> CustomIdentity {
 
 #[cfg(test)]
 mod tests {
-    use super::CallbackSearch;
-    use crate::host::{HostExternalTypeSchema, HostSchemaType, HostTypeDescriptor};
+    use super::{CallbackSearch, schema_descriptor};
+    use crate::host::test::StatelessTestProvider;
+    use crate::host::{
+        HostCustomConstructorAt, HostCustomConstructorDefinition, HostCustomConstructorList,
+        HostCustomConstructorListEnd, HostCustomField, HostCustomFieldList, HostCustomFieldListEnd,
+        HostCustomIndex0, HostCustomSchema, HostCustomType, HostExternalTypeSchema, HostSchemaType,
+        HostTypeDescriptor, StatelessHostProfile,
+    };
     use crate::plan::execution::lowering::specialization::{
         RepresentationContext, SpecializedTypeSubstitution,
     };
+    use crate::{
+        HostCall, HostCallCompletion, HostCallError, HostModule, HostProviderModule,
+        HostProviderSet, HostedExecution, ModuleSource, PackageSource, compile_typed_host_program,
+        plan_host_program,
+    };
+    use num_bigint::BigInt;
     use std::collections::{HashMap, HashSet};
+
+    struct OutputSchema;
+
+    struct OutputDefinition;
+
+    struct ValueField;
+
+    impl HostCustomField for ValueField {
+        const LABEL: Option<&'static str> = None;
+
+        type Type = BigInt;
+    }
+
+    impl HostCustomConstructorDefinition for OutputDefinition {
+        const NAME: &'static str = "Output";
+
+        type Fields = HostCustomFieldList<ValueField, HostCustomFieldListEnd>;
+    }
+
+    impl HostCustomSchema for OutputSchema {
+        const PACKAGE: &'static str = "application";
+        const MODULE: &'static str = "main";
+        const NAME: &'static str = "Output";
+        const PARAMETER_COUNT: usize = 0;
+
+        type Constructors =
+            HostCustomConstructorList<OutputDefinition, HostCustomConstructorListEnd>;
+    }
+
+    type Output = HostCustomType<OutputSchema>;
+    type OutputConstructor = HostCustomConstructorAt<Output, HostCustomIndex0, OutputDefinition>;
 
     #[test]
     fn resolves_external_schema_arguments_inside_custom_fields() {
@@ -274,7 +374,7 @@ mod tests {
         };
 
         assert_eq!(
-            search.descriptor(&source, &[HostTypeDescriptor::String]),
+            schema_descriptor(&search.schemas, &source, &[HostTypeDescriptor::String]),
             HostTypeDescriptor::External {
                 schema,
                 arguments: vec![
@@ -284,5 +384,52 @@ mod tests {
                 .into_boxed_slice(),
             },
         );
+    }
+
+    #[test]
+    fn seals_host_custom_return_constructors_without_source_constructor_use() {
+        fn output(
+            call: HostCall<'_, StatelessHostProfile, StatelessTestProvider, Output>,
+        ) -> Result<HostCallCompletion<'_, Output>, HostCallError> {
+            Ok(call.return_custom::<OutputConstructor>((BigInt::from(7), ())))
+        }
+
+        let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
+            .expect("provider module should be valid")
+            .with_scoped_function::<StatelessTestProvider, (), Output, _>("output", output)
+            .expect("custom return provider should be valid");
+        let source = r#"
+pub type Output {
+  Output(Int)
+}
+
+@external(erlang, "host", "output")
+fn output() -> Output
+
+pub fn main() {
+  output()
+}
+"#;
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<&str>::new(),
+                [ModuleSource::new("main", "src/main.gleam", source)],
+            )],
+            HostProviderSet::with_providers(Vec::<HostModule>::new(), [provider])
+                .expect("provider module should be unique"),
+        )
+        .expect("source should compile");
+        let plan = plan_host_program(typed).expect("source should plan");
+        let execution =
+            HostedExecution::try_from_module_plan(plan).expect("host execution should seal");
+
+        let value = execution
+            .run_main(&mut (), &mut Vec::new())
+            .expect("custom host return should run");
+
+        assert_eq!(value.inspect().to_string(), "Output(7)");
     }
 }

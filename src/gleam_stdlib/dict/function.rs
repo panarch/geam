@@ -313,7 +313,7 @@ where
 mod tests {
     use super::super::host_provider;
     use super::DictProvider;
-    use crate::gleam_stdlib::GleamStdlibProfile;
+    use crate::gleam_stdlib::{GleamStdlibProfile, GleamStdlibRunState};
     use crate::{
         HostFailure, HostModule, HostProvider, HostProviderSet, HostedExecution, ModuleSource,
         PackageSource, compile_typed_host_program, plan_host_program,
@@ -417,14 +417,13 @@ fn transient_update_with(
 
     #[test]
     fn provider_projects_the_complete_run_state() {
-        let mut state = ();
-
-        assert_eq!(
-            *<DictProvider<GleamStdlibProfile> as HostProvider<GleamStdlibProfile>>::project(
+        let mut state = GleamStdlibRunState::from_seed([0; 32]);
+        let projected =
+            <DictProvider<GleamStdlibProfile> as HostProvider<GleamStdlibProfile>>::project(
                 &mut state,
-            ),
-            (),
-        );
+            );
+
+        assert!(std::ptr::eq(projected, &state));
     }
 
     #[test]
@@ -506,7 +505,10 @@ pub fn main() {
 "#;
         let execution = execution(source, [float]);
         let actual = execution
-            .run_main(&mut (), &mut Vec::new())
+            .run_main(
+                &mut GleamStdlibRunState::from_seed([0; 32]),
+                &mut Vec::new(),
+            )
             .expect("dict operations should run");
 
         assert_eq!(
@@ -537,7 +539,10 @@ pub fn main() {
 "#;
         let execution = execution(source, [failure]);
         let error = execution
-            .run_main(&mut (), &mut Vec::new())
+            .run_main(
+                &mut GleamStdlibRunState::from_seed([0; 32]),
+                &mut Vec::new(),
+            )
             .expect_err("nested host callback should fail");
         assert_eq!(
             error.to_string(),
@@ -566,7 +571,10 @@ pub fn main() {
 "#;
         let execution = execution(source, [failure]);
         let error = execution
-            .run_main(&mut (), &mut Vec::new())
+            .run_main(
+                &mut GleamStdlibRunState::from_seed([0; 32]),
+                &mut Vec::new(),
+            )
             .expect_err("nested fold callback should fail");
 
         assert_eq!(
@@ -595,7 +603,10 @@ pub fn main() {
 "#;
         let execution = execution(source, [failure]);
         let error = execution
-            .run_main(&mut (), &mut Vec::new())
+            .run_main(
+                &mut GleamStdlibRunState::from_seed([0; 32]),
+                &mut Vec::new(),
+            )
             .expect_err("nested update callback should fail");
 
         assert_eq!(
@@ -618,7 +629,10 @@ pub fn main() {
 "#;
         let execution = execution(source, Vec::<HostModule<GleamStdlibProfile>>::new());
         let error = execution
-            .run_main(&mut (), &mut Vec::new())
+            .run_main(
+                &mut GleamStdlibRunState::from_seed([0; 32]),
+                &mut Vec::new(),
+            )
             .expect_err("nested source callback should panic");
         assert_eq!(
             error.to_string(),

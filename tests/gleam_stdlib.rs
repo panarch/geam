@@ -11,6 +11,8 @@ mod gleam_bool;
 mod gleam_dict;
 #[path = "gleam_stdlib/gleam_dynamic.rs"]
 mod gleam_dynamic;
+#[path = "gleam_stdlib/gleam_float.rs"]
+mod gleam_float;
 #[path = "gleam_stdlib/gleam_option.rs"]
 mod gleam_option;
 #[path = "gleam_stdlib/gleam_order.rs"]

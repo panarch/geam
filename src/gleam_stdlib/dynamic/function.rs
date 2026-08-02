@@ -76,7 +76,7 @@ where
 mod tests {
     use super::super::host_provider;
     use super::{Dynamic, DynamicProvider};
-    use crate::gleam_stdlib::GleamStdlibProfile;
+    use crate::gleam_stdlib::{GleamStdlibProfile, GleamStdlibRunState};
     use crate::{
         HostCall, HostCallCompletion, HostCallError, HostExternal, HostModule, HostProvider,
         HostProviderSet, HostedExecution, ModuleSource, PackageSource, Value,
@@ -88,9 +88,9 @@ mod tests {
     struct HashProvider;
 
     impl HostProvider<GleamStdlibProfile> for HashProvider {
-        type State = ();
+        type State = GleamStdlibRunState;
 
-        fn project(state: &mut ()) -> &mut Self::State {
+        fn project(state: &mut GleamStdlibRunState) -> &mut Self::State {
             state
         }
     }
@@ -165,7 +165,7 @@ pub fn cast(value: value) -> Dynamic
 
     #[test]
     fn provider_projects_the_complete_run_state() {
-        let mut state = ();
+        let mut state = GleamStdlibRunState::from_seed([0; 32]);
         let projected =
             <DynamicProvider<GleamStdlibProfile> as HostProvider<GleamStdlibProfile>>::project(
                 &mut state,
@@ -202,7 +202,10 @@ pub fn main() {
 }
 "#;
         let actual = execution(source, Vec::<HostModule<GleamStdlibProfile>>::new())
-            .run_main(&mut (), &mut Vec::new())
+            .run_main(
+                &mut GleamStdlibRunState::from_seed([0; 32]),
+                &mut Vec::new(),
+            )
             .expect("generic dynamic casts should run");
 
         assert_eq!(
@@ -272,7 +275,10 @@ pub fn main() {
 }
 "#;
         let actual = execution(source, [hash])
-            .run_main(&mut (), &mut Vec::new())
+            .run_main(
+                &mut GleamStdlibRunState::from_seed([0; 32]),
+                &mut Vec::new(),
+            )
             .expect("public dynamic constructors should run");
 
         assert_eq!(

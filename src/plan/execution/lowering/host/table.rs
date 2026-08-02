@@ -136,6 +136,7 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
                     ));
                 };
                 sealing::seal_callbacks(template, key, &shape, &context.representations, true)?;
+                sealing::seal_custom_return_constructors(template, key, context);
                 let parameters =
                     parameter::lower_host_parameters(&parameters, template.layout(), context);
                 let type_ = context.lower_concrete_function_type(&shape);
