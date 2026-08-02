@@ -1,4 +1,7 @@
+mod invoke;
 mod scoped;
+
+pub(super) use self::invoke::{invoke_never, invoke_value};
 
 use self::scoped::ScopedValues;
 pub(crate) use self::scoped::StoredRuntimeValue;
