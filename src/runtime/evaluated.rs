@@ -13,8 +13,8 @@ static NEXT_FUNCTION_INSTANCE_ID: AtomicU64 = AtomicU64::new(0);
 mod external;
 pub(in crate::runtime) use external::EvaluatedExternalValue;
 
-use super::state::{
-    ExternalListValueId, ListValueId, ParameterListValueId, RuntimeValueStorage, StoredListValueId,
+use super::state::list::{
+    ExternalListValueId, ListValueId, ParameterListValueId, RuntimeListStorage, StoredListValueId,
 };
 use crate::plan::ValueType;
 use crate::plan::execution::function::{
@@ -672,31 +672,31 @@ pub(in crate::runtime) enum EvaluatedCaptureKind {
 pub(in crate::runtime) enum EvaluatedListCapture {
     Parameter {
         local: crate::plan::execution::graph::ParameterListLocalId,
-        value: super::state::ParameterListValueId,
+        value: super::state::list::ParameterListValueId,
     },
     ParameterList {
         local: crate::plan::execution::graph::ParameterListListLocalId,
-        value: super::state::ParameterListListValueId,
+        value: super::state::list::ParameterListListValueId,
     },
     Int {
         local: crate::plan::execution::graph::IntListLocalId,
-        value: super::state::IntListValueId,
+        value: super::state::list::IntListValueId,
     },
     String {
         local: crate::plan::execution::graph::StringListLocalId,
-        value: super::state::StringListValueId,
+        value: super::state::list::StringListValueId,
     },
     BitArray {
         local: crate::plan::execution::graph::BitArrayListLocalId,
-        value: super::state::BitArrayListValueId,
+        value: super::state::list::BitArrayListValueId,
     },
     UtfCodepoint {
         local: crate::plan::execution::graph::UtfCodepointListLocalId,
-        value: super::state::UtfCodepointListValueId,
+        value: super::state::list::UtfCodepointListValueId,
     },
     Custom {
         local: crate::plan::execution::graph::CustomListLocalId,
-        value: super::state::CustomListValueId,
+        value: super::state::list::CustomListValueId,
     },
     External {
         local: crate::plan::execution::graph::ExternalListLocalId,
@@ -704,27 +704,27 @@ pub(in crate::runtime) enum EvaluatedListCapture {
     },
     Float {
         local: crate::plan::execution::graph::FloatListLocalId,
-        value: super::state::FloatListValueId,
+        value: super::state::list::FloatListValueId,
     },
     Bool {
         local: crate::plan::execution::graph::BoolListLocalId,
-        value: super::state::BoolListValueId,
+        value: super::state::list::BoolListValueId,
     },
     Nil {
         local: crate::plan::execution::graph::NilListLocalId,
-        value: super::state::NilListValueId,
+        value: super::state::list::NilListValueId,
     },
     Tuple {
         local: crate::plan::execution::graph::TupleListLocalId,
-        value: super::state::TupleListValueId,
+        value: super::state::list::TupleListValueId,
     },
     List {
         local: crate::plan::execution::graph::ListListLocalId,
-        value: super::state::ListListValueId,
+        value: super::state::list::ListListValueId,
     },
     Function {
         local: crate::plan::execution::graph::FunctionListLocalId,
-        value: super::state::FunctionListValueId,
+        value: super::state::list::FunctionListValueId,
     },
 }
 
@@ -1198,7 +1198,7 @@ impl EvaluatedCapture {
 }
 
 pub(in crate::runtime) fn values_equal(
-    storage: &RuntimeValueStorage,
+    storage: &RuntimeListStorage,
     left: &EvaluatedValue,
     right: &EvaluatedValue,
 ) -> bool {
@@ -1247,7 +1247,7 @@ pub(in crate::runtime) fn values_equal(
 }
 
 pub(in crate::runtime) fn value_source_hash(
-    storage: &RuntimeValueStorage,
+    storage: &RuntimeListStorage,
     value: &EvaluatedValue,
 ) -> u64 {
     let mut hasher = DefaultHasher::new();
@@ -1255,7 +1255,7 @@ pub(in crate::runtime) fn value_source_hash(
     hasher.finish()
 }
 
-fn hash_value(storage: &RuntimeValueStorage, value: &EvaluatedValue, hasher: &mut DefaultHasher) {
+fn hash_value(storage: &RuntimeListStorage, value: &EvaluatedValue, hasher: &mut DefaultHasher) {
     match value {
         EvaluatedValue::Int(value) => {
             0u8.hash(hasher);
@@ -1413,7 +1413,7 @@ fn hash_function_identity(value: &EvaluatedFunctionIdentity, hasher: &mut Defaul
 }
 
 fn lists_equal(
-    storage: &RuntimeValueStorage,
+    storage: &RuntimeListStorage,
     left: &StoredListValueId,
     right: &StoredListValueId,
 ) -> bool {
@@ -1534,7 +1534,8 @@ mod tests {
     };
     use crate::plan::execution::graph::{IntLocalId, ParamLocal};
     use crate::plan::execution::runtime::RuntimeExecutionPlan;
-    use crate::runtime::state::{ListValueId, ParameterListValueId, RuntimeState};
+    use crate::runtime::state::RuntimeState;
+    use crate::runtime::state::list::{ListValueId, ParameterListValueId};
     use bitvec::order::Msb0;
     use bitvec::view::BitView;
 
@@ -1592,7 +1593,7 @@ pub fn main() {
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
         let list = state
-            .values_mut()
+            .lists_mut()
             .int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
         let function = EvaluatedIntFunction::reference(
             IntFunctionId(0),
@@ -1917,19 +1918,19 @@ pub fn main() {
             assert_eq!(family, right.kind().family());
             let left = EvaluatedValue::Function(left);
             let right = EvaluatedValue::Function(right);
-            assert!(values_equal(state.values(), &left, &right,));
+            assert!(values_equal(state.lists(), &left, &right,));
             assert_eq!(
-                value_source_hash(state.values(), &left),
-                value_source_hash(state.values(), &right),
+                value_source_hash(state.lists(), &left),
+                value_source_hash(state.lists(), &right),
             );
         }
         assert!(!values_equal(
-            state.values(),
+            state.lists(),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(custom_function)),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(constructor_function)),
         ));
         assert!(!values_equal(
-            state.values(),
+            state.lists(),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(int_function.clone())),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(
                 EvaluatedFloatFunction::reference(
@@ -1946,86 +1947,86 @@ pub fn main() {
 
         let int_lists = (
             state
-                .values_mut()
+                .lists_mut()
                 .int(plan.int_list_function_id(0).type_id(), vec![1.into()]),
             state
-                .values_mut()
+                .lists_mut()
                 .int(plan.int_list_function_id(0).type_id(), vec![1.into()]),
         );
         let string_lists = (
-            state.values_mut().string(
+            state.lists_mut().string(
                 plan.string_list_function_id(0).type_id(),
                 vec!["one".into()],
             ),
-            state.values_mut().string(
+            state.lists_mut().string(
                 plan.string_list_function_id(0).type_id(),
                 vec!["one".into()],
             ),
         );
         let float_lists = (
             state
-                .values_mut()
+                .lists_mut()
                 .float(plan.float_list_function_id(0).type_id(), vec![1.5]),
             state
-                .values_mut()
+                .lists_mut()
                 .float(plan.float_list_function_id(0).type_id(), vec![1.5]),
         );
         let utf_codepoint_lists = (
             state
-                .values_mut()
+                .lists_mut()
                 .utf_codepoint(plan.utf_codepoint_list_function_id(0).type_id(), vec!['a']),
             state
-                .values_mut()
+                .lists_mut()
                 .utf_codepoint(plan.utf_codepoint_list_function_id(0).type_id(), vec!['a']),
         );
         let bool_lists = (
             state
-                .values_mut()
+                .lists_mut()
                 .bool(plan.bool_list_function_id(0).type_id(), vec![true]),
             state
-                .values_mut()
+                .lists_mut()
                 .bool(plan.bool_list_function_id(0).type_id(), vec![true]),
         );
         let nil_lists = (
             state
-                .values_mut()
+                .lists_mut()
                 .nil(plan.nil_list_function_id(0).type_id(), 1),
             state
-                .values_mut()
+                .lists_mut()
                 .nil(plan.nil_list_function_id(0).type_id(), 1),
         );
         let tuple_lists = (
-            state.values_mut().tuple(
+            state.lists_mut().tuple(
                 plan.tuple_list_function_id(0).type_id(),
                 vec![vec![EvaluatedValue::Int(1.into())]],
             ),
-            state.values_mut().tuple(
+            state.lists_mut().tuple(
                 plan.tuple_list_function_id(0).type_id(),
                 vec![vec![EvaluatedValue::Int(1.into())]],
             ),
         );
         let left_child = state
-            .values_mut()
+            .lists_mut()
             .int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
         let right_child = state
-            .values_mut()
+            .lists_mut()
             .int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
         let nested_lists = (
-            state.values_mut().list(
+            state.lists_mut().list(
                 plan.list_list_function_id(0).type_id(),
                 vec![left_child.into()],
             ),
-            state.values_mut().list(
+            state.lists_mut().list(
                 plan.list_list_function_id(0).type_id(),
                 vec![right_child.into()],
             ),
         );
         let function_lists = (
-            state.values_mut().function(
+            state.lists_mut().function(
                 plan.function_list_function_id(0).type_id(),
                 vec![EvaluatedFunctionValue::from(int_function.clone())],
             ),
-            state.values_mut().function(
+            state.lists_mut().function(
                 plan.function_list_function_id(0).type_id(),
                 vec![EvaluatedFunctionValue::from(int_function.clone())],
             ),
@@ -2072,10 +2073,10 @@ pub fn main() {
         for (left, right) in list_pairs {
             let left = EvaluatedValue::from(left);
             let right = EvaluatedValue::from(right);
-            assert!(values_equal(state.values(), &left, &right,));
+            assert!(values_equal(state.lists(), &left, &right,));
             assert_eq!(
-                value_source_hash(state.values(), &left),
-                value_source_hash(state.values(), &right),
+                value_source_hash(state.lists(), &left),
+                value_source_hash(state.lists(), &right),
             );
         }
 
@@ -2122,10 +2123,10 @@ pub fn main() {
             ),
         ];
         for (left, right) in scalar_and_compound_pairs {
-            assert!(values_equal(state.values(), &left, &right));
+            assert!(values_equal(state.lists(), &left, &right));
             assert_eq!(
-                value_source_hash(state.values(), &left),
-                value_source_hash(state.values(), &right),
+                value_source_hash(state.lists(), &left),
+                value_source_hash(state.lists(), &right),
             );
         }
 
@@ -2159,33 +2160,33 @@ pub fn main() {
         let equal = EvaluatedValue::External(EvaluatedExternalValue::new(external_type, equal));
         let collision =
             EvaluatedValue::External(EvaluatedExternalValue::new(external_type, collision));
-        assert!(values_equal(state.values(), &first, &equal));
+        assert!(values_equal(state.lists(), &first, &equal));
         assert_eq!(
-            value_source_hash(state.values(), &first),
-            value_source_hash(state.values(), &equal),
+            value_source_hash(state.lists(), &first),
+            value_source_hash(state.lists(), &equal),
         );
-        assert!(!values_equal(state.values(), &first, &collision));
+        assert!(!values_equal(state.lists(), &first, &collision));
         assert_eq!(
-            value_source_hash(state.values(), &first),
-            value_source_hash(state.values(), &collision),
+            value_source_hash(state.lists(), &first),
+            value_source_hash(state.lists(), &collision),
         );
         assert!(!values_equal(
-            state.values(),
+            state.lists(),
             &EvaluatedValue::from(ListValueId::Int(int_lists.0)),
             &EvaluatedValue::from(ListValueId::String(string_lists.0)),
         ));
         assert!(values_equal(
-            state.values(),
+            state.lists(),
             &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
             &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
         ));
         assert!(!values_equal(
-            state.values(),
+            state.lists(),
             &EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]),
             &EvaluatedValue::Tuple(Vec::new()),
         ));
         assert!(!values_equal(
-            state.values(),
+            state.lists(),
             &EvaluatedValue::Int(1.into()),
             &EvaluatedValue::String("one".into()),
         ));
@@ -2236,31 +2237,31 @@ pub fn main() {
         );
 
         assert!(values_equal(
-            state.values(),
+            state.lists(),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(reference.clone())),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(
                 same_target_with_different_metadata,
             )),
         ));
         assert!(!values_equal(
-            state.values(),
+            state.lists(),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(reference)),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(different_target)),
         ));
         assert!(!values_equal(
-            state.values(),
+            state.lists(),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(
                 reference_for_instance_comparison,
             )),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(closure.clone())),
         ));
         assert!(values_equal(
-            state.values(),
+            state.lists(),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(closure.clone())),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(same_closure)),
         ));
         assert!(!values_equal(
-            state.values(),
+            state.lists(),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(closure)),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(separate_closure)),
         ));
@@ -2459,12 +2460,12 @@ pub fn main() {
         let separate = EvaluatedCustomFunction::constructor(constructor_id, type_);
 
         assert!(values_equal(
-            state.values(),
+            state.lists(),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(first.clone())),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(same)),
         ));
         assert!(!values_equal(
-            state.values(),
+            state.lists(),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(first)),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(separate)),
         ));

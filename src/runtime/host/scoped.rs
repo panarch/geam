@@ -9,9 +9,9 @@ use crate::runtime::evaluated::{
 };
 use crate::runtime::function::InvocableFunctionValue;
 use crate::runtime::graph::RetainedValues;
-use crate::runtime::state::{
+use crate::runtime::state::list::{
     CustomListAllocation, ExternalListAllocation, ListValueId, ParameterListValueId,
-    RuntimeValueStorage, StoredListValueId,
+    RuntimeListStorage, StoredListValueId,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -388,7 +388,7 @@ impl ScopedValues {
     pub(super) fn allocate_list(
         &self,
         storage_type: ListStorageTypeId,
-        storage: &mut RuntimeValueStorage,
+        storage: &mut RuntimeListStorage,
         values: &[HostValueToken],
     ) -> ListValueId {
         match storage_type {

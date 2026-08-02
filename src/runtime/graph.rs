@@ -66,7 +66,7 @@ impl CompletedGraph {
     {
         let value = value.read(&self.environment);
         drop(self.environment);
-        state.values_mut().drain_releases();
+        state.lists_mut().drain_releases();
         value
     }
 
@@ -77,7 +77,7 @@ impl CompletedGraph {
     ) -> RetainedValues {
         let retained = self.environment.retain(values);
         drop(self.environment);
-        state.values_mut().drain_releases();
+        state.lists_mut().drain_releases();
         retained
     }
 }
@@ -100,7 +100,7 @@ pub(super) fn execute<Plan: ExecutableRuntimePlan>(
         match terminator_action(plan, state, &environment, block.terminator())? {
             GraphAction::Continue { block, inputs } => {
                 drop(environment);
-                state.values_mut().drain_releases();
+                state.lists_mut().drain_releases();
                 block_id = block;
                 environment = BlockEnvironment::from_retained(inputs);
             }
@@ -111,7 +111,7 @@ pub(super) fn execute<Plan: ExecutableRuntimePlan>(
                 site,
             } => {
                 drop(environment);
-                state.values_mut().drain_releases();
+                state.lists_mut().drain_releases();
                 let origin = crate::runtime::error::HostCallOrigin::source(site);
                 return match function {
                     NeverCall::Direct(function) => {

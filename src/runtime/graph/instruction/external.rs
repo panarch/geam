@@ -57,7 +57,7 @@ where
         }
         ExternalInstructionRef::ListIndex { list, index } => {
             let list = environment.external_list(list);
-            let values = state.values().external_values(&list);
+            let values = state.lists().external_values(&list);
             list_element(expected, index, &values)
         }
     }

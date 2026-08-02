@@ -95,7 +95,7 @@ pub(super) fn terminator_action<Plan: ExecutableRuntimePlan>(
             let subject = environment.value(echo.subject());
             let message = echo.message().map(|message| environment.string(message));
             let value =
-                crate::runtime::materialize::value(plan.value_metadata(), state.values(), subject);
+                crate::runtime::materialize::value(plan.value_metadata(), state.lists(), subject);
             let location = crate::runtime::EchoLocation::from_context(
                 echo.site().clone(),
                 plan.source_context_for(echo.site().module()),
@@ -117,7 +117,7 @@ pub(super) fn terminator_action<Plan: ExecutableRuntimePlan>(
             let subject = environment.value(panic.subject());
             let message = panic.message().map(|message| environment.string(message));
             let subject =
-                crate::runtime::materialize::value(plan.value_metadata(), state.values(), subject);
+                crate::runtime::materialize::value(plan.value_metadata(), state.lists(), subject);
             Err(ExecutionError::let_assert_panic(
                 plan.source_context_for(panic.site().module()),
                 message,

@@ -82,7 +82,7 @@ where
             function.type_().return_(),
             inputs,
         );
-        state.values_mut().drain_releases();
+        state.lists_mut().drain_releases();
 
         Self {
             plan,
@@ -295,13 +295,13 @@ where
     }
 
     fn list_len(&self, value: HostListToken) -> usize {
-        self.state.values().list_len(&self.scoped.list_value(value))
+        self.state.lists().list_len(&self.scoped.list_value(value))
     }
 
     fn list_item(&mut self, value: HostListToken, index: usize) -> Option<HostValueToken> {
         let value = self.scoped.list_value(value);
         self.state
-            .values()
+            .lists()
             .evaluated_value_at(&value, index)
             .map(|value| self.scoped.push(value))
     }
@@ -361,7 +361,7 @@ where
 
     fn equal(&self, left: HostScopedValue, right: HostScopedValue) -> bool {
         crate::runtime::evaluated::values_equal(
-            self.state.values(),
+            self.state.lists(),
             &self.scoped.value_from_scoped(left),
             &self.scoped.value_from_scoped(right),
         )
@@ -369,19 +369,19 @@ where
 
     fn source_hash(&self, value: HostScopedValue) -> u64 {
         crate::runtime::evaluated::value_source_hash(
-            self.state.values(),
+            self.state.lists(),
             &self.scoped.value_from_scoped(value),
         )
     }
 
     fn stored_value_hash(&self, value: &StoredRuntimeValue) -> u64 {
-        crate::runtime::evaluated::value_source_hash(self.state.values(), value.value())
+        crate::runtime::evaluated::value_source_hash(self.state.lists(), value.value())
     }
 
     fn stored_value_inspection(&self, value: &StoredRuntimeValue) -> EcoString {
         crate::runtime::materialize::value(
             self.plan.value_metadata(),
-            self.state.values(),
+            self.state.lists(),
             value.value().clone(),
         )
         .inspect()
@@ -402,7 +402,7 @@ where
         let storage_type = self.plan.list_storage_type(self.return_lists[0]);
         let list = self
             .scoped
-            .allocate_list(storage_type, self.state.values_mut(), &values);
+            .allocate_list(storage_type, self.state.lists_mut(), &values);
         self.scoped.push_list(list)
     }
 

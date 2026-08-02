@@ -112,72 +112,72 @@ macro_rules! list_graph_value {
 
 list_graph_value!(
     crate::plan::execution::graph::ParameterListLocalId,
-    crate::runtime::state::ParameterListValueId,
+    crate::runtime::state::list::ParameterListValueId,
     parameter_list
 );
 list_graph_value!(
     crate::plan::execution::graph::IntListLocalId,
-    crate::runtime::state::IntListValueId,
+    crate::runtime::state::list::IntListValueId,
     int_list
 );
 list_graph_value!(
     crate::plan::execution::graph::StringListLocalId,
-    crate::runtime::state::StringListValueId,
+    crate::runtime::state::list::StringListValueId,
     string_list
 );
 list_graph_value!(
     crate::plan::execution::graph::BitArrayListLocalId,
-    crate::runtime::state::BitArrayListValueId,
+    crate::runtime::state::list::BitArrayListValueId,
     bit_array_list
 );
 list_graph_value!(
     crate::plan::execution::graph::UtfCodepointListLocalId,
-    crate::runtime::state::UtfCodepointListValueId,
+    crate::runtime::state::list::UtfCodepointListValueId,
     utf_codepoint_list
 );
 list_graph_value!(
     crate::plan::execution::graph::CustomListLocalId,
-    crate::runtime::state::CustomListValueId,
+    crate::runtime::state::list::CustomListValueId,
     custom_list
 );
 list_graph_value!(
     crate::plan::execution::graph::ExternalListLocalId,
-    crate::runtime::state::ExternalListValueId,
+    crate::runtime::state::list::ExternalListValueId,
     external_list
 );
 list_graph_value!(
     crate::plan::execution::graph::FloatListLocalId,
-    crate::runtime::state::FloatListValueId,
+    crate::runtime::state::list::FloatListValueId,
     float_list
 );
 list_graph_value!(
     crate::plan::execution::graph::BoolListLocalId,
-    crate::runtime::state::BoolListValueId,
+    crate::runtime::state::list::BoolListValueId,
     bool_list
 );
 list_graph_value!(
     crate::plan::execution::graph::NilListLocalId,
-    crate::runtime::state::NilListValueId,
+    crate::runtime::state::list::NilListValueId,
     nil_list
 );
 list_graph_value!(
     crate::plan::execution::graph::TupleListLocalId,
-    crate::runtime::state::TupleListValueId,
+    crate::runtime::state::list::TupleListValueId,
     tuple_list
 );
 list_graph_value!(
     crate::plan::execution::graph::ParameterListListLocalId,
-    crate::runtime::state::ParameterListListValueId,
+    crate::runtime::state::list::ParameterListListValueId,
     parameter_list_list
 );
 list_graph_value!(
     crate::plan::execution::graph::ListListLocalId,
-    crate::runtime::state::ListListValueId,
+    crate::runtime::state::list::ListListValueId,
     list_list
 );
 list_graph_value!(
     crate::plan::execution::graph::FunctionListLocalId,
-    crate::runtime::state::FunctionListValueId,
+    crate::runtime::state::list::FunctionListValueId,
     function_list
 );
 

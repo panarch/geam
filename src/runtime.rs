@@ -310,7 +310,7 @@ where
         Ok(returned) => Ok(call.finish(returned, target.return_())),
         Err(error) => {
             drop(call);
-            state.values_mut().drain_releases();
+            state.lists_mut().drain_releases();
             Err(host_call_error(plan, origin, function.metadata(), error))
         }
     }
@@ -333,7 +333,7 @@ where
         Ok(never) => match never {},
         Err(error) => {
             drop(call);
-            state.values_mut().drain_releases();
+            state.lists_mut().drain_releases();
             Err(host_call_error(plan, origin, function.metadata(), error))
         }
     }
@@ -474,10 +474,10 @@ fn finish_program<Plan>(
 where
     Plan: ExecutableRuntimePlan,
 {
-    state.values_mut().drain_releases();
+    state.lists_mut().drain_releases();
     Ok(materialize::value(
         plan.value_metadata(),
-        state.values(),
+        state.lists(),
         value,
     ))
 }

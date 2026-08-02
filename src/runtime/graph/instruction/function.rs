@@ -100,7 +100,7 @@ where
             expected,
             *index,
             &state
-                .values()
+                .lists()
                 .function_values(&environment.function_list(*list)),
         ),
     };
@@ -705,7 +705,8 @@ mod tests {
         FunctionInstructionKind, FunctionTarget, ListInstruction, ProfiledInstructionKind,
     };
     use crate::runtime::evaluated::{EvaluatedCustomValue, EvaluatedValue};
-    use crate::runtime::state::{RuntimeState, StoredListValueId};
+    use crate::runtime::state::RuntimeState;
+    use crate::runtime::state::list::StoredListValueId;
     use crate::runtime::{BitArrayValue, ExecutionError, InvariantError, ListValue, Value};
     use std::convert::Infallible;
 
@@ -848,7 +849,7 @@ pub fn main() {
                     FunctionInstructionKind::ListIndex { index, .. } => {
                         let mut echo = Vec::new();
                         let mut state = RuntimeState::new(&mut echo);
-                        let empty = state.values_mut().function(function_list_type, Vec::new());
+                        let empty = state.lists_mut().function(function_list_type, Vec::new());
                         let mut values = RetainedValues::empty();
                         values.push_evaluated(EvaluatedValue::List(StoredListValueId::Function(
                             empty,

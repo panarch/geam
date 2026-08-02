@@ -7,7 +7,7 @@ use super::evaluated::{
     EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
     EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
-use super::state::{ParameterListValueId, RuntimeValueStorage, StoredListValueId};
+use super::state::list::{ParameterListValueId, RuntimeListStorage, StoredListValueId};
 use super::{
     BitArrayFunctionValue, BoolFunctionValue, CaptureListValue, CaptureValue, CustomFieldValue,
     CustomFunctionValue, CustomFunctionValueTarget, CustomValue, ExternalFunctionValue,
@@ -19,7 +19,7 @@ use crate::plan::execution::runtime::RuntimeValueMetadata;
 
 pub(super) fn value(
     plan: RuntimeValueMetadata<'_>,
-    state: &RuntimeValueStorage,
+    state: &RuntimeListStorage,
     value: EvaluatedValue,
 ) -> Value {
     match value {
@@ -51,7 +51,7 @@ fn external(plan: RuntimeValueMetadata<'_>, value: EvaluatedExternalValue) -> Ex
 
 fn list(
     plan: RuntimeValueMetadata<'_>,
-    state: &RuntimeValueStorage,
+    state: &RuntimeListStorage,
     value: &StoredListValueId,
 ) -> ListValue {
     match value {
@@ -135,7 +135,7 @@ fn parameter_list(value: ParameterListValueId) -> ListValue {
 
 fn function(
     plan: RuntimeValueMetadata<'_>,
-    state: &RuntimeValueStorage,
+    state: &RuntimeListStorage,
     value: EvaluatedFunctionValue,
 ) -> FunctionValue {
     let kind = match value.kind() {
@@ -187,7 +187,7 @@ fn function(
 
 fn custom(
     plan: RuntimeValueMetadata<'_>,
-    state: &RuntimeValueStorage,
+    state: &RuntimeListStorage,
     value: EvaluatedCustomValue,
 ) -> CustomValue {
     let constructor = plan.custom_constructor(value.constructor());
@@ -212,7 +212,7 @@ fn custom(
 
 fn int_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &RuntimeValueStorage,
+    state: &RuntimeListStorage,
     value: &EvaluatedIntFunction,
 ) -> IntFunctionValue {
     IntFunctionValue::new_with_captures(
@@ -225,7 +225,7 @@ fn int_function(
 
 fn generic_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &RuntimeValueStorage,
+    state: &RuntimeListStorage,
     value: &EvaluatedGenericFunction,
 ) -> GenericFunctionValue {
     GenericFunctionValue::from_evaluated(
@@ -238,7 +238,7 @@ fn generic_function(
 
 fn never_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &RuntimeValueStorage,
+    state: &RuntimeListStorage,
     value: &EvaluatedNeverFunction,
 ) -> NeverFunctionValue {
     NeverFunctionValue::from_evaluated(
@@ -251,7 +251,7 @@ fn never_function(
 
 fn float_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &RuntimeValueStorage,
+    state: &RuntimeListStorage,
     value: &EvaluatedFloatFunction,
 ) -> FloatFunctionValue {
     FloatFunctionValue::new_with_captures(
@@ -264,7 +264,7 @@ fn float_function(
 
 fn string_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &RuntimeValueStorage,
+    state: &RuntimeListStorage,
     value: &EvaluatedStringFunction,
 ) -> StringFunctionValue {
     StringFunctionValue::new_with_captures(
@@ -277,7 +277,7 @@ fn string_function(
 
 fn bit_array_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &RuntimeValueStorage,
+    state: &RuntimeListStorage,
     value: &EvaluatedBitArrayFunction,
 ) -> BitArrayFunctionValue {
     BitArrayFunctionValue::new_with_captures(
@@ -290,7 +290,7 @@ fn bit_array_function(
 
 fn utf_codepoint_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &RuntimeValueStorage,
+    state: &RuntimeListStorage,
     value: &EvaluatedUtfCodepointFunction,
 ) -> UtfCodepointFunctionValue {
     UtfCodepointFunctionValue::new_with_captures(
@@ -303,7 +303,7 @@ fn utf_codepoint_function(
 
 fn custom_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &RuntimeValueStorage,
+    state: &RuntimeListStorage,
     value: &EvaluatedCustomFunction,
 ) -> CustomFunctionValue {
     let target = match value {
@@ -324,7 +324,7 @@ fn custom_function(
 
 fn external_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &RuntimeValueStorage,
+    state: &RuntimeListStorage,
     value: &EvaluatedExternalFunction,
 ) -> ExternalFunctionValue {
     ExternalFunctionValue::new_with_captures(
@@ -337,7 +337,7 @@ fn external_function(
 
 fn bool_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &RuntimeValueStorage,
+    state: &RuntimeListStorage,
     value: &EvaluatedBoolFunction,
 ) -> BoolFunctionValue {
     BoolFunctionValue::new_with_captures(
@@ -350,7 +350,7 @@ fn bool_function(
 
 fn nil_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &RuntimeValueStorage,
+    state: &RuntimeListStorage,
     value: &EvaluatedNilFunction,
 ) -> NilFunctionValue {
     NilFunctionValue::new_with_captures(
@@ -363,7 +363,7 @@ fn nil_function(
 
 fn tuple_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &RuntimeValueStorage,
+    state: &RuntimeListStorage,
     value: &EvaluatedTupleFunction,
 ) -> TupleFunctionValue {
     TupleFunctionValue::from_evaluated(
@@ -376,7 +376,7 @@ fn tuple_function(
 
 fn list_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &RuntimeValueStorage,
+    state: &RuntimeListStorage,
     value: &EvaluatedListFunction,
 ) -> ListFunctionValue {
     ListFunctionValue::new_with_captures(
@@ -389,7 +389,7 @@ fn list_function(
 
 fn function_function(
     plan: RuntimeValueMetadata<'_>,
-    state: &RuntimeValueStorage,
+    state: &RuntimeListStorage,
     value: &EvaluatedFunctionFunction,
 ) -> FunctionFunctionValue {
     let runtime_id = match value {
@@ -410,8 +410,8 @@ fn function_function(
 
 fn nested_list_values(
     plan: RuntimeValueMetadata<'_>,
-    state: &RuntimeValueStorage,
-    value: &super::state::ListListValueId,
+    state: &RuntimeListStorage,
+    value: &super::state::list::ListListValueId,
 ) -> Vec<ListValue> {
     state
         .list_values(value)
@@ -422,7 +422,7 @@ fn nested_list_values(
 
 fn captures(
     plan: RuntimeValueMetadata<'_>,
-    state: &RuntimeValueStorage,
+    state: &RuntimeListStorage,
     values: &[EvaluatedCapture],
 ) -> Vec<CaptureValue> {
     values
@@ -433,7 +433,7 @@ fn captures(
 
 fn capture(
     plan: RuntimeValueMetadata<'_>,
-    state: &RuntimeValueStorage,
+    state: &RuntimeListStorage,
     value: &EvaluatedCapture,
 ) -> CaptureValue {
     match value.kind() {
@@ -512,7 +512,7 @@ fn capture(
 
 fn list_capture(
     plan: RuntimeValueMetadata<'_>,
-    state: &RuntimeValueStorage,
+    state: &RuntimeListStorage,
     value: &EvaluatedListCapture,
 ) -> CaptureListValue {
     match value {
@@ -638,7 +638,8 @@ mod tests {
         EvaluatedListCapture, EvaluatedListFunction, EvaluatedNilFunction, EvaluatedStringFunction,
         EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
     };
-    use crate::runtime::state::{CustomListAllocation, ListValueId, RuntimeState};
+    use crate::runtime::state::RuntimeState;
+    use crate::runtime::state::list::{CustomListAllocation, ListValueId};
     use crate::runtime::{
         BitArrayValue, CaptureListValue, CaptureValue, CustomFieldValue, CustomFunctionValue,
         CustomFunctionValueTarget, CustomValue, FunctionValue, ListValue, Value,
@@ -740,53 +741,53 @@ pub fn main() {
             ),
         );
         let int_list = state
-            .values_mut()
+            .lists_mut()
             .int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
-        let string_list = state.values_mut().string(
+        let string_list = state.lists_mut().string(
             plan.string_list_function_id(0).type_id(),
             vec!["one".into()],
         );
         let bit_array = EvaluatedBitArray::new(BitVec::from_vec(vec![1]));
-        let bit_array_list = state.values_mut().bit_array(
+        let bit_array_list = state.lists_mut().bit_array(
             plan.bit_array_list_function_id(0).type_id(),
             vec![bit_array.clone()],
         );
-        let utf_codepoint_list = state.values_mut().utf_codepoint(
+        let utf_codepoint_list = state.lists_mut().utf_codepoint(
             plan.utf_codepoint_list_function_id(0).type_id(),
             vec!['\u{10ffff}'],
         );
-        let custom_list = state.values_mut().custom(CustomListAllocation::new(
+        let custom_list = state.lists_mut().custom(CustomListAllocation::new(
             plan.custom_list_function_id(0).type_id(),
             vec![custom_value.clone()],
         ));
         let float_list = state
-            .values_mut()
+            .lists_mut()
             .float(plan.float_list_function_id(0).type_id(), vec![1.5]);
         let bool_list = state
-            .values_mut()
+            .lists_mut()
             .bool(plan.bool_list_function_id(0).type_id(), vec![true]);
         let nil_list = state
-            .values_mut()
+            .lists_mut()
             .nil(plan.nil_list_function_id(0).type_id(), 1);
-        let tuple_list = state.values_mut().tuple(
+        let tuple_list = state.lists_mut().tuple(
             plan.tuple_list_function_id(0).type_id(),
             vec![vec![EvaluatedValue::Int(1.into())]],
         );
         let nested_child = state
-            .values_mut()
+            .lists_mut()
             .int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
-        let nested_list = state.values_mut().list(
+        let nested_list = state.lists_mut().list(
             plan.list_list_function_id(0).type_id(),
             vec![nested_child.into()],
         );
-        let function_list = state.values_mut().function(
+        let function_list = state.lists_mut().function(
             plan.function_list_function_id(0).type_id(),
             vec![EvaluatedFunctionValue::from(int_function)],
         );
 
         let actual = value(
             plan.value_metadata(),
-            state.values(),
+            state.lists(),
             EvaluatedValue::Tuple(vec![
                 EvaluatedValue::Int(1.into()),
                 EvaluatedValue::Float(1.5),
@@ -887,7 +888,7 @@ pub fn main() {
         assert_eq!(
             value(
                 plan.value_metadata(),
-                state.values(),
+                state.lists(),
                 EvaluatedValue::Function(EvaluatedFunctionValue::from(constructor_function)),
             ),
             Value::Function(FunctionValue::from(CustomFunctionValue::new_with_captures(
@@ -1021,46 +1022,46 @@ pub fn main() {
         );
         let function_function_local = function_function_local(function_function_param.local());
         let int_list = state
-            .values_mut()
+            .lists_mut()
             .int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
-        let string_list = state.values_mut().string(
+        let string_list = state.lists_mut().string(
             plan.string_list_function_id(0).type_id(),
             vec!["one".into()],
         );
         let bit_array = EvaluatedBitArray::new(BitVec::from_vec(vec![1]));
-        let bit_array_list = state.values_mut().bit_array(
+        let bit_array_list = state.lists_mut().bit_array(
             plan.bit_array_list_function_id(0).type_id(),
             vec![bit_array.clone()],
         );
-        let utf_codepoint_list = state.values_mut().utf_codepoint(
+        let utf_codepoint_list = state.lists_mut().utf_codepoint(
             plan.utf_codepoint_list_function_id(0).type_id(),
             vec!['\u{10ffff}'],
         );
-        let custom_list = state.values_mut().custom(CustomListAllocation::new(
+        let custom_list = state.lists_mut().custom(CustomListAllocation::new(
             plan.custom_list_function_id(0).type_id(),
             vec![custom_value.clone()],
         ));
         let float_list = state
-            .values_mut()
+            .lists_mut()
             .float(plan.float_list_function_id(0).type_id(), vec![1.5]);
         let bool_list = state
-            .values_mut()
+            .lists_mut()
             .bool(plan.bool_list_function_id(0).type_id(), vec![true]);
         let nil_list = state
-            .values_mut()
+            .lists_mut()
             .nil(plan.nil_list_function_id(0).type_id(), 1);
-        let tuple_list = state.values_mut().tuple(
+        let tuple_list = state.lists_mut().tuple(
             plan.tuple_list_function_id(0).type_id(),
             vec![vec![EvaluatedValue::Int(1.into())]],
         );
         let nested_child = state
-            .values_mut()
+            .lists_mut()
             .int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
-        let nested_list = state.values_mut().list(
+        let nested_list = state.lists_mut().list(
             plan.list_list_function_id(0).type_id(),
             vec![nested_child.into()],
         );
-        let function_list = state.values_mut().function(
+        let function_list = state.lists_mut().function(
             plan.function_list_function_id(0).type_id(),
             vec![EvaluatedFunctionValue::from(int_function.clone())],
         );
@@ -1320,7 +1321,7 @@ pub fn main() {
 
         for (capture, expected) in captures.iter().zip(expected) {
             assert_eq!(
-                super::capture(plan.value_metadata(), state.values(), capture),
+                super::capture(plan.value_metadata(), state.lists(), capture),
                 expected,
             );
         }
@@ -1342,7 +1343,7 @@ pub fn main() {
             let expected_type = ValueType::Function(Box::new(plan.function_type(function.type_())));
             let materialized = value(
                 plan.value_metadata(),
-                state.values(),
+                state.lists(),
                 EvaluatedValue::Function(function),
             );
             assert_eq!(materialized.value_type(), expected_type);
@@ -1371,7 +1372,7 @@ pub fn main() {
         assert_eq!(
             value(
                 plan.value_metadata(),
-                state.values(),
+                state.lists(),
                 EvaluatedValue::Function(EvaluatedFunctionValue::from(function)),
             ),
             Value::Function(crate::runtime::FunctionValue::from(
