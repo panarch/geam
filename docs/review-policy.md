@@ -227,21 +227,21 @@ user registration, or runtime shape validation.
 
 Keep external storage distinct from ordinary custom values and provider run
 state. Canonical plans may retain nominal external identity and typed storage
-IDs, but Rust payloads belong to the hosted sidecar. Public external values
-must own opaque payload leases without borrowing runtime state. Retained Gleam
-values may be created and restored only through an external payload and an
-active typed host call; do not expose them through run state, public `Value`,
-Rust downcasts, or cross-execution import.
+metadata, but not Rust payloads. Hosted execution owns typed storage access,
+while each public external value must own its opaque payload lifetime without
+borrowing runtime state. Retained Gleam values may be created and restored only
+through an external payload and an active typed host call; do not expose them
+through run state, public `Value`, Rust downcasts, or cross-execution import.
 
 Existential external storage must preserve the exact specialized Gleam shape.
 Typed decode compares that recursive shape, not Rust payload identity, and a
 shape mismatch remains ordinary provider-level absence rather than a runtime
 error, invariant, panic, or fallback.
 
-Model transient-style external storage as immutable persistent versions.
-Operations may share acyclic retained entries, but must not mutate published
-payloads or introduce consumed-token validation, general external references,
-or cycle collection as hidden runtime margins.
+Providers that model transient-style builders must use immutable persistent
+payload versions. Operations may share acyclic retained entries, but must not
+mutate published payloads or introduce consumed-token validation, general
+external references, or cycle collection as hidden runtime margins.
 
 Treat callable invocation as an explicit call-scoped capability. A callback
 capability must have inhabited argument storage when hosted execution is

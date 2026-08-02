@@ -125,8 +125,10 @@ callback objects and mutable state are not stored in canonical plan nodes.
 A source-backed provider can register a constructorless external type with
 `HostExternalStorage`. Planning links its exact package, module, type name, and
 parameter count. Canonical plan and graph nodes retain nominal type and storage
-IDs only; the Rust payload and its equality and inspection functions remain in
-the hosted execution sidecar.
+IDs only. `HostedExecution` owns the profile's typed stores used for payload
+creation and access, while `HostExternalStorage` supplies payload equality and
+inspection behavior. Neither Rust payloads nor storage behavior become
+canonical plan metadata.
 
 `HostExternal` is an invocation-scoped typed handle. A provider can create or
 inspect its Rust payload only through the active `HostCall`. The materialized
@@ -154,17 +156,18 @@ Dynamic identity is the recursive Gleam shape, including nominal custom and
 external identities, rather than a Rust payload type. Public `Value` does not
 expose this decode surface.
 
-External leases determine payload lifetime; the profile store's typed index is
-removed when the last lease is released and does not keep a payload alive by
-itself. Retained list and capture graphs continue to use the shared iterative
-release queue, including after the original runtime state has been dropped.
-Geam does not support cyclic evaluated graphs or moving stored values between
-hosted executions.
+External leases determine payload lifetime. The profile store keeps a typed
+index only while at least one lease exists; dropping the final lease removes
+the index entry, so the store cannot extend payload lifetime beyond its leases.
+Retained list and capture graphs continue to use the shared iterative release
+queue, including after the original runtime state has been dropped. Geam does
+not support cyclic evaluated graphs or moving stored values between hosted
+executions.
 
-Private transient-style provider APIs use persistent external payload
-versions. Each operation may share immutable retained entries with its input,
-but it returns a new payload and never mutates a version already visible to
-Gleam. Aliases therefore continue to observe their original values, and the
+Providers that model private transient-style builders use persistent external
+payload versions. Each operation may share immutable retained entries with its
+input, but it returns a new payload and never mutates a version already visible
+to Gleam. Aliases therefore continue to observe their original values, and the
 retained graph remains acyclic. Geam does not enforce a consumed-token state at
 runtime and does not provide general mutable external references or cycle
 collection.
