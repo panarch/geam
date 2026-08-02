@@ -3,6 +3,9 @@
 Geam uses Rust unit tests for compiler-boundary, lowering, and runtime
 milestones.
 
+For guidance on constructing owner tests, promoting diagnostic probes, and
+closing coverage gaps, see [test-development.md](test-development.md).
+
 The current compiler-boundary and runtime milestones depend on `gleam-core`
 pinned to the upstream baseline recorded in the README. `cargo test` compiles
 that Git dependency as part of the normal suite.
@@ -124,20 +127,6 @@ and inspect LLVM's region and instantiation detail before adding fixtures:
 ```sh
 cargo llvm-cov --text --show-instantiations --show-missing-lines
 ```
-
-Do not add tests by guessing from the summary. First locate the uncovered line,
-region, or instantiation. When line coverage is already 100% but region coverage
-is not, common causes are broad assertions such as `matches!`, `is_some`, or
-`is_ok`, where the source line runs but one reviewed branch of the assertion
-shape is never exercised.
-
-In that case, prefer an owning unit test with exact assertions over a new
-fixture. The goal is to make the reviewed shape visible, not merely to execute
-the line.
-
-Use that report to decide where the test belongs. Public execution behavior
-belongs in fixture-based integration tests; planner or runtime implementation
-branches belong in the owning unit test next to that module.
 
 Generate an HTML report:
 
