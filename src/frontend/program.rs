@@ -150,18 +150,12 @@ pub fn compile_typed_host_program<Profile: HostProfile>(
     packages: impl IntoIterator<Item = PackageSource>,
     hosts: HostProviderSet<Profile>,
 ) -> Result<HostedTypedProgram<Profile>, FrontendError> {
-    let (modules, providers, implementations) = hosts.into_registered();
     compile_host_package_sources(
         root_package.into(),
         root_module.into(),
         packages.into_iter().collect(),
-        modules,
-        providers,
+        hosts,
     )
-    .map(|program| HostedTypedProgram {
-        program,
-        implementations,
-    })
 }
 
 fn compile_package_sources(
@@ -175,16 +169,26 @@ fn compile_package_sources(
     compile_parsed_package_program(root_package, root_module, parsed_modules, warnings)
 }
 
-fn compile_host_package_sources(
+fn compile_host_package_sources<Profile: HostProfile>(
     root_package: EcoString,
     root_module: EcoString,
     packages: Vec<PackageSource>,
-    host_modules: Vec<RegisteredHostModule>,
-    providers: Vec<RegisteredHostProviderModule>,
-) -> Result<HostedProgram, FrontendError> {
+    hosts: HostProviderSet<Profile>,
+) -> Result<HostedTypedProgram<Profile>, FrontendError> {
     let warnings = WarningEmitter::null();
     let parsed_modules = parse_package_sources(&root_package, packages, &warnings)?;
 
+    compile_parsed_host_package_program(root_package, root_module, parsed_modules, hosts, warnings)
+}
+
+pub(super) fn compile_parsed_host_package_program<Profile: HostProfile>(
+    root_package: EcoString,
+    root_module: EcoString,
+    parsed_modules: Vec<ParsedModule>,
+    hosts: HostProviderSet<Profile>,
+    warnings: WarningEmitter,
+) -> Result<HostedTypedProgram<Profile>, FrontendError> {
+    let (host_modules, providers, implementations) = hosts.into_registered();
     compile_parsed_host_program(
         root_package,
         root_module,
@@ -193,6 +197,10 @@ fn compile_host_package_sources(
         providers,
         warnings,
     )
+    .map(|program| HostedTypedProgram {
+        program,
+        implementations,
+    })
 }
 
 fn parse_package_sources(

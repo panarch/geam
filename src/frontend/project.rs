@@ -1,5 +1,8 @@
-use super::program::{ParsedModule, compile_parsed_package_program, parse_module};
-use super::{FrontendError, ModuleSource, TypedProgram};
+use super::program::{
+    ParsedModule, compile_parsed_host_package_program, compile_parsed_package_program, parse_module,
+};
+use super::{FrontendError, HostedTypedProgram, ModuleSource, TypedProgram};
+use crate::host::{HostProfile, HostProviderSet};
 use camino::{Utf8Path, Utf8PathBuf};
 use ecow::EcoString;
 use gleam_core::build::Target;
@@ -81,27 +84,59 @@ pub fn compile_typed_project(
     project_root: impl Into<Utf8PathBuf>,
     root_module: impl Into<EcoString>,
 ) -> Result<TypedProgram, ProjectError> {
-    compile_project(project_root.into(), root_module.into())
+    let project = load_project(project_root.into(), root_module.into())?;
+    compile_parsed_package_program(
+        project.root_package,
+        project.root_module,
+        project.modules,
+        WarningEmitter::null(),
+    )
+    .map_err(ProjectError::from)
 }
 
-fn compile_project(
+/// Compiles the selected import closure of an already resolved Gleam project
+/// with explicit Rust host modules and source providers.
+///
+/// This loader is read-only. It does not invoke Gleam CLI, download packages,
+/// or modify project files.
+pub fn compile_typed_host_project<Profile: HostProfile>(
+    project_root: impl Into<Utf8PathBuf>,
+    root_module: impl Into<EcoString>,
+    hosts: HostProviderSet<Profile>,
+) -> Result<HostedTypedProgram<Profile>, ProjectError> {
+    let project = load_project(project_root.into(), root_module.into())?;
+    compile_parsed_host_package_program(
+        project.root_package,
+        project.root_module,
+        project.modules,
+        hosts,
+        WarningEmitter::null(),
+    )
+    .map_err(ProjectError::from)
+}
+
+struct ParsedProject {
+    root_package: EcoString,
+    root_module: EcoString,
+    modules: Vec<ParsedModule>,
+}
+
+fn load_project(
     project_root: Utf8PathBuf,
     root_module: EcoString,
-) -> Result<TypedProgram, ProjectError> {
+) -> Result<ParsedProject, ProjectError> {
     let root_config = read_config(&project_root.join(CONFIG_FILE))?;
     let manifest = read_manifest(&project_root.join(MANIFEST_FILE))?;
     let manifest_packages = manifest_packages(&project_root, &manifest)?;
     let packages = load_packages(&project_root, root_config, &manifest_packages)?;
     let catalog = source_catalog(&packages)?;
-    let parsed = select_import_closure(&packages.root, &root_module, &catalog)?;
+    let modules = select_import_closure(&packages.root, &root_module, &catalog)?;
 
-    compile_parsed_package_program(
-        packages.root.name.clone(),
+    Ok(ParsedProject {
+        root_package: packages.root.name,
         root_module,
-        parsed,
-        WarningEmitter::null(),
-    )
-    .map_err(ProjectError::from)
+        modules,
+    })
 }
 
 fn read_config(path: &Utf8Path) -> Result<PackageConfig, ProjectError> {
@@ -408,10 +443,15 @@ fn select_import_closure(
 
 #[cfg(test)]
 mod tests {
-    use super::{ProjectError, SourceDirectory, compile_typed_project, source_paths_from};
+    use super::{
+        ProjectError, SourceDirectory, compile_typed_host_project, compile_typed_project,
+        source_paths_from,
+    };
+    use crate::host::{HostModule, HostProviderModule, HostProviderSet, StatelessHostProfile};
     use crate::planner::UnsupportedFunctionReason;
-    use crate::{PlanError, plan_program};
+    use crate::{HostedExecution, PlanError, Value, plan_host_program, plan_program};
     use camino::{Utf8Path, Utf8PathBuf};
+    use num_bigint::BigInt;
     use std::fs;
     use tempfile::{TempDir, tempdir};
 
@@ -555,6 +595,248 @@ version = "1.0.0"
                 ("hex_dep", "hex/nested"),
                 ("application", "main"),
             ],
+        );
+    }
+
+    #[test]
+    fn loads_hosted_hex_git_and_local_modules_through_the_shared_project_owner() {
+        let project = tempdir().expect("temporary project should be created");
+        let root = project_root(&project);
+        write_file(
+            &root,
+            "gleam.toml",
+            r#"
+name = "application"
+version = "1.0.0"
+
+[dependencies]
+hex_dep = ">= 1.0.0 and < 2.0.0"
+git_dep = ">= 1.0.0 and < 2.0.0"
+"#,
+        );
+        write_file(
+            &root,
+            "manifest.toml",
+            r#"
+packages = [
+  { name = "hex_dep", version = "1.0.0", build_tools = ["gleam"], requirements = ["local_dep"], source = "hex", outer_checksum = "00" },
+  { name = "git_dep", version = "1.0.0", build_tools = ["gleam"], requirements = [], source = "git", repo = "https://example.com/git_dep", commit = "0123456789abcdef" },
+  { name = "local_dep", version = "1.0.0", build_tools = ["gleam"], requirements = [], source = "local", path = "packages/local_dep" },
+]
+
+[requirements]
+"#,
+        );
+        write_file(
+            &root,
+            "src/main.gleam",
+            r#"
+import git/value as git_value
+import hex/nested
+
+pub fn main() {
+  nested.answer() + git_value.answer()
+}
+"#,
+        );
+        write_file(
+            &root,
+            "build/packages/hex_dep/gleam.toml",
+            r#"
+name = "hex_dep"
+version = "1.0.0"
+
+[dependencies]
+local_dep = { path = "../../../packages/local_dep" }
+"#,
+        );
+        write_file(
+            &root,
+            "build/packages/hex_dep/src/hex/nested.gleam",
+            r#"
+import local/value
+
+pub fn answer() {
+  value.answer()
+}
+"#,
+        );
+        write_file(
+            &root,
+            "build/packages/git_dep/gleam.toml",
+            "name = \"git_dep\"\nversion = \"1.0.0\"\n",
+        );
+        write_file(
+            &root,
+            "build/packages/git_dep/src/git/value.gleam",
+            "pub fn answer() { 2 }",
+        );
+        write_file(
+            &root,
+            "packages/local_dep/gleam.toml",
+            "name = \"local_dep\"\nversion = \"1.0.0\"\n",
+        );
+        write_file(
+            &root,
+            "packages/local_dep/src/local/value.gleam",
+            r#"
+@external(erlang, "host", "answer")
+pub fn answer() -> Int
+"#,
+        );
+
+        let plain = compile_typed_project(root.clone(), "main")
+            .expect("plain project should share the selected source closure");
+        let provider = HostProviderModule::<StatelessHostProfile>::new("local_dep", "local/value")
+            .expect("provider module should be valid")
+            .with_function("answer", || BigInt::from(40))
+            .expect("provider function should be valid");
+        let hosted = compile_typed_host_project(
+            root.clone(),
+            "main",
+            HostProviderSet::with_providers(Vec::<HostModule>::new(), [provider])
+                .expect("provider module should be unique"),
+        )
+        .expect("hosted project should compile through the shared loader");
+        let plan = plan_host_program(hosted).expect("hosted project should plan");
+
+        let expected_modules = [
+            ("git_dep", "git/value"),
+            ("local_dep", "local/value"),
+            ("hex_dep", "hex/nested"),
+            ("application", "main"),
+        ];
+        assert_eq!(
+            plain
+                .modules()
+                .map(|module| (module.type_info.package.as_str(), module.name.as_str()))
+                .collect::<Vec<_>>(),
+            expected_modules,
+        );
+        assert_eq!(
+            plan.modules()
+                .iter()
+                .map(|module| (module.package().as_str(), module.module().as_str()))
+                .collect::<Vec<_>>(),
+            expected_modules,
+        );
+        assert_eq!(
+            plan.modules()
+                .iter()
+                .map(|module| {
+                    module
+                        .source_context()
+                        .expect("filesystem modules should preserve source context")
+                        .path()
+                        .to_path_buf()
+                })
+                .collect::<Vec<_>>(),
+            [
+                root.join("build/packages/git_dep/src/git/value.gleam"),
+                root.join("packages/local_dep/src/local/value.gleam"),
+                root.join("build/packages/hex_dep/src/hex/nested.gleam"),
+                root.join("src/main.gleam"),
+            ],
+        );
+
+        let execution = HostedExecution::try_from_module_plan(plan)
+            .expect("hosted project execution should seal");
+        assert_eq!(
+            execution.run_main(&mut (), &mut Vec::new()),
+            Ok(Value::Int(42.into())),
+        );
+    }
+
+    #[test]
+    fn keeps_missing_project_providers_at_the_hosted_planner_boundary() {
+        let project = tempdir().expect("temporary project should be created");
+        let root = project_root(&project);
+        write_file(
+            &root,
+            "gleam.toml",
+            r#"
+name = "application"
+version = "1.0.0"
+
+[dependencies]
+library = { path = "packages/library" }
+"#,
+        );
+        write_file(
+            &root,
+            "manifest.toml",
+            r#"
+packages = [
+  { name = "library", version = "1.0.0", build_tools = ["gleam"], requirements = [], source = "local", path = "packages/library" },
+]
+
+[requirements]
+"#,
+        );
+        write_file(
+            &root,
+            "src/main.gleam",
+            "import support\npub fn main() { support.value() }",
+        );
+        write_file(
+            &root,
+            "packages/library/gleam.toml",
+            "name = \"library\"\nversion = \"1.0.0\"\n",
+        );
+        write_file(
+            &root,
+            "packages/library/src/support.gleam",
+            r#"
+@external(erlang, "host", "value")
+pub fn value() -> Int
+"#,
+        );
+
+        let typed = compile_typed_host_project(
+            root,
+            "main",
+            HostProviderSet::new(Vec::<HostModule>::new())
+                .expect("empty host modules should be valid"),
+        )
+        .expect("provider selection should remain a planning boundary");
+
+        assert_eq!(
+            plan_host_program(typed).err(),
+            Some(PlanError::MissingHostProvider {
+                package: "library".into(),
+                module: "support".into(),
+                function: "value".into(),
+            }),
+        );
+    }
+
+    #[test]
+    fn preserves_hosted_frontend_errors_in_project_errors() {
+        let project = tempdir().expect("temporary project should be created");
+        let root = project_root(&project);
+        write_file(
+            &root,
+            "gleam.toml",
+            "name = \"application\"\nversion = \"1.0.0\"\n",
+        );
+        write_file(&root, "manifest.toml", "packages = []\n\n[requirements]\n");
+        write_file(&root, "src/main.gleam", "pub fn main() { 1 }");
+        let host = HostModule::new("host_support", "main").expect("host module should be valid");
+
+        let error = compile_typed_host_project(
+            root.clone(),
+            "main",
+            HostProviderSet::new([host]).expect("host module should be unique"),
+        )
+        .err()
+        .expect("source and host modules should still collide");
+
+        assert_eq!(
+            format!("{error:?}"),
+            format!(
+                "Frontend(SourceHostModuleCollision {{ module: \"main\", source_package: \"application\", source_path: {:?}, host_package: \"host_support\" }})",
+                root.join("src/main.gleam"),
+            ),
         );
     }
 
@@ -898,20 +1180,27 @@ packages = [
     }
 
     #[test]
-    fn rejects_missing_package_config() {
+    fn rejects_missing_package_config_for_plain_and_hosted_projects() {
         let project = tempdir().expect("temporary project should be created");
         let root = project_root(&project);
 
-        let error = compile_typed_project(root.clone(), "main")
+        let plain_error = compile_typed_project(root.clone(), "main")
             .expect_err("missing package config should fail");
-
-        assert_eq!(
-            error.to_string(),
-            format!(
-                "failed to read Gleam package config {}",
-                root.join("gleam.toml"),
-            ),
+        let hosted_error = compile_typed_host_project(
+            root.clone(),
+            "main",
+            HostProviderSet::new(Vec::<HostModule>::new())
+                .expect("empty host modules should be valid"),
+        )
+        .err()
+        .expect("missing package config should fail before hosted compilation");
+        let expected = format!(
+            "failed to read Gleam package config {}",
+            root.join("gleam.toml"),
         );
+
+        assert_eq!(plain_error.to_string(), expected);
+        assert_eq!(hosted_error.to_string(), expected);
     }
 
     #[test]

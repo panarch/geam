@@ -6,8 +6,8 @@ pub mod runtime;
 
 pub use frontend::{
     FrontendError, HostedTypedProgram, ModuleSource, PackageSource, ProjectError, TypedProgram,
-    compile_typed_host_program, compile_typed_module, compile_typed_package_program,
-    compile_typed_program, compile_typed_project,
+    compile_typed_host_program, compile_typed_host_project, compile_typed_module,
+    compile_typed_package_program, compile_typed_program, compile_typed_project,
 };
 pub use host::{
     FallibleHostFunction, HostCall, HostCallCompletion, HostCallError, HostCallable, HostCustom,

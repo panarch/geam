@@ -128,6 +128,12 @@ pub fn compile_typed_host_program<Profile: geam::HostProfile>(
     packages: impl IntoIterator<Item = geam::PackageSource>,
     hosts: geam::HostProviderSet<Profile>,
 ) -> Result<geam::HostedTypedProgram<Profile>, geam::FrontendError>
+
+pub fn compile_typed_host_project<Profile: geam::HostProfile>(
+    project_root: impl Into<camino::Utf8PathBuf>,
+    root_module: impl Into<ecow::EcoString>,
+    hosts: geam::HostProviderSet<Profile>,
+) -> Result<geam::HostedTypedProgram<Profile>, geam::ProjectError>
 ```
 
 `compile_typed_project` is a read-only loader for a Gleam project whose
@@ -137,6 +143,12 @@ It never runs Gleam CLI, downloads dependencies, or modifies project files.
 The loader follows production dependencies and selects the
 `Target::Erlang` import closure rooted at the requested module. Every selected
 module body is then analysed and planned in full.
+
+`compile_typed_host_project` uses that same manifest, source-catalog,
+import-closure, and parse owner, then combines the parsed program with an
+explicit host provider set. Missing providers and declaration linkage remain
+hosted planning errors; the project loader does not infer, download, or inject
+providers.
 
 `compile_typed_host_program` adds package-qualified source-less module
 interfaces to the same in-memory analysis graph. `HostProviderModule` instead

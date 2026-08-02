@@ -76,6 +76,12 @@ HostProviderSet + PackageSource[]
 -> HostedExecution
 ```
 
+The same pipeline can start from `compile_typed_host_project`, which reads an
+already resolved filesystem project and combines its selected import closure
+with an explicit `HostProviderSet`. Plain and hosted project loading share the
+manifest, source catalog, closure selection, and parse owner. Provider linkage
+remains a planning concern rather than a filesystem-loader fallback.
+
 ### Linking And Identity
 
 Registration seals a callable schema and implementation together, so missing

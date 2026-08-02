@@ -10,4 +10,4 @@ pub use program::{
     HostedTypedProgram, TypedProgram, compile_typed_host_program, compile_typed_module,
     compile_typed_package_program, compile_typed_program,
 };
-pub use project::{ProjectError, compile_typed_project};
+pub use project::{ProjectError, compile_typed_host_project, compile_typed_project};

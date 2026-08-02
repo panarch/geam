@@ -68,6 +68,7 @@ The main public entry points are:
 - `compile_typed_package_program`
 - `compile_typed_project`
 - `compile_typed_host_program`
+- `compile_typed_host_project`
 - `plan_module`
 - `plan_program`
 - `plan_host_program`
@@ -88,7 +89,9 @@ nodes store callable schemas and targets, while the hosted wrapper carries
 implementations as a private sidecar until `HostedExecution` retains only the
 callbacks selected by specialization. A `HostProfile` defines caller-owned
 run state, and `HostedExecution::run_main` borrows that state explicitly for
-one run.
+one run. `compile_typed_host_project` applies the same hosted boundary to the
+read-only resolved-project loader without reparsing selected modules or
+running Gleam CLI.
 
 Owned scalar closures use `BigInt`, `f64`, `EcoString`, `BitArrayValue`,
 `char`, `bool`, and `()`. Scoped providers use `HostCall` with typed
