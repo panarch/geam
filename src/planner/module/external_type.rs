@@ -3,7 +3,7 @@ use crate::plan::{ExternalTypeDefinition, ExternalTypeName};
 use crate::planner::error::{ExternalTypeProviderLinkReason, PlanError};
 use ecow::EcoString;
 use gleam_core::ast::TypedCustomType;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) struct HostedTypeDefinitions {
     pub(super) custom_types: Vec<crate::plan::CustomTypeDefinition>,
@@ -25,14 +25,15 @@ pub(super) fn plan_hosted_types(
         .into_iter()
         .map(|schema| (schema.name().clone(), schema))
         .collect::<BTreeMap<_, _>>();
+    let mut linked_external_types = BTreeSet::new();
     let mut custom_types = Vec::new();
     let mut external_types = Vec::new();
 
     for (name, type_) in &source_types {
-        let source_is_external =
+        let has_backend_external =
             type_.external_erlang.is_some() || type_.external_javascript.is_some();
         let Some(schema) = registrations.remove(name) else {
-            if source_is_external {
+            if has_backend_external {
                 return Err(PlanError::ExternalTypeProviderLink {
                     package: package.clone(),
                     module: module.clone(),
@@ -42,12 +43,12 @@ pub(super) fn plan_hosted_types(
             }
             continue;
         };
-        if !source_is_external {
+        if !type_.constructors.is_empty() {
             return Err(PlanError::ExternalTypeProviderLink {
                 package: package.clone(),
                 module: module.clone(),
                 type_: name.clone(),
-                reason: Box::new(ExternalTypeProviderLinkReason::NonExternalType),
+                reason: Box::new(ExternalTypeProviderLinkReason::ConstructorBackedType),
             });
         }
 
@@ -81,6 +82,7 @@ pub(super) fn plan_hosted_types(
                 }),
             });
         }
+        linked_external_types.insert(name.clone());
     }
 
     if let Some((name, _)) = registrations.into_iter().next() {
@@ -92,8 +94,8 @@ pub(super) fn plan_hosted_types(
         });
     }
 
-    for (_, type_) in std::mem::take(&mut source_types) {
-        if type_.external_erlang.is_some() || type_.external_javascript.is_some() {
+    for (name, type_) in std::mem::take(&mut source_types) {
+        if linked_external_types.contains(&name) {
             external_types.push(ExternalTypeDefinition::new(
                 ExternalTypeName::new(package.clone(), module.clone(), type_.name),
                 type_.typed_parameters.len(),
@@ -423,7 +425,6 @@ mod tests {
     #[test]
     fn plans_registered_external_types_inside_ordinary_custom_fields() {
         let source = r#"
-@external(erlang, "external", "Thing")
 pub type Thing
 
 pub type Boxed {
@@ -500,7 +501,28 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_profile_external_registration_for_an_ordinary_custom_type() {
+    fn preserves_unregistered_constructorless_ordinary_types() {
+        let typed =
+            compile_typed_module("main", "main.gleam", "pub type Empty pub fn main() { 1 }")
+                .expect("constructorless ordinary type should analyse");
+
+        let definitions = plan_hosted_types(
+            &typed.type_info.package,
+            &typed.name,
+            typed.definitions.custom_types,
+            Vec::new(),
+            &std::collections::HashSet::new(),
+        )
+        .expect("constructorless ordinary type should plan");
+
+        assert!(definitions.external_types.is_empty());
+        assert_eq!(definitions.custom_types.len(), 1);
+        assert_eq!(definitions.custom_types[0].name().name(), "Empty");
+        assert!(definitions.custom_types[0].constructors().is_empty());
+    }
+
+    #[test]
+    fn reject_profile_external_registration_for_a_constructor_backed_type() {
         let source = r#"
 pub type Thing {
   Thing
@@ -534,7 +556,34 @@ pub fn main() { Thing }
                 package: "application".into(),
                 module: "main".into(),
                 type_: "Thing".into(),
-                reason: Box::new(ExternalTypeProviderLinkReason::NonExternalType),
+                reason: Box::new(ExternalTypeProviderLinkReason::ConstructorBackedType),
+            }),
+        );
+    }
+
+    #[test]
+    fn constructor_backed_type_precedes_identity_and_parameter_validation() {
+        let typed = compile_typed_module(
+            "main",
+            "main.gleam",
+            "pub type Thing(value) { Thing(value) } pub fn main() { 1 }",
+        )
+        .expect("constructor-backed type should analyse");
+
+        assert_eq!(
+            plan_hosted_types(
+                &"application".into(),
+                &"main".into(),
+                typed.definitions.custom_types,
+                vec![HostExternalTypeSchema::new("wrong", "main", "Thing", 0)],
+                &std::collections::HashSet::new(),
+            )
+            .err(),
+            Some(PlanError::ExternalTypeProviderLink {
+                package: "application".into(),
+                module: "main".into(),
+                type_: "Thing".into(),
+                reason: Box::new(ExternalTypeProviderLinkReason::ConstructorBackedType),
             }),
         );
     }
@@ -542,7 +591,6 @@ pub fn main() { Thing }
     #[test]
     fn reject_profile_external_registration_identity_before_parameter_count() {
         let source = r#"
-@external(erlang, "external", "Thing")
 pub type Thing
 
 pub fn main() { 1 }
@@ -581,7 +629,6 @@ pub fn main() { 1 }
     #[test]
     fn reject_profile_external_registration_parameter_count_mismatch() {
         let source = r#"
-@external(erlang, "external", "Thing")
 pub type Thing(a)
 
 pub fn main() { 1 }

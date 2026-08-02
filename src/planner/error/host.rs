@@ -10,8 +10,8 @@ pub enum ExternalTypeProviderLinkReason {
     MissingRegistration,
     #[error("type declaration is missing")]
     MissingDeclaration,
-    #[error("type is not external")]
-    NonExternalType,
+    #[error("external storage type has source constructors")]
+    ConstructorBackedType,
     #[error("external type identity mismatch: expected {expected:?}, got {actual:?}")]
     IdentityMismatch {
         expected: ExternalTypeName,

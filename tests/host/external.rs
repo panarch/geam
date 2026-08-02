@@ -1886,7 +1886,6 @@ fn links_dependency_package_external_values_by_nominal_identity() {
         )
         .expect("reader provider should be valid");
     let dependency_source = r#"
-@external(erlang, "host", "Counter")
 pub type Counter
 
 @external(erlang, "host", "new")
