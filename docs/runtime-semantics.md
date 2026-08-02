@@ -121,6 +121,10 @@ values cross one invocation as typed handles rather than materialized
 construct a return only through the return-family-specific call builder.
 Custom schemas are checked against the selected source definition before
 lowering, so runtime trusts their constructor positions and field shapes.
+Schema fields refer to their enclosing custom parameters with
+`HostCustomTypeArgument`; selecting a concrete `HostCustomType` substitutes
+those arguments before `HostCall` reads or constructs constructor fields.
+Function-scheme parameters remain the separate `HostTypeParameter` namespace.
 
 Each `HostProfile` defines caller-owned `RunState`. A scoped callback can
 project only its declared `HostProvider::State` through the active `HostCall`;
@@ -186,6 +190,15 @@ to Gleam. Aliases therefore continue to observe their original values, and the
 retained graph remains acyclic. Geam does not enforce a consumed-token state at
 runtime and does not provide general mutable external references or cycle
 collection.
+
+The explicit official `gleam/dict` provider is one concrete use of this model.
+It selects persistent buckets by Gleam source hash and resolves every collision
+with source equality. `Dict` and private `TransientDict` remain nominally
+distinct immutable payload versions, official Gleam fallback bodies remain the
+source owner of their operations, and dictionary iteration order is not a
+runtime contract. Canonical inspection sorts rendered entries only to make
+escaped values deterministic to read; that display order does not define
+iteration semantics.
 
 ### Specialization And Re-entry
 

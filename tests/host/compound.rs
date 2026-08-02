@@ -3,11 +3,12 @@ use geam::{
     BitArrayValue, HostCall, HostCallCompletion, HostCallError, HostCustom,
     HostCustomConstructorAt, HostCustomConstructorDefinition, HostCustomConstructorList,
     HostCustomConstructorListEnd, HostCustomField, HostCustomFieldList, HostCustomFieldListEnd,
-    HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType, HostFailure, HostList,
-    HostListType, HostLocation, HostModule, HostProvider, HostProviderModule, HostProviderSet,
-    HostTuple, HostTupleType, HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue,
-    HostedExecution, ListValue, ModuleSource, PackageSource, StatelessHostProfile, Value,
-    compile_typed_host_program, plan_host_program,
+    HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType,
+    HostCustomTypeArgument, HostFailure, HostList, HostListType, HostLocation, HostModule,
+    HostProvider, HostProviderModule, HostProviderSet, HostTuple, HostTupleType, HostTypeIndex0,
+    HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue, HostedExecution, ListValue,
+    ModuleSource, PackageSource, StatelessHostProfile, Value, compile_typed_host_program,
+    plan_host_program,
 };
 use num_bigint::BigInt;
 
@@ -36,7 +37,7 @@ struct BoxedValueField;
 impl HostCustomField for BoxedValueField {
     const LABEL: Option<&'static str> = Some("value");
 
-    type Type = HostTypeParameter<0>;
+    type Type = HostCustomTypeArgument<HostTypeIndex0>;
 }
 
 struct BoxedEnabledField;

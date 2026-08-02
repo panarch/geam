@@ -59,7 +59,9 @@ Source-declared constructorless external types can be linked to profile-owned
 Rust payloads. Providers define Gleam equality, runtime hashing, and canonical
 inspection through narrow retained-value contexts; equal payloads must hash
 equally, while collisions are resolved by equality. Their public runtime
-values remain opaque and self-contained.
+values remain opaque and self-contained. The `geam::gleam_stdlib` module
+provides an explicitly composed host-provider bundle for the unchanged
+official `gleam/dict` `v1.0.3` source; it is not injected by project loading.
 
 The main public entry points are:
 
@@ -105,6 +107,9 @@ when that shape does not match. Generic providers and Gleam function values
 use the same typed specialization and call paths as ordinary Gleam functions.
 Private transient-style containers can use this storage through immutable
 persistent versions; Geam does not expose general mutable external graphs.
+The official Dict provider uses this boundary for persistent hash-bucket
+storage and preserves Gleam fallback bodies for operations implemented in
+Gleam. Dictionary iteration order is not part of the Geam contract.
 
 `HostedExecution::try_from_module_plan` seals the entry-reachable host ABI
 before runtime construction. Provider state remains caller-owned, and nested

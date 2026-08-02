@@ -29,9 +29,11 @@ Release:     v1.0.3
 
 Geam does not bundle or patch that source. A dedicated integration test uses
 Gleam CLI `v1.17.0` to download the locked package, then executes selected
-official pure-Gleam modules through Geam's normal resolved-project pipeline.
-Each tracked module locks its public names, argument labels, and signatures
-while allowing private implementation and declaration-order changes.
+official pure-Gleam modules through Geam's normal resolved-project pipeline
+and executes unchanged `gleam/dict` through the hosted project pipeline with
+an explicit Rust provider. Each tracked module locks its public names,
+argument labels, and signatures while allowing private implementation and
+declaration-order changes.
 
 ## Used Gleam Areas
 
@@ -178,6 +180,15 @@ stable package or serialization contract.
 Private transient-style external APIs can be represented by returning new
 persistent payload versions that share immutable retained entries. This does
 not add a general mutable external-value model or cyclic runtime graph support.
+
+`geam::gleam_stdlib::host_providers` supplies the explicit provider bundle for
+official `gleam/dict` `v1.0.3`. Callers compose that bundle into a
+`HostProviderSet`; project loading does not infer or inject it. The provider
+binds the source's constructorless `Dict` and private `TransientDict` types and
+its bodyless external functions. Functions with Gleam fallback bodies continue
+to compile and execute from the unchanged package source. Dictionary lookup
+uses source hashing followed by source equality within a collision bucket, and
+no backend iteration order is exposed as a Geam contract.
 
 The current public execution APIs are:
 

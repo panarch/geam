@@ -26,10 +26,10 @@ pub use type_::{
     HostCustomConstructor, HostCustomConstructorAt, HostCustomConstructorDefinition,
     HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomConstructorSchema,
     HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomFieldSchema,
-    HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType, HostCustomTypeSchema,
-    HostFunctionType, HostListType, HostSchemaType, HostTupleType, HostType, HostTypeAt,
-    HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter,
-    HostTypeSequence,
+    HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType,
+    HostCustomTypeArgument, HostCustomTypeSchema, HostFunctionType, HostListType, HostSchemaType,
+    HostTupleType, HostType, HostTypeAt, HostTypeIndex0, HostTypeIndexNext, HostTypeList,
+    HostTypeListEnd, HostTypeParameter, HostTypeSequence,
 };
 pub use value::{
     HostCallCompletion, HostCallable, HostCustom, HostExternal, HostList, HostTuple, HostValue,

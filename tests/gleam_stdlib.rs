@@ -1,13 +1,14 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use geam::{
-    ExecutionPlan, HostModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
-    StatelessHostProfile, TypedProgram, Value, compile_typed_host_program, compile_typed_project,
-    plan_host_program, plan_program, run_main,
+    ExecutionPlan, HostProfile, HostProviderSet, HostedExecution, TypedProgram, Value,
+    compile_typed_host_project, compile_typed_project, plan_host_program, plan_program, run_main,
 };
 use gleam_core::type_::printer::Printer;
 
 #[path = "gleam_stdlib/gleam_bool.rs"]
 mod gleam_bool;
+#[path = "gleam_stdlib/gleam_dict.rs"]
+mod gleam_dict;
 #[path = "gleam_stdlib/gleam_option.rs"]
 mod gleam_option;
 #[path = "gleam_stdlib/gleam_order.rs"]
@@ -21,8 +22,13 @@ struct ExpectedSurface {
     functions: &'static str,
 }
 
-fn assert_surface(root_module: &str, dependency_module: &str, expected: &ExpectedSurface) {
-    let program = compile_fixture(root_module, dependency_module);
+fn assert_surface(
+    root_module: &str,
+    dependency_module: &str,
+    dependency_modules: &[&str],
+    expected: &ExpectedSurface,
+) {
+    let program = compile_fixture(root_module, dependency_modules);
     let module = program
         .modules()
         .find(|module| {
@@ -43,8 +49,9 @@ fn assert_surface(root_module: &str, dependency_module: &str, expected: &Expecte
     let mut types = module
         .type_info
         .types
-        .keys()
-        .map(|name| name.as_str())
+        .iter()
+        .filter(|(_, type_)| type_.publicity.is_public())
+        .map(|(name, _)| name.as_str())
         .collect::<Vec<_>>();
     types.sort_unstable();
     assert_eq!(
@@ -127,7 +134,7 @@ fn assert_surface(root_module: &str, dependency_module: &str, expected: &Expecte
     assert_eq!(functions.join("\n"), expected.functions.trim());
 }
 
-fn run_fixture(root_module: &str, dependency_module: &str) -> Value {
+fn run_fixture(root_module: &str, dependency_modules: &[&str]) -> Value {
     let source = std::fs::read_to_string(
         project_root()
             .join("src")
@@ -143,7 +150,7 @@ fn run_fixture(root_module: &str, dependency_module: &str) -> Value {
         .trim()
         .strip_prefix("// @geam:expect ")
         .expect("last non-empty stdlib fixture line should contain `// @geam:expect`");
-    let program = compile_fixture(root_module, dependency_module);
+    let program = compile_fixture(root_module, dependency_modules);
     let module_plan = plan_program(program).expect("stdlib fixture should plan");
 
     assert_eq!(
@@ -152,10 +159,7 @@ fn run_fixture(root_module: &str, dependency_module: &str) -> Value {
             .iter()
             .map(|module| (module.package().as_str(), module.module().as_str()))
             .collect::<Vec<_>>(),
-        vec![
-            ("gleam_stdlib", dependency_module),
-            ("geam_stdlib_test", root_module),
-        ],
+        expected_module_order(root_module, dependency_modules),
     );
 
     let plan = ExecutionPlan::from_module_plan(module_plan);
@@ -166,7 +170,12 @@ fn run_fixture(root_module: &str, dependency_module: &str) -> Value {
     actual
 }
 
-fn run_hosted_fixture(root_module: &str, dependency_module: &str) -> Value {
+fn run_hosted_fixture<Profile: HostProfile>(
+    root_module: &str,
+    dependency_modules: &[&str],
+    hosts: HostProviderSet<Profile>,
+    state: &mut Profile::RunState,
+) -> Value {
     let root_path = project_root()
         .join("src")
         .join(root_module)
@@ -182,36 +191,8 @@ fn run_hosted_fixture(root_module: &str, dependency_module: &str) -> Value {
         .strip_prefix("// @geam:expect ")
         .expect("last non-empty hosted stdlib fixture line should contain `// @geam:expect`")
         .to_string();
-    let dependency_path = project_root()
-        .join("build/packages/gleam_stdlib/src")
-        .join(dependency_module)
-        .with_extension("gleam");
-    let dependency_source = std::fs::read_to_string(&dependency_path)
-        .expect("downloaded stdlib dependency source should be readable");
-    let hosts = HostProviderSet::<StatelessHostProfile>::new(Vec::<HostModule>::new())
-        .expect("the empty host set should be valid");
-    let typed = compile_typed_host_program(
-        "geam_stdlib_test",
-        root_module,
-        [
-            PackageSource::new(
-                "gleam_stdlib",
-                Vec::<&str>::new(),
-                [ModuleSource::new(
-                    dependency_module,
-                    dependency_path,
-                    dependency_source,
-                )],
-            ),
-            PackageSource::new(
-                "geam_stdlib_test",
-                ["gleam_stdlib"],
-                [ModuleSource::new(root_module, root_path, root_source)],
-            ),
-        ],
-        hosts,
-    )
-    .expect("hosted stdlib fixture should compile");
+    let typed = compile_typed_host_project(project_root(), root_module, hosts)
+        .expect("resolved hosted stdlib fixture should compile");
     let module_plan = plan_host_program(typed).expect("hosted stdlib fixture should plan");
 
     assert_eq!(
@@ -220,16 +201,13 @@ fn run_hosted_fixture(root_module: &str, dependency_module: &str) -> Value {
             .iter()
             .map(|module| (module.package().as_str(), module.module().as_str()))
             .collect::<Vec<_>>(),
-        vec![
-            ("gleam_stdlib", dependency_module),
-            ("geam_stdlib_test", root_module),
-        ],
+        expected_module_order(root_module, dependency_modules),
     );
 
     let execution = HostedExecution::try_from_module_plan(module_plan)
         .expect("hosted stdlib fixture should seal");
     let actual = execution
-        .run_main(&mut (), &mut Vec::new())
+        .run_main(state, &mut Vec::new())
         .expect("hosted stdlib fixture should run");
 
     assert_eq!(actual.inspect().to_string(), expected);
@@ -237,7 +215,7 @@ fn run_hosted_fixture(root_module: &str, dependency_module: &str) -> Value {
     actual
 }
 
-fn compile_fixture(root_module: &str, dependency_module: &str) -> TypedProgram {
+fn compile_fixture(root_module: &str, dependency_modules: &[&str]) -> TypedProgram {
     let program =
         compile_typed_project(project_root(), root_module).expect("stdlib fixture should compile");
 
@@ -246,13 +224,21 @@ fn compile_fixture(root_module: &str, dependency_module: &str) -> TypedProgram {
             .modules()
             .map(|module| (module.type_info.package.as_str(), module.name.as_str()))
             .collect::<Vec<_>>(),
-        vec![
-            ("gleam_stdlib", dependency_module),
-            ("geam_stdlib_test", root_module),
-        ],
+        expected_module_order(root_module, dependency_modules),
     );
 
     program
+}
+
+fn expected_module_order<'name>(
+    root_module: &'name str,
+    dependency_modules: &'name [&'name str],
+) -> Vec<(&'name str, &'name str)> {
+    dependency_modules
+        .iter()
+        .map(|module| ("gleam_stdlib", *module))
+        .chain([("geam_stdlib_test", root_module)])
+        .collect()
 }
 
 fn project_root() -> Utf8PathBuf {

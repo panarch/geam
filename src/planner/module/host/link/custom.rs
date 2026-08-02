@@ -50,24 +50,71 @@ fn validate_host_custom_schema(
         actual.module().clone(),
         actual.name().clone(),
     );
-    let definition = host_custom_type_definition(registry, package, site, &name)?;
-    let visible = match access {
-        HostCustomTypeAccess::SourceLessPublicSurface => {
-            !definition.is_opaque()
-                && definition.publicity() == crate::plan::CustomTypePublicity::Public
-        }
-        HostCustomTypeAccess::SourceDeclaration => {
-            let same_package = definition.name().package() == package;
-            let same_module = same_package && definition.name().module() == site.module();
-            if definition.is_opaque() {
-                same_module
-            } else {
-                match definition.publicity() {
-                    crate::plan::CustomTypePublicity::Public => true,
-                    crate::plan::CustomTypePublicity::Internal => same_package,
-                    crate::plan::CustomTypePublicity::Private => same_module,
+    let (visible, expected, parameter_count) = match registry.custom_type(&name) {
+        Some(definition) => {
+            let visible = match access {
+                HostCustomTypeAccess::SourceLessPublicSurface => {
+                    !definition.is_opaque()
+                        && definition.publicity() == crate::plan::CustomTypePublicity::Public
                 }
-            }
+                HostCustomTypeAccess::SourceDeclaration => {
+                    let same_package = definition.name().package() == package;
+                    let same_module = same_package && definition.name().module() == site.module();
+                    if definition.is_opaque() {
+                        same_module
+                    } else {
+                        match definition.publicity() {
+                            crate::plan::CustomTypePublicity::Public => true,
+                            crate::plan::CustomTypePublicity::Internal => same_package,
+                            crate::plan::CustomTypePublicity::Private => same_module,
+                        }
+                    }
+                }
+            };
+            (
+                visible,
+                host_custom_type_schema(definition),
+                definition.parameters().len(),
+            )
+        }
+        None if name.package().is_empty()
+            && name.module() == "gleam"
+            && name.name() == "Result" =>
+        {
+            (
+                true,
+                crate::host::HostCustomTypeSchema::new(
+                    "",
+                    "gleam",
+                    "Result",
+                    2,
+                    [
+                        crate::host::HostCustomConstructorSchema::new(
+                            "Ok",
+                            [crate::host::HostCustomFieldSchema::new(
+                                None::<EcoString>,
+                                crate::host::HostSchemaType::parameter(0),
+                            )],
+                        ),
+                        crate::host::HostCustomConstructorSchema::new(
+                            "Error",
+                            [crate::host::HostCustomFieldSchema::new(
+                                None::<EcoString>,
+                                crate::host::HostSchemaType::parameter(1),
+                            )],
+                        ),
+                    ],
+                ),
+                2,
+            )
+        }
+        None => {
+            return Err(PlanError::HostProviderLink {
+                package: package.clone(),
+                module: site.module().clone(),
+                function: site.function().clone(),
+                reason: Box::new(HostProviderLinkReason::MissingCustomType { custom_type: name }),
+            });
         }
     };
     if !visible {
@@ -78,7 +125,6 @@ fn validate_host_custom_schema(
             reason: Box::new(HostProviderLinkReason::CustomTypeVisibility { custom_type: name }),
         });
     }
-    let expected = host_custom_type_schema(definition);
     if actual != &expected {
         return Err(PlanError::HostProviderLink {
             package: package.clone(),
@@ -96,8 +142,7 @@ fn validate_host_custom_schema(
         .iter()
         .chain([signature.shape().return_shape()])
     {
-        if let Some(actual) =
-            invalid_host_custom_type_argument_count(shape, &name, definition.parameters().len())
+        if let Some(actual) = invalid_host_custom_type_argument_count(shape, &name, parameter_count)
         {
             return Err(PlanError::HostProviderLink {
                 package: package.clone(),
@@ -105,7 +150,7 @@ fn validate_host_custom_schema(
                 function: site.function().clone(),
                 reason: Box::new(HostProviderLinkReason::CustomTypeArgumentCount {
                     custom_type: name,
-                    expected: definition.parameters().len(),
+                    expected: parameter_count,
                     actual,
                 }),
             });
@@ -147,24 +192,6 @@ fn invalid_host_custom_type_argument_count(
         }
     }
     None
-}
-
-fn host_custom_type_definition<'registry>(
-    registry: &'registry ProgramRegistry,
-    package: &EcoString,
-    site: &crate::plan::HostCallSite,
-    name: &crate::plan::CustomTypeName,
-) -> Result<&'registry crate::plan::CustomTypeDefinition, PlanError> {
-    registry
-        .custom_type(name)
-        .ok_or_else(|| PlanError::HostProviderLink {
-            package: package.clone(),
-            module: site.module().clone(),
-            function: site.function().clone(),
-            reason: Box::new(HostProviderLinkReason::MissingCustomType {
-                custom_type: name.clone(),
-            }),
-        })
 }
 
 fn host_custom_type_schema(
@@ -355,6 +382,134 @@ mod tests {
                         "Missing".into(),
                     ),
                 }),
+            }),
+        );
+    }
+
+    #[test]
+    fn validates_the_compiler_owned_result_schema_without_a_source_definition() {
+        let result = CustomTypeName::new("".into(), "gleam".into(), "Result".into());
+        let actual = HostCustomTypeSchema::new(
+            "",
+            "gleam",
+            "Result",
+            2,
+            [
+                HostCustomConstructorSchema::new(
+                    "Ok",
+                    [HostCustomFieldSchema::new(
+                        None::<EcoString>,
+                        HostSchemaType::parameter(0),
+                    )],
+                ),
+                HostCustomConstructorSchema::new(
+                    "Error",
+                    [HostCustomFieldSchema::new(
+                        None::<EcoString>,
+                        HostSchemaType::parameter(1),
+                    )],
+                ),
+            ],
+        );
+        let signature = FunctionTemplateSignature::new(
+            FunctionTemplateId::in_module(ModuleId::new(0), 0),
+            TypeScheme::new(1),
+            FunctionShape::new(
+                Vec::new(),
+                ValueShape::Custom(CustomValueShape::new(
+                    result,
+                    vec![ValueShape::Parameter(TypeParameterId(0)), ValueShape::Nil],
+                    CustomConstructorRefinement::Any,
+                )),
+            ),
+        );
+
+        assert_eq!(
+            validate_host_custom_schema(
+                &ProgramRegistry::new(Vec::new()),
+                &"application".into(),
+                &HostCallSite::new(
+                    "host/result".into(),
+                    "produce".into(),
+                    SourceSpan::new(0, 0),
+                ),
+                &signature,
+                &actual,
+                HostCustomTypeAccess::SourceDeclaration,
+            ),
+            Ok(()),
+        );
+    }
+
+    #[test]
+    fn rejects_a_malformed_compiler_owned_result_schema_before_argument_count() {
+        let result = CustomTypeName::new("".into(), "gleam".into(), "Result".into());
+        let expected = HostCustomTypeSchema::new(
+            "",
+            "gleam",
+            "Result",
+            2,
+            [
+                HostCustomConstructorSchema::new(
+                    "Ok",
+                    [HostCustomFieldSchema::new(
+                        None::<EcoString>,
+                        HostSchemaType::parameter(0),
+                    )],
+                ),
+                HostCustomConstructorSchema::new(
+                    "Error",
+                    [HostCustomFieldSchema::new(
+                        None::<EcoString>,
+                        HostSchemaType::parameter(1),
+                    )],
+                ),
+            ],
+        );
+        let actual = HostCustomTypeSchema::new(
+            "",
+            "gleam",
+            "Result",
+            2,
+            [HostCustomConstructorSchema::new(
+                "Success",
+                [HostCustomFieldSchema::new(
+                    None::<EcoString>,
+                    HostSchemaType::parameter(0),
+                )],
+            )],
+        );
+        let signature = FunctionTemplateSignature::new(
+            FunctionTemplateId::in_module(ModuleId::new(0), 0),
+            TypeScheme::new(0),
+            FunctionShape::new(
+                Vec::new(),
+                ValueShape::Custom(CustomValueShape::new(
+                    result,
+                    vec![ValueShape::Int],
+                    CustomConstructorRefinement::Any,
+                )),
+            ),
+        );
+
+        assert_eq!(
+            validate_host_custom_schema(
+                &ProgramRegistry::new(Vec::new()),
+                &"application".into(),
+                &HostCallSite::new(
+                    "host/result".into(),
+                    "produce".into(),
+                    SourceSpan::new(0, 0),
+                ),
+                &signature,
+                &actual,
+                HostCustomTypeAccess::SourceDeclaration,
+            ),
+            Err(PlanError::HostProviderLink {
+                package: "application".into(),
+                module: "host/result".into(),
+                function: "produce".into(),
+                reason: Box::new(HostProviderLinkReason::CustomSchemaMismatch { expected, actual }),
             }),
         );
     }

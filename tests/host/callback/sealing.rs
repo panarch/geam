@@ -3,10 +3,11 @@ use geam::{
     BitArrayValue, HostCall, HostCallCompletion, HostCallError, HostCustom,
     HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
     HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomSchema, HostCustomType,
-    HostFunctionType, HostList, HostListType, HostProvider, HostProviderModule, HostProviderSet,
-    HostSpecializationErrorReason, HostTuple, HostTupleType, HostTypeList, HostTypeListEnd,
-    HostTypeParameter, HostedExecution, ModuleSource, PackageSource, StatelessHostProfile,
-    compile_typed_host_program, plan_host_program,
+    HostCustomTypeArgument, HostFunctionType, HostList, HostListType, HostProvider,
+    HostProviderModule, HostProviderSet, HostSpecializationErrorReason, HostTuple, HostTupleType,
+    HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter,
+    HostedExecution, ModuleSource, PackageSource, StatelessHostProfile, compile_typed_host_program,
+    plan_host_program,
 };
 use num_bigint::BigInt;
 
@@ -247,7 +248,7 @@ struct FunctionField;
 impl HostCustomField for ParameterField {
     const LABEL: Option<&'static str> = None;
 
-    type Type = HostTypeParameter<0>;
+    type Type = HostCustomTypeArgument<HostTypeIndex0>;
 }
 
 impl HostCustomField for IntField {
@@ -315,7 +316,7 @@ struct WrappedValueField;
 impl HostCustomField for WrappedValueField {
     const LABEL: Option<&'static str> = None;
 
-    type Type = HostTypeParameter<0>;
+    type Type = HostCustomTypeArgument<HostTypeIndex0>;
 }
 
 struct WrappedDefinition;
@@ -340,13 +341,19 @@ impl HostCustomSchema for WrappedSchema {
 impl HostCustomField for WrappedField {
     const LABEL: Option<&'static str> = None;
 
-    type Type = HostCustomType<WrappedSchema, HostTypeList<HostTypeParameter<0>, HostTypeListEnd>>;
+    type Type = HostCustomType<
+        WrappedSchema,
+        HostTypeList<HostCustomTypeArgument<HostTypeIndex0>, HostTypeListEnd>,
+    >;
 }
 
 impl HostCustomField for FunctionField {
     const LABEL: Option<&'static str> = None;
 
-    type Type = HostFunctionType<HostTypeList<HostTypeParameter<1>, HostTypeListEnd>, BigInt>;
+    type Type = HostFunctionType<
+        HostTypeList<HostCustomTypeArgument<HostTypeIndexNext<HostTypeIndex0>>, HostTypeListEnd>,
+        BigInt,
+    >;
 }
 
 type EnvelopeFields = HostCustomFieldList<

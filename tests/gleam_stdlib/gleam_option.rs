@@ -1,4 +1,4 @@
-use geam::Value;
+use geam::{HostModule, HostProviderSet, StatelessHostProfile, Value};
 
 use super::{ExpectedSurface, assert_surface, run_hosted_fixture};
 
@@ -43,14 +43,16 @@ values: fn(List(Option(a))) -> List(a)
 #[test]
 #[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn tracks_official_gleam_option_public_surface() {
-    assert_surface("gleam_option", "gleam/option", &SURFACE);
+    assert_surface("gleam_option", "gleam/option", &["gleam/option"], &SURFACE);
 }
 
 #[test]
 #[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_option_behavior() {
+    let hosts = HostProviderSet::<StatelessHostProfile>::new(Vec::<HostModule>::new())
+        .expect("the empty host set should be valid");
     assert_eq!(
-        run_hosted_fixture("gleam_option", "gleam/option"),
+        run_hosted_fixture("gleam_option", &["gleam/option"], hosts, &mut ()),
         Value::Nil,
     );
 }

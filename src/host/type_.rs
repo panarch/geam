@@ -11,8 +11,8 @@ pub use custom::{
     HostCustomConstructor, HostCustomConstructorAt, HostCustomConstructorDefinition,
     HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomConstructorSchema,
     HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomFieldSchema,
-    HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType, HostCustomTypeSchema,
-    HostSchemaType,
+    HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType,
+    HostCustomTypeArgument, HostCustomTypeSchema, HostSchemaType,
 };
 pub use function::HostFunctionType;
 pub use list::HostListType;
@@ -437,12 +437,12 @@ mod private {
 #[cfg(test)]
 mod tests {
     use super::{
-        HostAbiType, HostAbiTypeSequence, HostCustomConstructorDefinition,
-        HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomConstructorSchema,
-        HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomFieldSchema,
-        HostCustomSchema, HostCustomType, HostCustomTypeSchema, HostListType, HostSchemaType,
-        HostTupleType, HostTypeDescriptor, HostTypeList, HostTypeListEnd, HostTypeParameter,
-        from_token, from_tokens,
+        HostAbiType, HostAbiTypeSequence, HostCustomConstructor, HostCustomConstructorAt,
+        HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
+        HostCustomConstructorSchema, HostCustomField, HostCustomFieldList, HostCustomFieldListEnd,
+        HostCustomFieldSchema, HostCustomIndex0, HostCustomSchema, HostCustomType,
+        HostCustomTypeSchema, HostListType, HostSchemaType, HostTupleType, HostTypeDescriptor,
+        HostTypeList, HostTypeListEnd, HostTypeParameter, from_token, from_tokens,
     };
     use crate::host::function::CallArguments;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
@@ -862,8 +862,10 @@ mod tests {
 
     #[test]
     fn custom_field_sequence_preserves_layout_and_nested_custom_schemas() {
-        type Fields = HostCustomFieldList<RecursiveNextField, HostCustomFieldListEnd>;
         type Recursive = HostCustomType<RecursiveSchema>;
+        type Constructor =
+            HostCustomConstructorAt<Recursive, HostCustomIndex0, RecursiveConstructor>;
+        type Fields = <Constructor as HostCustomConstructor>::Fields;
 
         assert_eq!(
             <Fields as HostAbiTypeSequence>::descriptors(),
