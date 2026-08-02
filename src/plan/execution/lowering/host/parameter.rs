@@ -3,19 +3,13 @@ use super::super::local;
 use super::super::specialization::StoredValueShape;
 use crate::host::HostParameter;
 use crate::plan::execution::graph as execution_graph;
-use crate::plan::execution::graph::ParamLocal;
-use crate::plan::execution::host::HostCallParameter;
-
-pub(super) struct HostParameters {
-    pub(super) entry: Box<[ParamLocal]>,
-    pub(super) call: Box<[HostCallParameter]>,
-}
+use crate::plan::execution::host::{HostCallParameter, HostedFunctionParameters};
 
 pub(super) fn lower_host_parameters(
     shapes: &[StoredValueShape],
     layout: &[HostParameter],
     context: &mut LoweringContext,
-) -> HostParameters {
+) -> HostedFunctionParameters {
     let mut prefix = local::ParameterPrefix::default();
     let parameters = shapes
         .iter()
@@ -28,10 +22,7 @@ pub(super) fn lower_host_parameters(
         })
         .collect::<Vec<_>>();
     let (entry, call) = parameters.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
-    HostParameters {
-        entry: entry.into_boxed_slice(),
-        call: call.into_boxed_slice(),
-    }
+    HostedFunctionParameters::new(entry.into_boxed_slice(), call.into_boxed_slice())
 }
 
 fn host_call_parameter(

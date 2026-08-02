@@ -6,6 +6,7 @@ mod float;
 mod int;
 mod result;
 mod run_state;
+mod string_tree;
 
 pub use run_state::{GleamStdlibRunState, GleamStdlibRunStateError};
 
@@ -23,6 +24,7 @@ pub trait GleamStdlibHostProfile: HostProfile {
 pub struct GleamStdlibStores {
     dict: dict::Stores,
     dynamic: dynamic::Stores,
+    string_tree: string_tree::Stores,
 }
 
 /// The default profile for using only the official Gleam standard library providers.
@@ -52,7 +54,10 @@ where
     dict::host_provider::<Profile>().and_then(|dict| {
         dynamic::host_provider::<Profile>().and_then(|dynamic| {
             float::host_provider::<Profile>().and_then(|float| {
-                int::host_provider::<Profile>().map(|int| vec![dict, dynamic, float, int])
+                int::host_provider::<Profile>().and_then(|int| {
+                    string_tree::host_provider::<Profile>()
+                        .map(|string_tree| vec![dict, dynamic, float, int, string_tree])
+                })
             })
         })
     })
@@ -102,7 +107,13 @@ mod tests {
                 .iter()
                 .map(|provider| provider.module().as_str())
                 .collect::<Vec<_>>(),
-            ["gleam/dict", "gleam/dynamic", "gleam/float", "gleam/int"],
+            [
+                "gleam/dict",
+                "gleam/dynamic",
+                "gleam/float",
+                "gleam/int",
+                "gleam/string_tree",
+            ],
         );
         let provider = &providers[0];
         assert_eq!(provider.package(), "gleam_stdlib");

@@ -309,13 +309,51 @@ where
         &mut self,
         value: <Profile as HostExternalStorage<Schema>>::Payload,
     ) -> HostExternal<'call, HostExternalType<Schema, Arguments>> {
-        let lease = Profile::store(self.runtime.external_stores()).insert(
+        let lease = self.insert_external_payload::<Schema, Arguments>(value);
+        HostExternal::new(self.runtime.build_external(lease))
+    }
+}
+
+impl<'call, Profile, Provider, Return> HostCall<'call, Profile, Provider, Return>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+{
+    fn insert_external_payload<Schema, Arguments>(
+        &self,
+        value: <Profile as HostExternalStorage<Schema>>::Payload,
+    ) -> crate::host::ExternalPayloadLease
+    where
+        Schema: HostExternalSchema,
+        Profile: HostExternalStorage<Schema>,
+        Arguments: HostTypeSequence,
+        HostExternalType<Schema, Arguments>: HostType,
+    {
+        Profile::store(self.runtime.external_stores()).insert(
             value,
             Profile::source_equal,
             Profile::source_hash,
             Profile::inspect,
-        );
-        HostExternal::new(self.runtime.build_external(lease))
+        )
+    }
+}
+
+impl<'call, Profile, Provider, Schema, Arguments>
+    HostCall<'call, Profile, Provider, HostListType<HostExternalType<Schema, Arguments>>>
+where
+    Profile: HostProfile + HostExternalStorage<Schema>,
+    Provider: HostProvider<Profile>,
+    Schema: HostExternalSchema,
+    Arguments: HostTypeSequence,
+    HostExternalType<Schema, Arguments>: HostType,
+{
+    pub(crate) fn create_external_item(
+        &mut self,
+        value: <Profile as HostExternalStorage<Schema>>::Payload,
+    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>> {
+        let lease = self.insert_external_payload::<Schema, Arguments>(value);
+        HostExternal::new(self.runtime.build_external_list_item(lease))
     }
 }
 

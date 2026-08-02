@@ -21,6 +21,8 @@ mod gleam_list;
 mod gleam_option;
 #[path = "gleam_stdlib/gleam_order.rs"]
 mod gleam_order;
+#[path = "gleam_stdlib/gleam_string_tree.rs"]
+mod gleam_string_tree;
 
 struct ExpectedSurface {
     values: &'static [&'static str],

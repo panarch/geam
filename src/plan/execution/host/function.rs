@@ -23,8 +23,8 @@ pub(crate) struct HostedFunctionMetadata {
     site: crate::plan::HostCallSite,
     signature: crate::plan::FunctionType,
     type_arguments: Box<[crate::plan::ValueType]>,
-    parameters: Box<[ParamLocal]>,
-    call_parameters: Box<[HostCallParameter]>,
+    parameters: HostedFunctionParameters,
+    return_external_items: Box<[crate::plan::execution::type_::ExternalTypeId]>,
     type_: FunctionType,
 }
 
@@ -43,6 +43,11 @@ pub(crate) enum HostCallParameter {
     Custom(ParamLocal),
     External(ParamLocal),
     Function(ParamLocal),
+}
+
+pub(in crate::plan::execution) struct HostedFunctionParameters {
+    entry: Box<[ParamLocal]>,
+    call: Box<[HostCallParameter]>,
 }
 
 #[derive(Debug)]
@@ -210,6 +215,10 @@ impl<Implementation> HostedFunction<Implementation> {
         self.metadata.call_parameters()
     }
 
+    pub(crate) fn return_external_items(&self) -> &[crate::plan::execution::type_::ExternalTypeId] {
+        self.metadata.return_external_items()
+    }
+
     pub(crate) fn type_(&self) -> &FunctionType {
         self.metadata.type_()
     }
@@ -229,8 +238,8 @@ impl HostedFunctionMetadata {
         site: crate::plan::HostCallSite,
         signature: crate::plan::FunctionType,
         type_arguments: Box<[crate::plan::ValueType]>,
-        parameters: Box<[ParamLocal]>,
-        call_parameters: Box<[HostCallParameter]>,
+        parameters: HostedFunctionParameters,
+        return_external_items: Box<[crate::plan::execution::type_::ExternalTypeId]>,
         type_: FunctionType,
     ) -> Self {
         Self {
@@ -239,7 +248,7 @@ impl HostedFunctionMetadata {
             signature,
             type_arguments,
             parameters,
-            call_parameters,
+            return_external_items,
             type_,
         }
     }
@@ -269,15 +278,36 @@ impl HostedFunctionMetadata {
     }
 
     fn parameters(&self) -> &[ParamLocal] {
-        &self.parameters
+        self.parameters.entry()
     }
 
     fn call_parameters(&self) -> &[HostCallParameter] {
-        &self.call_parameters
+        self.parameters.call()
+    }
+
+    fn return_external_items(&self) -> &[crate::plan::execution::type_::ExternalTypeId] {
+        &self.return_external_items
     }
 
     fn type_(&self) -> &FunctionType {
         &self.type_
+    }
+}
+
+impl HostedFunctionParameters {
+    pub(in crate::plan::execution) fn new(
+        entry: Box<[ParamLocal]>,
+        call: Box<[HostCallParameter]>,
+    ) -> Self {
+        Self { entry, call }
+    }
+
+    fn entry(&self) -> &[ParamLocal] {
+        &self.entry
+    }
+
+    fn call(&self) -> &[HostCallParameter] {
+        &self.call
     }
 }
 

@@ -18,6 +18,7 @@ num-traits = "0.2"
 rand = { version = "=0.10.0", default-features = false, features = ["std", "chacha", "sys_rng"] }
 thiserror = "2"
 toml = "0.9"
+unicode-segmentation = "1.13"
 vec1 = "1"
 
 [dev-dependencies]

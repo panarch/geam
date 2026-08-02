@@ -13,7 +13,7 @@ use crate::host::{
 };
 use crate::plan::execution::host::{HostCallParameter, HostedFunction};
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
-use crate::plan::execution::type_::{ListTypeId, ValueType};
+use crate::plan::execution::type_::{ExternalTypeId, ListTypeId, ValueType};
 use crate::runtime::evaluated::EvaluatedCustomValue;
 use crate::runtime::graph::{BlockEnvironment, RetainedValues};
 use crate::runtime::state::RuntimeStateFor;
@@ -39,6 +39,7 @@ where
     return_lists: Box<[ListTypeId]>,
     return_customs: Box<[crate::plan::execution::type_::CustomTypeId]>,
     return_externals: Box<[crate::plan::execution::type_::ExternalTypeId]>,
+    return_external_items: Box<[ExternalTypeId]>,
     origin: crate::runtime::error::HostCallOrigin,
     profile: std::marker::PhantomData<Profile>,
 }
@@ -102,6 +103,7 @@ where
             return_lists,
             return_customs,
             return_externals,
+            return_external_items: function.return_external_items().to_vec().into_boxed_slice(),
             origin: crate::runtime::error::HostCallOrigin::host(function.metadata()),
             profile: std::marker::PhantomData,
         }
@@ -425,6 +427,14 @@ where
         self.scoped
             .push_external(crate::runtime::evaluated::EvaluatedExternalValue::new(
                 self.return_externals[0],
+                value,
+            ))
+    }
+
+    fn build_external_list_item(&mut self, value: ExternalPayloadLease) -> HostExternalToken {
+        self.scoped
+            .push_external(crate::runtime::evaluated::EvaluatedExternalValue::new(
+                self.return_external_items[0],
                 value,
             ))
     }

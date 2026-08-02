@@ -50,6 +50,7 @@ pub(crate) trait HostCallRuntime<Profile: HostProfile> {
         fields: Box<[HostScopedValue]>,
     ) -> HostValueToken;
     fn build_external(&mut self, value: ExternalPayloadLease) -> HostExternalToken;
+    fn build_external_list_item(&mut self, value: ExternalPayloadLease) -> HostExternalToken;
     fn external_lease(&self, value: HostExternalToken) -> ExternalPayloadLease;
     fn resolve_host_type(
         &self,
@@ -303,6 +304,13 @@ pub(crate) mod test {
             HostExternalToken(index)
         }
 
+        fn build_external_list_item(
+            &mut self,
+            value: crate::host::ExternalPayloadLease,
+        ) -> HostExternalToken {
+            self.build_external(value)
+        }
+
         fn external_lease(&self, value: HostExternalToken) -> crate::host::ExternalPayloadLease {
             self.external_leases[value.0].clone()
         }
@@ -357,6 +365,9 @@ pub(crate) mod test {
         );
         let external = HostCallRuntime::build_external(&mut runtime, lease);
         assert_eq!(external, HostExternalToken(0));
+        let list_item =
+            HostCallRuntime::build_external_list_item(&mut runtime, equal_lease.clone());
+        assert_eq!(list_item, HostExternalToken(1));
         let stored = HostCallRuntime::external_lease(&runtime, external);
         {
             let stored_equal =
