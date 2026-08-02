@@ -47,6 +47,10 @@ impl HostStoredDynamic {
         self.value.type_() == type_
     }
 
+    pub(crate) fn value_type(&self) -> &crate::plan::ValueType {
+        self.value.type_()
+    }
+
     pub(super) fn runtime_value(&self) -> &crate::runtime::StoredRuntimeValue {
         &self.value
     }
@@ -118,6 +122,7 @@ mod tests {
             BigInt::from(7),
         ));
 
+        assert_eq!(stored.value_type(), &ValueType::Int);
         assert!(stored.has_type(&ValueType::Int));
         assert!(!stored.has_type(&ValueType::String));
     }

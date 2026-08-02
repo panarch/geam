@@ -1,6 +1,7 @@
 use crate::{HostProfile, HostProviderModule, HostRegistrationError};
 
 mod dict;
+mod dynamic;
 
 /// A host profile that exposes storage for the official Gleam standard library.
 pub trait GleamStdlibHostProfile: HostProfile {
@@ -11,6 +12,7 @@ pub trait GleamStdlibHostProfile: HostProfile {
 #[derive(Default)]
 pub struct GleamStdlibStores {
     dict: dict::Stores,
+    dynamic: dynamic::Stores,
 }
 
 /// The stateless profile for using only the official Gleam standard library providers.
@@ -33,7 +35,8 @@ pub fn host_providers<Profile>() -> Result<Vec<HostProviderModule<Profile>>, Hos
 where
     Profile: GleamStdlibHostProfile,
 {
-    dict::host_provider::<Profile>().map(|provider| vec![provider])
+    dict::host_provider::<Profile>()
+        .and_then(|dict| dynamic::host_provider::<Profile>().map(|dynamic| vec![dict, dynamic]))
 }
 
 #[cfg(test)]
@@ -60,11 +63,17 @@ mod tests {
     }
 
     #[test]
-    fn registers_the_exact_official_dict_provider_inventory() {
+    fn registers_providers_in_dependency_first_module_order() {
         let providers = host_providers::<GleamStdlibProfile>()
             .expect("official stdlib providers should register");
 
-        assert_eq!(providers.len(), 1);
+        assert_eq!(
+            providers
+                .iter()
+                .map(|provider| provider.module().as_str())
+                .collect::<Vec<_>>(),
+            ["gleam/dict", "gleam/dynamic"],
+        );
         let provider = &providers[0];
         assert_eq!(provider.package(), "gleam_stdlib");
         assert_eq!(provider.module(), "gleam/dict");

@@ -9,6 +9,8 @@ use gleam_core::type_::printer::Printer;
 mod gleam_bool;
 #[path = "gleam_stdlib/gleam_dict.rs"]
 mod gleam_dict;
+#[path = "gleam_stdlib/gleam_dynamic.rs"]
+mod gleam_dynamic;
 #[path = "gleam_stdlib/gleam_option.rs"]
 mod gleam_option;
 #[path = "gleam_stdlib/gleam_order.rs"]
