@@ -1,9 +1,15 @@
 use camino::{Utf8Path, Utf8PathBuf};
-use geam::{ExecutionPlan, TypedProgram, Value, compile_typed_project, plan_program, run_main};
+use geam::{
+    ExecutionPlan, HostModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
+    StatelessHostProfile, TypedProgram, Value, compile_typed_host_program, compile_typed_project,
+    plan_host_program, plan_program, run_main,
+};
 use gleam_core::type_::printer::Printer;
 
 #[path = "gleam_stdlib/gleam_bool.rs"]
 mod gleam_bool;
+#[path = "gleam_stdlib/gleam_option.rs"]
+mod gleam_option;
 #[path = "gleam_stdlib/gleam_order.rs"]
 mod gleam_order;
 
@@ -27,8 +33,9 @@ fn assert_surface(root_module: &str, dependency_module: &str, expected: &Expecte
     let mut values = module
         .type_info
         .values
-        .keys()
-        .map(|name| name.as_str())
+        .iter()
+        .filter(|(_, value)| value.publicity.is_public())
+        .map(|(name, _)| name.as_str())
         .collect::<Vec<_>>();
     values.sort_unstable();
     assert_eq!(values.as_slice(), expected.values);
@@ -153,6 +160,77 @@ fn run_fixture(root_module: &str, dependency_module: &str) -> Value {
 
     let plan = ExecutionPlan::from_module_plan(module_plan);
     let actual = run_main(&plan, &mut Vec::new()).expect("stdlib fixture should run");
+
+    assert_eq!(actual.inspect().to_string(), expected);
+
+    actual
+}
+
+fn run_hosted_fixture(root_module: &str, dependency_module: &str) -> Value {
+    let root_path = project_root()
+        .join("src")
+        .join(root_module)
+        .with_extension("gleam");
+    let root_source = std::fs::read_to_string(&root_path)
+        .expect("hosted stdlib fixture source should be readable");
+    let expected = root_source
+        .lines()
+        .rev()
+        .find(|line| !line.trim().is_empty())
+        .expect("hosted stdlib fixture should not be empty")
+        .trim()
+        .strip_prefix("// @geam:expect ")
+        .expect("last non-empty hosted stdlib fixture line should contain `// @geam:expect`")
+        .to_string();
+    let dependency_path = project_root()
+        .join("build/packages/gleam_stdlib/src")
+        .join(dependency_module)
+        .with_extension("gleam");
+    let dependency_source = std::fs::read_to_string(&dependency_path)
+        .expect("downloaded stdlib dependency source should be readable");
+    let hosts = HostProviderSet::<StatelessHostProfile>::new(Vec::<HostModule>::new())
+        .expect("the empty host set should be valid");
+    let typed = compile_typed_host_program(
+        "geam_stdlib_test",
+        root_module,
+        [
+            PackageSource::new(
+                "gleam_stdlib",
+                Vec::<&str>::new(),
+                [ModuleSource::new(
+                    dependency_module,
+                    dependency_path,
+                    dependency_source,
+                )],
+            ),
+            PackageSource::new(
+                "geam_stdlib_test",
+                ["gleam_stdlib"],
+                [ModuleSource::new(root_module, root_path, root_source)],
+            ),
+        ],
+        hosts,
+    )
+    .expect("hosted stdlib fixture should compile");
+    let module_plan = plan_host_program(typed).expect("hosted stdlib fixture should plan");
+
+    assert_eq!(
+        module_plan
+            .modules()
+            .iter()
+            .map(|module| (module.package().as_str(), module.module().as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("gleam_stdlib", dependency_module),
+            ("geam_stdlib_test", root_module),
+        ],
+    );
+
+    let execution = HostedExecution::try_from_module_plan(module_plan)
+        .expect("hosted stdlib fixture should seal");
+    let actual = execution
+        .run_main(&mut (), &mut Vec::new())
+        .expect("hosted stdlib fixture should run");
 
     assert_eq!(actual.inspect().to_string(), expected);
 

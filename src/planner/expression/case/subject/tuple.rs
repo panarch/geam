@@ -36,12 +36,15 @@ pub(super) fn plan(
     let mut ordered_clauses = Vec::new();
     for clause in clauses {
         for pattern in clause.patterns() {
+            let (pattern, reachable, exhaustive_remainder) = pattern.into_parts();
             ordered_clauses.push(super::plan_ordered_case_candidate(
                 OrderedCaseCandidateInput {
                     case_type: type_.as_ref(),
                     return_shape: &return_shape,
                     then: clause.then.clone(),
                     guard: clause.guard.clone(),
+                    reachable,
+                    exhaustive_remainder,
                 },
                 context,
                 |context| {
@@ -239,14 +242,17 @@ fn plan_tuple_case_pattern_with_context(
             };
             let pattern =
                 plan_custom_subject_pattern(pattern.clone(), value.shape().clone(), context)?;
-            let mut total_branch_steps = Vec::new();
-            if let Some(binding) = pattern
+            let total_branch_steps = pattern
                 .custom_binding
                 .clone()
-                .and_then(|binding| binding.into_intrinsic_binding())
-            {
-                total_branch_steps = total_custom_binding_steps(value.clone(), binding, context);
-            }
+                .map(|binding| {
+                    binding
+                        .clone()
+                        .into_intrinsic_binding()
+                        .unwrap_or_else(|| binding.into_exhaustive_remainder_binding())
+                })
+                .map(|binding| total_custom_binding_steps(value.clone(), binding, context))
+                .unwrap_or_default();
             Ok(TupleCasePattern {
                 match_condition: Some(BoolExpr::custom_matches(value, pattern.pattern)),
                 branch_bindings: Vec::new(),

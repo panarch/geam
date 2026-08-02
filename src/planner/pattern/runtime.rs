@@ -46,10 +46,12 @@ pub(in crate::planner) struct PlannedCustomBinding {
 }
 
 impl PlannedCustomBinding {
+    #[cfg(test)]
     pub(in crate::planner) fn constructor(&self) -> &CustomConstructor {
         &self.constructor
     }
 
+    #[cfg(test)]
     pub(in crate::planner) fn constructor_count(&self) -> usize {
         self.constructor_count
     }
@@ -100,6 +102,14 @@ impl PlannedCustomBinding {
             self.constructor,
             self.fields,
         )
+    }
+
+    pub(in crate::planner) fn into_exhaustive_remainder_binding(self) -> CustomBindingPattern {
+        let constructor = self.constructor.index();
+        let excluded = (0..self.constructor_count)
+            .filter(|index| *index != constructor)
+            .collect();
+        self.into_remainder_binding(excluded)
     }
 }
 
@@ -1145,6 +1155,22 @@ mod tests {
                 result_shape.clone(),
                 vec![0],
                 any_constructor,
+                vec![TotalBindingPattern::discard(ValueType::Int)],
+            ),
+        );
+        assert_eq!(
+            any.custom_binding
+                .clone()
+                .expect("total fields should preserve the custom binding")
+                .into_exhaustive_remainder_binding(),
+            CustomBindingPattern::exhaustive_remainder(
+                result_shape.clone(),
+                vec![1],
+                any.custom_binding
+                    .as_ref()
+                    .expect("total fields should preserve the custom binding")
+                    .constructor()
+                    .clone(),
                 vec![TotalBindingPattern::discard(ValueType::Int)],
             ),
         );

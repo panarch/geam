@@ -85,6 +85,7 @@ fn plan_ordered_string_case(
     let mut ordered_clauses = Vec::new();
     for clause in clauses {
         for pattern in clause.patterns() {
+            let (pattern, reachable, exhaustive_remainder) = pattern.into_parts();
             let pattern = plan_string_case_pattern(pattern)?;
             let bindings = pattern.branch_bindings(&subject);
             let is_total = pattern.is_total() && clause.guard.is_none();
@@ -98,6 +99,8 @@ fn plan_ordered_string_case(
                     guard: clause.guard.clone(),
                     match_condition,
                     is_total,
+                    reachable,
+                    exhaustive_remainder,
                 },
                 context,
             )?);
@@ -956,6 +959,7 @@ mod tests {
         InvalidCaseShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
     };
     use gleam_core::ast::{ClauseGuard, Constant, Pattern, TypedModule};
+    use gleam_core::exhaustiveness::{Body, Decision};
     use gleam_core::type_::{self, error::VariableOrigin};
     use num_bigint::BigInt;
 
@@ -1707,16 +1711,16 @@ pub fn main() {
             }),
         );
 
-        let mut missing_fallback_pattern = compile_string_case_module();
+        let mut invalid_compiled_clause = compile_string_case_module();
         let (_, _, clauses) = super::super::super::expect_case_statement_mut(
-            &mut missing_fallback_pattern.definitions.functions[0].body[0],
+            &mut invalid_compiled_clause.definitions.functions[0].body[0],
         );
         clauses.pop();
         assert_eq!(
-            plan_module(missing_fallback_pattern),
+            plan_module(invalid_compiled_clause),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::MissingFallbackPattern,
+                    reason: InvalidCaseShapeReason::CompiledCaseClauseIndex,
                 },
             }),
         );
@@ -1748,9 +1752,10 @@ fn return_value(value: String) {
             })
             .map(|function| &mut function.body)
             .expect("expected main function");
-        let (_, _, clauses) =
+        let (_, _, clauses, compiled_case) =
             super::super::super::expect_assignment_case_statement_mut(&mut body[0]);
         clauses.pop();
+        compiled_case.tree = Decision::run(Body::new(0));
         assert_eq!(
             plan_module(missing_function_fallback_pattern),
             Err(PlanError::InvalidTypedAst {

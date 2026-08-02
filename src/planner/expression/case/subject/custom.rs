@@ -10,7 +10,6 @@ use crate::planner::pattern::{
 use ecow::EcoString;
 use gleam_core::ast::{TypedExpr, TypedPattern};
 use gleam_core::type_::Type;
-use std::collections::HashSet;
 use std::sync::Arc;
 
 pub(super) fn plan(
@@ -28,44 +27,31 @@ pub(super) fn plan(
         ));
     };
     let (subject_step, subject_local, subject) = bind_subject(subject, context);
-    let mut coverage = CustomCaseCoverage::default();
     let mut ordered_clauses = Vec::new();
     for clause in clauses {
-        let is_guarded = clause.guard.is_some();
         for pattern in clause.patterns() {
+            let (pattern, reachable, exhaustive_remainder) = pattern.into_parts();
             ordered_clauses.push(super::plan_ordered_case_candidate(
                 OrderedCaseCandidateInput {
                     case_type: type_.as_ref(),
                     return_shape: &return_shape,
                     then: clause.then.clone(),
                     guard: clause.guard.clone(),
+                    reachable,
+                    exhaustive_remainder,
                 },
                 context,
                 |context| {
                     let mut planned = plan_pattern(pattern, subject.clone(), context)?;
                     if let Some(binding) = planned.custom_binding.take() {
-                        let proof = coverage.add_candidate(
-                            binding.constructor().index(),
-                            binding.constructor_count(),
-                            planned.pattern.is_total,
-                            is_guarded,
-                        );
-                        let total_binding = match proof {
-                            Some(CustomCaseBindingProof::Intrinsic) => {
-                                binding.into_intrinsic_binding()
-                            }
-                            Some(CustomCaseBindingProof::ExhaustiveRemainder(excluded)) => {
-                                Some(binding.into_remainder_binding(excluded))
-                            }
-                            None => None,
-                        };
-                        if let Some(binding) = total_binding {
-                            planned.pattern.is_total = true;
-                            planned
-                                .pattern
-                                .total_branch_steps
-                                .push(Step::bind_custom_fields(subject_local, binding));
-                        }
+                        let binding = binding
+                            .clone()
+                            .into_intrinsic_binding()
+                            .unwrap_or_else(|| binding.into_exhaustive_remainder_binding());
+                        planned
+                            .pattern
+                            .total_branch_steps
+                            .push(Step::bind_custom_fields(subject_local, binding));
                     }
                     Ok(planned.pattern)
                 },
@@ -75,41 +61,6 @@ pub(super) fn plan(
 
     super::ordered_case_expr(ordered_clauses)
         .map(|case| super::case_subject_block(subject_step, case))
-}
-
-#[derive(Default)]
-struct CustomCaseCoverage {
-    constructors: HashSet<usize>,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum CustomCaseBindingProof {
-    Intrinsic,
-    ExhaustiveRemainder(Vec<usize>),
-}
-
-impl CustomCaseCoverage {
-    fn add_candidate(
-        &mut self,
-        constructor: usize,
-        constructor_count: usize,
-        is_intrinsically_total: bool,
-        is_guarded: bool,
-    ) -> Option<CustomCaseBindingProof> {
-        if is_guarded {
-            return None;
-        }
-        let mut excluded = self.constructors.iter().copied().collect::<Vec<_>>();
-        excluded.sort_unstable();
-        self.constructors.insert(constructor);
-        if is_intrinsically_total {
-            Some(CustomCaseBindingProof::Intrinsic)
-        } else if self.constructors.len() == constructor_count {
-            Some(CustomCaseBindingProof::ExhaustiveRemainder(excluded))
-        } else {
-            None
-        }
-    }
 }
 
 fn plan_pattern(
@@ -200,7 +151,7 @@ mod tests {
         TotalBindingPattern, ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
-    use crate::planner::dsl::{int_return_block, int_return_expr, local_int};
+    use crate::planner::dsl::{int, int_return_block, int_return_expr, local_int};
     use crate::planner::plan_module;
     use crate::planner::support::dummy_span;
     use crate::planner::{InvalidCaseShapeReason, InvalidTypedAstReason, PlanError};
@@ -433,28 +384,48 @@ pub fn main() { 0 }
     }
 
     #[test]
-    fn custom_case_coverage_excludes_guards_and_proves_the_final_remainder() {
-        let mut coverage = super::CustomCaseCoverage::default();
+    fn total_custom_wildcard_remains_intrinsically_total() {
+        let plan = plan_module(crate::planner::support::compile(
+            r#"
+pub type Choice { First Second }
+fn pick(value: Choice) -> Int {
+  case value { _ -> 1 }
+}
+pub fn main() { 0 }
+"#,
+        ))
+        .expect("an intrinsically total custom case should plan");
+        let type_ = CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Choice".into()),
+            Vec::new(),
+        );
+        let shape = CustomValueShape::any(type_);
+        let expected = ReturnExpr::int_body(int_return_block(
+            [Step::let_custom(
+                CustomLocalId(1),
+                "<case:custom:1>".into(),
+                CustomExpr::local_get(
+                    CustomLocal::from_shape(CustomLocalId(0), shape),
+                    "value".into(),
+                ),
+            )],
+            int_return_expr(int(1)),
+        ));
 
-        assert_eq!(coverage.add_candidate(0, 2, false, true), None);
-        assert_eq!(coverage.add_candidate(0, 2, false, false), None);
-        assert_eq!(
-            coverage.add_candidate(1, 2, false, false),
-            Some(super::CustomCaseBindingProof::ExhaustiveRemainder(vec![0])),
-        );
-        assert_eq!(
-            super::CustomCaseCoverage::default().add_candidate(0, 1, true, false),
-            Some(super::CustomCaseBindingProof::Intrinsic),
-        );
+        assert_eq!(plan.functions()[0].return_(), &expected);
     }
 
     #[test]
-    fn exhaustive_custom_case_preserves_the_final_remainder_binding() {
+    fn guarded_custom_case_preserves_the_final_remainder_binding() {
         let plan = plan_module(crate::planner::support::compile(
             r#"
 pub type Choice { First(Int) Second(Int) }
 fn pick(value: Choice) -> Int {
-  case value { First(inner) -> inner Second(inner) -> inner }
+  case value {
+    First(inner) if inner > 0 -> inner
+    First(inner) -> inner
+    Second(inner) -> inner
+  }
 }
 pub fn main() { 0 }
 "#,
@@ -487,6 +458,11 @@ pub fn main() { 0 }
             "inner".into(),
             ValueShape::Int,
         );
+        let third_binding = AssertBinding::new(
+            ParamLocal::int(IntLocalId(2)),
+            "inner".into(),
+            ValueShape::Int,
+        );
         let subject_local = CustomLocal::from_shape(CustomLocalId(1), shape.clone());
         let subject_name = "<case:custom:1>";
         let subject = CustomExpr::local_get(subject_local, subject_name.into());
@@ -500,26 +476,43 @@ pub fn main() { 0 }
                 ),
             )],
             crate::plan::IntReturn::bool_case(
-                BoolExpr::custom_matches(
-                    subject,
-                    CustomPattern::new(
-                        first,
-                        vec![AssertPattern::Bind(first_binding.clone())],
-                        Some(vec![TotalBindingPattern::bind(first_binding)]),
+                BoolExpr::and(
+                    BoolExpr::custom_matches(
+                        subject.clone(),
+                        CustomPattern::new(
+                            first.clone(),
+                            vec![AssertPattern::Bind(first_binding.clone())],
+                            Some(vec![TotalBindingPattern::bind(first_binding)]),
+                        ),
+                    ),
+                    BoolExpr::gt_int(
+                        local_int(0, "inner").into(),
+                        crate::plan::IntExpr::value(0.into()),
                     ),
                 ),
                 int_return_expr(local_int(0, "inner")),
-                int_return_block(
-                    [Step::bind_custom_fields(
-                        CustomLocalId(1),
-                        CustomBindingPattern::exhaustive_remainder(
-                            shape,
-                            vec![0],
-                            second,
-                            vec![TotalBindingPattern::bind(second_binding)],
+                crate::plan::IntReturn::bool_case(
+                    BoolExpr::custom_matches(
+                        subject,
+                        CustomPattern::new(
+                            first,
+                            vec![AssertPattern::Bind(second_binding.clone())],
+                            Some(vec![TotalBindingPattern::bind(second_binding)]),
                         ),
-                    )],
+                    ),
                     int_return_expr(local_int(1, "inner")),
+                    int_return_block(
+                        [Step::bind_custom_fields(
+                            CustomLocalId(1),
+                            CustomBindingPattern::exhaustive_remainder(
+                                shape,
+                                vec![0],
+                                second,
+                                vec![TotalBindingPattern::bind(third_binding)],
+                            ),
+                        )],
+                        int_return_expr(local_int(2, "inner")),
+                    ),
                 ),
             ),
         ));

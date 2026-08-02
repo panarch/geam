@@ -375,6 +375,7 @@ mod control_flow {
             multiple_subject_alternative_guard,
             multiple_subject_mixed_patterns,
             multiple_subject_list_pattern,
+            exhaustive_pattern_sets,
             multiple_subject_closure_capture,
             bit_array_subject,
             multiple_subject_bit_array_subject,

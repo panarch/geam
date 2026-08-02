@@ -87,8 +87,9 @@ pub(super) fn plan_expr(
             type_,
             subjects,
             clauses,
+            compiled_case,
             ..
-        } => case::plan_case(type_, subjects, clauses, context),
+        } => case::plan_case(type_, subjects, clauses, compiled_case, context),
         TypedExpr::RecordAccess {
             type_,
             label,

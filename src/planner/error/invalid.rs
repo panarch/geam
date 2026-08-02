@@ -267,6 +267,16 @@ pub enum InvalidCaseShapeReason {
     EmptyClauses,
     #[error("empty subjects")]
     EmptySubjects,
+    #[error("compiled case clause index is out of bounds")]
+    CompiledCaseClauseIndex,
+    #[error("compiled case contains a reachable failure")]
+    CompiledCaseFailure,
+    #[error("compiled case guard index is out of bounds")]
+    CompiledCaseGuardIndex,
+    #[error("compiled case guard does not match its clause")]
+    CompiledCaseGuard,
+    #[error("compiled case subject count does not match case subjects")]
+    CompiledCaseSubjectCountMismatch,
     #[error("invalid pattern")]
     InvalidPattern,
     #[error("missing false pattern")]

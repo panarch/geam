@@ -33,6 +33,7 @@ pub(super) fn plan(
     let mut ordered_clauses = Vec::new();
     for clause in clauses {
         for pattern in clause.patterns() {
+            let (pattern, reachable, exhaustive_remainder) = pattern.into_parts();
             let bound_names = plan_pattern(pattern, &shape, context)?;
             ordered_clauses.push(super::plan_ordered_case_clause(
                 OrderedCaseClauseInput {
@@ -43,6 +44,8 @@ pub(super) fn plan(
                     guard: clause.guard.clone(),
                     match_condition: BoolExpr::value(true),
                     is_total: clause.guard.is_none(),
+                    reachable,
+                    exhaustive_remainder,
                 },
                 context,
             )?);
@@ -273,6 +276,8 @@ mod tests {
                     },
                     alternative_patterns: Vec::new(),
                     guard: None,
+                    reachable: true,
+                    exhaustive_remainder: false,
                     then: TypedExpr::Int {
                         location: dummy_span(),
                         type_: type_::int(),

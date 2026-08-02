@@ -25,6 +25,8 @@ use gleam_core::ast::{Pattern, SrcSpan, TypedClause, TypedClauseGuard, TypedExpr
 use gleam_core::type_::{Type, TypeVar};
 use std::sync::Arc;
 
+use super::coverage::CaseCoverage;
+
 #[cfg(test)]
 use crate::plan::ValueType;
 
@@ -109,9 +111,10 @@ pub(super) fn plan(
     type_: Arc<Type>,
     subject: TypedExpr,
     clauses: Vec<TypedClause>,
+    coverage: CaseCoverage,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    let clauses = case_clauses(clauses)?;
+    let clauses = case_clauses(clauses, &coverage)?;
     let source_type = subject.type_();
     let subject_shape = context.value_shape(source_type.as_ref());
     let subject_variants = CaseSubjectVariants::from_gleam(source_type.as_ref());
@@ -172,6 +175,7 @@ pub(super) fn plan_multi(
     type_: Arc<Type>,
     subjects: Vec<TypedExpr>,
     clauses: Vec<TypedClause>,
+    coverage: CaseCoverage,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let mut subject_types = Vec::with_capacity(subjects.len());
@@ -195,7 +199,7 @@ pub(super) fn plan_multi(
         type_: gleam_subject_type,
         elements: subjects,
     };
-    let clauses = multi_subject_case_clauses(clauses, subject_types.len())?;
+    let clauses = multi_subject_case_clauses(clauses, subject_types.len(), &coverage)?;
 
     tuple::plan(
         type_,
@@ -213,10 +217,28 @@ struct CaseClause {
     alternative_patterns: Vec<Pattern<Arc<Type>>>,
     guard: Option<TypedClauseGuard>,
     then: TypedExpr,
+    reachable: bool,
+    exhaustive_remainder: bool,
+}
+
+struct CasePattern {
+    pattern: Pattern<Arc<Type>>,
+    reachable: bool,
+    exhaustive_remainder: bool,
+}
+
+impl CasePattern {
+    fn into_parts(self) -> (Pattern<Arc<Type>>, bool, bool) {
+        (self.pattern, self.reachable, self.exhaustive_remainder)
+    }
 }
 
 impl CaseClause {
-    fn from_single_subject_typed(clause: TypedClause) -> Result<Self, PlanError> {
+    fn from_single_subject_typed(
+        clause: TypedClause,
+        reachable: bool,
+        exhaustive_remainder: bool,
+    ) -> Result<Self, PlanError> {
         let TypedClause {
             pattern,
             alternative_patterns,
@@ -232,12 +254,16 @@ impl CaseClause {
                 .collect::<Result<_, _>>()?,
             guard,
             then,
+            reachable,
+            exhaustive_remainder,
         })
     }
 
     fn from_multi_subject_typed(
         clause: TypedClause,
         subject_count: usize,
+        reachable: bool,
+        exhaustive_remainder: bool,
     ) -> Result<Self, PlanError> {
         let TypedClause {
             pattern,
@@ -254,6 +280,8 @@ impl CaseClause {
                 .collect::<Result<_, _>>()?,
             guard,
             then,
+            reachable,
+            exhaustive_remainder,
         })
     }
 
@@ -261,25 +289,52 @@ impl CaseClause {
         !self.alternative_patterns.is_empty()
     }
 
-    fn patterns(&self) -> impl Iterator<Item = Pattern<Arc<Type>>> + '_ {
-        std::iter::once(self.pattern.clone()).chain(self.alternative_patterns.iter().cloned())
+    fn patterns(&self) -> impl Iterator<Item = CasePattern> + '_ {
+        let pattern_count = 1 + self.alternative_patterns.len();
+        std::iter::once(self.pattern.clone())
+            .chain(self.alternative_patterns.iter().cloned())
+            .enumerate()
+            .map(move |(index, pattern)| CasePattern {
+                pattern,
+                reachable: self.reachable,
+                exhaustive_remainder: self.exhaustive_remainder && index + 1 == pattern_count,
+            })
     }
 }
 
-fn case_clauses(clauses: Vec<TypedClause>) -> Result<Vec<CaseClause>, PlanError> {
+fn case_clauses(
+    clauses: Vec<TypedClause>,
+    coverage: &CaseCoverage,
+) -> Result<Vec<CaseClause>, PlanError> {
     clauses
         .into_iter()
-        .map(CaseClause::from_single_subject_typed)
+        .enumerate()
+        .map(|(index, clause)| {
+            CaseClause::from_single_subject_typed(
+                clause,
+                coverage.is_reachable(index),
+                coverage.is_exhaustive_remainder(index),
+            )
+        })
         .collect()
 }
 
 fn multi_subject_case_clauses(
     clauses: Vec<TypedClause>,
     subject_count: usize,
+    coverage: &CaseCoverage,
 ) -> Result<Vec<CaseClause>, PlanError> {
     clauses
         .into_iter()
-        .map(|clause| CaseClause::from_multi_subject_typed(clause, subject_count))
+        .enumerate()
+        .map(|(index, clause)| {
+            CaseClause::from_multi_subject_typed(
+                clause,
+                subject_count,
+                coverage.is_reachable(index),
+                coverage.is_exhaustive_remainder(index),
+            )
+        })
         .collect()
 }
 
@@ -644,6 +699,7 @@ struct OrderedCaseClause {
     condition: BoolExpr,
     branch: Expr,
     is_total: bool,
+    reachable: bool,
 }
 
 struct OrderedCaseClauseInput<'a> {
@@ -654,6 +710,8 @@ struct OrderedCaseClauseInput<'a> {
     guard: Option<TypedClauseGuard>,
     match_condition: BoolExpr,
     is_total: bool,
+    reachable: bool,
+    exhaustive_remainder: bool,
 }
 
 struct OrderedCasePattern {
@@ -668,6 +726,8 @@ struct OrderedCaseCandidateInput<'a> {
     return_shape: &'a ValueShape,
     then: TypedExpr,
     guard: Option<TypedClauseGuard>,
+    reachable: bool,
+    exhaustive_remainder: bool,
 }
 
 fn plan_ordered_case_clause(
@@ -682,6 +742,8 @@ fn plan_ordered_case_clause(
         guard,
         match_condition,
         is_total,
+        reachable,
+        exhaustive_remainder,
     } = input;
 
     plan_ordered_case_candidate(
@@ -690,6 +752,8 @@ fn plan_ordered_case_clause(
             return_shape,
             then,
             guard,
+            reachable,
+            exhaustive_remainder,
         },
         context,
         |_| {
@@ -713,6 +777,8 @@ fn plan_ordered_case_candidate(
         return_shape,
         then,
         guard,
+        reachable,
+        exhaustive_remainder,
     } = input;
 
     context.with_local_scope(|context| {
@@ -723,6 +789,7 @@ fn plan_ordered_case_candidate(
             is_total,
         } = plan_pattern(context)?;
         let is_guarded = guard.is_some();
+        let is_total = !is_guarded && (is_total || exhaustive_remainder);
         let branch_binding_steps = plan_branch_binding_steps(branch_bindings, context);
         let guard_condition = guard
             .map(|guard| super::guard::plan_bool(guard, context))
@@ -745,7 +812,7 @@ fn plan_ordered_case_candidate(
             context,
         )?;
         validate_case_branch_type(case_type, return_shape, &branch)?;
-        let mut binding_steps = if is_total && !is_guarded {
+        let mut binding_steps = if is_total {
             total_branch_steps
         } else {
             Vec::new()
@@ -760,7 +827,8 @@ fn plan_ordered_case_candidate(
         Ok(OrderedCaseClause {
             condition,
             branch,
-            is_total: is_total && !is_guarded,
+            is_total,
+            reachable,
         })
     })
 }
@@ -786,6 +854,9 @@ fn plan_branch_binding_steps(
 fn ordered_case_expr(clauses: Vec<OrderedCaseClause>) -> Result<Expr, PlanError> {
     let mut reachable_clauses = Vec::new();
     for clause in clauses {
+        if !clause.reachable {
+            continue;
+        }
         let is_total = clause.is_total;
         reachable_clauses.push(clause);
         if is_total {
@@ -1760,6 +1831,7 @@ pub fn main() {
                 condition: BoolExpr::value(false),
                 branch: Expr::int(IntExpr::value(1.into())),
                 is_total: false,
+                reachable: true,
             }]),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
@@ -1776,6 +1848,7 @@ pub fn main() {
                 condition: BoolExpr::value(true),
                 branch: Expr::int(IntExpr::value(1.into())),
                 is_total: true,
+                reachable: true,
             }]),
             Ok(Expr::int(IntExpr::value(1.into()))),
         );
@@ -1785,11 +1858,13 @@ pub fn main() {
                     condition: BoolExpr::value(false),
                     branch: Expr::int(IntExpr::value(1.into())),
                     is_total: false,
+                    reachable: true,
                 },
                 super::OrderedCaseClause {
                     condition: BoolExpr::value(true),
                     branch: Expr::int(IntExpr::value(0.into())),
                     is_total: true,
+                    reachable: true,
                 }
             ]),
             Ok(Expr::int(IntExpr::bool_case(
@@ -1804,11 +1879,13 @@ pub fn main() {
                     condition: BoolExpr::value(true),
                     branch: Expr::int(IntExpr::value(10.into())),
                     is_total: true,
+                    reachable: true,
                 },
                 super::OrderedCaseClause {
                     condition: BoolExpr::value(true),
                     branch: Expr::int(IntExpr::value(999.into())),
                     is_total: false,
+                    reachable: true,
                 },
             ]),
             Ok(Expr::int(IntExpr::value(10.into()))),
@@ -1832,6 +1909,8 @@ pub fn main() {
                 guard: None,
                 match_condition: BoolExpr::value(true),
                 is_total: true,
+                reachable: true,
+                exhaustive_remainder: false,
             },
             &mut context,
         );
