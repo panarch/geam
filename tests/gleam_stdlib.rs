@@ -31,6 +31,8 @@ mod gleam_order;
 mod gleam_pair;
 #[path = "gleam_stdlib/gleam_result.rs"]
 mod gleam_result;
+#[path = "gleam_stdlib/gleam_set.rs"]
+mod gleam_set;
 #[path = "gleam_stdlib/gleam_string.rs"]
 mod gleam_string;
 #[path = "gleam_stdlib/gleam_string_tree.rs"]
@@ -87,9 +89,12 @@ fn assert_surface(
 
     let mut type_aliases = module
         .type_info
-        .type_aliases
-        .keys()
-        .map(|name| name.as_str())
+        .types
+        .iter()
+        .filter(|(name, type_)| {
+            type_.publicity.is_public() && module.type_info.type_aliases.contains_key(*name)
+        })
+        .map(|(name, _)| name.as_str())
         .collect::<Vec<_>>();
     type_aliases.sort_unstable();
     assert_eq!(type_aliases.as_slice(), expected.type_aliases);
