@@ -46,6 +46,18 @@ pub(super) fn plan_selected_external_fallback(
     plan_selected_function(info, function, context, name)
 }
 
+pub(super) fn function_name(function: &TypedFunction) -> Result<EcoString, PlanError> {
+    match &function.name {
+        Some((_, name)) => Ok(name.clone()),
+        None => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::FunctionShape {
+                name: "<anonymous>".into(),
+                reason: InvalidFunctionShapeReason::Anonymous,
+            },
+        }),
+    }
+}
+
 fn plan_selected_function(
     info: FunctionInfo,
     function: TypedFunction,
@@ -148,18 +160,6 @@ fn define_params(
             )),
         })
         .collect()
-}
-
-pub(super) fn function_name(function: &TypedFunction) -> Result<EcoString, PlanError> {
-    match &function.name {
-        Some((_, name)) => Ok(name.clone()),
-        None => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::FunctionShape {
-                name: "<anonymous>".into(),
-                reason: InvalidFunctionShapeReason::Anonymous,
-            },
-        }),
-    }
 }
 
 #[cfg(test)]
