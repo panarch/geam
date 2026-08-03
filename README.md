@@ -66,7 +66,7 @@ project loading. The verified module set is `gleam/bit_array`, `gleam/bool`,
 `gleam/bytes_tree`, `gleam/dict`, `gleam/dynamic`, `gleam/dynamic/decode`,
 `gleam/float`, `gleam/function`, `gleam/int`, `gleam/io`, `gleam/list`,
 `gleam/option`, `gleam/order`, `gleam/pair`, `gleam/result`, `gleam/set`,
-`gleam/string`, and `gleam/string_tree`.
+`gleam/string`, `gleam/string_tree`, and `gleam/uri`.
 
 The main public entry points are:
 

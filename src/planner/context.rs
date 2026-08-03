@@ -201,11 +201,16 @@ impl FunctionParam {
 pub(super) struct ResolvedCustomConstructor {
     constructor: CustomConstructor,
     constructor_count: usize,
+    source_shape: CustomValueShape,
 }
 
 impl ResolvedCustomConstructor {
     pub(super) fn constructor_count(&self) -> usize {
         self.constructor_count
+    }
+
+    pub(super) fn source_shape(&self) -> &CustomValueShape {
+        &self.source_shape
     }
 
     pub(super) fn into_constructor(self) -> CustomConstructor {
@@ -2538,11 +2543,11 @@ impl<'a> PlanContext<'a> {
         field_types: Vec<ValueType>,
     ) -> Result<ResolvedCustomConstructor, PlanError> {
         let mut type_parameters = self.type_parameters.clone();
-        let type_ =
+        let source_shape =
             match ValueShape::from_gleam_in_with_external(type_, &mut type_parameters, &|name| {
                 self.registry.is_external_type(name)
             }) {
-                ValueShape::Custom(shape) => shape.type_().clone(),
+                ValueShape::Custom(shape) => shape,
                 _ => {
                     return Err(PlanError::InvalidTypedAst {
                         reason: InvalidTypedAstReason::CustomType {
@@ -2552,13 +2557,15 @@ impl<'a> PlanContext<'a> {
                     });
                 }
             };
-        self.custom_constructor_from_parts(
-            type_,
+        let mut constructor = self.custom_constructor_from_parts(
+            source_shape.type_().clone(),
             constructor.name.clone(),
             &constructor.module,
             usize::from(constructor.constructor_index),
             field_types,
-        )
+        )?;
+        constructor.source_shape = source_shape;
+        Ok(constructor)
     }
 
     pub(super) fn custom_field_access(
@@ -2728,9 +2735,11 @@ impl<'a> PlanContext<'a> {
             .map(|(label, type_)| CustomConstructorField::new(label, type_))
             .collect();
 
+        let source_shape = CustomValueShape::any(type_.clone());
         Ok(ResolvedCustomConstructor {
             constructor: CustomConstructor::new(type_, name, variant_index, fields),
             constructor_count,
+            source_shape,
         })
     }
 
@@ -4287,6 +4296,7 @@ mod tests {
                     )],
                 ),
                 constructor_count: 1,
+                source_shape: CustomValueShape::any(generic_int.clone()),
             }),
         );
         assert_eq!(
@@ -4413,6 +4423,7 @@ mod tests {
                     vec![CustomConstructorField::new(None, ValueType::String)],
                 ),
                 constructor_count: 2,
+                source_shape: CustomValueShape::any(result_type.clone()),
             }),
         );
         assert_eq!(

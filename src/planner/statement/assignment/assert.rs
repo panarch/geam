@@ -110,7 +110,7 @@ fn binding_pattern_accepts_shape(
             source_shape,
             constructor_count,
             constructor,
-            ..
+            fields,
         } => {
             let crate::plan::ValueShape::Custom(actual) = shape else {
                 return false;
@@ -119,6 +119,16 @@ fn binding_pattern_accepts_shape(
                 && (*constructor_count == 1
                     || actual.constructor()
                         == crate::plan::CustomConstructorRefinement::Exact(constructor.index()))
+                && fields.len() == constructor.fields().len()
+                && fields
+                    .iter()
+                    .zip(constructor.fields())
+                    .all(|(pattern, field)| {
+                        binding_pattern_accepts_shape(
+                            pattern,
+                            &crate::plan::ValueShape::from_value_type(field.type_().clone()),
+                        )
+                    })
         }
         BindingPattern::Alias { pattern, .. } => binding_pattern_accepts_shape(pattern, shape),
     }
@@ -143,13 +153,19 @@ fn plan_refutable_assert_assignment_from_expr(
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedAssignment, PlanError> {
     validate_pattern_value_type(&pattern, value.value_type(), context)?;
+    let source_shape = value.shape().clone();
     let message = message
         .map(|message| plan_assert_message(message, context))
         .transpose()?;
     let (let_step, subject, local_value) = plan_assert_subject(value, context)?;
     let site = context.panic_site(location);
     let pattern_span = pattern.location().into();
-    let pattern = crate::planner::pattern::plan_runtime_pattern(pattern, context)?.pattern;
+    let pattern = crate::planner::pattern::plan_runtime_pattern_with_source_shape(
+        pattern,
+        source_shape,
+        context,
+    )?
+    .pattern;
 
     Ok(PlannedAssignment {
         steps: vec![

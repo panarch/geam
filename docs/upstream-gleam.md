@@ -186,7 +186,7 @@ not add a general mutable external-value model or cyclic runtime graph support.
 Checked modules have exact public-surface coverage and execute unchanged
 official source through the upstream integration suite. An unchecked module is
 not necessarily rejected; it has not yet been verified end to end.
-Geam currently verifies 18 of the 19 public modules in this baseline.
+Geam currently verifies all 19 public modules in this baseline.
 
 #### No Module-Specific Provider
 
@@ -211,17 +211,15 @@ Geam currently verifies 18 of the 19 public modules in this baseline.
 - [x] `gleam/io`
 - [x] `gleam/string`
 - [x] `gleam/string_tree`
-
-#### Not Yet Verified
-
-- [ ] `gleam/uri`: requires implementations for bodyless externals.
+- [x] `gleam/uri`
 
 `geam::gleam_stdlib::host_providers` supplies the explicit provider bundle for
 provider-backed modules. Callers compose that bundle into a `HostProviderSet`;
 project loading selects only providers in the resolved source closure and does
 not infer or inject the bundle. Functions with valid Gleam fallback bodies,
-including the annotated `gleam/bytes_tree` operations, continue to compile and
-execute from the unchanged package source.
+including the annotated `gleam/bytes_tree` operations and `gleam/uri.parse`,
+continue to compile and execute from the unchanged package source. The URI
+provider binds only its five bodyless string and percent-codec externals.
 
 The provider-backed modules retain their source-facing value distinctions.
 Dictionary lookup uses source hashing followed by source equality within a
