@@ -356,7 +356,7 @@ where
 }
 
 #[cfg(test)]
-pub(in crate::host) struct CallArguments {
+pub(crate) struct CallArguments {
     ints: Vec<BigInt>,
     floats: Vec<f64>,
     strings: Vec<EcoString>,
@@ -368,7 +368,7 @@ pub(in crate::host) struct CallArguments {
 
 #[cfg(test)]
 impl CallArguments {
-    pub(in crate::host) fn new(ints: Vec<BigInt>, bools: Vec<bool>) -> Self {
+    pub(crate) fn new(ints: Vec<BigInt>, bools: Vec<bool>) -> Self {
         Self {
             ints,
             floats: Vec::new(),
@@ -380,7 +380,7 @@ impl CallArguments {
         }
     }
 
-    pub(in crate::host) fn with_scalar_values(
+    pub(crate) fn with_scalar_values(
         mut self,
         floats: Vec<f64>,
         strings: Vec<EcoString>,

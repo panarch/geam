@@ -3,7 +3,7 @@ mod function;
 
 use super::super::{AnonymousFunctions, ModuleRole};
 use super::declaration::HostedModuleDeclaration;
-use crate::host::RegisteredHostImplementationId;
+use crate::host::{HostFunctionConstructions, RegisteredHostImplementationId};
 use crate::plan::{HostFunctionTemplate, ModuleId, SourceContext};
 use crate::planner::context::FunctionInfo;
 use crate::planner::error::PlanError;
@@ -39,6 +39,7 @@ pub(super) enum LinkedFunction {
     },
     Host {
         template: HostFunctionTemplate,
+        constructions: HostFunctionConstructions,
         implementation: RegisteredHostImplementationId,
     },
 }
@@ -83,6 +84,7 @@ fn link_hosted_module(
             } else {
                 ModuleRole::Dependency
             };
+            let functions = function::select_erlang_hosted_functions(functions, &providers);
             super::super::function_table_with_external_types(id, &functions, role, external_types)
                 .and_then(|table| {
                     function::link_source_functions(

@@ -20,23 +20,34 @@ pub(in crate::planner::module::host) fn validate_host_custom_schemas(
         None => HostCustomTypeAccess::SourceLessPublicSurface,
     };
     for function in functions {
-        let LinkedFunction::Host { template, .. } = function else {
+        let LinkedFunction::Host {
+            template,
+            constructions,
+            ..
+        } = function
+        else {
             continue;
         };
-        for actual in template.custom_schemas() {
-            validate_host_custom_schema(
+        for actual in template
+            .custom_schemas()
+            .iter()
+            .chain(constructions.custom_schemas())
+        {
+            validate_host_custom_schema_with_constructions(
                 registry,
                 template.package(),
                 template.site(),
                 template.signature(),
                 actual,
                 access,
+                constructions,
             )?;
         }
     }
     Ok(())
 }
 
+#[cfg(test)]
 fn validate_host_custom_schema(
     registry: &ProgramRegistry,
     package: &EcoString,
@@ -44,6 +55,26 @@ fn validate_host_custom_schema(
     signature: &crate::plan::FunctionTemplateSignature,
     actual: &crate::host::HostCustomTypeSchema,
     access: HostCustomTypeAccess,
+) -> Result<(), PlanError> {
+    validate_host_custom_schema_with_constructions(
+        registry,
+        package,
+        site,
+        signature,
+        actual,
+        access,
+        &crate::host::HostFunctionConstructions::empty(),
+    )
+}
+
+fn validate_host_custom_schema_with_constructions(
+    registry: &ProgramRegistry,
+    package: &EcoString,
+    site: &crate::plan::HostCallSite,
+    signature: &crate::plan::FunctionTemplateSignature,
+    actual: &crate::host::HostCustomTypeSchema,
+    access: HostCustomTypeAccess,
+    constructions: &crate::host::HostFunctionConstructions,
 ) -> Result<(), PlanError> {
     let name = crate::plan::CustomTypeName::new(
         actual.package().clone(),
@@ -143,6 +174,23 @@ fn validate_host_custom_schema(
         .chain([signature.shape().return_shape()])
     {
         if let Some(actual) = invalid_host_custom_type_argument_count(shape, &name, parameter_count)
+        {
+            return Err(PlanError::HostProviderLink {
+                package: package.clone(),
+                module: site.module().clone(),
+                function: site.function().clone(),
+                reason: Box::new(HostProviderLinkReason::CustomTypeArgumentCount {
+                    custom_type: name,
+                    expected: parameter_count,
+                    actual,
+                }),
+            });
+        }
+    }
+    for construction in constructions.types() {
+        let shape = construction.value_shape();
+        if let Some(actual) =
+            invalid_host_custom_type_argument_count(&shape, &name, parameter_count)
         {
             return Err(PlanError::HostProviderLink {
                 package: package.clone(),
@@ -259,9 +307,19 @@ fn host_schema_type(type_: &crate::plan::CustomTypeTemplate) -> crate::host::Hos
 
 #[cfg(test)]
 mod tests {
-    use super::{HostCustomTypeAccess, host_schema_type, validate_host_custom_schema};
+    use super::{
+        HostCustomTypeAccess, host_schema_type, validate_host_custom_schema,
+        validate_host_custom_schema_with_constructions,
+    };
+    use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{
-        HostCustomConstructorSchema, HostCustomFieldSchema, HostCustomTypeSchema, HostSchemaType,
+        CallArguments, HostCall, HostCallCompletion, HostCallError,
+        HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
+        HostCustomConstructorSchema, HostCustomField, HostCustomFieldList, HostCustomFieldListEnd,
+        HostCustomFieldSchema, HostCustomSchema, HostCustomType, HostCustomTypeArgument,
+        HostCustomTypeSchema, HostFunctionDefinition, HostProvider, HostSchemaType,
+        HostScopedValue, HostTypeIndex0, HostTypeList, HostTypeListEnd, HostValueFamily,
+        expect_value_implementation,
     };
     use crate::plan::{
         CustomConstructorDefinition, CustomConstructorRefinement, CustomFieldDefinition,
@@ -274,6 +332,48 @@ mod tests {
     use crate::planner::module::registry::{ModuleRegistry, ProgramRegistry};
     use crate::planner::{HostProviderLinkReason, PlanError};
     use ecow::EcoString;
+
+    struct HiddenConstructionProvider;
+
+    impl HostProvider<TestHostProfile> for HiddenConstructionProvider {
+        type State = usize;
+
+        fn project(state: &mut TestRunState) -> &mut Self::State {
+            &mut state.counter
+        }
+    }
+
+    struct HiddenBoxSchema;
+    struct HiddenBoxDefinition;
+    struct HiddenBoxField;
+
+    impl HostCustomField for HiddenBoxField {
+        const LABEL: Option<&'static str> = None;
+
+        type Type = HostCustomTypeArgument<HostTypeIndex0>;
+    }
+
+    impl HostCustomConstructorDefinition for HiddenBoxDefinition {
+        const NAME: &'static str = "Boxed";
+
+        type Fields = HostCustomFieldList<HiddenBoxField, HostCustomFieldListEnd>;
+    }
+
+    impl HostCustomSchema for HiddenBoxSchema {
+        const PACKAGE: &'static str = "application";
+        const MODULE: &'static str = "domain/box";
+        const NAME: &'static str = "Boxed";
+        const PARAMETER_COUNT: usize = 1;
+
+        type Constructors =
+            HostCustomConstructorList<HiddenBoxDefinition, HostCustomConstructorListEnd>;
+    }
+
+    fn hidden_ready<'call>(
+        call: HostCall<'call, TestHostProfile, HiddenConstructionProvider, bool>,
+    ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
+        Ok(call.return_value(true))
+    }
 
     #[test]
     fn maps_every_planned_custom_field_type_to_the_exact_host_schema() {
@@ -990,6 +1090,88 @@ mod tests {
                         "domain/box".into(),
                         "Boxed".into(),
                     ),
+                    expected: 1,
+                    actual: 0,
+                }),
+            }),
+        );
+    }
+
+    #[test]
+    fn hidden_construction_custom_type_applies_every_declared_type_argument() {
+        let custom_type =
+            CustomTypeName::new("application".into(), "domain/box".into(), "Boxed".into());
+        let definition = CustomTypeDefinition::new(
+            custom_type.clone(),
+            CustomTypePublicity::Public,
+            false,
+            vec![CustomTypeParameterId(0)],
+            vec![CustomConstructorDefinition::new(
+                "Boxed".into(),
+                0,
+                vec![CustomFieldDefinition::new(
+                    None,
+                    CustomTypeTemplate::Parameter(CustomTypeParameterId(0)),
+                )],
+            )],
+        );
+        let registry = ProgramRegistry::new(vec![ModuleRegistry::new(
+            "domain/box".into(),
+            vec![definition],
+            Vec::new(),
+            std::collections::HashMap::new(),
+            ConstantSignatures::default(),
+        )]);
+        let package = EcoString::from("application");
+        let site = HostCallSite::new("host/box".into(), "build".into(), SourceSpan::new(0, 0));
+        let signature = FunctionTemplateSignature::new(
+            FunctionTemplateId::in_module(ModuleId::new(0), 0),
+            TypeScheme::new(0),
+            FunctionShape::new(Vec::new(), ValueShape::Bool),
+        );
+        let actual = HostCustomTypeSchema::of::<HiddenBoxSchema>();
+        type HiddenConstructions = HostTypeList<HostCustomType<HiddenBoxSchema>, HostTypeListEnd>;
+        let (_, constructions, implementation) =
+            HostFunctionDefinition::new_scoped_with_constructions::<
+                HiddenConstructionProvider,
+                (),
+                bool,
+                HiddenConstructions,
+                _,
+            >("build".into(), hidden_ready)
+            .expect("hidden custom construction should register")
+            .into_parts();
+
+        let mut state = TestRunState::default();
+        assert!(std::ptr::eq(
+            HiddenConstructionProvider::project(&mut state),
+            &state.counter,
+        ));
+        let implementation = expect_value_implementation(&implementation);
+        let mut runtime =
+            TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
+        assert_eq!(
+            implementation.call(&mut runtime).map(|token| token.family),
+            Ok(HostValueFamily::Bool),
+        );
+        assert_eq!(runtime.completed(), Some(&HostScopedValue::Bool(true)));
+
+        assert_eq!(
+            validate_host_custom_schema_with_constructions(
+                &registry,
+                &package,
+                &site,
+                &signature,
+                &actual,
+                HostCustomTypeAccess::SourceLessPublicSurface,
+                &constructions,
+            ),
+            Err(PlanError::HostProviderLink {
+                package: "application".into(),
+                module: "host/box".into(),
+                function: "build".into(),
+                reason: Box::new(HostProviderLinkReason::CustomTypeArgumentCount {
+                    custom_type,
                     expected: 1,
                     actual: 0,
                 }),

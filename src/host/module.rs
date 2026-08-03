@@ -49,6 +49,7 @@ pub(crate) struct RegisteredHostProviderModule {
 
 pub(crate) struct RegisteredHostFunction {
     schema: HostFunctionSchema,
+    constructions: super::HostFunctionConstructions,
     implementation: RegisteredHostImplementationId,
 }
 
@@ -216,6 +217,35 @@ impl<Profile: HostProfile> HostProviderModule<Profile> {
         self.functions
             .register(&self.identity.module, name.into(), |name| {
                 HostFunctionDefinition::new_scoped::<Provider, _, _, _>(name, function)
+            })
+            .map(|()| self)
+    }
+
+    pub(crate) fn with_scoped_function_and_constructions<
+        Provider,
+        Arguments,
+        Return,
+        Constructions,
+        Function,
+    >(
+        mut self,
+        name: impl Into<EcoString>,
+        function: Function,
+    ) -> Result<Self, HostRegistrationError>
+    where
+        Provider: HostProvider<Profile>,
+        Constructions: crate::host::HostTypeSequence,
+        Function: ScopedHostFunction<Profile, Provider, Arguments, Return>,
+    {
+        self.functions
+            .register(&self.identity.module, name.into(), |name| {
+                HostFunctionDefinition::new_scoped_with_constructions::<
+                    Provider,
+                    Arguments,
+                    Return,
+                    Constructions,
+                    Function,
+                >(name, function)
             })
             .map(|()| self)
     }
@@ -520,8 +550,14 @@ impl RegisteredHostFunction {
         &self.schema
     }
 
-    pub(crate) fn into_parts(self) -> (HostFunctionSchema, RegisteredHostImplementationId) {
-        (self.schema, self.implementation)
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        HostFunctionSchema,
+        super::HostFunctionConstructions,
+        RegisteredHostImplementationId,
+    ) {
+        (self.schema, self.constructions, self.implementation)
     }
 }
 
@@ -533,11 +569,12 @@ impl<Profile: HostProfile> RegisteredHostImplementations<Profile> {
     }
 
     fn register(&mut self, definition: HostFunctionDefinition<Profile>) -> RegisteredHostFunction {
-        let (schema, implementation) = definition.into_parts();
+        let (schema, constructions, implementation) = definition.into_parts();
         let id = RegisteredHostImplementationId(self.functions.len());
         self.functions.push(Arc::new(implementation));
         RegisteredHostFunction {
             schema,
+            constructions,
             implementation: id,
         }
     }
@@ -863,7 +900,7 @@ mod tests {
             .pop()
             .expect("provider module should be registered")
             .into_parts();
-        let (_, implementation) = definitions
+        let (_, _, implementation) = definitions
             .pop()
             .expect("scoped function should be registered")
             .into_parts();
@@ -908,7 +945,7 @@ mod tests {
             .pop()
             .expect("provider module should be registered")
             .into_parts();
-        let (_, implementation) = definitions
+        let (_, _, implementation) = definitions
             .pop()
             .expect("scoped diverging function should be registered")
             .into_parts();
@@ -946,13 +983,13 @@ mod tests {
             .expect("host module should be registered")
             .into_parts();
         let mut definitions = definitions.into_iter();
-        let (_, checked) = definitions
+        let (_, _, checked) = definitions
             .next()
             .expect("fallible function should be registered")
             .into_parts();
         let checked_implementation = implementations.implementation(checked);
         let checked = expect_value_implementation(checked_implementation.as_ref());
-        let (_, increment) = definitions
+        let (_, _, increment) = definitions
             .next()
             .expect("scoped function should be registered")
             .into_parts();

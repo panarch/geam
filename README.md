@@ -75,6 +75,12 @@ its transitive dependencies. This compatibility covers HTTP data structures,
 parsers, cookies, requests, responses, and deprecated service helpers, not a
 network client, server, socket, or transport runtime.
 
+The unchanged `gleam_json` `v3.1.0` package has a separate explicit provider
+and compatibility baseline. Callers compose its provider with the stdlib
+bundle; neither is injected by project loading. Encoded JSON uses persistent
+shared text trees, while parsing constructs exact Dynamic List and Dict values
+without a generic JSON runtime value.
+
 The main public entry points are:
 
 - `compile_typed_module`
@@ -140,6 +146,8 @@ Current Gleam compiler baseline: `v1.17.0`.
 Current Gleam stdlib integration baseline: `gleam_stdlib` `v1.0.3`.
 
 Current Gleam HTTP integration baseline: `gleam_http` `v4.3.0`.
+
+Current Gleam JSON integration baseline: `gleam_json` `v3.1.0`.
 
 See [docs/upstream-gleam.md](docs/upstream-gleam.md) for the exact commit,
 compiler-boundary details, and sync policy.

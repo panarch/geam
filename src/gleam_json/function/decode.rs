@@ -1,0 +1,294 @@
+mod error;
+
+use self::error::DecodeFailure;
+use super::JsonProvider;
+use crate::gleam_json::GleamJsonHostProfile;
+use crate::gleam_json::schema::{
+    DynamicDict, DynamicList, JsonDynamicError, JsonDynamicOk, JsonDynamicResult, UnexpectedByte,
+    UnexpectedEndOfInput, UnexpectedSequence,
+};
+use crate::gleam_stdlib::{Dynamic, create_dynamic_dict, create_dynamic_value};
+use crate::{BitArrayValue, HostCall, HostCallCompletion, HostCallError, HostExternal, HostList};
+use ecow::EcoString;
+use jiter::{Jiter, Peek};
+use num_bigint::BigInt;
+
+pub(in crate::gleam_json) fn decode_to_dynamic<'call, Profile>(
+    mut call: HostCall<'call, Profile, JsonProvider<Profile>, JsonDynamicResult>,
+    json: BitArrayValue,
+) -> Result<HostCallCompletion<'call, JsonDynamicResult>, HostCallError>
+where
+    Profile: GleamJsonHostProfile,
+{
+    let decoded = if json.bit_len().is_multiple_of(8) {
+        parse_dynamic(&mut call, json.bytes())
+    } else {
+        Err(DecodeFailure::Byte(EcoString::new()))
+    };
+
+    match decoded {
+        Ok(value) => Ok(call.return_custom::<JsonDynamicOk>((value, ()))),
+        Err(DecodeFailure::EndOfInput) => {
+            let error = call.create_custom::<UnexpectedEndOfInput>(());
+            Ok(call.return_custom::<JsonDynamicError>((error, ())))
+        }
+        Err(DecodeFailure::Byte(byte)) => {
+            let error = call.create_custom::<UnexpectedByte>((byte, ()));
+            Ok(call.return_custom::<JsonDynamicError>((error, ())))
+        }
+        Err(DecodeFailure::Sequence(sequence)) => {
+            let error = call.create_custom::<UnexpectedSequence>((sequence, ()));
+            Ok(call.return_custom::<JsonDynamicError>((error, ())))
+        }
+    }
+}
+
+enum ParseFrame<'call> {
+    Array(Vec<HostExternal<'call, Dynamic>>),
+    Object {
+        entries: Vec<(EcoString, HostExternal<'call, Dynamic>)>,
+        pending_key: EcoString,
+    },
+}
+
+fn parse_dynamic<'call, Profile>(
+    call: &mut HostCall<'call, Profile, JsonProvider<Profile>, JsonDynamicResult>,
+    input: &[u8],
+) -> Result<HostExternal<'call, Dynamic>, DecodeFailure>
+where
+    Profile: GleamJsonHostProfile,
+{
+    let mut parser = Jiter::new(input);
+    let mut frames = Vec::new();
+    let mut next = parser
+        .peek()
+        .map_err(|error| DecodeFailure::from_jiter(input, error))?;
+
+    'parse: loop {
+        let mut value = if next == Peek::Null {
+            parser
+                .known_null()
+                .map_err(|error| DecodeFailure::from_jiter(input, error))?;
+            create_dynamic_value::<Profile, JsonProvider<Profile>, JsonDynamicResult, ()>(call, ())
+        } else if matches!(next, Peek::True | Peek::False) {
+            let value = parser
+                .known_bool(next)
+                .map_err(|error| DecodeFailure::from_jiter(input, error))?;
+            create_dynamic_value::<Profile, JsonProvider<Profile>, JsonDynamicResult, bool>(
+                call, value,
+            )
+        } else if next == Peek::String {
+            let value = parser
+                .known_str()
+                .map(EcoString::from)
+                .map_err(|error| DecodeFailure::from_jiter(input, error))?;
+            create_dynamic_value::<Profile, JsonProvider<Profile>, JsonDynamicResult, EcoString>(
+                call, value,
+            )
+        } else if next == Peek::Array {
+            match parser
+                .known_array()
+                .map_err(|error| DecodeFailure::from_jiter(input, error))?
+            {
+                Some(first) => {
+                    frames.push(ParseFrame::Array(Vec::new()));
+                    next = first;
+                    continue 'parse;
+                }
+                None => create_dynamic_list(call, Vec::new()),
+            }
+        } else if next == Peek::Object {
+            match parser
+                .known_object()
+                .map(|key| key.map(EcoString::from))
+                .map_err(|error| DecodeFailure::from_jiter(input, error))?
+            {
+                Some(pending_key) => {
+                    frames.push(ParseFrame::Object {
+                        entries: Vec::new(),
+                        pending_key,
+                    });
+                    next = parser
+                        .peek()
+                        .map_err(|error| DecodeFailure::from_jiter(input, error))?;
+                    continue 'parse;
+                }
+                None => create_dynamic_object(call, Vec::new()),
+            }
+        } else if next.is_num() {
+            let number = parser
+                .known_number_bytes(next)
+                .map_err(|error| DecodeFailure::from_jiter(input, error))?;
+            create_dynamic_number(call, number)?
+        } else {
+            return Err(DecodeFailure::Byte(
+                format!("0x{:02X}", next.into_inner()).into(),
+            ));
+        };
+
+        loop {
+            value = match frames.pop() {
+                None => {
+                    parser
+                        .finish()
+                        .map_err(|error| DecodeFailure::from_jiter(input, error))?;
+                    return Ok(value);
+                }
+                Some(ParseFrame::Array(mut values)) => {
+                    values.push(value);
+                    match parser
+                        .array_step()
+                        .map_err(|error| DecodeFailure::from_jiter(input, error))?
+                    {
+                        Some(peek) => {
+                            frames.push(ParseFrame::Array(values));
+                            next = peek;
+                            continue 'parse;
+                        }
+                        None => create_dynamic_list(call, values),
+                    }
+                }
+                Some(ParseFrame::Object {
+                    mut entries,
+                    pending_key,
+                }) => {
+                    entries.push((pending_key, value));
+                    match parser
+                        .next_key()
+                        .map(|key| key.map(EcoString::from))
+                        .map_err(|error| DecodeFailure::from_jiter(input, error))?
+                    {
+                        Some(next_key) => {
+                            frames.push(ParseFrame::Object {
+                                entries,
+                                pending_key: next_key,
+                            });
+                            next = parser
+                                .peek()
+                                .map_err(|error| DecodeFailure::from_jiter(input, error))?;
+                            continue 'parse;
+                        }
+                        None => create_dynamic_object(call, entries),
+                    }
+                }
+            };
+        }
+    }
+}
+
+enum ParsedNumber {
+    Int(BigInt),
+    Float(f64),
+}
+
+fn create_dynamic_number<'call, Profile>(
+    call: &mut HostCall<'call, Profile, JsonProvider<Profile>, JsonDynamicResult>,
+    number: &[u8],
+) -> Result<HostExternal<'call, Dynamic>, DecodeFailure>
+where
+    Profile: GleamJsonHostProfile,
+{
+    match parse_number(number)? {
+        ParsedNumber::Int(value) => Ok(create_dynamic_value::<
+            Profile,
+            JsonProvider<Profile>,
+            JsonDynamicResult,
+            BigInt,
+        >(call, value)),
+        ParsedNumber::Float(value) => Ok(create_dynamic_value::<
+            Profile,
+            JsonProvider<Profile>,
+            JsonDynamicResult,
+            f64,
+        >(call, value)),
+    }
+}
+
+fn parse_number(number: &[u8]) -> Result<ParsedNumber, DecodeFailure> {
+    if !number.contains(&b'.') && !number.contains(&b'e') && !number.contains(&b'E') {
+        let Some(value) = BigInt::parse_bytes(number, 10) else {
+            return Err(DecodeFailure::Byte(
+                number
+                    .first()
+                    .map_or_else(EcoString::new, |byte| format!("0x{byte:02X}").into()),
+            ));
+        };
+        return Ok(ParsedNumber::Int(value));
+    }
+
+    let Ok(text) = std::str::from_utf8(number) else {
+        return Err(DecodeFailure::Byte(EcoString::new()));
+    };
+    let Ok(value) = text.parse::<f64>() else {
+        return Err(DecodeFailure::overflow(number));
+    };
+    if !value.is_finite() {
+        return Err(DecodeFailure::overflow(number));
+    }
+    Ok(ParsedNumber::Float(value))
+}
+
+fn create_dynamic_list<'call, Profile>(
+    call: &mut HostCall<'call, Profile, JsonProvider<Profile>, JsonDynamicResult>,
+    values: Vec<HostExternal<'call, Dynamic>>,
+) -> HostExternal<'call, Dynamic>
+where
+    Profile: GleamJsonHostProfile,
+{
+    let values: HostList<'call, Dynamic> = call.create_list::<Dynamic>(values);
+    create_dynamic_value::<Profile, JsonProvider<Profile>, JsonDynamicResult, DynamicList>(
+        call, values,
+    )
+}
+
+fn create_dynamic_object<'call, Profile>(
+    call: &mut HostCall<'call, Profile, JsonProvider<Profile>, JsonDynamicResult>,
+    entries: Vec<(EcoString, HostExternal<'call, Dynamic>)>,
+) -> HostExternal<'call, Dynamic>
+where
+    Profile: GleamJsonHostProfile,
+{
+    let entries = entries
+        .into_iter()
+        .map(|(key, value)| {
+            let key = create_dynamic_value::<
+                Profile,
+                JsonProvider<Profile>,
+                JsonDynamicResult,
+                EcoString,
+            >(call, key);
+            (key, value)
+        })
+        .collect::<Vec<_>>();
+    let dict = create_dynamic_dict(call, entries);
+    create_dynamic_value::<Profile, JsonProvider<Profile>, JsonDynamicResult, DynamicDict>(
+        call, dict,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DecodeFailure, ParsedNumber, parse_number};
+
+    #[test]
+    fn parses_validated_number_tokens_and_maps_defensive_failures() {
+        assert!(
+            matches!(parse_number(b"-123"), Ok(ParsedNumber::Int(value)) if value == (-123).into())
+        );
+        assert!(matches!(
+            parse_number(b"1.25"),
+            Ok(ParsedNumber::Float(1.25))
+        ));
+        assert!(matches!(parse_number(b""), Err(DecodeFailure::Byte(byte)) if byte.is_empty()));
+        assert!(matches!(parse_number(b"x"), Err(DecodeFailure::Byte(byte)) if byte == "0x78"));
+        assert!(
+            matches!(parse_number(b"\xFF."), Err(DecodeFailure::Byte(byte)) if byte.is_empty())
+        );
+        assert!(
+            matches!(parse_number(b"x."), Err(DecodeFailure::Sequence(sequence)) if sequence == "x.")
+        );
+        assert!(
+            matches!(parse_number(b"1e400"), Err(DecodeFailure::Sequence(sequence)) if sequence == "1.0e400")
+        );
+    }
+}

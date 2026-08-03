@@ -38,12 +38,14 @@ pub(super) fn seal_callbacks(
 
 pub(super) fn seal_host_types(
     template: &HostFunctionTemplate,
+    constructions: &crate::host::HostFunctionConstructions,
     key: &SpecializationKey,
     context: &mut LoweringContext,
 ) -> HostConstructionTypes {
     let schemas = template
         .custom_schemas()
         .iter()
+        .chain(constructions.custom_schemas())
         .map(|schema| (identity(schema), schema))
         .collect::<HashMap<_, _>>();
     let mut sealing = HostTypeSealing {
@@ -60,6 +62,9 @@ pub(super) fn seal_host_types(
         sealing.seal(descriptor);
     }
     sealing.seal(template.return_type());
+    for descriptor in constructions.types() {
+        sealing.seal(descriptor);
+    }
     sealing.finish()
 }
 

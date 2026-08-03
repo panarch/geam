@@ -80,7 +80,7 @@ where
     call.external_payload(value).representation().name().into()
 }
 
-pub(in crate::gleam_stdlib) fn create_value<'call, Profile, Provider, Return, Type>(
+pub(crate) fn create_value<'call, Profile, Provider, Return, Type>(
     call: &mut HostCall<'call, Profile, Provider, Return>,
     value: Type::Value<'call>,
 ) -> HostExternal<'call, Dynamic>

@@ -12,15 +12,15 @@ use crate::{
 use ecow::EcoString;
 use num_bigint::BigInt;
 
-pub(super) struct DecodeErrorSchema;
+pub(crate) struct DecodeErrorSchema;
 
-pub(super) struct DecodeErrorDefinition;
+pub(crate) struct DecodeErrorDefinition;
 
-pub(super) struct ExpectedField;
+pub(crate) struct ExpectedField;
 
-pub(super) struct FoundField;
+pub(crate) struct FoundField;
 
-pub(super) struct PathField;
+pub(crate) struct PathField;
 
 pub(super) type DynamicDict = DictOf<Dynamic, Dynamic>;
 pub(super) type DynamicOption = GleamOption<Dynamic>;
@@ -44,7 +44,7 @@ pub(super) type BitArrayResult = GleamResult<BitArrayValue, BitArrayValue>;
 pub(super) type BitArrayOk = GleamOk<BitArrayValue, BitArrayValue>;
 pub(super) type BitArrayError = GleamError<BitArrayValue, BitArrayValue>;
 
-pub(super) type DecodeError = HostCustomType<DecodeErrorSchema>;
+pub(crate) type DecodeError = HostCustomType<DecodeErrorSchema>;
 pub(super) type DecodeErrorConstructor =
     HostCustomConstructorAt<DecodeError, HostCustomIndex0, DecodeErrorDefinition>;
 pub(super) type DecodeErrors = HostListType<DecodeError>;

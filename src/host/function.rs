@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 use std::fmt;
 
 #[cfg(test)]
-pub(super) use argument::CallArguments;
+pub(crate) use argument::CallArguments;
 pub(crate) use argument::{
     HostBitArrayArgumentSlot, HostBoolArgumentSlot, HostCallArguments, HostCustomArgumentSlot,
     HostExternalArgumentSlot, HostFloatArgumentSlot, HostFunctionArgumentSlot, HostIntArgumentSlot,
@@ -134,9 +134,23 @@ pub struct HostFunctionSchema {
     type_: FunctionType,
 }
 
+struct HostFunctionSchemaRegistration {
+    layout: Box<[HostParameter]>,
+    parameters: Box<[crate::host::HostTypeDescriptor]>,
+    return_: crate::host::HostTypeDescriptor,
+    custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
+}
+
 pub(crate) struct HostFunctionDefinition<Profile: HostProfile> {
     schema: HostFunctionSchema,
+    constructions: HostFunctionConstructions,
     implementation: HostFunctionImplementation<Profile>,
+}
+
+pub(crate) struct HostFunctionConstructions {
+    types: Box<[crate::host::HostTypeDescriptor]>,
+    custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
+    external_schemas: Box<[crate::host::HostExternalTypeSchema]>,
 }
 
 impl HostFunctionSchema {
@@ -162,6 +176,84 @@ impl HostFunctionSchema {
 
     pub(crate) fn return_type(&self) -> &crate::host::HostTypeDescriptor {
         &self.return_
+    }
+
+    pub(crate) fn custom_schemas(&self) -> &[crate::host::HostCustomTypeSchema] {
+        &self.custom_schemas
+    }
+
+    pub(crate) fn external_schemas(&self) -> &[crate::host::HostExternalTypeSchema] {
+        &self.external_schemas
+    }
+
+    fn from_registration(
+        name: EcoString,
+        registration: HostFunctionSchemaRegistration,
+    ) -> Result<Self, crate::HostRegistrationError> {
+        let argument_types = registration
+            .parameters
+            .iter()
+            .map(crate::host::HostTypeDescriptor::value_type)
+            .collect();
+        let return_type = registration.return_.value_type();
+        let mut type_parameters = BTreeSet::new();
+        for parameter in &registration.parameters {
+            parameter.collect_type_parameters(&mut type_parameters);
+        }
+        registration
+            .return_
+            .collect_type_parameters(&mut type_parameters);
+        let type_parameters = type_parameters.into_iter().collect::<Vec<_>>();
+        if type_parameters.iter().copied().ne(0..type_parameters.len()) {
+            return Err(crate::HostRegistrationError::NonContiguousTypeParameters {
+                function: name,
+                parameters: type_parameters.into_boxed_slice(),
+            });
+        }
+        let mut external_schemas = Vec::new();
+        let mut external_identities = std::collections::HashSet::new();
+        for parameter in &registration.parameters {
+            parameter.collect_external_schemas(&mut external_schemas, &mut external_identities);
+        }
+        registration
+            .return_
+            .collect_external_schemas(&mut external_schemas, &mut external_identities);
+        Ok(Self {
+            name,
+            scheme: TypeScheme::new(type_parameters.len()),
+            layout: registration.layout,
+            parameters: registration.parameters,
+            return_: registration.return_,
+            custom_schemas: registration.custom_schemas,
+            external_schemas: external_schemas.into_boxed_slice(),
+            type_: FunctionType::new(argument_types, return_type),
+        })
+    }
+}
+
+impl HostFunctionConstructions {
+    fn new(
+        types: Box<[crate::host::HostTypeDescriptor]>,
+        custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
+    ) -> Self {
+        let mut external_schemas = Vec::new();
+        let mut external_identities = std::collections::HashSet::new();
+        for type_ in &types {
+            type_.collect_external_schemas(&mut external_schemas, &mut external_identities);
+        }
+        Self {
+            types,
+            custom_schemas,
+            external_schemas: external_schemas.into_boxed_slice(),
+        }
+    }
+
+    pub(crate) fn empty() -> Self {
+        Self::new(Box::new([]), Box::new([]))
+    }
+
+    pub(crate) fn types(&self) -> &[crate::host::HostTypeDescriptor] {
+        &self.types
     }
 
     pub(crate) fn custom_schemas(&self) -> &[crate::host::HostCustomTypeSchema] {
@@ -235,6 +327,40 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
         Self::from_registration(name, registration)
     }
 
+    pub(crate) fn new_scoped_with_constructions<
+        Provider,
+        Arguments,
+        Return,
+        Constructions,
+        Function,
+    >(
+        name: EcoString,
+        function: Function,
+    ) -> Result<Self, crate::HostRegistrationError>
+    where
+        Provider: HostProvider<Profile>,
+        Constructions: crate::host::HostTypeSequence,
+        Function: ScopedHostFunction<Profile, Provider, Arguments, Return>,
+    {
+        let registration = <Function as adapter::ScopedHostFunctionAdapter<
+            Profile,
+            Provider,
+            Arguments,
+            Return,
+        >>::register(function);
+        let construction_types =
+            <Constructions as crate::host::HostAbiTypeSequence>::descriptors().into_boxed_slice();
+        let mut custom_schemas = Vec::new();
+        let mut visited = std::collections::HashSet::new();
+        <Constructions as crate::host::HostAbiTypeSequence>::collect_custom_schemas(
+            &mut custom_schemas,
+            &mut visited,
+        );
+        let constructions =
+            HostFunctionConstructions::new(construction_types, custom_schemas.into_boxed_slice());
+        Self::from_registration_with_constructions(name, registration, constructions)
+    }
+
     pub(crate) fn new_scoped_diverging<Provider, Arguments, Return, Function>(
         name: EcoString,
         function: Function,
@@ -256,45 +382,27 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
         name: EcoString,
         registration: adapter::HostFunctionRegistration<Profile>,
     ) -> Result<Self, crate::HostRegistrationError> {
-        let argument_types = registration
-            .parameter_types
-            .iter()
-            .map(crate::host::HostTypeDescriptor::value_type)
-            .collect();
-        let return_type = registration.return_type.value_type();
-        let mut type_parameters = BTreeSet::new();
-        for parameter in &registration.parameter_types {
-            parameter.collect_type_parameters(&mut type_parameters);
-        }
-        registration
-            .return_type
-            .collect_type_parameters(&mut type_parameters);
-        let type_parameters = type_parameters.into_iter().collect::<Vec<_>>();
-        if type_parameters.iter().copied().ne(0..type_parameters.len()) {
-            return Err(crate::HostRegistrationError::NonContiguousTypeParameters {
-                function: name,
-                parameters: type_parameters.into_boxed_slice(),
-            });
-        }
-        let mut external_schemas = Vec::new();
-        let mut external_identities = std::collections::HashSet::new();
-        for parameter in &registration.parameter_types {
-            parameter.collect_external_schemas(&mut external_schemas, &mut external_identities);
-        }
-        registration
-            .return_type
-            .collect_external_schemas(&mut external_schemas, &mut external_identities);
-        Ok(Self {
-            schema: HostFunctionSchema {
-                name,
-                scheme: TypeScheme::new(type_parameters.len()),
-                layout: registration.parameters,
-                parameters: registration.parameter_types,
-                return_: registration.return_type,
-                custom_schemas: registration.custom_schemas,
-                external_schemas: external_schemas.into_boxed_slice(),
-                type_: FunctionType::new(argument_types, return_type),
-            },
+        Self::from_registration_with_constructions(
+            name,
+            registration,
+            HostFunctionConstructions::empty(),
+        )
+    }
+
+    fn from_registration_with_constructions(
+        name: EcoString,
+        registration: adapter::HostFunctionRegistration<Profile>,
+        constructions: HostFunctionConstructions,
+    ) -> Result<Self, crate::HostRegistrationError> {
+        let schema = HostFunctionSchemaRegistration {
+            layout: registration.parameters,
+            parameters: registration.parameter_types,
+            return_: registration.return_type,
+            custom_schemas: registration.custom_schemas,
+        };
+        HostFunctionSchema::from_registration(name, schema).map(|schema| Self {
+            schema,
+            constructions,
             implementation: registration.implementation,
         })
     }
@@ -303,8 +411,14 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
         &self.schema
     }
 
-    pub(crate) fn into_parts(self) -> (HostFunctionSchema, HostFunctionImplementation<Profile>) {
-        (self.schema, self.implementation)
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        HostFunctionSchema,
+        HostFunctionConstructions,
+        HostFunctionImplementation<Profile>,
+    ) {
+        (self.schema, self.constructions, self.implementation)
     }
 }
 
@@ -315,13 +429,30 @@ mod tests {
     use crate::host::function::argument::CallArguments;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{
-        HostCustomConstructorSchema, HostCustomFieldSchema, HostCustomTypeSchema,
-        HostExternalTypeSchema, HostRegistrationError, HostSchemaType, HostScopedValue,
-        HostTypeDescriptor, HostValueFamily, expect_value_implementation,
+        HostCall, HostCallCompletion, HostCallError, HostCustomConstructorSchema,
+        HostCustomFieldSchema, HostCustomTypeSchema, HostExternalTypeSchema, HostListType,
+        HostProvider, HostRegistrationError, HostSchemaType, HostScopedValue, HostTypeDescriptor,
+        HostTypeList, HostTypeListEnd, HostValueFamily, expect_value_implementation,
     };
     use crate::plan::ValueType;
     use ecow::EcoString;
     use num_bigint::BigInt;
+
+    struct ConstructionProvider;
+
+    impl HostProvider<TestHostProfile> for ConstructionProvider {
+        type State = usize;
+
+        fn project(state: &mut TestRunState) -> &mut Self::State {
+            &mut state.counter
+        }
+    }
+
+    fn ready<'call>(
+        call: HostCall<'call, TestHostProfile, ConstructionProvider, bool>,
+    ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
+        Ok(call.return_value(true))
+    }
 
     #[test]
     fn definition_assembles_schema_and_int_implementation_together() {
@@ -341,7 +472,7 @@ mod tests {
         assert_eq!(definition.schema().type_().return_(), &ValueType::Int);
         assert_eq!(definition.schema().return_type(), &HostTypeDescriptor::Int);
 
-        let (_, implementation) = definition.into_parts();
+        let (_, _, implementation) = definition.into_parts();
         let implementation = expect_value_implementation(&implementation);
         let mut state = TestRunState::default();
         let arguments = CallArguments::new(vec![10.into(), 20.into()], vec![false]);
@@ -380,7 +511,7 @@ mod tests {
         assert_eq!(definition.schema().type_().return_(), &ValueType::Bool);
         assert_eq!(definition.schema().return_type(), &HostTypeDescriptor::Bool);
 
-        let (_, implementation) = definition.into_parts();
+        let (_, _, implementation) = definition.into_parts();
         let implementation = expect_value_implementation(&implementation);
         let mut state = TestRunState::default();
         let arguments = CallArguments::new(vec![1.into()], Vec::new());
@@ -415,7 +546,7 @@ mod tests {
         assert_eq!(definition.schema().type_().return_(), &ValueType::Nil);
         assert_eq!(definition.schema().return_type(), &HostTypeDescriptor::Nil);
 
-        let (_, implementation) = definition.into_parts();
+        let (_, _, implementation) = definition.into_parts();
         let implementation = expect_value_implementation(&implementation);
         let arguments = CallArguments::new(vec![1.into()], vec![true]).with_scalar_values(
             vec![1.5],
@@ -448,6 +579,59 @@ mod tests {
             format!("{schema:?}"),
             r#"HostFunctionSchema { name: "negate", scheme: TypeScheme { parameters: [] }, type_: FunctionType { arguments: [Bool], return_: Bool } }"#,
         );
+    }
+
+    #[test]
+    fn hidden_construction_types_stay_outside_the_public_function_schema() {
+        type Constructions = HostTypeList<HostListType<BigInt>, HostTypeListEnd>;
+
+        let plain = HostFunctionDefinition::new_scoped::<ConstructionProvider, (), bool, _>(
+            "ready".into(),
+            ready,
+        )
+        .expect("plain scoped function should register");
+        let with_constructions = HostFunctionDefinition::new_scoped_with_constructions::<
+            ConstructionProvider,
+            (),
+            bool,
+            Constructions,
+            _,
+        >("ready".into(), ready)
+        .expect("scoped function with hidden constructions should register");
+        let (schema, constructions, _) = with_constructions.into_parts();
+
+        assert_eq!(schema, *plain.schema());
+        assert_eq!(schema.scheme(), &crate::plan::TypeScheme::new(0));
+        assert_eq!(schema.type_(), plain.schema().type_());
+        assert_eq!(
+            constructions.types(),
+            [HostTypeDescriptor::List(Box::new(HostTypeDescriptor::Int))],
+        );
+        assert!(constructions.custom_schemas().is_empty());
+        assert!(constructions.external_schemas().is_empty());
+
+        let mut state = TestRunState::default();
+        assert!(std::ptr::eq(
+            ConstructionProvider::project(&mut state),
+            &state.counter,
+        ));
+        let (_, _, implementation) = HostFunctionDefinition::new_scoped_with_constructions::<
+            ConstructionProvider,
+            (),
+            bool,
+            Constructions,
+            _,
+        >("ready".into(), ready)
+        .expect("invoked scoped function should register")
+        .into_parts();
+        let implementation = expect_value_implementation(&implementation);
+        let arguments = CallArguments::new(Vec::new(), Vec::new());
+        let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
+        assert_eq!(
+            implementation.call(&mut runtime).map(|token| token.family),
+            Ok(HostValueFamily::Bool),
+        );
+        assert_eq!(runtime.completed(), Some(&HostScopedValue::Bool(true)));
     }
 
     #[test]

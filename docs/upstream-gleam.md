@@ -48,6 +48,18 @@ Geam does not bundle or patch this source either. Its compatibility suite locks
 project pipeline because the selected stdlib closure requires the existing
 explicit provider bundle.
 
+The first independently versioned provider-backed package baseline is:
+
+```text
+Repository:  https://github.com/gleam-lang/json
+Hex package: gleam_json
+Release:     v3.1.0
+```
+
+Its compatibility suite locks `gleam_json` and `gleam_stdlib` independently.
+The resolved project explicitly composes the separate stdlib and JSON provider
+bundles; project loading does not infer either bundle.
+
 ## Used Gleam Areas
 
 The first compiler-boundary milestone depends on `gleam-core` pinned to the
@@ -268,6 +280,24 @@ transport, or network capability. Provider selection remains explicit and the
 project loader does not inject the stdlib bundle merely because an HTTP module
 is imported.
 
+### Gleam JSON v3.1.0 Compatibility
+
+The JSON compatibility suite tracks unchanged `gleam/json`, including all 14
+public functions, the constructorless `Json` type, and all four `DecodeError`
+constructors. The explicit package provider binds the external `Json` storage
+and the ten Erlang callbacks. JavaScript-only `decode_string` is not registered;
+the selected Erlang implementation uses `decode_to_dynamic` instead.
+
+Encoded Json values share persistent StringTree structure. Array and object
+construction retain child trees, and `to_string_tree` reuses the same root;
+flattening occurs only for string conversion or sealed inspection. Parsing
+consumes bytes iteratively and constructs exact Dynamic scalar, List, and Dict
+values directly rather than a generic JSON AST. Nested values are assembled
+child-first to keep the external graph acyclic. JSON objects become
+Dynamic-keyed dictionaries whose keys are Dynamic String values, matching the
+official Decode ABI; duplicate encoded object fields remain ordered, while
+decoded dictionaries preserve the first key occurrence.
+
 The current public execution APIs are:
 
 ```rust
@@ -365,6 +395,7 @@ When updating Geam to a newer Gleam baseline, record:
 - Old and new commit hashes.
 - Old and new `gleam_stdlib` integration releases when that baseline changes.
 - Old and new `gleam_http` integration releases when that baseline changes.
+- Old and new `gleam_json` integration releases when that baseline changes.
 - Compiler-boundary files compared.
 - Geam compiler-boundary wrapper or lowering changes made.
 - Profile/lowering fixture changes.

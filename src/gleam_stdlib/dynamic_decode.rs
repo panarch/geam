@@ -1,6 +1,8 @@
 mod function;
 mod schema;
 
+pub(crate) use schema::DecodeError as DynamicDecodeError;
+
 use self::function::{
     DynamicDecodeProvider, bare_index, cast, decode_dict, decode_list, dynamic_bit_array,
     dynamic_float, dynamic_int, dynamic_string, is_null,

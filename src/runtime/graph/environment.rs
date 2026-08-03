@@ -1067,7 +1067,7 @@ pub fn main() {
             },
         )
         .expect("monomorphic function should register");
-        let (_, implementation) = definition.into_parts();
+        let (_, _, implementation) = definition.into_parts();
         let mut arguments = RetainedValues::empty();
         arguments.push_evaluated(EvaluatedValue::Int(10.into()));
         arguments.push_evaluated(EvaluatedValue::Bool(false));

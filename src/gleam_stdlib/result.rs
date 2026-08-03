@@ -5,22 +5,22 @@ use crate::{
     HostCustomTypeArgument, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
 };
 
-pub(super) struct ResultSchema;
+pub(crate) struct ResultSchema;
 
-pub(super) struct OkDefinition;
+pub(crate) struct OkDefinition;
 
-pub(super) struct ErrorDefinition;
+pub(crate) struct ErrorDefinition;
 
-pub(super) struct OkField;
+pub(crate) struct OkField;
 
-pub(super) struct ErrorField;
+pub(crate) struct ErrorField;
 
 type Arguments<Success, Failure> = HostTypeList<Success, HostTypeList<Failure, HostTypeListEnd>>;
-pub(super) type GleamResult<Success, Failure> =
+pub(crate) type GleamResult<Success, Failure> =
     HostCustomType<ResultSchema, Arguments<Success, Failure>>;
-pub(super) type GleamOk<Success, Failure> =
+pub(crate) type GleamOk<Success, Failure> =
     HostCustomConstructorAt<GleamResult<Success, Failure>, HostCustomIndex0, OkDefinition>;
-pub(super) type GleamError<Success, Failure> = HostCustomConstructorAt<
+pub(crate) type GleamError<Success, Failure> = HostCustomConstructorAt<
     GleamResult<Success, Failure>,
     HostCustomIndexNext<HostCustomIndex0>,
     ErrorDefinition,

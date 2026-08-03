@@ -1,6 +1,6 @@
 use super::constant::ModuleToPlan;
 use super::link::LinkedFunction;
-use crate::host::RegisteredHostImplementationId;
+use crate::host::{HostFunctionConstructions, RegisteredHostImplementationId};
 use crate::plan::{
     FunctionTemplateId, HostedFunctionTemplate, HostedPlannedModule, HostedPlannedModuleParts,
     ModuleId,
@@ -14,7 +14,11 @@ pub(super) struct PlannedHostedProgram {
     pub(super) root: ModuleId,
     pub(super) entry: FunctionTemplateId,
     pub(super) modules: Vec<HostedPlannedModule>,
-    pub(super) implementations: Vec<(FunctionTemplateId, RegisteredHostImplementationId)>,
+    pub(super) implementations: Vec<(
+        FunctionTemplateId,
+        HostFunctionConstructions,
+        RegisteredHostImplementationId,
+    )>,
 }
 
 pub(super) fn plan_hosted_modules(
@@ -38,7 +42,11 @@ pub(super) fn plan_hosted_modules(
 fn plan_hosted_module(
     mut module: ModuleToPlan,
     registry: &ProgramRegistry,
-    implementations: &mut Vec<(FunctionTemplateId, RegisteredHostImplementationId)>,
+    implementations: &mut Vec<(
+        FunctionTemplateId,
+        HostFunctionConstructions,
+        RegisteredHostImplementationId,
+    )>,
 ) -> Result<HostedPlannedModule, PlanError> {
     module
         .functions
@@ -77,7 +85,11 @@ fn plan_hosted_function(
     function: LinkedFunction,
     registry: &ProgramRegistry,
     anonymous_functions: &mut super::super::AnonymousFunctions,
-    implementations: &mut Vec<(FunctionTemplateId, RegisteredHostImplementationId)>,
+    implementations: &mut Vec<(
+        FunctionTemplateId,
+        HostFunctionConstructions,
+        RegisteredHostImplementationId,
+    )>,
 ) -> Result<HostedFunctionTemplate, PlanError> {
     match function {
         LinkedFunction::Gleam { info, function } => plan_function(
@@ -99,9 +111,10 @@ fn plan_hosted_function(
         .map(|function| HostedFunctionTemplate::GleamBody(Box::new(function))),
         LinkedFunction::Host {
             template,
+            constructions,
             implementation,
         } => {
-            implementations.push((template.id(), implementation));
+            implementations.push((template.id(), constructions, implementation));
             Ok(HostedFunctionTemplate::HostTemplate(Box::new(template)))
         }
     }

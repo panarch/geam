@@ -1,12 +1,36 @@
 use super::super::super::{AnonymousFunctions, FunctionToPlan, discarded_function_params};
 use super::{LinkedFunction, LinkedModule};
-use crate::host::{HostFunctionSchema, RegisteredHostFunction, RegisteredHostImplementationId};
+use crate::host::{
+    HostFunctionConstructions, HostFunctionSchema, RegisteredHostFunction,
+    RegisteredHostImplementationId,
+};
 use crate::plan::{FunctionTemplateId, HostFunctionTemplate, ModuleId};
 use crate::planner::context::FunctionInfo;
 use crate::planner::error::{HostProviderLinkReason, PlanError};
 use crate::planner::type_parameter::TypeParameterScope;
 use ecow::EcoString;
+use gleam_core::ast::TypedFunction;
 use std::collections::{BTreeMap, HashMap, HashSet};
+
+pub(super) fn select_erlang_hosted_functions(
+    functions: Vec<TypedFunction>,
+    providers: &[RegisteredHostFunction],
+) -> Vec<TypedFunction> {
+    let provided = providers
+        .iter()
+        .map(|provider| provider.schema().name())
+        .collect::<HashSet<_>>();
+    functions
+        .into_iter()
+        .filter(|function| {
+            function.implementations.can_run_on_erlang
+                || function
+                    .name
+                    .as_ref()
+                    .is_none_or(|(_, name)| provided.contains(name))
+        })
+        .collect()
+}
 
 pub(super) fn link_source_functions(
     package: EcoString,
@@ -42,9 +66,10 @@ pub(super) fn link_source_functions(
                         provider,
                         &function.info,
                     )
-                    .map(|(template, implementation)| {
+                    .map(|(template, constructions, implementation)| {
                         linked.push(LinkedFunction::Host {
                             template,
+                            constructions,
                             implementation,
                         });
                         (linked, providers, executable_externals)
@@ -98,7 +123,7 @@ pub(super) fn link_source_less_module(
     let mut linked_functions = Vec::with_capacity(function_count);
     for (function_index, definition) in functions.into_iter().enumerate() {
         let function_id = FunctionTemplateId::in_module(id, function_index);
-        let (template, implementation) = bind_source_less_host_function(
+        let (template, constructions, implementation) = bind_source_less_host_function(
             function_id,
             package.clone(),
             module_name.clone(),
@@ -108,6 +133,7 @@ pub(super) fn link_source_less_module(
         functions_by_name.insert(template.name().clone(), info);
         linked_functions.push(LinkedFunction::Host {
             template,
+            constructions,
             implementation,
         });
     }
@@ -131,8 +157,15 @@ fn bind_source_host_function(
     module: EcoString,
     definition: RegisteredHostFunction,
     source: &FunctionInfo,
-) -> Result<(HostFunctionTemplate, RegisteredHostImplementationId), PlanError> {
-    let (schema, implementation) = definition.into_parts();
+) -> Result<
+    (
+        HostFunctionTemplate,
+        HostFunctionConstructions,
+        RegisteredHostImplementationId,
+    ),
+    PlanError,
+> {
+    let (schema, constructions, implementation) = definition.into_parts();
     let registered_shape = host_function_shape(&schema);
     if source.signature.scheme() != schema.scheme() || source.signature.shape() != &registered_shape
     {
@@ -152,7 +185,7 @@ fn bind_source_host_function(
         crate::plan::HostCallSite::new(module, schema.name().clone(), source.definition_span);
     let template =
         HostFunctionTemplate::from_schema(source.signature.clone(), package, site, schema);
-    Ok((template, implementation))
+    Ok((template, constructions, implementation))
 }
 
 fn bind_source_less_host_function(
@@ -160,8 +193,12 @@ fn bind_source_less_host_function(
     package: EcoString,
     module: EcoString,
     definition: RegisteredHostFunction,
-) -> (HostFunctionTemplate, RegisteredHostImplementationId) {
-    let (schema, implementation) = definition.into_parts();
+) -> (
+    HostFunctionTemplate,
+    HostFunctionConstructions,
+    RegisteredHostImplementationId,
+) {
+    let (schema, constructions, implementation) = definition.into_parts();
     let registered_shape = host_function_shape(&schema);
     let signature =
         crate::plan::FunctionTemplateSignature::new(id, schema.scheme().clone(), registered_shape);
@@ -171,7 +208,7 @@ fn bind_source_less_host_function(
         crate::plan::SourceSpan::new(0, 0),
     );
     let template = HostFunctionTemplate::from_schema(signature, package, site, schema);
-    (template, implementation)
+    (template, constructions, implementation)
 }
 
 fn host_function_shape(schema: &HostFunctionSchema) -> crate::plan::FunctionShape {
@@ -205,6 +242,117 @@ mod tests {
     use crate::planner::{HostProviderLinkReason, PlanError};
     use ecow::EcoString;
     use num_bigint::BigInt;
+
+    #[test]
+    fn omits_unprovided_functions_unavailable_on_the_selected_target() {
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [
+                PackageSource::new(
+                    "application",
+                    ["library"],
+                    [ModuleSource::new(
+                        "main",
+                        "main.gleam",
+                        r#"
+import support
+
+pub fn main() {
+  support.available()
+}
+"#,
+                    )],
+                ),
+                PackageSource::new(
+                    "library",
+                    Vec::<EcoString>::new(),
+                    [ModuleSource::new(
+                        "support",
+                        "support.gleam",
+                        r#"
+@external(javascript, "./support.mjs", "javascript_only")
+fn javascript_only() -> Int
+
+pub fn available() {
+  1
+}
+"#,
+                    )],
+                ),
+            ],
+            HostProviderSet::new(Vec::<HostModule>::new())
+                .expect("empty host modules should be valid"),
+        )
+        .expect("target-unavailable private dependency function should compile");
+
+        let plan = plan_host_program(typed).expect("selected target functions should plan");
+
+        assert_eq!(
+            plan.modules()[0]
+                .functions()
+                .iter()
+                .map(|function| {
+                    function
+                        .gleam_body()
+                        .expect("selected source function should have a body")
+                        .name()
+                        .as_str()
+                })
+                .collect::<Vec<_>>(),
+            ["available"],
+        );
+        assert_eq!(plan.modules()[1].functions().len(), 1);
+        assert_eq!(
+            plan.modules()[1].functions()[0]
+                .gleam_body()
+                .expect("root main should have a body")
+                .name(),
+            "main",
+        );
+    }
+
+    #[test]
+    fn retains_target_unavailable_external_when_a_provider_is_registered() {
+        let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
+            .expect("provider module should be valid")
+            .with_function("javascript_only", BigInt::default)
+            .expect("provider function should be valid");
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<EcoString>::new(),
+                [ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    r#"
+@external(javascript, "./support.mjs", "javascript_only")
+fn javascript_only() -> Int
+
+pub fn main() {
+  1
+}
+"#,
+                )],
+            )],
+            HostProviderSet::with_providers(Vec::<HostModule>::new(), [provider])
+                .expect("provider module should be unique"),
+        )
+        .expect("target-unavailable private function should compile");
+
+        let plan = plan_host_program(typed).expect("explicit provider should link");
+
+        assert_eq!(plan.modules()[0].functions().len(), 2);
+        assert_eq!(
+            plan.modules()[0].functions()[1]
+                .host_template()
+                .expect("registered target-unavailable external should remain a host template")
+                .name(),
+            "javascript_only",
+        );
+    }
 
     #[test]
     fn source_provider_and_gleam_fallback_keep_distinct_body_owners() {

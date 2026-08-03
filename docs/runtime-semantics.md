@@ -94,6 +94,10 @@ Provider selection is completed before source body planning. An exact provider
 selects a host template, an external declaration with no provider uses its
 Gleam body when one exists, and an external-only declaration without a
 provider is rejected. A provider cannot replace an ordinary Gleam function.
+Dependency functions that Gleam analysis marks unavailable on the selected
+Erlang target are omitted before hosted function indexing when no provider was
+registered for them. This preserves explicit provider ownership while avoiding
+missing-provider failures for unselected target-only declarations.
 
 Host calls use the same family-specific runtime function IDs as Gleam
 functions. Direct calls, tail calls, function-value calls, and top-level
@@ -206,6 +210,13 @@ source owner of their operations, and dictionary iteration order is not a
 runtime contract. Canonical inspection sorts rendered entries only to make
 escaped values deterministic to read; that display order does not define
 iteration semantics.
+
+The separate `gleam_json` provider represents encoded Json in immutable shared
+external storage. Source equality, hashing, and inspection derive from the
+encoded representation rather than Rust payload identity. Parsing constructs
+the existing Dynamic, List, and Dict value families while preserving the
+acyclic external-value ownership model; it does not introduce a separate JSON
+runtime family.
 
 ### Specialization And Re-entry
 

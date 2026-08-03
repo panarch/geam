@@ -122,6 +122,7 @@ pub(super) fn validate_host_external_schema(
     site: &crate::plan::HostCallSite,
     signature: &crate::plan::FunctionTemplateSignature,
     actual: &HostExternalTypeSchema,
+    constructions: &[crate::host::HostTypeDescriptor],
 ) -> Result<(), PlanError> {
     let name = ExternalTypeName::new(
         actual.package().clone(),
@@ -167,6 +168,25 @@ pub(super) fn validate_host_external_schema(
     {
         if let Some(actual) =
             invalid_host_external_type_argument_count(shape, &name, definition.parameters().len())
+        {
+            return Err(PlanError::HostProviderLink {
+                package: package.clone(),
+                module: site.module().clone(),
+                function: site.function().clone(),
+                reason: Box::new(
+                    crate::planner::error::HostProviderLinkReason::ExternalTypeArgumentCount {
+                        external_type: name,
+                        expected: definition.parameters().len(),
+                        actual,
+                    },
+                ),
+            });
+        }
+    }
+    for construction in constructions {
+        let shape = construction.value_shape();
+        if let Some(actual) =
+            invalid_host_external_type_argument_count(&shape, &name, definition.parameters().len())
         {
             return Err(PlanError::HostProviderLink {
                 package: package.clone(),
@@ -231,6 +251,7 @@ mod tests {
         ExternalTestProfile, ExternalTestRunState, HostCall, HostCallCompletion, HostCallError,
         HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType,
         HostExternalTypeSchema, HostModule, HostProvider, HostProviderModule, HostProviderSet,
+        HostTypeDescriptor,
     };
     use crate::plan::{
         CustomConstructorRefinement, CustomTypeName, CustomValueShape, ExternalTypeDefinition,
@@ -322,7 +343,8 @@ mod tests {
         let actual = HostExternalTypeSchema::new("application", "main", "Thing", 0);
 
         assert_eq!(
-            validate_host_external_schema(&registry, &package, &site, &signature, &actual,).err(),
+            validate_host_external_schema(&registry, &package, &site, &signature, &actual, &[])
+                .err(),
             Some(PlanError::HostProviderLink {
                 package: "application".into(),
                 module: "main".into(),
@@ -365,7 +387,8 @@ mod tests {
         let actual = HostExternalTypeSchema::new("application", "main", "Thing", 0);
 
         assert_eq!(
-            validate_host_external_schema(&registry, &package, &site, &signature, &actual,).err(),
+            validate_host_external_schema(&registry, &package, &site, &signature, &actual, &[])
+                .err(),
             Some(PlanError::HostProviderLink {
                 package: "application".into(),
                 module: "main".into(),
@@ -427,11 +450,58 @@ mod tests {
         let actual = HostExternalTypeSchema::new("application", "main", "Thing", 1);
 
         assert_eq!(
-            validate_host_external_schema(&registry, &package, &site, &signature, &actual,).err(),
+            validate_host_external_schema(&registry, &package, &site, &signature, &actual, &[])
+                .err(),
             Some(PlanError::HostProviderLink {
                 package: "application".into(),
                 module: "main".into(),
                 function: "accept".into(),
+                reason: Box::new(HostProviderLinkReason::ExternalTypeArgumentCount {
+                    external_type,
+                    expected: 1,
+                    actual: 0,
+                }),
+            }),
+        );
+    }
+
+    #[test]
+    fn hidden_construction_external_type_applies_every_declared_type_argument() {
+        let external_type =
+            ExternalTypeName::new("application".into(), "main".into(), "Thing".into());
+        let registry = ProgramRegistry::new(vec![ModuleRegistry::new(
+            "main".into(),
+            Vec::new(),
+            vec![ExternalTypeDefinition::new(external_type.clone(), 1)],
+            std::collections::HashMap::new(),
+            ConstantSignatures::default(),
+        )]);
+        let signature = FunctionTemplateSignature::new(
+            FunctionTemplateId::in_module(ModuleId::new(0), 0),
+            TypeScheme::new(0),
+            FunctionShape::new(Vec::new(), ValueShape::Bool),
+        );
+        let package = EcoString::from("application");
+        let site = HostCallSite::new("main".into(), "build".into(), SourceSpan::new(0, 0));
+        let actual = HostExternalTypeSchema::new("application", "main", "Thing", 1);
+        let constructions = [HostTypeDescriptor::External {
+            schema: actual.clone(),
+            arguments: Box::new([]),
+        }];
+
+        assert_eq!(
+            validate_host_external_schema(
+                &registry,
+                &package,
+                &site,
+                &signature,
+                &actual,
+                &constructions,
+            ),
+            Err(PlanError::HostProviderLink {
+                package: "application".into(),
+                module: "main".into(),
+                function: "build".into(),
                 reason: Box::new(HostProviderLinkReason::ExternalTypeArgumentCount {
                     external_type,
                     expected: 1,

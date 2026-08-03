@@ -49,16 +49,26 @@ pub(super) fn reserve_hosted_constants(
                     &module.functions,
                 )?;
                 for function in &module.functions {
-                    let LinkedFunction::Host { template, .. } = function else {
+                    let LinkedFunction::Host {
+                        template,
+                        constructions,
+                        ..
+                    } = function
+                    else {
                         continue;
                     };
-                    for schema in template.external_schemas() {
+                    for schema in template
+                        .external_schemas()
+                        .iter()
+                        .chain(constructions.external_schemas())
+                    {
                         super::super::external_type::validate_host_external_schema(
                             &registry,
                             template.package(),
                             template.site(),
                             template.signature(),
                             schema,
+                            constructions.types(),
                         )?;
                     }
                 }
