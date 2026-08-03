@@ -288,13 +288,15 @@ constructors. The explicit package provider binds the external `Json` storage
 and the ten Erlang callbacks. JavaScript-only `decode_string` is not registered;
 the selected Erlang implementation uses `decode_to_dynamic` instead.
 
-Encoded Json values share persistent StringTree structure and flatten only for
-string conversion or sealed inspection. Parsing consumes bytes iteratively and
-constructs exact Dynamic scalar, List, and Dict values directly rather than a
-generic JSON AST. JSON objects become Dynamic-keyed dictionaries whose keys are
-Dynamic String values, matching the official Decode ABI; duplicate encoded
-object fields remain ordered, while decoded dictionaries preserve the first
-key occurrence.
+Encoded Json values share persistent StringTree structure. Array and object
+construction retain child trees, and `to_string_tree` reuses the same root;
+flattening occurs only for string conversion or sealed inspection. Parsing
+consumes bytes iteratively and constructs exact Dynamic scalar, List, and Dict
+values directly rather than a generic JSON AST. Nested values are assembled
+child-first to keep the external graph acyclic. JSON objects become
+Dynamic-keyed dictionaries whose keys are Dynamic String values, matching the
+official Decode ABI; duplicate encoded object fields remain ordered, while
+decoded dictionaries preserve the first key occurrence.
 
 The current public execution APIs are:
 

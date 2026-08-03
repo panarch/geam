@@ -211,13 +211,12 @@ runtime contract. Canonical inspection sorts rendered entries only to make
 escaped values deterministic to read; that display order does not define
 iteration semantics.
 
-The separate `gleam_json` provider stores encoded Json as persistent shared
-StringTree structure. Array and object construction retain child trees without
-flattening them; `to_string_tree` shares the same root. Json source equality and
-hashing follow that encoded structure, while canonical inspection seals the
-flattened encoded text rather than backend iodata details. Its iterative parser
-constructs exact Dynamic List and Dynamic-keyed Dict values directly, retaining
-an acyclic child-first external graph without a general JSON runtime family.
+The separate `gleam_json` provider represents encoded Json in immutable shared
+external storage. Source equality, hashing, and inspection derive from the
+encoded representation rather than Rust payload identity. Parsing constructs
+the existing Dynamic, List, and Dict value families while preserving the
+acyclic external-value ownership model; it does not introduce a separate JSON
+runtime family.
 
 ### Specialization And Re-entry
 
