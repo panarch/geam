@@ -1318,10 +1318,6 @@ impl FunctionTemplate {
         self.signature.scheme()
     }
 
-    pub(crate) fn signature(&self) -> &FunctionTemplateSignature {
-        &self.signature
-    }
-
     pub fn name(&self) -> &EcoString {
         &self.name
     }
@@ -1330,16 +1326,20 @@ impl FunctionTemplate {
         self.entry.params()
     }
 
-    pub(crate) fn entry(&self) -> &FunctionEntry {
-        &self.entry
-    }
-
     pub fn steps(&self) -> &[Step] {
         &self.steps
     }
 
     pub fn return_(&self) -> &ReturnExpr {
         &self.return_
+    }
+
+    pub(crate) fn signature(&self) -> &FunctionTemplateSignature {
+        &self.signature
+    }
+
+    pub(crate) fn entry(&self) -> &FunctionEntry {
+        &self.entry
     }
 }
 
@@ -1423,12 +1423,6 @@ impl ReturnExpr {
         }
     }
 
-    pub(crate) fn int_list_body(body: IntListReturn) -> Self {
-        Self {
-            kind: ReturnExprKind::IntList { body },
-        }
-    }
-
     pub(crate) fn generic_list_body(
         parameter: crate::plan::TypeParameterId,
         body: GenericListReturn,
@@ -1444,6 +1438,12 @@ impl ReturnExpr {
     ) -> Self {
         Self {
             kind: ReturnExprKind::ParameterListList { parameter, body },
+        }
+    }
+
+    pub(crate) fn int_list_body(body: IntListReturn) -> Self {
+        Self {
+            kind: ReturnExprKind::IntList { body },
         }
     }
 
@@ -1513,21 +1513,21 @@ impl ReturnExpr {
         }
     }
 
-    pub(crate) fn int_function_shape_body(
-        shape: crate::plan::FunctionShape,
-        body: IntFunctionReturn,
-    ) -> Self {
-        Self {
-            kind: ReturnExprKind::IntFunction { shape, body },
-        }
-    }
-
     pub(crate) fn generic_function_shape_body(
         shape: crate::plan::FunctionShape,
         body: GenericFunctionReturn,
     ) -> Self {
         Self {
             kind: ReturnExprKind::GenericFunction { shape, body },
+        }
+    }
+
+    pub(crate) fn int_function_shape_body(
+        shape: crate::plan::FunctionShape,
+        body: IntFunctionReturn,
+    ) -> Self {
+        Self {
+            kind: ReturnExprKind::IntFunction { shape, body },
         }
     }
 
@@ -1635,10 +1635,6 @@ impl ReturnExpr {
         }
     }
 
-    pub(crate) fn kind(&self) -> &ReturnExprKind {
-        &self.kind
-    }
-
     pub fn value_type(&self) -> ValueType {
         match self.kind() {
             ReturnExprKind::Generic { parameter, .. } => ValueType::Parameter(*parameter),
@@ -1698,6 +1694,10 @@ impl ReturnExpr {
                 ValueType::Function(Box::new(shape.type_()))
             }
         }
+    }
+
+    pub(crate) fn kind(&self) -> &ReturnExprKind {
+        &self.kind
     }
 }
 

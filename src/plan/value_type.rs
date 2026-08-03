@@ -95,12 +95,12 @@ impl FunctionType {
         }
     }
 
-    pub fn return_(&self) -> &ValueType {
-        &self.return_
-    }
-
     pub fn argument_types(&self) -> &[ValueType] {
         &self.arguments
+    }
+
+    pub fn return_(&self) -> &ValueType {
+        &self.return_
     }
 }
 
@@ -120,16 +120,16 @@ impl CustomFunctionType {
         Self { arguments, return_ }
     }
 
-    pub(crate) fn return_(&self) -> &CustomValueShape {
-        &self.return_
-    }
-
     pub(crate) fn argument_shapes(&self) -> &[ValueShape] {
         &self.arguments
     }
 
     pub(crate) fn argument_types(&self) -> Vec<ValueType> {
         self.arguments.iter().map(ValueShape::value_type).collect()
+    }
+
+    pub(crate) fn return_(&self) -> &CustomValueShape {
+        &self.return_
     }
 
     pub(crate) fn to_function_type(&self) -> FunctionType {
@@ -145,16 +145,16 @@ impl ExternalFunctionType {
         Self { arguments, return_ }
     }
 
-    pub(crate) fn return_(&self) -> &ExternalValueShape {
-        &self.return_
-    }
-
     pub(crate) fn argument_shapes(&self) -> &[ValueShape] {
         &self.arguments
     }
 
     pub(crate) fn argument_types(&self) -> Vec<ValueType> {
         self.arguments.iter().map(ValueShape::value_type).collect()
+    }
+
+    pub(crate) fn return_(&self) -> &ExternalValueShape {
+        &self.return_
     }
 
     pub(crate) fn to_function_type(&self) -> FunctionType {
@@ -183,16 +183,16 @@ impl FunctionFunctionType {
         }
     }
 
-    pub(crate) fn return_shape(&self) -> &super::FunctionShape {
-        &self.return_
-    }
-
     pub(crate) fn argument_shapes(&self) -> &[ValueShape] {
         &self.arguments
     }
 
     pub(crate) fn argument_types(&self) -> Vec<ValueType> {
         self.arguments.iter().map(ValueShape::value_type).collect()
+    }
+
+    pub(crate) fn return_shape(&self) -> &super::FunctionShape {
+        &self.return_
     }
 
     pub(crate) fn return_type(&self) -> FunctionType {

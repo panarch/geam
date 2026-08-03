@@ -172,64 +172,6 @@ impl FunctionExpr {
         }
     }
 
-    fn new(kind: FunctionExprKind) -> Self {
-        let shape = match &kind {
-            FunctionExprKind::Generic(expression) => expression.shape(),
-            FunctionExprKind::Int(expression) => {
-                crate::plan::FunctionShape::from_function_type(expression.type_().clone())
-            }
-            FunctionExprKind::String(expression) => {
-                crate::plan::FunctionShape::from_function_type(expression.type_().clone())
-            }
-            FunctionExprKind::BitArray(expression) => {
-                crate::plan::FunctionShape::from_function_type(expression.type_().clone())
-            }
-            FunctionExprKind::UtfCodepoint(expression) => {
-                crate::plan::FunctionShape::from_function_type(expression.type_().clone())
-            }
-            FunctionExprKind::Custom(expression) => crate::plan::FunctionShape::new(
-                expression.custom_function_type().argument_shapes().to_vec(),
-                crate::plan::ValueShape::Custom(
-                    expression.custom_function_type().return_().clone(),
-                ),
-            ),
-            FunctionExprKind::External(expression) => crate::plan::FunctionShape::new(
-                expression
-                    .external_function_type()
-                    .argument_shapes()
-                    .to_vec(),
-                crate::plan::ValueShape::External(
-                    expression.external_function_type().return_().clone(),
-                ),
-            ),
-            FunctionExprKind::Float(expression) => {
-                crate::plan::FunctionShape::from_function_type(expression.type_().clone())
-            }
-            FunctionExprKind::Bool(expression) => {
-                crate::plan::FunctionShape::from_function_type(expression.type_().clone())
-            }
-            FunctionExprKind::Nil(expression) => {
-                crate::plan::FunctionShape::from_function_type(expression.type_().clone())
-            }
-            FunctionExprKind::Tuple(expression) => {
-                crate::plan::FunctionShape::from_function_type(expression.type_().clone())
-            }
-            FunctionExprKind::List(expression) => {
-                crate::plan::FunctionShape::from_function_type(expression.type_().clone())
-            }
-            FunctionExprKind::Function(expression) => crate::plan::FunctionShape::new(
-                expression
-                    .function_function_type()
-                    .argument_shapes()
-                    .to_vec(),
-                crate::plan::ValueShape::Function(Box::new(
-                    expression.function_function_type().return_shape().clone(),
-                )),
-            ),
-        };
-        Self { shape, kind }
-    }
-
     pub(crate) fn custom_field_shape(access: CustomFieldAccess, shape: FunctionShape) -> Self {
         let type_ = shape.type_();
         match shape.return_shape().clone() {
@@ -671,6 +613,64 @@ impl FunctionExpr {
     }
 
     fn with_typed_shape(kind: FunctionExprKind, shape: crate::plan::FunctionShape) -> Self {
+        Self { shape, kind }
+    }
+
+    fn new(kind: FunctionExprKind) -> Self {
+        let shape = match &kind {
+            FunctionExprKind::Generic(expression) => expression.shape(),
+            FunctionExprKind::Int(expression) => {
+                crate::plan::FunctionShape::from_function_type(expression.type_().clone())
+            }
+            FunctionExprKind::String(expression) => {
+                crate::plan::FunctionShape::from_function_type(expression.type_().clone())
+            }
+            FunctionExprKind::BitArray(expression) => {
+                crate::plan::FunctionShape::from_function_type(expression.type_().clone())
+            }
+            FunctionExprKind::UtfCodepoint(expression) => {
+                crate::plan::FunctionShape::from_function_type(expression.type_().clone())
+            }
+            FunctionExprKind::Custom(expression) => crate::plan::FunctionShape::new(
+                expression.custom_function_type().argument_shapes().to_vec(),
+                crate::plan::ValueShape::Custom(
+                    expression.custom_function_type().return_().clone(),
+                ),
+            ),
+            FunctionExprKind::External(expression) => crate::plan::FunctionShape::new(
+                expression
+                    .external_function_type()
+                    .argument_shapes()
+                    .to_vec(),
+                crate::plan::ValueShape::External(
+                    expression.external_function_type().return_().clone(),
+                ),
+            ),
+            FunctionExprKind::Float(expression) => {
+                crate::plan::FunctionShape::from_function_type(expression.type_().clone())
+            }
+            FunctionExprKind::Bool(expression) => {
+                crate::plan::FunctionShape::from_function_type(expression.type_().clone())
+            }
+            FunctionExprKind::Nil(expression) => {
+                crate::plan::FunctionShape::from_function_type(expression.type_().clone())
+            }
+            FunctionExprKind::Tuple(expression) => {
+                crate::plan::FunctionShape::from_function_type(expression.type_().clone())
+            }
+            FunctionExprKind::List(expression) => {
+                crate::plan::FunctionShape::from_function_type(expression.type_().clone())
+            }
+            FunctionExprKind::Function(expression) => crate::plan::FunctionShape::new(
+                expression
+                    .function_function_type()
+                    .argument_shapes()
+                    .to_vec(),
+                crate::plan::ValueShape::Function(Box::new(
+                    expression.function_function_type().return_shape().clone(),
+                )),
+            ),
+        };
         Self { shape, kind }
     }
 

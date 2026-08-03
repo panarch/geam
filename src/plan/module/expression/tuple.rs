@@ -68,16 +68,6 @@ pub(crate) enum TupleExprKind {
 }
 
 impl TupleExpr {
-    fn new(type_: Vec<ValueType>, kind: TupleExprKind) -> Self {
-        let shape = type_
-            .iter()
-            .cloned()
-            .map(crate::plan::ValueShape::from_value_type)
-            .collect::<Vec<_>>()
-            .into_boxed_slice();
-        Self { type_, shape, kind }
-    }
-
     pub(crate) fn value(elements: Vec<super::Expr>, type_: Vec<ValueType>) -> Self {
         let shape = elements
             .iter()
@@ -272,6 +262,16 @@ impl TupleExpr {
     pub(crate) fn with_shape(mut self, shape: Box<[crate::plan::ValueShape]>) -> Self {
         self.shape = shape;
         self
+    }
+
+    fn new(type_: Vec<ValueType>, kind: TupleExprKind) -> Self {
+        let shape = type_
+            .iter()
+            .cloned()
+            .map(crate::plan::ValueShape::from_value_type)
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        Self { type_, shape, kind }
     }
 }
 

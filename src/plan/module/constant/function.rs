@@ -561,6 +561,29 @@ impl ConstantFunctionInstantiation {
         }
     }
 
+    pub(super) fn substitute(&self, outer: &TypeSubstitution) -> Self {
+        match self {
+            Self::Generic(value) => Self::from_generic_source(
+                value.module(),
+                *value.source(),
+                value.substitution().substitute(outer),
+                value.shape().substitute(outer),
+            ),
+            Self::Int(value) => Self::Int(value.substitute(outer)),
+            Self::String(value) => Self::String(value.substitute(outer)),
+            Self::BitArray(value) => Self::BitArray(value.substitute(outer)),
+            Self::UtfCodepoint(value) => Self::UtfCodepoint(value.substitute(outer)),
+            Self::Custom(value) => Self::Custom(value.substitute(outer)),
+            Self::External(value) => Self::External(value.substitute(outer)),
+            Self::Float(value) => Self::Float(value.substitute(outer)),
+            Self::Bool(value) => Self::Bool(value.substitute(outer)),
+            Self::Nil(value) => Self::Nil(value.substitute(outer)),
+            Self::Tuple(value) => Self::Tuple(value.substitute(outer)),
+            Self::List(value) => Self::List(value.substitute(outer)),
+            Self::Function(value) => Self::Function(value.substitute(outer)),
+        }
+    }
+
     fn from_generic_source(
         module: crate::plan::ModuleId,
         source: ConstantGenericFunctionTemplateId,
@@ -671,29 +694,6 @@ impl ConstantFunctionInstantiation {
                     return_,
                 ))
             }
-        }
-    }
-
-    pub(super) fn substitute(&self, outer: &TypeSubstitution) -> Self {
-        match self {
-            Self::Generic(value) => Self::from_generic_source(
-                value.module(),
-                *value.source(),
-                value.substitution().substitute(outer),
-                value.shape().substitute(outer),
-            ),
-            Self::Int(value) => Self::Int(value.substitute(outer)),
-            Self::String(value) => Self::String(value.substitute(outer)),
-            Self::BitArray(value) => Self::BitArray(value.substitute(outer)),
-            Self::UtfCodepoint(value) => Self::UtfCodepoint(value.substitute(outer)),
-            Self::Custom(value) => Self::Custom(value.substitute(outer)),
-            Self::External(value) => Self::External(value.substitute(outer)),
-            Self::Float(value) => Self::Float(value.substitute(outer)),
-            Self::Bool(value) => Self::Bool(value.substitute(outer)),
-            Self::Nil(value) => Self::Nil(value.substitute(outer)),
-            Self::Tuple(value) => Self::Tuple(value.substitute(outer)),
-            Self::List(value) => Self::List(value.substitute(outer)),
-            Self::Function(value) => Self::Function(value.substitute(outer)),
         }
     }
 }

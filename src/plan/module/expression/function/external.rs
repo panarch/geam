@@ -279,6 +279,10 @@ impl ExternalFunctionExpr {
         }
     }
 
+    pub fn type_(&self) -> FunctionType {
+        self.type_.to_function_type()
+    }
+
     pub(crate) fn external_function_type(&self) -> &ExternalFunctionType {
         &self.type_
     }
@@ -286,10 +290,6 @@ impl ExternalFunctionExpr {
     pub(super) fn with_type(mut self, type_: ExternalFunctionType) -> Self {
         self.type_ = type_;
         self
-    }
-
-    pub fn type_(&self) -> FunctionType {
-        self.type_.to_function_type()
     }
 
     pub(crate) fn kind(&self) -> &ExternalFunctionExprKind {

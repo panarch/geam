@@ -20,12 +20,12 @@ impl CustomPattern {
         }
     }
 
-    pub(crate) fn fields(&self) -> &[AssertPattern] {
-        &self.fields
-    }
-
     pub(crate) fn constructor(&self) -> &CustomConstructor {
         &self.constructor
+    }
+
+    pub(crate) fn fields(&self) -> &[AssertPattern] {
+        &self.fields
     }
 
     pub(crate) fn total_fields(&self) -> Option<&[TotalBindingPattern]> {
