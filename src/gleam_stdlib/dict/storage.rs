@@ -16,7 +16,7 @@ pub(in crate::gleam_stdlib) struct Stores {
     transients: HostExternalStore<TransientDictPayload>,
 }
 
-pub(super) struct DictPayload {
+pub(in crate::gleam_stdlib) struct DictPayload {
     pub(super) storage: DictStorage,
 }
 

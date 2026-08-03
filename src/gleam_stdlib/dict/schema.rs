@@ -4,7 +4,7 @@ use crate::{
     HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter,
 };
 
-pub(super) struct DictSchema;
+pub(in crate::gleam_stdlib) struct DictSchema;
 
 pub(super) struct TransientDictSchema;
 
@@ -16,9 +16,11 @@ pub(super) type StoredValue = HostStoredType<ItemIndex>;
 // Function parameters follow the planner's return-first canonical order.
 pub(super) type Key = HostTypeParameter<0>;
 pub(super) type Item = HostTypeParameter<1>;
-type DictArguments = HostTypeList<Key, HostTypeList<Item, HostTypeListEnd>>;
-pub(super) type Dict = HostExternalType<DictSchema, DictArguments>;
-pub(super) type TransientDict = HostExternalType<TransientDictSchema, DictArguments>;
+pub(in crate::gleam_stdlib) type DictOf<Key, Item> =
+    HostExternalType<DictSchema, HostTypeList<Key, HostTypeList<Item, HostTypeListEnd>>>;
+pub(super) type Dict = DictOf<Key, Item>;
+pub(super) type TransientDict =
+    HostExternalType<TransientDictSchema, HostTypeList<Key, HostTypeList<Item, HostTypeListEnd>>>;
 pub(super) type UpdateFunctionArguments = HostTypeList<Item, HostTypeListEnd>;
 pub(super) type UpdateFunction = HostFunctionType<UpdateFunctionArguments, Item>;
 

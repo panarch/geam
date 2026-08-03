@@ -3,8 +3,10 @@ use crate::{HostProfile, HostProviderModule, HostRegistrationError};
 mod bit_array;
 mod dict;
 mod dynamic;
+mod dynamic_decode;
 mod float;
 mod int;
+mod option;
 mod result;
 mod run_state;
 mod string;
@@ -59,8 +61,19 @@ where
                 int::host_provider::<Profile>().and_then(|int| {
                     string_tree::host_provider::<Profile>().and_then(|string_tree| {
                         string::host_provider::<Profile>().and_then(|string| {
-                            bit_array::host_provider::<Profile>().map(|bit_array| {
-                                vec![dict, dynamic, float, int, string_tree, string, bit_array]
+                            bit_array::host_provider::<Profile>().and_then(|bit_array| {
+                                dynamic_decode::host_provider::<Profile>().map(|dynamic_decode| {
+                                    vec![
+                                        dict,
+                                        dynamic,
+                                        float,
+                                        int,
+                                        string_tree,
+                                        string,
+                                        bit_array,
+                                        dynamic_decode,
+                                    ]
+                                })
                             })
                         })
                     })
@@ -122,6 +135,7 @@ mod tests {
                 "gleam/string_tree",
                 "gleam/string",
                 "gleam/bit_array",
+                "gleam/dynamic/decode",
             ],
         );
         let provider = &providers[0];

@@ -182,13 +182,22 @@ persistent payload versions that share immutable retained entries. This does
 not add a general mutable external-value model or cyclic runtime graph support.
 
 `geam::gleam_stdlib::host_providers` supplies the explicit provider bundle for
-official `gleam/dict` `v1.0.3`. Callers compose that bundle into a
-`HostProviderSet`; project loading does not infer or inject it. The provider
-binds the source's constructorless `Dict` and private `TransientDict` types and
-its bodyless external functions. Functions with Gleam fallback bodies continue
-to compile and execute from the unchanged package source. Dictionary lookup
-uses source hashing followed by source equality within a collision bucket, and
-no backend iteration order is exposed as a Geam contract.
+the verified `gleam_stdlib` `v1.0.3` modules. Callers compose that bundle into a
+`HostProviderSet`; project loading selects only providers in the resolved
+source closure and does not infer or inject the bundle. The verified set is
+`gleam/bool`, `gleam/option`, `gleam/order`, `gleam/dict`, `gleam/dynamic`,
+`gleam/float`, `gleam/int`, `gleam/list`, `gleam/string_tree`, `gleam/string`,
+`gleam/bit_array`, and `gleam/dynamic/decode`. Functions with valid Gleam
+fallback bodies continue to compile and execute from the unchanged package
+source.
+
+The provider-backed modules retain their source-facing value distinctions.
+Dictionary lookup uses source hashing followed by source equality within a
+collision bucket. Dynamic values retain their exact specialized shape for
+typed Decode operations. StringTree uses persistent acyclic structure, and
+BitArray values preserve logical bit ranges over shared immutable backing.
+Random operations use caller-owned `GleamStdlibRunState`; there is no hidden
+seed or global random state.
 
 The current public execution APIs are:
 

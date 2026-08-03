@@ -13,7 +13,6 @@ use crate::host::{
 };
 use crate::plan::execution::host::{HostCallParameter, HostedFunction};
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
-use crate::plan::execution::type_::{ExternalTypeId, ListTypeId, ValueType};
 use crate::runtime::evaluated::EvaluatedCustomValue;
 use crate::runtime::graph::{BlockEnvironment, RetainedValues};
 use crate::runtime::state::RuntimeStateFor;
@@ -36,10 +35,7 @@ where
     function_arguments: Vec<HostFunctionToken>,
     scoped: ScopedValues,
     type_arguments: &'call [crate::plan::ValueType],
-    return_lists: Box<[ListTypeId]>,
-    return_customs: Box<[crate::plan::execution::type_::CustomTypeId]>,
-    return_externals: Box<[crate::plan::execution::type_::ExternalTypeId]>,
-    return_external_items: Box<[ExternalTypeId]>,
+    constructions: &'call crate::plan::execution::host::HostConstructionTypes,
     origin: crate::runtime::error::HostCallOrigin,
     profile: std::marker::PhantomData<Profile>,
 }
@@ -53,9 +49,6 @@ struct PreparedHostCall {
     external_arguments: Vec<HostExternalToken>,
     function_arguments: Vec<HostFunctionToken>,
     scoped: ScopedValues,
-    return_lists: Box<[ListTypeId]>,
-    return_customs: Box<[crate::plan::execution::type_::CustomTypeId]>,
-    return_externals: Box<[crate::plan::execution::type_::ExternalTypeId]>,
 }
 
 impl<'call, 'run, Profile> RuntimeHostCall<'call, 'run, Profile>
@@ -78,14 +71,7 @@ where
             external_arguments,
             function_arguments,
             scoped,
-            return_lists,
-            return_customs,
-            return_externals,
-        } = PreparedHostCall::new(
-            function.call_parameters(),
-            function.type_().return_(),
-            inputs,
-        );
+        } = PreparedHostCall::new(function.call_parameters(), inputs);
         state.lists_mut().drain_releases();
 
         Self {
@@ -100,10 +86,7 @@ where
             function_arguments,
             scoped,
             type_arguments: function.type_arguments(),
-            return_lists,
-            return_customs,
-            return_externals,
-            return_external_items: function.return_external_items().to_vec().into_boxed_slice(),
+            constructions: function.constructions(),
             origin: crate::runtime::error::HostCallOrigin::host(function.metadata()),
             profile: std::marker::PhantomData,
         }
@@ -121,11 +104,7 @@ where
 }
 
 impl PreparedHostCall {
-    fn new(
-        parameters: &[HostCallParameter],
-        return_type: &ValueType,
-        inputs: RetainedValues,
-    ) -> Self {
+    fn new(parameters: &[HostCallParameter], inputs: RetainedValues) -> Self {
         let environment = BlockEnvironment::from_retained(inputs);
         let mut arguments = RetainedValues::empty();
         let mut scoped = ScopedValues::default();
@@ -173,25 +152,6 @@ impl PreparedHostCall {
             }
         }
 
-        let mut return_lists = Vec::new();
-        let mut return_customs = Vec::new();
-        let mut return_externals = Vec::new();
-        match return_type {
-            ValueType::List(type_id) => return_lists.push(type_id.to_owned()),
-            ValueType::Custom(type_id) => return_customs.push(type_id.to_owned()),
-            ValueType::External(type_id) => return_externals.push(type_id.to_owned()),
-            ValueType::Parameter(_)
-            | ValueType::Int
-            | ValueType::Float
-            | ValueType::String
-            | ValueType::BitArray
-            | ValueType::UtfCodepoint
-            | ValueType::Bool
-            | ValueType::Nil
-            | ValueType::Tuple(_)
-            | ValueType::Function(_) => {}
-        }
-
         Self {
             arguments,
             value_arguments,
@@ -201,9 +161,6 @@ impl PreparedHostCall {
             external_arguments,
             function_arguments,
             scoped,
-            return_lists: return_lists.into_boxed_slice(),
-            return_customs: return_customs.into_boxed_slice(),
-            return_externals: return_externals.into_boxed_slice(),
         }
     }
 }
@@ -394,13 +351,18 @@ where
         self.scoped.push_scoped(value)
     }
 
-    fn build_list(&mut self, values: Box<[HostScopedValue]>) -> HostValueToken {
+    fn build_list(
+        &mut self,
+        type_: &crate::host::HostTypeDescriptor,
+        values: Box<[HostScopedValue]>,
+    ) -> HostValueToken {
         let values = values
             .into_vec()
             .into_iter()
             .map(|value| self.scoped.push_scoped(value))
             .collect::<Vec<_>>();
-        let storage_type = self.plan.list_storage_type(self.return_lists[0]);
+        let type_ = type_.resolve_sealed(self.type_arguments);
+        let storage_type = self.plan.list_storage_type(self.constructions.list(&type_));
         let list = self
             .scoped
             .allocate_list(storage_type, self.state.lists_mut(), &values);
@@ -418,6 +380,7 @@ where
 
     fn build_custom(
         &mut self,
+        type_: &crate::host::HostTypeDescriptor,
         constructor: usize,
         fields: Box<[HostScopedValue]>,
     ) -> HostValueToken {
@@ -427,25 +390,23 @@ where
             .map(|value| self.scoped.value_from_scoped(value))
             .collect::<Vec<_>>()
             .into_boxed_slice();
+        let type_ = type_.resolve_sealed(self.type_arguments);
         let constructor = self
             .plan
-            .custom_constructor_id(self.return_customs[0], constructor);
+            .custom_constructor_id(self.constructions.custom(&type_), constructor);
         self.scoped
             .push_custom(EvaluatedCustomValue::from_fields(constructor, fields))
     }
 
-    fn build_external(&mut self, value: ExternalPayloadLease) -> HostExternalToken {
+    fn build_external(
+        &mut self,
+        type_: &crate::host::HostTypeDescriptor,
+        value: ExternalPayloadLease,
+    ) -> HostExternalToken {
+        let type_ = type_.resolve_sealed(self.type_arguments);
         self.scoped
             .push_external(crate::runtime::evaluated::EvaluatedExternalValue::new(
-                self.return_externals[0],
-                value,
-            ))
-    }
-
-    fn build_external_list_item(&mut self, value: ExternalPayloadLease) -> HostExternalToken {
-        self.scoped
-            .push_external(crate::runtime::evaluated::EvaluatedExternalValue::new(
-                self.return_external_items[0],
+                self.constructions.external(&type_),
                 value,
             ))
     }

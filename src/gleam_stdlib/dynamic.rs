@@ -2,12 +2,16 @@ mod function;
 mod schema;
 mod storage;
 
+pub(in crate::gleam_stdlib) use schema::{Dynamic, DynamicList, DynamicSchema};
 pub(super) use storage::Stores;
 
-use self::function::{DynamicProvider, array, cast, classify};
-use self::schema::{Dynamic, DynamicList, DynamicSchema, Parameter};
+pub(in crate::gleam_stdlib) use self::function::{
+    DynamicProvider, classification, create_value, decode_value, sequence,
+};
+use self::function::{array, cast, classify};
+use self::schema::Parameter;
 use super::GleamStdlibHostProfile;
-use crate::{HostProviderModule, HostRegistrationError};
+use crate::{HostList, HostProviderModule, HostRegistrationError};
 use ecow::EcoString;
 use num_bigint::BigInt;
 
@@ -73,6 +77,11 @@ where
                 cast::<Profile, Parameter>,
             )
         })
+}
+
+pub(in crate::gleam_stdlib) enum DynamicSequence<'call> {
+    List(HostList<'call, Dynamic>),
+    Array(HostList<'call, Dynamic>),
 }
 
 #[cfg(test)]

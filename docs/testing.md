@@ -65,14 +65,18 @@ cd ../../../..
 cargo test --test gleam_stdlib -- --ignored
 ```
 
-CI prepares this fixture with Gleam `v1.17.0`. Pure modules run through
+CI prepares this fixture with Gleam `v1.17.0`. Provider-free roots run through
 `compile_typed_project -> plan_program -> ExecutionPlan::from_module_plan ->
-run_main`; `gleam/dict` runs through `compile_typed_host_project ->
-plan_host_program -> HostedExecution::try_from_module_plan -> run_main` with
-the explicit `geam::gleam_stdlib` provider bundle. Each tracked module fixes
-its analyzed public surface and verifies representative behavior in a local
-Gleam fixture. This integration suite does not replace hermetic synthetic
-owner coverage for the loader or providers.
+run_main`; roots whose selected closure uses registered externals run through
+`compile_typed_host_project -> plan_host_program ->
+HostedExecution::try_from_module_plan -> run_main` with the explicit
+`geam::gleam_stdlib` provider bundle. The tracked set covers `gleam/bool`,
+`gleam/option`, `gleam/order`, `gleam/dict`, `gleam/dynamic`, `gleam/float`,
+`gleam/int`, `gleam/list`, `gleam/string_tree`, `gleam/string`,
+`gleam/bit_array`, and `gleam/dynamic/decode`. Each module fixes its analyzed
+public surface and executes grouped source behavior. This integration suite
+does not replace hermetic synthetic owner coverage for the loader or
+providers.
 
 Source-level rejection fixtures live under categorized
 `tests/fixtures/rejection/**/*.gleam` paths. They are reserved for public

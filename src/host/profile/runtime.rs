@@ -43,15 +43,23 @@ pub(crate) trait HostCallRuntime<Profile: HostProfile> {
     fn source_hash(&self, value: HostScopedValue) -> u64;
     fn inspect(&self, value: HostScopedValue) -> ecow::EcoString;
     fn complete(&mut self, value: HostScopedValue) -> HostValueToken;
-    fn build_list(&mut self, values: Box<[HostScopedValue]>) -> HostValueToken;
+    fn build_list(
+        &mut self,
+        type_: &crate::host::HostTypeDescriptor,
+        values: Box<[HostScopedValue]>,
+    ) -> HostValueToken;
     fn build_tuple(&mut self, values: Box<[HostScopedValue]>) -> HostValueToken;
     fn build_custom(
         &mut self,
+        type_: &crate::host::HostTypeDescriptor,
         constructor: usize,
         fields: Box<[HostScopedValue]>,
     ) -> HostValueToken;
-    fn build_external(&mut self, value: ExternalPayloadLease) -> HostExternalToken;
-    fn build_external_list_item(&mut self, value: ExternalPayloadLease) -> HostExternalToken;
+    fn build_external(
+        &mut self,
+        type_: &crate::host::HostTypeDescriptor,
+        value: ExternalPayloadLease,
+    ) -> HostExternalToken;
     fn external_lease(&self, value: HostExternalToken) -> ExternalPayloadLease;
     fn resolve_host_type(
         &self,
@@ -284,7 +292,11 @@ pub(crate) mod test {
             token
         }
 
-        fn build_list(&mut self, _values: Box<[HostScopedValue]>) -> HostValueToken {
+        fn build_list(
+            &mut self,
+            _type_: &crate::host::HostTypeDescriptor,
+            _values: Box<[HostScopedValue]>,
+        ) -> HostValueToken {
             token(HostValueFamily::List)
         }
 
@@ -294,6 +306,7 @@ pub(crate) mod test {
 
         fn build_custom(
             &mut self,
+            _type_: &crate::host::HostTypeDescriptor,
             _constructor: usize,
             _fields: Box<[HostScopedValue]>,
         ) -> HostValueToken {
@@ -302,18 +315,12 @@ pub(crate) mod test {
 
         fn build_external(
             &mut self,
+            _type_: &crate::host::HostTypeDescriptor,
             value: crate::host::ExternalPayloadLease,
         ) -> HostExternalToken {
             let index = self.external_leases.len();
             self.external_leases.push(value);
             HostExternalToken(index)
-        }
-
-        fn build_external_list_item(
-            &mut self,
-            value: crate::host::ExternalPayloadLease,
-        ) -> HostExternalToken {
-            self.build_external(value)
         }
 
         fn external_lease(&self, value: HostExternalToken) -> crate::host::ExternalPayloadLease {
@@ -368,10 +375,19 @@ pub(crate) mod test {
             ),
             HostExternalToken(0),
         );
-        let external = HostCallRuntime::build_external(&mut runtime, lease);
+        let descriptor = crate::host::HostTypeDescriptor::External {
+            schema: crate::host::HostExternalTypeSchema::new(
+                "domain",
+                "domain/resource",
+                "Resource",
+                0,
+            ),
+            arguments: Box::new([]),
+        };
+        let external = HostCallRuntime::build_external(&mut runtime, &descriptor, lease);
         assert_eq!(external, HostExternalToken(0));
         let list_item =
-            HostCallRuntime::build_external_list_item(&mut runtime, equal_lease.clone());
+            HostCallRuntime::build_external(&mut runtime, &descriptor, equal_lease.clone());
         assert_eq!(list_item, HostExternalToken(1));
         let stored = HostCallRuntime::external_lease(&runtime, external);
         {

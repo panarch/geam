@@ -60,8 +60,12 @@ Rust payloads. Providers define Gleam equality, runtime hashing, and canonical
 inspection through narrow retained-value contexts; equal payloads must hash
 equally, while collisions are resolved by equality. Their public runtime
 values remain opaque and self-contained. The `geam::gleam_stdlib` module
-provides an explicitly composed host-provider bundle for the unchanged
-official `gleam/dict` `v1.0.3` source; it is not injected by project loading.
+provides an explicitly composed host-provider bundle for unchanged official
+`gleam_stdlib` `v1.0.3` modules that require externals; it is not injected by
+project loading. The verified module set is `gleam/bool`, `gleam/option`,
+`gleam/order`, `gleam/dict`, `gleam/dynamic`, `gleam/float`, `gleam/int`,
+`gleam/list`, `gleam/string_tree`, `gleam/string`, `gleam/bit_array`, and
+`gleam/dynamic/decode`.
 
 The main public entry points are:
 

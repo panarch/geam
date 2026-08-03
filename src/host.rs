@@ -53,7 +53,9 @@ pub(crate) use module::{
 pub(crate) use profile::HostCallRuntime;
 #[cfg(test)]
 pub(crate) use profile::test;
-pub(crate) use type_::{HostAbiType, HostAbiTypeSequence, HostTypeDescriptor};
+pub(crate) use type_::{
+    HostAbiType, HostAbiTypeSequence, HostOpaqueFunctionType, HostTypeDescriptor,
+};
 pub(crate) use value::{
     HostCustomToken, HostExternalToken, HostFunctionToken, HostListToken, HostScopedValue,
     HostTupleToken, HostValueFamily, HostValueToken,

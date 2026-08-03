@@ -1,4 +1,5 @@
-use super::schema::{Dynamic, DynamicList};
+use super::DynamicSequence;
+use super::schema::{Dynamic, DynamicList, DynamicSchema};
 use super::storage::{DynamicPayload, DynamicRepresentation};
 use crate::gleam_stdlib::GleamStdlibHostProfile;
 use crate::{
@@ -7,7 +8,7 @@ use crate::{
 use ecow::EcoString;
 use std::marker::PhantomData;
 
-pub(super) struct DynamicProvider<Profile>(PhantomData<Profile>);
+pub(in crate::gleam_stdlib) struct DynamicProvider<Profile>(PhantomData<Profile>);
 
 impl<Profile> HostProvider<Profile> for DynamicProvider<Profile>
 where
@@ -31,6 +32,18 @@ where
     Ok(call.return_value(name))
 }
 
+pub(in crate::gleam_stdlib) fn classification<'call, Profile, Provider, Return>(
+    call: &HostCall<'call, Profile, Provider, Return>,
+    value: HostExternal<'call, Dynamic>,
+) -> EcoString
+where
+    Profile: GleamStdlibHostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+{
+    call.external_payload(value).representation().name().into()
+}
+
 pub(super) fn cast<'call, Profile, Type>(
     mut call: HostCall<'call, Profile, DynamicProvider<Profile>, Dynamic>,
     value: Type::Value<'call>,
@@ -39,14 +52,62 @@ where
     Profile: GleamStdlibHostProfile,
     Type: HostType,
 {
-    let dynamic = call.create_external_with(|builder| {
+    let dynamic =
+        create_value::<Profile, DynamicProvider<Profile>, Dynamic, Type>(&mut call, value);
+    Ok(call.return_value(dynamic))
+}
+
+pub(in crate::gleam_stdlib) fn create_value<'call, Profile, Provider, Return, Type>(
+    call: &mut HostCall<'call, Profile, Provider, Return>,
+    value: Type::Value<'call>,
+) -> HostExternal<'call, Dynamic>
+where
+    Profile: GleamStdlibHostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    Type: HostType,
+{
+    call.create_external_value_with::<DynamicSchema, crate::HostTypeListEnd>(|builder| {
         let value = builder.store_dynamic::<Type>(value);
         DynamicPayload::Stored {
             representation: DynamicRepresentation::from_type(value.value_type()),
             value,
         }
-    });
-    Ok(call.return_value(dynamic))
+    })
+}
+
+pub(in crate::gleam_stdlib) fn decode_value<'call, Profile, Provider, Return, Type>(
+    call: &mut HostCall<'call, Profile, Provider, Return>,
+    value: HostExternal<'call, Dynamic>,
+) -> Option<Type::Value<'call>>
+where
+    Profile: GleamStdlibHostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    Type: HostType,
+{
+    let payload = call.external_payload(value);
+    payload.decode::<Profile, Provider, Return, Type>(call, DynamicPayload::value)
+}
+
+pub(in crate::gleam_stdlib) fn sequence<'call, Profile, Provider, Return>(
+    call: &mut HostCall<'call, Profile, Provider, Return>,
+    value: HostExternal<'call, Dynamic>,
+) -> Option<DynamicSequence<'call>>
+where
+    Profile: GleamStdlibHostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+{
+    let payload = call.external_payload(value);
+    let sequence = match payload.representation() {
+        DynamicRepresentation::List => DynamicSequence::List,
+        DynamicRepresentation::Array => DynamicSequence::Array,
+        _ => return None,
+    };
+    payload
+        .decode::<Profile, Provider, Return, DynamicList>(call, DynamicPayload::value)
+        .map(sequence)
 }
 
 pub(super) fn array<'call, Profile>(

@@ -51,6 +51,28 @@ where
     })
 }
 
+pub(in crate::gleam_stdlib) fn lookup<'call, Profile, Provider, Return, KeyType, ValueType>(
+    call: &mut HostCall<'call, Profile, Provider, Return>,
+    dict: HostExternal<'call, super::schema::DictOf<KeyType, ValueType>>,
+    key: KeyType::Value<'call>,
+) -> Option<ValueType::Value<'call>>
+where
+    Profile: GleamStdlibHostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    KeyType: HostType,
+    ValueType: HostType,
+{
+    let key_hash = call.source_hash::<KeyType>(key.clone());
+    let payload = call.external_payload(dict);
+    let index = matching_entry(call, &payload, key_hash, key)?;
+    Some(
+        payload.restore_argument::<Profile, Provider, Return, ItemIndex>(call, |payload| {
+            &payload.storage.buckets[&key_hash][index].value
+        }),
+    )
+}
+
 fn create_entry<'call, Profile, Arguments>(
     builder: &mut HostExternalPayloadBuilder<'_, Profile, Arguments>,
     key_hash: u64,

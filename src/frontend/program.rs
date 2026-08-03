@@ -594,7 +594,8 @@ fn host_type(type_: &HostTypeDescriptor) -> std::sync::Arc<gleam_core::type_::Ty
         HostTypeDescriptor::Tuple(elements) => {
             tuple(elements.iter().map(host_type).collect::<Vec<_>>())
         }
-        HostTypeDescriptor::Function { arguments, return_ } => fn_(
+        HostTypeDescriptor::Function { arguments, return_ }
+        | HostTypeDescriptor::OpaqueFunction { arguments, return_ } => fn_(
             arguments.iter().map(host_type).collect(),
             host_type(return_),
         ),
@@ -941,6 +942,20 @@ mod tests {
                     vec![HostTypeDescriptor::Int, HostTypeDescriptor::Bool].into_boxed_slice(),
                 ),
                 tuple(vec![int(), bool_type()]),
+            ),
+            (
+                HostTypeDescriptor::Function {
+                    arguments: vec![HostTypeDescriptor::Int].into_boxed_slice(),
+                    return_: Box::new(HostTypeDescriptor::Bool),
+                },
+                fn_(vec![int()], bool_type()),
+            ),
+            (
+                HostTypeDescriptor::OpaqueFunction {
+                    arguments: vec![HostTypeDescriptor::String].into_boxed_slice(),
+                    return_: Box::new(HostTypeDescriptor::Nil),
+                },
+                fn_(vec![string()], nil()),
             ),
             (
                 HostTypeDescriptor::Custom {

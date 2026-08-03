@@ -87,6 +87,8 @@ pub trait HostCustomConstructor: private::CustomConstructor + Send + Sync + 'sta
     type Fields: HostTypeSequence;
 }
 
+pub(crate) trait SoleHostCustomConstructor: HostCustomConstructor {}
+
 /// The source name and ordered fields of one custom constructor.
 pub trait HostCustomConstructorDefinition: Send + Sync + 'static {
     const NAME: &'static str;
@@ -435,6 +437,18 @@ where
 {
     type Custom = HostCustomType<Schema, Arguments>;
     type Fields = <Definition::Fields as ResolveCustomFields<Arguments>>::Fields;
+}
+
+impl<Schema, Arguments, Definition> SoleHostCustomConstructor
+    for HostCustomConstructorAt<HostCustomType<Schema, Arguments>, HostCustomIndex0, Definition>
+where
+    Schema: HostCustomSchema<
+        Constructors = HostCustomConstructorList<Definition, HostCustomConstructorListEnd>,
+    >,
+    Arguments: HostTypeSequence,
+    Definition: HostCustomConstructorDefinition,
+    Definition::Fields: ResolveCustomFields<Arguments>,
+{
 }
 
 impl private::CustomFields for HostCustomFieldListEnd {

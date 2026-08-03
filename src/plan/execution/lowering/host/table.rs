@@ -1,6 +1,6 @@
 use super::super::function;
 use super::super::specialization::{
-    SpecializationKey, SpecializedFunctionShape, SpecializedValueShape, ValueInhabitation,
+    SpecializationKey, SpecializedFunctionShape, ValueInhabitation,
 };
 use super::super::{LoweredExecution, LoweringCompletion, LoweringContext, SpecializationOutcome};
 use super::{parameter, return_, sealing};
@@ -136,11 +136,10 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
                     ));
                 };
                 sealing::seal_callbacks(template, key, &shape, &context.representations, true)?;
-                sealing::seal_custom_return_constructors(template, key, context);
+                let constructions = sealing::seal_host_types(template, key, context);
                 let parameters =
                     parameter::lower_host_parameters(&parameters, template.layout(), context);
                 let type_ = context.lower_concrete_function_type(&shape);
-                let return_external_items = return_external_items(&shape, context);
                 let host_index = self.value_functions.len();
                 self.value_functions.push(HostedFunction::new(
                     HostedFunctionMetadata::new(
@@ -149,7 +148,7 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
                         shape.to_module_shape().type_(),
                         type_arguments,
                         parameters,
-                        return_external_items,
+                        constructions,
                         type_,
                     ),
                     implementation.clone(),
@@ -165,10 +164,10 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
             }
             RegisteredHostFunctionImplementation::Never(implementation) => {
                 sealing::seal_callbacks(template, key, &shape, &context.representations, false)?;
+                let constructions = sealing::seal_host_types(template, key, context);
                 let parameters =
                     parameter::lower_host_parameters(&parameters, template.layout(), context);
                 let type_ = context.lower_concrete_function_type(&shape);
-                let return_external_items = return_external_items(&shape, context);
                 let host_index = self.never_functions.len();
                 self.never_functions.push(HostedFunction::new(
                     HostedFunctionMetadata::new(
@@ -177,7 +176,7 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
                         shape.to_module_shape().type_(),
                         type_arguments,
                         parameters,
-                        return_external_items,
+                        constructions,
                         type_,
                     ),
                     implementation.clone(),
@@ -224,43 +223,6 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
             never_functions.into_boxed_slice(),
         );
         (completion, tables)
-    }
-}
-
-fn return_external_items(
-    shape: &SpecializedFunctionShape,
-    context: &mut LoweringContext,
-) -> Box<[crate::plan::execution::type_::ExternalTypeId]> {
-    match shape.return_() {
-        SpecializedValueShape::List(item) => match item.as_ref() {
-            SpecializedValueShape::External(item) => {
-                Box::new([context.lower_concrete_external_type(item)])
-            }
-            SpecializedValueShape::Parameter(_)
-            | SpecializedValueShape::Int
-            | SpecializedValueShape::Float
-            | SpecializedValueShape::String
-            | SpecializedValueShape::BitArray
-            | SpecializedValueShape::UtfCodepoint
-            | SpecializedValueShape::Bool
-            | SpecializedValueShape::Nil
-            | SpecializedValueShape::Tuple(_)
-            | SpecializedValueShape::List(_)
-            | SpecializedValueShape::Function(_)
-            | SpecializedValueShape::Custom(_) => Box::new([]),
-        },
-        SpecializedValueShape::Parameter(_)
-        | SpecializedValueShape::Int
-        | SpecializedValueShape::Float
-        | SpecializedValueShape::String
-        | SpecializedValueShape::BitArray
-        | SpecializedValueShape::UtfCodepoint
-        | SpecializedValueShape::Bool
-        | SpecializedValueShape::Nil
-        | SpecializedValueShape::Tuple(_)
-        | SpecializedValueShape::Function(_)
-        | SpecializedValueShape::Custom(_)
-        | SpecializedValueShape::External(_) => Box::new([]),
     }
 }
 

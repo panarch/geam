@@ -13,6 +13,8 @@ mod gleam_bool;
 mod gleam_dict;
 #[path = "gleam_stdlib/gleam_dynamic.rs"]
 mod gleam_dynamic;
+#[path = "gleam_stdlib/gleam_dynamic_decode.rs"]
+mod gleam_dynamic_decode;
 #[path = "gleam_stdlib/gleam_float.rs"]
 mod gleam_float;
 #[path = "gleam_stdlib/gleam_int.rs"]
@@ -68,14 +70,14 @@ fn assert_surface(
         .map(|(name, _)| name.as_str())
         .collect::<Vec<_>>();
     types.sort_unstable();
-    assert_eq!(
-        types,
-        expected
-            .types
-            .iter()
-            .map(|(name, _)| *name)
-            .collect::<Vec<_>>(),
-    );
+    let mut expected_types = expected
+        .types
+        .iter()
+        .map(|(name, _)| *name)
+        .chain(expected.type_aliases.iter().copied())
+        .collect::<Vec<_>>();
+    expected_types.sort_unstable();
+    assert_eq!(types, expected_types);
 
     let mut type_aliases = module
         .type_info
@@ -102,13 +104,17 @@ fn assert_surface(
         .iter()
         .filter(|type_| type_.publicity.is_public())
         .flat_map(|type_| {
-            type_.constructors.iter().map(|constructor| {
-                (
-                    type_.name.as_str(),
-                    constructor.name.as_str(),
-                    constructor.arguments.len(),
-                )
-            })
+            type_
+                .constructors
+                .iter()
+                .filter(|constructor| values.contains(&constructor.name.as_str()))
+                .map(|constructor| {
+                    (
+                        type_.name.as_str(),
+                        constructor.name.as_str(),
+                        constructor.arguments.len(),
+                    )
+                })
         })
         .collect::<Vec<_>>();
     constructors.sort_unstable();

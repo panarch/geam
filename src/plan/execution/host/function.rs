@@ -6,6 +6,7 @@ use crate::plan::execution::graph::{
 };
 use crate::plan::execution::type_::FunctionType;
 use ecow::EcoString;
+use std::collections::HashMap;
 use std::marker::PhantomData;
 
 pub(crate) struct HostedFunction<Implementation> {
@@ -24,8 +25,14 @@ pub(crate) struct HostedFunctionMetadata {
     signature: crate::plan::FunctionType,
     type_arguments: Box<[crate::plan::ValueType]>,
     parameters: HostedFunctionParameters,
-    return_external_items: Box<[crate::plan::execution::type_::ExternalTypeId]>,
+    constructions: HostConstructionTypes,
     type_: FunctionType,
+}
+
+pub(crate) struct HostConstructionTypes {
+    lists: HashMap<crate::plan::ValueType, crate::plan::execution::type_::ListTypeId>,
+    customs: HashMap<crate::plan::ValueType, crate::plan::execution::type_::CustomTypeId>,
+    externals: HashMap<crate::plan::ValueType, crate::plan::execution::type_::ExternalTypeId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -215,8 +222,8 @@ impl<Implementation> HostedFunction<Implementation> {
         self.metadata.call_parameters()
     }
 
-    pub(crate) fn return_external_items(&self) -> &[crate::plan::execution::type_::ExternalTypeId] {
-        self.metadata.return_external_items()
+    pub(crate) fn constructions(&self) -> &HostConstructionTypes {
+        self.metadata.constructions()
     }
 
     pub(crate) fn type_(&self) -> &FunctionType {
@@ -239,7 +246,7 @@ impl HostedFunctionMetadata {
         signature: crate::plan::FunctionType,
         type_arguments: Box<[crate::plan::ValueType]>,
         parameters: HostedFunctionParameters,
-        return_external_items: Box<[crate::plan::execution::type_::ExternalTypeId]>,
+        constructions: HostConstructionTypes,
         type_: FunctionType,
     ) -> Self {
         Self {
@@ -248,7 +255,7 @@ impl HostedFunctionMetadata {
             signature,
             type_arguments,
             parameters,
-            return_external_items,
+            constructions,
             type_,
         }
     }
@@ -285,12 +292,47 @@ impl HostedFunctionMetadata {
         self.parameters.call()
     }
 
-    fn return_external_items(&self) -> &[crate::plan::execution::type_::ExternalTypeId] {
-        &self.return_external_items
+    fn constructions(&self) -> &HostConstructionTypes {
+        &self.constructions
     }
 
     fn type_(&self) -> &FunctionType {
         &self.type_
+    }
+}
+
+impl HostConstructionTypes {
+    pub(in crate::plan::execution) fn new(
+        lists: HashMap<crate::plan::ValueType, crate::plan::execution::type_::ListTypeId>,
+        customs: HashMap<crate::plan::ValueType, crate::plan::execution::type_::CustomTypeId>,
+        externals: HashMap<crate::plan::ValueType, crate::plan::execution::type_::ExternalTypeId>,
+    ) -> Self {
+        Self {
+            lists,
+            customs,
+            externals,
+        }
+    }
+
+    pub(crate) fn list(
+        &self,
+        type_: &crate::plan::ValueType,
+    ) -> crate::plan::execution::type_::ListTypeId {
+        self.lists[type_]
+    }
+
+    pub(crate) fn custom(
+        &self,
+        type_: &crate::plan::ValueType,
+    ) -> crate::plan::execution::type_::CustomTypeId {
+        self.customs[type_]
+    }
+
+    pub(crate) fn external(
+        &self,
+        type_: &crate::plan::ValueType,
+    ) -> crate::plan::execution::type_::ExternalTypeId {
+        self.externals[type_]
     }
 }
 

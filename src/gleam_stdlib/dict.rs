@@ -2,6 +2,8 @@ mod function;
 mod schema;
 mod storage;
 
+pub(in crate::gleam_stdlib) use function::lookup;
+pub(in crate::gleam_stdlib) use schema::DictOf;
 pub(super) use storage::Stores;
 
 use self::function::{

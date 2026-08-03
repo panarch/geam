@@ -82,11 +82,142 @@ impl HostCustomSchema for NeverSchema {
     type Constructors = HostCustomConstructorListEnd;
 }
 
+struct PartiallyInhabitedSchema;
+
+struct AvailableDefinition;
+
+impl HostCustomConstructorDefinition for AvailableDefinition {
+    const NAME: &'static str = "Available";
+
+    type Fields = HostCustomFieldListEnd;
+}
+
+struct ImpossibleValueField;
+
+impl HostCustomField for ImpossibleValueField {
+    const LABEL: Option<&'static str> = None;
+
+    type Type = HostCustomType<NeverSchema>;
+}
+
+struct ImpossibleDefinition;
+
+impl HostCustomConstructorDefinition for ImpossibleDefinition {
+    const NAME: &'static str = "Impossible";
+
+    type Fields = HostCustomFieldList<ImpossibleValueField, HostCustomFieldListEnd>;
+}
+
+impl HostCustomSchema for PartiallyInhabitedSchema {
+    const PACKAGE: &'static str = "application";
+    const MODULE: &'static str = "main";
+    const NAME: &'static str = "PartiallyInhabited";
+    const PARAMETER_COUNT: usize = 0;
+
+    type Constructors = HostCustomConstructorList<
+        AvailableDefinition,
+        HostCustomConstructorList<ImpossibleDefinition, HostCustomConstructorListEnd>,
+    >;
+}
+
+struct RecursiveSchema;
+
+struct RecursiveEndDefinition;
+
+impl HostCustomConstructorDefinition for RecursiveEndDefinition {
+    const NAME: &'static str = "End";
+
+    type Fields = HostCustomFieldListEnd;
+}
+
+struct RecursiveNextField;
+
+impl HostCustomField for RecursiveNextField {
+    const LABEL: Option<&'static str> = None;
+
+    type Type = HostCustomType<RecursiveSchema>;
+}
+
+struct RecursiveNextDefinition;
+
+impl HostCustomConstructorDefinition for RecursiveNextDefinition {
+    const NAME: &'static str = "Next";
+
+    type Fields = HostCustomFieldList<RecursiveNextField, HostCustomFieldListEnd>;
+}
+
+impl HostCustomSchema for RecursiveSchema {
+    const PACKAGE: &'static str = "application";
+    const MODULE: &'static str = "main";
+    const NAME: &'static str = "Recursive";
+    const PARAMETER_COUNT: usize = 0;
+
+    type Constructors = HostCustomConstructorList<
+        RecursiveEndDefinition,
+        HostCustomConstructorList<RecursiveNextDefinition, HostCustomConstructorListEnd>,
+    >;
+}
+
 type BoxedArguments = HostTypeList<HostTypeParameter<0>, HostTypeListEnd>;
 type Boxed = HostCustomType<BoxedSchema, BoxedArguments>;
 type Empty = HostCustomConstructorAt<Boxed, HostCustomIndex0, EmptyDefinition>;
 type BoxedValue =
     HostCustomConstructorAt<Boxed, HostCustomIndexNext<HostCustomIndex0>, BoxedDefinition>;
+type Recursive = HostCustomType<RecursiveSchema>;
+type RecursiveNext = HostCustomConstructorAt<
+    Recursive,
+    HostCustomIndexNext<HostCustomIndex0>,
+    RecursiveNextDefinition,
+>;
+type PartiallyInhabited = HostCustomType<PartiallyInhabitedSchema>;
+
+#[test]
+fn constructs_recursive_custom_host_returns_without_parallel_runtime_shapes() {
+    fn wrap<'call>(
+        call: HostCall<'call, StatelessHostProfile, Identity, Recursive>,
+        value: HostCustom<'call, Recursive>,
+    ) -> Result<HostCallCompletion<'call, Recursive>, HostCallError> {
+        Ok(call.return_custom::<RecursiveNext>((value, ())))
+    }
+
+    let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
+        .expect("provider module should be valid")
+        .with_scoped_function::<Identity, (Recursive,), Recursive, _>("wrap", wrap)
+        .expect("recursive custom provider should be valid");
+    let source = r#"
+pub type Recursive {
+  End
+  Next(Recursive)
+}
+
+@external(erlang, "host", "wrap")
+fn wrap(value: Recursive) -> Recursive
+
+pub fn main() {
+  wrap(End)
+}
+"#;
+    let typed = compile_typed_host_program(
+        "application",
+        "main",
+        [PackageSource::new(
+            "application",
+            Vec::<&str>::new(),
+            [ModuleSource::new("main", "src/main.gleam", source)],
+        )],
+        HostProviderSet::with_providers(Vec::<HostModule>::new(), [provider])
+            .expect("provider module should be unique"),
+    )
+    .expect("recursive custom source should compile");
+    let plan = plan_host_program(typed).expect("recursive custom source should plan");
+    let execution = HostedExecution::try_from_module_plan(plan)
+        .expect("recursive custom execution should seal");
+    let value = execution
+        .run_main(&mut (), &mut Vec::new())
+        .expect("recursive custom host return should run");
+
+    assert_eq!(value.inspect().to_string(), "Next(End)");
+}
 
 #[test]
 fn specializes_one_generic_provider_for_each_concrete_call_shape() {
@@ -452,6 +583,56 @@ pub fn main() {
         .expect("uninhabited function reference should materialize");
 
     assert_eq!(value.inspect().to_string(), "//fn(a) { ... }");
+}
+
+#[test]
+fn ignores_uninhabited_custom_alternatives_when_sealing_host_calls() {
+    fn accept<'call>(
+        call: HostCall<'call, StatelessHostProfile, Identity, BigInt>,
+        _value: HostCustom<'call, PartiallyInhabited>,
+    ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+        Ok(call.return_value(1.into()))
+    }
+
+    let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
+        .expect("provider module should be valid")
+        .with_scoped_function::<Identity, (PartiallyInhabited,), BigInt, _>("accept", accept)
+        .expect("partially inhabited provider should be valid");
+    let source = r#"
+pub type Never
+
+pub type PartiallyInhabited {
+  Available
+  Impossible(Never)
+}
+
+@external(erlang, "host", "accept")
+fn accept(value: PartiallyInhabited) -> Int
+
+pub fn main() {
+  accept(Available)
+}
+"#;
+    let typed = compile_typed_host_program(
+        "application",
+        "main",
+        [PackageSource::new(
+            "application",
+            Vec::<&str>::new(),
+            [ModuleSource::new("main", "src/main.gleam", source)],
+        )],
+        HostProviderSet::with_providers(Vec::<HostModule>::new(), [provider])
+            .expect("provider module should be unique"),
+    )
+    .expect("partially inhabited source should compile");
+    let plan = plan_host_program(typed).expect("partially inhabited source should plan");
+    let execution = HostedExecution::try_from_module_plan(plan)
+        .expect("uninhabited custom alternative should not block sealing");
+
+    assert_eq!(
+        execution.run_main(&mut (), &mut Vec::new()),
+        Ok(Value::Int(1.into())),
+    );
 }
 
 #[test]

@@ -166,6 +166,40 @@ where
         HostTuple::new(self.runtime.tuple_token(value))
     }
 
+    pub(crate) fn create_list<Item: HostType>(
+        &mut self,
+        values: impl IntoIterator<Item = Item::Value<'call>>,
+    ) -> HostList<'call, Item> {
+        let values = values
+            .into_iter()
+            .map(crate::host::type_::into_scoped::<Item>)
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        let value = self.runtime.build_list(
+            &crate::host::HostTypeDescriptor::of::<HostListType<Item>>(),
+            values,
+        );
+        HostList::new(self.runtime.list_token(value))
+    }
+
+    pub(crate) fn create_custom<Constructor>(
+        &mut self,
+        fields: <Constructor::Fields as HostTypeSequence>::Values<'call>,
+    ) -> HostCustom<'call, Constructor::Custom>
+    where
+        Constructor: HostCustomConstructor,
+        Constructor::Fields: HostTypeSequence,
+    {
+        let mut output = Vec::new();
+        crate::host::type_::into_scoped_values::<Constructor::Fields>(fields, &mut output);
+        let value = self.runtime.build_custom(
+            &crate::host::HostTypeDescriptor::of::<Constructor::Custom>(),
+            crate::host::type_::custom_constructor_index::<Constructor>(),
+            output.into_boxed_slice(),
+        );
+        HostCustom::new(self.runtime.custom_token(value))
+    }
+
     pub fn custom_constructor<Custom>(&self, value: HostCustom<'call, Custom>) -> usize {
         self.runtime.custom_constructor(value.token)
     }
@@ -187,6 +221,17 @@ where
             Constructor::Fields,
             Profile,
         >(self.runtime, &fields))
+    }
+
+    pub(crate) fn sole_custom_fields<Constructor>(
+        &mut self,
+        value: HostCustom<'call, Constructor::Custom>,
+    ) -> <Constructor::Fields as HostTypeSequence>::Values<'call>
+    where
+        Constructor: crate::host::type_::SoleHostCustomConstructor,
+    {
+        let fields = self.runtime.custom_fields(value.token);
+        crate::host::type_::from_tokens::<Constructor::Fields, Profile>(self.runtime, &fields)
     }
 
     /// Borrows the Rust payload behind one typed external value.
@@ -289,6 +334,29 @@ where
             returned,
         ))
     }
+
+    pub(crate) fn create_external_value_with<Schema, Arguments>(
+        &mut self,
+        build: impl FnOnce(
+            &mut HostExternalPayloadBuilder<'_, Profile, Arguments>,
+        ) -> <Profile as HostExternalStorage<Schema>>::Payload,
+    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>>
+    where
+        Schema: HostExternalSchema,
+        Profile: HostExternalStorage<Schema>,
+        Arguments: HostTypeSequence,
+        HostExternalType<Schema, Arguments>: HostType,
+    {
+        let value = {
+            let mut builder = HostExternalPayloadBuilder::new(self.runtime);
+            build(&mut builder)
+        };
+        let lease = self.insert_external_payload::<Schema, Arguments>(value);
+        HostExternal::new(self.runtime.build_external(
+            &crate::host::HostTypeDescriptor::of::<HostExternalType<Schema, Arguments>>(),
+            lease,
+        ))
+    }
 }
 
 impl<'call, Profile, Provider, Schema, Arguments>
@@ -314,11 +382,7 @@ where
             &mut HostExternalPayloadBuilder<'_, Profile, Arguments>,
         ) -> <Profile as HostExternalStorage<Schema>>::Payload,
     ) -> HostExternal<'call, HostExternalType<Schema, Arguments>> {
-        let value = {
-            let mut builder = HostExternalPayloadBuilder::new(self.runtime);
-            build(&mut builder)
-        };
-        self.seal_external_payload(value)
+        self.create_external_value_with(build)
     }
 
     fn seal_external_payload(
@@ -326,7 +390,10 @@ where
         value: <Profile as HostExternalStorage<Schema>>::Payload,
     ) -> HostExternal<'call, HostExternalType<Schema, Arguments>> {
         let lease = self.insert_external_payload::<Schema, Arguments>(value);
-        HostExternal::new(self.runtime.build_external(lease))
+        HostExternal::new(self.runtime.build_external(
+            &crate::host::HostTypeDescriptor::of::<HostExternalType<Schema, Arguments>>(),
+            lease,
+        ))
     }
 }
 
@@ -369,7 +436,10 @@ where
         value: <Profile as HostExternalStorage<Schema>>::Payload,
     ) -> HostExternal<'call, HostExternalType<Schema, Arguments>> {
         let lease = self.insert_external_payload::<Schema, Arguments>(value);
-        HostExternal::new(self.runtime.build_external_list_item(lease))
+        HostExternal::new(self.runtime.build_external(
+            &crate::host::HostTypeDescriptor::of::<HostExternalType<Schema, Arguments>>(),
+            lease,
+        ))
     }
 }
 
@@ -388,7 +458,10 @@ where
             .map(crate::host::type_::into_scoped::<Item>)
             .collect::<Vec<_>>()
             .into_boxed_slice();
-        HostCallCompletion::new(self.runtime.build_list(values))
+        HostCallCompletion::new(self.runtime.build_list(
+            &crate::host::HostTypeDescriptor::of::<HostListType<Item>>(),
+            values,
+        ))
     }
 }
 
@@ -427,6 +500,7 @@ where
         let mut output = Vec::new();
         crate::host::type_::into_scoped_values::<Constructor::Fields>(fields, &mut output);
         HostCallCompletion::new(self.runtime.build_custom(
+            &crate::host::HostTypeDescriptor::of::<HostCustomType<Schema, Arguments>>(),
             crate::host::type_::custom_constructor_index::<Constructor>(),
             output.into_boxed_slice(),
         ))

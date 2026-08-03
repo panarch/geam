@@ -9,8 +9,8 @@ mod utf_codepoint;
 use crate::BitArrayValue;
 use crate::host::{
     HostAbiType, HostAbiTypeSequence, HostCall, HostCustomSchema, HostCustomType,
-    HostExternalSchema, HostExternalType, HostFunctionType, HostListType, HostProfile,
-    HostProvider, HostTupleType, HostTypeParameter,
+    HostExternalSchema, HostExternalType, HostFunctionType, HostListType, HostOpaqueFunctionType,
+    HostProfile, HostProvider, HostTupleType, HostTypeParameter,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -325,6 +325,33 @@ where
         CallReturn: HostAbiType,
     {
         call.function(slot)
+    }
+}
+
+impl<Arguments, Return> HostScopedArgument for HostOpaqueFunctionType<Arguments, Return>
+where
+    Arguments: HostAbiTypeSequence,
+    Return: HostAbiType,
+{
+    type Slot = HostValueArgumentSlot;
+
+    fn register(layout: &mut HostParameterLayout) -> Self::Slot {
+        let slot = HostValueArgumentSlot(layout.next_value);
+        layout.next_value += 1;
+        layout.parameters.push(HostParameter::Value(slot));
+        slot
+    }
+
+    fn read<'call, Profile, Provider, CallReturn>(
+        call: &HostCall<'call, Profile, Provider, CallReturn>,
+        slot: Self::Slot,
+    ) -> Self::Value<'call>
+    where
+        Profile: HostProfile,
+        Provider: HostProvider<Profile>,
+        CallReturn: HostAbiType,
+    {
+        call.value(slot)
     }
 }
 

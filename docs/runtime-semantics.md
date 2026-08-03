@@ -129,6 +129,10 @@ Function-scheme parameters remain the separate `HostTypeParameter` namespace.
 Each `HostProfile` defines caller-owned `RunState`. A scoped callback can
 project only its declared `HostProvider::State` through the active `HostCall`;
 callback objects and mutable state are not stored in canonical plan nodes.
+The explicit `GleamStdlibProfile` uses caller-created `GleamStdlibRunState` for
+random operations. Construction requires either a seed or fallible system
+entropy; the runtime provides no hidden seed, global generator, or `Default`
+state.
 
 ### External Values And Retained Storage
 
