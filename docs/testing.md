@@ -74,10 +74,10 @@ HostedExecution::try_from_module_plan -> run_main` with the explicit
 `gleam/bool`, `gleam/bytes_tree`, `gleam/dict`, `gleam/dynamic`,
 `gleam/dynamic/decode`, `gleam/float`, `gleam/function`, `gleam/int`, `gleam/io`,
 `gleam/list`, `gleam/option`, `gleam/order`, `gleam/pair`, `gleam/result`,
-`gleam/set`, `gleam/string`, and `gleam/string_tree`. Each module fixes its
-analyzed public surface and executes grouped source behavior. This integration
-suite does not replace hermetic synthetic owner coverage for the loader or
-providers.
+`gleam/set`, `gleam/string`, `gleam/string_tree`, and `gleam/uri`. Each module
+fixes its analyzed public surface and executes grouped source behavior. This
+integration suite does not replace hermetic synthetic owner coverage for the
+loader or providers.
 
 Source-level rejection fixtures live under categorized
 `tests/fixtures/rejection/**/*.gleam` paths. They are reserved for public

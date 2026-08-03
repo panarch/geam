@@ -57,26 +57,6 @@ impl PlannedCustomBinding {
         self.constructor_count
     }
 
-    pub(in crate::planner) fn intrinsic_binding(&self) -> Option<CustomBindingPattern> {
-        match self.source_shape.constructor() {
-            CustomConstructorRefinement::Exact(index) if index == self.constructor.index() => {
-                Some(CustomBindingPattern::exact(
-                    self.source_shape.clone(),
-                    self.constructor.clone(),
-                    self.fields.clone(),
-                ))
-            }
-            CustomConstructorRefinement::Any if self.constructor_count == 1 => {
-                Some(CustomBindingPattern::only_constructor(
-                    self.source_shape.clone(),
-                    self.constructor.clone(),
-                    self.fields.clone(),
-                ))
-            }
-            CustomConstructorRefinement::Any | CustomConstructorRefinement::Exact(_) => None,
-        }
-    }
-
     pub(in crate::planner) fn into_intrinsic_binding(self) -> Option<CustomBindingPattern> {
         match self.source_shape.constructor() {
             CustomConstructorRefinement::Exact(index) if index == self.constructor.index() => Some(
@@ -114,8 +94,18 @@ impl PlannedCustomBinding {
     }
 }
 
-pub(in crate::planner) fn plan_runtime_pattern(
+#[cfg(test)]
+fn plan_runtime_pattern(
     pattern: TypedPattern,
+    context: &mut PlanContext<'_>,
+) -> Result<PlannedRuntimePattern, PlanError> {
+    let source_shape = pattern_value_shape(&pattern, context)?;
+    plan_runtime_pattern_with_source_shape(pattern, source_shape, context)
+}
+
+pub(in crate::planner) fn plan_runtime_pattern_with_source_shape(
+    pattern: TypedPattern,
+    source_shape: ValueShape,
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedRuntimePattern, PlanError> {
     match pattern {
@@ -156,11 +146,18 @@ pub(in crate::planner) fn plan_runtime_pattern(
             custom_binding: None,
         }),
         Pattern::Tuple { elements, .. } => {
+            let ValueShape::Tuple(source_shapes) = source_shape else {
+                return Err(invalid_pattern());
+            };
+            if elements.len() != source_shapes.len() {
+                return Err(invalid_pattern());
+            }
             let mut patterns = Vec::with_capacity(elements.len());
             let mut bindings = Vec::with_capacity(elements.len());
             let mut is_total = true;
-            for element in elements {
-                let element = plan_runtime_pattern(element, context)?;
+            for (element, source_shape) in elements.into_iter().zip(source_shapes) {
+                let element =
+                    plan_runtime_pattern_with_source_shape(element, source_shape, context)?;
                 is_total &= element.is_total;
                 if let Some(binding) = element.total_binding {
                     bindings.push(binding);
@@ -174,12 +171,9 @@ pub(in crate::planner) fn plan_runtime_pattern(
                 custom_binding: None,
             })
         }
-        Pattern::List {
-            elements,
-            tail,
-            type_,
-            ..
-        } => plan_list_pattern(elements, tail.map(|tail| *tail), type_, context),
+        Pattern::List { elements, tail, .. } => {
+            plan_list_pattern(elements, tail.map(|tail| *tail), source_shape, context)
+        }
         Pattern::BitArray { segments, .. } => {
             let (pattern, is_total) = super::plan_bit_array_pattern(segments, context)?;
             Ok(PlannedRuntimePattern {
@@ -211,7 +205,7 @@ pub(in crate::planner) fn plan_runtime_pattern(
             type_,
             ..
         } => {
-            let ValueShape::Custom(source_shape) = context.value_shape(type_.as_ref()) else {
+            let ValueShape::Custom(source_shape) = source_shape else {
                 return Err(invalid_pattern());
             };
             plan_custom_pattern(arguments, constructor, type_, source_shape, context)
@@ -240,9 +234,9 @@ pub(in crate::planner) fn plan_runtime_pattern(
             })
         }
         Pattern::Assign { name, pattern, .. } => {
-            let shape = pattern_value_shape(&pattern, context)?;
-            let planned = plan_runtime_pattern(*pattern, context)?;
-            let binding = define_value_binding(name, shape, context);
+            let planned =
+                plan_runtime_pattern_with_source_shape(*pattern, source_shape.clone(), context)?;
+            let binding = define_value_binding(name, source_shape, context);
             Ok(PlannedRuntimePattern {
                 pattern: AssertPattern::alias(planned.pattern, binding.clone()),
                 is_total: planned.is_total,
@@ -289,6 +283,7 @@ pub(in crate::planner) fn pattern_value_type_in_context(
     pattern_value_shape_with(pattern, &mut value_shape).map(|shape| shape.value_type())
 }
 
+#[cfg(test)]
 fn pattern_value_shape(
     pattern: &TypedPattern,
     context: &mut PlanContext<'_>,
@@ -327,17 +322,20 @@ fn pattern_value_shape_with(
 fn plan_list_pattern(
     elements: Vec<TypedPattern>,
     tail: Option<TailPattern<Arc<Type>>>,
-    type_: Arc<Type>,
+    source_shape: ValueShape,
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedRuntimePattern, PlanError> {
-    let ValueShape::List(item_shape) = context.value_shape(type_.as_ref()) else {
+    let ValueShape::List(item_shape) = source_shape else {
         return Err(invalid_pattern());
     };
     let element_type = item_shape.value_type();
     let has_no_elements = elements.is_empty();
     let mut patterns = Vec::with_capacity(elements.len());
     for element in elements {
-        patterns.push(plan_runtime_pattern(element, context)?.pattern);
+        patterns.push(
+            plan_runtime_pattern_with_source_shape(element, item_shape.as_ref().clone(), context)?
+                .pattern,
+        );
     }
     let tail = tail
         .map(|tail| plan_list_tail(tail, item_shape.as_ref(), context))
@@ -364,8 +362,8 @@ fn plan_list_tail(
 ) -> Result<ListAssertTail, PlanError> {
     match tail.pattern {
         Pattern::Variable { name, type_, .. }
-            if context.value_shape(type_.as_ref())
-                == ValueShape::List(Box::new(item_shape.clone())) =>
+            if context.value_type(type_.as_ref())
+                == ValueType::List(Box::new(item_shape.value_type())) =>
         {
             Ok(ListAssertTail::bind(
                 context.define_list_local_shape(name.clone(), item_shape.clone()),
@@ -373,8 +371,8 @@ fn plan_list_tail(
             ))
         }
         Pattern::Discard { type_, .. }
-            if context.value_shape(type_.as_ref())
-                == ValueShape::List(Box::new(item_shape.clone())) =>
+            if context.value_type(type_.as_ref())
+                == ValueType::List(Box::new(item_shape.value_type())) =>
         {
             Ok(ListAssertTail::Ignore)
         }
@@ -439,42 +437,51 @@ fn plan_custom_pattern(
         .collect::<Result<Vec<_>, _>>()?;
     let resolved_constructor =
         context.custom_pattern_constructor(type_.as_ref(), &constructor, field_types)?;
+    let pattern_source_shape = resolved_constructor.source_shape().clone();
     let constructor_count = resolved_constructor.constructor_count();
     let custom_constructor = resolved_constructor.into_constructor();
     let mut fields = Vec::with_capacity(arguments.len());
-    let mut total_fields = Vec::with_capacity(arguments.len());
-    for argument in arguments {
-        let field = plan_runtime_pattern(argument.value, context)?;
+    let mut binding_fields = Vec::with_capacity(arguments.len());
+    let mut fields_are_total = true;
+    for (argument, source_field) in arguments.into_iter().zip(custom_constructor.fields()) {
+        let source_shape = ValueShape::from_value_type(source_field.type_().clone());
+        let field = plan_runtime_pattern_with_source_shape(argument.value, source_shape, context)?;
+        fields_are_total &= field.is_total;
         if let Some(binding) = field.total_binding {
-            total_fields.push(binding);
+            binding_fields.push(binding);
         }
         fields.push(field.pattern);
     }
-    let fields_are_total = total_fields.len() == fields.len();
+    let fields_are_bindable = binding_fields.len() == fields.len();
     let matches_exact_constructor = source_shape.constructor()
         == CustomConstructorRefinement::Exact(usize::from(constructor.constructor_index));
     let is_total = fields_are_total && (constructor_count == 1 || matches_exact_constructor);
-    let custom_binding = fields_are_total.then(|| PlannedCustomBinding {
-        constructor: custom_constructor.clone(),
-        fields: total_fields.clone(),
-        source_shape,
-        constructor_count,
-    });
+    let binding_source_shape = source_shape.refine(&pattern_source_shape);
+    let custom_binding =
+        (fields_are_bindable && binding_source_shape.is_some()).then(|| PlannedCustomBinding {
+            constructor: custom_constructor.clone(),
+            fields: binding_fields.clone(),
+            source_shape: source_shape.clone(),
+            constructor_count,
+        });
+    let total_binding = binding_source_shape
+        .filter(|_| fields_are_bindable)
+        .map(|binding_source_shape| PlannedCustomBinding {
+            constructor: custom_constructor.clone(),
+            fields: binding_fields.clone(),
+            source_shape: binding_source_shape,
+            constructor_count,
+        })
+        .and_then(PlannedCustomBinding::into_intrinsic_binding)
+        .map(TotalBindingPattern::custom);
     Ok(PlannedCustomPattern {
         pattern: CustomPattern::new(
             custom_constructor,
             fields,
-            fields_are_total.then_some(total_fields),
+            fields_are_total.then_some(binding_fields),
         ),
         is_total,
-        total_binding: if is_total {
-            custom_binding
-                .as_ref()
-                .and_then(PlannedCustomBinding::intrinsic_binding)
-                .map(TotalBindingPattern::custom)
-        } else {
-            None
-        },
+        total_binding,
         custom_binding,
     })
 }
@@ -552,7 +559,7 @@ mod tests {
     use super::{
         invalid_pattern, pattern_value_shape, pattern_value_type, pattern_value_type_in_context,
         plan_bool_pattern, plan_custom_pattern, plan_list_tail, plan_nil_pattern,
-        plan_runtime_pattern, total_bit_array_binding,
+        plan_runtime_pattern, plan_runtime_pattern_with_source_shape, total_bit_array_binding,
     };
     use crate::plan::{
         AssertBinding, AssertPattern, BitArrayBindingPattern, BitArrayLocalId, BitArrayPattern,
@@ -849,6 +856,35 @@ mod tests {
             },
             &mut context,
         ));
+        let tuple = Pattern::Tuple {
+            location: span,
+            elements: vec![Pattern::Discard {
+                name: "_".into(),
+                location: span,
+                type_: type_::int(),
+            }],
+        };
+        assert_invalid(plan_runtime_pattern_with_source_shape(
+            tuple.clone(),
+            ValueShape::Int,
+            &mut context,
+        ));
+        assert_invalid(plan_runtime_pattern_with_source_shape(
+            tuple,
+            ValueShape::Tuple(Vec::new().into_boxed_slice()),
+            &mut context,
+        ));
+        assert_invalid(plan_runtime_pattern_with_source_shape(
+            Pattern::Tuple {
+                location: span,
+                elements: vec![Pattern::Invalid {
+                    location: span,
+                    type_: type_::int(),
+                }],
+            },
+            ValueShape::Tuple(vec![ValueShape::Int].into_boxed_slice()),
+            &mut context,
+        ));
         assert_invalid(plan_runtime_pattern(
             Pattern::Assign {
                 location: span,
@@ -1119,13 +1155,6 @@ mod tests {
             &mut context,
         )
         .expect("non-inferred Result variant should plan");
-        assert_eq!(
-            any.custom_binding
-                .as_ref()
-                .expect("total fields should preserve the custom binding")
-                .intrinsic_binding(),
-            None,
-        );
         assert_eq!(
             any.custom_binding
                 .clone()

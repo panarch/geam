@@ -30,6 +30,13 @@ fn function_identity(value: fn(Int) -> Int) {
   value
 }
 
+fn first_ok(values: List(Result(Int, Nil))) {
+  case values {
+    [Ok(value)] -> value
+    _ -> 0
+  }
+}
+
 pub fn main() {
   let string_ok = case ["one"] {
     ["one"] -> True
@@ -91,11 +98,12 @@ pub fn main() {
     [f] -> f(add_one)(41) == 42
     _ -> False
   }
+  let custom_ok = first_ok([Ok(1)]) == 1
 
   string_ok && float_ok && bool_ok && bool_true_ok && nil_ok && nested_list_ok
   && tuple_ok && int_function_ok && string_function_ok && float_function_ok
   && bool_function_ok && nil_function_ok && tuple_function_ok && list_function_ok
-  && function_function_ok
+  && function_function_ok && custom_ok
 }
 
 // @geam:expect Bool(true)

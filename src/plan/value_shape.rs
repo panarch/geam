@@ -126,7 +126,7 @@ impl CustomValueShape {
         ))
     }
 
-    fn refine(&self, other: &Self) -> Option<Self> {
+    pub(crate) fn refine(&self, other: &Self) -> Option<Self> {
         if self.type_ != other.type_ {
             return None;
         }

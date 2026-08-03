@@ -12,6 +12,7 @@ mod result;
 mod run_state;
 mod string;
 mod string_tree;
+mod uri;
 
 pub use io::{IoOutput, IoSink, IoStream};
 pub use run_state::{GleamStdlibRunState, GleamStdlibRunStateError};
@@ -69,7 +70,7 @@ pub fn host_providers<Profile>() -> Result<Vec<HostProviderModule<Profile>>, Hos
 where
     Profile: GleamStdlibHostProfile,
 {
-    let registrations: [ProviderRegistration<Profile>; 9] = [
+    let registrations: [ProviderRegistration<Profile>; 10] = [
         dict::host_provider::<Profile>,
         dynamic::host_provider::<Profile>,
         float::host_provider::<Profile>,
@@ -79,6 +80,7 @@ where
         bit_array::host_provider::<Profile>,
         dynamic_decode::host_provider::<Profile>,
         io::host_provider::<Profile>,
+        uri::host_provider::<Profile>,
     ];
 
     registrations
@@ -162,6 +164,7 @@ mod tests {
                 "gleam/bit_array",
                 "gleam/dynamic/decode",
                 "gleam/io",
+                "gleam/uri",
             ],
         );
         let provider = &providers[0];

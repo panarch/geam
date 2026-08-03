@@ -41,6 +41,8 @@ mod gleam_set;
 mod gleam_string;
 #[path = "gleam_stdlib/gleam_string_tree.rs"]
 mod gleam_string_tree;
+#[path = "gleam_stdlib/gleam_uri.rs"]
+mod gleam_uri;
 
 struct ExpectedSurface {
     values: &'static [&'static str],

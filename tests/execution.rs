@@ -316,6 +316,7 @@ mod control_flow {
             tuple_pattern_fallthrough,
             custom_pattern,
             custom_pattern_combinations,
+            nested_custom_field_fallthrough,
             result_subject,
             tuple_pattern_closure_capture,
             list_case_return_families,
@@ -819,6 +820,7 @@ mod execution_errors {
             let_assert_bool_pattern,
             let_assert_string_prefix_pattern,
             let_assert_nested_compound_pattern,
+            let_assert_nested_custom_field,
             let_assert_message_failure,
         );
     }
