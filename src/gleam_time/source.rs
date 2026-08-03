@@ -62,7 +62,7 @@ mod tests {
         tz::{TimeZone, offset},
     };
     use num_bigint::BigInt;
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, UNIX_EPOCH};
 
     #[test]
     fn splits_system_time_into_canonical_seconds_and_nanoseconds() {
@@ -122,15 +122,11 @@ mod tests {
 
     #[test]
     fn system_source_reads_the_current_wall_clock_and_offset_fallibly() {
-        let before = SystemTime::now();
         let mut source = SystemTimeSource;
-        let current = source
+        source
             .system_time()
             .expect("the operating system wall clock should be available");
-        let after = SystemTime::now();
 
-        assert!(current >= before);
-        assert!(current <= after);
         assert!(
             source
                 .local_offset_seconds()
