@@ -14,6 +14,7 @@ gleam-core = { git = "https://github.com/gleam-lang/gleam", rev = "afc1b7d956b43
 half = { version = "2.7.1", default-features = false }
 hex = "0.4"
 im = "15"
+jiff = "0.2.35"
 jiter = { version = "0.16", default-features = false }
 miette = "7"
 num-bigint = "0.4.6"
