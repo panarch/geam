@@ -53,10 +53,6 @@ pub(super) enum ListValueKind {
 }
 
 impl ListValue {
-    pub(super) fn kind(&self) -> &ListValueKind {
-        &self.kind
-    }
-
     pub fn int(values: Vec<BigInt>) -> Self {
         Self {
             kind: ListValueKind::Int(values),
@@ -336,6 +332,10 @@ impl ListValue {
                 values.iter().cloned().map(Value::Function).collect()
             }
         }
+    }
+
+    pub(super) fn kind(&self) -> &ListValueKind {
+        &self.kind
     }
 }
 

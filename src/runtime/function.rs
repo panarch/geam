@@ -37,32 +37,6 @@ pub(super) enum EvaluatedFunctionExit<Return, TailCall> {
     },
 }
 
-pub(super) fn evaluate<Plan, Return, TailCall>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    function: &ProfiledFunctionBody<Return, TailCall, RuntimeGraph<Plan>>,
-    inputs: RetainedValues,
-) -> ExecutionResult<EvaluatedFunctionExit<Return::Evaluated, TailCall>>
-where
-    Plan: ExecutableRuntimePlan,
-    Return: GraphValue,
-    TailCall: Clone,
-{
-    graph::execute(plan, state, function.block_graph(), inputs).map(|completed| {
-        let exit = function.exit(completed.exit());
-        match exit {
-            FunctionExit::Return(value) => {
-                EvaluatedFunctionExit::Return(completed.into_value(state, value))
-            }
-            FunctionExit::TailCall { function, args } => {
-                let function = function.clone();
-                let args = completed.into_retained(state, args);
-                EvaluatedFunctionExit::TailCall { function, args }
-            }
-        }
-    })
-}
-
 pub(super) fn evaluate_entry<Plan, Body>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
@@ -114,6 +88,32 @@ where
             .call_host_never(state, origin, target, inputs)
             .map(EvaluatedFunctionExit::Return),
     }
+}
+
+pub(super) fn evaluate<Plan, Return, TailCall>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
+    function: &ProfiledFunctionBody<Return, TailCall, RuntimeGraph<Plan>>,
+    inputs: RetainedValues,
+) -> ExecutionResult<EvaluatedFunctionExit<Return::Evaluated, TailCall>>
+where
+    Plan: ExecutableRuntimePlan,
+    Return: GraphValue,
+    TailCall: Clone,
+{
+    graph::execute(plan, state, function.block_graph(), inputs).map(|completed| {
+        let exit = function.exit(completed.exit());
+        match exit {
+            FunctionExit::Return(value) => {
+                EvaluatedFunctionExit::Return(completed.into_value(state, value))
+            }
+            FunctionExit::TailCall { function, args } => {
+                let function = function.clone();
+                let args = completed.into_retained(state, args);
+                EvaluatedFunctionExit::TailCall { function, args }
+            }
+        }
+    })
 }
 
 pub(super) fn parameter_locals<Plan, Body>(

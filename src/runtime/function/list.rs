@@ -16,6 +16,75 @@ use crate::runtime::state::list::{
     UtfCodepointListValueId,
 };
 
+pub(in crate::runtime) fn run_list<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
+    function: RuntimeListFunctionId,
+    origin: HostCallOrigin,
+    inputs: RetainedValues,
+) -> ExecutionResult<ListValueId> {
+    match function {
+        RuntimeListFunctionId::Core(function) => {
+            run_core_list(plan, state, function, origin, inputs)
+        }
+        RuntimeListFunctionId::External(function) => {
+            run_external_list(plan, state, function, origin, inputs).map(ListValueId::External)
+        }
+    }
+}
+
+pub(in crate::runtime) fn run_core_list<Plan: ExecutableRuntimePlan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
+    function: ListFunctionId,
+    origin: HostCallOrigin,
+    inputs: RetainedValues,
+) -> ExecutionResult<ListValueId> {
+    match function {
+        ListFunctionId::Parameter(function) => {
+            run_parameter_list(plan, state, function, origin, inputs).map(ListValueId::Parameter)
+        }
+        ListFunctionId::ParameterList(function) => {
+            run_parameter_list_list(plan, state, function, origin, inputs)
+                .map(ListValueId::ParameterList)
+        }
+        ListFunctionId::Int(function) => {
+            run_int_list(plan, state, function, origin, inputs).map(ListValueId::Int)
+        }
+        ListFunctionId::String(function) => {
+            run_string_list(plan, state, function, origin, inputs).map(ListValueId::String)
+        }
+        ListFunctionId::BitArray(function) => {
+            run_bit_array_list(plan, state, function, origin, inputs).map(ListValueId::BitArray)
+        }
+        ListFunctionId::UtfCodepoint(function) => {
+            run_utf_codepoint_list(plan, state, function, origin, inputs)
+                .map(ListValueId::UtfCodepoint)
+        }
+        ListFunctionId::Custom(function) => {
+            run_custom_list(plan, state, function, origin, inputs).map(ListValueId::Custom)
+        }
+        ListFunctionId::Float(function) => {
+            run_float_list(plan, state, function, origin, inputs).map(ListValueId::Float)
+        }
+        ListFunctionId::Bool(function) => {
+            run_bool_list(plan, state, function, origin, inputs).map(ListValueId::Bool)
+        }
+        ListFunctionId::Nil(function) => {
+            run_nil_list(plan, state, function, origin, inputs).map(ListValueId::Nil)
+        }
+        ListFunctionId::Tuple(function) => {
+            run_tuple_list(plan, state, function, origin, inputs).map(ListValueId::Tuple)
+        }
+        ListFunctionId::List(function) => {
+            run_list_list(plan, state, function, origin, inputs).map(ListValueId::List)
+        }
+        ListFunctionId::Function(function) => {
+            run_function_list(plan, state, function, origin, inputs).map(ListValueId::Function)
+        }
+    }
+}
+
 pub(in crate::runtime) fn run_parameter_list<Plan: ExecutableRuntimePlan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
@@ -448,73 +517,4 @@ pub(in crate::runtime) fn run_function_list<Plan: ExecutableRuntimePlan>(
             )
         },
     )
-}
-
-pub(in crate::runtime) fn run_list<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    function: RuntimeListFunctionId,
-    origin: HostCallOrigin,
-    inputs: RetainedValues,
-) -> ExecutionResult<ListValueId> {
-    match function {
-        RuntimeListFunctionId::Core(function) => {
-            run_core_list(plan, state, function, origin, inputs)
-        }
-        RuntimeListFunctionId::External(function) => {
-            run_external_list(plan, state, function, origin, inputs).map(ListValueId::External)
-        }
-    }
-}
-
-pub(in crate::runtime) fn run_core_list<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    function: ListFunctionId,
-    origin: HostCallOrigin,
-    inputs: RetainedValues,
-) -> ExecutionResult<ListValueId> {
-    match function {
-        ListFunctionId::Parameter(function) => {
-            run_parameter_list(plan, state, function, origin, inputs).map(ListValueId::Parameter)
-        }
-        ListFunctionId::ParameterList(function) => {
-            run_parameter_list_list(plan, state, function, origin, inputs)
-                .map(ListValueId::ParameterList)
-        }
-        ListFunctionId::Int(function) => {
-            run_int_list(plan, state, function, origin, inputs).map(ListValueId::Int)
-        }
-        ListFunctionId::String(function) => {
-            run_string_list(plan, state, function, origin, inputs).map(ListValueId::String)
-        }
-        ListFunctionId::BitArray(function) => {
-            run_bit_array_list(plan, state, function, origin, inputs).map(ListValueId::BitArray)
-        }
-        ListFunctionId::UtfCodepoint(function) => {
-            run_utf_codepoint_list(plan, state, function, origin, inputs)
-                .map(ListValueId::UtfCodepoint)
-        }
-        ListFunctionId::Custom(function) => {
-            run_custom_list(plan, state, function, origin, inputs).map(ListValueId::Custom)
-        }
-        ListFunctionId::Float(function) => {
-            run_float_list(plan, state, function, origin, inputs).map(ListValueId::Float)
-        }
-        ListFunctionId::Bool(function) => {
-            run_bool_list(plan, state, function, origin, inputs).map(ListValueId::Bool)
-        }
-        ListFunctionId::Nil(function) => {
-            run_nil_list(plan, state, function, origin, inputs).map(ListValueId::Nil)
-        }
-        ListFunctionId::Tuple(function) => {
-            run_tuple_list(plan, state, function, origin, inputs).map(ListValueId::Tuple)
-        }
-        ListFunctionId::List(function) => {
-            run_list_list(plan, state, function, origin, inputs).map(ListValueId::List)
-        }
-        ListFunctionId::Function(function) => {
-            run_function_list(plan, state, function, origin, inputs).map(ListValueId::Function)
-        }
-    }
 }
