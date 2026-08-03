@@ -1,6 +1,6 @@
 use super::super::{call_args, custom, list, tuple};
 use super::{closure, function_function_expr, reference, source_stop};
-use crate::plan::execution::graph::FunctionTarget;
+use crate::plan::execution::lowering::graph::DraftFunctionTarget;
 use crate::plan::execution::lowering::graph::{
     DraftCursor, DraftFlow, DraftGraph, DraftNilFunction,
 };
@@ -33,15 +33,20 @@ pub(in crate::plan::execution::lowering) fn nil_function_expr(
         E::Reference(value) => context
             .nil_function_id(value.instantiation())
             .map(|target| {
-                reference(shape.clone(), FunctionTarget::Nil(target), cursor, graph)
-                    .map(DraftNilFunction::new)
+                reference(
+                    shape.clone(),
+                    DraftFunctionTarget::Nil(target),
+                    cursor,
+                    graph,
+                )
+                .map(DraftNilFunction::new)
             }),
         E::Closure { function, captures } => context.nil_function_id(function).and_then(|target| {
             closure(
                 function,
                 captures,
                 shape.clone(),
-                FunctionTarget::Nil(target),
+                DraftFunctionTarget::Nil(target),
                 cursor,
                 graph,
                 context,

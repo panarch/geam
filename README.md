@@ -55,6 +55,17 @@ return successfully use Rust's return-only `Infallible` marker. Unsupported
 Rust types and arities are rejected by trait resolution rather than at runtime.
 Provider linkage selects an exact external declaration or its Gleam fallback
 during planning; ordinary Gleam functions cannot be overridden.
+Source-declared constructorless external types can be linked to profile-owned
+Rust payloads. Providers define Gleam equality, runtime hashing, and canonical
+inspection through narrow retained-value contexts; equal payloads must hash
+equally, while collisions are resolved by equality. Their public runtime
+values remain opaque and self-contained. The `geam::gleam_stdlib` module
+provides an explicitly composed host-provider bundle for unchanged official
+`gleam_stdlib` `v1.0.3` modules that require externals; it is not injected by
+project loading. The verified module set is `gleam/bool`, `gleam/option`,
+`gleam/order`, `gleam/dict`, `gleam/dynamic`, `gleam/float`, `gleam/int`,
+`gleam/list`, `gleam/string_tree`, `gleam/string`, `gleam/bit_array`, and
+`gleam/dynamic/decode`.
 
 The main public entry points are:
 
@@ -63,6 +74,7 @@ The main public entry points are:
 - `compile_typed_package_program`
 - `compile_typed_project`
 - `compile_typed_host_program`
+- `compile_typed_host_project`
 - `plan_module`
 - `plan_program`
 - `plan_host_program`
@@ -83,14 +95,25 @@ nodes store callable schemas and targets, while the hosted wrapper carries
 implementations as a private sidecar until `HostedExecution` retains only the
 callbacks selected by specialization. A `HostProfile` defines caller-owned
 run state, and `HostedExecution::run_main` borrows that state explicitly for
-one run.
+one run. `compile_typed_host_project` applies the same hosted boundary to the
+read-only resolved-project loader without reparsing selected modules or
+running Gleam CLI.
 
 Owned scalar closures use `BigInt`, `f64`, `EcoString`, `BitArrayValue`,
 `char`, `bool`, and `()`. Scoped providers use `HostCall` with typed
-`HostList`, `HostTuple`, and ordinary custom handles; these handles cannot
-escape their invocation, and compound returns are built explicitly through
-the same call. Generic providers and Gleam function values use the same typed
-specialization and call paths as ordinary Gleam functions.
+`HostList`, `HostTuple`, ordinary custom, and external handles; these handles
+cannot escape their invocation, and compound returns are built explicitly
+through the same call. An external payload can retain exact typed Gleam values
+with `HostStoredValue` and restore them only through a later active
+`HostCall`. It can instead retain an existential `HostStoredDynamic` together
+with its exact specialized Gleam shape; a later typed decode returns `None`
+when that shape does not match. Generic providers and Gleam function values
+use the same typed specialization and call paths as ordinary Gleam functions.
+Private transient-style containers can use this storage through immutable
+persistent versions; Geam does not expose general mutable external graphs.
+The official Dict provider uses this boundary for persistent hash-bucket
+storage and preserves Gleam fallback bodies for operations implemented in
+Gleam. Dictionary iteration order is not part of the Geam contract.
 
 `HostedExecution::try_from_module_plan` seals the entry-reachable host ABI
 before runtime construction. Provider state remains caller-owned, and nested

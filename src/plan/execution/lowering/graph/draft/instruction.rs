@@ -1,20 +1,21 @@
 use super::{
-    DraftBitArray, DraftBool, DraftCustom, DraftFloat, DraftFunction, DraftGraphValue, DraftInt,
-    DraftList, DraftNil, DraftStoredList, DraftString, DraftTuple, DraftUtfCodepoint,
-    DraftValueRef,
+    DraftBitArray, DraftBool, DraftCustom, DraftExternal, DraftFloat, DraftFunction,
+    DraftGraphValue, DraftInt, DraftList, DraftNil, DraftStoredList, DraftString, DraftTuple,
+    DraftUtfCodepoint, DraftValueRef,
 };
 use crate::plan::execution::constant::ConstantId;
 use crate::plan::execution::function::{
-    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FunctionFunctionId, IntFunctionId,
-    NilFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
+    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, ExternalFunctionId, FloatFunctionId,
+    FunctionFunctionId, GenericCallableId, IntFunctionId, NeverFunctionId, NilFunctionId,
+    RuntimeListFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
 };
 use crate::plan::execution::graph::FunctionLocal;
-use crate::plan::execution::graph::FunctionTarget;
 use crate::plan::execution::graph::{Endianness, FloatBitSize, StringEncoding};
 use crate::plan::execution::type_::{
-    BitArrayListTypeId, BoolListTypeId, CustomConstructorId, CustomListTypeId, FloatListTypeId,
-    FunctionListTypeId, IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId,
-    ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
+    BitArrayListTypeId, BoolListTypeId, CustomConstructorId, CustomListTypeId, ExternalListTypeId,
+    FloatListTypeId, FunctionListTypeId, IntListTypeId, ListListTypeId, NilListTypeId,
+    ParameterListListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
+    UtfCodepointListTypeId,
 };
 
 pub(in crate::plan::execution::lowering) enum DraftInstructionKind {
@@ -24,6 +25,7 @@ pub(in crate::plan::execution::lowering) enum DraftInstructionKind {
     BitArray(DraftBitArrayInstruction),
     UtfCodepoint(DraftUtfCodepointInstruction),
     Custom(DraftCustomInstruction),
+    External(DraftExternalInstruction),
     Bool(DraftBoolInstruction),
     Nil(DraftNilInstruction),
     Tuple(DraftTupleInstruction),
@@ -269,6 +271,31 @@ pub(in crate::plan::execution::lowering) enum DraftCustomInstruction {
     Constant(ConstantId<crate::plan::execution::graph::CustomLocal>),
     Call {
         function: CustomFunctionId,
+        args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
+    },
+    FunctionCall {
+        function: DraftFunction,
+        args: Vec<DraftValueRef>,
+        site: crate::plan::HostCallSite,
+    },
+    TupleIndex {
+        tuple: DraftTuple,
+        index: usize,
+    },
+    CustomField {
+        source: DraftCustom,
+        index: usize,
+    },
+    ListIndex {
+        list: DraftList,
+        index: usize,
+    },
+}
+
+pub(in crate::plan::execution::lowering) enum DraftExternalInstruction {
+    Call {
+        function: ExternalFunctionId,
         args: Vec<DraftValueRef>,
         site: crate::plan::HostCallSite,
     },
@@ -537,6 +564,14 @@ pub(in crate::plan::execution::lowering) enum DraftListInstruction {
             crate::plan::execution::function::CustomListFunctionId,
         >,
     ),
+    External(
+        ExternalListTypeId,
+        DraftTypedListInstruction<
+            DraftExternal,
+            crate::plan::execution::graph::ExternalListLocalId,
+            crate::plan::execution::function::ExternalListFunctionId,
+        >,
+    ),
     Float(
         FloatListTypeId,
         DraftTypedListInstruction<
@@ -589,9 +624,9 @@ pub(in crate::plan::execution::lowering) enum DraftListInstruction {
 
 pub(in crate::plan::execution::lowering) enum DraftFunctionInstruction {
     Constant(ConstantId<FunctionLocal>),
-    Reference(FunctionTarget),
+    Reference(DraftFunctionTarget),
     Closure {
-        target: FunctionTarget,
+        target: DraftFunctionTarget,
         captures: Vec<DraftFunctionCapture>,
     },
     Constructor(CustomConstructorId),
@@ -617,6 +652,24 @@ pub(in crate::plan::execution::lowering) enum DraftFunctionInstruction {
         list: DraftList,
         index: usize,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::plan::execution::lowering) enum DraftFunctionTarget {
+    Generic(GenericCallableId),
+    Never(NeverFunctionId),
+    Int(IntFunctionId),
+    Float(FloatFunctionId),
+    String(StringFunctionId),
+    BitArray(BitArrayFunctionId),
+    UtfCodepoint(UtfCodepointFunctionId),
+    Custom(CustomFunctionId),
+    External(ExternalFunctionId),
+    Bool(BoolFunctionId),
+    Nil(NilFunctionId),
+    Tuple(TupleFunctionId),
+    List(RuntimeListFunctionId),
+    Function(FunctionFunctionId),
 }
 
 pub(in crate::plan::execution::lowering) struct DraftFunctionCapture {
@@ -841,6 +894,24 @@ impl DraftCustomInstruction {
     }
 }
 
+impl DraftExternalInstruction {
+    pub(in crate::plan::execution::lowering::graph) fn uses(
+        &self,
+        values: &mut Vec<DraftValueRef>,
+    ) {
+        match self {
+            Self::Call { args, .. } => push_operands(args, values),
+            Self::FunctionCall { function, args, .. } => {
+                function.push_operand(values);
+                push_operands(args, values);
+            }
+            Self::TupleIndex { tuple, .. } => tuple.push_operand(values),
+            Self::CustomField { source, .. } => source.push_operand(values),
+            Self::ListIndex { list, .. } => list.push_operand(values),
+        }
+    }
+}
+
 impl DraftBoolInstruction {
     pub(in crate::plan::execution::lowering::graph) fn uses(
         &self,
@@ -979,6 +1050,7 @@ impl DraftListInstruction {
             Self::BitArray(_, instruction) => instruction.uses(values),
             Self::UtfCodepoint(_, instruction) => instruction.uses(values),
             Self::Custom(_, instruction) => instruction.uses(values),
+            Self::External(_, instruction) => instruction.uses(values),
             Self::Float(_, instruction) => instruction.uses(values),
             Self::Bool(_, instruction) => instruction.uses(values),
             Self::Nil(_, instruction) => instruction.uses(values),

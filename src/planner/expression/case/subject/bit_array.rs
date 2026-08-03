@@ -27,12 +27,15 @@ pub(super) fn plan(
     let mut ordered_clauses = Vec::new();
     for clause in clauses {
         for pattern in clause.patterns() {
+            let (pattern, reachable, exhaustive_remainder) = pattern.into_parts();
             ordered_clauses.push(super::plan_ordered_case_candidate(
                 OrderedCaseCandidateInput {
                     case_type: type_.as_ref(),
                     return_shape: &return_shape,
                     then: clause.then.clone(),
                     guard: clause.guard.clone(),
+                    reachable,
+                    exhaustive_remainder,
                 },
                 context,
                 |context| {

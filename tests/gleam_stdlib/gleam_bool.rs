@@ -35,11 +35,11 @@ to_string: fn(Bool) -> String
 #[test]
 #[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn tracks_official_gleam_bool_public_surface() {
-    assert_surface("gleam_bool", "gleam/bool", &SURFACE);
+    assert_surface("gleam_bool", "gleam/bool", &["gleam/bool"], &SURFACE);
 }
 
 #[test]
 #[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_bool_behavior() {
-    assert_eq!(run_fixture("gleam_bool", "gleam/bool"), Value::Nil);
+    assert_eq!(run_fixture("gleam_bool", &["gleam/bool"]), Value::Nil);
 }

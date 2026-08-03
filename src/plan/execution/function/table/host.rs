@@ -2,21 +2,23 @@ use super::{FunctionTables, write_function};
 use crate::host::HostProfile;
 use crate::plan::execution::explain::{Explain, ExplainContext, FunctionLabel};
 use crate::plan::execution::function::{
-    ExecutionFunctionBody, TailCallLabelIndex, ValueFunctionEntry,
+    ExecutionFunctionBody, ExecutionNeverFunctionBody, FunctionBodyOwner, HostedExecutionGraph,
+    TailCallLabelIndex, ValueFunctionEntry,
 };
 use crate::plan::execution::graph::LocalLabel;
 use crate::plan::execution::host::{
-    HostFunctionTables, HostedExecutionProfile, HostedFunction, HostedFunctionTarget,
+    HostFunctionTables, HostNeverFunctionId, HostedExecutionProfile, HostedFunction,
+    HostedFunctionTarget,
 };
 
 pub(in crate::plan::execution) struct HostedFunctionTablesExplanation<'a, Profile: HostProfile> {
-    tables: &'a FunctionTables<HostedExecutionProfile<Profile>>,
+    tables: &'a FunctionTables<HostedExecutionProfile>,
     host_functions: &'a HostFunctionTables<Profile>,
 }
 
 impl<'a, Profile: HostProfile> HostedFunctionTablesExplanation<'a, Profile> {
     pub(in crate::plan::execution) fn new(
-        tables: &'a FunctionTables<HostedExecutionProfile<Profile>>,
+        tables: &'a FunctionTables<HostedExecutionProfile>,
         host_functions: &'a HostFunctionTables<Profile>,
     ) -> Self {
         Self {
@@ -28,7 +30,7 @@ impl<'a, Profile: HostProfile> HostedFunctionTablesExplanation<'a, Profile> {
 
 impl<Profile: HostProfile> Explain for HostedFunctionTablesExplanation<'_, Profile> {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
-        write_hosted_table(
+        write_hosted_never_table(
             context,
             "never",
             &self.tables.value_returns.never_functions,
@@ -68,6 +70,12 @@ impl<Profile: HostProfile> Explain for HostedFunctionTablesExplanation<'_, Profi
             context,
             "custom",
             &self.tables.value_returns.custom_functions,
+            self.host_functions,
+        );
+        write_hosted_table(
+            context,
+            "external",
+            &self.tables.value_returns.external_functions,
             self.host_functions,
         );
         write_hosted_table(
@@ -144,6 +152,16 @@ impl<Profile: HostProfile> Explain for HostedFunctionTablesExplanation<'_, Profi
             self.tables
                 .list_returns
                 .custom_list_functions
+                .iter()
+                .map(|(_, function)| function),
+            self.host_functions,
+        );
+        write_hosted_table(
+            context,
+            "list.external",
+            self.tables
+                .list_returns
+                .external_list_functions
                 .iter()
                 .map(|(_, function)| function),
             self.host_functions,
@@ -259,6 +277,12 @@ impl<Profile: HostProfile> Explain for HostedFunctionTablesExplanation<'_, Profi
         );
         write_hosted_table(
             context,
+            "function.external",
+            &self.tables.function_returns.external_function_functions,
+            self.host_functions,
+        );
+        write_hosted_table(
+            context,
             "function.bool",
             &self.tables.function_returns.bool_function_functions,
             self.host_functions,
@@ -343,6 +367,15 @@ impl<Profile: HostProfile> Explain for HostedFunctionTablesExplanation<'_, Profi
         );
         write_hosted_table(
             context,
+            "function.list.external",
+            &self
+                .tables
+                .function_returns
+                .external_list_function_functions,
+            self.host_functions,
+        );
+        write_hosted_table(
+            context,
             "function.list.float",
             &self.tables.function_returns.float_list_function_functions,
             self.host_functions,
@@ -389,6 +422,32 @@ impl<Profile: HostProfile> Explain for HostedFunctionTablesExplanation<'_, Profi
     }
 }
 
+fn write_hosted_never_table<'a, Profile, Functions>(
+    context: &mut ExplainContext<'_, '_>,
+    family: &'static str,
+    functions: Functions,
+    host_functions: &HostFunctionTables<Profile>,
+) where
+    Profile: HostProfile,
+    Functions: IntoIterator<
+        Item = &'a ValueFunctionEntry<
+            ExecutionNeverFunctionBody<HostedExecutionProfile>,
+            HostNeverFunctionId,
+        >,
+    >,
+{
+    for (index, function) in functions.into_iter().enumerate() {
+        match function {
+            ValueFunctionEntry::Graph(function) => {
+                write_function(context, family, index, function);
+            }
+            ValueFunctionEntry::Host(target) => {
+                write_hosted_function(context, family, index, host_functions.never(*target));
+            }
+        }
+    }
+}
+
 fn write_hosted_table<'a, Profile, Body, Functions>(
     context: &mut ExplainContext<'_, '_>,
     family: &'static str,
@@ -396,7 +455,7 @@ fn write_hosted_table<'a, Profile, Body, Functions>(
     host_functions: &HostFunctionTables<Profile>,
 ) where
     Profile: HostProfile,
-    Body: ExecutionFunctionBody + 'a,
+    Body: ExecutionFunctionBody + FunctionBodyOwner<Graph = HostedExecutionGraph> + 'a,
     Body::Return: LocalLabel,
     Body::TailCall: TailCallLabelIndex,
     Functions: IntoIterator<Item = &'a ValueFunctionEntry<Body, HostedFunctionTarget<Body>>>,
@@ -441,6 +500,11 @@ fn write_hosted_function<Implementation>(
 mod tests {
     use super::HostedFunctionTablesExplanation;
     use crate::host::test::{StatelessTestProvider, TestTypeParameter, stateless_identity};
+    use crate::host::{
+        ExternalTestProfile, ExternalTestRunState, HostCall, HostCallCompletion, HostCallError,
+        HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType, HostProvider,
+        HostProviderModule,
+    };
     use crate::plan::execution::explain;
     use crate::{
         BitArrayValue, HostModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
@@ -448,6 +512,81 @@ mod tests {
     };
     use ecow::EcoString;
     use num_bigint::BigInt;
+
+    struct CounterSchema;
+
+    struct CounterProvider;
+
+    type HostCounter = HostExternalType<CounterSchema>;
+
+    impl HostExternalSchema for CounterSchema {
+        const PACKAGE: &'static str = "application";
+        const MODULE: &'static str = "main";
+        const NAME: &'static str = "Counter";
+        const PARAMETER_COUNT: usize = 0;
+    }
+
+    impl HostExternalStorage<CounterSchema> for ExternalTestProfile {
+        type Payload = BigInt;
+
+        fn store(stores: &Self::ExternalStores) -> &HostExternalStore<Self::Payload> {
+            &stores.integers
+        }
+
+        fn source_equal(
+            _: &crate::host::HostExternalEquality<'_>,
+            left: &Self::Payload,
+            right: &Self::Payload,
+        ) -> bool {
+            left == right
+        }
+
+        fn source_hash(_: &crate::host::HostExternalHashing<'_>, value: &Self::Payload) -> u64 {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            std::hash::Hash::hash(value, &mut hasher);
+            std::hash::Hasher::finish(&hasher)
+        }
+
+        fn inspect(
+            _: &crate::host::HostExternalInspection<'_>,
+            value: &Self::Payload,
+        ) -> EcoString {
+            value.to_string().into()
+        }
+    }
+
+    impl HostProvider<ExternalTestProfile> for CounterProvider {
+        type State = ();
+
+        fn project(state: &mut ExternalTestRunState) -> &mut Self::State {
+            &mut state.provider
+        }
+    }
+
+    fn new_counter<'call>(
+        mut call: HostCall<'call, ExternalTestProfile, CounterProvider, HostCounter>,
+        value: BigInt,
+    ) -> Result<HostCallCompletion<'call, HostCounter>, HostCallError> {
+        let _ = call.state();
+        let counter = call.create_external(value);
+        Ok(call.return_value(counter))
+    }
+
+    #[test]
+    fn counter_fixture_source_semantics_are_exact() {
+        let retained_hash = |_: &crate::runtime::StoredRuntimeValue| 0;
+        let hashing = crate::host::HostExternalHashing::new(&retained_hash);
+        let value = BigInt::from(7);
+        let mut expected = std::collections::hash_map::DefaultHasher::new();
+        std::hash::Hash::hash(&value, &mut expected);
+
+        assert_eq!(
+            <ExternalTestProfile as HostExternalStorage<CounterSchema>>::source_hash(
+                &hashing, &value,
+            ),
+            std::hash::Hasher::finish(&expected),
+        );
+    }
 
     #[test]
     fn writes_every_scalar_host_target_in_family_order() {
@@ -635,5 +774,134 @@ function function.int#0
         ));
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn writes_external_value_list_and_function_tables_in_family_order() {
+        let provider = HostProviderModule::<ExternalTestProfile>::new("application", "main")
+            .expect("provider module should be valid")
+            .with_external_type::<CounterSchema>()
+            .expect("external type should be valid")
+            .with_scoped_function::<CounterProvider, (BigInt,), HostCounter, _>(
+                "new_counter",
+                new_counter,
+            )
+            .expect("external function should be valid");
+        let source = r#"
+@external(erlang, "host", "Counter")
+pub type Counter
+
+@external(erlang, "host", "new_counter")
+fn new_counter(value: Int) -> Counter
+
+fn pass(counter: Counter) -> Counter {
+  counter
+}
+
+fn values(counter: Counter) -> List(Counter) {
+  [counter]
+}
+
+fn maker() -> fn(Int) -> Counter {
+  new_counter
+}
+
+fn list_maker() -> fn(Counter) -> List(Counter) {
+  fn(counter) { [counter] }
+}
+
+pub fn main() {
+  let counter = pass(new_counter(1))
+  #(
+    counter,
+    values(counter),
+    maker()(2),
+    list_maker()(counter),
+    counter == new_counter(1),
+  )
+}
+"#;
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<&str>::new(),
+                [ModuleSource::new("main", "main.gleam", source)],
+            )],
+            HostProviderSet::with_providers(
+                Vec::<HostModule<ExternalTestProfile>>::new(),
+                [provider],
+            )
+            .expect("provider module should be unique"),
+        )
+        .expect("external source should compile");
+        let plan = plan_host_program(typed).expect("external source should plan");
+        let execution =
+            HostedExecution::try_from_module_plan(plan).expect("external execution should seal");
+        let expected = r#"
+function external#0
+  host application::main.new_counter signature=fn(Int) -> external_type#0
+
+function external#1
+  entry b0 params=[%external#0:shape#1(external_type#0)] captures=[]
+  block b0 params=[%external#0:shape#1(external_type#0)]
+    return %external#0
+
+function tuple#0
+  entry b0 params=[] captures=[]
+  block b0 params=[]
+    %int#0:shape#0(Int) = int.value 1
+    %external#0:shape#1(external_type#0) = external.call external#0 args=[%int#0]
+    %external#1:shape#1(external_type#0) = external.call external#1 args=[%external#0]
+    %list.external#0:shape#2(list_type#0) = list.external[type#0] call list.external#0 args=[%external#1]
+    %function.external#0:shape#3(fn(Int) -> external_type#0) = function[External] call function.external#0 args=[]
+    %int#1:shape#0(Int) = int.value 2
+    %external#2:shape#1(external_type#0) = external.function_call %function.external#0 args=[%int#1]
+    %function.list.external#0:shape#4(fn(external_type#0) -> list_type#0) = function[List] call function.list.external#0 args=[]
+    %list.external#1:shape#2(list_type#0) = list.external[type#0] function_call %function.list.external#0 args=[%external#1]
+    %int#2:shape#0(Int) = int.value 1
+    %external#3:shape#1(external_type#0) = external.call external#0 args=[%int#2]
+    %bool#0:shape#5(Bool) = bool.equal %external#1 %external#3
+    %tuple#0:shape#6(#(external_type#0, list_type#0, external_type#0, list_type#0, Bool)) = tuple.value elements=[%external#1, %list.external#0, %external#2, %list.external#1, %bool#0]
+    return %tuple#0
+
+function list.external#0
+  entry b0 params=[%external#0:shape#1(external_type#0)] captures=[]
+  block b0 params=[%external#0:shape#1(external_type#0)]
+    %list.external#0:shape#2(list_type#0) = list.external[type#0] value elements=[%external#0]
+    return %list.external#0
+
+function list.external#1
+  entry b0 params=[%external#0:shape#1(external_type#0)] captures=[]
+  block b0 params=[%external#0:shape#1(external_type#0)]
+    %list.external#0:shape#2(list_type#0) = list.external[type#0] value elements=[%external#0]
+    return %list.external#0
+
+function function.external#0
+  entry b0 params=[] captures=[]
+  block b0 params=[]
+    %function.external#0:shape#3(fn(Int) -> external_type#0) = function[External] reference external#0
+    return %function.external#0
+
+function function.list.external#0
+  entry b0 params=[] captures=[]
+  block b0 params=[]
+    %function.list.external#0:shape#4(fn(external_type#0) -> list_type#0) = function[List] closure target=list.external#1 captures=[]
+    return %function.list.external#0
+"#;
+        let mut actual = String::new();
+        let mut context = explain::ExplainContext::new_hosted(&execution, &mut actual);
+        context.write(&HostedFunctionTablesExplanation::new(
+            &execution.program.functions,
+            &execution.host_functions,
+        ));
+
+        assert_eq!(actual, expected);
+
+        let returned = execution
+            .run_main(&mut ExternalTestRunState::default(), &mut Vec::new())
+            .expect("external function tables should execute");
+        assert_eq!(returned.inspect().to_string(), "#(1, [1], 2, [1], True)");
     }
 }

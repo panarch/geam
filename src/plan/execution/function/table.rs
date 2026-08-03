@@ -1,33 +1,43 @@
 mod host;
 
 use super::{
-    BitArrayFunctionBody, BitArrayFunctionFunctionBody, BitArrayFunctionFunctionId,
-    BitArrayFunctionId, BitArrayListFunctionBody, BitArrayListFunctionId, BoolFunctionBody,
-    BoolFunctionFunctionBody, BoolFunctionFunctionId, BoolFunctionId, BoolListFunctionBody,
-    BoolListFunctionId, CustomFunctionBody, CustomFunctionFunctionBody, CustomFunctionFunctionId,
-    CustomFunctionId, CustomListFunctionBody, CustomListFunctionId, FloatFunctionBody,
-    FloatFunctionFunctionBody, FloatFunctionFunctionId, FloatFunctionId, FloatListFunctionBody,
-    FloatListFunctionId, FunctionFunctionFunctionBody, FunctionFunctionFunctionId,
-    FunctionListFunctionBody, FunctionListFunctionId, GenericFunctionFunctionBody,
-    GenericFunctionFunctionId, IntFunctionBody, IntFunctionFunctionBody, IntFunctionFunctionId,
-    IntFunctionId, IntListFunctionBody, IntListFunctionId, ListFunctionFunctionBody,
-    ListFunctionFunctionId, ListListFunctionBody, ListListFunctionId, NeverFunctionBody,
-    NeverFunctionFunctionBody, NeverFunctionFunctionId, NeverFunctionId, NilFunctionBody,
-    NilFunctionFunctionBody, NilFunctionFunctionId, NilFunctionId, NilListFunctionBody,
-    NilListFunctionId, ParameterListFunctionBody, ParameterListFunctionId,
-    ParameterListListFunctionBody, ParameterListListFunctionId, StringFunctionBody,
-    StringFunctionFunctionBody, StringFunctionFunctionId, StringFunctionId, StringListFunctionBody,
-    StringListFunctionId, TupleFunctionBody, TupleFunctionFunctionBody, TupleFunctionFunctionId,
-    TupleFunctionId, TupleListFunctionBody, TupleListFunctionId, UtfCodepointFunctionBody,
-    UtfCodepointFunctionFunctionBody, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
-    UtfCodepointListFunctionBody, UtfCodepointListFunctionId,
+    BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionFunctionId,
+    BoolFunctionId, BoolListFunctionId, CustomFunctionFunctionId, CustomFunctionId,
+    CustomListFunctionId, ExecutionBitArrayFunctionBody, ExecutionBitArrayFunctionFunctionBody,
+    ExecutionBitArrayListFunctionBody, ExecutionBoolFunctionBody,
+    ExecutionBoolFunctionFunctionBody, ExecutionBoolListFunctionBody,
+    ExecutionCoreListFunctionFunctionBody, ExecutionCustomFunctionBody,
+    ExecutionCustomFunctionFunctionBody, ExecutionCustomListFunctionBody,
+    ExecutionExternalFunctionBody, ExecutionExternalFunctionFunctionBody,
+    ExecutionExternalListFunctionBody, ExecutionExternalListFunctionFunctionBody,
+    ExecutionFloatFunctionBody, ExecutionFloatFunctionFunctionBody, ExecutionFloatListFunctionBody,
+    ExecutionFunctionFunctionFunctionBody, ExecutionFunctionListFunctionBody,
+    ExecutionGenericFunctionFunctionBody, ExecutionIntFunctionBody,
+    ExecutionIntFunctionFunctionBody, ExecutionIntListFunctionBody, ExecutionListListFunctionBody,
+    ExecutionNeverFunctionFunctionBody, ExecutionNilFunctionBody, ExecutionNilFunctionFunctionBody,
+    ExecutionNilListFunctionBody, ExecutionParameterListFunctionBody,
+    ExecutionParameterListListFunctionBody, ExecutionStringFunctionBody,
+    ExecutionStringFunctionFunctionBody, ExecutionStringListFunctionBody,
+    ExecutionTupleFunctionBody, ExecutionTupleFunctionFunctionBody, ExecutionTupleListFunctionBody,
+    ExecutionUtfCodepointFunctionBody, ExecutionUtfCodepointFunctionFunctionBody,
+    ExecutionUtfCodepointListFunctionBody, ExternalFunctionFunctionId, ExternalFunctionId,
+    ExternalListFunctionFunctionId, ExternalListFunctionId, FloatFunctionFunctionId,
+    FloatFunctionId, FloatListFunctionId, FunctionFunctionFunctionId, FunctionListFunctionId,
+    GenericFunctionFunctionId, IntFunctionFunctionId, IntFunctionId, IntListFunctionId,
+    ListListFunctionId, NeverFunctionFunctionId, NeverFunctionId, NilFunctionFunctionId,
+    NilFunctionId, NilListFunctionId, ParameterListFunctionId, ParameterListListFunctionId,
+    ProfiledListFunctionFunctionId, StringFunctionFunctionId, StringFunctionId,
+    StringListFunctionId, TupleFunctionFunctionId, TupleFunctionId, TupleListFunctionId,
+    UtfCodepointFunctionFunctionId, UtfCodepointFunctionId, UtfCodepointListFunctionId,
 };
 use super::{
-    ExecutableFunction, ExecutionFunction, ExecutionProfile, FunctionFunctionTables,
-    ListFunctionTables, ValueFunctionTables,
+    ExecutableFunction, ExecutionFunction, ExecutionNeverFunction, ExecutionProfile,
+    FunctionFunctionTables, ListFunctionTables, ValueFunctionTables,
 };
 use crate::plan::execution::explain::{Explain, ExplainContext, FunctionLabel};
-use crate::plan::execution::function::{FunctionBodyOwner, TailCallLabelIndex};
+use crate::plan::execution::function::{
+    FunctionBodyOwner, FunctionLabelSource, TailCallLabelIndex,
+};
 use crate::plan::execution::graph::LocalLabel;
 use std::convert::Infallible;
 
@@ -55,6 +65,20 @@ pub(in crate::plan::execution::function) fn write_table<'a, Body, Functions>(
     Body: FunctionBodyOwner + 'a,
     Body::Return: LocalLabel,
     Body::TailCall: TailCallLabelIndex,
+    <Body::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalFunctionId:
+        FunctionLabelSource,
+    <Body::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalListFunctionId:
+        FunctionLabelSource,
+    <Body::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalFunctionFunctionId:
+        FunctionLabelSource,
+    <Body::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalListFunctionFunctionId:
+        FunctionLabelSource,
+    <Body::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalInstruction:
+        Explain,
+    <Body::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalListInstruction:
+        Explain,
+    <Body::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalFunctionInstruction:
+        Explain,
     Functions: IntoIterator<Item = &'a ExecutableFunction<Body>>,
 {
     for (index, function) in functions.into_iter().enumerate() {
@@ -71,6 +95,20 @@ fn write_function<Body>(
     Body: FunctionBodyOwner,
     Body::Return: LocalLabel,
     Body::TailCall: TailCallLabelIndex,
+    <Body::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalFunctionId:
+        FunctionLabelSource,
+    <Body::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalListFunctionId:
+        FunctionLabelSource,
+    <Body::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalFunctionFunctionId:
+        FunctionLabelSource,
+    <Body::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalListFunctionFunctionId:
+        FunctionLabelSource,
+    <Body::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalInstruction:
+        Explain,
+    <Body::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalListInstruction:
+        Explain,
+    <Body::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalFunctionInstruction:
+        Explain,
 {
     context.push_str("\nfunction ");
     FunctionLabel::new(family, index).write(context.output());
@@ -145,21 +183,21 @@ impl<Profile: ExecutionProfile> FunctionTables<Profile> {
     pub(in crate::plan::execution) fn never_function(
         &self,
         id: NeverFunctionId,
-    ) -> &ExecutionFunction<Profile, NeverFunctionBody> {
+    ) -> &ExecutionNeverFunction<Profile> {
         &self.value_returns.never_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn parameter_list_function(
         &self,
         id: ParameterListFunctionId,
-    ) -> &ExecutionFunction<Profile, ParameterListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionParameterListFunctionBody<Profile>> {
         &self.list_returns.parameter_list_functions[id.index()].1
     }
 
     pub(in crate::plan::execution) fn parameter_list_list_function(
         &self,
         id: ParameterListListFunctionId,
-    ) -> &ExecutionFunction<Profile, ParameterListListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionParameterListListFunctionBody<Profile>> {
         &self.list_returns.parameter_list_list_functions[id.index()].1
     }
 
@@ -270,271 +308,300 @@ impl<Profile: ExecutionProfile> FunctionTables<Profile> {
     pub(in crate::plan::execution) fn int_function(
         &self,
         id: IntFunctionId,
-    ) -> &ExecutionFunction<Profile, IntFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionIntFunctionBody<Profile>> {
         &self.value_returns.int_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn float_function(
         &self,
         id: FloatFunctionId,
-    ) -> &ExecutionFunction<Profile, FloatFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionFloatFunctionBody<Profile>> {
         &self.value_returns.float_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn string_function(
         &self,
         id: StringFunctionId,
-    ) -> &ExecutionFunction<Profile, StringFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionStringFunctionBody<Profile>> {
         &self.value_returns.string_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn bit_array_function(
         &self,
         id: BitArrayFunctionId,
-    ) -> &ExecutionFunction<Profile, BitArrayFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionBitArrayFunctionBody<Profile>> {
         &self.value_returns.bit_array_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn utf_codepoint_function(
         &self,
         id: UtfCodepointFunctionId,
-    ) -> &ExecutionFunction<Profile, UtfCodepointFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionUtfCodepointFunctionBody<Profile>> {
         &self.value_returns.utf_codepoint_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn custom_function(
         &self,
         id: CustomFunctionId,
-    ) -> &ExecutionFunction<Profile, CustomFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionCustomFunctionBody<Profile>> {
         &self.value_returns.custom_functions[id.index()]
+    }
+
+    pub(in crate::plan::execution) fn external_function(
+        &self,
+        id: ExternalFunctionId,
+    ) -> &ExecutionFunction<Profile, ExecutionExternalFunctionBody<Profile>> {
+        &self.value_returns.external_functions[id.index()]
     }
 
     pub(in crate::plan::execution) fn bool_function(
         &self,
         id: BoolFunctionId,
-    ) -> &ExecutionFunction<Profile, BoolFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionBoolFunctionBody<Profile>> {
         &self.value_returns.bool_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn nil_function(
         &self,
         id: NilFunctionId,
-    ) -> &ExecutionFunction<Profile, NilFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionNilFunctionBody<Profile>> {
         &self.value_returns.nil_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn tuple_function(
         &self,
         id: TupleFunctionId,
-    ) -> &ExecutionFunction<Profile, TupleFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionTupleFunctionBody<Profile>> {
         &self.value_returns.tuple_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn int_list_function(
         &self,
         id: IntListFunctionId,
-    ) -> &ExecutionFunction<Profile, IntListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionIntListFunctionBody<Profile>> {
         &self.list_returns.int_list_functions[id.index()].1
     }
 
     pub(in crate::plan::execution) fn string_list_function(
         &self,
         id: StringListFunctionId,
-    ) -> &ExecutionFunction<Profile, StringListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionStringListFunctionBody<Profile>> {
         &self.list_returns.string_list_functions[id.index()].1
     }
 
     pub(in crate::plan::execution) fn bit_array_list_function(
         &self,
         id: BitArrayListFunctionId,
-    ) -> &ExecutionFunction<Profile, BitArrayListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionBitArrayListFunctionBody<Profile>> {
         &self.list_returns.bit_array_list_functions[id.index()].1
     }
 
     pub(in crate::plan::execution) fn utf_codepoint_list_function(
         &self,
         id: UtfCodepointListFunctionId,
-    ) -> &ExecutionFunction<Profile, UtfCodepointListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionUtfCodepointListFunctionBody<Profile>> {
         &self.list_returns.utf_codepoint_list_functions[id.index()].1
     }
 
     pub(in crate::plan::execution) fn custom_list_function(
         &self,
         id: CustomListFunctionId,
-    ) -> &ExecutionFunction<Profile, CustomListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionCustomListFunctionBody<Profile>> {
         &self.list_returns.custom_list_functions[id.index()].1
+    }
+
+    pub(in crate::plan::execution) fn external_list_function(
+        &self,
+        id: ExternalListFunctionId,
+    ) -> &ExecutionFunction<Profile, ExecutionExternalListFunctionBody<Profile>> {
+        &self.list_returns.external_list_functions[id.index()].1
     }
 
     pub(in crate::plan::execution) fn float_list_function(
         &self,
         id: FloatListFunctionId,
-    ) -> &ExecutionFunction<Profile, FloatListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionFloatListFunctionBody<Profile>> {
         &self.list_returns.float_list_functions[id.index()].1
     }
 
     pub(in crate::plan::execution) fn bool_list_function(
         &self,
         id: BoolListFunctionId,
-    ) -> &ExecutionFunction<Profile, BoolListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionBoolListFunctionBody<Profile>> {
         &self.list_returns.bool_list_functions[id.index()].1
     }
 
     pub(in crate::plan::execution) fn nil_list_function(
         &self,
         id: NilListFunctionId,
-    ) -> &ExecutionFunction<Profile, NilListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionNilListFunctionBody<Profile>> {
         &self.list_returns.nil_list_functions[id.index()].1
     }
 
     pub(in crate::plan::execution) fn tuple_list_function(
         &self,
         id: TupleListFunctionId,
-    ) -> &ExecutionFunction<Profile, TupleListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionTupleListFunctionBody<Profile>> {
         &self.list_returns.tuple_list_functions[id.index()].1
     }
 
     pub(in crate::plan::execution) fn list_list_function(
         &self,
         id: ListListFunctionId,
-    ) -> &ExecutionFunction<Profile, ListListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionListListFunctionBody<Profile>> {
         &self.list_returns.list_list_functions[id.index()].1
     }
 
     pub(in crate::plan::execution) fn function_list_function(
         &self,
         id: FunctionListFunctionId,
-    ) -> &ExecutionFunction<Profile, FunctionListFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionFunctionListFunctionBody<Profile>> {
         &self.list_returns.function_list_functions[id.index()].1
     }
 
     pub(in crate::plan::execution) fn int_function_function(
         &self,
         id: IntFunctionFunctionId,
-    ) -> &ExecutionFunction<Profile, IntFunctionFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionIntFunctionFunctionBody<Profile>> {
         &self.function_returns.int_function_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn float_function_function(
         &self,
         id: FloatFunctionFunctionId,
-    ) -> &ExecutionFunction<Profile, FloatFunctionFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionFloatFunctionFunctionBody<Profile>> {
         &self.function_returns.float_function_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn string_function_function(
         &self,
         id: StringFunctionFunctionId,
-    ) -> &ExecutionFunction<Profile, StringFunctionFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionStringFunctionFunctionBody<Profile>> {
         &self.function_returns.string_function_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn bit_array_function_function(
         &self,
         id: BitArrayFunctionFunctionId,
-    ) -> &ExecutionFunction<Profile, BitArrayFunctionFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionBitArrayFunctionFunctionBody<Profile>> {
         &self.function_returns.bit_array_function_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn utf_codepoint_function_function(
         &self,
         id: UtfCodepointFunctionFunctionId,
-    ) -> &ExecutionFunction<Profile, UtfCodepointFunctionFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionUtfCodepointFunctionFunctionBody<Profile>> {
         &self.function_returns.utf_codepoint_function_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn custom_function_function(
         &self,
         id: &CustomFunctionFunctionId,
-    ) -> &ExecutionFunction<Profile, CustomFunctionFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionCustomFunctionFunctionBody<Profile>> {
         &self.function_returns.custom_function_functions[id.index()]
+    }
+
+    pub(in crate::plan::execution) fn external_function_function(
+        &self,
+        id: &ExternalFunctionFunctionId,
+    ) -> &ExecutionFunction<Profile, ExecutionExternalFunctionFunctionBody<Profile>> {
+        &self.function_returns.external_function_functions[id.index()]
     }
 
     pub(in crate::plan::execution) fn bool_function_function(
         &self,
         id: BoolFunctionFunctionId,
-    ) -> &ExecutionFunction<Profile, BoolFunctionFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionBoolFunctionFunctionBody<Profile>> {
         &self.function_returns.bool_function_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn nil_function_function(
         &self,
         id: NilFunctionFunctionId,
-    ) -> &ExecutionFunction<Profile, NilFunctionFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionNilFunctionFunctionBody<Profile>> {
         &self.function_returns.nil_function_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn tuple_function_function(
         &self,
         id: TupleFunctionFunctionId,
-    ) -> &ExecutionFunction<Profile, TupleFunctionFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionTupleFunctionFunctionBody<Profile>> {
         &self.function_returns.tuple_function_functions[id.0]
     }
 
     pub(in crate::plan::execution) fn generic_function_function(
         &self,
         id: &GenericFunctionFunctionId,
-    ) -> &ExecutionFunction<Profile, GenericFunctionFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionGenericFunctionFunctionBody<Profile>> {
         &self.function_returns.generic_function_functions[id.index()]
     }
 
     pub(in crate::plan::execution) fn never_function_function(
         &self,
         id: &NeverFunctionFunctionId,
-    ) -> &ExecutionFunction<Profile, NeverFunctionFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionNeverFunctionFunctionBody<Profile>> {
         &self.function_returns.never_function_functions[id.index()]
     }
 
-    pub(in crate::plan::execution) fn list_function_function(
+    pub(in crate::plan::execution) fn core_list_function_function(
         &self,
-        id: &ListFunctionFunctionId,
-    ) -> &ExecutionFunction<Profile, ListFunctionFunctionBody> {
+        id: &ProfiledListFunctionFunctionId<Infallible>,
+    ) -> &ExecutionFunction<Profile, ExecutionCoreListFunctionFunctionBody<Profile>> {
         match id {
-            ListFunctionFunctionId::Parameter { id, .. } => {
+            ProfiledListFunctionFunctionId::Parameter { id, .. } => {
                 &self.function_returns.parameter_list_function_functions[id.0]
             }
-            ListFunctionFunctionId::ParameterList { id, .. } => {
+            ProfiledListFunctionFunctionId::ParameterList { id, .. } => {
                 &self.function_returns.parameter_list_list_function_functions[id.0]
             }
-            ListFunctionFunctionId::Int { id, .. } => {
+            ProfiledListFunctionFunctionId::Int { id, .. } => {
                 &self.function_returns.int_list_function_functions[id.0]
             }
-            ListFunctionFunctionId::String { id, .. } => {
+            ProfiledListFunctionFunctionId::String { id, .. } => {
                 &self.function_returns.string_list_function_functions[id.0]
             }
-            ListFunctionFunctionId::BitArray { id, .. } => {
+            ProfiledListFunctionFunctionId::BitArray { id, .. } => {
                 &self.function_returns.bit_array_list_function_functions[id.0]
             }
-            ListFunctionFunctionId::UtfCodepoint { id, .. } => {
+            ProfiledListFunctionFunctionId::UtfCodepoint { id, .. } => {
                 &self.function_returns.utf_codepoint_list_function_functions[id.0]
             }
-            ListFunctionFunctionId::Custom { id, .. } => {
+            ProfiledListFunctionFunctionId::Custom { id, .. } => {
                 &self.function_returns.custom_list_function_functions[id.0]
             }
-            ListFunctionFunctionId::Float { id, .. } => {
+            ProfiledListFunctionFunctionId::External { id, .. } => match *id {},
+            ProfiledListFunctionFunctionId::Float { id, .. } => {
                 &self.function_returns.float_list_function_functions[id.0]
             }
-            ListFunctionFunctionId::Bool { id, .. } => {
+            ProfiledListFunctionFunctionId::Bool { id, .. } => {
                 &self.function_returns.bool_list_function_functions[id.0]
             }
-            ListFunctionFunctionId::Nil { id, .. } => {
+            ProfiledListFunctionFunctionId::Nil { id, .. } => {
                 &self.function_returns.nil_list_function_functions[id.0]
             }
-            ListFunctionFunctionId::Tuple { id, .. } => {
+            ProfiledListFunctionFunctionId::Tuple { id, .. } => {
                 &self.function_returns.tuple_list_function_functions[id.0]
             }
-            ListFunctionFunctionId::List { id, .. } => {
+            ProfiledListFunctionFunctionId::List { id, .. } => {
                 &self.function_returns.list_list_function_functions[id.0]
             }
-            ListFunctionFunctionId::Function { id, .. } => {
+            ProfiledListFunctionFunctionId::Function { id, .. } => {
                 &self.function_returns.function_list_function_functions[id.0]
             }
         }
     }
 
+    pub(in crate::plan::execution) fn external_list_function_function(
+        &self,
+        id: ExternalListFunctionFunctionId,
+    ) -> &ExecutionFunction<Profile, ExecutionExternalListFunctionFunctionBody<Profile>> {
+        &self.function_returns.external_list_function_functions[id.0]
+    }
+
     pub(in crate::plan::execution) fn function_function_function(
         &self,
         id: &FunctionFunctionFunctionId,
-    ) -> &ExecutionFunction<Profile, FunctionFunctionFunctionBody> {
+    ) -> &ExecutionFunction<Profile, ExecutionFunctionFunctionFunctionBody<Profile>> {
         &self.function_returns.function_function_functions[id.index()]
     }
 }

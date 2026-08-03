@@ -1,4 +1,4 @@
-use super::super::{evaluate_entry, run_tail};
+use super::super::{evaluate_never_entry, run_tail};
 use crate::plan::execution::function::NeverFunctionId;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
@@ -21,7 +21,7 @@ pub(in crate::runtime) fn run_never<Plan: ExecutableRuntimePlan>(
         origin,
         inputs,
         |plan, state, function, origin, inputs| {
-            evaluate_entry(plan, state, plan.never_function(*function), origin, inputs)
+            evaluate_never_entry(plan, state, plan.never_function(*function), origin, inputs)
         },
         |_, _, target| {
             (

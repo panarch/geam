@@ -1,6 +1,7 @@
 mod bit_array;
 mod capture;
 mod custom;
+mod external;
 mod function;
 mod inspection;
 mod list;
@@ -13,12 +14,13 @@ use crate::plan::ValueType;
 pub use self::bit_array::{BitArrayValue, BitArrayValueLengthError};
 pub(crate) use self::capture::{CaptureListValue, CaptureValue};
 pub use self::custom::{CustomFieldValue, CustomValue};
+pub use self::external::{ExternalValue, ExternalValueIdentity};
 pub use self::function::FunctionValue;
 pub(crate) use self::function::{
     BitArrayFunctionValue, BoolFunctionValue, CustomFunctionValue, CustomFunctionValueTarget,
-    FloatFunctionValue, FunctionFunctionValue, FunctionValueKind, GenericFunctionValue,
-    IntFunctionValue, ListFunctionValue, NeverFunctionValue, NilFunctionValue, StringFunctionValue,
-    TupleFunctionValue, UtfCodepointFunctionValue,
+    ExternalFunctionValue, FloatFunctionValue, FunctionFunctionValue, FunctionValueKind,
+    GenericFunctionValue, IntFunctionValue, ListFunctionValue, NeverFunctionValue,
+    NilFunctionValue, StringFunctionValue, TupleFunctionValue, UtfCodepointFunctionValue,
 };
 pub use self::inspection::ValueInspection;
 pub use self::list::{ListValue, ListValueItemTypeMismatch};
@@ -31,6 +33,7 @@ pub enum Value {
     BitArray(BitArrayValue),
     UtfCodepoint(char),
     Custom(CustomValue),
+    External(ExternalValue),
     Bool(bool),
     Nil,
     Tuple(Vec<Value>),
@@ -51,6 +54,7 @@ impl Value {
             Self::BitArray(_) => ValueType::BitArray,
             Self::UtfCodepoint(_) => ValueType::UtfCodepoint,
             Self::Custom(value) => ValueType::Custom(value.type_().clone()),
+            Self::External(value) => ValueType::External(value.type_().clone()),
             Self::Bool(_) => ValueType::Bool,
             Self::Nil => ValueType::Nil,
             Self::Tuple(values) => ValueType::Tuple(values.iter().map(Self::value_type).collect()),
@@ -62,11 +66,26 @@ impl Value {
 
 #[cfg(test)]
 mod tests {
-    use super::{BitArrayValue, CustomValue, ListValue, Value, ValueType};
-    use crate::plan::{CustomType, CustomTypeName};
+    use super::{BitArrayValue, CustomValue, ExternalValue, ListValue, Value, ValueType};
+    use crate::host::HostExternalStore;
+    use crate::plan::{CustomType, CustomTypeName, ExternalType, ExternalTypeName};
 
     #[test]
     fn value_type_preserves_tuple_element_families() {
+        fn source_hash(
+            context: &crate::host::HostExternalHashing<'_>,
+            value: &crate::host::HostStoredValue<num_bigint::BigInt>,
+        ) -> u64 {
+            context.stored_value_hash(value)
+        }
+
+        fn inspect(
+            context: &crate::host::HostExternalInspection<'_>,
+            value: &crate::host::HostStoredValue<num_bigint::BigInt>,
+        ) -> ecow::EcoString {
+            context.inspect_stored_value(value)
+        }
+
         assert_eq!(Value::Float(1.0).value_type(), ValueType::Float);
         assert_eq!(Value::String("one".into()).value_type(), ValueType::String);
         assert_eq!(
@@ -91,6 +110,57 @@ mod tests {
             .value_type(),
             ValueType::Custom(custom_type),
         );
+        let external_type = ExternalType::new(
+            ExternalTypeName::new("application".into(), "main".into(), "Resource".into()),
+            Vec::new(),
+        );
+        let store = HostExternalStore::default();
+        let source_equal =
+            |context: &crate::host::HostExternalEquality<'_>,
+             left: &crate::host::HostStoredValue<num_bigint::BigInt>,
+             right: &crate::host::HostStoredValue<num_bigint::BigInt>| {
+                context.stored_values_equal(left, right)
+            };
+        let first = store.insert(
+            crate::host::HostStoredValue::new(crate::runtime::StoredRuntimeValue::test_int(
+                7.into(),
+            )),
+            source_equal,
+            source_hash,
+            inspect,
+        );
+        let equal = store.insert(
+            crate::host::HostStoredValue::new(crate::runtime::StoredRuntimeValue::test_int(
+                7.into(),
+            )),
+            source_equal,
+            source_hash,
+            inspect,
+        );
+        let stored_equal =
+            |left: &crate::runtime::StoredRuntimeValue,
+             right: &crate::runtime::StoredRuntimeValue| left.value() == right.value();
+        let equality = crate::host::HostExternalEquality::new(&stored_equal);
+        assert!(first.source_equal(&equality, &equal));
+        let stored_hash = |_: &crate::runtime::StoredRuntimeValue| 7;
+        let stored_inspect = |_: &crate::runtime::StoredRuntimeValue| "Resource(7)".into();
+        assert_eq!(
+            first.source_hash(&crate::host::HostExternalHashing::new(&stored_hash)),
+            7,
+        );
+        assert_eq!(
+            first.inspection(&crate::host::HostExternalInspection::new(&stored_inspect)),
+            "Resource(7)",
+        );
+        assert_eq!(
+            Value::External(ExternalValue::from_evaluated(
+                external_type.clone(),
+                first,
+                "Resource(7)".into(),
+            ))
+            .value_type(),
+            ValueType::External(external_type),
+        );
         assert_eq!(Value::Bool(true).value_type(), ValueType::Bool);
         assert_eq!(Value::Nil.value_type(), ValueType::Nil);
         assert_eq!(
@@ -102,8 +172,10 @@ mod tests {
             ValueType::List(Box::new(ValueType::Int)),
         );
         let function = super::FunctionValue::new(
-            crate::plan::execution::function::RuntimeFunctionId::Int(
-                crate::plan::execution::function::IntFunctionId(0),
+            crate::plan::execution::function::RuntimeFunctionId::Core(
+                crate::plan::execution::function::CoreRuntimeFunctionId::Int(
+                    crate::plan::execution::function::IntFunctionId(0),
+                ),
             ),
             Vec::new(),
             crate::plan::FunctionType::new(Vec::new(), ValueType::Int),

@@ -11,16 +11,16 @@ use crate::plan::execution::function::{
 };
 use crate::plan::execution::graph::LocalLabel;
 use crate::plan::execution::graph::{
-    BitArrayListLocalId, BoolListLocalId, CustomListLocalId, CustomLocal, FloatListLocalId,
-    FloatLocalId, FunctionListLocalId, IntListLocalId, IntLocalId, ListFunctionLocal,
-    ListListLocalId, NilListLocalId, ParamLocal, ParameterListListLocalId, ParameterListLocalId,
-    StringListLocalId, StringLocalId, TupleListLocalId, TupleLocalId, UtfCodepointListLocalId,
-    UtfCodepointLocalId,
+    BitArrayListLocalId, BoolListLocalId, CustomListLocalId, CustomLocal, ExternalListLocalId,
+    ExternalLocal, FloatListLocalId, FloatLocalId, FunctionListLocalId, IntListLocalId, IntLocalId,
+    ListFunctionLocal, ListListLocalId, NilListLocalId, ParamLocal, ParameterListListLocalId,
+    ParameterListLocalId, StringListLocalId, StringLocalId, TupleListLocalId, TupleLocalId,
+    UtfCodepointListLocalId, UtfCodepointLocalId,
 };
 use crate::plan::execution::type_::{
-    BitArrayListTypeId, BoolListTypeId, CustomListTypeId, FloatListTypeId, FunctionListTypeId,
-    IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId, ParameterListTypeId,
-    StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
+    BitArrayListTypeId, BoolListTypeId, CustomListTypeId, ExternalListTypeId, FloatListTypeId,
+    FunctionListTypeId, IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId,
+    ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
 };
 
 pub(crate) enum ParameterListInstruction {
@@ -50,7 +50,8 @@ pub(crate) enum ParameterListInstruction {
     },
 }
 
-pub(crate) enum TypedListInstruction<Element, Local, Function> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum TypedListInstruction<Element, Local, Function, FunctionLocal = ListFunctionLocal> {
     Value(Box<[Element]>),
     Constant(ConstantId<Local>),
     Spread {
@@ -63,7 +64,7 @@ pub(crate) enum TypedListInstruction<Element, Local, Function> {
         site: crate::plan::HostCallSite,
     },
     FunctionCall {
-        function: ListFunctionLocal,
+        function: FunctionLocal,
         args: Box<[ParamLocal]>,
         site: crate::plan::HostCallSite,
     },
@@ -83,6 +84,33 @@ pub(crate) enum TypedListInstruction<Element, Local, Function> {
         list: Local,
         count: usize,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ExternalListInstruction {
+    type_id: ExternalListTypeId,
+    instruction: TypedListInstruction<
+        ExternalLocal,
+        ExternalListLocalId,
+        crate::plan::execution::function::ExternalListFunctionId,
+        crate::plan::execution::graph::ExternalListFunctionLocalId,
+    >,
+}
+
+pub(crate) trait ExternalListInstructionView {
+    type Function;
+    type FunctionLocal;
+
+    fn type_id(&self) -> ExternalListTypeId;
+
+    fn instruction(
+        &self,
+    ) -> &TypedListInstruction<
+        ExternalLocal,
+        ExternalListLocalId,
+        Self::Function,
+        Self::FunctionLocal,
+    >;
 }
 
 pub(crate) enum ListInstruction {
@@ -218,6 +246,74 @@ impl Explain for ListInstruction {
     }
 }
 
+impl ExternalListInstruction {
+    pub(in crate::plan::execution) fn new(
+        type_id: ExternalListTypeId,
+        instruction: TypedListInstruction<
+            ExternalLocal,
+            ExternalListLocalId,
+            crate::plan::execution::function::ExternalListFunctionId,
+            crate::plan::execution::graph::ExternalListFunctionLocalId,
+        >,
+    ) -> Self {
+        Self {
+            type_id,
+            instruction,
+        }
+    }
+}
+
+impl ExternalListInstructionView for ExternalListInstruction {
+    type Function = crate::plan::execution::function::ExternalListFunctionId;
+    type FunctionLocal = crate::plan::execution::graph::ExternalListFunctionLocalId;
+
+    fn type_id(&self) -> ExternalListTypeId {
+        self.type_id
+    }
+
+    fn instruction(
+        &self,
+    ) -> &TypedListInstruction<
+        ExternalLocal,
+        ExternalListLocalId,
+        Self::Function,
+        Self::FunctionLocal,
+    > {
+        &self.instruction
+    }
+}
+
+impl ExternalListInstructionView for std::convert::Infallible {
+    type Function = std::convert::Infallible;
+    type FunctionLocal = std::convert::Infallible;
+
+    fn type_id(&self) -> ExternalListTypeId {
+        match *self {}
+    }
+
+    fn instruction(
+        &self,
+    ) -> &TypedListInstruction<
+        ExternalLocal,
+        ExternalListLocalId,
+        Self::Function,
+        Self::FunctionLocal,
+    > {
+        match *self {}
+    }
+}
+
+impl Explain for ExternalListInstruction {
+    fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
+        write_typed(
+            context.output(),
+            "external",
+            self.type_id.list_type().index(),
+            &self.instruction,
+        );
+    }
+}
+
 fn write_parameter(output: &mut String, instruction: &ParameterListInstruction) {
     match instruction {
         ParameterListInstruction::Empty => output.push_str("empty"),
@@ -240,15 +336,16 @@ fn write_parameter(output: &mut String, instruction: &ParameterListInstruction) 
     }
 }
 
-fn write_typed<Element, Local, Function>(
+fn write_typed<Element, Local, Function, FunctionLocal>(
     output: &mut String,
     family: &'static str,
     type_id: usize,
-    instruction: &TypedListInstruction<Element, Local, Function>,
+    instruction: &TypedListInstruction<Element, Local, Function, FunctionLocal>,
 ) where
     Element: LocalLabel,
     Local: LocalLabel,
     Function: FunctionLabelSource,
+    FunctionLocal: LocalLabel,
 {
     output.push_str("list.");
     output.push_str(family);
@@ -305,9 +402,53 @@ fn write_list_values<Value: LocalLabel>(output: &mut String, values: &[Value]) {
 }
 
 #[cfg(test)]
+mod external_list_view_tests {
+    use super::{ExternalListInstruction, ExternalListInstructionView, TypedListInstruction};
+    use crate::plan::execution::graph::{ExternalLocal, ExternalLocalId};
+    use crate::plan::execution::type_::{ExternalListTypeId, ExternalTypeId, ListTypeId};
+
+    #[test]
+    fn exposes_external_list_type_and_instruction() {
+        let external_type = ExternalTypeId::new(3);
+        let list_type = ExternalListTypeId::new(ListTypeId::new(7), external_type);
+        let instruction = ExternalListInstruction::new(
+            list_type,
+            TypedListInstruction::Value(
+                vec![ExternalLocal::new(ExternalLocalId(2), external_type)].into_boxed_slice(),
+            ),
+        );
+
+        assert_eq!(instruction.type_id(), list_type);
+        assert_eq!(
+            instruction.instruction(),
+            &TypedListInstruction::Value(
+                vec![ExternalLocal::new(ExternalLocalId(2), external_type)].into_boxed_slice(),
+            ),
+        );
+    }
+
+    #[test]
+    fn plain_external_list_instruction_view_is_uninhabited() {
+        fn assert_view<View>()
+        where
+            View: ExternalListInstructionView<
+                    Function = std::convert::Infallible,
+                    FunctionLocal = std::convert::Infallible,
+                >,
+        {
+        }
+
+        assert_view::<std::convert::Infallible>();
+    }
+}
+
+#[cfg(test)]
 mod explain_tests {
+    use super::{ExternalListInstruction, TypedListInstruction};
     use crate::plan::execution::explain;
     use crate::plan::execution::function::TupleFunctionId;
+    use crate::plan::execution::graph::{ExternalLocal, ExternalLocalId};
+    use crate::plan::execution::type_::{ExternalListTypeId, ExternalTypeId, ListTypeId};
 
     #[test]
     fn writes_list_instruction_grammar() {
@@ -333,6 +474,24 @@ pub fn main() {
         );
 
         assert_explanation(source, expected);
+    }
+
+    #[test]
+    fn writes_external_list_instruction_grammar() {
+        let source = "pub fn main() { 1 }";
+        let expected = "list.external[type#7] value elements=[%external#2]";
+
+        explain::assert_rendered(source, expected, |plan, output| {
+            let external_type = ExternalTypeId::new(3);
+            let instruction = ExternalListInstruction::new(
+                ExternalListTypeId::new(ListTypeId::new(7), external_type),
+                TypedListInstruction::Value(
+                    vec![ExternalLocal::new(ExternalLocalId(2), external_type)].into_boxed_slice(),
+                ),
+            );
+            let mut context = explain::ExplainContext::new(plan, output);
+            context.write(&instruction);
+        });
     }
 
     fn assert_explanation(source: &str, expected: &str) {

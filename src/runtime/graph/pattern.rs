@@ -117,7 +117,7 @@ fn matches<Plan: ExecutableRuntimePlan>(
                 EvaluatedValue::List(value) => value,
                 _ => return Ok(false),
             };
-            let values = state.values().evaluated_values(value);
+            let values = state.lists().evaluated_values(value);
             let element_count = pattern.elements().len();
             if pattern.tail().is_some() {
                 if values.len() < element_count {
@@ -133,7 +133,7 @@ fn matches<Plan: ExecutableRuntimePlan>(
                 }
             }
             if let Some(MatchPatternListTail::Bind(binding)) = pattern.tail() {
-                let tail = state.values_mut().drop_first(value, element_count);
+                let tail = state.lists_mut().drop_first(value, element_count);
                 bindings.bind(binding, EvaluatedValue::List(tail));
             }
             Ok(true)
@@ -158,14 +158,14 @@ fn matches<Plan: ExecutableRuntimePlan>(
             for (index, pattern) in fields.iter().enumerate() {
                 let value = &value.fields()[index];
                 let expected = descriptor.fields()[index].type_();
-                if plan.value_type(expected) != value.value_type(plan) {
+                if plan.value_type(expected) != value.value_type(plan.value_metadata()) {
                     return Err(ExecutionError::Invariant(
                         InvariantError::CustomFieldFamilyMismatch {
                             custom_type: plan.custom_value_type(constructor.type_id()),
                             constructor: descriptor.name().clone(),
                             field_index: index,
                             expected: plan.value_type(expected),
-                            actual: value.value_type(plan),
+                            actual: value.value_type(plan.value_metadata()),
                         },
                     ));
                 }
@@ -448,12 +448,11 @@ mod tests {
     use super::{MatchPattern, match_pattern};
     use crate::plan::ValueType;
     use crate::plan::execution::ExecutionPlan;
-    use crate::plan::execution::function::RuntimeFunctionId;
+    use crate::plan::execution::function::{CoreRuntimeFunctionId, RuntimeFunctionId};
     use crate::plan::execution::graph::Terminator;
     use crate::runtime::evaluated::{EvaluatedCustomValue, EvaluatedValue};
-    use crate::runtime::state::{
-        CustomListAllocation, ListValueId, ParameterListValueId, RuntimeState,
-    };
+    use crate::runtime::state::RuntimeState;
+    use crate::runtime::state::list::{CustomListAllocation, ListValueId, ParameterListValueId};
     use crate::runtime::{ExecutionError, InvariantError, Value};
 
     #[test]
@@ -882,7 +881,7 @@ pub fn main() {
         let boxed_constructor = list_plan.custom_constructor_id(0, 0);
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
-        let values = state.values_mut().custom(CustomListAllocation::new(
+        let values = state.lists_mut().custom(CustomListAllocation::new(
             list_plan.custom_list_function_id(0).type_id(),
             vec![corrupted_boxed],
         ));
@@ -939,7 +938,7 @@ pub fn main() {
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
         let list = state
-            .values_mut()
+            .lists_mut()
             .int(plan.int_list_function_id(0).type_id(), values);
         let environment = BlockEnvironment::from_retained(RetainedValues::empty());
 
@@ -1061,7 +1060,7 @@ pub fn main() {
 
     fn main_pattern(plan: &ExecutionPlan) -> &MatchPattern {
         let main = match plan.main_runtime() {
-            RuntimeFunctionId::Int(id) => id,
+            RuntimeFunctionId::Core(CoreRuntimeFunctionId::Int(id)) => id,
             _ => panic!("fixture main should return Int"),
         };
         plan.int_function(main)

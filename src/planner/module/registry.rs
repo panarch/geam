@@ -1,6 +1,6 @@
 use crate::plan::{
-    ConstantTemplateId, ConstantTemplateSignature, CustomTypeDefinition, CustomTypeName, ModuleId,
-    ValueShape,
+    ConstantTemplateId, ConstantTemplateSignature, CustomTypeDefinition, CustomTypeName,
+    ExternalTypeDefinition, ExternalTypeName, ModuleId, ValueShape,
 };
 use crate::planner::context::FunctionInfo;
 use crate::planner::module::constant::ConstantSignatures;
@@ -21,6 +21,7 @@ pub(in crate::planner) struct ProgramRegistry {
 pub(in crate::planner) struct ModuleRegistry {
     name: EcoString,
     custom_types: Vec<CustomTypeDefinition>,
+    external_types: Vec<ExternalTypeDefinition>,
     functions: HashMap<EcoString, FunctionInfo>,
     executable_externals: HashSet<EcoString>,
     constants: ConstantSignatures,
@@ -98,18 +99,30 @@ impl ProgramRegistry {
     pub(in crate::planner) fn custom_types(&self, module: ModuleId) -> &[CustomTypeDefinition] {
         &self.modules[module.index()].custom_types
     }
+
+    pub(in crate::planner) fn external_type(
+        &self,
+        name: &ExternalTypeName,
+    ) -> Option<&ExternalTypeDefinition> {
+        self.modules
+            .iter()
+            .flat_map(|module| &module.external_types)
+            .find(|definition| definition.name() == name)
+    }
 }
 
 impl ModuleRegistry {
     pub(in crate::planner) fn new(
         name: EcoString,
         custom_types: Vec<CustomTypeDefinition>,
+        external_types: Vec<ExternalTypeDefinition>,
         functions: HashMap<EcoString, FunctionInfo>,
         constants: ConstantSignatures,
     ) -> Self {
         Self {
             name,
             custom_types,
+            external_types,
             functions,
             executable_externals: HashSet::new(),
             constants,
@@ -152,12 +165,14 @@ mod tests {
             ModuleRegistry::new(
                 "alpha".into(),
                 vec![alpha_type.clone()],
+                Vec::new(),
                 HashMap::from([("same".into(), function_info(alpha))]),
                 ConstantSignatures::default(),
             ),
             ModuleRegistry::new(
                 "root".into(),
                 vec![root_type.clone()],
+                Vec::new(),
                 HashMap::from([("same".into(), function_info(root))]),
                 root_constants,
             ),

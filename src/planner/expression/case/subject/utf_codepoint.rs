@@ -29,6 +29,7 @@ pub(super) fn plan(
     let mut ordered_clauses = Vec::new();
     for clause in clauses {
         for pattern in clause.patterns() {
+            let (pattern, reachable, exhaustive_remainder) = pattern.into_parts();
             let pattern = plan_case_pattern(pattern)?;
             let bindings = super::branch_bindings(pattern.bound_names(), subject.clone());
             let is_total = clause.guard.is_none();
@@ -41,6 +42,8 @@ pub(super) fn plan(
                     guard: clause.guard.clone(),
                     match_condition: BoolExpr::value(true),
                     is_total,
+                    reachable,
+                    exhaustive_remainder,
                 },
                 context,
             )?);

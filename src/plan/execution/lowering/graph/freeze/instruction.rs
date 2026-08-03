@@ -1,11 +1,12 @@
 use super::super::draft::instruction::{
     DraftBitArrayBitsSize, DraftBitArrayEvaluatedSize, DraftBitArrayInstruction,
-    DraftBitArraySegment, DraftBoolInstruction, DraftCustomInstruction, DraftFloatInstruction,
-    DraftFunctionInstruction, DraftIntInstruction, DraftListInstruction, DraftNilInstruction,
-    DraftParameterListInstruction, DraftStringInstruction, DraftTupleInstruction,
-    DraftTypedListInstruction, DraftUtfCodepointInstruction,
+    DraftBitArraySegment, DraftBoolInstruction, DraftCustomInstruction, DraftExternalInstruction,
+    DraftFloatInstruction, DraftFunctionInstruction, DraftFunctionTarget, DraftIntInstruction,
+    DraftListInstruction, DraftNilInstruction, DraftParameterListInstruction,
+    DraftStringInstruction, DraftTupleInstruction, DraftTypedListInstruction,
+    DraftUtfCodepointInstruction,
 };
-use super::super::draft::{DraftInstruction, DraftList};
+use super::super::draft::{DraftFunction, DraftInstruction, DraftList};
 use super::value::BlockValues;
 use crate::plan::execution;
 
@@ -36,6 +37,9 @@ pub(super) fn freeze(
         DraftInstruction::Custom { output, kind } => {
             (output.erase(), K::Custom(freeze_custom(kind, values)))
         }
+        DraftInstruction::External { output, kind } => {
+            (output.erase(), K::External(freeze_external(kind, values)))
+        }
         DraftInstruction::Bool { output, kind } => {
             (output.erase(), K::Bool(freeze_bool(kind, values)))
         }
@@ -45,9 +49,7 @@ pub(super) fn freeze(
         DraftInstruction::Tuple { output, kind } => {
             (output.erase(), K::Tuple(freeze_tuple(kind, values)))
         }
-        DraftInstruction::List { output, kind } => {
-            (output.erase(), K::List(freeze_list(kind, values)))
-        }
+        DraftInstruction::List { output, kind } => (output.erase(), freeze_list(kind, values)),
         DraftInstruction::Function {
             output,
             shape,
@@ -55,14 +57,7 @@ pub(super) fn freeze(
         } => {
             let type_ = context.types.function_type(shape);
             let family = function_return_family(shape, &context.representations);
-            (
-                output.erase(),
-                K::Function(execution::graph::FunctionInstruction::new(
-                    type_,
-                    family,
-                    freeze_function(kind, values),
-                )),
-            )
+            (output.erase(), freeze_function(kind, values, type_, family))
         }
     };
     execution::graph::Instruction::new(values.slot(&output), kind)
@@ -85,6 +80,7 @@ fn function_return_family(
             StoredValueShape::BitArray => F::BitArray,
             StoredValueShape::UtfCodepoint => F::UtfCodepoint,
             StoredValueShape::Custom(_) => F::Custom,
+            StoredValueShape::External(_) => F::External,
             StoredValueShape::Bool => F::Bool,
             StoredValueShape::Nil => F::Nil,
             StoredValueShape::Tuple(_) => F::Tuple,
@@ -481,6 +477,46 @@ fn freeze_custom(
     }
 }
 
+fn freeze_external(
+    instruction: &DraftExternalInstruction,
+    values: &BlockValues,
+) -> execution::graph::ExternalInstruction {
+    use execution::graph::ExternalInstruction as E;
+
+    match instruction {
+        DraftExternalInstruction::Call {
+            function,
+            args,
+            site,
+        } => E::Call {
+            function: *function,
+            args: values.any_slice(args),
+            site: site.clone(),
+        },
+        DraftExternalInstruction::FunctionCall {
+            function,
+            args,
+            site,
+        } => E::FunctionCall {
+            function: values.external_function(function),
+            args: values.any_slice(args),
+            site: site.clone(),
+        },
+        DraftExternalInstruction::TupleIndex { tuple, index } => E::TupleIndex {
+            tuple: values.tuple(tuple),
+            index: *index,
+        },
+        DraftExternalInstruction::CustomField { source, index } => E::CustomField {
+            source: values.custom(source),
+            index: *index,
+        },
+        DraftExternalInstruction::ListIndex { list, index } => E::ListIndex {
+            list: values.external_list(list),
+            index: *index,
+        },
+    }
+}
+
 fn freeze_bool(
     instruction: &DraftBoolInstruction,
     values: &BlockValues,
@@ -705,14 +741,16 @@ fn freeze_parameter_list(
 fn freeze_list(
     instruction: &DraftListInstruction,
     values: &BlockValues,
-) -> execution::graph::ListInstruction {
+) -> execution::graph::InstructionKind {
+    use execution::graph::InstructionKind as K;
     use execution::graph::ListInstruction as E;
 
     match instruction {
-        DraftListInstruction::Parameter(type_id, instruction) => {
-            E::Parameter(*type_id, freeze_parameter_list(instruction, values))
-        }
-        DraftListInstruction::ParameterList(type_id, instruction) => E::ParameterList(
+        DraftListInstruction::Parameter(type_id, instruction) => K::List(E::Parameter(
+            *type_id,
+            freeze_parameter_list(instruction, values),
+        )),
+        DraftListInstruction::ParameterList(type_id, instruction) => K::List(E::ParameterList(
             *type_id,
             freeze_typed_list(
                 instruction,
@@ -720,12 +758,12 @@ fn freeze_list(
                 BlockValues::parameter_list,
                 BlockValues::parameter_list_list,
             ),
-        ),
-        DraftListInstruction::Int(type_id, instruction) => E::Int(
+        )),
+        DraftListInstruction::Int(type_id, instruction) => K::List(E::Int(
             *type_id,
             freeze_typed_list(instruction, values, BlockValues::int, BlockValues::int_list),
-        ),
-        DraftListInstruction::String(type_id, instruction) => E::String(
+        )),
+        DraftListInstruction::String(type_id, instruction) => K::List(E::String(
             *type_id,
             freeze_typed_list(
                 instruction,
@@ -733,8 +771,8 @@ fn freeze_list(
                 BlockValues::string,
                 BlockValues::string_list,
             ),
-        ),
-        DraftListInstruction::BitArray(type_id, instruction) => E::BitArray(
+        )),
+        DraftListInstruction::BitArray(type_id, instruction) => K::List(E::BitArray(
             *type_id,
             freeze_typed_list(
                 instruction,
@@ -742,8 +780,8 @@ fn freeze_list(
                 BlockValues::bit_array,
                 BlockValues::bit_array_list,
             ),
-        ),
-        DraftListInstruction::UtfCodepoint(type_id, instruction) => E::UtfCodepoint(
+        )),
+        DraftListInstruction::UtfCodepoint(type_id, instruction) => K::List(E::UtfCodepoint(
             *type_id,
             freeze_typed_list(
                 instruction,
@@ -751,8 +789,8 @@ fn freeze_list(
                 BlockValues::utf_codepoint,
                 BlockValues::utf_codepoint_list,
             ),
-        ),
-        DraftListInstruction::Custom(type_id, instruction) => E::Custom(
+        )),
+        DraftListInstruction::Custom(type_id, instruction) => K::List(E::Custom(
             *type_id,
             freeze_typed_list(
                 instruction,
@@ -760,8 +798,20 @@ fn freeze_list(
                 BlockValues::custom,
                 BlockValues::custom_list,
             ),
-        ),
-        DraftListInstruction::Float(type_id, instruction) => E::Float(
+        )),
+        DraftListInstruction::External(type_id, instruction) => {
+            K::ExternalList(execution::graph::ExternalListInstruction::new(
+                *type_id,
+                freeze_typed_list_with_function_local(
+                    instruction,
+                    values,
+                    BlockValues::external,
+                    BlockValues::external_list,
+                    BlockValues::external_list_function,
+                ),
+            ))
+        }
+        DraftListInstruction::Float(type_id, instruction) => K::List(E::Float(
             *type_id,
             freeze_typed_list(
                 instruction,
@@ -769,8 +819,8 @@ fn freeze_list(
                 BlockValues::float,
                 BlockValues::float_list,
             ),
-        ),
-        DraftListInstruction::Bool(type_id, instruction) => E::Bool(
+        )),
+        DraftListInstruction::Bool(type_id, instruction) => K::List(E::Bool(
             *type_id,
             freeze_typed_list(
                 instruction,
@@ -778,12 +828,12 @@ fn freeze_list(
                 BlockValues::bool,
                 BlockValues::bool_list,
             ),
-        ),
-        DraftListInstruction::Nil(type_id, instruction) => E::Nil(
+        )),
+        DraftListInstruction::Nil(type_id, instruction) => K::List(E::Nil(
             *type_id,
             freeze_typed_list(instruction, values, BlockValues::nil, BlockValues::nil_list),
-        ),
-        DraftListInstruction::Tuple(type_id, instruction) => E::Tuple(
+        )),
+        DraftListInstruction::Tuple(type_id, instruction) => K::List(E::Tuple(
             *type_id,
             freeze_typed_list(
                 instruction,
@@ -791,8 +841,8 @@ fn freeze_list(
                 BlockValues::tuple,
                 BlockValues::tuple_list,
             ),
-        ),
-        DraftListInstruction::List(type_id, instruction) => E::List(
+        )),
+        DraftListInstruction::List(type_id, instruction) => K::List(E::List(
             *type_id,
             freeze_typed_list(
                 instruction,
@@ -800,8 +850,8 @@ fn freeze_list(
                 BlockValues::stored_list,
                 BlockValues::list_list,
             ),
-        ),
-        DraftListInstruction::Function(type_id, instruction) => E::Function(
+        )),
+        DraftListInstruction::Function(type_id, instruction) => K::List(E::Function(
             *type_id,
             freeze_typed_list(
                 instruction,
@@ -809,7 +859,7 @@ fn freeze_list(
                 BlockValues::function,
                 BlockValues::function_list,
             ),
-        ),
+        )),
     }
 }
 
@@ -819,6 +869,26 @@ fn freeze_typed_list<Element, FinalElement, Local, Function>(
     element: fn(&BlockValues, &Element) -> FinalElement,
     list: fn(&BlockValues, &DraftList) -> Local,
 ) -> execution::graph::TypedListInstruction<FinalElement, Local, Function>
+where
+    Local: Copy,
+    Function: Clone,
+{
+    freeze_typed_list_with_function_local(
+        instruction,
+        values,
+        element,
+        list,
+        BlockValues::list_function,
+    )
+}
+
+fn freeze_typed_list_with_function_local<Element, FinalElement, Local, Function, FunctionLocal>(
+    instruction: &DraftTypedListInstruction<Element, Local, Function>,
+    values: &BlockValues,
+    element: fn(&BlockValues, &Element) -> FinalElement,
+    list: fn(&BlockValues, &DraftList) -> Local,
+    function_local: fn(&BlockValues, &DraftFunction) -> FunctionLocal,
+) -> execution::graph::TypedListInstruction<FinalElement, Local, Function, FunctionLocal>
 where
     Local: Copy,
     Function: Clone,
@@ -856,7 +926,7 @@ where
             args,
             site,
         } => E::FunctionCall {
-            function: values.list_function(function),
+            function: function_local(values, function),
             args: values.any_slice(args),
             site: site.clone(),
         },
@@ -888,50 +958,399 @@ where
 fn freeze_function(
     instruction: &DraftFunctionInstruction,
     values: &BlockValues,
-) -> execution::graph::FunctionInstructionKind {
-    use execution::graph::FunctionInstructionKind as E;
+    type_: execution::type_::FunctionType,
+    family: execution::function::FunctionReturnFamily,
+) -> execution::graph::InstructionKind {
+    use execution::graph::{ExternalFunctionInstructionKind as X, FunctionInstructionKind as F};
 
     match instruction {
-        DraftFunctionInstruction::Constant(id) => E::Constant(*id),
-        DraftFunctionInstruction::Reference(target) => E::Reference(target.clone()),
-        DraftFunctionInstruction::Closure { target, captures } => E::Closure {
-            target: target.clone(),
-            captures: captures
+        DraftFunctionInstruction::Constant(id) => {
+            function_instruction(type_, family, F::Constant(*id))
+        }
+        DraftFunctionInstruction::Reference(target) => match freeze_function_target(target) {
+            FrozenFunctionTarget::Function(target) => {
+                function_instruction(type_, family, F::Reference(target))
+            }
+            FrozenFunctionTarget::External(target) => {
+                external_function_instruction(type_, family, X::Reference(target))
+            }
+        },
+        DraftFunctionInstruction::Closure { target, captures } => {
+            let captures = captures
                 .iter()
                 .map(|capture| values.capture(&capture.target, &capture.source))
                 .collect::<Vec<_>>()
-                .into_boxed_slice(),
-        },
-        DraftFunctionInstruction::Constructor(constructor) => E::Constructor(*constructor),
+                .into_boxed_slice();
+            match freeze_function_target(target) {
+                FrozenFunctionTarget::Function(target) => {
+                    function_instruction(type_, family, F::Closure { target, captures })
+                }
+                FrozenFunctionTarget::External(target) => {
+                    external_function_instruction(type_, family, X::Closure { target, captures })
+                }
+            }
+        }
+        DraftFunctionInstruction::Constructor(constructor) => {
+            function_instruction(type_, family, F::Constructor(*constructor))
+        }
         DraftFunctionInstruction::Call {
             function,
             args,
             site,
-        } => E::Call {
-            function: function.clone(),
-            args: values.any_slice(args),
-            site: site.clone(),
+        } => match freeze_function_function_target(function) {
+            FrozenFunctionFunctionTarget::Function(function) => function_instruction(
+                type_,
+                family,
+                F::Call {
+                    function,
+                    args: values.any_slice(args),
+                    site: site.clone(),
+                },
+            ),
+            FrozenFunctionFunctionTarget::External(function) => external_function_instruction(
+                type_,
+                family,
+                X::Call {
+                    function,
+                    args: values.any_slice(args),
+                    site: site.clone(),
+                },
+            ),
         },
         DraftFunctionInstruction::FunctionCall {
             function,
             args,
             site,
-        } => E::FunctionCall {
-            function: values.function_function(function),
-            args: values.any_slice(args),
-            site: site.clone(),
+        } => match values.function_function(function) {
+            execution::graph::FunctionFunctionLocal::Core(function) => function_instruction(
+                type_,
+                family,
+                F::FunctionCall {
+                    function,
+                    args: values.any_slice(args),
+                    site: site.clone(),
+                },
+            ),
+            execution::graph::FunctionFunctionLocal::External(function) => {
+                external_function_instruction(
+                    type_,
+                    family,
+                    X::FunctionCall {
+                        function,
+                        args: values.any_slice(args),
+                        site: site.clone(),
+                    },
+                )
+            }
         },
-        DraftFunctionInstruction::TupleIndex { tuple, index } => E::TupleIndex {
-            tuple: values.tuple(tuple),
-            index: *index,
+        DraftFunctionInstruction::TupleIndex { tuple, index } => function_instruction(
+            type_,
+            family,
+            F::TupleIndex {
+                tuple: values.tuple(tuple),
+                index: *index,
+            },
+        ),
+        DraftFunctionInstruction::CustomField { source, index } => function_instruction(
+            type_,
+            family,
+            F::CustomField {
+                source: values.custom(source),
+                index: *index,
+            },
+        ),
+        DraftFunctionInstruction::ListIndex { list, index } => function_instruction(
+            type_,
+            family,
+            F::ListIndex {
+                list: values.function_list(list),
+                index: *index,
+            },
+        ),
+    }
+}
+
+enum FrozenFunctionTarget {
+    Function(execution::graph::FunctionTarget),
+    External(execution::graph::ExternalFunctionTarget),
+}
+
+enum FrozenFunctionFunctionTarget {
+    Function(execution::function::ProfiledFunctionFunctionId<std::convert::Infallible>),
+    External(execution::graph::ExternalFunctionCallTarget),
+}
+
+fn function_instruction(
+    type_: execution::type_::FunctionType,
+    family: execution::function::FunctionReturnFamily,
+    kind: execution::graph::FunctionInstructionKind,
+) -> execution::graph::InstructionKind {
+    execution::graph::InstructionKind::Function(execution::graph::FunctionInstruction::new(
+        type_, family, kind,
+    ))
+}
+
+fn external_function_instruction(
+    type_: execution::type_::FunctionType,
+    family: execution::function::FunctionReturnFamily,
+    kind: execution::graph::ExternalFunctionInstructionKind,
+) -> execution::graph::InstructionKind {
+    execution::graph::InstructionKind::ExternalFunction(
+        execution::graph::ExternalFunctionInstruction::new(type_, family, kind),
+    )
+}
+
+fn freeze_function_target(target: &DraftFunctionTarget) -> FrozenFunctionTarget {
+    use execution::graph::{ExternalFunctionTarget as X, FunctionTarget as F};
+
+    match target {
+        DraftFunctionTarget::Generic(function) => {
+            FrozenFunctionTarget::Function(F::Generic(function.clone()))
+        }
+        DraftFunctionTarget::Never(function) => FrozenFunctionTarget::Function(F::Never(*function)),
+        DraftFunctionTarget::Int(function) => FrozenFunctionTarget::Function(F::Int(*function)),
+        DraftFunctionTarget::Float(function) => FrozenFunctionTarget::Function(F::Float(*function)),
+        DraftFunctionTarget::String(function) => {
+            FrozenFunctionTarget::Function(F::String(*function))
+        }
+        DraftFunctionTarget::BitArray(function) => {
+            FrozenFunctionTarget::Function(F::BitArray(*function))
+        }
+        DraftFunctionTarget::UtfCodepoint(function) => {
+            FrozenFunctionTarget::Function(F::UtfCodepoint(*function))
+        }
+        DraftFunctionTarget::Custom(function) => {
+            FrozenFunctionTarget::Function(F::Custom(*function))
+        }
+        DraftFunctionTarget::External(function) => {
+            FrozenFunctionTarget::External(X::Value(*function))
+        }
+        DraftFunctionTarget::Bool(function) => FrozenFunctionTarget::Function(F::Bool(*function)),
+        DraftFunctionTarget::Nil(function) => FrozenFunctionTarget::Function(F::Nil(*function)),
+        DraftFunctionTarget::Tuple(function) => FrozenFunctionTarget::Function(F::Tuple(*function)),
+        DraftFunctionTarget::List(function) => match freeze_list_function_target(function) {
+            Ok(function) => FrozenFunctionTarget::Function(F::List(function)),
+            Err(function) => FrozenFunctionTarget::External(X::List(function)),
         },
-        DraftFunctionInstruction::CustomField { source, index } => E::CustomField {
-            source: values.custom(source),
-            index: *index,
+        DraftFunctionTarget::Function(function) => {
+            match freeze_function_function_target(function) {
+                FrozenFunctionFunctionTarget::Function(function) => {
+                    FrozenFunctionTarget::Function(F::Function(function))
+                }
+                FrozenFunctionFunctionTarget::External(
+                    execution::graph::ExternalFunctionCallTarget::Function(function),
+                ) => FrozenFunctionTarget::External(X::Function(function)),
+                FrozenFunctionFunctionTarget::External(
+                    execution::graph::ExternalFunctionCallTarget::ListFunction {
+                        id,
+                        type_,
+                        list_type,
+                    },
+                ) => FrozenFunctionTarget::External(X::ListFunction {
+                    id,
+                    type_,
+                    list_type,
+                }),
+            }
+        }
+    }
+}
+
+fn freeze_list_function_target(
+    function: &execution::function::RuntimeListFunctionId,
+) -> Result<execution::function::ListFunctionId, execution::function::ExternalListFunctionId> {
+    use execution::function::ProfiledListFunctionId as F;
+
+    match function {
+        F::Core(function) => Ok(function.clone()),
+        F::External(function) => Err(*function),
+    }
+}
+
+fn freeze_function_function_target(
+    function: &execution::function::FunctionFunctionId,
+) -> FrozenFunctionFunctionTarget {
+    use execution::function::ProfiledFunctionFunctionId as F;
+
+    match function {
+        F::Generic(function) => {
+            FrozenFunctionFunctionTarget::Function(F::Generic(function.clone()))
+        }
+        F::Never(function) => FrozenFunctionFunctionTarget::Function(F::Never(function.clone())),
+        F::Int(function) => FrozenFunctionFunctionTarget::Function(F::Int(*function)),
+        F::Float(function) => FrozenFunctionFunctionTarget::Function(F::Float(*function)),
+        F::String(function) => FrozenFunctionFunctionTarget::Function(F::String(*function)),
+        F::BitArray(function) => FrozenFunctionFunctionTarget::Function(F::BitArray(*function)),
+        F::UtfCodepoint(function) => {
+            FrozenFunctionFunctionTarget::Function(F::UtfCodepoint(*function))
+        }
+        F::Custom(function) => FrozenFunctionFunctionTarget::Function(F::Custom(function.clone())),
+        F::External(function) => FrozenFunctionFunctionTarget::External(
+            execution::graph::ExternalFunctionCallTarget::Function(function.clone()),
+        ),
+        F::Bool(function) => FrozenFunctionFunctionTarget::Function(F::Bool(*function)),
+        F::Nil(function) => FrozenFunctionFunctionTarget::Function(F::Nil(*function)),
+        F::Tuple(function) => FrozenFunctionFunctionTarget::Function(F::Tuple(*function)),
+        F::List(function) => match freeze_list_function_function_target(function) {
+            Ok(function) => FrozenFunctionFunctionTarget::Function(F::List(function)),
+            Err(FrozenExternalListFunctionFunction {
+                id,
+                type_,
+                list_type,
+            }) => FrozenFunctionFunctionTarget::External(
+                execution::graph::ExternalFunctionCallTarget::ListFunction {
+                    id,
+                    type_,
+                    list_type,
+                },
+            ),
         },
-        DraftFunctionInstruction::ListIndex { list, index } => E::ListIndex {
-            list: values.function_list(list),
-            index: *index,
-        },
+        F::Function(function) => {
+            FrozenFunctionFunctionTarget::Function(F::Function(function.clone()))
+        }
+    }
+}
+
+struct FrozenExternalListFunctionFunction {
+    id: execution::function::ExternalListFunctionFunctionId,
+    type_: execution::type_::FunctionType,
+    list_type: execution::type_::ExternalListTypeId,
+}
+
+fn freeze_list_function_function_target(
+    function: &execution::function::ListFunctionFunctionId,
+) -> Result<
+    execution::function::ProfiledListFunctionFunctionId<std::convert::Infallible>,
+    FrozenExternalListFunctionFunction,
+> {
+    use execution::function::ProfiledListFunctionFunctionId as F;
+
+    match function {
+        F::Parameter {
+            id,
+            type_,
+            list_type,
+        } => Ok(F::Parameter {
+            id: *id,
+            type_: type_.clone(),
+            list_type: *list_type,
+        }),
+        F::ParameterList {
+            id,
+            type_,
+            list_type,
+        } => Ok(F::ParameterList {
+            id: *id,
+            type_: type_.clone(),
+            list_type: *list_type,
+        }),
+        F::Int {
+            id,
+            type_,
+            list_type,
+        } => Ok(F::Int {
+            id: *id,
+            type_: type_.clone(),
+            list_type: *list_type,
+        }),
+        F::String {
+            id,
+            type_,
+            list_type,
+        } => Ok(F::String {
+            id: *id,
+            type_: type_.clone(),
+            list_type: *list_type,
+        }),
+        F::BitArray {
+            id,
+            type_,
+            list_type,
+        } => Ok(F::BitArray {
+            id: *id,
+            type_: type_.clone(),
+            list_type: *list_type,
+        }),
+        F::UtfCodepoint {
+            id,
+            type_,
+            list_type,
+        } => Ok(F::UtfCodepoint {
+            id: *id,
+            type_: type_.clone(),
+            list_type: *list_type,
+        }),
+        F::Custom {
+            id,
+            type_,
+            list_type,
+        } => Ok(F::Custom {
+            id: *id,
+            type_: type_.clone(),
+            list_type: *list_type,
+        }),
+        F::External {
+            id,
+            type_,
+            list_type,
+        } => Err(FrozenExternalListFunctionFunction {
+            id: *id,
+            type_: type_.clone(),
+            list_type: *list_type,
+        }),
+        F::Float {
+            id,
+            type_,
+            list_type,
+        } => Ok(F::Float {
+            id: *id,
+            type_: type_.clone(),
+            list_type: *list_type,
+        }),
+        F::Bool {
+            id,
+            type_,
+            list_type,
+        } => Ok(F::Bool {
+            id: *id,
+            type_: type_.clone(),
+            list_type: *list_type,
+        }),
+        F::Nil {
+            id,
+            type_,
+            list_type,
+        } => Ok(F::Nil {
+            id: *id,
+            type_: type_.clone(),
+            list_type: *list_type,
+        }),
+        F::Tuple {
+            id,
+            type_,
+            list_type,
+        } => Ok(F::Tuple {
+            id: *id,
+            type_: type_.clone(),
+            list_type: *list_type,
+        }),
+        F::List {
+            id,
+            type_,
+            list_type,
+        } => Ok(F::List {
+            id: *id,
+            type_: type_.clone(),
+            list_type: *list_type,
+        }),
+        F::Function {
+            id,
+            type_,
+            list_type,
+        } => Ok(F::Function {
+            id: *id,
+            type_: type_.clone(),
+            list_type: *list_type,
+        }),
     }
 }

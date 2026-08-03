@@ -1,17 +1,17 @@
 use crate::host::{
-    HostCustomToken, HostFunctionToken, HostListToken, HostScopedValue, HostTupleToken,
-    HostValueFamily, HostValueToken,
+    HostCustomToken, HostExternalToken, HostFunctionToken, HostListToken, HostScopedValue,
+    HostStoredValueFamily, HostTupleToken, HostValueFamily, HostValueToken,
 };
-use crate::plan::execution::type_::{ListStorageTypeId, ListTypeId};
-use crate::runtime::ExecutableRuntimePlan;
+use crate::plan::execution::type_::ListStorageTypeId;
 use crate::runtime::evaluated::{
-    EvaluatedBitArray, EvaluatedCustomValue, EvaluatedFunctionValue, EvaluatedFunctionValueKind,
-    EvaluatedGenericFunction, EvaluatedValue,
+    EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalValue, EvaluatedFunctionValue,
+    EvaluatedFunctionValueKind, EvaluatedGenericFunction, EvaluatedValue,
 };
 use crate::runtime::function::InvocableFunctionValue;
 use crate::runtime::graph::RetainedValues;
-use crate::runtime::state::{
-    CustomListAllocation, ListValueId, ParameterListValueId, RuntimeStateFor, StoredListValueId,
+use crate::runtime::state::list::{
+    CustomListAllocation, ExternalListAllocation, ListValueId, ParameterListValueId,
+    RuntimeListStorage, StoredListValueId,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -31,9 +31,53 @@ pub(super) struct ScopedValues {
     stored_list_values: HashMap<HostValueToken, StoredListValueId>,
     tuples: Vec<Vec<EvaluatedValue>>,
     customs: Vec<EvaluatedCustomValue>,
+    externals: Vec<EvaluatedExternalValue>,
     functions: Vec<InvocableFunctionValue>,
     symbolic_functions: Vec<EvaluatedGenericFunction>,
     function_values: HashMap<HostValueToken, EvaluatedFunctionValue>,
+}
+
+pub(crate) struct StoredRuntimeValue {
+    value: EvaluatedValue,
+    type_: crate::plan::ValueType,
+}
+
+impl StoredRuntimeValue {
+    pub(in crate::runtime) fn new(value: EvaluatedValue, type_: crate::plan::ValueType) -> Self {
+        Self { value, type_ }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_int(value: BigInt) -> Self {
+        Self::new(EvaluatedValue::Int(value), crate::plan::ValueType::Int)
+    }
+
+    pub(in crate::runtime) fn value(&self) -> &EvaluatedValue {
+        &self.value
+    }
+
+    pub(crate) fn type_(&self) -> &crate::plan::ValueType {
+        &self.type_
+    }
+
+    pub(crate) fn family(&self) -> HostStoredValueFamily {
+        match &self.value {
+            EvaluatedValue::Int(_) => HostStoredValueFamily::Int,
+            EvaluatedValue::Float(_) => HostStoredValueFamily::Float,
+            EvaluatedValue::String(_) => HostStoredValueFamily::String,
+            EvaluatedValue::BitArray(_) => HostStoredValueFamily::BitArray,
+            EvaluatedValue::UtfCodepoint(_) => HostStoredValueFamily::UtfCodepoint,
+            EvaluatedValue::Custom(_) => HostStoredValueFamily::Custom,
+            EvaluatedValue::External(_) => HostStoredValueFamily::External,
+            EvaluatedValue::Bool(_) => HostStoredValueFamily::Bool,
+            EvaluatedValue::Nil => HostStoredValueFamily::Nil,
+            EvaluatedValue::Tuple(_) => HostStoredValueFamily::Tuple,
+            EvaluatedValue::ParameterList(_) | EvaluatedValue::List(_) => {
+                HostStoredValueFamily::List
+            }
+            EvaluatedValue::Function(_) => HostStoredValueFamily::Function,
+        }
+    }
 }
 
 impl ScopedValues {
@@ -55,6 +99,9 @@ impl ScopedValues {
             }
             HostValueFamily::Tuple => retained.push_tuple(self.tuples[token.index].clone()),
             HostValueFamily::Custom => retained.push_custom(self.customs[token.index].clone()),
+            HostValueFamily::External => {
+                retained.push_external(self.externals[token.index].clone())
+            }
             HostValueFamily::Function => {
                 retained.push_function(self.functions[token.index].clone().into_evaluated())
             }
@@ -114,6 +161,14 @@ impl ScopedValues {
                     index,
                 }
             }
+            EvaluatedValue::External(value) => {
+                let index = self.externals.len();
+                self.externals.push(value);
+                HostValueToken {
+                    family: HostValueFamily::External,
+                    index,
+                }
+            }
             EvaluatedValue::Bool(value) => {
                 let index = self.bools.len();
                 self.bools.push(value);
@@ -155,6 +210,7 @@ impl ScopedValues {
             ListValueId::BitArray(value) => self.push_stored(value.into()),
             ListValueId::UtfCodepoint(value) => self.push_stored(value.into()),
             ListValueId::Custom(value) => self.push_stored(value.into()),
+            ListValueId::External(value) => self.push_stored(value.into()),
             ListValueId::Float(value) => self.push_stored(value.into()),
             ListValueId::Bool(value) => self.push_stored(value.into()),
             ListValueId::Nil(value) => self.push_stored(value.into()),
@@ -207,6 +263,10 @@ impl ScopedValues {
                 family: HostValueFamily::Custom,
                 index,
             },
+            HostScopedValue::External(HostExternalToken(index)) => HostValueToken {
+                family: HostValueFamily::External,
+                index,
+            },
             HostScopedValue::Function(HostFunctionToken(index)) => HostValueToken {
                 family: HostValueFamily::Function,
                 index,
@@ -232,6 +292,9 @@ impl ScopedValues {
             }
             HostValueFamily::Tuple => EvaluatedValue::Tuple(self.tuples[token.index].clone()),
             HostValueFamily::Custom => EvaluatedValue::Custom(self.customs[token.index].clone()),
+            HostValueFamily::External => {
+                EvaluatedValue::External(self.externals[token.index].clone())
+            }
             HostValueFamily::Function => {
                 EvaluatedValue::Function(self.functions[token.index].clone().into_evaluated())
             }
@@ -297,6 +360,12 @@ impl ScopedValues {
                     .push(InvocableFunctionValue::Custom(function.clone()));
                 (HostValueFamily::Function, index)
             }
+            EvaluatedFunctionValueKind::External(function) => {
+                let index = self.functions.len();
+                self.functions
+                    .push(InvocableFunctionValue::External(function.clone()));
+                (HostValueFamily::Function, index)
+            }
             EvaluatedFunctionValueKind::Bool(function) => {
                 let index = self.functions.len();
                 self.functions
@@ -335,20 +404,15 @@ impl ScopedValues {
 }
 
 impl ScopedValues {
-    pub(super) fn allocate_list<Plan>(
+    pub(super) fn allocate_list(
         &self,
-        plan: &Plan,
-        state: &mut RuntimeStateFor<'_, Plan>,
-        type_id: ListTypeId,
+        storage_type: ListStorageTypeId,
+        storage: &mut RuntimeListStorage,
         values: &[HostValueToken],
-    ) -> ListValueId
-    where
-        Plan: ExecutableRuntimePlan,
-    {
-        match plan.list_storage_type(type_id) {
+    ) -> ListValueId {
+        match storage_type {
             ListStorageTypeId::Parameter(type_id) => ParameterListValueId::new(type_id).into(),
-            ListStorageTypeId::Int(type_id) => state
-                .values_mut()
+            ListStorageTypeId::Int(type_id) => storage
                 .int(
                     type_id,
                     values
@@ -357,8 +421,7 @@ impl ScopedValues {
                         .collect(),
                 )
                 .into(),
-            ListStorageTypeId::String(type_id) => state
-                .values_mut()
+            ListStorageTypeId::String(type_id) => storage
                 .string(
                     type_id,
                     values
@@ -367,8 +430,7 @@ impl ScopedValues {
                         .collect(),
                 )
                 .into(),
-            ListStorageTypeId::BitArray(type_id) => state
-                .values_mut()
+            ListStorageTypeId::BitArray(type_id) => storage
                 .bit_array(
                     type_id,
                     values
@@ -377,8 +439,7 @@ impl ScopedValues {
                         .collect(),
                 )
                 .into(),
-            ListStorageTypeId::UtfCodepoint(type_id) => state
-                .values_mut()
+            ListStorageTypeId::UtfCodepoint(type_id) => storage
                 .utf_codepoint(
                     type_id,
                     values
@@ -387,8 +448,7 @@ impl ScopedValues {
                         .collect(),
                 )
                 .into(),
-            ListStorageTypeId::Custom(type_id) => state
-                .values_mut()
+            ListStorageTypeId::Custom(type_id) => storage
                 .custom(CustomListAllocation::new(
                     type_id,
                     values
@@ -397,8 +457,16 @@ impl ScopedValues {
                         .collect(),
                 ))
                 .into(),
-            ListStorageTypeId::Float(type_id) => state
-                .values_mut()
+            ListStorageTypeId::External(type_id) => storage
+                .external(ExternalListAllocation::new(
+                    type_id,
+                    values
+                        .iter()
+                        .map(|token| self.externals[token.index].clone())
+                        .collect(),
+                ))
+                .into(),
+            ListStorageTypeId::Float(type_id) => storage
                 .float(
                     type_id,
                     values
@@ -407,16 +475,14 @@ impl ScopedValues {
                         .collect(),
                 )
                 .into(),
-            ListStorageTypeId::Bool(type_id) => state
-                .values_mut()
+            ListStorageTypeId::Bool(type_id) => storage
                 .bool(
                     type_id,
                     values.iter().map(|token| self.bools[token.index]).collect(),
                 )
                 .into(),
-            ListStorageTypeId::Nil(type_id) => state.values_mut().nil(type_id, values.len()).into(),
-            ListStorageTypeId::Tuple(type_id) => state
-                .values_mut()
+            ListStorageTypeId::Nil(type_id) => storage.nil(type_id, values.len()).into(),
+            ListStorageTypeId::Tuple(type_id) => storage
                 .tuple(
                     type_id,
                     values
@@ -425,12 +491,10 @@ impl ScopedValues {
                         .collect(),
                 )
                 .into(),
-            ListStorageTypeId::ParameterList(type_id) => state
-                .values_mut()
-                .parameter_list_list(type_id, values.len())
-                .into(),
-            ListStorageTypeId::List(type_id) => state
-                .values_mut()
+            ListStorageTypeId::ParameterList(type_id) => {
+                storage.parameter_list_list(type_id, values.len()).into()
+            }
+            ListStorageTypeId::List(type_id) => storage
                 .list(
                     type_id,
                     values
@@ -439,8 +503,7 @@ impl ScopedValues {
                         .collect(),
                 )
                 .into(),
-            ListStorageTypeId::Function(type_id) => state
-                .values_mut()
+            ListStorageTypeId::Function(type_id) => storage
                 .function(
                     type_id,
                     values
@@ -476,6 +539,9 @@ impl ScopedValues {
             HostScopedValue::Custom(HostCustomToken(index)) => {
                 EvaluatedValue::Custom(self.customs[index].clone())
             }
+            HostScopedValue::External(HostExternalToken(index)) => {
+                EvaluatedValue::External(self.externals[index].clone())
+            }
             HostScopedValue::Function(HostFunctionToken(index)) => {
                 EvaluatedValue::Function(self.functions[index].clone().into_evaluated())
             }
@@ -492,6 +558,10 @@ impl ScopedValues {
 
     pub(super) fn custom_token(&self, value: HostValueToken) -> HostCustomToken {
         HostCustomToken(value.index)
+    }
+
+    pub(super) fn external_token(&self, value: HostValueToken) -> HostExternalToken {
+        HostExternalToken(value.index)
     }
 
     pub(super) fn function_token(&self, value: HostValueToken) -> HostFunctionToken {
@@ -559,11 +629,23 @@ impl ScopedValues {
             index,
         }
     }
+
+    pub(super) fn push_external(&mut self, value: EvaluatedExternalValue) -> HostExternalToken {
+        let index = self.externals.len();
+        self.externals.push(value);
+        HostExternalToken(index)
+    }
+
+    pub(super) fn external(&self, value: HostExternalToken) -> &EvaluatedExternalValue {
+        &self.externals[value.0]
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::{ScopedValues, StoredRuntimeValue};
     use crate::host::test::{StatelessTestProvider, TestTypeParameter, stateless_identity};
+    use crate::runtime::EvaluatedValue;
     use crate::{
         BitArrayValue, HostCall, HostCallCompletion, HostCallError, HostList, HostListType,
         HostModule, HostProviderModule, HostProviderSet, HostTupleType, HostTypeList,
@@ -572,6 +654,18 @@ mod tests {
     };
     use ecow::EcoString;
     use num_bigint::BigInt;
+
+    #[test]
+    fn stored_runtime_value_preserves_its_exact_type_and_restores_its_value() {
+        let stored =
+            StoredRuntimeValue::new(EvaluatedValue::Int(7.into()), crate::plan::ValueType::Int);
+        let mut scoped = ScopedValues::default();
+
+        let restored = scoped.push(stored.value().clone());
+
+        assert_eq!(stored.type_(), &crate::plan::ValueType::Int);
+        assert_eq!(scoped.int(restored), BigInt::from(7));
+    }
 
     #[test]
     fn runtime_host_call_reads_scoped_compound_values() {

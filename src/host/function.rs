@@ -12,9 +12,9 @@ use std::fmt;
 pub(super) use argument::CallArguments;
 pub(crate) use argument::{
     HostBitArrayArgumentSlot, HostBoolArgumentSlot, HostCallArguments, HostCustomArgumentSlot,
-    HostFloatArgumentSlot, HostFunctionArgumentSlot, HostIntArgumentSlot, HostListArgumentSlot,
-    HostNilArgumentSlot, HostParameter, HostStringArgumentSlot, HostTupleArgumentSlot,
-    HostUtfCodepointArgumentSlot, HostValueArgumentSlot,
+    HostExternalArgumentSlot, HostFloatArgumentSlot, HostFunctionArgumentSlot, HostIntArgumentSlot,
+    HostListArgumentSlot, HostNilArgumentSlot, HostParameter, HostStringArgumentSlot,
+    HostTupleArgumentSlot, HostUtfCodepointArgumentSlot, HostValueArgumentSlot,
 };
 pub(crate) use return_::HostNeverFunction;
 pub(crate) use return_::{HostFunctionImplementation, HostValueFunction};
@@ -130,6 +130,7 @@ pub struct HostFunctionSchema {
     parameters: Box<[crate::host::HostTypeDescriptor]>,
     return_: crate::host::HostTypeDescriptor,
     custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
+    external_schemas: Box<[crate::host::HostExternalTypeSchema]>,
     type_: FunctionType,
 }
 
@@ -166,6 +167,10 @@ impl HostFunctionSchema {
     pub(crate) fn custom_schemas(&self) -> &[crate::host::HostCustomTypeSchema] {
         &self.custom_schemas
     }
+
+    pub(crate) fn external_schemas(&self) -> &[crate::host::HostExternalTypeSchema] {
+        &self.external_schemas
+    }
 }
 
 impl fmt::Debug for HostFunctionSchema {
@@ -177,6 +182,9 @@ impl fmt::Debug for HostFunctionSchema {
             .field("type_", &self.type_);
         if !self.custom_schemas.is_empty() {
             debug.field("custom_schemas", &self.custom_schemas);
+        }
+        if !self.external_schemas.is_empty() {
+            debug.field("external_schemas", &self.external_schemas);
         }
         debug.finish()
     }
@@ -268,6 +276,14 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
                 parameters: type_parameters.into_boxed_slice(),
             });
         }
+        let mut external_schemas = Vec::new();
+        let mut external_identities = std::collections::HashSet::new();
+        for parameter in &registration.parameter_types {
+            parameter.collect_external_schemas(&mut external_schemas, &mut external_identities);
+        }
+        registration
+            .return_type
+            .collect_external_schemas(&mut external_schemas, &mut external_identities);
         Ok(Self {
             schema: HostFunctionSchema {
                 name,
@@ -276,6 +292,7 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
                 parameters: registration.parameter_types,
                 return_: registration.return_type,
                 custom_schemas: registration.custom_schemas,
+                external_schemas: external_schemas.into_boxed_slice(),
                 type_: FunctionType::new(argument_types, return_type),
             },
             implementation: registration.implementation,
@@ -299,8 +316,8 @@ mod tests {
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{
         HostCustomConstructorSchema, HostCustomFieldSchema, HostCustomTypeSchema,
-        HostRegistrationError, HostSchemaType, HostScopedValue, HostTypeDescriptor,
-        HostValueFamily, expect_value_implementation,
+        HostExternalTypeSchema, HostRegistrationError, HostSchemaType, HostScopedValue,
+        HostTypeDescriptor, HostValueFamily, expect_value_implementation,
     };
     use crate::plan::ValueType;
     use ecow::EcoString;
@@ -460,11 +477,37 @@ mod tests {
             type_: crate::plan::FunctionType::new(Vec::new(), return_.value_type()),
             return_,
             custom_schemas: vec![custom_schema].into_boxed_slice(),
+            external_schemas: Box::new([]),
         };
 
         assert_eq!(
             format!("{schema:?}"),
             r#"HostFunctionSchema { name: "origin", scheme: TypeScheme { parameters: [] }, type_: FunctionType { arguments: [], return_: Custom(CustomType { name: CustomTypeName { package: "host_shapes", module: "host/shape", name: "Shape" }, arguments: [] }) }, custom_schemas: [HostCustomTypeSchema { package: "host_shapes", module: "host/shape", name: "Shape", parameter_count: 0, constructors: [HostCustomConstructorSchema { name: "Circle", fields: [HostCustomFieldSchema { label: Some("radius"), type_: Float }] }] }] }"#,
+        );
+    }
+
+    #[test]
+    fn schema_debug_includes_external_definitions_not_derived_from_the_function_type() {
+        let external_schema =
+            HostExternalTypeSchema::new("host_shapes", "host/resource", "Resource", 1);
+        let return_ = HostTypeDescriptor::External {
+            schema: external_schema.clone(),
+            arguments: vec![HostTypeDescriptor::Parameter(0)].into_boxed_slice(),
+        };
+        let schema = HostFunctionSchema {
+            name: "resource".into(),
+            scheme: crate::plan::TypeScheme::new(1),
+            layout: Box::new([]),
+            parameters: Box::new([]),
+            type_: crate::plan::FunctionType::new(Vec::new(), return_.value_type()),
+            return_,
+            custom_schemas: Box::new([]),
+            external_schemas: vec![external_schema].into_boxed_slice(),
+        };
+
+        assert_eq!(
+            format!("{schema:?}"),
+            r#"HostFunctionSchema { name: "resource", scheme: TypeScheme { parameters: [TypeParameterId(0)] }, type_: FunctionType { arguments: [], return_: External(ExternalType { name: ExternalTypeName { package: "host_shapes", module: "host/resource", name: "Resource" }, arguments: [Parameter(TypeParameterId(0))] }) }, external_schemas: [HostExternalTypeSchema { package: "host_shapes", module: "host/resource", name: "Resource", parameter_count: 1 }] }"#,
         );
     }
 

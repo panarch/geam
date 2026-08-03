@@ -49,6 +49,7 @@ impl CallArg {
             | ExprKind::String(_)
             | ExprKind::BitArray(_)
             | ExprKind::UtfCodepoint(_)
+            | ExprKind::External(_)
             | ExprKind::Bool(_)
             | ExprKind::Nil(_)
             | ExprKind::List(_)

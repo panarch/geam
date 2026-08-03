@@ -166,7 +166,7 @@ impl Explain for BoolInstruction {
 mod explain_tests {
     use crate::plan::execution::explain;
     use crate::plan::execution::function::BoolFunctionId;
-    use crate::plan::execution::graph::InstructionKind;
+    use crate::plan::execution::graph::ProfiledInstructionKind;
 
     #[test]
     fn writes_bool_instruction_grammar() {
@@ -268,7 +268,7 @@ pub fn main() {
             let graph = plan.bool_function(BoolFunctionId(0)).body().block_graph();
             let mut first = true;
             for instruction in graph.blocks().iter().flat_map(|block| block.instructions()) {
-                if let InstructionKind::Bool(instruction) = instruction.kind() {
+                if let ProfiledInstructionKind::Bool(instruction) = instruction.kind() {
                     if first {
                         first = false;
                     } else {

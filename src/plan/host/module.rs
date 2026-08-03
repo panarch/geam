@@ -1,6 +1,7 @@
 use super::HostFunctionTemplate;
 use crate::plan::{
-    ConstantTemplates, CustomTypeDefinition, FunctionTemplate, ModuleId, SourceContext,
+    ConstantTemplates, CustomTypeDefinition, ExternalTypeDefinition, FunctionTemplate, ModuleId,
+    SourceContext,
 };
 use ecow::EcoString;
 
@@ -10,6 +11,7 @@ pub struct HostedPlannedModule {
     module: EcoString,
     source_context: Option<SourceContext>,
     custom_types: Vec<CustomTypeDefinition>,
+    external_types: Vec<ExternalTypeDefinition>,
     constants: ConstantTemplates,
     functions: Vec<HostedFunctionTemplate>,
     anonymous_functions: Vec<FunctionTemplate>,
@@ -26,6 +28,7 @@ pub(crate) struct HostedPlannedModuleParts {
     pub(crate) module: EcoString,
     pub(crate) source_context: Option<SourceContext>,
     pub(crate) custom_types: Vec<CustomTypeDefinition>,
+    pub(crate) external_types: Vec<ExternalTypeDefinition>,
     pub(crate) constants: ConstantTemplates,
     pub(crate) functions: Vec<HostedFunctionTemplate>,
     pub(crate) anonymous_functions: Vec<FunctionTemplate>,
@@ -39,6 +42,7 @@ impl HostedPlannedModule {
             module: parts.module,
             source_context: parts.source_context,
             custom_types: parts.custom_types,
+            external_types: parts.external_types,
             constants: parts.constants,
             functions: parts.functions,
             anonymous_functions: parts.anonymous_functions,
@@ -65,6 +69,10 @@ impl HostedPlannedModule {
         &self.functions
     }
 
+    pub fn external_types(&self) -> &[ExternalTypeDefinition] {
+        &self.external_types
+    }
+
     pub(crate) fn into_parts(self) -> HostedPlannedModuleParts {
         HostedPlannedModuleParts {
             id: self.id,
@@ -72,6 +80,7 @@ impl HostedPlannedModule {
             module: self.module,
             source_context: self.source_context,
             custom_types: self.custom_types,
+            external_types: self.external_types,
             constants: self.constants,
             functions: self.functions,
             anonymous_functions: self.anonymous_functions,

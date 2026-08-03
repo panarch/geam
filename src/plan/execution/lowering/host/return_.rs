@@ -2,7 +2,6 @@ use super::super::LoweringContext;
 use super::super::function;
 use super::super::local;
 use super::super::specialization::{SpecializationKey, SpecializedFunctionShape, StoredValueShape};
-use crate::host::HostProfile;
 use crate::plan::execution::function as execution_function;
 use crate::plan::execution::graph as execution_graph;
 use crate::plan::execution::host::{
@@ -15,15 +14,16 @@ pub(super) enum HostTargetIndex {
     Never(usize),
 }
 
-pub(super) fn lower_host_return<Profile: HostProfile>(
+pub(super) fn lower_host_return(
     index: usize,
     key: &SpecializationKey,
     return_: StoredValueShape,
     specialization: HostTargetIndex,
-    functions: &mut function::AdditionalFunctions<HostedExecutionProfile<Profile>>,
+    functions: &mut function::ProfiledFunctionEntries<HostedExecutionProfile>,
     context: &mut LoweringContext,
 ) {
     use execution_function::ListFunctionId as L;
+    use execution_function::RuntimeListFunctionId as R;
 
     match return_ {
         StoredValueShape::Int => {
@@ -95,6 +95,20 @@ pub(super) fn lower_host_return<Profile: HostProfile>(
                 ),
             ));
         }
+        StoredValueShape::External(shape) => {
+            let return_ = execution_graph::ExternalLocal::new(
+                execution_graph::ExternalLocalId(0),
+                context.lower_concrete_external_type(&shape),
+            );
+            functions.external.push((
+                index,
+                lowered_host_target::<execution_function::ExternalFunctionBody>(
+                    key,
+                    specialization,
+                    return_,
+                ),
+            ));
+        }
         StoredValueShape::Bool => {
             let return_ = execution_graph::BoolLocalId(0);
             functions.bool.push((
@@ -130,108 +144,118 @@ pub(super) fn lower_host_return<Profile: HostProfile>(
         }
         StoredValueShape::List(item) => {
             match function::list_function_id(&item, index, &mut context.types) {
-                L::Parameter(id) => functions.parameter_list.push((
+                R::Core(function) => match function {
+                    L::Parameter(id) => functions.parameter_list.push((
+                        id,
+                        lowered_host_target::<execution_function::ParameterListFunctionBody>(
+                            key,
+                            specialization,
+                            execution_graph::ParameterListLocalId(0),
+                        ),
+                    )),
+                    L::ParameterList(id) => functions.parameter_list_list.push((
+                        id,
+                        lowered_host_target::<execution_function::ParameterListListFunctionBody>(
+                            key,
+                            specialization,
+                            execution_graph::ParameterListListLocalId(0),
+                        ),
+                    )),
+                    L::Int(id) => functions.int_list.push((
+                        id,
+                        lowered_host_target::<execution_function::IntListFunctionBody>(
+                            key,
+                            specialization,
+                            execution_graph::IntListLocalId(0),
+                        ),
+                    )),
+                    L::String(id) => functions.string_list.push((
+                        id,
+                        lowered_host_target::<execution_function::StringListFunctionBody>(
+                            key,
+                            specialization,
+                            execution_graph::StringListLocalId(0),
+                        ),
+                    )),
+                    L::BitArray(id) => functions.bit_array_list.push((
+                        id,
+                        lowered_host_target::<execution_function::BitArrayListFunctionBody>(
+                            key,
+                            specialization,
+                            execution_graph::BitArrayListLocalId(0),
+                        ),
+                    )),
+                    L::UtfCodepoint(id) => functions.utf_codepoint_list.push((
+                        id,
+                        lowered_host_target::<execution_function::UtfCodepointListFunctionBody>(
+                            key,
+                            specialization,
+                            execution_graph::UtfCodepointListLocalId(0),
+                        ),
+                    )),
+                    L::Custom(id) => functions.custom_list.push((
+                        id,
+                        lowered_host_target::<execution_function::CustomListFunctionBody>(
+                            key,
+                            specialization,
+                            execution_graph::CustomListLocalId(0),
+                        ),
+                    )),
+                    L::Float(id) => functions.float_list.push((
+                        id,
+                        lowered_host_target::<execution_function::FloatListFunctionBody>(
+                            key,
+                            specialization,
+                            execution_graph::FloatListLocalId(0),
+                        ),
+                    )),
+                    L::Bool(id) => functions.bool_list.push((
+                        id,
+                        lowered_host_target::<execution_function::BoolListFunctionBody>(
+                            key,
+                            specialization,
+                            execution_graph::BoolListLocalId(0),
+                        ),
+                    )),
+                    L::Nil(id) => functions.nil_list.push((
+                        id,
+                        lowered_host_target::<execution_function::NilListFunctionBody>(
+                            key,
+                            specialization,
+                            execution_graph::NilListLocalId(0),
+                        ),
+                    )),
+                    L::Tuple(id) => functions.tuple_list.push((
+                        id,
+                        lowered_host_target::<execution_function::TupleListFunctionBody>(
+                            key,
+                            specialization,
+                            execution_graph::TupleListLocalId(0),
+                        ),
+                    )),
+                    L::List(id) => functions.list_list.push((
+                        id,
+                        lowered_host_target::<execution_function::ListListFunctionBody>(
+                            key,
+                            specialization,
+                            execution_graph::ListListLocalId(0),
+                        ),
+                    )),
+                    L::Function(id) => functions.function_list.push((
+                        id,
+                        lowered_host_target::<execution_function::FunctionListFunctionBody>(
+                            key,
+                            specialization,
+                            execution_graph::FunctionListLocalId(0),
+                        ),
+                    )),
+                },
+                R::External(id) => functions.external_list.push((
                     id,
-                    lowered_host_target::<execution_function::ParameterListFunctionBody>(
+                    lowered_host_target::<execution_function::ExternalListFunctionBody>(
                         key,
                         specialization,
-                        execution_graph::ParameterListLocalId(0),
-                    ),
-                )),
-                L::ParameterList(id) => functions.parameter_list_list.push((
-                    id,
-                    lowered_host_target::<execution_function::ParameterListListFunctionBody>(
-                        key,
-                        specialization,
-                        execution_graph::ParameterListListLocalId(0),
-                    ),
-                )),
-                L::Int(id) => functions.int_list.push((
-                    id,
-                    lowered_host_target::<execution_function::IntListFunctionBody>(
-                        key,
-                        specialization,
-                        execution_graph::IntListLocalId(0),
-                    ),
-                )),
-                L::String(id) => functions.string_list.push((
-                    id,
-                    lowered_host_target::<execution_function::StringListFunctionBody>(
-                        key,
-                        specialization,
-                        execution_graph::StringListLocalId(0),
-                    ),
-                )),
-                L::BitArray(id) => functions.bit_array_list.push((
-                    id,
-                    lowered_host_target::<execution_function::BitArrayListFunctionBody>(
-                        key,
-                        specialization,
-                        execution_graph::BitArrayListLocalId(0),
-                    ),
-                )),
-                L::UtfCodepoint(id) => functions.utf_codepoint_list.push((
-                    id,
-                    lowered_host_target::<execution_function::UtfCodepointListFunctionBody>(
-                        key,
-                        specialization,
-                        execution_graph::UtfCodepointListLocalId(0),
-                    ),
-                )),
-                L::Custom(id) => functions.custom_list.push((
-                    id,
-                    lowered_host_target::<execution_function::CustomListFunctionBody>(
-                        key,
-                        specialization,
-                        execution_graph::CustomListLocalId(0),
-                    ),
-                )),
-                L::Float(id) => functions.float_list.push((
-                    id,
-                    lowered_host_target::<execution_function::FloatListFunctionBody>(
-                        key,
-                        specialization,
-                        execution_graph::FloatListLocalId(0),
-                    ),
-                )),
-                L::Bool(id) => functions.bool_list.push((
-                    id,
-                    lowered_host_target::<execution_function::BoolListFunctionBody>(
-                        key,
-                        specialization,
-                        execution_graph::BoolListLocalId(0),
-                    ),
-                )),
-                L::Nil(id) => functions.nil_list.push((
-                    id,
-                    lowered_host_target::<execution_function::NilListFunctionBody>(
-                        key,
-                        specialization,
-                        execution_graph::NilListLocalId(0),
-                    ),
-                )),
-                L::Tuple(id) => functions.tuple_list.push((
-                    id,
-                    lowered_host_target::<execution_function::TupleListFunctionBody>(
-                        key,
-                        specialization,
-                        execution_graph::TupleListLocalId(0),
-                    ),
-                )),
-                L::List(id) => functions.list_list.push((
-                    id,
-                    lowered_host_target::<execution_function::ListListFunctionBody>(
-                        key,
-                        specialization,
-                        execution_graph::ListListLocalId(0),
-                    ),
-                )),
-                L::Function(id) => functions.function_list.push((
-                    id,
-                    lowered_host_target::<execution_function::FunctionListFunctionBody>(
-                        key,
-                        specialization,
-                        execution_graph::FunctionListLocalId(0),
+                        execution_graph::ExternalListLocalId(0),
                     ),
                 )),
             }
@@ -242,12 +266,12 @@ pub(super) fn lower_host_return<Profile: HostProfile>(
     }
 }
 
-fn lower_host_function_return<Profile: HostProfile>(
+fn lower_host_function_return(
     index: usize,
     key: &SpecializationKey,
     function: &SpecializedFunctionShape,
     specialization: HostTargetIndex,
-    functions: &mut function::AdditionalFunctions<HostedExecutionProfile<Profile>>,
+    functions: &mut function::ProfiledFunctionEntries<HostedExecutionProfile>,
     context: &mut LoweringContext,
 ) {
     use local::SpecializedFunctionLocal as F;
@@ -319,6 +343,14 @@ fn lower_host_function_return<Profile: HostProfile>(
                 return_,
             ),
         )),
+        F::External(return_) => functions.external_function_functions.push((
+            index,
+            lowered_host_target::<execution_function::ExternalFunctionFunctionBody>(
+                key,
+                specialization,
+                return_,
+            ),
+        )),
         F::Bool { local: return_, .. } => functions.bool_function_functions.push((
             index,
             lowered_host_target::<execution_function::BoolFunctionFunctionBody>(
@@ -346,47 +378,131 @@ fn lower_host_function_return<Profile: HostProfile>(
         F::List(return_) => {
             use execution_graph::ListFunctionLocal as L;
 
-            let lowered = lowered_host_target::<execution_function::ListFunctionFunctionBody>(
-                key,
-                specialization,
-                return_.clone(),
-            );
             match return_ {
-                L::Parameter { .. } => functions
-                    .parameter_list_function_functions
-                    .push((index, lowered)),
-                L::ParameterList { .. } => functions
-                    .parameter_list_list_function_functions
-                    .push((index, lowered)),
-                L::Int { .. } => functions.int_list_function_functions.push((index, lowered)),
-                L::String { .. } => functions
-                    .string_list_function_functions
-                    .push((index, lowered)),
-                L::BitArray { .. } => functions
-                    .bit_array_list_function_functions
-                    .push((index, lowered)),
-                L::UtfCodepoint { .. } => functions
-                    .utf_codepoint_list_function_functions
-                    .push((index, lowered)),
-                L::Custom { .. } => functions
-                    .custom_list_function_functions
-                    .push((index, lowered)),
-                L::Float { .. } => functions
-                    .float_list_function_functions
-                    .push((index, lowered)),
-                L::Bool { .. } => functions
-                    .bool_list_function_functions
-                    .push((index, lowered)),
-                L::Nil { .. } => functions.nil_list_function_functions.push((index, lowered)),
-                L::Tuple { .. } => functions
-                    .tuple_list_function_functions
-                    .push((index, lowered)),
-                L::List { .. } => functions
-                    .list_list_function_functions
-                    .push((index, lowered)),
-                L::Function { .. } => functions
-                    .function_list_function_functions
-                    .push((index, lowered)),
+                return_ @ L::Parameter { .. } => {
+                    functions.parameter_list_function_functions.push((
+                        index,
+                        lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
+                            key,
+                            specialization,
+                            return_,
+                        ),
+                    ))
+                }
+                return_ @ L::ParameterList { .. } => {
+                    functions.parameter_list_list_function_functions.push((
+                        index,
+                        lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
+                            key,
+                            specialization,
+                            return_,
+                        ),
+                    ))
+                }
+                return_ @ L::Int { .. } => functions.int_list_function_functions.push((
+                    index,
+                    lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
+                        key,
+                        specialization,
+                        return_,
+                    ),
+                )),
+                return_ @ L::String { .. } => functions.string_list_function_functions.push((
+                    index,
+                    lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
+                        key,
+                        specialization,
+                        return_,
+                    ),
+                )),
+                return_ @ L::BitArray { .. } => {
+                    functions.bit_array_list_function_functions.push((
+                        index,
+                        lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
+                            key,
+                            specialization,
+                            return_,
+                        ),
+                    ));
+                }
+                return_ @ L::UtfCodepoint { .. } => {
+                    functions.utf_codepoint_list_function_functions.push((
+                        index,
+                        lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
+                            key,
+                            specialization,
+                            return_,
+                        ),
+                    ));
+                }
+                return_ @ L::Custom { .. } => functions.custom_list_function_functions.push((
+                    index,
+                    lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
+                        key,
+                        specialization,
+                        return_,
+                    ),
+                )),
+                return_ @ L::External { .. } => {
+                    functions.external_list_function_functions.push((
+                        index,
+                        lowered_host_target::<execution_function::ExternalListFunctionFunctionBody>(
+                            key,
+                            specialization,
+                            return_,
+                        ),
+                    ));
+                }
+                return_ @ L::Float { .. } => functions.float_list_function_functions.push((
+                    index,
+                    lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
+                        key,
+                        specialization,
+                        return_,
+                    ),
+                )),
+                return_ @ L::Bool { .. } => functions.bool_list_function_functions.push((
+                    index,
+                    lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
+                        key,
+                        specialization,
+                        return_,
+                    ),
+                )),
+                return_ @ L::Nil { .. } => functions.nil_list_function_functions.push((
+                    index,
+                    lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
+                        key,
+                        specialization,
+                        return_,
+                    ),
+                )),
+                return_ @ L::Tuple { .. } => functions.tuple_list_function_functions.push((
+                    index,
+                    lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
+                        key,
+                        specialization,
+                        return_,
+                    ),
+                )),
+                return_ @ L::List { .. } => functions.list_list_function_functions.push((
+                    index,
+                    lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
+                        key,
+                        specialization,
+                        return_,
+                    ),
+                )),
+                return_ @ L::Function { .. } => {
+                    functions.function_list_function_functions.push((
+                        index,
+                        lowered_host_target::<execution_function::CoreListFunctionFunctionBody>(
+                            key,
+                            specialization,
+                            return_,
+                        ),
+                    ));
+                }
             }
         }
         F::Function(return_) => functions.function_function_functions.push((
@@ -422,11 +538,11 @@ where
     }
 }
 
-pub(super) fn lower_uninhabited_never_return<Profile: HostProfile>(
+pub(super) fn lower_uninhabited_never_return(
     index: usize,
     key: &SpecializationKey,
     host_index: usize,
-    functions: &mut function::AdditionalFunctions<HostedExecutionProfile<Profile>>,
+    functions: &mut function::ProfiledFunctionEntries<HostedExecutionProfile>,
 ) {
     functions
         .never
@@ -439,13 +555,10 @@ fn lowered_never_host_target(
 ) -> function::LoweredSpecialization<
     execution_function::ValueFunctionEntry<
         execution_function::NeverFunctionBody,
-        HostedFunctionTarget<execution_function::NeverFunctionBody>,
+        HostNeverFunctionId,
     >,
 > {
-    function::lowered_host_function(
-        key,
-        HostedFunctionTarget::never(HostNeverFunctionId::new(index)),
-    )
+    function::lowered_host_function(key, HostNeverFunctionId::new(index))
 }
 
 #[cfg(test)]

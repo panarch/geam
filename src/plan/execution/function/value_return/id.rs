@@ -1,6 +1,6 @@
 use crate::plan::execution::explain::FunctionLabel;
 use crate::plan::execution::function::FunctionLabelSource;
-use crate::plan::execution::type_::CustomValueShape;
+use crate::plan::execution::type_::{CustomValueShape, ExternalTypeId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct NeverFunctionId(pub(crate) usize);
@@ -24,6 +24,12 @@ pub struct UtfCodepointFunctionId(pub(crate) usize);
 pub struct CustomFunctionId {
     index: usize,
     return_shape: CustomValueShape,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExternalFunctionId {
+    index: usize,
+    return_type: ExternalTypeId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,6 +57,23 @@ impl CustomFunctionId {
         Self {
             index,
             return_shape: self.return_shape,
+        }
+    }
+}
+
+impl ExternalFunctionId {
+    pub(in crate::plan::execution) fn new(index: usize, return_type: ExternalTypeId) -> Self {
+        Self { index, return_type }
+    }
+
+    pub(crate) fn index(self) -> usize {
+        self.index
+    }
+
+    pub(crate) fn with_index(self, index: usize) -> Self {
+        Self {
+            index,
+            return_type: self.return_type,
         }
     }
 }
@@ -97,6 +120,12 @@ impl FunctionLabelSource for CustomFunctionId {
     }
 }
 
+impl FunctionLabelSource for ExternalFunctionId {
+    fn function_label(&self) -> FunctionLabel {
+        FunctionLabel::new("external", self.index())
+    }
+}
+
 impl FunctionLabelSource for BoolFunctionId {
     fn function_label(&self) -> FunctionLabel {
         FunctionLabel::new("bool", self.0)
@@ -118,12 +147,15 @@ impl FunctionLabelSource for TupleFunctionId {
 #[cfg(test)]
 mod explain_tests {
     use super::{
-        BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, IntFunctionId,
-        NeverFunctionId, NilFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
+        BitArrayFunctionId, BoolFunctionId, CustomFunctionId, ExternalFunctionId, FloatFunctionId,
+        IntFunctionId, NeverFunctionId, NilFunctionId, StringFunctionId, TupleFunctionId,
+        UtfCodepointFunctionId,
     };
     use crate::plan::execution::explain;
     use crate::plan::execution::function::FunctionLabelSource;
-    use crate::plan::execution::type_::{CustomTypeId, CustomValueShape, CustomValueShapeId};
+    use crate::plan::execution::type_::{
+        CustomTypeId, CustomValueShape, CustomValueShapeId, ExternalTypeId,
+    };
 
     #[test]
     fn writes_every_direct_function_id_family_explicitly() {
@@ -137,9 +169,13 @@ mod explain_tests {
         assert_function(&BitArrayFunctionId(4), "bit_array#4");
         assert_function(&UtfCodepointFunctionId(5), "utf_codepoint#5");
         assert_function(&CustomFunctionId::new(6, custom_shape), "custom#6");
-        assert_function(&BoolFunctionId(7), "bool#7");
-        assert_function(&NilFunctionId(8), "nil#8");
-        assert_function(&TupleFunctionId(9), "tuple#9");
+        assert_function(
+            &ExternalFunctionId::new(7, ExternalTypeId::new(0)),
+            "external#7",
+        );
+        assert_function(&BoolFunctionId(8), "bool#8");
+        assert_function(&NilFunctionId(9), "nil#9");
+        assert_function(&TupleFunctionId(10), "tuple#10");
     }
 
     fn assert_function(function: &impl FunctionLabelSource, expected: &str) {

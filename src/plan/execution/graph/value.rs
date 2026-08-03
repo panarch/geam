@@ -5,24 +5,27 @@ mod param;
 
 pub(crate) use function::{
     BitArrayFunctionLocalId, BitArrayListFunctionLocalId, BoolFunctionLocalId,
-    BoolListFunctionLocalId, CustomFunctionLocal, CustomFunctionLocalId, CustomListFunctionLocalId,
-    FloatFunctionLocalId, FloatListFunctionLocalId, FunctionFunctionLocal, FunctionFunctionLocalId,
-    FunctionListFunctionLocalId, FunctionLocal, GenericFunctionLocal, GenericFunctionLocalId,
-    IntFunctionLocalId, IntListFunctionLocalId, ListFunctionLocal, ListListFunctionLocalId,
-    NeverFunctionLocal, NeverFunctionLocalId, NilFunctionLocalId, NilListFunctionLocalId,
-    ParameterListFunctionLocalId, ParameterListListFunctionLocalId, StringFunctionLocalId,
-    StringListFunctionLocalId, TupleFunctionLocalId, TupleListFunctionLocalId,
-    UtfCodepointFunctionLocalId, UtfCodepointListFunctionLocalId,
+    BoolListFunctionLocalId, CoreFunctionFunctionLocal, CoreFunctionFunctionLocalId,
+    CustomFunctionLocal, CustomFunctionLocalId, CustomListFunctionLocalId,
+    ExternalFunctionFunctionLocal, ExternalFunctionFunctionLocalId, ExternalFunctionLocal,
+    ExternalFunctionLocalId, ExternalListFunctionLocalId, FloatFunctionLocalId,
+    FloatListFunctionLocalId, FunctionFunctionLocal, FunctionListFunctionLocalId, FunctionLocal,
+    GenericFunctionLocal, GenericFunctionLocalId, IntFunctionLocalId, IntListFunctionLocalId,
+    ListFunctionLocal, ListListFunctionLocalId, NeverFunctionLocal, NeverFunctionLocalId,
+    NilFunctionLocalId, NilListFunctionLocalId, ParameterListFunctionLocalId,
+    ParameterListListFunctionLocalId, StringFunctionLocalId, StringListFunctionLocalId,
+    TupleFunctionLocalId, TupleListFunctionLocalId, UtfCodepointFunctionLocalId,
+    UtfCodepointListFunctionLocalId,
 };
 pub(crate) use list::{
-    BitArrayListLocalId, BoolListLocalId, CustomListLocalId, FloatListLocalId, FunctionListLocalId,
-    IntListLocalId, ListListLocalId, ListLocal, NilListLocalId, ParameterListListLocalId,
-    ParameterListLocalId, StoredListLocal, StringListLocalId, TupleListLocalId,
-    UtfCodepointListLocalId,
+    BitArrayListLocalId, BoolListLocalId, CustomListLocalId, ExternalListLocalId, FloatListLocalId,
+    FunctionListLocalId, IntListLocalId, ListListLocalId, ListLocal, NilListLocalId,
+    ParameterListListLocalId, ParameterListLocalId, StoredListLocal, StringListLocalId,
+    TupleListLocalId, UtfCodepointListLocalId,
 };
 pub(crate) use local::{
-    BitArrayLocalId, BoolLocalId, CustomLocal, CustomLocalId, FloatLocalId, IntLocalId, NilLocalId,
-    StringLocalId, TupleLocalId, UtfCodepointLocalId,
+    BitArrayLocalId, BoolLocalId, CustomLocal, CustomLocalId, ExternalLocal, ExternalLocalId,
+    FloatLocalId, IntLocalId, NilLocalId, StringLocalId, TupleLocalId, UtfCodepointLocalId,
 };
 pub(crate) use param::{ParamLocal, ParamSlot};
 
@@ -153,6 +156,12 @@ impl LocalLabel for CustomListLocalId {
     }
 }
 
+impl LocalLabel for ExternalListLocalId {
+    fn write_local_label(&self, output: &mut String) {
+        write_indexed(output, "list.external", self.0);
+    }
+}
+
 impl LocalLabel for FloatListLocalId {
     fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "list.float", self.0);
@@ -243,6 +252,12 @@ impl LocalLabel for CustomLocal {
     }
 }
 
+impl LocalLabel for ExternalLocal {
+    fn write_local_label(&self, output: &mut String) {
+        write_indexed(output, "external", self.id().0);
+    }
+}
+
 impl LocalLabel for GenericFunctionLocal {
     fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "function.generic", self.id().0);
@@ -261,9 +276,30 @@ impl LocalLabel for CustomFunctionLocal {
     }
 }
 
+impl LocalLabel for ExternalFunctionLocal {
+    fn write_local_label(&self, output: &mut String) {
+        write_indexed(output, "function.external", self.id().0);
+    }
+}
+
 impl LocalLabel for FunctionFunctionLocal {
     fn write_local_label(&self, output: &mut String) {
+        match self {
+            Self::Core(local) => local.write_local_label(output),
+            Self::External(local) => local.write_local_label(output),
+        }
+    }
+}
+
+impl LocalLabel for CoreFunctionFunctionLocal {
+    fn write_local_label(&self, output: &mut String) {
         write_indexed(output, "function.function", self.id().0);
+    }
+}
+
+impl LocalLabel for ExternalFunctionFunctionLocal {
+    fn write_local_label(&self, output: &mut String) {
+        write_indexed(output, "function.function.external", self.id().0);
     }
 }
 
@@ -277,6 +313,7 @@ impl LocalLabel for ListLocal {
             Self::BitArray { local, .. } => local.write_local_label(output),
             Self::UtfCodepoint { local, .. } => local.write_local_label(output),
             Self::Custom { local, .. } => local.write_local_label(output),
+            Self::External { local, .. } => local.write_local_label(output),
             Self::Float { local, .. } => local.write_local_label(output),
             Self::Bool { local, .. } => local.write_local_label(output),
             Self::Nil { local, .. } => local.write_local_label(output),
@@ -296,6 +333,7 @@ impl LocalLabel for StoredListLocal {
             Self::BitArray(local) => local.write_local_label(output),
             Self::UtfCodepoint(local) => local.write_local_label(output),
             Self::Custom(local) => local.write_local_label(output),
+            Self::External(local) => local.write_local_label(output),
             Self::Float(local) => local.write_local_label(output),
             Self::Bool(local) => local.write_local_label(output),
             Self::Nil(local) => local.write_local_label(output),
@@ -324,6 +362,9 @@ impl LocalLabel for ListFunctionLocal {
                 write_indexed(output, "function.list.utf_codepoint", local.0);
             }
             Self::Custom { local, .. } => write_indexed(output, "function.list.custom", local.0),
+            Self::External { local, .. } => {
+                write_indexed(output, "function.list.external", local.0);
+            }
             Self::Float { local, .. } => write_indexed(output, "function.list.float", local.0),
             Self::Bool { local, .. } => write_indexed(output, "function.list.bool", local.0),
             Self::Nil { local, .. } => write_indexed(output, "function.list.nil", local.0),
@@ -333,6 +374,12 @@ impl LocalLabel for ListFunctionLocal {
                 write_indexed(output, "function.list.function", local.0);
             }
         }
+    }
+}
+
+impl LocalLabel for ExternalListFunctionLocalId {
+    fn write_local_label(&self, output: &mut String) {
+        write_indexed(output, "function.list.external", self.0);
     }
 }
 
@@ -347,6 +394,7 @@ impl LocalLabel for FunctionLocal {
             Self::BitArray(local) => local.write_local_label(output),
             Self::UtfCodepoint(local) => local.write_local_label(output),
             Self::Custom(local) => local.write_local_label(output),
+            Self::External(local) => local.write_local_label(output),
             Self::Bool(local) => local.write_local_label(output),
             Self::Nil(local) => local.write_local_label(output),
             Self::Tuple(local) => local.write_local_label(output),
@@ -371,6 +419,7 @@ impl LocalLabel for ParamLocal {
             Self::BitArray(local) => local.write_local_label(output),
             Self::UtfCodepoint(local) => local.write_local_label(output),
             Self::Custom(local) => local.write_local_label(output),
+            Self::External(local) => local.write_local_label(output),
             Self::Bool(local) => local.write_local_label(output),
             Self::Nil(local) => local.write_local_label(output),
             Self::Tuple { local, .. } => local.write_local_label(output),
@@ -383,6 +432,7 @@ impl LocalLabel for ParamLocal {
             Self::GenericFunction(local) => local.write_local_label(output),
             Self::NeverFunction(local) => local.write_local_label(output),
             Self::CustomFunction(local) => local.write_local_label(output),
+            Self::ExternalFunction(local) => local.write_local_label(output),
             Self::BoolFunction { local, .. } => local.write_local_label(output),
             Self::NilFunction { local, .. } => local.write_local_label(output),
             Self::TupleFunction { local, .. } => local.write_local_label(output),
@@ -405,9 +455,9 @@ mod explain_tests {
     use crate::plan::execution::explain;
     use crate::plan::execution::graph::{
         BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
-        BoolListLocalId, BoolLocalId, CustomListLocalId, FloatFunctionLocalId, FloatListLocalId,
-        FloatLocalId, FunctionListLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId,
-        ListListLocalId, NilFunctionLocalId, NilListLocalId, NilLocalId, ParamLocal,
+        BoolListLocalId, BoolLocalId, CustomListLocalId, ExternalListLocalId, FloatFunctionLocalId,
+        FloatListLocalId, FloatLocalId, FunctionListLocalId, IntFunctionLocalId, IntListLocalId,
+        IntLocalId, ListListLocalId, NilFunctionLocalId, NilListLocalId, NilLocalId, ParamLocal,
         ParameterListListLocalId, ParameterListLocalId, StringFunctionLocalId, StringListLocalId,
         StringLocalId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
         UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
@@ -430,6 +480,7 @@ mod explain_tests {
         assert_local(&BitArrayListLocalId(13), "%list.bit_array#13");
         assert_local(&UtfCodepointListLocalId(14), "%list.utf_codepoint#14");
         assert_local(&CustomListLocalId(15), "%list.custom#15");
+        assert_local(&ExternalListLocalId(15), "%list.external#15");
         assert_local(&FloatListLocalId(16), "%list.float#16");
         assert_local(&BoolListLocalId(17), "%list.bool#17");
         assert_local(&NilListLocalId(18), "%list.nil#18");
@@ -475,24 +526,31 @@ mod explain_tests {
     #[test]
     fn writes_rich_local_label_implementations_explicitly() {
         use crate::plan::execution::graph::{
-            CustomFunctionLocal, CustomFunctionLocalId, CustomLocal, CustomLocalId,
-            FunctionFunctionLocal, FunctionFunctionLocalId, GenericFunctionLocal,
-            GenericFunctionLocalId, NeverFunctionLocal, NeverFunctionLocalId,
+            CoreFunctionFunctionLocal, CoreFunctionFunctionLocalId, CustomFunctionLocal,
+            CustomFunctionLocalId, CustomLocal, CustomLocalId, ExternalFunctionFunctionLocal,
+            ExternalFunctionFunctionLocalId, ExternalFunctionLocal, ExternalFunctionLocalId,
+            ExternalLocal, ExternalLocalId, GenericFunctionLocal, GenericFunctionLocalId,
+            NeverFunctionLocal, NeverFunctionLocalId,
         };
         use crate::plan::execution::type_::{
             CustomFunctionType, CustomTypeId, CustomValueShape, CustomValueShapeId,
-            FunctionFunctionType, FunctionShape, FunctionType, GenericFunctionType, ValueShapeId,
-            ValueType,
+            ExternalFunctionType, ExternalTypeId, FunctionFunctionType, FunctionShape,
+            FunctionType, GenericFunctionType, ValueShapeId, ValueType,
         };
 
         let custom_type = CustomTypeId::new(0);
         let custom_shape = CustomValueShape::new(custom_type, CustomValueShapeId::new(0));
+        let external_type = ExternalTypeId::new(0);
         let value_function_type = FunctionType::new(Vec::new(), ValueType::Int);
         let function_shape = FunctionShape::new(ValueShapeId::new(0), value_function_type.clone());
 
         assert_local(
             &CustomLocal::new(CustomLocalId(30), custom_shape),
             "%custom#30",
+        );
+        assert_local(
+            &ExternalLocal::new(ExternalLocalId(31), external_type),
+            "%external#31",
         );
         assert_local(
             &GenericFunctionLocal::new(
@@ -526,18 +584,37 @@ mod explain_tests {
             "%function.custom#33",
         );
         assert_local(
-            &FunctionFunctionLocal::new(
-                FunctionFunctionLocalId(34),
-                FunctionFunctionType::from_shapes(
-                    FunctionType::new(
-                        Vec::new(),
-                        ValueType::Function(Box::new(value_function_type.clone())),
-                    ),
+            &ExternalFunctionLocal::new(
+                ExternalFunctionLocalId(34),
+                ExternalFunctionType::from_shapes(
+                    FunctionType::new(Vec::new(), ValueType::External(external_type)),
                     Vec::new(),
-                    function_shape,
+                    external_type,
                 ),
             ),
-            "%function.function#34",
+            "%function.external#34",
+        );
+        let function_function_type = FunctionFunctionType::from_shapes(
+            FunctionType::new(
+                Vec::new(),
+                ValueType::Function(Box::new(value_function_type.clone())),
+            ),
+            Vec::new(),
+            function_shape,
+        );
+        assert_local(
+            &CoreFunctionFunctionLocal::new(
+                CoreFunctionFunctionLocalId(35),
+                function_function_type.clone(),
+            ),
+            "%function.function#35",
+        );
+        assert_local(
+            &ExternalFunctionFunctionLocal::new(
+                ExternalFunctionFunctionLocalId(36),
+                function_function_type,
+            ),
+            "%function.function.external#36",
         );
     }
 
@@ -545,16 +622,17 @@ mod explain_tests {
     fn writes_every_list_function_local_family_explicitly() {
         use crate::plan::execution::graph::{
             BitArrayListFunctionLocalId, BoolListFunctionLocalId, CustomListFunctionLocalId,
-            FloatListFunctionLocalId, FunctionListFunctionLocalId, IntListFunctionLocalId,
-            ListFunctionLocal, ListListFunctionLocalId, NilListFunctionLocalId,
-            ParameterListFunctionLocalId, ParameterListListFunctionLocalId,
+            ExternalListFunctionLocalId, FloatListFunctionLocalId, FunctionListFunctionLocalId,
+            IntListFunctionLocalId, ListFunctionLocal, ListListFunctionLocalId,
+            NilListFunctionLocalId, ParameterListFunctionLocalId, ParameterListListFunctionLocalId,
             StringListFunctionLocalId, TupleListFunctionLocalId, UtfCodepointListFunctionLocalId,
         };
         use crate::plan::execution::type_::{
-            BitArrayListTypeId, BoolListTypeId, CustomListTypeId, CustomTypeId, FloatListTypeId,
-            FunctionListTypeId, FunctionType, IntListTypeId, ListListTypeId, ListTypeId,
-            NilListTypeId, ParameterListListTypeId, ParameterListTypeId, StringListTypeId,
-            TupleListTypeId, UtfCodepointListTypeId, ValueType,
+            BitArrayListTypeId, BoolListTypeId, CustomListTypeId, CustomTypeId, ExternalListTypeId,
+            ExternalTypeId, FloatListTypeId, FunctionListTypeId, FunctionType, IntListTypeId,
+            ListListTypeId, ListTypeId, NilListTypeId, ParameterListListTypeId,
+            ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
+            ValueType,
         };
 
         let custom_type = CustomTypeId::new(0);
@@ -619,6 +697,14 @@ mod explain_tests {
                 "%function.list.custom#41",
             ),
             (
+                ListFunctionLocal::External {
+                    local: ExternalListFunctionLocalId(48),
+                    type_: value_function_type.clone(),
+                    list_type: ExternalListTypeId::new(list_type, ExternalTypeId::new(0)),
+                },
+                "%function.list.external#48",
+            ),
+            (
                 ListFunctionLocal::Float {
                     local: FloatListFunctionLocalId(42),
                     type_: value_function_type.clone(),
@@ -678,10 +764,10 @@ mod explain_tests {
         use crate::plan::TypeParameterId;
         use crate::plan::execution::graph::{ListLocal, ParameterListListLocalId};
         use crate::plan::execution::type_::{
-            BitArrayListTypeId, BoolListTypeId, CustomListTypeId, CustomTypeId, FloatListTypeId,
-            FunctionListTypeId, IntListTypeId, ListListTypeId, ListTypeId, NilListTypeId,
-            ParameterListListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
-            UtfCodepointListTypeId,
+            BitArrayListTypeId, BoolListTypeId, CustomListTypeId, CustomTypeId, ExternalListTypeId,
+            ExternalTypeId, FloatListTypeId, FunctionListTypeId, IntListTypeId, ListListTypeId,
+            ListTypeId, NilListTypeId, ParameterListListTypeId, ParameterListTypeId,
+            StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
         };
 
         let list_type = ListTypeId::new(0);
@@ -735,6 +821,13 @@ mod explain_tests {
                     type_id: CustomListTypeId::new(list_type, CustomTypeId::new(0)),
                 },
                 "%list.custom#6",
+            ),
+            (
+                ListLocal::External {
+                    local: ExternalListLocalId(13),
+                    type_id: ExternalListTypeId::new(list_type, ExternalTypeId::new(0)),
+                },
+                "%list.external#13",
             ),
             (
                 ListLocal::Float {
@@ -812,6 +905,10 @@ mod explain_tests {
                 "%list.custom#18",
             ),
             (
+                StoredListLocal::External(ExternalListLocalId(25)),
+                "%list.external#25",
+            ),
+            (
                 StoredListLocal::Float(FloatListLocalId(19)),
                 "%list.float#19",
             ),
@@ -836,14 +933,16 @@ mod explain_tests {
     #[test]
     fn writes_every_function_local_family_explicitly() {
         use crate::plan::execution::graph::{
-            CustomFunctionLocal, CustomFunctionLocalId, FunctionFunctionLocal,
-            FunctionFunctionLocalId, FunctionLocal, GenericFunctionLocal, GenericFunctionLocalId,
-            ListFunctionLocal, NeverFunctionLocal, NeverFunctionLocalId,
+            CoreFunctionFunctionLocal, CoreFunctionFunctionLocalId, CustomFunctionLocal,
+            CustomFunctionLocalId, ExternalFunctionFunctionLocal, ExternalFunctionFunctionLocalId,
+            ExternalFunctionLocal, ExternalFunctionLocalId, FunctionFunctionLocal, FunctionLocal,
+            GenericFunctionLocal, GenericFunctionLocalId, ListFunctionLocal, NeverFunctionLocal,
+            NeverFunctionLocalId,
         };
         use crate::plan::execution::type_::{
             CustomFunctionType, CustomTypeId, CustomValueShape, CustomValueShapeId,
-            FunctionFunctionType, FunctionShape, FunctionType, GenericFunctionType, IntListTypeId,
-            ListTypeId, ValueShapeId, ValueType,
+            ExternalFunctionType, ExternalTypeId, FunctionFunctionType, FunctionShape,
+            FunctionType, GenericFunctionType, IntListTypeId, ListTypeId, ValueShapeId, ValueType,
         };
 
         let function_type = FunctionType::new(Vec::new(), ValueType::Int);
@@ -852,6 +951,15 @@ mod explain_tests {
             GenericFunctionType::from_shapes(function_type.clone(), function_shape.clone());
         let custom_type = CustomTypeId::new(0);
         let custom_shape = CustomValueShape::new(custom_type, CustomValueShapeId::new(0));
+        let external_type = ExternalTypeId::new(0);
+        let function_function_type = FunctionFunctionType::from_shapes(
+            FunctionType::new(
+                Vec::new(),
+                ValueType::Function(Box::new(function_type.clone())),
+            ),
+            Vec::new(),
+            function_shape.clone(),
+        );
         let cases = [
             (
                 FunctionLocal::Generic(GenericFunctionLocal::new(
@@ -896,6 +1004,17 @@ mod explain_tests {
                 "%function.custom#7",
             ),
             (
+                FunctionLocal::External(ExternalFunctionLocal::new(
+                    ExternalFunctionLocalId(13),
+                    ExternalFunctionType::from_shapes(
+                        FunctionType::new(Vec::new(), ValueType::External(external_type)),
+                        Vec::new(),
+                        external_type,
+                    ),
+                )),
+                "%function.external#13",
+            ),
+            (
                 FunctionLocal::Bool(BoolFunctionLocalId(8)),
                 "%function.bool#8",
             ),
@@ -913,15 +1032,22 @@ mod explain_tests {
                 "%function.list.int#11",
             ),
             (
-                FunctionLocal::Function(FunctionFunctionLocal::new(
-                    FunctionFunctionLocalId(12),
-                    FunctionFunctionType::from_shapes(
-                        FunctionType::new(Vec::new(), ValueType::Function(Box::new(function_type))),
-                        Vec::new(),
-                        function_shape,
+                FunctionLocal::Function(FunctionFunctionLocal::Core(
+                    CoreFunctionFunctionLocal::new(
+                        CoreFunctionFunctionLocalId(12),
+                        function_function_type.clone(),
                     ),
                 )),
                 "%function.function#12",
+            ),
+            (
+                FunctionLocal::Function(FunctionFunctionLocal::External(
+                    ExternalFunctionFunctionLocal::new(
+                        ExternalFunctionFunctionLocalId(14),
+                        function_function_type,
+                    ),
+                )),
+                "%function.function.external#14",
             ),
         ];
 
@@ -933,15 +1059,17 @@ mod explain_tests {
     #[test]
     fn writes_every_parameter_local_family_explicitly() {
         use crate::plan::execution::graph::{
-            CustomFunctionLocal, CustomFunctionLocalId, CustomLocal, CustomLocalId,
-            FunctionFunctionLocal, FunctionFunctionLocalId, GenericFunctionLocal,
+            CoreFunctionFunctionLocal, CoreFunctionFunctionLocalId, CustomFunctionLocal,
+            CustomFunctionLocalId, CustomLocal, CustomLocalId, ExternalFunctionFunctionLocal,
+            ExternalFunctionFunctionLocalId, ExternalFunctionLocal, ExternalFunctionLocalId,
+            ExternalLocal, ExternalLocalId, FunctionFunctionLocal, GenericFunctionLocal,
             GenericFunctionLocalId, IntListFunctionLocalId, ListFunctionLocal, ListLocal,
             NeverFunctionLocal, NeverFunctionLocalId,
         };
         use crate::plan::execution::type_::{
             CustomFunctionType, CustomTypeId, CustomValueShape, CustomValueShapeId,
-            FunctionFunctionType, FunctionShape, FunctionType, GenericFunctionType, IntListTypeId,
-            ListTypeId, ValueShapeId, ValueType,
+            ExternalFunctionType, ExternalTypeId, FunctionFunctionType, FunctionShape,
+            FunctionType, GenericFunctionType, IntListTypeId, ListTypeId, ValueShapeId, ValueType,
         };
 
         let function_type = FunctionType::new(Vec::new(), ValueType::Int);
@@ -950,7 +1078,16 @@ mod explain_tests {
             GenericFunctionType::from_shapes(function_type.clone(), function_shape.clone());
         let custom_type = CustomTypeId::new(0);
         let custom_shape = CustomValueShape::new(custom_type, CustomValueShapeId::new(0));
+        let external_type = ExternalTypeId::new(0);
         let list_type = IntListTypeId::new(ListTypeId::new(0));
+        let function_function_type = FunctionFunctionType::from_shapes(
+            FunctionType::new(
+                Vec::new(),
+                ValueType::Function(Box::new(function_type.clone())),
+            ),
+            Vec::new(),
+            function_shape.clone(),
+        );
         let cases = [
             (ParamLocal::Int(IntLocalId(0)), "%int#0"),
             (ParamLocal::Float(FloatLocalId(1)), "%float#1"),
@@ -963,6 +1100,10 @@ mod explain_tests {
             (
                 ParamLocal::Custom(CustomLocal::new(CustomLocalId(5), custom_shape)),
                 "%custom#5",
+            ),
+            (
+                ParamLocal::External(ExternalLocal::new(ExternalLocalId(23), external_type)),
+                "%external#23",
             ),
             (ParamLocal::Bool(BoolLocalId(6)), "%bool#6"),
             (ParamLocal::Nil(NilLocalId(7)), "%nil#7"),
@@ -1041,6 +1182,17 @@ mod explain_tests {
                 "%function.custom#17",
             ),
             (
+                ParamLocal::ExternalFunction(ExternalFunctionLocal::new(
+                    ExternalFunctionLocalId(24),
+                    ExternalFunctionType::from_shapes(
+                        FunctionType::new(Vec::new(), ValueType::External(external_type)),
+                        Vec::new(),
+                        external_type,
+                    ),
+                )),
+                "%function.external#24",
+            ),
+            (
                 ParamLocal::BoolFunction {
                     local: BoolFunctionLocalId(18),
                     type_: function_type.clone(),
@@ -1070,15 +1222,22 @@ mod explain_tests {
                 "%function.list.int#21",
             ),
             (
-                ParamLocal::FunctionFunction(FunctionFunctionLocal::new(
-                    FunctionFunctionLocalId(22),
-                    FunctionFunctionType::from_shapes(
-                        FunctionType::new(Vec::new(), ValueType::Function(Box::new(function_type))),
-                        Vec::new(),
-                        function_shape,
+                ParamLocal::FunctionFunction(FunctionFunctionLocal::Core(
+                    CoreFunctionFunctionLocal::new(
+                        CoreFunctionFunctionLocalId(22),
+                        function_function_type.clone(),
                     ),
                 )),
                 "%function.function#22",
+            ),
+            (
+                ParamLocal::FunctionFunction(FunctionFunctionLocal::External(
+                    ExternalFunctionFunctionLocal::new(
+                        ExternalFunctionFunctionLocalId(25),
+                        function_function_type,
+                    ),
+                )),
+                "%function.function.external#25",
             ),
         ];
 

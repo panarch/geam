@@ -24,7 +24,7 @@ pub(in crate::plan::execution) fn lower_hosted<Profile: HostProfile>(
     module_plan: HostedModulePlan<Profile>,
 ) -> Result<
     (
-        ExecutionProgram<HostedExecutionProfile<Profile>>,
+        ExecutionProgram<HostedExecutionProfile>,
         HostFunctionTables<Profile>,
     ),
     HostSpecializationError,
@@ -81,6 +81,7 @@ pub(in crate::plan::execution) fn lower_hosted<Profile: HostProfile>(
                 templates.entry_templates(),
                 representations,
                 constant_templates,
+                main_key.clone(),
                 erased_specializations,
             );
             let main = context.reserve_main(main_key.clone(), main_return_shape);
@@ -99,15 +100,15 @@ pub(in crate::plan::execution) fn lower_hosted<Profile: HostProfile>(
             }
 
             let (completion, host_functions) = host_functions.finish(context);
-            let (constant_templates, representations, outcome) = completion;
+            let (constant_templates, representations, lowered) = completion;
+            let outcome = super::SpecializationOutcome::Complete(main)
+                .zip_with(lowered, |main, lowered| (main, lowered, host_functions));
             let erased_specializations = outcome.erased_specializations();
-            Ok(outcome
-                .map(|lowered| (main, lowered, host_functions))
-                .into_fixed_point(SpecializationState {
-                    constant_templates,
-                    representations,
-                    erased_specializations,
-                }))
+            Ok(outcome.into_fixed_point(SpecializationState {
+                constant_templates,
+                representations,
+                erased_specializations,
+            }))
         })?;
 
     Ok((
@@ -119,6 +120,7 @@ pub(in crate::plan::execution) fn lower_hosted<Profile: HostProfile>(
                 constants: lowered.constants,
                 list_types: lowered.list_types,
                 custom_types: lowered.custom_types,
+                external_types: lowered.external_types,
                 value_shapes: lowered.value_shapes,
             },
             functions: lowered.functions,

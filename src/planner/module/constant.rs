@@ -14,6 +14,7 @@ use ecow::EcoString;
 use gleam_core::ast::{
     BitArrayOption, BitArraySegment as GleamBitArraySegment, Constant, TypedModuleConstant,
 };
+use gleam_core::strings::convert_string_escape_chars;
 use gleam_core::type_::{PRELUDE_MODULE_NAME, Type, ValueConstructor, ValueConstructorVariant};
 use num_bigint::BigInt;
 use std::collections::HashMap;
@@ -54,6 +55,7 @@ enum ConstantStorageFamily {
     UtfCodepointList,
     Custom,
     CustomList,
+    ExternalList,
     Float,
     FloatList,
     Bool,
@@ -71,6 +73,7 @@ enum ConstantStorageFamily {
     BitArrayFunction,
     UtfCodepointFunction,
     CustomFunction,
+    ExternalFunction,
     FloatFunction,
     BoolFunction,
     NilFunction,
@@ -102,6 +105,14 @@ pub(in crate::planner) fn reserve_constants(
     module: crate::plan::ModuleId,
     constants: Vec<TypedModuleConstant>,
 ) -> Result<ConstantDeclarations, PlanError> {
+    reserve_constants_with_external_types(module, constants, &std::collections::HashSet::new())
+}
+
+pub(in crate::planner) fn reserve_constants_with_external_types(
+    module: crate::plan::ModuleId,
+    constants: Vec<TypedModuleConstant>,
+    external_types: &std::collections::HashSet<crate::plan::ExternalTypeName>,
+) -> Result<ConstantDeclarations, PlanError> {
     let mut seeds = Vec::with_capacity(constants.len());
     let mut names = HashMap::with_capacity(constants.len());
     let mut signatures = Vec::with_capacity(constants.len());
@@ -109,11 +120,13 @@ pub(in crate::planner) fn reserve_constants(
 
     for (index, constant) in constants.into_iter().enumerate() {
         let mut type_parameters = TypeParameterScope::default();
-        let storage_shape = ConstantStorageShape::try_from_shape(ValueShape::from_gleam_in(
-            &constant.type_,
-            &mut type_parameters,
-        ))
-        .ok_or_else(invalid_constant_shape_error)?;
+        let storage_shape =
+            ConstantStorageShape::try_from_shape(ValueShape::from_gleam_in_with_external(
+                &constant.type_,
+                &mut type_parameters,
+                &|name| external_types.contains(name),
+            ))
+            .ok_or_else(invalid_constant_shape_error)?;
         let storage_index = storage_indices.reserve(storage_shape.family());
         let id = ConstantTemplateId::in_module(module, index);
         let signature = storage_shape.into_signature(id, storage_index, type_parameters.scheme());
@@ -189,7 +202,9 @@ impl ConstantSignatures {
 impl ConstantStorageShape {
     fn try_from_shape(shape: ValueShape) -> Option<Self> {
         Some(match shape {
-            ValueShape::Parameter(_) | ValueShape::UtfCodepoint => return None,
+            ValueShape::Parameter(_) | ValueShape::UtfCodepoint | ValueShape::External(_) => {
+                return None;
+            }
             ValueShape::Int => Self::Int,
             ValueShape::String => Self::String,
             ValueShape::BitArray => Self::BitArray,
@@ -220,6 +235,7 @@ impl ConstantStorageShape {
                 ValueShape::BitArray => ConstantStorageFamily::BitArrayFunction,
                 ValueShape::UtfCodepoint => ConstantStorageFamily::UtfCodepointFunction,
                 ValueShape::Custom(_) => ConstantStorageFamily::CustomFunction,
+                ValueShape::External(_) => ConstantStorageFamily::ExternalFunction,
                 ValueShape::Float => ConstantStorageFamily::FloatFunction,
                 ValueShape::Bool => ConstantStorageFamily::BoolFunction,
                 ValueShape::Nil => ConstantStorageFamily::NilFunction,
@@ -234,6 +250,7 @@ impl ConstantStorageShape {
                 ValueShape::BitArray => ConstantStorageFamily::BitArrayList,
                 ValueShape::UtfCodepoint => ConstantStorageFamily::UtfCodepointList,
                 ValueShape::Custom(_) => ConstantStorageFamily::CustomList,
+                ValueShape::External(_) => ConstantStorageFamily::ExternalList,
                 ValueShape::Float => ConstantStorageFamily::FloatList,
                 ValueShape::Bool => ConstantStorageFamily::BoolList,
                 ValueShape::Nil => ConstantStorageFamily::NilList,
@@ -295,7 +312,9 @@ fn plan_value(
     match value {
         Constant::Int { int_value, .. } => Ok(ConstantValue::int(int_value)),
         Constant::Float { float_value, .. } => Ok(ConstantValue::float(float_value.value())),
-        Constant::String { value, .. } => Ok(ConstantValue::string(value)),
+        Constant::String { value, .. } => {
+            Ok(ConstantValue::string(convert_string_escape_chars(&value)))
+        }
         Constant::StringConcatenation { left, right, .. } => {
             let left = into_string(plan_value(*left, context)?)?;
             let right = into_string(plan_value(*right, context)?)?;

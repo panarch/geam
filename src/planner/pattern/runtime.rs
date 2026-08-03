@@ -9,6 +9,7 @@ use crate::planner::error::{InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
 use gleam_core::analyse::Inferred;
 use gleam_core::ast::{AssignName, Pattern, TailPattern, TypedPattern};
+use gleam_core::strings::convert_string_escape_chars;
 use gleam_core::type_::Type;
 use std::sync::Arc;
 
@@ -46,10 +47,12 @@ pub(in crate::planner) struct PlannedCustomBinding {
 }
 
 impl PlannedCustomBinding {
+    #[cfg(test)]
     pub(in crate::planner) fn constructor(&self) -> &CustomConstructor {
         &self.constructor
     }
 
+    #[cfg(test)]
     pub(in crate::planner) fn constructor_count(&self) -> usize {
         self.constructor_count
     }
@@ -101,6 +104,14 @@ impl PlannedCustomBinding {
             self.fields,
         )
     }
+
+    pub(in crate::planner) fn into_exhaustive_remainder_binding(self) -> CustomBindingPattern {
+        let constructor = self.constructor.index();
+        let excluded = (0..self.constructor_count)
+            .filter(|index| *index != constructor)
+            .collect();
+        self.into_remainder_binding(excluded)
+    }
 }
 
 pub(in crate::planner) fn plan_runtime_pattern(
@@ -139,7 +150,7 @@ pub(in crate::planner) fn plan_runtime_pattern(
             custom_binding: None,
         }),
         Pattern::String { value, .. } => Ok(PlannedRuntimePattern {
-            pattern: AssertPattern::String(value),
+            pattern: AssertPattern::String(convert_string_escape_chars(&value)),
             is_total: false,
             total_binding: None,
             custom_binding: None,
@@ -219,7 +230,7 @@ pub(in crate::planner) fn plan_runtime_pattern(
             };
             Ok(PlannedRuntimePattern {
                 pattern: AssertPattern::StringPrefix {
-                    prefix: left_side_string,
+                    prefix: convert_string_escape_chars(&left_side_string),
                     left,
                     right,
                 },
@@ -1145,6 +1156,22 @@ mod tests {
                 result_shape.clone(),
                 vec![0],
                 any_constructor,
+                vec![TotalBindingPattern::discard(ValueType::Int)],
+            ),
+        );
+        assert_eq!(
+            any.custom_binding
+                .clone()
+                .expect("total fields should preserve the custom binding")
+                .into_exhaustive_remainder_binding(),
+            CustomBindingPattern::exhaustive_remainder(
+                result_shape.clone(),
+                vec![1],
+                any.custom_binding
+                    .as_ref()
+                    .expect("total fields should preserve the custom binding")
+                    .constructor()
+                    .clone(),
                 vec![TotalBindingPattern::discard(ValueType::Int)],
             ),
         );

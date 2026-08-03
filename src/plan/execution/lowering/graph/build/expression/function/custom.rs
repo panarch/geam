@@ -1,6 +1,6 @@
 use super::super::{call_args, custom, list, tuple};
 use super::{closure, function_function_expr, reference, source_stop};
-use crate::plan::execution::graph::FunctionTarget;
+use crate::plan::execution::lowering::graph::DraftFunctionTarget;
 use crate::plan::execution::lowering::graph::{
     DraftCursor, DraftCustomFunction, DraftFlow, DraftGraph,
 };
@@ -81,8 +81,13 @@ pub(in crate::plan::execution::lowering) fn custom_function_expr_kind(
         E::Reference(value) => context
             .custom_function_id(value.instantiation(), return_shape)
             .map(|target| {
-                reference(shape.clone(), FunctionTarget::Custom(target), cursor, graph)
-                    .map(DraftCustomFunction::new)
+                reference(
+                    shape.clone(),
+                    DraftFunctionTarget::Custom(target),
+                    cursor,
+                    graph,
+                )
+                .map(DraftCustomFunction::new)
             }),
         E::Closure { function, captures } => context
             .custom_function_id(function, return_shape)
@@ -91,7 +96,7 @@ pub(in crate::plan::execution::lowering) fn custom_function_expr_kind(
                     function,
                     captures,
                     shape.clone(),
-                    FunctionTarget::Custom(target),
+                    DraftFunctionTarget::Custom(target),
                     cursor,
                     graph,
                     context,
@@ -324,7 +329,7 @@ pub(super) fn generic_custom_function_expr_kind(
             |function, context| {
                 context
                     .custom_function_id(function, return_shape)
-                    .map(FunctionTarget::Custom)
+                    .map(DraftFunctionTarget::Custom)
             },
             |function, context| {
                 let type_ =

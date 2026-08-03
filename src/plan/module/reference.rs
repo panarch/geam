@@ -18,6 +18,7 @@ pub(crate) type StringFunctionReference = TypedFunctionReference<super::StringEx
 pub(crate) type BitArrayFunctionReference = TypedFunctionReference<super::BitArrayExpr>;
 pub(crate) type UtfCodepointFunctionReference = TypedFunctionReference<super::UtfCodepointExpr>;
 pub(crate) type CustomFunctionReference = TypedFunctionReference<super::CustomExpr>;
+pub(crate) type ExternalFunctionReference = TypedFunctionReference<super::ExternalExpr>;
 pub(crate) type BoolFunctionReference = TypedFunctionReference<super::BoolExpr>;
 pub(crate) type NilFunctionReference = TypedFunctionReference<super::NilExpr>;
 pub(crate) type TupleFunctionReference = TypedFunctionReference<super::TupleExpr>;

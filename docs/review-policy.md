@@ -225,6 +225,33 @@ execution specialization seals concrete locals and return storage. Do not
 replace these boundaries with materialized public values, per-specialization
 user registration, or runtime shape validation.
 
+Keep external storage distinct from ordinary custom values and provider run
+state. Canonical plans may retain nominal external identity and typed storage
+metadata, but not Rust payloads. Hosted execution owns typed storage access,
+while each public external value must own its opaque payload lifetime without
+borrowing runtime state. Retained Gleam values may be created and restored only
+through an external payload and an active typed host call; do not expose them
+through run state, public `Value`, Rust downcasts, or cross-execution import.
+
+External source equality, hashing, and inspection must use narrow
+operation-specific contexts for retained values. Equal payloads must produce
+equal source hashes, and hash collisions must still be resolved through source
+equality. Cache hash and inspection on demand after immutable payload
+construction, so persistent updates do not acquire whole-payload traversal as
+a construction cost. Seal an owned inspection before a value escapes runtime
+context. Do not derive source hashes from Rust type identity, allocation
+addresses, public opaque identity, or inspection output.
+
+Existential external storage must preserve the exact specialized Gleam shape.
+Typed decode compares that recursive shape, not Rust payload identity, and a
+shape mismatch remains ordinary provider-level absence rather than a runtime
+error, invariant, panic, or fallback.
+
+Providers that model transient-style builders must use immutable persistent
+payload versions. Operations may share acyclic retained entries, but must not
+mutate published payloads or introduce consumed-token validation, general
+external references, or cycle collection as hidden runtime margins.
+
 Treat callable invocation as an explicit call-scoped capability. A callback
 capability must have inhabited argument storage when hosted execution is
 sealed; an opaque function value may pass through generic storage without

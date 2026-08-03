@@ -2,12 +2,14 @@ use super::CaptureValue;
 use crate::plan::FunctionType;
 
 use crate::plan::execution::function::{
-    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, FunctionFunctionId,
-    GenericCallableId, IntFunctionId, ListFunctionId, NeverFunctionId, NilFunctionId,
-    StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
+    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, ExternalFunctionId, FloatFunctionId,
+    FunctionFunctionId, GenericCallableId, IntFunctionId, NeverFunctionId, NilFunctionId,
+    RuntimeListFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
 };
 #[cfg(test)]
-use crate::plan::execution::function::{FunctionReturnFamily, RuntimeFunctionId};
+use crate::plan::execution::function::{
+    CoreRuntimeFunctionId, FunctionReturnFamily, RuntimeFunctionId,
+};
 use crate::plan::execution::graph::ParamLocal;
 use crate::plan::execution::type_::CustomConstructorId;
 
@@ -26,6 +28,7 @@ pub(crate) enum FunctionValueKind {
     BitArray(BitArrayFunctionValue),
     UtfCodepoint(UtfCodepointFunctionValue),
     Custom(CustomFunctionValue),
+    External(ExternalFunctionValue),
     Bool(BoolFunctionValue),
     Nil(NilFunctionValue),
     Tuple(TupleFunctionValue),
@@ -104,6 +107,14 @@ pub(crate) enum CustomFunctionValueTarget {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ExternalFunctionValue {
+    runtime_id: ExternalFunctionId,
+    params: Vec<ParamLocal>,
+    captures: Vec<CaptureValue>,
+    type_: FunctionType,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct BoolFunctionValue {
     runtime_id: BoolFunctionId,
     params: Vec<ParamLocal>,
@@ -129,7 +140,7 @@ pub(crate) struct TupleFunctionValue {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ListFunctionValue {
-    runtime_id: ListFunctionId,
+    runtime_id: RuntimeListFunctionId,
     params: Vec<ParamLocal>,
     captures: Vec<CaptureValue>,
     type_: FunctionType,
@@ -155,59 +166,69 @@ impl FunctionValue {
         type_: FunctionType,
     ) -> Self {
         let kind = match runtime_id {
-            RuntimeFunctionId::Never(runtime_id) => FunctionValueKind::Never(
-                NeverFunctionValue::from_evaluated(runtime_id, params, Vec::new(), type_),
+            RuntimeFunctionId::Core(runtime_id) => match runtime_id {
+                CoreRuntimeFunctionId::Never(runtime_id) => FunctionValueKind::Never(
+                    NeverFunctionValue::from_evaluated(runtime_id, params, Vec::new(), type_),
+                ),
+                CoreRuntimeFunctionId::Int(runtime_id) => FunctionValueKind::Int(
+                    IntFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
+                ),
+                CoreRuntimeFunctionId::Float(runtime_id) => FunctionValueKind::Float(
+                    FloatFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
+                ),
+                CoreRuntimeFunctionId::String(runtime_id) => FunctionValueKind::String(
+                    StringFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
+                ),
+                CoreRuntimeFunctionId::BitArray(runtime_id) => FunctionValueKind::BitArray(
+                    BitArrayFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
+                ),
+                CoreRuntimeFunctionId::UtfCodepoint(runtime_id) => {
+                    FunctionValueKind::UtfCodepoint(UtfCodepointFunctionValue::new_with_captures(
+                        runtime_id,
+                        params,
+                        Vec::new(),
+                        type_,
+                    ))
+                }
+                CoreRuntimeFunctionId::Custom(id) => {
+                    FunctionValueKind::Custom(CustomFunctionValue::new_with_captures(
+                        CustomFunctionValueTarget::Function(id),
+                        params,
+                        Vec::new(),
+                        type_,
+                    ))
+                }
+                CoreRuntimeFunctionId::Bool(runtime_id) => FunctionValueKind::Bool(
+                    BoolFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
+                ),
+                CoreRuntimeFunctionId::Nil(runtime_id) => FunctionValueKind::Nil(
+                    NilFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
+                ),
+                CoreRuntimeFunctionId::Tuple { id, return_type } => {
+                    let _ = return_type;
+                    FunctionValueKind::Tuple(TupleFunctionValue::from_evaluated(
+                        id,
+                        params,
+                        Vec::new(),
+                        type_,
+                    ))
+                }
+                CoreRuntimeFunctionId::List(id) => FunctionValueKind::List(
+                    ListFunctionValue::new_with_captures(id, params, Vec::new(), type_),
+                ),
+                CoreRuntimeFunctionId::Function { id, return_type } => {
+                    let _ = return_type;
+                    FunctionValueKind::Function(FunctionFunctionValue::from_evaluated(
+                        id.runtime_id(),
+                        params,
+                        Vec::new(),
+                        type_,
+                    ))
+                }
+            },
+            RuntimeFunctionId::External(runtime_id) => FunctionValueKind::External(
+                ExternalFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
             ),
-            RuntimeFunctionId::Int(runtime_id) => FunctionValueKind::Int(
-                IntFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
-            ),
-            RuntimeFunctionId::Float(runtime_id) => FunctionValueKind::Float(
-                FloatFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
-            ),
-            RuntimeFunctionId::String(runtime_id) => FunctionValueKind::String(
-                StringFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
-            ),
-            RuntimeFunctionId::BitArray(runtime_id) => FunctionValueKind::BitArray(
-                BitArrayFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
-            ),
-            RuntimeFunctionId::UtfCodepoint(runtime_id) => FunctionValueKind::UtfCodepoint(
-                UtfCodepointFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
-            ),
-            RuntimeFunctionId::Custom(id) => {
-                FunctionValueKind::Custom(CustomFunctionValue::new_with_captures(
-                    CustomFunctionValueTarget::Function(id),
-                    params,
-                    Vec::new(),
-                    type_,
-                ))
-            }
-            RuntimeFunctionId::Bool(runtime_id) => FunctionValueKind::Bool(
-                BoolFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
-            ),
-            RuntimeFunctionId::Nil(runtime_id) => FunctionValueKind::Nil(
-                NilFunctionValue::new_with_captures(runtime_id, params, Vec::new(), type_),
-            ),
-            RuntimeFunctionId::Tuple { id, return_type } => {
-                let _ = return_type;
-                FunctionValueKind::Tuple(TupleFunctionValue::from_evaluated(
-                    id,
-                    params,
-                    Vec::new(),
-                    type_,
-                ))
-            }
-            RuntimeFunctionId::List(id) => FunctionValueKind::List(
-                ListFunctionValue::new_with_captures(id, params, Vec::new(), type_),
-            ),
-            RuntimeFunctionId::Function { id, return_type } => {
-                let _ = return_type;
-                FunctionValueKind::Function(FunctionFunctionValue::from_evaluated(
-                    id,
-                    params,
-                    Vec::new(),
-                    type_,
-                ))
-            }
         };
 
         Self { kind }
@@ -223,6 +244,7 @@ impl FunctionValue {
             FunctionValueKind::BitArray(value) => value.type_(),
             FunctionValueKind::UtfCodepoint(value) => value.type_(),
             FunctionValueKind::Custom(value) => value.type_(),
+            FunctionValueKind::External(value) => value.type_(),
             FunctionValueKind::Bool(value) => value.type_(),
             FunctionValueKind::Nil(value) => value.type_(),
             FunctionValueKind::Tuple(value) => value.type_(),
@@ -249,6 +271,7 @@ impl FunctionValueKind {
             Self::BitArray(_) => FunctionReturnFamily::BitArray,
             Self::UtfCodepoint(_) => FunctionReturnFamily::UtfCodepoint,
             Self::Custom(_) => FunctionReturnFamily::Custom,
+            Self::External(_) => FunctionReturnFamily::External,
             Self::Bool(_) => FunctionReturnFamily::Bool,
             Self::Nil(_) => FunctionReturnFamily::Nil,
             Self::Tuple(_) => FunctionReturnFamily::Tuple,
@@ -427,6 +450,26 @@ impl CustomFunctionValue {
     }
 }
 
+impl ExternalFunctionValue {
+    pub(crate) fn new_with_captures(
+        runtime_id: ExternalFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Vec<CaptureValue>,
+        type_: FunctionType,
+    ) -> Self {
+        Self {
+            runtime_id,
+            params,
+            captures,
+            type_,
+        }
+    }
+
+    pub(crate) fn type_(&self) -> FunctionType {
+        self.type_.clone()
+    }
+}
+
 impl BoolFunctionValue {
     pub(crate) fn new_with_captures(
         runtime_id: BoolFunctionId,
@@ -489,7 +532,7 @@ impl TupleFunctionValue {
 
 impl ListFunctionValue {
     pub(crate) fn new_with_captures(
-        runtime_id: ListFunctionId,
+        runtime_id: RuntimeListFunctionId,
         params: Vec<ParamLocal>,
         captures: Vec<CaptureValue>,
         type_: FunctionType,
@@ -591,6 +634,14 @@ impl From<CustomFunctionValue> for FunctionValue {
     }
 }
 
+impl From<ExternalFunctionValue> for FunctionValue {
+    fn from(value: ExternalFunctionValue) -> Self {
+        Self {
+            kind: FunctionValueKind::External(value),
+        }
+    }
+}
+
 impl From<BoolFunctionValue> for FunctionValue {
     fn from(value: BoolFunctionValue) -> Self {
         Self {
@@ -634,8 +685,89 @@ impl From<FunctionFunctionValue> for FunctionValue {
 #[cfg(test)]
 mod tests {
     use super::{FunctionValue, FunctionValueKind, GenericFunctionValue};
+    use crate::host::{
+        ExternalTestProfile, ExternalTestRunState, HostCall, HostCallCompletion, HostCallError,
+        HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType, HostProvider,
+        HostProviderModule, HostProviderSet,
+    };
     use crate::plan::execution::function::{FunctionReturnFamily, GenericCallableId};
-    use crate::plan::{CustomType, CustomTypeName, FunctionType, TypeParameterId, ValueType};
+    use crate::plan::execution::runtime::RuntimeExecutionPlan;
+    use crate::plan::{
+        CustomType, CustomTypeName, ExternalType, ExternalTypeName, FunctionType, TypeParameterId,
+        ValueType,
+    };
+    use crate::{
+        HostModule, HostedExecution, ModuleSource, PackageSource, compile_typed_host_program,
+        plan_host_program,
+    };
+    use ecow::EcoString;
+
+    struct ResourceSchema;
+
+    struct ResourceProvider;
+
+    type HostResource = HostExternalType<ResourceSchema>;
+
+    impl HostExternalSchema for ResourceSchema {
+        const PACKAGE: &'static str = "application";
+        const MODULE: &'static str = "main";
+        const NAME: &'static str = "Resource";
+        const PARAMETER_COUNT: usize = 0;
+    }
+
+    impl HostExternalStorage<ResourceSchema> for ExternalTestProfile {
+        type Payload = ();
+
+        fn store(stores: &Self::ExternalStores) -> &HostExternalStore<Self::Payload> {
+            &stores.units
+        }
+
+        fn source_equal(
+            _: &crate::host::HostExternalEquality<'_>,
+            _: &Self::Payload,
+            _: &Self::Payload,
+        ) -> bool {
+            true
+        }
+
+        fn source_hash(_: &crate::host::HostExternalHashing<'_>, _: &Self::Payload) -> u64 {
+            0
+        }
+
+        fn inspect(_: &crate::host::HostExternalInspection<'_>, _: &Self::Payload) -> EcoString {
+            "Resource".into()
+        }
+    }
+
+    impl HostProvider<ExternalTestProfile> for ResourceProvider {
+        type State = ();
+
+        fn project(state: &mut ExternalTestRunState) -> &mut Self::State {
+            &mut state.provider
+        }
+    }
+
+    fn external_main<'call>(
+        mut call: HostCall<'call, ExternalTestProfile, ResourceProvider, HostResource>,
+    ) -> Result<HostCallCompletion<'call, HostResource>, HostCallError> {
+        let _ = call.state();
+        let resource = call.create_external(());
+        Ok(call.return_value(resource))
+    }
+
+    #[test]
+    fn resource_fixture_source_hash_is_exact() {
+        let retained_hash = |_: &crate::runtime::StoredRuntimeValue| 7;
+        let hashing = crate::host::HostExternalHashing::new(&retained_hash);
+
+        assert_eq!(
+            <ExternalTestProfile as HostExternalStorage<ResourceSchema>>::source_hash(
+                &hashing,
+                &(),
+            ),
+            0,
+        );
+    }
 
     #[test]
     fn function_value_preserves_every_lowered_return_family() {
@@ -778,6 +910,99 @@ mod tests {
         assert_eq!(FunctionValue::from(generic), value);
     }
 
+    #[test]
+    fn external_function_value_preserves_its_runtime_family_and_type() {
+        let provider = HostProviderModule::<ExternalTestProfile>::new("application", "main")
+            .expect("provider module should be valid")
+            .with_external_type::<ResourceSchema>()
+            .expect("external type should be valid")
+            .with_scoped_function::<ResourceProvider, (), HostResource, _>(
+                "resource",
+                external_main,
+            )
+            .expect("external resource function should be valid");
+        let source = r#"
+@external(erlang, "host", "Resource")
+pub type Resource
+
+@external(erlang, "host", "resource")
+fn resource() -> Resource
+
+pub type Wrapped {
+  Wrapped(value: Resource)
+}
+
+fn unwrap(value: Wrapped) -> Resource {
+  value.value
+}
+
+fn resources() -> List(Resource) {
+  [resource()]
+}
+
+fn resource_provider() -> fn() -> Resource {
+  resource
+}
+
+fn resources_provider() -> fn() -> List(Resource) {
+  resources
+}
+
+pub fn main() -> Resource {
+  let selected_resource = #(resource).0
+  let selected_resources = #(resources).0
+  let selected_resource_provider = #(resource_provider).0
+  let selected_resources_provider = #(resources_provider).0
+  let assert True = selected_resource == resource
+  let assert True = selected_resources == resources
+  let assert True = selected_resource_provider == resource_provider
+  let assert True = selected_resources_provider == resources_provider
+  let first = unwrap(Wrapped(resource()))
+  let assert True = first == resource()
+  first
+}
+"#;
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<&str>::new(),
+                [ModuleSource::new("main", "main.gleam", source)],
+            )],
+            HostProviderSet::with_providers(
+                Vec::<HostModule<ExternalTestProfile>>::new(),
+                [provider],
+            )
+            .expect("provider module should be unique"),
+        )
+        .expect("external main should compile");
+        let plan = plan_host_program(typed).expect("external main should plan");
+        let execution =
+            HostedExecution::try_from_module_plan(plan).expect("external main should seal");
+        let external_type = ExternalType::new(
+            ExternalTypeName::new("application".into(), "main".into(), "Resource".into()),
+            Vec::new(),
+        );
+        let function_type =
+            FunctionType::new(Vec::new(), ValueType::External(external_type.clone()));
+        let value = FunctionValue::new(
+            RuntimeExecutionPlan::main_runtime(&execution),
+            Vec::new(),
+            function_type.clone(),
+        );
+
+        assert_eq!(value.type_(), function_type);
+        assert_eq!(value.kind().family(), FunctionReturnFamily::External);
+        assert_eq!(clone_through_family(&value), value);
+
+        let returned = execution
+            .run_main(&mut ExternalTestRunState::default(), &mut Vec::new())
+            .expect("external main should execute");
+        assert_eq!(returned.inspect().to_string(), "Resource");
+        assert_eq!(returned.value_type(), ValueType::External(external_type));
+    }
+
     fn clone_through_family(value: &FunctionValue) -> FunctionValue {
         match value.kind() {
             FunctionValueKind::Generic(value) => FunctionValue::from(value.clone()),
@@ -788,6 +1013,7 @@ mod tests {
             FunctionValueKind::BitArray(value) => FunctionValue::from(value.clone()),
             FunctionValueKind::UtfCodepoint(value) => FunctionValue::from(value.clone()),
             FunctionValueKind::Custom(value) => FunctionValue::from(value.clone()),
+            FunctionValueKind::External(value) => FunctionValue::from(value.clone()),
             FunctionValueKind::Bool(value) => FunctionValue::from(value.clone()),
             FunctionValueKind::Nil(value) => FunctionValue::from(value.clone()),
             FunctionValueKind::Tuple(value) => FunctionValue::from(value.clone()),

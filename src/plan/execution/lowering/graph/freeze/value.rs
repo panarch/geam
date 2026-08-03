@@ -1,14 +1,14 @@
 use super::super::draft::{
     BitArrayFunctionFamily, BitArrayListFamily, BoolFunctionFamily, BoolListFamily,
-    CustomFunctionFamily, CustomListFamily, DraftBitArray, DraftBool, DraftCustom, DraftFloat,
-    DraftFunction, DraftGraphValue, DraftInt, DraftList, DraftNeverReturn, DraftNil,
+    CustomFunctionFamily, CustomListFamily, DraftBitArray, DraftBool, DraftCustom, DraftExternal,
+    DraftFloat, DraftFunction, DraftGraphValue, DraftInt, DraftList, DraftNeverReturn, DraftNil,
     DraftStoredList, DraftString, DraftTuple, DraftTypedFunction, DraftTypedList,
-    DraftUtfCodepoint, DraftValueKey, DraftValueRef, FloatFunctionFamily, FloatListFamily,
-    FunctionFunctionFamily, FunctionListFamily, GenericFunctionFamily, IntFunctionFamily,
-    IntListFamily, ListFunctionFamily, ListListFamily, NeverFunctionFamily, NilFunctionFamily,
-    NilListFamily, ParameterListFamily, ParameterListListFamily, StringFunctionFamily,
-    StringListFamily, TupleFunctionFamily, TupleListFamily, UtfCodepointFunctionFamily,
-    UtfCodepointListFamily,
+    DraftUtfCodepoint, DraftValueKey, DraftValueRef, ExternalFunctionFamily, ExternalListFamily,
+    FloatFunctionFamily, FloatListFamily, FunctionFunctionFamily, FunctionListFamily,
+    GenericFunctionFamily, IntFunctionFamily, IntListFamily, ListFunctionFamily, ListListFamily,
+    NeverFunctionFamily, NilFunctionFamily, NilListFamily, ParameterListFamily,
+    ParameterListListFamily, StringFunctionFamily, StringListFamily, TupleFunctionFamily,
+    TupleListFamily, UtfCodepointFunctionFamily, UtfCodepointListFamily,
 };
 use crate::plan::execution;
 use std::collections::HashMap;
@@ -44,6 +44,7 @@ pub(in crate::plan::execution::lowering) struct BlockValues {
     bit_arrays: HashMap<DraftValueKey, execution::graph::BitArrayLocalId>,
     utf_codepoints: HashMap<DraftValueKey, execution::graph::UtfCodepointLocalId>,
     customs: HashMap<DraftValueKey, execution::graph::CustomLocal>,
+    externals: HashMap<DraftValueKey, execution::graph::ExternalLocal>,
     bools: HashMap<DraftValueKey, execution::graph::BoolLocalId>,
     nils: HashMap<DraftValueKey, execution::graph::NilLocalId>,
     tuples: HashMap<DraftValueKey, execution::graph::TupleLocalId>,
@@ -55,6 +56,7 @@ pub(in crate::plan::execution::lowering) struct BlockValues {
     bit_array_lists: HashMap<DraftValueKey, execution::graph::BitArrayListLocalId>,
     utf_codepoint_lists: HashMap<DraftValueKey, execution::graph::UtfCodepointListLocalId>,
     custom_lists: HashMap<DraftValueKey, execution::graph::CustomListLocalId>,
+    external_lists: HashMap<DraftValueKey, execution::graph::ExternalListLocalId>,
     float_lists: HashMap<DraftValueKey, execution::graph::FloatListLocalId>,
     bool_lists: HashMap<DraftValueKey, execution::graph::BoolListLocalId>,
     nil_lists: HashMap<DraftValueKey, execution::graph::NilListLocalId>,
@@ -70,10 +72,12 @@ pub(in crate::plan::execution::lowering) struct BlockValues {
     generic_functions: HashMap<DraftValueKey, execution::graph::GenericFunctionLocal>,
     never_functions: HashMap<DraftValueKey, execution::graph::NeverFunctionLocal>,
     custom_functions: HashMap<DraftValueKey, execution::graph::CustomFunctionLocal>,
+    external_functions: HashMap<DraftValueKey, execution::graph::ExternalFunctionLocal>,
     bool_functions: HashMap<DraftValueKey, execution::graph::BoolFunctionLocalId>,
     nil_functions: HashMap<DraftValueKey, execution::graph::NilFunctionLocalId>,
     tuple_functions: HashMap<DraftValueKey, execution::graph::TupleFunctionLocalId>,
     list_functions: HashMap<DraftValueKey, execution::graph::ListFunctionLocal>,
+    external_list_functions: HashMap<DraftValueKey, execution::graph::ExternalListFunctionLocalId>,
     function_functions: HashMap<DraftValueKey, execution::graph::FunctionFunctionLocal>,
 }
 
@@ -116,6 +120,9 @@ impl BlockValues {
             }
             L::Custom(local) => {
                 self.customs.insert(key, local);
+            }
+            L::External(local) => {
+                self.externals.insert(key, local);
             }
             L::Bool(local) => {
                 self.bools.insert(key, local);
@@ -169,6 +176,11 @@ impl BlockValues {
                 self.functions
                     .insert(key, execution::graph::FunctionLocal::Custom(local));
             }
+            L::ExternalFunction(local) => {
+                self.external_functions.insert(key, local.clone());
+                self.functions
+                    .insert(key, execution::graph::FunctionLocal::External(local));
+            }
             L::BoolFunction { local, .. } => {
                 self.bool_functions.insert(key, local);
                 self.functions
@@ -185,6 +197,12 @@ impl BlockValues {
                     .insert(key, execution::graph::FunctionLocal::Tuple(local));
             }
             L::ListFunction(local) => {
+                if let execution::graph::ListFunctionLocal::External {
+                    local: external, ..
+                } = &local
+                {
+                    self.external_list_functions.insert(key, *external);
+                }
                 self.list_functions.insert(key, local.clone());
                 self.functions
                     .insert(key, execution::graph::FunctionLocal::List(local));
@@ -222,6 +240,9 @@ impl BlockValues {
             }
             L::Custom { local, .. } => {
                 self.custom_lists.insert(key, local);
+            }
+            L::External { local, .. } => {
+                self.external_lists.insert(key, local);
             }
             L::Float { local, .. } => {
                 self.float_lists.insert(key, local);
@@ -297,6 +318,10 @@ impl BlockValues {
                 target: *target,
                 source: self.customs[&source.key],
             },
+            P::External(target) => C::External {
+                target: *target,
+                source: self.externals[&source.key],
+            },
             P::Bool(target) => C::Bool {
                 target: *target,
                 source: self.bools[&source.key],
@@ -337,6 +362,10 @@ impl BlockValues {
                 L::Custom { local: target, .. } => C::CustomList {
                     target: *target,
                     source: self.custom_lists[&source.key],
+                },
+                L::External { local: target, .. } => C::ExternalList {
+                    target: *target,
+                    source: self.external_lists[&source.key],
                 },
                 L::Float { local: target, .. } => C::FloatList {
                     target: *target,
@@ -395,6 +424,10 @@ impl BlockValues {
                 target: target.clone(),
                 source: self.custom_functions[&source.key].clone(),
             },
+            P::ExternalFunction(target) => C::ExternalFunction {
+                target: target.clone(),
+                source: self.external_functions[&source.key].clone(),
+            },
             P::BoolFunction { local: target, .. } => C::BoolFunction {
                 target: *target,
                 source: self.bool_functions[&source.key],
@@ -443,6 +476,10 @@ impl BlockValues {
 
     pub(super) fn custom(&self, value: &DraftCustom) -> execution::graph::CustomLocal {
         self.customs[&value.key]
+    }
+
+    pub(super) fn external(&self, value: &DraftExternal) -> execution::graph::ExternalLocal {
+        self.externals[&value.key]
     }
 
     pub(super) fn bool(&self, value: &DraftBool) -> execution::graph::BoolLocalId {
@@ -505,6 +542,10 @@ impl BlockValues {
         self.custom_lists[&value.key]
     }
 
+    pub(super) fn external_list(&self, value: &DraftList) -> execution::graph::ExternalListLocalId {
+        self.external_lists[&value.key]
+    }
+
     pub(super) fn float_list(&self, value: &DraftList) -> execution::graph::FloatListLocalId {
         self.float_lists[&value.key]
     }
@@ -543,6 +584,7 @@ impl BlockValues {
                 S::UtfCodepoint(self.utf_codepoint_lists[&value.key])
             }
             DraftStoredList::Custom(value) => S::Custom(self.custom_lists[&value.key]),
+            DraftStoredList::External(value) => S::External(self.external_lists[&value.key]),
             DraftStoredList::Float(value) => S::Float(self.float_lists[&value.key]),
             DraftStoredList::Bool(value) => S::Bool(self.bool_lists[&value.key]),
             DraftStoredList::Nil(value) => S::Nil(self.nil_lists[&value.key]),
@@ -608,6 +650,13 @@ impl BlockValues {
         self.custom_functions[&value.key].clone()
     }
 
+    pub(super) fn external_function(
+        &self,
+        value: &DraftFunction,
+    ) -> execution::graph::ExternalFunctionLocal {
+        self.external_functions[&value.key].clone()
+    }
+
     pub(super) fn bool_function(
         &self,
         value: &DraftFunction,
@@ -634,6 +683,13 @@ impl BlockValues {
         value: &DraftFunction,
     ) -> execution::graph::ListFunctionLocal {
         self.list_functions[&value.key].clone()
+    }
+
+    pub(super) fn external_list_function(
+        &self,
+        value: &DraftFunction,
+    ) -> execution::graph::ExternalListFunctionLocalId {
+        self.external_list_functions[&value.key]
     }
 
     pub(super) fn function_function(
@@ -689,6 +745,14 @@ impl FreezeGraphValue for DraftCustom {
 
     fn freeze(&self, values: &BlockValues) -> Self::Frozen {
         values.custom(self)
+    }
+}
+
+impl FreezeGraphValue for DraftExternal {
+    type Frozen = execution::graph::ExternalLocal;
+
+    fn freeze(&self, values: &BlockValues) -> Self::Frozen {
+        values.external(self)
     }
 }
 
@@ -793,6 +857,14 @@ impl FreezeListFamily for CustomListFamily {
 
     fn freeze(values: &BlockValues, value: &DraftList) -> Self::Frozen {
         values.custom_list(value)
+    }
+}
+
+impl FreezeListFamily for ExternalListFamily {
+    type Frozen = execution::graph::ExternalListLocalId;
+
+    fn freeze(values: &BlockValues, value: &DraftList) -> Self::Frozen {
+        values.external_list(value)
     }
 }
 
@@ -905,6 +977,14 @@ impl FreezeFunctionFamily for CustomFunctionFamily {
 
     fn freeze(values: &BlockValues, value: &DraftFunction) -> Self::Frozen {
         values.custom_function(value)
+    }
+}
+
+impl FreezeFunctionFamily for ExternalFunctionFamily {
+    type Frozen = execution::graph::ExternalFunctionLocal;
+
+    fn freeze(values: &BlockValues, value: &DraftFunction) -> Self::Frozen {
+        values.external_function(value)
     }
 }
 

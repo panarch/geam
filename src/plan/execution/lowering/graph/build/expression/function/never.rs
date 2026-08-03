@@ -1,6 +1,6 @@
 use super::super::{call_args, custom, list, tuple};
 use super::{closure, function_function_expr, reference, source_stop};
-use crate::plan::execution::graph::FunctionTarget;
+use crate::plan::execution::lowering::graph::DraftFunctionTarget;
 use crate::plan::execution::lowering::graph::{
     DraftCursor, DraftFlow, DraftGraph, DraftNeverFunction,
 };
@@ -62,7 +62,7 @@ pub(in crate::plan::execution::lowering) fn generic_function_expr(
                 |function, context| {
                     context
                         .never_function_id(function)
-                        .map(FunctionTarget::Never)
+                        .map(DraftFunctionTarget::Never)
                 },
                 |function, context| {
                     let type_ = context.generic_function_type(shape);
@@ -108,8 +108,13 @@ macro_rules! fixed_never_function {
                     context
                         .never_function_id(value.instantiation())
                         .map(|target| {
-                            reference(shape.clone(), FunctionTarget::Never(target), cursor, graph)
-                                .map(DraftNeverFunction::new)
+                            reference(
+                                shape.clone(),
+                                DraftFunctionTarget::Never(target),
+                                cursor,
+                                graph,
+                            )
+                            .map(DraftNeverFunction::new)
                         })
                 }
                 E::Closure {
@@ -119,7 +124,7 @@ macro_rules! fixed_never_function {
                         function,
                         captures,
                         shape.clone(),
-                        FunctionTarget::Never(target),
+                        DraftFunctionTarget::Never(target),
                         cursor,
                         graph,
                         context,
@@ -383,8 +388,13 @@ pub(in crate::plan::execution::lowering) fn custom_function_kind(
         E::Reference(value) => context
             .never_function_id(value.instantiation())
             .map(|target| {
-                reference(shape.clone(), FunctionTarget::Never(target), cursor, graph)
-                    .map(DraftNeverFunction::new)
+                reference(
+                    shape.clone(),
+                    DraftFunctionTarget::Never(target),
+                    cursor,
+                    graph,
+                )
+                .map(DraftNeverFunction::new)
             }),
         E::Closure { function, captures } => {
             context.never_function_id(function).and_then(|target| {
@@ -392,7 +402,7 @@ pub(in crate::plan::execution::lowering) fn custom_function_kind(
                     function,
                     captures,
                     shape.clone(),
-                    FunctionTarget::Never(target),
+                    DraftFunctionTarget::Never(target),
                     cursor,
                     graph,
                     context,

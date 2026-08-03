@@ -1,9 +1,14 @@
+mod field;
+
+pub use field::HostCustomTypeArgument;
+
 use super::{
-    HostAbiType, HostAbiTypeSequence, HostCustomIdentity, HostType, HostTypeDescriptor,
+    HostAbiTypeSequence, HostCustomIdentity, HostType, HostTypeDescriptor, HostTypeList,
     HostTypeListEnd, HostTypeSequence, private,
 };
 use crate::host::{HostCustom, HostScopedValue};
 use ecow::EcoString;
+use field::{CustomFieldType, ResolveCustomFieldType};
 use std::collections::HashSet;
 use std::marker::PhantomData;
 
@@ -51,8 +56,8 @@ pub trait HostCustomSchema: Send + Sync + 'static {
 ///
 /// ```compile_fail
 /// use geam::{
-///     HostCustomConstructor, HostCustomConstructorListEnd, HostCustomFieldListEnd,
-///     HostCustomSchema, HostCustomType,
+///     HostCustomConstructor, HostCustomConstructorListEnd, HostCustomSchema, HostCustomType,
+///     HostTypeListEnd,
 /// };
 ///
 /// struct Schema;
@@ -71,14 +76,18 @@ pub trait HostCustomSchema: Send + Sync + 'static {
 ///
 /// impl HostCustomConstructor for Fabricated {
 ///     type Custom = Thing;
-///     type Fields = HostCustomFieldListEnd;
+///     type Fields = HostTypeListEnd;
 /// }
 /// ```
 #[allow(private_bounds)]
 pub trait HostCustomConstructor: private::CustomConstructor + Send + Sync + 'static {
     type Custom: HostType;
-    type Fields: HostCustomFieldSequence;
+
+    /// Constructor fields after substituting `Custom`'s concrete type arguments.
+    type Fields: HostTypeSequence;
 }
+
+pub(crate) trait SoleHostCustomConstructor: HostCustomConstructor {}
 
 /// The source name and ordered fields of one custom constructor.
 pub trait HostCustomConstructorDefinition: Send + Sync + 'static {
@@ -99,22 +108,24 @@ impl<Constructors> HostCustomConstructorSequence for Constructors where
 {
 }
 
-/// The source label and ABI type of one custom constructor field.
+/// The source label and type expression of one custom constructor field.
+///
+/// [`HostCustomTypeArgument`] refers to a parameter declared by the enclosing
+/// [`HostCustomSchema`]. Function-level generics continue to use
+/// [`super::HostTypeParameter`].
+#[allow(private_bounds)]
 pub trait HostCustomField: Send + Sync + 'static {
     const LABEL: Option<&'static str>;
 
-    type Type: HostType;
+    type Type: CustomFieldType;
 }
 
 /// A sealed recursive sequence of custom constructor fields.
 #[allow(private_bounds)]
-pub trait HostCustomFieldSequence:
-    HostTypeSequence + private::CustomFields + Send + Sync + 'static
-{
-}
+pub trait HostCustomFieldSequence: private::CustomFields + Send + Sync + 'static {}
 
 impl<Fields> HostCustomFieldSequence for Fields where
-    Fields: HostTypeSequence + private::CustomFields + Send + Sync + 'static
+    Fields: private::CustomFields + Send + Sync + 'static
 {
 }
 
@@ -163,6 +174,10 @@ pub enum HostSchemaType {
         package: EcoString,
         module: EcoString,
         name: EcoString,
+        arguments: Box<[HostSchemaType]>,
+    },
+    External {
+        schema: crate::host::HostExternalTypeSchema,
         arguments: Box<[HostSchemaType]>,
     },
 }
@@ -288,6 +303,53 @@ impl HostSchemaType {
             arguments: arguments.into_iter().collect::<Vec<_>>().into_boxed_slice(),
         }
     }
+
+    pub(crate) fn collect_external_schemas(
+        &self,
+        output: &mut Vec<crate::host::HostExternalTypeSchema>,
+        visited: &mut HashSet<(EcoString, EcoString, EcoString)>,
+    ) {
+        match self {
+            Self::List(item) => item.collect_external_schemas(output, visited),
+            Self::Tuple(elements) => {
+                for element in elements {
+                    element.collect_external_schemas(output, visited);
+                }
+            }
+            Self::Function { arguments, return_ } => {
+                for argument in arguments {
+                    argument.collect_external_schemas(output, visited);
+                }
+                return_.collect_external_schemas(output, visited);
+            }
+            Self::Custom { arguments, .. } => {
+                for argument in arguments {
+                    argument.collect_external_schemas(output, visited);
+                }
+            }
+            Self::External { schema, arguments } => {
+                let identity = (
+                    schema.package().clone(),
+                    schema.module().clone(),
+                    schema.name().clone(),
+                );
+                if visited.insert(identity) {
+                    output.push(schema.clone());
+                }
+                for argument in arguments {
+                    argument.collect_external_schemas(output, visited);
+                }
+            }
+            Self::Parameter(_)
+            | Self::Int
+            | Self::Float
+            | Self::String
+            | Self::BitArray
+            | Self::UtfCodepoint
+            | Self::Bool
+            | Self::Nil => {}
+        }
+    }
 }
 
 impl<Head, Tail> private::CustomConstructors for HostCustomConstructorList<Head, Tail>
@@ -370,43 +432,23 @@ where
     Arguments: HostTypeSequence,
     Index: Send + Sync + 'static,
     Definition: HostCustomConstructorDefinition,
+    Definition::Fields: ResolveCustomFields<Arguments>,
     Schema::Constructors: private::ConstructorAt<Index, Definition>,
 {
     type Custom = HostCustomType<Schema, Arguments>;
-    type Fields = Definition::Fields;
+    type Fields = <Definition::Fields as ResolveCustomFields<Arguments>>::Fields;
 }
 
-impl HostTypeSequence for HostCustomFieldListEnd {
-    type Values<'call> = ();
-}
-
-impl private::Sequence for HostCustomFieldListEnd {
-    fn descriptors() -> Vec<HostTypeDescriptor> {
-        Vec::new()
-    }
-
-    fn schema_types() -> Vec<HostSchemaType> {
-        Vec::new()
-    }
-
-    fn collect_custom_schemas(
-        _output: &mut Vec<HostCustomTypeSchema>,
-        _visited: &mut HashSet<HostCustomIdentity>,
-    ) {
-    }
-
-    fn into_scoped_values(
-        (): <Self as HostTypeSequence>::Values<'_>,
-        _output: &mut Vec<HostScopedValue>,
-    ) {
-    }
-
-    fn from_tokens<'call, Profile: crate::host::HostProfile>(
-        _runtime: &dyn crate::host::HostCallRuntime<Profile>,
-        _tokens: &[crate::host::HostValueToken],
-        _index: &mut usize,
-    ) -> <Self as HostTypeSequence>::Values<'call> {
-    }
+impl<Schema, Arguments, Definition> SoleHostCustomConstructor
+    for HostCustomConstructorAt<HostCustomType<Schema, Arguments>, HostCustomIndex0, Definition>
+where
+    Schema: HostCustomSchema<
+        Constructors = HostCustomConstructorList<Definition, HostCustomConstructorListEnd>,
+    >,
+    Arguments: HostTypeSequence,
+    Definition: HostCustomConstructorDefinition,
+    Definition::Fields: ResolveCustomFields<Arguments>,
+{
 }
 
 impl private::CustomFields for HostCustomFieldListEnd {
@@ -421,73 +463,43 @@ impl private::CustomFields for HostCustomFieldListEnd {
     }
 }
 
-impl<Head, Tail> HostTypeSequence for HostCustomFieldList<Head, Tail>
+#[doc(hidden)]
+pub trait ResolveCustomFields<Arguments>: HostCustomFieldSequence
 where
-    Head: HostCustomField,
-    Tail: HostCustomFieldSequence,
+    Arguments: HostTypeSequence,
 {
-    type Values<'call> = (
-        <Head::Type as HostType>::Value<'call>,
-        <Tail as HostTypeSequence>::Values<'call>,
-    );
+    type Fields: HostTypeSequence;
 }
 
-impl<Head, Tail> private::Sequence for HostCustomFieldList<Head, Tail>
+impl<Arguments> ResolveCustomFields<Arguments> for HostCustomFieldListEnd
 where
-    Head: HostCustomField,
-    Head::Type: HostAbiType,
-    Tail: HostCustomFieldSequence + HostAbiTypeSequence,
+    Arguments: HostTypeSequence,
 {
-    fn descriptors() -> Vec<HostTypeDescriptor> {
-        let mut types = vec![<Head::Type as HostAbiType>::descriptor()];
-        types.extend(<Tail as HostAbiTypeSequence>::descriptors());
-        types
-    }
+    type Fields = HostTypeListEnd;
+}
 
-    fn schema_types() -> Vec<HostSchemaType> {
-        let mut types = vec![<Head::Type as HostAbiType>::schema_type()];
-        types.extend(<Tail as HostAbiTypeSequence>::schema_types());
-        types
-    }
-
-    fn collect_custom_schemas(
-        output: &mut Vec<HostCustomTypeSchema>,
-        visited: &mut HashSet<HostCustomIdentity>,
-    ) {
-        <Head::Type as HostAbiType>::collect_custom_schemas(output, visited);
-        <Tail as HostAbiTypeSequence>::collect_custom_schemas(output, visited);
-    }
-
-    fn into_scoped_values(
-        (head, tail): <Self as HostTypeSequence>::Values<'_>,
-        output: &mut Vec<HostScopedValue>,
-    ) {
-        output.push(<Head::Type as HostAbiType>::into_scoped(head));
-        <Tail as HostAbiTypeSequence>::into_scoped_values(tail, output);
-    }
-
-    fn from_tokens<'call, Profile: crate::host::HostProfile>(
-        runtime: &dyn crate::host::HostCallRuntime<Profile>,
-        tokens: &[crate::host::HostValueToken],
-        index: &mut usize,
-    ) -> <Self as HostTypeSequence>::Values<'call> {
-        let head = <Head::Type as private::Abi>::from_token(runtime, tokens[*index]);
-        *index += 1;
-        let tail = <Tail as private::Sequence>::from_tokens(runtime, tokens, index);
-        (head, tail)
-    }
+impl<Arguments, Head, Tail> ResolveCustomFields<Arguments> for HostCustomFieldList<Head, Tail>
+where
+    Arguments: HostTypeSequence,
+    Head: HostCustomField,
+    Head::Type: ResolveCustomFieldType<Arguments>,
+    Tail: HostCustomFieldSequence + ResolveCustomFields<Arguments>,
+{
+    type Fields = HostTypeList<
+        <Head::Type as ResolveCustomFieldType<Arguments>>::Type,
+        <Tail as ResolveCustomFields<Arguments>>::Fields,
+    >;
 }
 
 impl<Head, Tail> private::CustomFields for HostCustomFieldList<Head, Tail>
 where
     Head: HostCustomField,
-    Head::Type: HostAbiType,
     Tail: HostCustomFieldSequence,
 {
     fn schemas() -> Vec<HostCustomFieldSchema> {
         let mut fields = vec![HostCustomFieldSchema::new(
             Head::LABEL,
-            <Head::Type as HostAbiType>::schema_type(),
+            <Head::Type as CustomFieldType>::schema_type(),
         )];
         fields.extend(<Tail as private::CustomFields>::schemas());
         fields
@@ -497,8 +509,28 @@ where
         output: &mut Vec<HostCustomTypeSchema>,
         visited: &mut HashSet<HostCustomIdentity>,
     ) {
-        <Head::Type as HostAbiType>::collect_custom_schemas(output, visited);
+        <Head::Type as CustomFieldType>::collect_custom_schemas(output, visited);
         <Tail as private::CustomFields>::collect_custom_schemas(output, visited);
+    }
+}
+
+pub(super) fn collect_custom_type_schema<Schema: HostCustomSchema>(
+    output: &mut Vec<HostCustomTypeSchema>,
+    visited: &mut HashSet<HostCustomIdentity>,
+) {
+    let schema = HostCustomTypeSchema::of::<Schema>();
+    if !output.contains(&schema) {
+        output.push(schema);
+    }
+    let identity = (
+        EcoString::from(Schema::PACKAGE),
+        EcoString::from(Schema::MODULE),
+        EcoString::from(Schema::NAME),
+    );
+    if visited.insert(identity) {
+        <Schema::Constructors as private::CustomConstructors>::collect_custom_schemas(
+            output, visited,
+        );
     }
 }
 
@@ -542,20 +574,7 @@ where
         output: &mut Vec<HostCustomTypeSchema>,
         visited: &mut HashSet<HostCustomIdentity>,
     ) {
-        let schema = HostCustomTypeSchema::of::<Schema>();
-        if !output.contains(&schema) {
-            output.push(schema);
-        }
-        let identity = (
-            EcoString::from(Schema::PACKAGE),
-            EcoString::from(Schema::MODULE),
-            EcoString::from(Schema::NAME),
-        );
-        if visited.insert(identity) {
-            <Schema::Constructors as private::CustomConstructors>::collect_custom_schemas(
-                output, visited,
-            );
-        }
+        collect_custom_type_schema::<Schema>(output, visited);
         <Arguments as HostAbiTypeSequence>::collect_custom_schemas(output, visited);
     }
 
@@ -576,14 +595,15 @@ mod tests {
     use super::{
         HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
         HostCustomConstructorSchema, HostCustomField, HostCustomFieldList, HostCustomFieldListEnd,
-        HostCustomFieldSchema, HostCustomSchema, HostCustomType, HostCustomTypeSchema,
+        HostCustomFieldSchema, HostCustomSchema, HostCustomType, HostCustomTypeArgument,
+        HostCustomTypeSchema,
     };
     use crate::host::function::CallArguments;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{
-        HostAbiType, HostCustom, HostCustomToken, HostSchemaType, HostScopedValue,
-        HostTypeDescriptor, HostTypeList, HostTypeListEnd, HostTypeParameter, HostValueFamily,
-        HostValueToken,
+        HostAbiType, HostCustom, HostCustomToken, HostExternalTypeSchema, HostSchemaType,
+        HostScopedValue, HostTypeDescriptor, HostTypeIndex0, HostTypeList, HostTypeListEnd,
+        HostTypeParameter, HostValueFamily, HostValueToken,
     };
 
     struct BoxedValueField;
@@ -591,7 +611,7 @@ mod tests {
     impl HostCustomField for BoxedValueField {
         const LABEL: Option<&'static str> = Some("value");
 
-        type Type = HostTypeParameter<0>;
+        type Type = HostCustomTypeArgument<HostTypeIndex0>;
     }
 
     struct BoxedConstructor;
@@ -670,5 +690,47 @@ mod tests {
             crate::host::type_::from_token::<Boxed, TestHostProfile>(&runtime, token).token,
             HostCustomToken(0),
         );
+    }
+
+    #[test]
+    fn external_schema_collection_follows_nested_host_schema_types() {
+        let resource = HostExternalTypeSchema::new("domain", "domain/resource", "Resource", 0);
+        let box_ = HostExternalTypeSchema::new("domain", "domain/box", "Box", 1);
+        let type_ = HostSchemaType::tuple([
+            HostSchemaType::External {
+                schema: resource.clone(),
+                arguments: Vec::new().into_boxed_slice(),
+            },
+            HostSchemaType::function(
+                [
+                    HostSchemaType::list(HostSchemaType::External {
+                        schema: box_.clone(),
+                        arguments: vec![HostSchemaType::Int].into_boxed_slice(),
+                    }),
+                    HostSchemaType::External {
+                        schema: resource.clone(),
+                        arguments: Vec::new().into_boxed_slice(),
+                    },
+                ],
+                HostSchemaType::custom(
+                    "domain",
+                    "domain/wrapper",
+                    "Wrapper",
+                    [
+                        HostSchemaType::External {
+                            schema: box_.clone(),
+                            arguments: vec![HostSchemaType::Bool].into_boxed_slice(),
+                        },
+                        HostSchemaType::Nil,
+                    ],
+                ),
+            ),
+        ]);
+        let mut schemas = Vec::new();
+        let mut visited = std::collections::HashSet::new();
+
+        type_.collect_external_schemas(&mut schemas, &mut visited);
+
+        assert_eq!(schemas, [resource, box_]);
     }
 }

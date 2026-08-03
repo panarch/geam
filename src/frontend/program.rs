@@ -150,18 +150,12 @@ pub fn compile_typed_host_program<Profile: HostProfile>(
     packages: impl IntoIterator<Item = PackageSource>,
     hosts: HostProviderSet<Profile>,
 ) -> Result<HostedTypedProgram<Profile>, FrontendError> {
-    let (modules, providers, implementations) = hosts.into_registered();
     compile_host_package_sources(
         root_package.into(),
         root_module.into(),
         packages.into_iter().collect(),
-        modules,
-        providers,
+        hosts,
     )
-    .map(|program| HostedTypedProgram {
-        program,
-        implementations,
-    })
 }
 
 fn compile_package_sources(
@@ -175,16 +169,26 @@ fn compile_package_sources(
     compile_parsed_package_program(root_package, root_module, parsed_modules, warnings)
 }
 
-fn compile_host_package_sources(
+fn compile_host_package_sources<Profile: HostProfile>(
     root_package: EcoString,
     root_module: EcoString,
     packages: Vec<PackageSource>,
-    host_modules: Vec<RegisteredHostModule>,
-    providers: Vec<RegisteredHostProviderModule>,
-) -> Result<HostedProgram, FrontendError> {
+    hosts: HostProviderSet<Profile>,
+) -> Result<HostedTypedProgram<Profile>, FrontendError> {
     let warnings = WarningEmitter::null();
     let parsed_modules = parse_package_sources(&root_package, packages, &warnings)?;
 
+    compile_parsed_host_package_program(root_package, root_module, parsed_modules, hosts, warnings)
+}
+
+pub(super) fn compile_parsed_host_package_program<Profile: HostProfile>(
+    root_package: EcoString,
+    root_module: EcoString,
+    parsed_modules: Vec<ParsedModule>,
+    hosts: HostProviderSet<Profile>,
+    warnings: WarningEmitter,
+) -> Result<HostedTypedProgram<Profile>, FrontendError> {
+    let (host_modules, providers, implementations) = hosts.into_registered();
     compile_parsed_host_program(
         root_package,
         root_module,
@@ -193,6 +197,10 @@ fn compile_host_package_sources(
         providers,
         warnings,
     )
+    .map(|program| HostedTypedProgram {
+        program,
+        implementations,
+    })
 }
 
 fn parse_package_sources(
@@ -586,11 +594,19 @@ fn host_type(type_: &HostTypeDescriptor) -> std::sync::Arc<gleam_core::type_::Ty
         HostTypeDescriptor::Tuple(elements) => {
             tuple(elements.iter().map(host_type).collect::<Vec<_>>())
         }
-        HostTypeDescriptor::Function { arguments, return_ } => fn_(
+        HostTypeDescriptor::Function { arguments, return_ }
+        | HostTypeDescriptor::OpaqueFunction { arguments, return_ } => fn_(
             arguments.iter().map(host_type).collect(),
             host_type(return_),
         ),
         HostTypeDescriptor::Custom { schema, arguments } => named(
+            schema.package(),
+            schema.module(),
+            schema.name(),
+            Publicity::Public,
+            arguments.iter().map(host_type).collect(),
+        ),
+        HostTypeDescriptor::External { schema, arguments } => named(
             schema.package(),
             schema.module(),
             schema.name(),
@@ -926,6 +942,20 @@ mod tests {
                     vec![HostTypeDescriptor::Int, HostTypeDescriptor::Bool].into_boxed_slice(),
                 ),
                 tuple(vec![int(), bool_type()]),
+            ),
+            (
+                HostTypeDescriptor::Function {
+                    arguments: vec![HostTypeDescriptor::Int].into_boxed_slice(),
+                    return_: Box::new(HostTypeDescriptor::Bool),
+                },
+                fn_(vec![int()], bool_type()),
+            ),
+            (
+                HostTypeDescriptor::OpaqueFunction {
+                    arguments: vec![HostTypeDescriptor::String].into_boxed_slice(),
+                    return_: Box::new(HostTypeDescriptor::Nil),
+                },
+                fn_(vec![string()], nil()),
             ),
             (
                 HostTypeDescriptor::Custom {

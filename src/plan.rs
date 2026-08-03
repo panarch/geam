@@ -9,6 +9,7 @@ pub use host::{
     HostFunctionTemplate, HostedFunctionTemplate, HostedModulePlan, HostedPlannedModule,
 };
 pub(crate) use host::{HostImplementationBinding, HostedModulePlanParts, HostedPlannedModuleParts};
+pub(crate) use module::ExternalValueShape;
 pub(crate) use module::{
     AssertBinding, AssertPattern, AssertSubject, BitArrayBindingPattern, BitArrayBitsSize,
     BitArrayEvaluatedSize, BitArrayExprKind, BitArrayFunctionExprKind, BitArrayFunctionReference,
@@ -20,6 +21,7 @@ pub(crate) use module::{
     ConstantBitArrayReference, ConstantBitArraySegment, ConstantBitArrayValue,
     ConstantBoolFunctionInstantiation, ConstantBoolListInstantiation, ConstantBoolReference,
     ConstantCustomFunctionInstantiation, ConstantCustomListInstantiation, ConstantCustomReference,
+    ConstantExternalFunctionInstantiation, ConstantExternalListInstantiation,
     ConstantFloatFunctionInstantiation, ConstantFloatListInstantiation, ConstantFloatReference,
     ConstantFloatValue, ConstantFunctionFunctionInstantiation, ConstantFunctionInstantiation,
     ConstantFunctionListInstantiation, ConstantGenericFunctionInstantiation,
@@ -35,20 +37,21 @@ pub(crate) use module::{
     ConstantValue, CustomBindingPattern, CustomBoolCaseBranches, CustomCaseBranches,
     CustomConstruction, CustomConstructor, CustomConstructorField, CustomFieldAccess,
     CustomFunctionLocal, CustomFunctionReference, CustomFunctionReturn, CustomLocal,
-    CustomLocalExpr, CustomPattern, CustomReturn, EchoSubject, Endianness, ExprKind, FloatBitSize,
-    FloatCaseBranches, FloatExprKind, FloatFunctionExprKind, FloatFunctionReference,
-    FloatFunctionReturn, FloatReturn, FunctionExprKind, FunctionFunctionCallMismatch,
-    FunctionFunctionLocal, FunctionFunctionReference, FunctionFunctionReturn,
-    FunctionInstantiation, FunctionListExpr, FunctionReference, FunctionTemplateSignature,
-    GenericExpr, GenericExprKind, GenericFunctionExpr, GenericFunctionExprKind,
-    GenericFunctionLocal, GenericFunctionReference, GenericFunctionReturn, GenericReturn,
-    IntCaseBranches, IntExprKind, IntFunctionExprKind, IntFunctionReference, IntFunctionReturn,
-    IntReturn, ListAssertPattern, ListAssertTail, ListCaseBranches, ListElements, ListExpr,
-    ListFunctionExprKind, ListFunctionReference, ListFunctionReturn, ListItem, ListLocalExpr,
-    ListSpreadConstructionError, ListSpreadElements, NilExprKind, NilFunctionExprKind,
-    NilFunctionReference, NilFunctionReturn, NilReturn, PanicExpr, ParamLocal, ParamSlot,
-    ParameterListListExpr, ParameterListListItem, PatternBinding, ReturnBody, Signedness,
-    StringAssertBinding, StringCaseBranches, StringEncoding, StringExprKind,
+    CustomLocalExpr, CustomPattern, CustomReturn, EchoSubject, Endianness, ExprKind,
+    ExternalFunctionLocal, ExternalFunctionReference, ExternalFunctionReturn, ExternalLocal,
+    ExternalReturn, FloatBitSize, FloatCaseBranches, FloatExprKind, FloatFunctionExprKind,
+    FloatFunctionReference, FloatFunctionReturn, FloatReturn, FunctionExprKind,
+    FunctionFunctionCallMismatch, FunctionFunctionLocal, FunctionFunctionReference,
+    FunctionFunctionReturn, FunctionInstantiation, FunctionListExpr, FunctionReference,
+    FunctionTemplateSignature, GenericExpr, GenericExprKind, GenericFunctionExpr,
+    GenericFunctionExprKind, GenericFunctionLocal, GenericFunctionReference, GenericFunctionReturn,
+    GenericReturn, IntCaseBranches, IntExprKind, IntFunctionExprKind, IntFunctionReference,
+    IntFunctionReturn, IntReturn, ListAssertPattern, ListAssertTail, ListCaseBranches,
+    ListElements, ListExpr, ListFunctionExprKind, ListFunctionReference, ListFunctionReturn,
+    ListItem, ListLocalExpr, ListSpreadConstructionError, ListSpreadElements, NilExprKind,
+    NilFunctionExprKind, NilFunctionReference, NilFunctionReturn, NilReturn, PanicExpr, ParamLocal,
+    ParamSlot, ParameterListListExpr, ParameterListListItem, PatternBinding, ReturnBody,
+    Signedness, StringAssertBinding, StringCaseBranches, StringEncoding, StringExprKind,
     StringFunctionExprKind, StringFunctionReference, StringFunctionReturn, StringReturn,
     TotalBindingPattern, TupleExprKind, TupleFunctionExprKind, TupleFunctionReference,
     TupleFunctionReturn, TupleReturn, TypeSubstitution, TypedFunctionExprKind, TypedListExpr,
@@ -62,7 +65,9 @@ pub use module::{
     ConstantTemplateId, CustomConstructorDefinition, CustomExpr, CustomFieldDefinition,
     CustomFunctionExpr, CustomFunctionLocalId, CustomListFunctionLocalId, CustomListLocalId,
     CustomLocalId, CustomTypeDefinition, CustomTypeParameterId, CustomTypePublicity,
-    CustomTypeTemplate, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionLocalId,
+    CustomTypeTemplate, Expr, ExternalExpr, ExternalFunctionExpr, ExternalFunctionLocalId,
+    ExternalListFunctionLocalId, ExternalListLocalId, ExternalLocalId, ExternalType,
+    ExternalTypeDefinition, ExternalTypeName, FloatExpr, FloatFunctionExpr, FloatFunctionLocalId,
     FloatListFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionExpr, FunctionFunctionExpr,
     FunctionFunctionLocalId, FunctionListFunctionLocalId, FunctionListLocalId,
     FunctionReturnFamily, FunctionTemplate, FunctionTemplateId, GenericFunctionLocalId,
@@ -103,5 +108,7 @@ pub(crate) use value_shape::{
     CustomConstructorRefinement, CustomValueShape, FunctionShape, ValueRepresentation, ValueShape,
     ValueStorageShape,
 };
-pub(crate) use value_type::{CustomFunctionType, FunctionFunctionType, GenericFunctionType};
+pub(crate) use value_type::{
+    CustomFunctionType, ExternalFunctionType, FunctionFunctionType, GenericFunctionType,
+};
 pub use value_type::{CustomType, CustomTypeName, FunctionType, TypeParameterId, ValueType};

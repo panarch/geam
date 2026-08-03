@@ -4,10 +4,11 @@ mod primitive;
 
 use crate::plan::{
     BitArrayFunctionReturn, BitArrayReturn, BoolFunctionReturn, BoolReturn, CustomFunctionReturn,
-    CustomReturn, FloatFunctionReturn, FloatReturn, FunctionFunctionReturn, FunctionShape,
-    FunctionType, GenericFunctionReturn, IntFunctionReturn, IntReturn, ListFunctionReturn,
-    ListReturn, NilFunctionReturn, NilReturn, ReturnExpr, StringFunctionReturn, StringReturn,
-    TupleFunctionReturn, TupleReturn, UtfCodepointFunctionReturn, UtfCodepointReturn, ValueType,
+    CustomReturn, ExternalFunctionReturn, FloatFunctionReturn, FloatReturn, FunctionFunctionReturn,
+    FunctionShape, FunctionType, GenericFunctionReturn, IntFunctionReturn, IntReturn,
+    ListFunctionReturn, ListReturn, NilFunctionReturn, NilReturn, ReturnExpr, StringFunctionReturn,
+    StringReturn, TupleFunctionReturn, TupleReturn, UtfCodepointFunctionReturn, UtfCodepointReturn,
+    ValueType,
 };
 
 pub(crate) use function::*;
@@ -65,6 +66,7 @@ pub(crate) enum FunctionReturn {
         body: UtfCodepointFunctionReturn,
     },
     CustomFunction(CustomFunctionReturn),
+    ExternalFunction(ExternalFunctionReturn),
     FloatFunction {
         type_: FunctionType,
         body: FloatFunctionReturn,
@@ -112,6 +114,9 @@ impl FunctionReturn {
             Self::List(ListReturn::Custom { item_type, body }) => {
                 ReturnExpr::custom_list_body(item_type, body)
             }
+            Self::List(ListReturn::External { item_type, body }) => {
+                ReturnExpr::external_list_body(item_type, body)
+            }
             Self::List(ListReturn::Float(body)) => ReturnExpr::float_list_body(body),
             Self::List(ListReturn::Bool(body)) => ReturnExpr::bool_list_body(body),
             Self::List(ListReturn::Nil(body)) => ReturnExpr::nil_list_body(body),
@@ -156,6 +161,13 @@ impl FunctionReturn {
                 ),
                 body,
             ),
+            Self::ExternalFunction(body) => ReturnExpr::external_function_shape_body(
+                crate::plan::FunctionShape::new(
+                    body.type_().argument_shapes().to_vec(),
+                    crate::plan::ValueShape::External(body.type_().return_().clone()),
+                ),
+                body,
+            ),
             Self::FloatFunction { type_, body } => ReturnExpr::float_function_shape_body(
                 crate::plan::FunctionShape::from_function_type(type_),
                 body,
@@ -195,10 +207,13 @@ mod tests {
     use crate::plan::module::{CustomListReturn, GenericListReturn, ParameterListListReturn};
     use crate::plan::{
         CustomExpr, CustomFunctionExpr, CustomFunctionLocalId, CustomFunctionReturn, CustomLocalId,
-        CustomReturn, CustomType, CustomTypeName, Expr, FunctionFunctionId, FunctionFunctionReturn,
-        FunctionShape, FunctionType, GenericFunctionExpr, GenericFunctionReference,
-        GenericFunctionReturn, GenericFunctionType, IntFunctionFunctionId, ParamLocal, ReturnBody,
-        ReturnExpr, TypeParameterId, ValueShape, ValueType,
+        CustomReturn, CustomType, CustomTypeName, Expr, ExternalFunctionExpr,
+        ExternalFunctionLocal, ExternalFunctionLocalId, ExternalFunctionReturn,
+        ExternalFunctionType, ExternalType, ExternalTypeName, ExternalValueShape,
+        FunctionFunctionId, FunctionFunctionReturn, FunctionShape, FunctionType,
+        GenericFunctionExpr, GenericFunctionReference, GenericFunctionReturn, GenericFunctionType,
+        IntFunctionFunctionId, ParamLocal, ReturnBody, ReturnExpr, TypeParameterId, ValueShape,
+        ValueType,
     };
     use crate::planner::dsl::expression::{
         bit_array, bit_array_function_ref, bool_, bool_function_ref, float, float_function_ref,
@@ -536,7 +551,7 @@ mod tests {
     }
 
     #[test]
-    fn function_return_build_preserves_custom_metadata() {
+    fn function_return_build_preserves_custom_and_external_metadata() {
         let custom = CustomExpr::local_get(
             crate::plan::CustomLocal::new(CustomLocalId(0), custom_type()),
             "value".into(),
@@ -559,6 +574,23 @@ mod tests {
             ReturnExpr::custom_list_body(custom_type(), CustomListReturn::expr(custom_list),),
         );
 
+        let external_type = ExternalType::new(
+            ExternalTypeName::new("geam".into(), "main".into(), "Resource".into()),
+            Vec::new(),
+        );
+        let external_list =
+            crate::plan::ListExpr::value(Vec::new(), ValueType::External(external_type.clone()))
+                .into_external()
+                .expect("expected external list");
+        assert_eq!(
+            FunctionReturn::List(crate::plan::ListReturn::External {
+                item_type: external_type.clone(),
+                body: ReturnBody::expr(external_list.clone()),
+            })
+            .build(),
+            ReturnExpr::external_list_body(external_type.clone(), ReturnBody::expr(external_list),),
+        );
+
         let function_type = crate::plan::CustomFunctionType::new(Vec::new(), custom_type());
         let custom_function = CustomFunctionExpr::local_get(
             crate::plan::CustomFunctionLocal::new(CustomFunctionLocalId(0), function_type.clone()),
@@ -573,6 +605,23 @@ mod tests {
                     ValueShape::Custom(crate::plan::CustomValueShape::any(custom_type())),
                 ),
                 CustomFunctionReturn::expr(custom_function),
+            ),
+        );
+
+        let external_shape = ExternalValueShape::any(external_type);
+        let function_type = ExternalFunctionType::from_shapes(Vec::new(), external_shape.clone());
+        let external_function = ExternalFunctionExpr::local_get(
+            ExternalFunctionLocal::new(ExternalFunctionLocalId(0), function_type.clone()),
+            "function".into(),
+        );
+        assert_eq!(
+            FunctionReturn::ExternalFunction(ExternalFunctionReturn::expr(
+                external_function.clone(),
+            ))
+            .build(),
+            ReturnExpr::external_function_shape_body(
+                FunctionShape::new(Vec::new(), ValueShape::External(external_shape)),
+                ExternalFunctionReturn::expr(external_function),
             ),
         );
     }

@@ -1,10 +1,11 @@
 use super::FunctionReturn;
 use crate::plan::{
     BitArrayFunctionExpr, BitArrayReturn, BoolFunctionExpr, BoolReturn, CustomFunctionReturn,
-    FloatFunctionExpr, FloatReturn, FunctionExpr, FunctionExprKind, FunctionFunctionExpr,
-    FunctionFunctionReturn, GenericFunctionReturn, IntFunctionExpr, IntReturn, ListFunctionExpr,
-    ListReturn, NilFunctionExpr, NilReturn, ReturnBody, StringFunctionExpr, StringReturn,
-    TupleFunctionExpr, TupleReturn, UtfCodepointFunctionExpr, UtfCodepointReturn,
+    ExternalFunctionReturn, FloatFunctionExpr, FloatReturn, FunctionExpr, FunctionExprKind,
+    FunctionFunctionExpr, FunctionFunctionReturn, GenericFunctionReturn, IntFunctionExpr,
+    IntReturn, ListFunctionExpr, ListReturn, NilFunctionExpr, NilReturn, ReturnBody,
+    StringFunctionExpr, StringReturn, TupleFunctionExpr, TupleReturn, UtfCodepointFunctionExpr,
+    UtfCodepointReturn,
 };
 use crate::planner::dsl::expression::{
     BitArray, BitArrayFunction, Bool, BoolFunction, Float, FloatFunction, Function,
@@ -196,6 +197,9 @@ impl From<Function> for FunctionReturn {
             FunctionExprKind::Custom(expression) => {
                 Self::CustomFunction(CustomFunctionReturn::expr(expression))
             }
+            FunctionExprKind::External(expression) => {
+                Self::ExternalFunction(ExternalFunctionReturn::expr(expression))
+            }
             FunctionExprKind::Float(expression) => Self::FloatFunction {
                 type_: expression.type_().clone(),
                 body: ReturnBody::expr(expression),
@@ -272,17 +276,19 @@ mod tests {
     use crate::plan::{
         BitArrayFunctionId, BitArrayReturn, BoolFunctionId, BoolReturn, CustomFunctionExpr,
         CustomFunctionId, CustomFunctionReference, CustomFunctionReturn, CustomType,
-        CustomTypeName, Expr, FloatFunctionId, FloatReturn, FunctionExpr, FunctionFunctionId,
-        FunctionFunctionReturn, FunctionType, GenericFunctionReturn, IntFunctionFunctionId,
-        IntFunctionId, IntReturn, ListFunctionId, ListReturn, NilFunctionId, NilReturn, ParamLocal,
-        ReturnBody, RuntimeFunctionId, StringFunctionId, StringReturn, TupleFunctionId,
-        TypeParameterId, UtfCodepointFunctionId, UtfCodepointReturn, ValueShape, ValueType,
+        CustomTypeName, Expr, ExternalFunctionExpr, ExternalFunctionReturn, ExternalFunctionType,
+        ExternalTypeName, ExternalValueShape, FloatFunctionId, FloatReturn, FunctionExpr,
+        FunctionFunctionId, FunctionFunctionReturn, FunctionType, GenericFunctionReturn,
+        IntFunctionFunctionId, IntFunctionId, IntReturn, ListFunctionId, ListReturn, NilFunctionId,
+        NilReturn, PanicExpr, PanicSite, ParamLocal, ReturnBody, RuntimeFunctionId,
+        StringFunctionId, StringReturn, TupleFunctionId, TypeParameterId, UtfCodepointFunctionId,
+        UtfCodepointReturn, ValueShape, ValueType,
     };
     use crate::planner::dsl::expression::{
-        bit_array, bit_array_function_ref, bool_, bool_function_ref, float, float_function_ref,
-        function_function_ref, function_ref, generic_function_ref, int, int_function_ref, list,
-        list_function_ref, local_utf_codepoint, nil, nil_function_ref, string, string_function_ref,
-        tuple, tuple_function_ref, utf_codepoint_function_ref,
+        Function, bit_array, bit_array_function_ref, block_function, bool_, bool_function_ref,
+        float, float_function_ref, function_function_ref, function_ref, generic_function_ref, int,
+        int_function_ref, list, list_function_ref, local_utf_codepoint, nil, nil_function_ref,
+        string, string_function_ref, tuple, tuple_function_ref, utf_codepoint_function_ref,
     };
 
     fn custom_type() -> CustomType {
@@ -488,6 +494,26 @@ mod tests {
 
     #[test]
     fn erased_function_value_conversion_preserves_return_family() {
+        let external_shape = ExternalValueShape::new(
+            ExternalTypeName::new("geam".into(), "main".into(), "Token".into()),
+            Vec::new(),
+        );
+        let external_type =
+            ExternalFunctionType::from_shapes(vec![ValueShape::Int], external_shape);
+        let external = ExternalFunctionExpr::panic(
+            PanicExpr::panic_at(None, PanicSite::unknown()),
+            external_type,
+        );
+        assert_eq!(
+            FunctionReturn::from(block_function(
+                Vec::new(),
+                Function(FunctionExpr::external(external.clone())),
+            )),
+            FunctionReturn::ExternalFunction(ExternalFunctionReturn::expr(
+                ExternalFunctionExpr::block(Vec::new(), external),
+            )),
+        );
+
         assert_eq!(
             FunctionReturn::from(function_ref(
                 RuntimeFunctionId::Int(IntFunctionId(0)),

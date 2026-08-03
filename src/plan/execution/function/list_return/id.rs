@@ -1,9 +1,11 @@
 use crate::plan::execution::explain::FunctionLabel;
-use crate::plan::execution::function::FunctionLabelSource;
+use crate::plan::execution::function::{
+    ExecutionGraphProfile, FunctionLabelSource, HostedExecutionGraph,
+};
 use crate::plan::execution::type_::{
-    BitArrayListTypeId, BoolListTypeId, CustomListTypeId, FloatListTypeId, FunctionListTypeId,
-    IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId, ParameterListTypeId,
-    StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
+    BitArrayListTypeId, BoolListTypeId, CustomListTypeId, ExternalListTypeId, FloatListTypeId,
+    FunctionListTypeId, IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId,
+    ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,6 +51,12 @@ pub struct CustomListFunctionId {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExternalListFunctionId {
+    index: usize,
+    type_id: ExternalListTypeId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FloatListFunctionId {
     index: usize,
     type_id: FloatListTypeId,
@@ -85,7 +93,7 @@ pub struct FunctionListFunctionId {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ListFunctionId {
+pub(crate) enum ListFunctionId {
     Parameter(ParameterListFunctionId),
     ParameterList(ParameterListListFunctionId),
     Int(IntListFunctionId),
@@ -100,6 +108,14 @@ pub enum ListFunctionId {
     List(ListListFunctionId),
     Function(FunctionListFunctionId),
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ProfiledListFunctionId<Graph: ExecutionGraphProfile> {
+    Core(ListFunctionId),
+    External(Graph::ExternalListFunctionId),
+}
+
+pub(crate) type RuntimeListFunctionId = ProfiledListFunctionId<HostedExecutionGraph>;
 
 impl IntListFunctionId {
     pub(in crate::plan::execution) fn new(index: usize, type_id: IntListTypeId) -> Self {
@@ -195,6 +211,20 @@ impl CustomListFunctionId {
     }
 
     pub(crate) fn type_id(self) -> CustomListTypeId {
+        self.type_id
+    }
+}
+
+impl ExternalListFunctionId {
+    pub(in crate::plan::execution) fn new(index: usize, type_id: ExternalListTypeId) -> Self {
+        Self { index, type_id }
+    }
+
+    pub(crate) fn index(self) -> usize {
+        self.index
+    }
+
+    pub(crate) fn type_id(self) -> ExternalListTypeId {
         self.type_id
     }
 }
@@ -325,6 +355,12 @@ impl FunctionLabelSource for CustomListFunctionId {
     }
 }
 
+impl FunctionLabelSource for ExternalListFunctionId {
+    fn function_label(&self) -> FunctionLabel {
+        FunctionLabel::new("list.external", self.index())
+    }
+}
+
 impl FunctionLabelSource for FloatListFunctionId {
     fn function_label(&self) -> FunctionLabel {
         FunctionLabel::new("list.float", self.index())
@@ -361,6 +397,18 @@ impl FunctionLabelSource for FunctionListFunctionId {
     }
 }
 
+impl<Graph: ExecutionGraphProfile> FunctionLabelSource for ProfiledListFunctionId<Graph>
+where
+    Graph::ExternalListFunctionId: FunctionLabelSource,
+{
+    fn function_label(&self) -> FunctionLabel {
+        match self {
+            Self::Core(id) => id.function_label(),
+            Self::External(id) => id.function_label(),
+        }
+    }
+}
+
 impl FunctionLabelSource for ListFunctionId {
     fn function_label(&self) -> FunctionLabel {
         match self {
@@ -383,10 +431,13 @@ impl FunctionLabelSource for ListFunctionId {
 
 #[cfg(test)]
 mod explain_tests {
-    use super::ListFunctionId;
+    use super::{ExternalListFunctionId, RuntimeListFunctionId};
     use crate::plan::execution::ExecutionPlan;
     use crate::plan::execution::explain;
-    use crate::plan::execution::function::{FunctionLabelSource, RuntimeFunctionId};
+    use crate::plan::execution::function::{
+        CoreRuntimeFunctionId, FunctionLabelSource, RuntimeFunctionId,
+    };
+    use crate::plan::execution::type_::{ExternalListTypeId, ExternalTypeId, ListTypeId};
 
     #[test]
     fn labels_list_function_families() {
@@ -421,6 +472,19 @@ mod explain_tests {
         for (source, expected) in cases {
             assert_explanation(source, expected);
         }
+
+        let external = ExternalListFunctionId::new(
+            13,
+            ExternalListTypeId::new(ListTypeId::new(0), ExternalTypeId::new(0)),
+        );
+        explain::assert_written("list.external#13", |output| {
+            external.function_label().write(output);
+        });
+        explain::assert_written("list.external#13", |output| {
+            RuntimeListFunctionId::External(external)
+                .function_label()
+                .write(output);
+        });
     }
 
     #[test]
@@ -429,8 +493,9 @@ mod explain_tests {
         explain::with_execution_plan("pub fn main() { 1 }", main_list_function_id);
     }
 
-    fn main_list_function_id(plan: &ExecutionPlan) -> ListFunctionId {
-        let RuntimeFunctionId::List(function) = plan.main_runtime() else {
+    fn main_list_function_id(plan: &ExecutionPlan) -> RuntimeListFunctionId {
+        let RuntimeFunctionId::Core(CoreRuntimeFunctionId::List(function)) = plan.main_runtime()
+        else {
             panic!("source should lower a list-returning main function");
         };
         function
@@ -440,5 +505,20 @@ mod explain_tests {
         explain::assert_rendered(source, expected, |plan, output| {
             main_list_function_id(plan).function_label().write(output);
         });
+    }
+}
+
+#[cfg(test)]
+mod external_tests {
+    use super::ExternalListFunctionId;
+    use crate::plan::execution::type_::{ExternalListTypeId, ExternalTypeId, ListTypeId};
+
+    #[test]
+    fn external_list_function_id_preserves_index_and_type() {
+        let type_id = ExternalListTypeId::new(ListTypeId::new(1), ExternalTypeId::new(2));
+        let function = ExternalListFunctionId::new(3, type_id);
+
+        assert_eq!(function.index(), 3);
+        assert_eq!(function.type_id(), type_id);
     }
 }

@@ -29,9 +29,11 @@ Release:     v1.0.3
 
 Geam does not bundle or patch that source. A dedicated integration test uses
 Gleam CLI `v1.17.0` to download the locked package, then executes selected
-official pure-Gleam modules through Geam's normal resolved-project pipeline.
-Each tracked module locks its public names, argument labels, and signatures
-while allowing private implementation and declaration-order changes.
+official modules through Geam's resolved-project pipelines. Provider-free
+modules use the plain pipeline, while modules whose selected closure contains
+externals use the hosted pipeline with the explicit Rust provider bundle. Each
+tracked module locks its public names, argument labels, and signatures while
+allowing private implementation and declaration-order changes.
 
 ## Used Gleam Areas
 
@@ -128,6 +130,12 @@ pub fn compile_typed_host_program<Profile: geam::HostProfile>(
     packages: impl IntoIterator<Item = geam::PackageSource>,
     hosts: geam::HostProviderSet<Profile>,
 ) -> Result<geam::HostedTypedProgram<Profile>, geam::FrontendError>
+
+pub fn compile_typed_host_project<Profile: geam::HostProfile>(
+    project_root: impl Into<camino::Utf8PathBuf>,
+    root_module: impl Into<ecow::EcoString>,
+    hosts: geam::HostProviderSet<Profile>,
+) -> Result<geam::HostedTypedProgram<Profile>, geam::ProjectError>
 ```
 
 `compile_typed_project` is a read-only loader for a Gleam project whose
@@ -137,6 +145,12 @@ It never runs Gleam CLI, downloads dependencies, or modifies project files.
 The loader follows production dependencies and selects the
 `Target::Erlang` import closure rooted at the requested module. Every selected
 module body is then analysed and planned in full.
+
+`compile_typed_host_project` uses that same manifest, source-catalog,
+import-closure, and parse owner, then combines the parsed program with an
+explicit host provider set. Missing providers and declaration linkage remain
+hosted planning errors; the project loader does not infer, download, or inject
+providers.
 
 `compile_typed_host_program` adds package-qualified source-less module
 interfaces to the same in-memory analysis graph. `HostProviderModule` instead
@@ -148,10 +162,42 @@ are not interpreted as pure Gleam definitions.
 Host registrations provide an exact typed schema to the frontend. Direct
 closures support the documented scalar families and zero through seven
 arguments; scoped registrations describe generic, compound, custom, and
-function values without exposing materialized runtime `Value`s. These are Geam
-host-ABI constraints, not additions to Gleam's analyzer or typed AST. See
-[runtime semantics](runtime-semantics.md) for the value, state, specialization,
+function values without exposing materialized runtime `Value`s. Source-backed
+constructorless external types can bind profile-owned Rust payloads, including
+exact typed Gleam values and existential values carrying their specialized
+Gleam shapes. Existential decode remains a typed host-call operation and shape
+mismatch is provider-level `Option` semantics. These are Geam host-ABI
+constraints, not additions to Gleam's analyzer or typed AST. See [runtime
+semantics](runtime-semantics.md) for the value, state, specialization,
 re-entry, and failure contracts.
+
+External storage providers also define source equality, runtime hashing, and
+canonical inspection. Equal payloads must hash equally, collisions are checked
+with source equality, and retained Gleam values are available only through the
+narrow operation-specific contexts. Hashes are runtime indexes rather than a
+stable package or serialization contract.
+
+Private transient-style external APIs can be represented by returning new
+persistent payload versions that share immutable retained entries. This does
+not add a general mutable external-value model or cyclic runtime graph support.
+
+`geam::gleam_stdlib::host_providers` supplies the explicit provider bundle for
+the verified `gleam_stdlib` `v1.0.3` modules. Callers compose that bundle into a
+`HostProviderSet`; project loading selects only providers in the resolved
+source closure and does not infer or inject the bundle. The verified set is
+`gleam/bool`, `gleam/option`, `gleam/order`, `gleam/dict`, `gleam/dynamic`,
+`gleam/float`, `gleam/int`, `gleam/list`, `gleam/string_tree`, `gleam/string`,
+`gleam/bit_array`, and `gleam/dynamic/decode`. Functions with valid Gleam
+fallback bodies continue to compile and execute from the unchanged package
+source.
+
+The provider-backed modules retain their source-facing value distinctions.
+Dictionary lookup uses source hashing followed by source equality within a
+collision bucket. Dynamic values retain their exact specialized shape for
+typed Decode operations. StringTree uses persistent acyclic structure, and
+BitArray values preserve logical bit ranges over shared immutable backing.
+Random operations use caller-owned `GleamStdlibRunState`; there is no hidden
+seed or global random state.
 
 The current public execution APIs are:
 
@@ -231,8 +277,8 @@ milestone:
 - Code generation metadata.
 - Package resolution, dependency download, package cache mutation, and artifact
   writing.
-- External custom storage, async providers, retained or Rust-created
-  callbacks, and CLI behavior.
+- Source-less external type declarations, async providers, retained or
+  Rust-created callbacks, and CLI behavior.
 
 ## Current Source Boundary
 

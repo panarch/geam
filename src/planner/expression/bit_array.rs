@@ -165,6 +165,7 @@ fn plan_segment(
             | ValueType::BitArray
             | ValueType::UtfCodepoint
             | ValueType::Custom(_)
+            | ValueType::External(_)
             | ValueType::Bool
             | ValueType::Nil
             | ValueType::Tuple(_)

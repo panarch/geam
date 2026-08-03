@@ -1,6 +1,6 @@
 use super::expression::{
-    bit_array_expr, bool_expr, custom_expr, float_expr, function, generic, int_expr, list,
-    nil_expr, string_expr, tuple_expr, utf_codepoint_expr,
+    bit_array_expr, bool_expr, custom_expr, external_expr, float_expr, function, generic, int_expr,
+    list, nil_expr, string_expr, tuple_expr, utf_codepoint_expr,
 };
 use super::pattern::{
     DraftBitArrayBindingPattern, DraftBitArrayPattern, DraftBitArrayPatternSegment,
@@ -12,7 +12,8 @@ use super::{
     DraftValueRef,
 };
 use crate::plan::execution::lowering::specialization::{
-    CustomConstructorMatch, FunctionRepresentation, Representability, StoredValueShape,
+    CustomConstructorMatch, FunctionArgumentsRepresentation, FunctionRepresentation,
+    Representability, StoredValueShape,
 };
 use crate::plan::{execution, module};
 use std::collections::HashMap;
@@ -82,6 +83,10 @@ fn lower_step(
         S::LetCustom { binding, .. } => bind_value(
             super::local::LocalKey::new(super::local::LocalKind::Custom, binding.local().id().0),
             custom_expr(binding.value(), cursor, graph, context),
+        ),
+        S::LetExternal { local, value, .. } => bind_value(
+            super::local::LocalKey::new(super::local::LocalKind::External, local.id().0),
+            external_expr(value, cursor, graph, context),
         ),
         S::LetBool { local, value, .. } => bind_value(
             super::local::LocalKey::new(super::local::LocalKind::Bool, local.0),
@@ -250,6 +255,29 @@ fn lower_step(
                 FunctionRepresentation::Executable(_) => bind_value(
                     key,
                     function::custom_function_expr(value.expression(), cursor, graph, context),
+                ),
+            }
+        }
+        S::LetExternalFunction { local, value, .. } => {
+            let key = super::local::LocalKey::new(
+                super::local::LocalKind::ExternalFunction,
+                local.id().0,
+            );
+            let shape = context.concrete_function_shape(value.shape());
+            match context.function_arguments_representation(&shape) {
+                FunctionArgumentsRepresentation::Symbolic => bind_value(
+                    key,
+                    function::symbolic_external_function_expr_kind(
+                        value.expression().kind(),
+                        &shape,
+                        cursor,
+                        graph,
+                        context,
+                    ),
+                ),
+                FunctionArgumentsRepresentation::Inhabited => bind_value(
+                    key,
+                    function::external_function_expr(value.expression(), cursor, graph, context),
                 ),
             }
         }
@@ -487,6 +515,10 @@ fn lower_echo_subject(
             super::local::LocalKey::new(super::local::LocalKind::Custom, value.local().id().0),
             custom_expr(value.value(), cursor, graph, context),
         ),
+        S::External { local, value } => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::External, local.id().0),
+            external_expr(value, cursor, graph, context),
+        ),
         S::Bool { local, value } => bind_echo_subject(
             super::local::LocalKey::new(super::local::LocalKind::Bool, local.0),
             bool_expr(value, cursor, graph, context),
@@ -657,6 +689,29 @@ fn lower_echo_subject(
                 ),
             }
         }
+        S::ExternalFunction { local, value } => {
+            let key = super::local::LocalKey::new(
+                super::local::LocalKind::ExternalFunction,
+                local.id().0,
+            );
+            let shape = context.concrete_function_shape(value.shape());
+            match context.function_arguments_representation(&shape) {
+                FunctionArgumentsRepresentation::Symbolic => bind_echo_subject(
+                    key,
+                    function::symbolic_external_function_expr_kind(
+                        value.expression().kind(),
+                        &shape,
+                        cursor,
+                        graph,
+                        context,
+                    ),
+                ),
+                FunctionArgumentsRepresentation::Inhabited => bind_echo_subject(
+                    key,
+                    function::external_function_expr(value.expression(), cursor, graph, context),
+                ),
+            }
+        }
         S::BoolFunction { local, value } => {
             let key = super::local::LocalKey::new(super::local::LocalKind::BoolFunction, local.0);
             let shape = context.concrete_function_shape(value.shape());
@@ -822,6 +877,10 @@ fn lower_echo_list_subject(
             super::local::LocalKey::new(super::local::LocalKind::CustomList, local.0),
             list::custom_list_expr(value, cursor, graph, context),
         ),
+        module::ListLocalExpr::External { local, value, .. } => bind_echo_subject(
+            super::local::LocalKey::new(super::local::LocalKind::ExternalList, local.0),
+            list::external_list_expr(value, cursor, graph, context),
+        ),
         module::ListLocalExpr::Float { local, value } => bind_echo_subject(
             super::local::LocalKey::new(super::local::LocalKind::FloatList, local.0),
             list::float_list_expr(value, cursor, graph, context),
@@ -896,6 +955,10 @@ fn list_binding(
         module::ListLocalExpr::Custom { local, value, .. } => bind_value(
             super::local::LocalKey::new(super::local::LocalKind::CustomList, local.0),
             list::custom_list_expr(value, cursor, graph, context),
+        ),
+        module::ListLocalExpr::External { local, value, .. } => bind_value(
+            super::local::LocalKey::new(super::local::LocalKind::ExternalList, local.0),
+            list::external_list_expr(value, cursor, graph, context),
         ),
         module::ListLocalExpr::Float { local, value } => bind_value(
             super::local::LocalKey::new(super::local::LocalKind::FloatList, local.0),

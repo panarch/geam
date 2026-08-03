@@ -1,6 +1,7 @@
 mod bit_array;
 mod bool_;
 mod custom;
+mod external;
 mod float;
 mod function;
 mod generic;
@@ -14,7 +15,7 @@ mod utf_codepoint;
 use crate::plan::{
     BoolCaseBranches, BoolExpr, BoolListCaseBranches, BoolLocalId, Expr, ExprKind, FloatExpr,
     FloatLocalId, FunctionExprKind, IntExpr, IntLocalId, ListExpr, Step, StringExpr, StringLocalId,
-    ValueShape, ValueType,
+    ValueShape,
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, PlanError};
@@ -23,6 +24,11 @@ use ecow::EcoString;
 use gleam_core::ast::{Pattern, SrcSpan, TypedClause, TypedClauseGuard, TypedExpr};
 use gleam_core::type_::{Type, TypeVar};
 use std::sync::Arc;
+
+use super::coverage::CaseCoverage;
+
+#[cfg(test)]
+use crate::plan::ValueType;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CaseSubjectVariants {
@@ -70,6 +76,7 @@ impl CaseSubjectVariants {
         match value_type {
             ValueType::Parameter(_) => Self::Other,
             ValueType::Custom(_) => Self::Custom,
+            ValueType::External(_) => Self::Other,
             ValueType::Tuple(elements) => {
                 Self::Tuple(elements.iter().map(Self::from_value_type).collect())
             }
@@ -104,51 +111,63 @@ pub(super) fn plan(
     type_: Arc<Type>,
     subject: TypedExpr,
     clauses: Vec<TypedClause>,
+    coverage: CaseCoverage,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    let clauses = case_clauses(clauses)?;
+    let clauses = case_clauses(clauses, &coverage)?;
     let source_type = subject.type_();
     let subject_shape = context.value_shape(source_type.as_ref());
-    let subject_type = subject_shape.value_type();
     let subject_variants = CaseSubjectVariants::from_gleam(source_type.as_ref());
-    match subject_type {
-        ValueType::Parameter(parameter) => {
+    match subject_shape {
+        ValueShape::Parameter(parameter) => {
             generic::plan(type_, subject, parameter, clauses, context)
         }
-        ValueType::Bool => bool_::plan(type_, subject, clauses, context),
-        ValueType::Int => int::plan(type_, subject, clauses, context),
-        ValueType::String => string::plan(type_, subject, clauses, context),
-        ValueType::BitArray => bit_array::plan(type_, subject, clauses, context),
-        ValueType::UtfCodepoint => utf_codepoint::plan(type_, subject, clauses, context),
-        ValueType::Custom(_) => custom::plan(type_, subject, subject_shape, clauses, context),
-        ValueType::Float => float::plan(type_, subject, clauses, context),
-        ValueType::Nil => nil::plan(type_, subject, clauses, context),
-        ValueType::Tuple(subject_type) => tuple::plan(
-            type_,
-            subject,
-            subject_type,
-            subject_shape,
-            subject_variants,
-            clauses,
-            context,
-        ),
-        ValueType::List(subject_type) => list::plan(
-            type_,
-            subject,
-            *subject_type,
-            subject_shape,
-            subject_variants,
-            clauses,
-            context,
-        ),
-        ValueType::Function(subject_type) => function::plan(
-            type_,
-            subject,
-            *subject_type,
-            subject_shape,
-            clauses,
-            context,
-        ),
+        ValueShape::Bool => bool_::plan(type_, subject, clauses, context),
+        ValueShape::Int => int::plan(type_, subject, clauses, context),
+        ValueShape::String => string::plan(type_, subject, clauses, context),
+        ValueShape::BitArray => bit_array::plan(type_, subject, clauses, context),
+        ValueShape::UtfCodepoint => utf_codepoint::plan(type_, subject, clauses, context),
+        ValueShape::Custom(shape) => {
+            custom::plan(type_, subject, ValueShape::Custom(shape), clauses, context)
+        }
+        ValueShape::External(shape) => external::plan(type_, subject, shape, clauses, context),
+        ValueShape::Float => float::plan(type_, subject, clauses, context),
+        ValueShape::Nil => nil::plan(type_, subject, clauses, context),
+        ValueShape::Tuple(subject_shape) => {
+            let subject_type = subject_shape.iter().map(ValueShape::value_type).collect();
+            tuple::plan(
+                type_,
+                subject,
+                subject_type,
+                ValueShape::Tuple(subject_shape),
+                subject_variants,
+                clauses,
+                context,
+            )
+        }
+        ValueShape::List(subject_shape) => {
+            let subject_type = subject_shape.value_type();
+            list::plan(
+                type_,
+                subject,
+                subject_type,
+                ValueShape::List(subject_shape),
+                subject_variants,
+                clauses,
+                context,
+            )
+        }
+        ValueShape::Function(subject_shape) => {
+            let subject_type = subject_shape.type_();
+            function::plan(
+                type_,
+                subject,
+                subject_type,
+                ValueShape::Function(subject_shape),
+                clauses,
+                context,
+            )
+        }
     }
 }
 
@@ -156,6 +175,7 @@ pub(super) fn plan_multi(
     type_: Arc<Type>,
     subjects: Vec<TypedExpr>,
     clauses: Vec<TypedClause>,
+    coverage: CaseCoverage,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let mut subject_types = Vec::with_capacity(subjects.len());
@@ -179,7 +199,7 @@ pub(super) fn plan_multi(
         type_: gleam_subject_type,
         elements: subjects,
     };
-    let clauses = multi_subject_case_clauses(clauses, subject_types.len())?;
+    let clauses = multi_subject_case_clauses(clauses, subject_types.len(), &coverage)?;
 
     tuple::plan(
         type_,
@@ -197,10 +217,28 @@ struct CaseClause {
     alternative_patterns: Vec<Pattern<Arc<Type>>>,
     guard: Option<TypedClauseGuard>,
     then: TypedExpr,
+    reachable: bool,
+    exhaustive_remainder: bool,
+}
+
+struct CasePattern {
+    pattern: Pattern<Arc<Type>>,
+    reachable: bool,
+    exhaustive_remainder: bool,
+}
+
+impl CasePattern {
+    fn into_parts(self) -> (Pattern<Arc<Type>>, bool, bool) {
+        (self.pattern, self.reachable, self.exhaustive_remainder)
+    }
 }
 
 impl CaseClause {
-    fn from_single_subject_typed(clause: TypedClause) -> Result<Self, PlanError> {
+    fn from_single_subject_typed(
+        clause: TypedClause,
+        reachable: bool,
+        exhaustive_remainder: bool,
+    ) -> Result<Self, PlanError> {
         let TypedClause {
             pattern,
             alternative_patterns,
@@ -216,12 +254,16 @@ impl CaseClause {
                 .collect::<Result<_, _>>()?,
             guard,
             then,
+            reachable,
+            exhaustive_remainder,
         })
     }
 
     fn from_multi_subject_typed(
         clause: TypedClause,
         subject_count: usize,
+        reachable: bool,
+        exhaustive_remainder: bool,
     ) -> Result<Self, PlanError> {
         let TypedClause {
             pattern,
@@ -238,6 +280,8 @@ impl CaseClause {
                 .collect::<Result<_, _>>()?,
             guard,
             then,
+            reachable,
+            exhaustive_remainder,
         })
     }
 
@@ -245,25 +289,52 @@ impl CaseClause {
         !self.alternative_patterns.is_empty()
     }
 
-    fn patterns(&self) -> impl Iterator<Item = Pattern<Arc<Type>>> + '_ {
-        std::iter::once(self.pattern.clone()).chain(self.alternative_patterns.iter().cloned())
+    fn patterns(&self) -> impl Iterator<Item = CasePattern> + '_ {
+        let pattern_count = 1 + self.alternative_patterns.len();
+        std::iter::once(self.pattern.clone())
+            .chain(self.alternative_patterns.iter().cloned())
+            .enumerate()
+            .map(move |(index, pattern)| CasePattern {
+                pattern,
+                reachable: self.reachable,
+                exhaustive_remainder: self.exhaustive_remainder && index + 1 == pattern_count,
+            })
     }
 }
 
-fn case_clauses(clauses: Vec<TypedClause>) -> Result<Vec<CaseClause>, PlanError> {
+fn case_clauses(
+    clauses: Vec<TypedClause>,
+    coverage: &CaseCoverage,
+) -> Result<Vec<CaseClause>, PlanError> {
     clauses
         .into_iter()
-        .map(CaseClause::from_single_subject_typed)
+        .enumerate()
+        .map(|(index, clause)| {
+            CaseClause::from_single_subject_typed(
+                clause,
+                coverage.is_reachable(index),
+                coverage.is_exhaustive_remainder(index),
+            )
+        })
         .collect()
 }
 
 fn multi_subject_case_clauses(
     clauses: Vec<TypedClause>,
     subject_count: usize,
+    coverage: &CaseCoverage,
 ) -> Result<Vec<CaseClause>, PlanError> {
     clauses
         .into_iter()
-        .map(|clause| CaseClause::from_multi_subject_typed(clause, subject_count))
+        .enumerate()
+        .map(|(index, clause)| {
+            CaseClause::from_multi_subject_typed(
+                clause,
+                subject_count,
+                coverage.is_reachable(index),
+                coverage.is_exhaustive_remainder(index),
+            )
+        })
         .collect()
 }
 
@@ -382,6 +453,11 @@ fn bool_case_expr(subject: BoolExpr, true_: Expr, false_: Expr) -> Result<Expr, 
                 ));
             };
             BoolCaseBranches::Custom(branches)
+        }
+        (ExprKind::External(true_), ExprKind::External(false_))
+            if true_.shape() == false_.shape() =>
+        {
+            BoolCaseBranches::External { true_, false_ }
         }
         (ExprKind::Float(true_), ExprKind::Float(false_)) => {
             BoolCaseBranches::Float { true_, false_ }
@@ -503,6 +579,11 @@ fn bool_list_case_branches(
         (ListExpr::Custom(true_), ListExpr::Custom(false_)) if true_.item() == false_.item() => {
             BoolListCaseBranches::Custom { true_, false_ }
         }
+        (ListExpr::External(true_), ListExpr::External(false_))
+            if true_.item() == false_.item() =>
+        {
+            BoolListCaseBranches::External { true_, false_ }
+        }
         (ListExpr::Float(true_), ListExpr::Float(false_)) => {
             BoolListCaseBranches::Float { true_, false_ }
         }
@@ -552,6 +633,11 @@ fn bool_function_case_branches(
             if true_.type_() == false_.type_() =>
         {
             BoolCaseBranches::CustomFunction { true_, false_ }
+        }
+        (FunctionExprKind::External(true_), FunctionExprKind::External(false_))
+            if true_.type_() == false_.type_() =>
+        {
+            BoolCaseBranches::ExternalFunction { true_, false_ }
         }
         (FunctionExprKind::Float(true_), FunctionExprKind::Float(false_)) => {
             BoolCaseBranches::FloatFunction { true_, false_ }
@@ -613,6 +699,7 @@ struct OrderedCaseClause {
     condition: BoolExpr,
     branch: Expr,
     is_total: bool,
+    reachable: bool,
 }
 
 struct OrderedCaseClauseInput<'a> {
@@ -623,6 +710,8 @@ struct OrderedCaseClauseInput<'a> {
     guard: Option<TypedClauseGuard>,
     match_condition: BoolExpr,
     is_total: bool,
+    reachable: bool,
+    exhaustive_remainder: bool,
 }
 
 struct OrderedCasePattern {
@@ -637,6 +726,8 @@ struct OrderedCaseCandidateInput<'a> {
     return_shape: &'a ValueShape,
     then: TypedExpr,
     guard: Option<TypedClauseGuard>,
+    reachable: bool,
+    exhaustive_remainder: bool,
 }
 
 fn plan_ordered_case_clause(
@@ -651,6 +742,8 @@ fn plan_ordered_case_clause(
         guard,
         match_condition,
         is_total,
+        reachable,
+        exhaustive_remainder,
     } = input;
 
     plan_ordered_case_candidate(
@@ -659,6 +752,8 @@ fn plan_ordered_case_clause(
             return_shape,
             then,
             guard,
+            reachable,
+            exhaustive_remainder,
         },
         context,
         |_| {
@@ -682,6 +777,8 @@ fn plan_ordered_case_candidate(
         return_shape,
         then,
         guard,
+        reachable,
+        exhaustive_remainder,
     } = input;
 
     context.with_local_scope(|context| {
@@ -692,6 +789,7 @@ fn plan_ordered_case_candidate(
             is_total,
         } = plan_pattern(context)?;
         let is_guarded = guard.is_some();
+        let is_total = !is_guarded && (is_total || exhaustive_remainder);
         let branch_binding_steps = plan_branch_binding_steps(branch_bindings, context);
         let guard_condition = guard
             .map(|guard| super::guard::plan_bool(guard, context))
@@ -714,7 +812,7 @@ fn plan_ordered_case_candidate(
             context,
         )?;
         validate_case_branch_type(case_type, return_shape, &branch)?;
-        let mut binding_steps = if is_total && !is_guarded {
+        let mut binding_steps = if is_total {
             total_branch_steps
         } else {
             Vec::new()
@@ -729,7 +827,8 @@ fn plan_ordered_case_candidate(
         Ok(OrderedCaseClause {
             condition,
             branch,
-            is_total: is_total && !is_guarded,
+            is_total,
+            reachable,
         })
     })
 }
@@ -755,6 +854,9 @@ fn plan_branch_binding_steps(
 fn ordered_case_expr(clauses: Vec<OrderedCaseClause>) -> Result<Expr, PlanError> {
     let mut reachable_clauses = Vec::new();
     for clause in clauses {
+        if !clause.reachable {
+            continue;
+        }
         let is_total = clause.is_total;
         reachable_clauses.push(clause);
         if is_total {
@@ -844,9 +946,12 @@ fn internal_bool_case_subject_name(local: BoolLocalId) -> EcoString {
 #[allow(clippy::arc_with_non_send_sync)]
 mod tests {
     use crate::plan::{
-        BoolExpr, BoolListCaseBranches, Expr, FunctionExpr, FunctionType, GenericExpr,
-        GenericFunctionExpr, GenericFunctionLocal, GenericFunctionLocalId, GenericFunctionType,
-        GenericLocal, GenericLocalId, IntExpr, ListExpr, TypeParameterId, ValueShape, ValueType,
+        BoolCaseBranches, BoolExpr, BoolListCaseBranches, Expr, ExternalExpr, ExternalFunctionExpr,
+        ExternalFunctionLocal, ExternalFunctionLocalId, ExternalFunctionType, ExternalLocal,
+        ExternalLocalId, ExternalTypeName, ExternalValueShape, FunctionExpr, FunctionType,
+        GenericExpr, GenericFunctionExpr, GenericFunctionLocal, GenericFunctionLocalId,
+        GenericFunctionType, GenericLocal, GenericLocalId, IntExpr, ListExpr, TypeParameterId,
+        ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
@@ -1049,10 +1154,137 @@ mod tests {
     }
 
     #[test]
+    fn bool_case_branches_preserve_external_nominal_shapes() {
+        let first_shape = ExternalValueShape::new(
+            ExternalTypeName::new("application".into(), "main".into(), "First".into()),
+            Vec::new(),
+        );
+        let second_shape = ExternalValueShape::new(
+            ExternalTypeName::new("application".into(), "main".into(), "Second".into()),
+            Vec::new(),
+        );
+        let true_value = ExternalExpr::local_get(
+            ExternalLocal::from_shape(ExternalLocalId(0), first_shape.clone()),
+            "true_value".into(),
+        );
+        let false_value = ExternalExpr::local_get(
+            ExternalLocal::from_shape(ExternalLocalId(1), first_shape.clone()),
+            "false_value".into(),
+        );
+        assert_eq!(
+            super::bool_case_expr(
+                BoolExpr::value(true),
+                Expr::external(true_value.clone()),
+                Expr::external(false_value.clone()),
+            ),
+            Ok(Expr::bool_case(
+                BoolExpr::value(true),
+                BoolCaseBranches::External {
+                    true_: true_value,
+                    false_: false_value,
+                },
+            )),
+        );
+        assert_eq!(
+            super::bool_case_expr(
+                BoolExpr::value(true),
+                Expr::external(ExternalExpr::local_get(
+                    ExternalLocal::from_shape(ExternalLocalId(0), first_shape.clone()),
+                    "first".into(),
+                )),
+                Expr::external(ExternalExpr::local_get(
+                    ExternalLocal::from_shape(ExternalLocalId(1), second_shape.clone()),
+                    "second".into(),
+                )),
+            ),
+            Err(super::super::invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            )),
+        );
+
+        let first_type = first_shape.type_().clone();
+        let second_type = second_shape.type_().clone();
+        let true_list = ListExpr::value(Vec::new(), ValueType::External(first_type.clone()))
+            .into_external()
+            .expect("an external item list should preserve its nominal item");
+        let false_list = ListExpr::value(Vec::new(), ValueType::External(first_type.clone()))
+            .into_external()
+            .expect("an external item list should preserve its nominal item");
+        assert_eq!(
+            super::bool_list_case_branches(
+                ListExpr::External(true_list.clone()),
+                ListExpr::External(false_list.clone()),
+            ),
+            Ok(BoolListCaseBranches::External {
+                true_: true_list,
+                false_: false_list,
+            }),
+        );
+        assert_eq!(
+            super::bool_list_case_branches(
+                ListExpr::value(Vec::new(), ValueType::External(first_type)),
+                ListExpr::value(Vec::new(), ValueType::External(second_type)),
+            ),
+            Err(super::super::invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            )),
+        );
+
+        let first_function_type = ExternalFunctionType::from_shapes(Vec::new(), first_shape);
+        let second_function_type = ExternalFunctionType::from_shapes(Vec::new(), second_shape);
+        let true_function = ExternalFunctionExpr::local_get(
+            ExternalFunctionLocal::new(ExternalFunctionLocalId(0), first_function_type.clone()),
+            "true_function".into(),
+        );
+        let false_function = ExternalFunctionExpr::local_get(
+            ExternalFunctionLocal::new(ExternalFunctionLocalId(1), first_function_type.clone()),
+            "false_function".into(),
+        );
+        assert_eq!(
+            super::bool_function_case_branches(
+                FunctionExpr::external(true_function.clone()),
+                FunctionExpr::external(false_function.clone()),
+            ),
+            Ok(BoolCaseBranches::ExternalFunction {
+                true_: true_function,
+                false_: false_function,
+            }),
+        );
+        assert_eq!(
+            super::bool_function_case_branches(
+                FunctionExpr::external(ExternalFunctionExpr::local_get(
+                    ExternalFunctionLocal::new(ExternalFunctionLocalId(0), first_function_type),
+                    "first_function".into(),
+                )),
+                FunctionExpr::external(ExternalFunctionExpr::local_get(
+                    ExternalFunctionLocal::new(ExternalFunctionLocalId(1), second_function_type),
+                    "second_function".into(),
+                )),
+            ),
+            Err(super::super::invalid_case_shape(
+                InvalidCaseShapeReason::BranchReturnTypeMismatch,
+            )),
+        );
+    }
+
+    #[test]
     fn case_subject_variants_follow_the_gleam_type_shape() {
         assert_eq!(
             super::CaseSubjectVariants::from_value_type(&ValueType::Parameter(
                 crate::plan::TypeParameterId(0),
+            )),
+            super::CaseSubjectVariants::Other,
+        );
+        assert_eq!(
+            super::CaseSubjectVariants::from_value_type(&ValueType::External(
+                crate::plan::ExternalType::new(
+                    crate::plan::ExternalTypeName::new(
+                        "application".into(),
+                        "main".into(),
+                        "Counter".into(),
+                    ),
+                    Vec::new(),
+                ),
             )),
             super::CaseSubjectVariants::Other,
         );
@@ -1599,6 +1831,7 @@ pub fn main() {
                 condition: BoolExpr::value(false),
                 branch: Expr::int(IntExpr::value(1.into())),
                 is_total: false,
+                reachable: true,
             }]),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
@@ -1615,6 +1848,7 @@ pub fn main() {
                 condition: BoolExpr::value(true),
                 branch: Expr::int(IntExpr::value(1.into())),
                 is_total: true,
+                reachable: true,
             }]),
             Ok(Expr::int(IntExpr::value(1.into()))),
         );
@@ -1624,11 +1858,13 @@ pub fn main() {
                     condition: BoolExpr::value(false),
                     branch: Expr::int(IntExpr::value(1.into())),
                     is_total: false,
+                    reachable: true,
                 },
                 super::OrderedCaseClause {
                     condition: BoolExpr::value(true),
                     branch: Expr::int(IntExpr::value(0.into())),
                     is_total: true,
+                    reachable: true,
                 }
             ]),
             Ok(Expr::int(IntExpr::bool_case(
@@ -1643,11 +1879,13 @@ pub fn main() {
                     condition: BoolExpr::value(true),
                     branch: Expr::int(IntExpr::value(10.into())),
                     is_total: true,
+                    reachable: true,
                 },
                 super::OrderedCaseClause {
                     condition: BoolExpr::value(true),
                     branch: Expr::int(IntExpr::value(999.into())),
                     is_total: false,
+                    reachable: true,
                 },
             ]),
             Ok(Expr::int(IntExpr::value(10.into()))),
@@ -1671,6 +1909,8 @@ pub fn main() {
                 guard: None,
                 match_condition: BoolExpr::value(true),
                 is_total: true,
+                reachable: true,
+                exhaustive_remainder: false,
             },
             &mut context,
         );

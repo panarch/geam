@@ -3,19 +3,23 @@ use super::{write_args, write_constant, write_function_call, write_projection};
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::FunctionLabelSource;
 use crate::plan::execution::function::{
-    BitArrayFunctionId, CustomFunctionId, FunctionFunctionId, FunctionReturnFamily,
-    GenericCallableId, IntFunctionId, NilFunctionId, StringFunctionId, TupleFunctionId,
-    UtfCodepointFunctionId,
+    BitArrayFunctionId, CustomFunctionId, ExecutionGraphProfile, ExternalFunctionFunctionId,
+    ExternalFunctionId, ExternalListFunctionFunctionId, ExternalListFunctionId,
+    FunctionReturnFamily, GenericCallableId, IntFunctionId, ListFunctionId, NilFunctionId,
+    ProfiledFunctionFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
 };
 use crate::plan::execution::graph::LocalLabel;
 use crate::plan::execution::graph::{
-    BitArrayListLocalId, CustomFunctionLocal, CustomListLocalId, CustomLocal, FloatListLocalId,
-    FunctionFunctionLocal, FunctionListLocalId, GenericFunctionLocal, IntListLocalId, IntLocalId,
-    ListFunctionLocal, ListListLocalId, NeverFunctionLocal, NilListLocalId, ParamLocal,
-    ParameterListListLocalId, ParameterListLocalId, StringListLocalId, StringLocalId,
-    TupleListLocalId, TupleLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
+    BitArrayListLocalId, CoreFunctionFunctionLocal, CustomFunctionLocal, CustomListLocalId,
+    CustomLocal, ExternalFunctionFunctionLocal, ExternalFunctionLocal, ExternalListLocalId,
+    ExternalLocal, FloatListLocalId, FunctionFunctionLocal, FunctionListLocalId,
+    GenericFunctionLocal, IntListLocalId, IntLocalId, ListFunctionLocal, ListListLocalId,
+    NeverFunctionLocal, NilListLocalId, ParamLocal, ParameterListListLocalId, ParameterListLocalId,
+    StringListLocalId, StringLocalId, TupleListLocalId, TupleLocalId, UtfCodepointListLocalId,
+    UtfCodepointLocalId,
 };
 use crate::plan::execution::type_::CustomConstructorId;
+use std::convert::Infallible;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum FunctionTarget {
@@ -30,14 +34,46 @@ pub(crate) enum FunctionTarget {
     Bool(crate::plan::execution::function::BoolFunctionId),
     Nil(NilFunctionId),
     Tuple(TupleFunctionId),
-    List(crate::plan::execution::function::ListFunctionId),
-    Function(FunctionFunctionId),
+    List(ListFunctionId),
+    Function(ProfiledFunctionFunctionId<Infallible>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ExternalFunctionTarget {
+    Value(ExternalFunctionId),
+    List(ExternalListFunctionId),
+    Function(ExternalFunctionFunctionId),
+    ListFunction {
+        id: ExternalListFunctionFunctionId,
+        type_: crate::plan::execution::type_::FunctionType,
+        list_type: crate::plan::execution::type_::ExternalListTypeId,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ExternalFunctionCallTarget {
+    Function(ExternalFunctionFunctionId),
+    ListFunction {
+        id: ExternalListFunctionFunctionId,
+        type_: crate::plan::execution::type_::FunctionType,
+        list_type: crate::plan::execution::type_::ExternalListTypeId,
+    },
 }
 
 pub(crate) struct FunctionInstruction {
     type_: crate::plan::execution::type_::FunctionType,
     family: FunctionReturnFamily,
     kind: FunctionInstructionKind,
+}
+
+pub(crate) struct ExternalFunctionInstruction {
+    type_: crate::plan::execution::type_::FunctionType,
+    family: FunctionReturnFamily,
+    kind: ExternalFunctionInstructionKind,
+}
+
+pub(crate) trait ExternalFunctionInstructionView {
+    fn instruction(&self) -> &ExternalFunctionInstruction;
 }
 
 pub(crate) enum FunctionCapture {
@@ -64,6 +100,10 @@ pub(crate) enum FunctionCapture {
     Custom {
         target: CustomLocal,
         source: CustomLocal,
+    },
+    External {
+        target: ExternalLocal,
+        source: ExternalLocal,
     },
     Bool {
         target: crate::plan::execution::graph::BoolLocalId,
@@ -104,6 +144,10 @@ pub(crate) enum FunctionCapture {
     CustomList {
         target: CustomListLocalId,
         source: CustomListLocalId,
+    },
+    ExternalList {
+        target: ExternalListLocalId,
+        source: ExternalListLocalId,
     },
     FloatList {
         target: FloatListLocalId,
@@ -160,6 +204,10 @@ pub(crate) enum FunctionCapture {
     CustomFunction {
         target: CustomFunctionLocal,
         source: CustomFunctionLocal,
+    },
+    ExternalFunction {
+        target: ExternalFunctionLocal,
+        source: ExternalFunctionLocal,
     },
     BoolFunction {
         target: crate::plan::execution::graph::BoolFunctionLocalId,
@@ -229,6 +277,34 @@ impl Explain for FunctionInstruction {
     }
 }
 
+impl Explain for ExternalFunctionInstruction {
+    fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
+        context.push_str("function[");
+        context.push_str(&self.family().to_string());
+        context.push_str("] ");
+        match self.kind() {
+            ExternalFunctionInstructionKind::Reference(target) => {
+                context.push_str("reference ");
+                context.write(target);
+            }
+            ExternalFunctionInstructionKind::Closure { target, captures } => {
+                context.push_str("closure target=");
+                context.write(target);
+                context.push_str(" captures=");
+                context.write_list(captures, |context, capture| context.write(capture));
+            }
+            ExternalFunctionInstructionKind::Call { function, args, .. } => {
+                context.push_str("call ");
+                function.function_label().write(context.output());
+                write_args(context.output(), args);
+            }
+            ExternalFunctionInstructionKind::FunctionCall { function, args, .. } => {
+                write_function_call(context.output(), "function_call", function, args);
+            }
+        }
+    }
+}
+
 impl Explain for FunctionTarget {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
         match self {
@@ -263,7 +339,58 @@ impl Explain for FunctionTarget {
             FunctionTarget::Nil(function) => function.function_label().write(context.output()),
             FunctionTarget::Tuple(function) => function.function_label().write(context.output()),
             FunctionTarget::List(function) => function.function_label().write(context.output()),
-            FunctionTarget::Function(function) => function.function_label().write(context.output()),
+            FunctionTarget::Function(function) => {
+                std::convert::Infallible::function_function(function)
+                    .function_label()
+                    .write(context.output())
+            }
+        }
+    }
+}
+
+impl Explain for ExternalFunctionTarget {
+    fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
+        self.function_label().write(context.output());
+    }
+}
+
+impl FunctionLabelSource for ExternalFunctionTarget {
+    fn function_label(&self) -> crate::plan::execution::explain::FunctionLabel {
+        match self {
+            Self::Value(function) => function.function_label(),
+            Self::List(function) => function.function_label(),
+            Self::Function(function) => function.function_label(),
+            Self::ListFunction { id, .. } => id.function_label(),
+        }
+    }
+}
+
+impl FunctionLabelSource for ExternalFunctionCallTarget {
+    fn function_label(&self) -> crate::plan::execution::explain::FunctionLabel {
+        match self {
+            Self::Function(function) => function.function_label(),
+            Self::ListFunction { id, .. } => id.function_label(),
+        }
+    }
+}
+
+impl ExternalFunctionCallTarget {
+    pub(crate) fn runtime_id(&self) -> crate::plan::execution::function::FunctionFunctionId {
+        match self {
+            Self::Function(function) => {
+                crate::plan::execution::function::FunctionFunctionId::External(function.clone())
+            }
+            Self::ListFunction {
+                id,
+                type_,
+                list_type,
+            } => crate::plan::execution::function::FunctionFunctionId::List(
+                crate::plan::execution::function::ListFunctionFunctionId::External {
+                    id: *id,
+                    type_: type_.clone(),
+                    list_type: *list_type,
+                },
+            ),
         }
     }
 }
@@ -280,6 +407,7 @@ impl Explain for FunctionCapture {
                 write_capture(output, target, source);
             }
             FunctionCapture::Custom { target, source } => write_capture(output, target, source),
+            FunctionCapture::External { target, source } => write_capture(output, target, source),
             FunctionCapture::Bool { target, source } => write_capture(output, target, source),
             FunctionCapture::Nil { target, source } => write_capture(output, target, source),
             FunctionCapture::Tuple { target, source } => write_capture(output, target, source),
@@ -298,6 +426,9 @@ impl Explain for FunctionCapture {
                 write_capture(output, target, source);
             }
             FunctionCapture::CustomList { target, source } => {
+                write_capture(output, target, source);
+            }
+            FunctionCapture::ExternalList { target, source } => {
                 write_capture(output, target, source);
             }
             FunctionCapture::FloatList { target, source } => write_capture(output, target, source),
@@ -330,6 +461,9 @@ impl Explain for FunctionCapture {
                 write_capture(output, target, source);
             }
             FunctionCapture::CustomFunction { target, source } => {
+                write_capture(output, target, source);
+            }
+            FunctionCapture::ExternalFunction { target, source } => {
                 write_capture(output, target, source);
             }
             FunctionCapture::BoolFunction { target, source } => {
@@ -370,12 +504,12 @@ pub(crate) enum FunctionInstructionKind {
     },
     Constructor(CustomConstructorId),
     Call {
-        function: FunctionFunctionId,
+        function: ProfiledFunctionFunctionId<Infallible>,
         args: Box<[ParamLocal]>,
         site: crate::plan::HostCallSite,
     },
     FunctionCall {
-        function: FunctionFunctionLocal,
+        function: CoreFunctionFunctionLocal,
         args: Box<[ParamLocal]>,
         site: crate::plan::HostCallSite,
     },
@@ -390,6 +524,24 @@ pub(crate) enum FunctionInstructionKind {
     ListIndex {
         list: FunctionListLocalId,
         index: usize,
+    },
+}
+
+pub(crate) enum ExternalFunctionInstructionKind {
+    Reference(ExternalFunctionTarget),
+    Closure {
+        target: ExternalFunctionTarget,
+        captures: Box<[FunctionCapture]>,
+    },
+    Call {
+        function: ExternalFunctionCallTarget,
+        args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
+    },
+    FunctionCall {
+        function: ExternalFunctionFunctionLocal,
+        args: Box<[ParamLocal]>,
+        site: crate::plan::HostCallSite,
     },
 }
 
@@ -416,6 +568,86 @@ impl FunctionInstruction {
 
     pub(crate) fn kind(&self) -> &FunctionInstructionKind {
         &self.kind
+    }
+}
+
+impl ExternalFunctionInstruction {
+    pub(in crate::plan::execution) fn new(
+        type_: crate::plan::execution::type_::FunctionType,
+        family: FunctionReturnFamily,
+        kind: ExternalFunctionInstructionKind,
+    ) -> Self {
+        Self {
+            type_,
+            family,
+            kind,
+        }
+    }
+
+    pub(crate) fn type_(&self) -> &crate::plan::execution::type_::FunctionType {
+        &self.type_
+    }
+
+    pub(crate) fn family(&self) -> FunctionReturnFamily {
+        self.family
+    }
+
+    pub(crate) fn kind(&self) -> &ExternalFunctionInstructionKind {
+        &self.kind
+    }
+}
+
+impl ExternalFunctionInstructionView for ExternalFunctionInstruction {
+    fn instruction(&self) -> &ExternalFunctionInstruction {
+        self
+    }
+}
+
+impl ExternalFunctionInstructionView for Infallible {
+    fn instruction(&self) -> &ExternalFunctionInstruction {
+        match *self {}
+    }
+}
+
+#[cfg(test)]
+mod external_function_instruction_view_tests {
+    use super::{
+        ExternalFunctionInstruction, ExternalFunctionInstructionKind,
+        ExternalFunctionInstructionView, ExternalFunctionTarget,
+    };
+    use crate::plan::execution::function::{ExternalFunctionId, FunctionReturnFamily};
+    use crate::plan::execution::type_::{ExternalTypeId, FunctionType, ValueType};
+    use std::convert::Infallible;
+
+    #[test]
+    fn exposes_external_function_instruction_metadata() {
+        let external_type = ExternalTypeId::new(0);
+        let function_type = FunctionType::new(Vec::new(), ValueType::External(external_type));
+        let instruction = ExternalFunctionInstruction::new(
+            function_type.clone(),
+            FunctionReturnFamily::External,
+            ExternalFunctionInstructionKind::Reference(ExternalFunctionTarget::Value(
+                ExternalFunctionId::new(1, external_type),
+            )),
+        );
+
+        let viewed = instruction.instruction();
+
+        assert!(std::ptr::eq(viewed, &instruction));
+        assert_eq!(viewed.type_(), &function_type);
+        assert_eq!(viewed.family(), FunctionReturnFamily::External);
+        assert!(matches!(
+            viewed.kind(),
+            ExternalFunctionInstructionKind::Reference(ExternalFunctionTarget::Value(function))
+                if function.index() == 1
+        ));
+    }
+
+    #[test]
+    fn plain_external_function_instruction_view_is_uninhabited() {
+        fn assert_view<View: ExternalFunctionInstructionView>() {}
+
+        assert_view::<Infallible>();
     }
 }
 
@@ -474,29 +706,191 @@ pub fn main() {
 }
 
 #[cfg(test)]
-mod function_target_explain_tests {
-    use super::FunctionTarget;
+mod external_function_instruction_explain_tests {
+    use super::{
+        ExternalFunctionCallTarget, ExternalFunctionInstruction, ExternalFunctionInstructionKind,
+        ExternalFunctionTarget, FunctionCapture,
+    };
+    use crate::plan::HostCallSite;
     use crate::plan::execution::explain;
-    use crate::plan::execution::function::{GenericCallableId, IntFunctionId};
-    use crate::plan::execution::type_::ValueShapeId;
+    use crate::plan::execution::function::{
+        ExternalFunctionFunctionId, ExternalFunctionId, ExternalListFunctionId,
+        FunctionReturnFamily,
+    };
+    use crate::plan::execution::graph::{
+        ExternalFunctionFunctionLocal, ExternalFunctionFunctionLocalId, IntLocalId, ParamLocal,
+    };
+    use crate::plan::execution::type_::{
+        ExternalFunctionType, ExternalListTypeId, ExternalTypeId, FunctionFunctionType,
+        FunctionShape, FunctionType, ListTypeId, ValueShapeId, ValueType,
+    };
 
     #[test]
-    fn writes_function_targets() {
-        let source = "pub fn main() { 1 }";
-        let expected = "int#2 | template#3 shapes=[shape#4]";
+    fn writes_external_function_reference() {
+        let external_type = ExternalTypeId::new(0);
+        let instruction = ExternalFunctionInstruction::new(
+            FunctionType::new(Vec::new(), ValueType::External(external_type)),
+            FunctionReturnFamily::External,
+            ExternalFunctionInstructionKind::Reference(ExternalFunctionTarget::Value(
+                ExternalFunctionId::new(1, external_type),
+            )),
+        );
+        let expected = "function[External] reference external#1";
 
-        assert_explanation(source, expected);
+        assert_explanation(&instruction, expected);
     }
 
-    fn assert_explanation(source: &str, expected: &str) {
-        explain::assert_rendered(source, expected, |plan, output| {
+    #[test]
+    fn writes_external_function_closure() {
+        let external_type = ExternalTypeId::new(0);
+        let list_type = ExternalListTypeId::new(ListTypeId::new(1), external_type);
+        let instruction = ExternalFunctionInstruction::new(
+            FunctionType::new(Vec::new(), ValueType::List(list_type.list_type())),
+            FunctionReturnFamily::List,
+            ExternalFunctionInstructionKind::Closure {
+                target: ExternalFunctionTarget::List(ExternalListFunctionId::new(2, list_type)),
+                captures: Box::new([FunctionCapture::Int {
+                    target: IntLocalId(1),
+                    source: IntLocalId(0),
+                }]),
+            },
+        );
+        let expected = "function[List] closure target=list.external#2 captures=[%int#1<-%int#0]";
+
+        assert_explanation(&instruction, expected);
+    }
+
+    #[test]
+    fn writes_external_function_call() {
+        let external_type = ExternalTypeId::new(0);
+        let function_type = FunctionType::new(Vec::new(), ValueType::External(external_type));
+        let instruction = ExternalFunctionInstruction::new(
+            function_type.clone(),
+            FunctionReturnFamily::External,
+            ExternalFunctionInstructionKind::Call {
+                function: ExternalFunctionCallTarget::Function(ExternalFunctionFunctionId::new(
+                    3,
+                    ExternalFunctionType::from_shapes(function_type, Vec::new(), external_type),
+                )),
+                args: Box::new([ParamLocal::Int(IntLocalId(2))]),
+                site: HostCallSite::unknown(),
+            },
+        );
+        let expected = "function[External] call function.external#3 args=[%int#2]";
+
+        assert_explanation(&instruction, expected);
+    }
+
+    #[test]
+    fn writes_external_function_value_call() {
+        let external_type = ExternalTypeId::new(0);
+        let function_type = FunctionType::new(Vec::new(), ValueType::External(external_type));
+        let instruction = ExternalFunctionInstruction::new(
+            function_type.clone(),
+            FunctionReturnFamily::External,
+            ExternalFunctionInstructionKind::FunctionCall {
+                function: ExternalFunctionFunctionLocal::new(
+                    ExternalFunctionFunctionLocalId(4),
+                    FunctionFunctionType::from_shapes(
+                        FunctionType::new(
+                            Vec::new(),
+                            ValueType::Function(Box::new(function_type.clone())),
+                        ),
+                        Vec::new(),
+                        FunctionShape::new(ValueShapeId::new(0), function_type),
+                    ),
+                ),
+                args: Box::new([ParamLocal::Int(IntLocalId(3))]),
+                site: HostCallSite::unknown(),
+            },
+        );
+        let expected =
+            "function[External] function_call %function.function.external#4 args=[%int#3]";
+
+        assert_explanation(&instruction, expected);
+    }
+
+    fn assert_explanation(instruction: &ExternalFunctionInstruction, expected: &str) {
+        explain::assert_rendered("pub fn main() { 1 }", expected, |plan, output| {
             let mut context = explain::ExplainContext::new(plan, output);
-            context.write(&FunctionTarget::Int(IntFunctionId(2)));
-            context.push_str(" | ");
-            context.write(&FunctionTarget::Generic(GenericCallableId::function(
-                3,
-                vec![ValueShapeId::new(4)],
-            )));
+            context.write(instruction);
+        });
+    }
+}
+
+#[cfg(test)]
+mod function_target_explain_tests {
+    use super::{ExternalFunctionTarget, FunctionTarget};
+    use crate::plan::execution::explain;
+    use crate::plan::execution::function::{
+        ExternalFunctionFunctionId, ExternalFunctionId, ExternalListFunctionFunctionId,
+        GenericCallableId, IntFunctionId,
+    };
+    use crate::plan::execution::type_::{
+        ExternalFunctionType, ExternalListTypeId, ExternalTypeId, FunctionType, ListTypeId,
+        ValueShapeId, ValueType,
+    };
+
+    #[test]
+    fn writes_core_function_target() {
+        let target = FunctionTarget::Int(IntFunctionId(2));
+        let expected = "int#2";
+
+        assert_explanation(&target, expected);
+    }
+
+    #[test]
+    fn writes_generic_function_target() {
+        let target =
+            FunctionTarget::Generic(GenericCallableId::function(3, vec![ValueShapeId::new(4)]));
+        let expected = "template#3 shapes=[shape#4]";
+
+        assert_explanation(&target, expected);
+    }
+
+    #[test]
+    fn writes_external_value_function_target() {
+        let target =
+            ExternalFunctionTarget::Value(ExternalFunctionId::new(5, ExternalTypeId::new(0)));
+        let expected = "external#5";
+
+        assert_explanation(&target, expected);
+    }
+
+    #[test]
+    fn writes_external_function_function_target() {
+        let external_type = ExternalTypeId::new(0);
+        let function_type = FunctionType::new(Vec::new(), ValueType::External(external_type));
+        let target = ExternalFunctionTarget::Function(ExternalFunctionFunctionId::new(
+            6,
+            ExternalFunctionType::from_shapes(function_type, Vec::new(), external_type),
+        ));
+        let expected = "function.external#6";
+
+        assert_explanation(&target, expected);
+    }
+
+    #[test]
+    fn writes_external_list_function_function_target() {
+        let external_type = ExternalTypeId::new(0);
+        let function_type = FunctionType::new(Vec::new(), ValueType::External(external_type));
+        let target = ExternalFunctionTarget::ListFunction {
+            id: ExternalListFunctionFunctionId(7),
+            type_: function_type,
+            list_type: ExternalListTypeId::new(ListTypeId::new(0), external_type),
+        };
+        let expected = "function.list.external#7";
+
+        assert_explanation(&target, expected);
+    }
+
+    fn assert_explanation<Target>(target: &Target, expected: &str)
+    where
+        Target: crate::plan::execution::explain::Explain,
+    {
+        explain::assert_rendered("pub fn main() { 1 }", expected, |plan, output| {
+            let mut context = explain::ExplainContext::new(plan, output);
+            context.write(target);
         });
     }
 }
@@ -505,23 +899,69 @@ mod function_target_explain_tests {
 mod function_capture_explain_tests {
     use super::FunctionCapture;
     use crate::plan::execution::explain;
-    use crate::plan::execution::graph::IntLocalId;
+    use crate::plan::execution::graph::{
+        ExternalFunctionLocal, ExternalFunctionLocalId, ExternalListLocalId, ExternalLocal,
+        ExternalLocalId, IntLocalId,
+    };
+    use crate::plan::execution::type_::{
+        ExternalFunctionType, ExternalTypeId, FunctionType, ValueType,
+    };
 
     #[test]
-    fn writes_function_captures() {
-        let source = "pub fn main() { 1 }";
+    fn writes_int_function_capture() {
+        let capture = FunctionCapture::Int {
+            target: IntLocalId(1),
+            source: IntLocalId(0),
+        };
         let expected = "%int#1<-%int#0";
 
-        assert_explanation(source, expected);
+        assert_explanation(&capture, expected);
     }
 
-    fn assert_explanation(source: &str, expected: &str) {
-        explain::assert_rendered(source, expected, |plan, output| {
+    #[test]
+    fn writes_external_function_capture() {
+        let external_type = ExternalTypeId::new(0);
+        let capture = FunctionCapture::External {
+            target: ExternalLocal::new(ExternalLocalId(3), external_type),
+            source: ExternalLocal::new(ExternalLocalId(2), external_type),
+        };
+        let expected = "%external#3<-%external#2";
+
+        assert_explanation(&capture, expected);
+    }
+
+    #[test]
+    fn writes_external_list_function_capture() {
+        let capture = FunctionCapture::ExternalList {
+            target: ExternalListLocalId(5),
+            source: ExternalListLocalId(4),
+        };
+        let expected = "%list.external#5<-%list.external#4";
+
+        assert_explanation(&capture, expected);
+    }
+
+    #[test]
+    fn writes_external_function_function_capture() {
+        let external_type = ExternalTypeId::new(0);
+        let function_type = ExternalFunctionType::from_shapes(
+            FunctionType::new(Vec::new(), ValueType::External(external_type)),
+            Vec::new(),
+            external_type,
+        );
+        let capture = FunctionCapture::ExternalFunction {
+            target: ExternalFunctionLocal::new(ExternalFunctionLocalId(7), function_type.clone()),
+            source: ExternalFunctionLocal::new(ExternalFunctionLocalId(6), function_type),
+        };
+        let expected = "%function.external#7<-%function.external#6";
+
+        assert_explanation(&capture, expected);
+    }
+
+    fn assert_explanation(capture: &FunctionCapture, expected: &str) {
+        explain::assert_rendered("pub fn main() { 1 }", expected, |plan, output| {
             let mut context = explain::ExplainContext::new(plan, output);
-            context.write(&FunctionCapture::Int {
-                target: IntLocalId(1),
-                source: IntLocalId(0),
-            });
+            context.write(capture);
         });
     }
 }

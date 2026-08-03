@@ -76,7 +76,7 @@ impl Explain for CustomInstruction {
 #[cfg(test)]
 mod explain_tests {
     use crate::plan::execution::explain;
-    use crate::plan::execution::graph::InstructionKind;
+    use crate::plan::execution::graph::ProfiledInstructionKind;
 
     #[test]
     fn writes_custom_construction() {
@@ -149,7 +149,7 @@ pub fn main() {
             let graph = function.body().function_body().block_graph();
             let mut first = true;
             for instruction in graph.blocks().iter().flat_map(|block| block.instructions()) {
-                if let InstructionKind::Custom(instruction) = instruction.kind() {
+                if let ProfiledInstructionKind::Custom(instruction) = instruction.kind() {
                     if first {
                         first = false;
                     } else {

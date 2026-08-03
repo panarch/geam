@@ -35,10 +35,17 @@ pub(super) fn plan_anonymous(
     }
 
     let mut type_parameters = context.type_parameters().clone();
-    let function_shape = anonymous_function_shape(type_.as_ref(), &mut type_parameters)?;
+    let function_shape = anonymous_function_shape(
+        context.value_shape_with_parameters(type_.as_ref(), &mut type_parameters),
+    )?;
     let function_type = function_shape.type_();
     let error_name = context.anonymous_function_error_name();
-    let params = function_params_in(error_name.clone(), &arguments, &mut type_parameters)?;
+    let params = function_params_in(
+        error_name.clone(),
+        &arguments,
+        &mut type_parameters,
+        &|name| context.is_external_type(name),
+    )?;
     validate_argument_types(&error_name, &function_type, &params)?;
     plan_anonymous_with_valid_arguments(
         function_shape,
@@ -207,6 +214,16 @@ fn closure_expr(
                 ),
             ))
         }
+        ValueShape::External(return_shape) => {
+            FunctionExpr::external(crate::plan::ExternalFunctionExpr::closure(
+                function,
+                captures,
+                crate::plan::ExternalFunctionType::from_shapes(
+                    shape.argument_shapes().to_vec(),
+                    return_shape.clone(),
+                ),
+            ))
+        }
         ValueShape::Float => FunctionExpr::float(crate::plan::FloatFunctionExpr::closure(
             function, captures, type_,
         )),
@@ -242,11 +259,7 @@ fn closure_expr(
     }
 }
 
-fn anonymous_function_shape(
-    type_: &Type,
-    parameters: &mut TypeParameterScope,
-) -> Result<FunctionShape, PlanError> {
-    let shape = ValueShape::from_gleam_in(type_, parameters);
+fn anonymous_function_shape(shape: ValueShape) -> Result<FunctionShape, PlanError> {
     let actual = match shape {
         ValueShape::Function(shape) => return Ok(*shape),
         ValueShape::Int => InvalidExpressionType::Int,
@@ -255,6 +268,7 @@ fn anonymous_function_shape(
         ValueShape::BitArray => InvalidExpressionType::BitArray,
         ValueShape::UtfCodepoint => InvalidExpressionType::UtfCodepoint,
         ValueShape::Custom(_) => InvalidExpressionType::Custom,
+        ValueShape::External(_) => InvalidExpressionType::External,
         ValueShape::Bool => InvalidExpressionType::Bool,
         ValueShape::Nil => InvalidExpressionType::Nil,
         ValueShape::Tuple(_) => InvalidExpressionType::Tuple,
@@ -300,9 +314,10 @@ fn validate_argument_types(
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        Expr, FunctionFunctionId, FunctionShape, FunctionType, IntExpr, IntFunctionFunctionId,
-        IntFunctionId, IntLocalId, LocalId, PanicExpr, PanicSite, ParamLocal, ReturnExpr,
-        SourceSpan, StringExpr, TupleLocalId, ValueType,
+        Expr, ExternalTypeName, ExternalValueShape, FunctionFunctionId, FunctionShape,
+        FunctionType, IntExpr, IntFunctionFunctionId, IntFunctionId, IntLocalId, LocalId,
+        PanicExpr, PanicSite, ParamLocal, ReturnExpr, SourceSpan, StringExpr, TupleLocalId,
+        ValueShape, ValueType,
     };
     use crate::planner::dsl::{
         call_int_function_at, capture_int, capture_tuple, function, function_function_closure,
@@ -847,6 +862,19 @@ pub fn main() {
                 }),
             );
         }
+
+        assert_eq!(
+            super::anonymous_function_shape(ValueShape::External(ExternalValueShape::new(
+                ExternalTypeName::new("geam".into(), "main".into(), "Token".into()),
+                Vec::new(),
+            ))),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Function,
+                    actual: InvalidExpressionType::External,
+                },
+            }),
+        );
     }
 
     fn utf_codepoint_type() -> std::sync::Arc<gleam_core::type_::Type> {

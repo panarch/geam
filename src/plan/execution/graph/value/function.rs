@@ -1,8 +1,8 @@
 use crate::plan::execution::type_::{
-    BitArrayListTypeId, BoolListTypeId, CustomFunctionType, CustomListTypeId, FloatListTypeId,
-    FunctionFunctionType, FunctionListTypeId, FunctionType, GenericFunctionType, IntListTypeId,
-    ListListTypeId, NilListTypeId, ParameterListListTypeId, ParameterListTypeId, StringListTypeId,
-    TupleListTypeId, UtfCodepointListTypeId,
+    BitArrayListTypeId, BoolListTypeId, CustomFunctionType, CustomListTypeId, ExternalFunctionType,
+    ExternalListTypeId, FloatListTypeId, FunctionFunctionType, FunctionListTypeId, FunctionType,
+    GenericFunctionType, IntListTypeId, ListListTypeId, NilListTypeId, ParameterListListTypeId,
+    ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -48,6 +48,15 @@ pub(crate) struct CustomFunctionLocal {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ExternalFunctionLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct ExternalFunctionLocal {
+    id: ExternalFunctionLocalId,
+    type_: ExternalFunctionType,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BoolFunctionLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -76,6 +85,9 @@ pub struct ParameterListListFunctionLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CustomListFunctionLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ExternalListFunctionLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FloatListFunctionLocalId(pub(crate) usize);
@@ -132,6 +144,11 @@ pub enum ListFunctionLocal {
         type_: FunctionType,
         list_type: CustomListTypeId,
     },
+    External {
+        local: ExternalListFunctionLocalId,
+        type_: FunctionType,
+        list_type: ExternalListTypeId,
+    },
     Float {
         local: FloatListFunctionLocalId,
         type_: FunctionType,
@@ -165,11 +182,26 @@ pub enum ListFunctionLocal {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct FunctionFunctionLocalId(pub(crate) usize);
+pub struct CoreFunctionFunctionLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct FunctionFunctionLocal {
-    id: FunctionFunctionLocalId,
+pub(crate) enum FunctionFunctionLocal {
+    Core(CoreFunctionFunctionLocal),
+    External(ExternalFunctionFunctionLocal),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct CoreFunctionFunctionLocal {
+    id: CoreFunctionFunctionLocalId,
+    type_: FunctionFunctionType,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ExternalFunctionFunctionLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct ExternalFunctionFunctionLocal {
+    id: ExternalFunctionFunctionLocalId,
     type_: FunctionFunctionType,
 }
 
@@ -183,6 +215,7 @@ pub(crate) enum FunctionLocal {
     BitArray(BitArrayFunctionLocalId),
     UtfCodepoint(UtfCodepointFunctionLocalId),
     Custom(CustomFunctionLocal),
+    External(ExternalFunctionLocal),
     Bool(BoolFunctionLocalId),
     Nil(NilFunctionLocalId),
     Tuple(TupleFunctionLocalId),
@@ -199,6 +232,19 @@ impl CustomFunctionLocal {
     }
 
     pub(crate) fn id(&self) -> CustomFunctionLocalId {
+        self.id
+    }
+}
+
+impl ExternalFunctionLocal {
+    pub(in crate::plan::execution) fn new(
+        id: ExternalFunctionLocalId,
+        type_: ExternalFunctionType,
+    ) -> Self {
+        Self { id, type_ }
+    }
+
+    pub(crate) fn id(&self) -> ExternalFunctionLocalId {
         self.id
     }
 }
@@ -229,15 +275,28 @@ impl NeverFunctionLocal {
     }
 }
 
-impl FunctionFunctionLocal {
+impl CoreFunctionFunctionLocal {
     pub(in crate::plan::execution) fn new(
-        id: FunctionFunctionLocalId,
+        id: CoreFunctionFunctionLocalId,
         type_: FunctionFunctionType,
     ) -> Self {
         Self { id, type_ }
     }
 
-    pub(crate) fn id(&self) -> FunctionFunctionLocalId {
+    pub(crate) fn id(&self) -> CoreFunctionFunctionLocalId {
+        self.id
+    }
+}
+
+impl ExternalFunctionFunctionLocal {
+    pub(in crate::plan::execution) fn new(
+        id: ExternalFunctionFunctionLocalId,
+        type_: FunctionFunctionType,
+    ) -> Self {
+        Self { id, type_ }
+    }
+
+    pub(crate) fn id(&self) -> ExternalFunctionFunctionLocalId {
         self.id
     }
 }
@@ -253,6 +312,7 @@ impl ListFunctionLocal {
             | Self::BitArray { type_, .. }
             | Self::UtfCodepoint { type_, .. }
             | Self::Custom { type_, .. }
+            | Self::External { type_, .. }
             | Self::Float { type_, .. }
             | Self::Bool { type_, .. }
             | Self::Nil { type_, .. }
@@ -272,6 +332,7 @@ impl ListFunctionLocal {
             Self::BitArray { list_type, .. } => list_type.list_type(),
             Self::UtfCodepoint { list_type, .. } => list_type.list_type(),
             Self::Custom { list_type, .. } => list_type.list_type(),
+            Self::External { list_type, .. } => list_type.list_type(),
             Self::Float { list_type, .. } => list_type.list_type(),
             Self::Bool { list_type, .. } => list_type.list_type(),
             Self::Nil { list_type, .. } => list_type.list_type(),
@@ -286,11 +347,12 @@ impl ListFunctionLocal {
 mod tests {
     use super::{
         BitArrayListFunctionLocalId, BoolListFunctionLocalId, CustomListFunctionLocalId,
-        FloatListFunctionLocalId, FunctionListFunctionLocalId, IntListFunctionLocalId,
-        ListFunctionLocal, ListListFunctionLocalId, NilListFunctionLocalId,
+        ExternalListFunctionLocalId, FloatListFunctionLocalId, FunctionListFunctionLocalId,
+        IntListFunctionLocalId, ListFunctionLocal, ListListFunctionLocalId, NilListFunctionLocalId,
         ParameterListFunctionLocalId, ParameterListListFunctionLocalId, StringListFunctionLocalId,
         TupleListFunctionLocalId, UtfCodepointListFunctionLocalId,
     };
+    use crate::plan::execution::type_::{ExternalListTypeId, ExternalTypeId, ListTypeId};
 
     #[test]
     fn parameter_list_function_locals_preserve_types_and_storage() {
@@ -428,6 +490,20 @@ pub fn main() {
             locals.map(|local| local.type_().clone()),
             std::array::from_fn(|_| type_.clone()),
         );
+    }
+
+    #[test]
+    fn external_list_function_locals_preserve_type_and_storage() {
+        let type_ = function_type();
+        let list_type = ExternalListTypeId::new(ListTypeId::new(17), ExternalTypeId::new(4));
+        let local = ListFunctionLocal::External {
+            local: ExternalListFunctionLocalId(2),
+            type_: type_.clone(),
+            list_type,
+        };
+
+        assert_eq!(local.type_(), &type_);
+        assert_eq!(local.list_type(), ListTypeId::new(17));
     }
 
     fn function_type() -> crate::plan::execution::type_::FunctionType {

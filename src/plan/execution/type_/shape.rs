@@ -1,4 +1,4 @@
-use super::{CustomTypeId, FunctionType};
+use super::{CustomTypeId, ExternalTypeId, FunctionType};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct ValueShapeId(usize);
@@ -48,6 +48,7 @@ pub(crate) enum ValueShapeDescriptor {
         return_: ValueShapeId,
     },
     Custom(CustomValueShapeId),
+    External(ExternalTypeId),
 }
 
 pub(crate) struct ValueShapeTable {
@@ -169,7 +170,7 @@ mod tests {
         ValueShapeDescriptor, ValueShapeId, ValueShapeTable,
     };
     use crate::plan::execution::ExecutionPlan;
-    use crate::plan::execution::function::RuntimeFunctionId;
+    use crate::plan::execution::function::{CoreRuntimeFunctionId, RuntimeFunctionId};
     use crate::plan::execution::type_::CustomTypeId;
 
     #[test]
@@ -573,7 +574,7 @@ pub fn main() { Phantom }
     }
 
     fn main_custom_shape(plan: &ExecutionPlan) -> super::CustomValueShapeId {
-        let RuntimeFunctionId::Custom(id) = plan.main_runtime() else {
+        let RuntimeFunctionId::Core(CoreRuntimeFunctionId::Custom(id)) = plan.main_runtime() else {
             panic!("expected a custom main function");
         };
         plan.custom_function(id).body().body_shape().shape_id()

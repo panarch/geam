@@ -52,6 +52,10 @@ pub enum CustomTypeTemplate {
         name: CustomTypeName,
         arguments: Vec<CustomTypeTemplate>,
     },
+    External {
+        name: crate::plan::ExternalTypeName,
+        arguments: Vec<CustomTypeTemplate>,
+    },
     Parameter(CustomTypeParameterId),
 }
 

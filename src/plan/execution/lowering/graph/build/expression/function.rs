@@ -1,6 +1,7 @@
 mod bit_array;
 mod bool;
 mod custom;
+mod external;
 mod float;
 mod generic;
 mod int;
@@ -17,6 +18,9 @@ pub(in crate::plan::execution::lowering) use bool::bool_function_expr;
 pub(in crate::plan::execution::lowering) use custom::{
     custom_function_expr, custom_function_expr_kind, generic_custom_function_expr,
 };
+pub(in crate::plan::execution::lowering) use external::{
+    external_function_expr, external_function_expr_kind, generic_external_function_expr,
+};
 pub(in crate::plan::execution::lowering) use float::float_function_expr;
 pub(in crate::plan::execution::lowering) use generic::executable_function_expr as generic_executable_function_expr;
 pub(in crate::plan::execution::lowering) use generic::{
@@ -24,10 +28,10 @@ pub(in crate::plan::execution::lowering) use generic::{
     generic_int_function_expr, generic_nil_function_expr, generic_string_function_expr,
     generic_tuple_function_expr, generic_utf_codepoint_function_expr,
     symbolic_bit_array_function_expr, symbolic_bool_function_expr,
-    symbolic_custom_function_expr_kind, symbolic_float_function_expr,
-    symbolic_function_function_expr_kind, symbolic_generic_function_expr,
-    symbolic_int_function_expr, symbolic_list_function_expr, symbolic_nil_function_expr,
-    symbolic_string_function_expr, symbolic_tuple_function_expr,
+    symbolic_custom_function_expr_kind, symbolic_external_function_expr_kind,
+    symbolic_float_function_expr, symbolic_function_function_expr_kind,
+    symbolic_generic_function_expr, symbolic_int_function_expr, symbolic_list_function_expr,
+    symbolic_nil_function_expr, symbolic_string_function_expr, symbolic_tuple_function_expr,
     symbolic_utf_codepoint_function_expr,
 };
 pub(in crate::plan::execution::lowering) use int::int_function_expr;
@@ -49,7 +53,7 @@ pub(in crate::plan::execution::lowering) use tuple::tuple_function_expr;
 pub(in crate::plan::execution::lowering) use utf_codepoint::utf_codepoint_function_expr;
 
 use super::{capture_args, panic_expr};
-use crate::plan::execution::graph::FunctionTarget;
+use crate::plan::execution::lowering::graph::DraftFunctionTarget;
 use crate::plan::execution::lowering::graph::{DraftCursor, DraftFlow, DraftFunction, DraftGraph};
 use crate::plan::execution::lowering::specialization::{
     FunctionRepresentation, Representability, SpecializedFunctionShape,
@@ -96,6 +100,10 @@ pub(in crate::plan::execution::lowering) fn function_expr(
             }
             module::FunctionExprKind::Custom(expression) => {
                 custom_function_expr(expression, cursor, graph, context)
+                    .map(|flow| flow.map(|value| value.value().clone()))
+            }
+            module::FunctionExprKind::External(expression) => {
+                external_function_expr(expression, cursor, graph, context)
                     .map(|flow| flow.map(|value| value.value().clone()))
             }
             module::FunctionExprKind::Bool(expression) => {
@@ -167,11 +175,44 @@ pub(in crate::plan::execution::lowering) fn evaluated_generic_function_expr(
         .map(|flow| flow.map(|_| ()))
 }
 
+pub(super) fn function_value_call(
+    function: &module::FunctionFunctionExpr,
+    args: &[module::CallArg],
+    site: &crate::plan::HostCallSite,
+    shape: &SpecializedFunctionShape,
+    cursor: DraftCursor,
+    graph: &mut DraftGraph,
+    context: &mut super::super::LoweringContext,
+) -> Representability<DraftFlow<DraftFunction>> {
+    use super::super::instruction::DraftFunctionInstruction as I;
+
+    super::lower_function_call(
+        args,
+        cursor,
+        graph,
+        context,
+        |cursor, graph, context| function_function_expr(function, cursor, graph, context),
+        |cursor, graph, context| evaluated_function_function_expr(function, cursor, graph, context),
+        |mut cursor, function, args, graph, _| {
+            let value = graph.function_instruction(
+                &mut cursor,
+                shape.clone(),
+                I::FunctionCall {
+                    function: function.value().clone(),
+                    args,
+                    site: site.clone(),
+                },
+            );
+            DraftFlow::value(cursor, value)
+        },
+    )
+}
+
 fn closure(
     function: &module::FunctionInstantiation,
     captures: &[module::CaptureArg],
     shape: SpecializedFunctionShape,
-    target: FunctionTarget,
+    target: DraftFunctionTarget,
     cursor: DraftCursor,
     graph: &mut DraftGraph,
     context: &mut super::super::LoweringContext,
@@ -186,7 +227,7 @@ fn closure(
 
 fn reference(
     shape: SpecializedFunctionShape,
-    target: FunctionTarget,
+    target: DraftFunctionTarget,
     mut cursor: DraftCursor,
     graph: &mut DraftGraph,
 ) -> DraftFlow<DraftFunction> {
@@ -214,6 +255,7 @@ mod tests {
     use crate::plan::{
         BitArrayFunctionExpr, BoolFunctionExpr, CustomConstructorDefinition, CustomFunctionExpr,
         CustomFunctionType, CustomType, CustomTypeDefinition, CustomTypeName, CustomTypePublicity,
+        ExternalFunctionExpr, ExternalFunctionType, ExternalTypeName, ExternalValueShape,
         FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionType, FunctionShape,
         FunctionTemplateId, FunctionType, IntFunctionExpr, IntFunctionReference, ListExpr,
         ListFunctionExpr, NilFunctionExpr, PanicExpr, PanicSite, StringFunctionExpr,
@@ -451,6 +493,12 @@ pub fn main() {{
         let tuple_type = FunctionType::new(Vec::new(), ValueType::Tuple(vec![ValueType::Int]));
         let list_type = FunctionType::new(Vec::new(), ValueType::List(Box::new(ValueType::Int)));
         let function_function_type = FunctionFunctionType::new(Vec::new(), int_type.clone());
+        let external_shape = ExternalValueShape::new(
+            ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into()),
+            Vec::new(),
+        );
+        let external_function_type =
+            ExternalFunctionType::from_shapes(Vec::new(), external_shape.clone());
         let panic = || PanicExpr::panic_at(None, PanicSite::unknown());
         let expressions = vec![
             FunctionExpr::int(IntFunctionExpr::list_index(
@@ -542,6 +590,16 @@ pub fn main() {{
                 .expect("a function-function item should create a function list"),
                 0,
                 function_function_type,
+            )),
+            FunctionExpr::external(ExternalFunctionExpr::list_index(
+                ListExpr::panic(
+                    panic(),
+                    ValueType::Function(Box::new(external_function_type.to_function_type())),
+                )
+                .into_function()
+                .expect("an external-function item should create a function list"),
+                0,
+                external_function_type,
             )),
         ];
         let mut context = crate::plan::execution::lowering::test_support::lowering_context(vec![

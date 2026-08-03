@@ -3,10 +3,14 @@ mod terminator;
 
 pub(crate) use instruction::{
     BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayInstruction, BitArraySegment, BoolInstruction,
-    CustomInstruction, FloatInstruction, FunctionCapture, FunctionInstruction,
+    CustomInstruction, ExternalFunctionCallTarget, ExternalFunctionInstruction,
+    ExternalFunctionInstructionKind, ExternalFunctionInstructionView, ExternalFunctionTarget,
+    ExternalInstruction, ExternalInstructionRef, ExternalInstructionView, ExternalListInstruction,
+    ExternalListInstructionView, FloatInstruction, FunctionCapture, FunctionInstruction,
     FunctionInstructionKind, FunctionTarget, Instruction, InstructionKind, IntInstruction,
-    ListInstruction, NilInstruction, ParameterListInstruction, StringInstruction, TupleInstruction,
-    TypedListInstruction, UtfCodepointInstruction,
+    ListInstruction, NilInstruction, ParameterListInstruction, ProfiledInstruction,
+    ProfiledInstructionKind, StringInstruction, TupleInstruction, TypedListInstruction,
+    UtfCodepointInstruction,
 };
 pub(crate) use terminator::{
     BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
@@ -16,16 +20,27 @@ pub(crate) use terminator::{
     NeverCall, NeverCallTarget, Signedness, SourceStop, SourceStopKind, StringSwitch, Terminator,
 };
 
+use crate::plan::execution::explain::Explain;
+use crate::plan::execution::function::{
+    ExecutionGraphProfile, FunctionLabelSource, HostedExecutionGraph,
+};
 use crate::plan::execution::graph::{BlockGraphExplainContext, ParamSlot};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct BlockId(usize);
 
-pub(crate) struct Block {
+pub(crate) struct ProfiledBlock<Graph: ExecutionGraphProfile> {
     params: Box<[ParamSlot]>,
-    instructions: Box<[Instruction]>,
+    instructions: Box<[ProfiledInstruction<Graph>]>,
     terminator: Terminator,
 }
+
+pub(crate) type Block = ProfiledBlock<HostedExecutionGraph>;
+pub(in crate::plan::execution) type ProfiledBlockParts<Graph> = (
+    Box<[ParamSlot]>,
+    Box<[ProfiledInstruction<Graph>]>,
+    Terminator,
+);
 
 impl BlockId {
     pub(in crate::plan::execution) fn new(index: usize) -> Self {
@@ -37,10 +52,10 @@ impl BlockId {
     }
 }
 
-impl Block {
+impl<Graph: ExecutionGraphProfile> ProfiledBlock<Graph> {
     pub(in crate::plan::execution) fn new(
         params: Vec<ParamSlot>,
-        instructions: Vec<Instruction>,
+        instructions: Vec<ProfiledInstruction<Graph>>,
         terminator: Terminator,
     ) -> Self {
         Self {
@@ -54,7 +69,7 @@ impl Block {
         &self.params
     }
 
-    pub(crate) fn instructions(&self) -> &[Instruction] {
+    pub(crate) fn instructions(&self) -> &[ProfiledInstruction<Graph>] {
         &self.instructions
     }
 
@@ -62,11 +77,23 @@ impl Block {
         &self.terminator
     }
 
+    pub(in crate::plan::execution) fn into_parts(self) -> ProfiledBlockParts<Graph> {
+        (self.params, self.instructions, self.terminator)
+    }
+
     pub(in crate::plan::execution::graph) fn write_explanation(
         &self,
         context: &mut BlockGraphExplainContext<'_, '_, '_>,
         index: usize,
-    ) {
+    ) where
+        Graph::ExternalFunctionId: FunctionLabelSource,
+        Graph::ExternalListFunctionId: FunctionLabelSource,
+        Graph::ExternalFunctionFunctionId: FunctionLabelSource,
+        Graph::ExternalListFunctionFunctionId: FunctionLabelSource,
+        Graph::ExternalInstruction: Explain,
+        Graph::ExternalListInstruction: Explain,
+        Graph::ExternalFunctionInstruction: Explain,
+    {
         context.push_str("  block b");
         context.push_str(&index.to_string());
         context.push_str(" params=");

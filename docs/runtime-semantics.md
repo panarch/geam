@@ -76,6 +76,12 @@ HostProviderSet + PackageSource[]
 -> HostedExecution
 ```
 
+The same pipeline can start from `compile_typed_host_project`, which reads an
+already resolved filesystem project and combines its selected import closure
+with an explicit `HostProviderSet`. Plain and hosted project loading share the
+manifest, source catalog, closure selection, and parse owner. Provider linkage
+remains a planning concern rather than a filesystem-loader fallback.
+
 ### Linking And Identity
 
 Registration seals a callable schema and implementation together, so missing
@@ -115,10 +121,91 @@ values cross one invocation as typed handles rather than materialized
 construct a return only through the return-family-specific call builder.
 Custom schemas are checked against the selected source definition before
 lowering, so runtime trusts their constructor positions and field shapes.
+Schema fields refer to their enclosing custom parameters with
+`HostCustomTypeArgument`; selecting a concrete `HostCustomType` substitutes
+those arguments before `HostCall` reads or constructs constructor fields.
+Function-scheme parameters remain the separate `HostTypeParameter` namespace.
 
 Each `HostProfile` defines caller-owned `RunState`. A scoped callback can
 project only its declared `HostProvider::State` through the active `HostCall`;
 callback objects and mutable state are not stored in canonical plan nodes.
+The explicit `GleamStdlibProfile` uses caller-created `GleamStdlibRunState` for
+random operations. Construction requires either a seed or fallible system
+entropy; the runtime provides no hidden seed, global generator, or `Default`
+state.
+
+### External Values And Retained Storage
+
+A source-backed provider can register a constructorless external type with
+`HostExternalStorage`. Planning links its exact package, module, type name, and
+parameter count. Canonical plan and graph nodes retain nominal type and storage
+IDs only. `HostedExecution` owns the profile's typed stores used for payload
+creation and access, while `HostExternalStorage` supplies payload source
+equality, hashing, and inspection behavior. These operations receive narrow
+contexts that can compare, hash, or inspect retained typed and existential
+Gleam values without exposing runtime storage. Neither Rust payloads nor
+storage behavior become canonical plan metadata.
+
+Source hashing follows Gleam equality: equal values always have equal hashes,
+while a matching hash still requires source equality to resolve collisions.
+Hashes are runtime indexes and are not stable across processes or releases.
+An immutable external payload's source hash and inspection are computed on
+first demand and cached in its lease. Payload creation does not traverse
+retained values merely to prepare either semantic. Before an external value is
+materialized beyond the runtime, its canonical inspection is sealed into the
+owned public value. Neither semantic is derived from Rust `TypeId`, allocation
+addresses, public opaque identity, or inspection text.
+
+`HostExternal` is an invocation-scoped typed handle. A provider can create or
+inspect its Rust payload only through the active `HostCall`. The materialized
+public `ExternalValue` exposes nominal type, opaque instance identity, and
+canonical inspection, but never the Rust payload. Gleam equality remains owned
+by `HostExternalStorage` and is distinct from public Rust `PartialEq`. The
+payload lease is self-contained, so the value can be cloned, inspected, and
+dropped after the run state and `HostedExecution` have been dropped.
+
+An external payload can retain an exact Gleam value as `HostStoredValue`.
+Monomorphic fields preserve their declared host type marker. Generic payload
+fields use a stable external type-argument position that each provider
+function maps to its own local type parameters. Restoration is available only
+from the payload view of an active `HostCall`; provider run state and public
+`Value` have no retain or restore API. Lists, tuples, ordinary customs,
+functions, nested externals, and their runtime identities are retained without
+`Any`, Rust `TypeId`, downcasts, or runtime shape validation.
+
+An external payload can instead retain `HostStoredDynamic`, which seals the
+exact specialized Gleam shape beside the retained runtime value. A payload
+view may request a typed decode through the active `HostCall`. An exact shape
+match restores the typed handle; a mismatch or a type parameter not supplied
+by that host specialization returns `None` as ordinary provider semantics.
+Dynamic identity is the recursive Gleam shape, including nominal custom and
+external identities, rather than a Rust payload type. Public `Value` does not
+expose this decode surface.
+
+External leases determine payload lifetime. The profile store keeps a typed
+index only while at least one lease exists; dropping the final lease removes
+the index entry, so the store cannot extend payload lifetime beyond its leases.
+Retained list and capture graphs continue to use the shared iterative release
+queue, including after the original runtime state has been dropped. Geam does
+not support cyclic evaluated graphs or moving stored values between hosted
+executions.
+
+Providers that model private transient-style builders use persistent external
+payload versions. Each operation may share immutable retained entries with its
+input, but it returns a new payload and never mutates a version already visible
+to Gleam. Aliases therefore continue to observe their original values, and the
+retained graph remains acyclic. Geam does not enforce a consumed-token state at
+runtime and does not provide general mutable external references or cycle
+collection.
+
+The explicit official `gleam/dict` provider is one concrete use of this model.
+It selects persistent buckets by Gleam source hash and resolves every collision
+with source equality. `Dict` and private `TransientDict` remain nominally
+distinct immutable payload versions, official Gleam fallback bodies remain the
+source owner of their operations, and dictionary iteration order is not a
+runtime contract. Canonical inspection sorts rendered entries only to make
+escaped values deterministic to read; that display order does not define
+iteration semantics.
 
 ### Specialization And Re-entry
 

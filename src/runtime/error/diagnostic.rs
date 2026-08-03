@@ -159,6 +159,7 @@ fn render_value(value: &Value) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
+        Value::External(value) => format!("External({})", value.inspection()),
         Value::Bool(value) => format!("Bool({value})"),
         Value::Nil => "Nil".into(),
         Value::Tuple(values) => format!(
@@ -218,6 +219,7 @@ fn render_value_type(type_: &ValueType) -> String {
         ValueType::List(element) => format!("List({})", render_value_type(element)),
         ValueType::Function(type_) => render_function_type(type_),
         ValueType::Custom(type_) => render_custom_type(type_),
+        ValueType::External(type_) => render_external_type(type_),
     }
 }
 
@@ -240,19 +242,37 @@ fn render_custom_type(type_: &crate::plan::CustomType) -> String {
     }
 }
 
+fn render_external_type(type_: &crate::plan::ExternalType) -> String {
+    let name = type_.type_name();
+    let identity = format!("{}::{}.{}", name.package(), name.module(), name.name());
+    if type_.arguments().is_empty() {
+        identity
+    } else {
+        format!(
+            "{identity}({})",
+            type_
+                .arguments()
+                .iter()
+                .map(render_value_type)
+                .collect::<Vec<_>>()
+                .join(", "),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{render_value, render_value_type};
-    use crate::host::HostFailure;
+    use crate::host::{HostExternalStore, HostFailure};
     use crate::plan::execution::function::{
-        FunctionReturnFamily, IntFunctionId, RuntimeFunctionId,
+        CoreRuntimeFunctionId, FunctionReturnFamily, IntFunctionId, RuntimeFunctionId,
     };
     use crate::plan::execution::graph::{IntLocalId, ParamLocal};
     use crate::plan::{
-        CustomType, CustomTypeName, FunctionType, HostCallSite, PanicSite, SourceContext,
-        SourceSpan, ValueType,
+        CustomType, CustomTypeName, ExternalType, ExternalTypeName, FunctionType, HostCallSite,
+        PanicSite, SourceContext, SourceSpan, ValueType,
     };
-    use crate::runtime::{BitArrayValue, FunctionValue, ListValue, Value};
+    use crate::runtime::{BitArrayValue, ExternalValue, FunctionValue, ListValue, Value};
     use crate::runtime::{
         ExecutionError, HostError, InvariantError, Panic, PanicDetails, PanicKind, PanicMessage,
     };
@@ -456,8 +476,68 @@ mod tests {
 
     #[test]
     fn render_value_preserves_every_runtime_value_family() {
+        fn source_hash(
+            context: &crate::host::HostExternalHashing<'_>,
+            value: &crate::host::HostStoredValue<num_bigint::BigInt>,
+        ) -> u64 {
+            context.stored_value_hash(value)
+        }
+
+        fn inspect(
+            context: &crate::host::HostExternalInspection<'_>,
+            value: &crate::host::HostStoredValue<num_bigint::BigInt>,
+        ) -> ecow::EcoString {
+            context.inspect_stored_value(value)
+        }
+
+        let external_store = HostExternalStore::default();
+        let source_equal =
+            |context: &crate::host::HostExternalEquality<'_>,
+             left: &crate::host::HostStoredValue<num_bigint::BigInt>,
+             right: &crate::host::HostStoredValue<num_bigint::BigInt>| {
+                context.stored_values_equal(left, right)
+            };
+        let first = external_store.insert(
+            crate::host::HostStoredValue::new(crate::runtime::StoredRuntimeValue::test_int(
+                7.into(),
+            )),
+            source_equal,
+            source_hash,
+            inspect,
+        );
+        let equal = external_store.insert(
+            crate::host::HostStoredValue::new(crate::runtime::StoredRuntimeValue::test_int(
+                7.into(),
+            )),
+            source_equal,
+            source_hash,
+            inspect,
+        );
+        let stored_equal =
+            |left: &crate::runtime::StoredRuntimeValue,
+             right: &crate::runtime::StoredRuntimeValue| left.value() == right.value();
+        let equality = crate::host::HostExternalEquality::new(&stored_equal);
+        assert!(first.source_equal(&equality, &equal));
+        let stored_hash = |_: &crate::runtime::StoredRuntimeValue| 7;
+        let stored_inspect = |_: &crate::runtime::StoredRuntimeValue| "Resource(7)".into();
+        assert_eq!(
+            first.source_hash(&crate::host::HostExternalHashing::new(&stored_hash)),
+            7,
+        );
+        assert_eq!(
+            first.inspection(&crate::host::HostExternalInspection::new(&stored_inspect)),
+            "Resource(7)",
+        );
+        let external = ExternalValue::from_evaluated(
+            ExternalType::new(
+                ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into()),
+                Vec::new(),
+            ),
+            first,
+            "Resource(7)".into(),
+        );
         let function = Value::Function(FunctionValue::new(
-            RuntimeFunctionId::Int(IntFunctionId(0)),
+            RuntimeFunctionId::Core(CoreRuntimeFunctionId::Int(IntFunctionId(0))),
             vec![ParamLocal::Int(IntLocalId(0))],
             crate::plan::FunctionType::new(
                 vec![crate::plan::ValueType::Int],
@@ -477,6 +557,7 @@ mod tests {
                 Value::UtfCodepoint('\u{10ffff}'),
                 "UtfCodepoint('\\u{10ffff}')",
             ),
+            (Value::External(external), "External(Resource(7))"),
             (Value::Bool(true), "Bool(true)"),
             (Value::Nil, "Nil"),
             (
@@ -526,6 +607,20 @@ mod tests {
                 vec![ValueType::Int],
             ))),
             "geam/main/Boxed(Int)",
+        );
+        assert_eq!(
+            render_value_type(&ValueType::External(ExternalType::new(
+                ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into(),),
+                vec![ValueType::String],
+            ))),
+            "domain::domain/resource.Resource(String)",
+        );
+        assert_eq!(
+            render_value_type(&ValueType::External(ExternalType::new(
+                ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into(),),
+                Vec::new(),
+            ))),
+            "domain::domain/resource.Resource",
         );
     }
 }

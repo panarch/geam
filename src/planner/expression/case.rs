@@ -1,3 +1,4 @@
+mod coverage;
 mod guard;
 mod subject;
 
@@ -5,6 +6,7 @@ use crate::plan::Expr;
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidCaseShapeReason, InvalidTypedAstReason, PlanError};
 use gleam_core::ast::{TypedClause, TypedExpr};
+use gleam_core::exhaustiveness::CompiledCase;
 use gleam_core::type_::Type;
 use std::sync::Arc;
 
@@ -15,24 +17,27 @@ pub(super) fn plan_case(
     type_: Arc<Type>,
     subjects: Vec<TypedExpr>,
     clauses: Vec<TypedClause>,
+    compiled_case: CompiledCase,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     if clauses.is_empty() {
         return Err(invalid_case_shape(InvalidCaseShapeReason::EmptyClauses));
     }
 
+    let subject_count = subjects.len();
     let mut subjects = subjects.into_iter();
-    let subject = subjects
-        .next()
-        .ok_or(invalid_case_shape(InvalidCaseShapeReason::EmptySubjects))?;
+    let Some(subject) = subjects.next() else {
+        return Err(invalid_case_shape(InvalidCaseShapeReason::EmptySubjects));
+    };
+    let coverage = coverage::CaseCoverage::new(&compiled_case, subject_count, &clauses)?;
     if subjects.len() == 0 {
-        return subject::plan(type_, subject, clauses, context);
+        return subject::plan(type_, subject, clauses, coverage, context);
     }
 
     let mut all_subjects = Vec::with_capacity(1 + subjects.len());
     all_subjects.push(subject);
     all_subjects.extend(subjects);
-    subject::plan_multi(type_, all_subjects, clauses, context)
+    subject::plan_multi(type_, all_subjects, clauses, coverage, context)
 }
 
 pub(super) fn invalid_case_shape(reason: InvalidCaseShapeReason) -> PlanError {
@@ -82,6 +87,7 @@ pub(super) fn expect_assignment_case_statement_mut(
     &mut std::sync::Arc<Type>,
     &mut Vec<TypedExpr>,
     &mut Vec<TypedClause>,
+    &mut CompiledCase,
 ) {
     let Statement::Assignment(assignment) = statement else {
         panic!("expected case assignment statement");
@@ -90,12 +96,13 @@ pub(super) fn expect_assignment_case_statement_mut(
         type_,
         subjects,
         clauses,
+        compiled_case,
         ..
     } = &mut assignment.value
     else {
         panic!("expected case assignment value");
     };
-    (type_, subjects, clauses)
+    (type_, subjects, clauses, compiled_case)
 }
 
 #[cfg(test)]

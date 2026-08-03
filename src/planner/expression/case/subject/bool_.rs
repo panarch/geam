@@ -83,6 +83,7 @@ fn plan_guarded_bool_case(
     let mut false_clauses = Vec::new();
     for clause in clauses {
         for pattern in clause.patterns() {
+            let (pattern, reachable, exhaustive_remainder) = pattern.into_parts();
             let pattern = plan_bool_case_pattern(pattern)?;
             let bindings =
                 super::branch_bindings(pattern.bound_names(), Expr::bool(subject.clone()));
@@ -96,6 +97,8 @@ fn plan_guarded_bool_case(
                     guard: clause.guard.clone(),
                     match_condition: BoolExpr::value(true),
                     is_total,
+                    reachable,
+                    exhaustive_remainder,
                 },
                 context,
             )?;
@@ -1199,11 +1202,13 @@ pub fn main() {
                         condition: BoolExpr::value(true),
                         branch: int(1).into(),
                         is_total: false,
+                        reachable: true,
                     },
                     super::super::OrderedCaseClause {
                         condition: BoolExpr::value(true),
                         branch: bool_(true).into(),
                         is_total: true,
+                        reachable: true,
                     },
                 ],
                 InvalidCaseShapeReason::MissingTruePattern,
@@ -1424,7 +1429,7 @@ fn stringify(value: Int) {
             .map(|function| &mut function.body)
             .expect("expected main function");
         let replacement = super::super::super::expect_expression_statement(&body[1]).clone();
-        let (_, _, clauses) =
+        let (_, _, clauses, _) =
             super::super::super::expect_assignment_case_statement_mut(&mut body[0]);
         clauses[1].then = replacement;
 

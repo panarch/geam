@@ -12,6 +12,12 @@ pub struct HostTypeList<Head, Tail>(PhantomData<(Head, Tail)>);
 /// The end of a recursive host type sequence.
 pub struct HostTypeListEnd;
 
+/// The first position in a recursive host type sequence.
+pub struct HostTypeIndex0;
+
+/// A position after `Index` in a recursive host type sequence.
+pub struct HostTypeIndexNext<Index>(PhantomData<Index>);
+
 /// A sealed recursive sequence of scoped host ABI types.
 #[allow(private_bounds)]
 pub trait HostTypeSequence: private::Sequence + Send + Sync + 'static {
@@ -37,6 +43,27 @@ pub(crate) trait HostAbiTypeSequence: HostTypeSequence {
     fn into_scoped_values(values: Self::Values<'_>, output: &mut Vec<HostScopedValue>) {
         <Self as private::Sequence>::into_scoped_values(values, output);
     }
+}
+
+/// Selects one type from a recursive host type sequence by position.
+pub trait HostTypeAt<Index>: HostTypeSequence {
+    type Type: super::HostType;
+}
+
+impl<Head, Tail> HostTypeAt<HostTypeIndex0> for HostTypeList<Head, Tail>
+where
+    Head: HostAbiType,
+    Tail: HostTypeSequence,
+{
+    type Type = Head;
+}
+
+impl<Head, Tail, Index> HostTypeAt<HostTypeIndexNext<Index>> for HostTypeList<Head, Tail>
+where
+    Head: HostAbiType,
+    Tail: HostTypeAt<Index>,
+{
+    type Type = <Tail as HostTypeAt<Index>>::Type;
 }
 
 impl<Types: HostTypeSequence> HostAbiTypeSequence for Types {}
@@ -129,7 +156,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{HostAbiTypeSequence, HostTypeList, HostTypeListEnd};
+    use super::{
+        HostAbiTypeSequence, HostTypeAt, HostTypeIndex0, HostTypeIndexNext, HostTypeList,
+        HostTypeListEnd,
+    };
     use crate::host::function::CallArguments;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{
@@ -180,5 +210,16 @@ mod tests {
             crate::host::type_::from_tokens::<Types, TestHostProfile>(&runtime, &tokens),
             (BigInt::from(0), (false, ())),
         );
+    }
+
+    #[test]
+    fn recursive_type_sequence_selects_types_by_stable_position() {
+        type Types = HostTypeList<BigInt, HostTypeList<bool, HostTypeListEnd>>;
+
+        let first: <Types as HostTypeAt<HostTypeIndex0>>::Type = BigInt::from(7);
+        let second: <Types as HostTypeAt<HostTypeIndexNext<HostTypeIndex0>>>::Type = true;
+
+        assert_eq!(first, BigInt::from(7));
+        assert!(second);
     }
 }

@@ -1,9 +1,9 @@
 use crate::plan::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomExpr, CustomFunctionExpr,
-    Expr, FloatExpr, FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, IntExpr,
-    IntFunctionExpr, ListExpr, ListFunctionExpr, LocalId, NilExpr, NilFunctionExpr, StringExpr,
-    StringFunctionExpr, TupleExpr, TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
-    ValueType,
+    Expr, ExternalExpr, ExternalFunctionExpr, FloatExpr, FloatFunctionExpr, FunctionExpr,
+    FunctionFunctionExpr, IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, LocalId, NilExpr,
+    NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
+    UtfCodepointExpr, UtfCodepointFunctionExpr, ValueType,
 };
 use crate::planner::context::{FunctionLocalBinding, PlanContext};
 use crate::planner::error::{
@@ -264,6 +264,9 @@ fn plan_local(name: EcoString, context: &PlanContext<'_>) -> Result<Expr, PlanEr
     if let Some(local) = context.lookup_custom_local(&name) {
         return Ok(Expr::custom(CustomExpr::local_get(local, name)));
     }
+    if let Some(local) = context.lookup_external_local(&name) {
+        return Ok(Expr::external(ExternalExpr::local_get(local, name)));
+    }
     if let Some((local, shape)) = context.lookup_tuple_local(&name) {
         let type_ = shape
             .iter()
@@ -339,6 +342,9 @@ fn function_local_get(
         FunctionLocalBinding::Custom(local) => {
             FunctionExpr::custom(CustomFunctionExpr::local_get(local, name))
         }
+        FunctionLocalBinding::External(local) => {
+            FunctionExpr::external(ExternalFunctionExpr::local_get(local, name))
+        }
         FunctionLocalBinding::Float { local, type_ } => {
             FunctionExpr::float(FloatFunctionExpr::local_get(local, name, type_))
         }
@@ -386,6 +392,7 @@ fn invalid_expression_type(type_: ValueType) -> InvalidExpressionType {
         ValueType::BitArray => InvalidExpressionType::BitArray,
         ValueType::UtfCodepoint => InvalidExpressionType::UtfCodepoint,
         ValueType::Custom(_) => InvalidExpressionType::Custom,
+        ValueType::External(_) => InvalidExpressionType::External,
         ValueType::Bool => InvalidExpressionType::Bool,
         ValueType::Nil => InvalidExpressionType::Nil,
         ValueType::Tuple(_) => InvalidExpressionType::Tuple,
@@ -408,14 +415,16 @@ mod tests {
         BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionLocalId, BitArrayLocalId, BoolExpr,
         BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId, CustomExpr, CustomFunctionExpr,
         CustomFunctionLocal, CustomFunctionLocalId, CustomFunctionType, CustomLocal, CustomType,
-        CustomTypeName, CustomValueShape, Expr, FloatExpr, FloatFunctionExpr, FloatFunctionLocalId,
-        FunctionExpr, FunctionFunctionExpr, FunctionFunctionLocal, FunctionFunctionLocalId,
-        FunctionFunctionType, FunctionShape, FunctionType, GenericExpr, GenericFunctionExpr,
-        GenericFunctionType, IntExpr, IntFunctionExpr, IntFunctionLocalId, IntLocalId, ListExpr,
-        ListFunctionExpr, ListLocal, LocalId, NilExpr, NilFunctionExpr, NilFunctionLocalId,
-        NilLocalId, StringExpr, StringFunctionExpr, StringFunctionLocalId, StringListLocalId,
-        TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleLocalId, TypeParameterId,
-        UtfCodepointExpr, UtfCodepointFunctionExpr, UtfCodepointFunctionLocalId,
+        CustomTypeName, CustomValueShape, Expr, ExternalExpr, ExternalFunctionExpr,
+        ExternalFunctionLocal, ExternalFunctionLocalId, ExternalFunctionType, ExternalLocal,
+        ExternalType, ExternalTypeName, ExternalValueShape, FloatExpr, FloatFunctionExpr,
+        FloatFunctionLocalId, FunctionExpr, FunctionFunctionExpr, FunctionFunctionLocal,
+        FunctionFunctionLocalId, FunctionFunctionType, FunctionShape, FunctionType, GenericExpr,
+        GenericFunctionExpr, GenericFunctionType, IntExpr, IntFunctionExpr, IntFunctionLocalId,
+        IntLocalId, ListExpr, ListFunctionExpr, ListLocal, LocalId, NilExpr, NilFunctionExpr,
+        NilFunctionLocalId, NilLocalId, StringExpr, StringFunctionExpr, StringFunctionLocalId,
+        StringListLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleLocalId,
+        TypeParameterId, UtfCodepointExpr, UtfCodepointFunctionExpr, UtfCodepointFunctionLocalId,
         UtfCodepointLocalId, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionLocalBinding, PlanContext};
@@ -1213,6 +1222,12 @@ mod tests {
         context.define_nil_local("none".into());
         context.define_tuple_local("pair".into(), vec![ValueType::Int]);
         context.define_list_local("values".into(), ValueType::String);
+        let external_shape = ExternalValueShape::new(
+            ExternalTypeName::new("application".into(), "main".into(), "Resource".into()),
+            Vec::new(),
+        );
+        let external_local =
+            context.define_external_local_shape("external".into(), external_shape.clone());
         let parameter = TypeParameterId(0);
         let generic_local = context.define_generic_local("generic".into(), parameter);
         let generic_function_type = GenericFunctionType::new(Vec::new(), parameter);
@@ -1274,6 +1289,13 @@ mod tests {
             ))),
         );
         assert_eq!(
+            super::plan_local("external".into(), &context),
+            Ok(Expr::external(ExternalExpr::local_get(
+                ExternalLocal::from_shape(external_local, external_shape),
+                "external".into(),
+            ))),
+        );
+        assert_eq!(
             super::plan_local("callback".into(), &context),
             Ok(Expr::function(FunctionExpr::int(
                 IntFunctionExpr::local_get(
@@ -1312,6 +1334,16 @@ mod tests {
         );
         let unary_custom =
             CustomFunctionType::new(vec![ValueType::Custom(custom_type.clone())], custom_type);
+        let external_type = ExternalType::new(
+            ExternalTypeName::new("geam".into(), "main".into(), "Counter".into()),
+            Vec::new(),
+        );
+        let unary_external = ExternalFunctionType::from_shapes(
+            vec![crate::plan::ValueShape::External(ExternalValueShape::any(
+                external_type.clone(),
+            ))],
+            ExternalValueShape::any(external_type),
+        );
         let unary_float = FunctionType::new(vec![ValueType::Float], ValueType::Float);
         let unary_bool = FunctionType::new(vec![ValueType::Bool], ValueType::Bool);
         let unary_nil = FunctionType::new(vec![ValueType::Nil], ValueType::Nil);
@@ -1392,6 +1424,22 @@ mod tests {
             Ok(Expr::function(FunctionExpr::custom(
                 CustomFunctionExpr::local_get(
                     CustomFunctionLocal::new(CustomFunctionLocalId(0), unary_custom),
+                    "f".into(),
+                )
+            ))),
+        );
+        assert_eq!(
+            function_local_get(
+                FunctionLocalBinding::External(ExternalFunctionLocal::new(
+                    ExternalFunctionLocalId(0),
+                    unary_external.clone(),
+                )),
+                "f".into(),
+                FunctionShape::from_function_type(unary_external.to_function_type()),
+            ),
+            Ok(Expr::function(FunctionExpr::external(
+                ExternalFunctionExpr::local_get(
+                    ExternalFunctionLocal::new(ExternalFunctionLocalId(0), unary_external),
                     "f".into(),
                 )
             ))),
@@ -1504,6 +1552,10 @@ mod tests {
                     CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
                     Vec::new(),
                 )),
+                ValueType::External(ExternalType::new(
+                    ExternalTypeName::new("geam".into(), "main".into(), "Counter".into()),
+                    Vec::new(),
+                )),
                 ValueType::Bool,
                 ValueType::Nil,
                 ValueType::Tuple(Vec::new()),
@@ -1519,6 +1571,7 @@ mod tests {
                 InvalidExpressionType::BitArray,
                 InvalidExpressionType::UtfCodepoint,
                 InvalidExpressionType::Custom,
+                InvalidExpressionType::External,
                 InvalidExpressionType::Bool,
                 InvalidExpressionType::Nil,
                 InvalidExpressionType::Tuple,

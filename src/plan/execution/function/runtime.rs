@@ -1,10 +1,12 @@
 use super::{
-    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, FunctionFunctionId,
-    FunctionLabelSource, IntFunctionId, ListFunctionId, NeverFunctionId, NilFunctionId,
+    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, ExecutionGraphProfile, FloatFunctionId,
+    FunctionLabelSource, HostedExecutionGraph, IntFunctionId, NeverFunctionId, NilFunctionId,
     StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
 };
 use crate::plan::execution::explain::FunctionLabel;
+use crate::plan::execution::graph::ExternalFunctionCallTarget;
 use crate::plan::execution::type_::{CustomConstructorId, FunctionType, ValueShapeId, ValueType};
+use std::convert::Infallible;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum GenericCallableId {
@@ -32,7 +34,13 @@ impl GenericCallableId {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum RuntimeFunctionId {
+pub(crate) enum ProfiledRuntimeFunctionId<Graph: ExecutionGraphProfile> {
+    Core(ProfiledCoreRuntimeFunctionId<Graph>),
+    External(Graph::ExternalFunctionId),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ProfiledCoreRuntimeFunctionId<Graph: ExecutionGraphProfile> {
     Never(NeverFunctionId),
     Int(IntFunctionId),
     Float(FloatFunctionId),
@@ -46,14 +54,35 @@ pub(crate) enum RuntimeFunctionId {
         id: TupleFunctionId,
         return_type: Vec<ValueType>,
     },
-    List(ListFunctionId),
+    List(super::ProfiledListFunctionId<Graph>),
     Function {
-        id: FunctionFunctionId,
+        id: Graph::RuntimeFunctionFunctionId,
         return_type: FunctionType,
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RuntimeFunctionFunctionTarget {
+    Core(super::ProfiledFunctionFunctionId<Infallible>),
+    External(ExternalFunctionCallTarget),
+}
+
+pub(crate) type RuntimeFunctionId = ProfiledRuntimeFunctionId<HostedExecutionGraph>;
+pub(crate) type CoreRuntimeFunctionId = ProfiledCoreRuntimeFunctionId<HostedExecutionGraph>;
+
+#[cfg(test)]
+impl ProfiledRuntimeFunctionId<Infallible> {
+    pub(crate) fn runtime_id(&self) -> RuntimeFunctionId {
+        match self {
+            Self::Core(id) => {
+                RuntimeFunctionId::Core(super::profile::plain_core_runtime_function_id(id))
+            }
+            Self::External(id) => match *id {},
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FunctionReturnFamily {
     Generic,
     Never,
@@ -63,6 +92,7 @@ pub enum FunctionReturnFamily {
     BitArray,
     UtfCodepoint,
     Custom,
+    External,
     Bool,
     Nil,
     Tuple,
@@ -81,6 +111,7 @@ impl std::fmt::Display for FunctionReturnFamily {
             Self::BitArray => "BitArray",
             Self::UtfCodepoint => "UtfCodepoint",
             Self::Custom => "Custom",
+            Self::External => "External",
             Self::Bool => "Bool",
             Self::Nil => "Nil",
             Self::Tuple => "Tuple",
@@ -90,7 +121,28 @@ impl std::fmt::Display for FunctionReturnFamily {
     }
 }
 
-impl FunctionLabelSource for RuntimeFunctionId {
+impl<Graph: ExecutionGraphProfile> FunctionLabelSource for ProfiledRuntimeFunctionId<Graph>
+where
+    Graph::ExternalFunctionId: FunctionLabelSource,
+    Graph::ExternalListFunctionId: FunctionLabelSource,
+    Graph::ExternalFunctionFunctionId: FunctionLabelSource,
+    Graph::ExternalListFunctionFunctionId: FunctionLabelSource,
+    Graph::RuntimeFunctionFunctionId: FunctionLabelSource,
+{
+    fn function_label(&self) -> FunctionLabel {
+        match self {
+            Self::Core(id) => id.function_label(),
+            Self::External(id) => id.function_label(),
+        }
+    }
+}
+
+impl<Graph: ExecutionGraphProfile> FunctionLabelSource for ProfiledCoreRuntimeFunctionId<Graph>
+where
+    Graph::ExternalListFunctionId: FunctionLabelSource,
+    Graph::ExternalListFunctionFunctionId: FunctionLabelSource,
+    Graph::RuntimeFunctionFunctionId: FunctionLabelSource,
+{
     fn function_label(&self) -> FunctionLabel {
         match self {
             Self::Never(id) => FunctionLabel::new("never", id.0),
@@ -109,10 +161,32 @@ impl FunctionLabelSource for RuntimeFunctionId {
     }
 }
 
+impl FunctionLabelSource for RuntimeFunctionFunctionTarget {
+    fn function_label(&self) -> FunctionLabel {
+        self.runtime_id().function_label()
+    }
+}
+
+impl RuntimeFunctionFunctionTarget {
+    pub(crate) fn runtime_id(&self) -> super::FunctionFunctionId {
+        match self {
+            Self::Core(function) => Infallible::function_function(function),
+            Self::External(function) => function.runtime_id(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod explain_tests {
     use crate::plan::execution::explain;
-    use crate::plan::execution::function::FunctionLabelSource;
+    use crate::plan::execution::function::{
+        CoreRuntimeFunctionId, ExternalFunctionFunctionId, ExternalFunctionId, FunctionLabelSource,
+        RuntimeFunctionFunctionTarget, RuntimeFunctionId,
+    };
+    use crate::plan::execution::graph::ExternalFunctionCallTarget;
+    use crate::plan::execution::type_::{
+        ExternalFunctionType, ExternalTypeId, FunctionType, ValueType,
+    };
 
     #[test]
     fn labels_runtime_function_families() {
@@ -143,11 +217,41 @@ mod explain_tests {
         for (source, expected) in cases {
             assert_explanation(source, expected);
         }
+
+        explain::assert_written("external#13", |output| {
+            RuntimeFunctionId::External(ExternalFunctionId::new(13, ExternalTypeId::new(0)))
+                .function_label()
+                .write(output);
+        });
+        explain::assert_written("function.external#14", |output| {
+            let external_type = ExternalTypeId::new(0);
+            RuntimeFunctionFunctionTarget::External(ExternalFunctionCallTarget::Function(
+                ExternalFunctionFunctionId::new(
+                    14,
+                    ExternalFunctionType::from_shapes(
+                        FunctionType::new(Vec::new(), ValueType::External(external_type)),
+                        Vec::new(),
+                        external_type,
+                    ),
+                ),
+            ))
+            .function_label()
+            .write(output);
+        });
     }
 
     fn assert_explanation(source: &str, expected: &str) {
         explain::assert_rendered(source, expected, |plan, output| {
             plan.main_runtime().function_label().write(output);
+        });
+    }
+
+    #[test]
+    fn labels_core_runtime_function_ids() {
+        explain::assert_written("int#13", |output| {
+            CoreRuntimeFunctionId::Int(crate::plan::execution::function::IntFunctionId(13))
+                .function_label()
+                .write(output);
         });
     }
 }
@@ -168,6 +272,7 @@ mod tests {
                 FunctionReturnFamily::BitArray,
                 FunctionReturnFamily::UtfCodepoint,
                 FunctionReturnFamily::Custom,
+                FunctionReturnFamily::External,
                 FunctionReturnFamily::Bool,
                 FunctionReturnFamily::Nil,
                 FunctionReturnFamily::Tuple,
@@ -184,6 +289,7 @@ mod tests {
                 "BitArray",
                 "UtfCodepoint",
                 "Custom",
+                "External",
                 "Bool",
                 "Nil",
                 "Tuple",

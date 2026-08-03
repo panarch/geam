@@ -4,6 +4,7 @@ mod bool;
 mod case;
 mod custom;
 mod custom_field;
+mod external;
 mod float;
 mod function;
 mod generic;
@@ -26,11 +27,12 @@ pub use self::{
     bit_array::BitArrayExpr,
     bool::BoolExpr,
     custom::CustomExpr,
+    external::ExternalExpr,
     float::FloatExpr,
     function::{
-        BitArrayFunctionExpr, BoolFunctionExpr, CustomFunctionExpr, FloatFunctionExpr,
-        FunctionExpr, FunctionFunctionExpr, IntFunctionExpr, ListFunctionExpr, NilFunctionExpr,
-        StringFunctionExpr, TupleFunctionExpr, UtfCodepointFunctionExpr,
+        BitArrayFunctionExpr, BoolFunctionExpr, CustomFunctionExpr, ExternalFunctionExpr,
+        FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, IntFunctionExpr, ListFunctionExpr,
+        NilFunctionExpr, StringFunctionExpr, TupleFunctionExpr, UtfCodepointFunctionExpr,
     },
     int::IntExpr,
     nil::NilExpr,
@@ -50,23 +52,25 @@ pub(crate) use self::{
         CustomLocalExpr, custom_constructor_expr,
     },
     custom_field::CustomFieldAccess,
+    external::ExternalExprKind,
     float::FloatExprKind,
     function::{
         BitArrayFunctionExprKind, BoolFunctionExprKind, CustomFunctionExprKind,
-        FloatFunctionExprKind, FunctionExprKind, FunctionFunctionCallMismatch,
-        FunctionFunctionExprKind, GenericFunctionExpr, GenericFunctionExprKind,
-        IntFunctionExprKind, ListFunctionExprKind, NilFunctionExprKind, StringFunctionExprKind,
-        TupleFunctionExprKind, TypedFunctionExprKind, UtfCodepointFunctionExprKind,
+        ExternalFunctionExprKind, FloatFunctionExprKind, FunctionExprKind,
+        FunctionFunctionCallMismatch, FunctionFunctionExprKind, GenericFunctionExpr,
+        GenericFunctionExprKind, IntFunctionExprKind, ListFunctionExprKind, NilFunctionExprKind,
+        StringFunctionExprKind, TupleFunctionExprKind, TypedFunctionExprKind,
+        UtfCodepointFunctionExprKind,
     },
     generic::{GenericExpr, GenericExprKind},
     int::IntExprKind,
     list::{
         BitArrayListExpr, BitArrayListItem, BoolListCaseBranches, BoolListExpr, BoolListItem,
-        CustomListExpr, CustomListItem, FloatListExpr, FloatListItem, FunctionListExpr,
-        FunctionListItem, GenericListExpr, GenericListItem, IntListExpr, IntListItem,
-        ListCaseBranches, ListElements, ListExpr, ListItem, ListListExpr, ListListItem,
-        ListLocalExpr, ListSpreadConstructionError, ListSpreadElements, NilListExpr, NilListItem,
-        ParameterListListExpr, ParameterListListItem, StoredListExpr, StringListExpr,
+        CustomListExpr, CustomListItem, ExternalListExpr, ExternalListItem, FloatListExpr,
+        FloatListItem, FunctionListExpr, FunctionListItem, GenericListExpr, GenericListItem,
+        IntListExpr, IntListItem, ListCaseBranches, ListElements, ListExpr, ListItem, ListListExpr,
+        ListListItem, ListLocalExpr, ListSpreadConstructionError, ListSpreadElements, NilListExpr,
+        NilListItem, ParameterListListExpr, ParameterListListItem, StoredListExpr, StringListExpr,
         StringListItem, TupleListExpr, TupleListItem, TypedListExpr, TypedListExprKind,
         TypedListReturnKind, UtfCodepointListExpr, UtfCodepointListItem,
     },
@@ -91,6 +95,7 @@ pub(crate) enum ExprKind {
     BitArray(BitArrayExpr),
     UtfCodepoint(UtfCodepointExpr),
     Custom(CustomExpr),
+    External(ExternalExpr),
     Float(FloatExpr),
     Bool(BoolExpr),
     Nil(NilExpr),
@@ -150,6 +155,9 @@ impl Expr {
             }
             (crate::plan::ValueShape::Custom(shape), ExprKind::Custom(expression)) => {
                 ExprKind::Custom(expression.with_shape(shape))
+            }
+            (crate::plan::ValueShape::External(shape), ExprKind::External(expression)) => {
+                ExprKind::External(expression.with_shape(shape))
             }
             (crate::plan::ValueShape::Float, ExprKind::Float(expression)) => {
                 ExprKind::Float(expression)
@@ -212,6 +220,14 @@ impl Expr {
         Self {
             shape,
             kind: ExprKind::Custom(expression),
+        }
+    }
+
+    pub(crate) fn external(expression: ExternalExpr) -> Self {
+        let shape = crate::plan::ValueShape::External(expression.shape().clone());
+        Self {
+            shape,
+            kind: ExprKind::External(expression),
         }
     }
 
@@ -283,6 +299,9 @@ impl Expr {
             ValueShape::Custom(shape) => {
                 Self::custom(CustomExpr::call_at(function, args, shape, site))
             }
+            ValueShape::External(shape) => {
+                Self::external(ExternalExpr::call_at(function, args, shape, site))
+            }
             ValueShape::Float => Self::float(FloatExpr::call_at(function, args, site)),
             ValueShape::Bool => Self::bool(BoolExpr::call_at(function, args, site)),
             ValueShape::Nil => Self::nil(NilExpr::call_at(function, args, site)),
@@ -324,6 +343,7 @@ impl Expr {
                 ExprKind::UtfCodepoint(UtfCodepointExpr::block(steps, return_))
             }
             ExprKind::Custom(return_) => ExprKind::Custom(CustomExpr::block(steps, return_)),
+            ExprKind::External(return_) => ExprKind::External(ExternalExpr::block(steps, return_)),
             ExprKind::Float(return_) => ExprKind::Float(FloatExpr::block(steps, return_)),
             ExprKind::Bool(return_) => ExprKind::Bool(BoolExpr::block(steps, return_)),
             ExprKind::Nil(return_) => ExprKind::Nil(NilExpr::block(steps, return_)),
@@ -345,6 +365,9 @@ impl Expr {
             ValueShape::UtfCodepoint => Self::utf_codepoint(UtfCodepointExpr::custom_field(access)),
             ValueShape::Custom(shape) => {
                 Self::custom(CustomExpr::custom_field_shape(access, shape))
+            }
+            ValueShape::External(shape) => {
+                Self::external(ExternalExpr::custom_field_shape(access, shape))
             }
             ValueShape::Float => Self::float(FloatExpr::custom_field(access)),
             ValueShape::Bool => Self::bool(BoolExpr::custom_field(access)),
@@ -376,6 +399,9 @@ impl Expr {
             }
             ValueShape::Custom(shape) => {
                 Self::custom(CustomExpr::tuple_index_shape(tuple, index, shape))
+            }
+            ValueShape::External(shape) => {
+                Self::external(ExternalExpr::tuple_index_shape(tuple, index, shape))
             }
             ValueShape::Float => Self::float(FloatExpr::tuple_index(tuple, index)),
             ValueShape::Bool => Self::bool(BoolExpr::tuple_index(tuple, index)),
@@ -413,6 +439,9 @@ impl Expr {
             BoolCaseBranches::Custom(branches) => {
                 Self::custom(CustomExpr::bool_case(subject, branches))
             }
+            BoolCaseBranches::External { true_, false_ } => {
+                Self::external(ExternalExpr::bool_case(subject, true_, false_))
+            }
             BoolCaseBranches::Float { true_, false_ } => {
                 Self::float(FloatExpr::bool_case(subject, true_, false_))
             }
@@ -442,6 +471,9 @@ impl Expr {
             }
             BoolCaseBranches::CustomFunction { true_, false_ } => Self::function(
                 FunctionExpr::custom(CustomFunctionExpr::bool_case(subject, true_, false_)),
+            ),
+            BoolCaseBranches::ExternalFunction { true_, false_ } => Self::function(
+                FunctionExpr::external(ExternalFunctionExpr::bool_case(subject, true_, false_)),
             ),
             BoolCaseBranches::FloatFunction { true_, false_ } => Self::function(
                 FunctionExpr::float(FloatFunctionExpr::bool_case(subject, true_, false_)),
@@ -481,6 +513,9 @@ impl Expr {
             IntCaseBranches::Custom(branches) => {
                 Self::custom(CustomExpr::int_case(subject, branches))
             }
+            IntCaseBranches::External { clauses, fallback } => {
+                Self::external(ExternalExpr::int_case(subject, clauses, fallback))
+            }
             IntCaseBranches::Float { clauses, fallback } => {
                 Self::float(FloatExpr::int_case(subject, clauses, fallback))
             }
@@ -510,6 +545,9 @@ impl Expr {
             }
             IntCaseBranches::CustomFunction { clauses, fallback } => Self::function(
                 FunctionExpr::custom(CustomFunctionExpr::int_case(subject, clauses, fallback)),
+            ),
+            IntCaseBranches::ExternalFunction { clauses, fallback } => Self::function(
+                FunctionExpr::external(ExternalFunctionExpr::int_case(subject, clauses, fallback)),
             ),
             IntCaseBranches::FloatFunction { clauses, fallback } => Self::function(
                 FunctionExpr::float(FloatFunctionExpr::int_case(subject, clauses, fallback)),
@@ -549,6 +587,9 @@ impl Expr {
             StringCaseBranches::Custom(branches) => {
                 Self::custom(CustomExpr::string_case(subject, branches))
             }
+            StringCaseBranches::External { clauses, fallback } => {
+                Self::external(ExternalExpr::string_case(subject, clauses, fallback))
+            }
             StringCaseBranches::Float { clauses, fallback } => {
                 Self::float(FloatExpr::string_case(subject, clauses, fallback))
             }
@@ -583,6 +624,11 @@ impl Expr {
             StringCaseBranches::CustomFunction { clauses, fallback } => Self::function(
                 FunctionExpr::custom(CustomFunctionExpr::string_case(subject, clauses, fallback)),
             ),
+            StringCaseBranches::ExternalFunction { clauses, fallback } => {
+                Self::function(FunctionExpr::external(ExternalFunctionExpr::string_case(
+                    subject, clauses, fallback,
+                )))
+            }
             StringCaseBranches::FloatFunction { clauses, fallback } => Self::function(
                 FunctionExpr::float(FloatFunctionExpr::string_case(subject, clauses, fallback)),
             ),
@@ -623,6 +669,9 @@ impl Expr {
             FloatCaseBranches::Custom(branches) => {
                 Self::custom(CustomExpr::float_case(subject, branches))
             }
+            FloatCaseBranches::External { clauses, fallback } => {
+                Self::external(ExternalExpr::float_case(subject, clauses, fallback))
+            }
             FloatCaseBranches::Float { clauses, fallback } => {
                 Self::float(FloatExpr::float_case(subject, clauses, fallback))
             }
@@ -657,6 +706,11 @@ impl Expr {
             FloatCaseBranches::CustomFunction { clauses, fallback } => Self::function(
                 FunctionExpr::custom(CustomFunctionExpr::float_case(subject, clauses, fallback)),
             ),
+            FloatCaseBranches::ExternalFunction { clauses, fallback } => {
+                Self::function(FunctionExpr::external(ExternalFunctionExpr::float_case(
+                    subject, clauses, fallback,
+                )))
+            }
             FloatCaseBranches::FloatFunction { clauses, fallback } => Self::function(
                 FunctionExpr::float(FloatFunctionExpr::float_case(subject, clauses, fallback)),
             ),
@@ -774,6 +828,7 @@ impl Expr {
             ExprKind::BitArray(_) => ValueType::BitArray,
             ExprKind::UtfCodepoint(_) => ValueType::UtfCodepoint,
             ExprKind::Custom(expression) => ValueType::Custom(expression.type_().clone()),
+            ExprKind::External(expression) => ValueType::External(expression.type_().clone()),
             ExprKind::Float(_) => ValueType::Float,
             ExprKind::Bool(_) => ValueType::Bool,
             ExprKind::Nil(_) => ValueType::Nil,

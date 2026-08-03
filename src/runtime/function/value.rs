@@ -1,6 +1,7 @@
 mod bit_array;
 mod bool;
 mod custom;
+mod external;
 mod float;
 mod int;
 mod never;
@@ -12,6 +13,7 @@ mod utf_codepoint;
 pub(in crate::runtime) use bit_array::{bit_array_parameter_locals, run_bit_array};
 pub(in crate::runtime) use bool::{bool_parameter_locals, run_bool};
 pub(in crate::runtime) use custom::run_custom;
+pub(in crate::runtime) use external::run_external;
 pub(in crate::runtime) use float::{float_parameter_locals, run_float};
 pub(in crate::runtime) use int::{int_parameter_locals, run_int};
 pub(in crate::runtime) use never::{run_never, run_never_value};

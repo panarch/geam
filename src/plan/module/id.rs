@@ -43,6 +43,15 @@ pub(crate) struct CustomLocal {
     shape: crate::plan::CustomValueShape,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ExternalLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct ExternalLocal {
+    id: ExternalLocalId,
+    shape: crate::plan::ExternalValueShape,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoolLocalId(pub(crate) usize);
 
@@ -66,6 +75,9 @@ pub struct UtfCodepointListLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CustomListLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExternalListLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FloatListLocalId(pub(crate) usize);
@@ -101,6 +113,10 @@ pub enum ListLocal {
     Custom {
         local: CustomListLocalId,
         item_type: crate::plan::CustomType,
+    },
+    External {
+        local: ExternalListLocalId,
+        item_type: crate::plan::ExternalType,
     },
     Float(FloatListLocalId),
     Bool(BoolListLocalId),
@@ -144,6 +160,15 @@ pub(crate) struct CustomFunctionLocal {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ExternalFunctionLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct ExternalFunctionLocal {
+    id: ExternalFunctionLocalId,
+    type_: crate::plan::ExternalFunctionType,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BoolFunctionLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -166,6 +191,9 @@ pub struct UtfCodepointListFunctionLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CustomListFunctionLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ExternalListFunctionLocalId(pub(crate) usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FloatListFunctionLocalId(pub(crate) usize);
@@ -215,6 +243,11 @@ pub enum ListFunctionLocal {
         local: CustomListFunctionLocalId,
         type_: crate::plan::FunctionType,
         item_type: crate::plan::CustomType,
+    },
+    External {
+        local: ExternalListFunctionLocalId,
+        type_: crate::plan::FunctionType,
+        item_type: crate::plan::ExternalType,
     },
     Float {
         local: FloatListFunctionLocalId,
@@ -355,6 +388,10 @@ pub struct CustomListFunctionId(pub(crate) usize);
 
 #[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExternalListFunctionId(pub(crate) usize);
+
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FloatListFunctionId(pub(crate) usize);
 
 #[cfg(test)]
@@ -391,6 +428,10 @@ pub enum ListFunctionId {
     Custom {
         id: CustomListFunctionId,
         item_type: crate::plan::CustomType,
+    },
+    External {
+        id: ExternalListFunctionId,
+        item_type: crate::plan::ExternalType,
     },
     Float(FloatListFunctionId),
     Bool(BoolListFunctionId),
@@ -434,6 +475,7 @@ pub enum FunctionReturnFamily {
     BitArray,
     UtfCodepoint,
     Custom,
+    External,
     Bool,
     Nil,
     Tuple,
@@ -506,6 +548,10 @@ pub struct CustomListFunctionFunctionId(pub(crate) usize);
 
 #[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExternalListFunctionFunctionId(pub(crate) usize);
+
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FloatListFunctionFunctionId(pub(crate) usize);
 
 #[cfg(test)]
@@ -561,6 +607,11 @@ pub enum ListFunctionFunctionId {
         type_: crate::plan::FunctionType,
         item_type: crate::plan::CustomType,
     },
+    External {
+        id: ExternalListFunctionFunctionId,
+        type_: crate::plan::FunctionType,
+        item_type: crate::plan::ExternalType,
+    },
     Float {
         id: FloatListFunctionFunctionId,
         type_: crate::plan::FunctionType,
@@ -607,6 +658,23 @@ impl CustomFunctionLocal {
     }
 
     pub(crate) fn type_(&self) -> &crate::plan::CustomFunctionType {
+        &self.type_
+    }
+}
+
+impl ExternalFunctionLocal {
+    pub(crate) fn new(
+        id: ExternalFunctionLocalId,
+        type_: crate::plan::ExternalFunctionType,
+    ) -> Self {
+        Self { id, type_ }
+    }
+
+    pub(crate) fn id(&self) -> ExternalFunctionLocalId {
+        self.id
+    }
+
+    pub(crate) fn type_(&self) -> &crate::plan::ExternalFunctionType {
         &self.type_
     }
 }
@@ -658,6 +726,24 @@ impl CustomLocal {
     }
 
     pub(crate) fn shape(&self) -> &crate::plan::CustomValueShape {
+        &self.shape
+    }
+}
+
+impl ExternalLocal {
+    pub(crate) fn from_shape(id: ExternalLocalId, shape: crate::plan::ExternalValueShape) -> Self {
+        Self { id, shape }
+    }
+
+    pub(crate) fn id(&self) -> ExternalLocalId {
+        self.id
+    }
+
+    pub(crate) fn type_(&self) -> &crate::plan::ExternalType {
+        self.shape.type_()
+    }
+
+    pub(crate) fn shape(&self) -> &crate::plan::ExternalValueShape {
         &self.shape
     }
 }
@@ -898,6 +984,9 @@ impl ListFunctionLocal {
             crate::plan::ValueType::Custom(item_type) => {
                 Self::custom(CustomListFunctionLocalId(index), type_, item_type)
             }
+            crate::plan::ValueType::External(item_type) => {
+                Self::external(ExternalListFunctionLocalId(index), type_, item_type)
+            }
             crate::plan::ValueType::Float => Self::float(FloatListFunctionLocalId(index), type_),
             crate::plan::ValueType::Bool => Self::bool(BoolListFunctionLocalId(index), type_),
             crate::plan::ValueType::Nil => Self::nil(NilListFunctionLocalId(index), type_),
@@ -944,6 +1033,18 @@ impl ListFunctionLocal {
         item_type: crate::plan::CustomType,
     ) -> Self {
         Self::Custom {
+            local,
+            type_,
+            item_type,
+        }
+    }
+
+    pub(crate) fn external(
+        local: ExternalListFunctionLocalId,
+        type_: crate::plan::FunctionType,
+        item_type: crate::plan::ExternalType,
+    ) -> Self {
+        Self::External {
             local,
             type_,
             item_type,
@@ -1006,6 +1107,7 @@ impl ListFunctionLocal {
             | Self::BitArray { type_, .. }
             | Self::UtfCodepoint { type_, .. }
             | Self::Custom { type_, .. }
+            | Self::External { type_, .. }
             | Self::Float { type_, .. }
             | Self::Bool { type_, .. }
             | Self::Nil { type_, .. }
@@ -1027,6 +1129,7 @@ impl ListFunctionLocal {
             Self::BitArray { .. } => crate::plan::ValueType::BitArray,
             Self::UtfCodepoint { .. } => crate::plan::ValueType::UtfCodepoint,
             Self::Custom { item_type, .. } => crate::plan::ValueType::Custom(item_type.clone()),
+            Self::External { item_type, .. } => crate::plan::ValueType::External(item_type.clone()),
             Self::Float { .. } => crate::plan::ValueType::Float,
             Self::Bool { .. } => crate::plan::ValueType::Bool,
             Self::Nil { .. } => crate::plan::ValueType::Nil,
@@ -1044,6 +1147,7 @@ impl ListFunctionLocal {
             Self::BitArray { local, .. } => local.0,
             Self::UtfCodepoint { local, .. } => local.0,
             Self::Custom { local, .. } => local.0,
+            Self::External { local, .. } => local.0,
             Self::Float { local, .. } => local.0,
             Self::Bool { local, .. } => local.0,
             Self::Nil { local, .. } => local.0,
@@ -1072,6 +1176,10 @@ impl ListFunctionId {
                 id: CustomListFunctionId(index),
                 item_type,
             },
+            crate::plan::ValueType::External(item_type) => Self::External {
+                id: ExternalListFunctionId(index),
+                item_type,
+            },
             crate::plan::ValueType::Float => Self::Float(FloatListFunctionId(index)),
             crate::plan::ValueType::Bool => Self::Bool(BoolListFunctionId(index)),
             crate::plan::ValueType::Nil => Self::Nil(NilListFunctionId(index)),
@@ -1098,6 +1206,7 @@ impl ListFunctionId {
             Self::BitArray(_) => crate::plan::ValueType::BitArray,
             Self::UtfCodepoint(_) => crate::plan::ValueType::UtfCodepoint,
             Self::Custom { item_type, .. } => crate::plan::ValueType::Custom(item_type.clone()),
+            Self::External { item_type, .. } => crate::plan::ValueType::External(item_type.clone()),
             Self::Float(_) => crate::plan::ValueType::Float,
             Self::Bool(_) => crate::plan::ValueType::Bool,
             Self::Nil(_) => crate::plan::ValueType::Nil,
@@ -1144,6 +1253,11 @@ impl ListFunctionFunctionId {
                 type_,
                 item_type,
             },
+            crate::plan::ValueType::External(item_type) => Self::External {
+                id: ExternalListFunctionFunctionId(index),
+                type_,
+                item_type,
+            },
             crate::plan::ValueType::Float => Self::Float {
                 id: FloatListFunctionFunctionId(index),
                 type_,
@@ -1182,6 +1296,7 @@ impl ListFunctionFunctionId {
             | Self::BitArray { type_, .. }
             | Self::UtfCodepoint { type_, .. }
             | Self::Custom { type_, .. }
+            | Self::External { type_, .. }
             | Self::Float { type_, .. }
             | Self::Bool { type_, .. }
             | Self::Nil { type_, .. }
@@ -1200,6 +1315,7 @@ impl ListFunctionFunctionId {
             Self::BitArray { .. } => crate::plan::ValueType::BitArray,
             Self::UtfCodepoint { .. } => crate::plan::ValueType::UtfCodepoint,
             Self::Custom { item_type, .. } => crate::plan::ValueType::Custom(item_type.clone()),
+            Self::External { item_type, .. } => crate::plan::ValueType::External(item_type.clone()),
             Self::Float { .. } => crate::plan::ValueType::Float,
             Self::Bool { .. } => crate::plan::ValueType::Bool,
             Self::Nil { .. } => crate::plan::ValueType::Nil,
@@ -1236,6 +1352,13 @@ impl ListLocal {
 
     pub(crate) fn custom(local: CustomListLocalId, item_type: crate::plan::CustomType) -> Self {
         Self::Custom { local, item_type }
+    }
+
+    pub(crate) fn external(
+        local: ExternalListLocalId,
+        item_type: crate::plan::ExternalType,
+    ) -> Self {
+        Self::External { local, item_type }
     }
 
     pub(crate) fn float(local: FloatListLocalId) -> Self {
@@ -1276,6 +1399,7 @@ impl ListLocal {
             Self::BitArray(_) => crate::plan::ValueType::BitArray,
             Self::UtfCodepoint(_) => crate::plan::ValueType::UtfCodepoint,
             Self::Custom { item_type, .. } => crate::plan::ValueType::Custom(item_type.clone()),
+            Self::External { item_type, .. } => crate::plan::ValueType::External(item_type.clone()),
             Self::Float(_) => crate::plan::ValueType::Float,
             Self::Bool(_) => crate::plan::ValueType::Bool,
             Self::Nil(_) => crate::plan::ValueType::Nil,
@@ -1299,6 +1423,7 @@ impl ListLocal {
             Self::BitArray(_) => "bit array",
             Self::UtfCodepoint(_) => "utf codepoint",
             Self::Custom { .. } => "custom",
+            Self::External { .. } => "external",
             Self::Float(_) => "float",
             Self::Bool(_) => "bool",
             Self::Nil(_) => "nil",
@@ -1316,6 +1441,7 @@ impl ListLocal {
             Self::BitArray(local) => local.0,
             Self::UtfCodepoint(local) => local.0,
             Self::Custom { local, .. } => local.0,
+            Self::External { local, .. } => local.0,
             Self::Float(local) => local.0,
             Self::Bool(local) => local.0,
             Self::Nil(local) => local.0,
@@ -1336,6 +1462,7 @@ impl std::fmt::Display for FunctionReturnFamily {
             Self::BitArray => f.write_str("BitArray"),
             Self::UtfCodepoint => f.write_str("UtfCodepoint"),
             Self::Custom => f.write_str("Custom"),
+            Self::External => f.write_str("External"),
             Self::Bool => f.write_str("Bool"),
             Self::Nil => f.write_str("Nil"),
             Self::Tuple => f.write_str("Tuple"),
@@ -1353,33 +1480,41 @@ mod tests {
         BoolFunctionFunctionId, BoolFunctionLocalId, BoolListFunctionFunctionId,
         BoolListFunctionId, BoolListFunctionLocalId, CustomFunctionFunctionId, CustomFunctionId,
         CustomListFunctionFunctionId, CustomListFunctionId, CustomListFunctionLocalId,
-        CustomListLocalId, FloatFunctionFunctionId, FloatFunctionLocalId,
-        FloatListFunctionFunctionId, FloatListFunctionId, FloatListFunctionLocalId,
-        FunctionFunctionFunctionId, FunctionFunctionId, FunctionFunctionLocalId,
-        FunctionListFunctionFunctionId, FunctionListFunctionId, FunctionListFunctionLocalId,
-        FunctionListLocalId, FunctionTemplateId, GenericListFunctionFunctionId,
-        GenericListFunctionId, GenericListFunctionLocalId, GenericListLocalId,
-        IntFunctionFunctionId, IntFunctionLocalId, IntListFunctionFunctionId, IntListFunctionId,
-        IntListFunctionLocalId, IntListLocalId, ListFunctionFunctionId, ListFunctionId,
-        ListFunctionLocal, ListListFunctionFunctionId, ListListFunctionId, ListListFunctionLocalId,
-        ListListLocalId, ListLocal, NilFunctionFunctionId, NilFunctionLocalId,
-        NilListFunctionFunctionId, NilListFunctionId, NilListFunctionLocalId, NilListLocalId,
-        StringFunctionFunctionId, StringFunctionLocalId, StringListFunctionFunctionId,
-        StringListFunctionId, StringListFunctionLocalId, StringListLocalId,
-        TupleFunctionFunctionId, TupleFunctionLocalId, TupleListFunctionFunctionId,
-        TupleListFunctionId, TupleListFunctionLocalId, TupleListLocalId,
-        UtfCodepointFunctionFunctionId, UtfCodepointFunctionLocalId,
+        CustomListLocalId, ExternalListFunctionFunctionId, ExternalListFunctionId,
+        ExternalListFunctionLocalId, ExternalListLocalId, FloatFunctionFunctionId,
+        FloatFunctionLocalId, FloatListFunctionFunctionId, FloatListFunctionId,
+        FloatListFunctionLocalId, FunctionFunctionFunctionId, FunctionFunctionId,
+        FunctionFunctionLocalId, FunctionListFunctionFunctionId, FunctionListFunctionId,
+        FunctionListFunctionLocalId, FunctionListLocalId, FunctionTemplateId,
+        GenericListFunctionFunctionId, GenericListFunctionId, GenericListFunctionLocalId,
+        GenericListLocalId, IntFunctionFunctionId, IntFunctionLocalId, IntListFunctionFunctionId,
+        IntListFunctionId, IntListFunctionLocalId, IntListLocalId, ListFunctionFunctionId,
+        ListFunctionId, ListFunctionLocal, ListListFunctionFunctionId, ListListFunctionId,
+        ListListFunctionLocalId, ListListLocalId, ListLocal, NilFunctionFunctionId,
+        NilFunctionLocalId, NilListFunctionFunctionId, NilListFunctionId, NilListFunctionLocalId,
+        NilListLocalId, StringFunctionFunctionId, StringFunctionLocalId,
+        StringListFunctionFunctionId, StringListFunctionId, StringListFunctionLocalId,
+        StringListLocalId, TupleFunctionFunctionId, TupleFunctionLocalId,
+        TupleListFunctionFunctionId, TupleListFunctionId, TupleListFunctionLocalId,
+        TupleListLocalId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionLocalId,
         UtfCodepointListFunctionFunctionId, UtfCodepointListFunctionId,
         UtfCodepointListFunctionLocalId, UtfCodepointListLocalId,
     };
     use crate::plan::{
-        CustomFunctionType, CustomType, CustomTypeName, FunctionFunctionType, FunctionType,
-        ValueType,
+        CustomFunctionType, CustomType, CustomTypeName, ExternalType, ExternalTypeName,
+        FunctionFunctionType, FunctionType, ValueType,
     };
 
     fn custom_type() -> CustomType {
         CustomType::new(
             CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        )
+    }
+
+    fn external_type() -> ExternalType {
+        ExternalType::new(
+            ExternalTypeName::new("geam".into(), "main".into(), "Resource".into()),
             Vec::new(),
         )
     }
@@ -1655,6 +1790,10 @@ mod tests {
             "UtfCodepoint"
         );
         assert_eq!(super::FunctionReturnFamily::Custom.to_string(), "Custom");
+        assert_eq!(
+            super::FunctionReturnFamily::External.to_string(),
+            "External"
+        );
         assert_eq!(super::FunctionReturnFamily::Bool.to_string(), "Bool");
         assert_eq!(super::FunctionReturnFamily::Nil.to_string(), "Nil");
         assert_eq!(super::FunctionReturnFamily::Tuple.to_string(), "Tuple");
@@ -1674,6 +1813,7 @@ mod tests {
             ListLocal::bit_array(BitArrayListLocalId(3)),
             ListLocal::utf_codepoint(UtfCodepointListLocalId(3)),
             ListLocal::custom(CustomListLocalId(3), custom_type()),
+            ListLocal::external(ExternalListLocalId(3), external_type()),
             ListLocal::float(super::FloatListLocalId(3)),
             ListLocal::bool(super::BoolListLocalId(3)),
             ListLocal::nil(NilListLocalId(3)),
@@ -1692,7 +1832,7 @@ mod tests {
         );
         assert_eq!(
             locals.iter().map(ListLocal::index).collect::<Vec<_>>(),
-            vec![3; 12],
+            vec![3; 13],
         );
     }
 
@@ -1713,6 +1853,7 @@ mod tests {
             ListFunctionLocal::from_item_type(3, cases[9].clone(), item_types[9].clone()),
             ListFunctionLocal::from_item_type(3, cases[10].clone(), item_types[10].clone()),
             ListFunctionLocal::from_item_type(3, cases[11].clone(), item_types[11].clone()),
+            ListFunctionLocal::from_item_type(3, cases[12].clone(), item_types[12].clone()),
         ];
 
         assert_eq!(
@@ -1730,27 +1871,32 @@ mod tests {
                     cases[4].clone(),
                     custom_type(),
                 ),
-                ListFunctionLocal::float(FloatListFunctionLocalId(3), cases[5].clone()),
-                ListFunctionLocal::bool(BoolListFunctionLocalId(3), cases[6].clone()),
-                ListFunctionLocal::nil(NilListFunctionLocalId(3), cases[7].clone()),
+                ListFunctionLocal::external(
+                    ExternalListFunctionLocalId(3),
+                    cases[5].clone(),
+                    external_type(),
+                ),
+                ListFunctionLocal::float(FloatListFunctionLocalId(3), cases[6].clone()),
+                ListFunctionLocal::bool(BoolListFunctionLocalId(3), cases[7].clone()),
+                ListFunctionLocal::nil(NilListFunctionLocalId(3), cases[8].clone()),
                 ListFunctionLocal::tuple(
                     TupleListFunctionLocalId(3),
-                    cases[8].clone(),
+                    cases[9].clone(),
                     vec![ValueType::Int, ValueType::String],
                 ),
                 ListFunctionLocal::list(
                     ListListFunctionLocalId(3),
-                    cases[9].clone(),
+                    cases[10].clone(),
                     ValueType::Int,
                 ),
                 ListFunctionLocal::function(
                     FunctionListFunctionLocalId(3),
-                    cases[10].clone(),
+                    cases[11].clone(),
                     FunctionType::new(vec![ValueType::Int], ValueType::String),
                 ),
                 ListFunctionLocal::Generic {
                     local: GenericListFunctionLocalId(3),
-                    type_: cases[11].clone(),
+                    type_: cases[12].clone(),
                     parameter: crate::plan::TypeParameterId(0),
                 },
             ],
@@ -1778,7 +1924,7 @@ mod tests {
                 .iter()
                 .map(ListFunctionLocal::index)
                 .collect::<Vec<_>>(),
-            vec![3; 12],
+            vec![3; 13],
         );
     }
 
@@ -1801,6 +1947,10 @@ mod tests {
                 ListFunctionId::Custom {
                     id: CustomListFunctionId(5),
                     item_type: custom_type(),
+                },
+                ListFunctionId::External {
+                    id: ExternalListFunctionId(5),
+                    item_type: external_type(),
                 },
                 ListFunctionId::Float(FloatListFunctionId(5)),
                 ListFunctionId::Bool(BoolListFunctionId(5)),
@@ -1848,6 +1998,7 @@ mod tests {
             ListFunctionFunctionId::from_item_type(7, cases[9].clone(), item_types[9].clone()),
             ListFunctionFunctionId::from_item_type(7, cases[10].clone(), item_types[10].clone()),
             ListFunctionFunctionId::from_item_type(7, cases[11].clone(), item_types[11].clone()),
+            ListFunctionFunctionId::from_item_type(7, cases[12].clone(), item_types[12].clone()),
         ];
 
         assert_eq!(
@@ -1874,36 +2025,41 @@ mod tests {
                     type_: cases[4].clone(),
                     item_type: custom_type(),
                 },
+                ListFunctionFunctionId::External {
+                    id: ExternalListFunctionFunctionId(7),
+                    type_: cases[5].clone(),
+                    item_type: external_type(),
+                },
                 ListFunctionFunctionId::Float {
                     id: FloatListFunctionFunctionId(7),
-                    type_: cases[5].clone(),
+                    type_: cases[6].clone(),
                 },
                 ListFunctionFunctionId::Bool {
                     id: BoolListFunctionFunctionId(7),
-                    type_: cases[6].clone(),
+                    type_: cases[7].clone(),
                 },
                 ListFunctionFunctionId::Nil {
                     id: NilListFunctionFunctionId(7),
-                    type_: cases[7].clone(),
+                    type_: cases[8].clone(),
                 },
                 ListFunctionFunctionId::Tuple {
                     id: TupleListFunctionFunctionId(7),
-                    type_: cases[8].clone(),
+                    type_: cases[9].clone(),
                     item_type: vec![ValueType::Int, ValueType::String],
                 },
                 ListFunctionFunctionId::List {
                     id: ListListFunctionFunctionId(7),
-                    type_: cases[9].clone(),
+                    type_: cases[10].clone(),
                     item_type: Box::new(ValueType::Int),
                 },
                 ListFunctionFunctionId::Function {
                     id: FunctionListFunctionFunctionId(7),
-                    type_: cases[10].clone(),
+                    type_: cases[11].clone(),
                     item_type: Box::new(FunctionType::new(vec![ValueType::Int], ValueType::String)),
                 },
                 ListFunctionFunctionId::Generic {
                     id: GenericListFunctionFunctionId(7),
-                    type_: cases[11].clone(),
+                    type_: cases[12].clone(),
                     parameter: crate::plan::TypeParameterId(0),
                 },
             ],
@@ -1918,17 +2074,18 @@ mod tests {
         );
     }
 
-    fn list_function_type_cases() -> [FunctionType; 12] {
+    fn list_function_type_cases() -> [FunctionType; 13] {
         list_item_types().map(list_function_type)
     }
 
-    fn list_item_types() -> [ValueType; 12] {
+    fn list_item_types() -> [ValueType; 13] {
         [
             ValueType::Int,
             ValueType::String,
             ValueType::BitArray,
             ValueType::UtfCodepoint,
             ValueType::Custom(custom_type()),
+            ValueType::External(external_type()),
             ValueType::Float,
             ValueType::Bool,
             ValueType::Nil,

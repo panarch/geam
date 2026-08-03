@@ -1,4 +1,4 @@
-use super::{CustomValueShape, FunctionShape, ValueShapeId, ValueType};
+use super::{CustomValueShape, ExternalTypeId, FunctionShape, ValueShapeId, ValueType};
 use crate::plan::execution::explain::{Explain, ExplainContext};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -12,6 +12,13 @@ pub(crate) struct CustomFunctionType {
     type_: FunctionType,
     arguments: Box<[ValueShapeId]>,
     return_: CustomValueShape,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct ExternalFunctionType {
+    type_: FunctionType,
+    arguments: Box<[ValueShapeId]>,
+    return_: ExternalTypeId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -63,6 +70,20 @@ impl CustomFunctionType {
         type_: FunctionType,
         arguments: Vec<ValueShapeId>,
         return_: CustomValueShape,
+    ) -> Self {
+        Self {
+            type_,
+            arguments: arguments.into_boxed_slice(),
+            return_,
+        }
+    }
+}
+
+impl ExternalFunctionType {
+    pub(in crate::plan::execution) fn from_shapes(
+        type_: FunctionType,
+        arguments: Vec<ValueShapeId>,
+        return_: ExternalTypeId,
     ) -> Self {
         Self {
             type_,

@@ -4,11 +4,11 @@ use super::{
 };
 use crate::plan::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolListLocalId, BoolLocalId,
-    CustomListLocalId, Expr, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
-    FunctionListLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId, ListExpr, ListListLocalId,
-    ListLocalExpr, NilFunctionLocalId, NilListLocalId, NilLocalId, Step, StringFunctionLocalId,
-    StringListLocalId, StringLocalId, TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId,
-    UtfCodepointLocalId,
+    CustomListLocalId, Expr, ExternalListLocalId, FloatFunctionLocalId, FloatListLocalId,
+    FloatLocalId, FunctionListLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId, ListExpr,
+    ListListLocalId, ListLocalExpr, NilFunctionLocalId, NilListLocalId, NilLocalId, Step,
+    StringFunctionLocalId, StringListLocalId, StringLocalId, TupleListLocalId, TupleLocalId,
+    UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
 use ecow::EcoString;
 
@@ -82,6 +82,11 @@ pub(crate) fn let_list_step(local: usize, name: impl Into<EcoString>, value: Lis
         },
         ListExpr::Custom(value) => ListLocalExpr::Custom {
             local: CustomListLocalId(local),
+            item_type: value.item().item_type(),
+            value,
+        },
+        ListExpr::External(value) => ListLocalExpr::External {
+            local: ExternalListLocalId(local),
             item_type: value.item().item_type(),
             value,
         },
@@ -192,12 +197,13 @@ mod tests {
     use crate::plan::{
         BitArrayExpr, BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
         BoolFunctionLocalId, BoolListLocalId, BoolLocalId, CustomListLocalId, CustomType,
-        CustomTypeName, Expr, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
-        FunctionListLocalId, FunctionType, GenericListLocalId, IntFunctionLocalId, IntListLocalId,
-        IntLocalId, ListExpr, ListListLocalId, ListLocalExpr, NilFunctionLocalId, NilListLocalId,
-        NilLocalId, Step, StringFunctionLocalId, StringListLocalId, StringLocalId,
-        TupleListLocalId, TupleLocalId, TypeParameterId, UtfCodepointFunctionLocalId,
-        UtfCodepointListLocalId, UtfCodepointLocalId, ValueType,
+        CustomTypeName, Expr, ExternalListLocalId, ExternalType, ExternalTypeName,
+        FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionListLocalId, FunctionType,
+        GenericListLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId, ListExpr,
+        ListListLocalId, ListLocalExpr, NilFunctionLocalId, NilListLocalId, NilLocalId, Step,
+        StringFunctionLocalId, StringListLocalId, StringLocalId, TupleListLocalId, TupleLocalId,
+        TypeParameterId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
+        ValueType,
     };
     use crate::planner::dsl::expression::{
         bit_array, bit_array_function_ref, bool_, bool_function_ref, float, float_function_ref,
@@ -374,6 +380,33 @@ mod tests {
                     )
                     .into_custom()
                     .expect("expected custom list"),
+                },
+            ),
+        );
+        let external_type = ExternalType::new(
+            ExternalTypeName::new("geam".into(), "main".into(), "Counter".into()),
+            Vec::new(),
+        );
+        assert_eq!(
+            let_list_step(
+                18,
+                "externals",
+                list(
+                    Vec::<Expr>::new(),
+                    ValueType::External(external_type.clone()),
+                ),
+            ),
+            Step::let_list_expr(
+                "externals".into(),
+                ListLocalExpr::External {
+                    local: ExternalListLocalId(18),
+                    item_type: external_type.clone(),
+                    value: ListExpr::from(list(
+                        Vec::<Expr>::new(),
+                        ValueType::External(external_type),
+                    ))
+                    .into_external()
+                    .expect("expected external list"),
                 },
             ),
         );

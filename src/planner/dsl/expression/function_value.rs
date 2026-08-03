@@ -55,6 +55,7 @@ fn function_function_template(id: &FunctionFunctionId) -> usize {
             crate::plan::ListFunctionFunctionId::BitArray { id, .. } => id.0,
             crate::plan::ListFunctionFunctionId::UtfCodepoint { id, .. } => id.0,
             crate::plan::ListFunctionFunctionId::Custom { id, .. } => id.0,
+            crate::plan::ListFunctionFunctionId::External { id, .. } => id.0,
             crate::plan::ListFunctionFunctionId::Float { id, .. } => id.0,
             crate::plan::ListFunctionFunctionId::Bool { id, .. } => id.0,
             crate::plan::ListFunctionFunctionId::Nil { id, .. } => id.0,
@@ -97,6 +98,7 @@ fn runtime_function_template(id: &RuntimeFunctionId) -> (usize, ValueShape) {
                 crate::plan::ListFunctionId::BitArray(id) => id.0,
                 crate::plan::ListFunctionId::UtfCodepoint(id) => id.0,
                 crate::plan::ListFunctionId::Custom { id, .. } => id.0,
+                crate::plan::ListFunctionId::External { id, .. } => id.0,
                 crate::plan::ListFunctionId::Float(id) => id.0,
                 crate::plan::ListFunctionId::Bool(id) => id.0,
                 crate::plan::ListFunctionId::Nil(id) => id.0,
@@ -653,17 +655,17 @@ mod tests {
     };
     use crate::plan::{
         BitArrayFunctionExpr, BitArrayFunctionLocalId, BitArrayFunctionReference, BoolFunctionExpr,
-        BoolFunctionLocalId, BoolFunctionReference, CustomType, CustomTypeName, FloatFunctionExpr,
-        FloatFunctionLocalId, FloatFunctionReference, FunctionExpr, FunctionFunctionExpr,
-        FunctionFunctionId, FunctionFunctionLocalId, FunctionFunctionReference, FunctionReference,
-        FunctionShape, FunctionType, GenericFunctionExpr, GenericFunctionReference,
-        GenericFunctionType, IntFunctionExpr, IntFunctionFunctionId, IntFunctionLocalId,
-        IntFunctionReference, ListFunctionExpr, ListFunctionFunctionId, ListFunctionId,
-        ListFunctionReference, NilFunctionExpr, NilFunctionLocalId, NilFunctionReference,
-        ParamLocal, RuntimeFunctionId, StringFunctionExpr, StringFunctionLocalId,
-        StringFunctionReference, TupleFunctionExpr, TupleFunctionLocalId, TupleFunctionReference,
-        TypeParameterId, UtfCodepointFunctionExpr, UtfCodepointFunctionLocalId,
-        UtfCodepointFunctionReference, ValueShape, ValueType,
+        BoolFunctionLocalId, BoolFunctionReference, CustomType, CustomTypeName, ExternalType,
+        ExternalTypeName, FloatFunctionExpr, FloatFunctionLocalId, FloatFunctionReference,
+        FunctionExpr, FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionLocalId,
+        FunctionFunctionReference, FunctionReference, FunctionShape, FunctionType,
+        GenericFunctionExpr, GenericFunctionReference, GenericFunctionType, IntFunctionExpr,
+        IntFunctionFunctionId, IntFunctionLocalId, IntFunctionReference, ListFunctionExpr,
+        ListFunctionFunctionId, ListFunctionId, ListFunctionReference, NilFunctionExpr,
+        NilFunctionLocalId, NilFunctionReference, ParamLocal, RuntimeFunctionId,
+        StringFunctionExpr, StringFunctionLocalId, StringFunctionReference, TupleFunctionExpr,
+        TupleFunctionLocalId, TupleFunctionReference, TypeParameterId, UtfCodepointFunctionExpr,
+        UtfCodepointFunctionLocalId, UtfCodepointFunctionReference, ValueShape, ValueType,
     };
     use crate::planner::dsl::expression::Function;
 
@@ -823,6 +825,10 @@ mod tests {
             CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
             Vec::new(),
         );
+        let external = ExternalType::new(
+            ExternalTypeName::new("geam".into(), "main".into(), "Counter".into()),
+            Vec::new(),
+        );
         let item_types = vec![
             ValueType::Parameter(TypeParameterId(0)),
             ValueType::Int,
@@ -830,6 +836,7 @@ mod tests {
             ValueType::BitArray,
             ValueType::UtfCodepoint,
             ValueType::Custom(custom),
+            ValueType::External(external),
             ValueType::Float,
             ValueType::Bool,
             ValueType::Nil,
@@ -862,6 +869,10 @@ mod tests {
             CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
             Vec::new(),
         );
+        let external = ExternalType::new(
+            ExternalTypeName::new("geam".into(), "main".into(), "Counter".into()),
+            Vec::new(),
+        );
         let item_types = vec![
             ValueType::Parameter(TypeParameterId(0)),
             ValueType::Int,
@@ -869,6 +880,7 @@ mod tests {
             ValueType::BitArray,
             ValueType::UtfCodepoint,
             ValueType::Custom(custom),
+            ValueType::External(external),
             ValueType::Float,
             ValueType::Bool,
             ValueType::Nil,

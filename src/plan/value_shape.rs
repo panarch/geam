@@ -1,4 +1,6 @@
-use super::{CustomType, CustomTypeName, FunctionType, TypeParameterId, ValueType};
+use super::{
+    CustomType, CustomTypeName, ExternalValueShape, FunctionType, TypeParameterId, ValueType,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum CustomConstructorRefinement {
@@ -33,6 +35,7 @@ pub(crate) enum ValueShape {
     List(Box<ValueShape>),
     Function(Box<FunctionShape>),
     Custom(CustomValueShape),
+    External(ExternalValueShape),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -48,6 +51,7 @@ pub(crate) enum ValueStorageShape {
     List(Box<ValueShape>),
     Function(Box<FunctionShape>),
     Custom(CustomValueShape),
+    External(ExternalValueShape),
 }
 
 pub(crate) enum ValueRepresentation {
@@ -264,6 +268,9 @@ impl ValueShape {
             Self::Custom(custom) => {
                 ValueRepresentation::Stored(ValueStorageShape::Custom(custom.clone()))
             }
+            Self::External(external) => {
+                ValueRepresentation::Stored(ValueStorageShape::External(external.clone()))
+            }
         }
     }
 
@@ -287,6 +294,7 @@ impl ValueShape {
             Self::List(item) => Self::List(Box::new(item.substitute(substitution))),
             Self::Function(function) => Self::Function(Box::new(function.substitute(substitution))),
             Self::Custom(custom) => Self::Custom(custom.substitute(substitution)),
+            Self::External(external) => Self::External(external.substitute(substitution)),
         }
     }
 
@@ -312,6 +320,7 @@ impl ValueShape {
                 Self::Function(Box::new(FunctionShape::from_function_type(*type_)))
             }
             ValueType::Custom(type_) => Self::Custom(CustomValueShape::any(type_)),
+            ValueType::External(type_) => Self::External(ExternalValueShape::any(type_)),
         }
     }
 
@@ -331,6 +340,7 @@ impl ValueShape {
             Self::List(item) => ValueType::List(Box::new(item.value_type())),
             Self::Function(type_) => ValueType::Function(Box::new(type_.type_())),
             Self::Custom(shape) => ValueType::Custom(shape.type_().clone()),
+            Self::External(shape) => ValueType::External(shape.type_().clone()),
         }
     }
 
@@ -360,6 +370,9 @@ impl ValueShape {
                 Some(Self::Function(Box::new(left.merge(right)?)))
             }
             (Self::Custom(left), Self::Custom(right)) => Some(Self::Custom(left.merge(right)?)),
+            (Self::External(left), Self::External(right)) => {
+                Some(Self::External(left.merge(right)?))
+            }
             _ => None,
         }
     }
@@ -392,6 +405,9 @@ impl ValueShape {
                 Some(Self::Function(Box::new(left.refine(right)?)))
             }
             (Self::Custom(left), Self::Custom(right)) => Some(Self::Custom(left.refine(right)?)),
+            (Self::External(left), Self::External(right)) => {
+                Some(Self::External(left.refine(right)?))
+            }
             _ => None,
         }
     }
@@ -429,6 +445,14 @@ impl ValueShape {
                         }
                     }
             }
+            (Self::External(source), Self::External(target)) => {
+                source.type_() == target.type_()
+                    && source
+                        .arguments()
+                        .iter()
+                        .zip(target.arguments().iter())
+                        .all(|(source, target)| source.can_flow_to(target))
+            }
             _ => false,
         }
     }
@@ -454,6 +478,7 @@ impl ValueStorageShape {
             Self::List(item) => Self::List(Box::new(item.substitute(substitution))),
             Self::Function(function) => Self::Function(Box::new(function.substitute(substitution))),
             Self::Custom(custom) => Self::Custom(custom.substitute(substitution)),
+            Self::External(external) => Self::External(external.substitute(substitution)),
         }
     }
 
@@ -470,6 +495,7 @@ impl ValueStorageShape {
             Self::List(item) => ValueShape::List(item.clone()),
             Self::Function(function) => ValueShape::Function(function.clone()),
             Self::Custom(custom) => ValueShape::Custom(custom.clone()),
+            Self::External(external) => ValueShape::External(external.clone()),
         }
     }
 
@@ -481,7 +507,10 @@ impl ValueStorageShape {
 #[cfg(test)]
 mod tests {
     use super::{CustomConstructorRefinement, CustomValueShape, FunctionShape, ValueShape};
-    use crate::plan::{CustomTypeName, TypeScheme, TypeSubstitution, ValueType};
+    use crate::plan::{
+        CustomTypeName, ExternalTypeName, ExternalValueShape, TypeScheme, TypeSubstitution,
+        ValueType,
+    };
 
     fn custom(index: Option<usize>, argument: ValueShape) -> ValueShape {
         ValueShape::Custom(CustomValueShape::new(
@@ -695,6 +724,32 @@ mod tests {
         assert_eq!(one_argument.refine(&wrong_argument), None);
         assert_eq!(one_argument.merge(&wrong_return), None);
         assert_eq!(one_argument.refine(&wrong_return), None);
+
+        let external_name = ExternalTypeName::new("geam".into(), "main".into(), "External".into());
+        let external_merge_left = ValueShape::External(ExternalValueShape::new(
+            external_name.clone(),
+            vec![ValueShape::Function(Box::new(FunctionShape::new(
+                vec![custom(Some(0), ValueShape::Int)],
+                ValueShape::Int,
+            )))],
+        ));
+        let external_merge_right = ValueShape::External(ExternalValueShape::new(
+            external_name.clone(),
+            vec![ValueShape::Function(Box::new(FunctionShape::new(
+                vec![custom(Some(1), ValueShape::Int)],
+                ValueShape::Int,
+            )))],
+        ));
+        let external_refine_left = ValueShape::External(ExternalValueShape::new(
+            external_name.clone(),
+            vec![custom(Some(0), ValueShape::Int)],
+        ));
+        let external_refine_right = ValueShape::External(ExternalValueShape::new(
+            external_name,
+            vec![custom(Some(1), ValueShape::Int)],
+        ));
+        assert_eq!(external_merge_left.merge(&external_merge_right), None);
+        assert_eq!(external_refine_left.refine(&external_refine_right), None,);
 
         assert_eq!(ValueShape::Int.merge(&ValueShape::String), None);
         assert_eq!(ValueShape::Int.refine(&ValueShape::String), None);

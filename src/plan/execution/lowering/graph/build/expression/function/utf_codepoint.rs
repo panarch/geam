@@ -1,6 +1,6 @@
 use super::super::{call_args, custom, list, tuple};
 use super::{closure, function_function_expr, reference, source_stop};
-use crate::plan::execution::graph::FunctionTarget;
+use crate::plan::execution::lowering::graph::DraftFunctionTarget;
 use crate::plan::execution::lowering::graph::{
     DraftCursor, DraftFlow, DraftGraph, DraftUtfCodepointFunction,
 };
@@ -35,7 +35,7 @@ pub(in crate::plan::execution::lowering) fn utf_codepoint_function_expr(
             .map(|target| {
                 reference(
                     shape.clone(),
-                    FunctionTarget::UtfCodepoint(target),
+                    DraftFunctionTarget::UtfCodepoint(target),
                     cursor,
                     graph,
                 )
@@ -49,7 +49,7 @@ pub(in crate::plan::execution::lowering) fn utf_codepoint_function_expr(
                         function,
                         captures,
                         shape.clone(),
-                        FunctionTarget::UtfCodepoint(target),
+                        DraftFunctionTarget::UtfCodepoint(target),
                         cursor,
                         graph,
                         context,

@@ -9,6 +9,7 @@ use crate::planner::error::{InvalidTypedAstReason, PlanError, UnsupportedBitArra
 use gleam_core::ast::{
     BitArrayOption, BitArraySegment, BitArraySize, Constant, IntOperator, Pattern,
 };
+use gleam_core::strings::convert_string_escape_chars;
 use gleam_core::type_::{Type, ValueConstructor, ValueConstructorVariant};
 use std::sync::Arc;
 
@@ -404,7 +405,9 @@ fn plan_bits_pattern(
 
 fn plan_string_pattern(pattern: Pattern<Arc<Type>>) -> Result<BitArrayStringPattern, PlanError> {
     match pattern {
-        Pattern::String { value, .. } => Ok(BitArrayStringPattern::Literal(value)),
+        Pattern::String { value, .. } => Ok(BitArrayStringPattern::Literal(
+            convert_string_escape_chars(&value),
+        )),
         Pattern::Discard { .. } => Ok(BitArrayStringPattern::Discard),
         Pattern::Variable { .. } | Pattern::Assign { .. } => Err(invalid_pattern()),
         _ => Err(invalid_pattern()),

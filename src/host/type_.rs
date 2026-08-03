@@ -1,4 +1,5 @@
 mod custom;
+mod external;
 mod function;
 mod list;
 mod parameter;
@@ -10,15 +11,19 @@ pub use custom::{
     HostCustomConstructor, HostCustomConstructorAt, HostCustomConstructorDefinition,
     HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomConstructorSchema,
     HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomFieldSchema,
-    HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType, HostCustomTypeSchema,
-    HostSchemaType,
+    HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType,
+    HostCustomTypeArgument, HostCustomTypeSchema, HostSchemaType,
 };
 pub use function::HostFunctionType;
 pub use list::HostListType;
 pub use parameter::HostTypeParameter;
-pub use sequence::{HostTypeList, HostTypeListEnd, HostTypeSequence};
+pub use sequence::{
+    HostTypeAt, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeSequence,
+};
 pub use tuple::HostTupleType;
 
+pub(crate) use custom::SoleHostCustomConstructor;
+pub(crate) use function::HostOpaqueFunctionType;
 pub(crate) use sequence::HostAbiTypeSequence;
 
 use super::HostScopedValue;
@@ -49,8 +54,16 @@ pub(crate) enum HostTypeDescriptor {
         arguments: Box<[HostTypeDescriptor]>,
         return_: Box<HostTypeDescriptor>,
     },
+    OpaqueFunction {
+        arguments: Box<[HostTypeDescriptor]>,
+        return_: Box<HostTypeDescriptor>,
+    },
     Custom {
         schema: HostCustomTypeSchema,
+        arguments: Box<[HostTypeDescriptor]>,
+    },
+    External {
+        schema: crate::host::HostExternalTypeSchema,
         arguments: Box<[HostTypeDescriptor]>,
     },
 }
@@ -109,6 +122,62 @@ pub(crate) fn custom_constructor_index<Constructor: HostCustomConstructor>() -> 
 }
 
 impl HostTypeDescriptor {
+    pub(in crate::host) fn of<Type: HostType>() -> Self {
+        <Type as private::Abi>::descriptor()
+    }
+
+    pub(crate) fn collect_external_schemas(
+        &self,
+        output: &mut Vec<crate::host::HostExternalTypeSchema>,
+        visited: &mut HashSet<(EcoString, EcoString, EcoString)>,
+    ) {
+        match self {
+            Self::List(item) => item.collect_external_schemas(output, visited),
+            Self::Tuple(elements) => {
+                for element in elements {
+                    element.collect_external_schemas(output, visited);
+                }
+            }
+            Self::Function { arguments, return_ } | Self::OpaqueFunction { arguments, return_ } => {
+                for argument in arguments {
+                    argument.collect_external_schemas(output, visited);
+                }
+                return_.collect_external_schemas(output, visited);
+            }
+            Self::Custom { schema, arguments } => {
+                for constructor in schema.constructors() {
+                    for field in constructor.fields() {
+                        field.type_().collect_external_schemas(output, visited);
+                    }
+                }
+                for argument in arguments {
+                    argument.collect_external_schemas(output, visited);
+                }
+            }
+            Self::External { schema, arguments } => {
+                let identity = (
+                    schema.package().clone(),
+                    schema.module().clone(),
+                    schema.name().clone(),
+                );
+                if visited.insert(identity) {
+                    output.push(schema.clone());
+                }
+                for argument in arguments {
+                    argument.collect_external_schemas(output, visited);
+                }
+            }
+            Self::Parameter(_)
+            | Self::Int
+            | Self::Float
+            | Self::String
+            | Self::BitArray
+            | Self::UtfCodepoint
+            | Self::Bool
+            | Self::Nil => {}
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn schema_type(&self) -> HostSchemaType {
         match self {
@@ -128,18 +197,28 @@ impl HostTypeDescriptor {
                     .collect::<Vec<_>>()
                     .into_boxed_slice(),
             ),
-            Self::Function { arguments, return_ } => HostSchemaType::Function {
+            Self::Function { arguments, return_ } | Self::OpaqueFunction { arguments, return_ } => {
+                HostSchemaType::Function {
+                    arguments: arguments
+                        .iter()
+                        .map(Self::schema_type)
+                        .collect::<Vec<_>>()
+                        .into_boxed_slice(),
+                    return_: Box::new(return_.schema_type()),
+                }
+            }
+            Self::Custom { schema, arguments } => HostSchemaType::Custom {
+                package: schema.package().clone(),
+                module: schema.module().clone(),
+                name: schema.name().clone(),
                 arguments: arguments
                     .iter()
                     .map(Self::schema_type)
                     .collect::<Vec<_>>()
                     .into_boxed_slice(),
-                return_: Box::new(return_.schema_type()),
             },
-            Self::Custom { schema, arguments } => HostSchemaType::Custom {
-                package: schema.package().clone(),
-                module: schema.module().clone(),
-                name: schema.name().clone(),
+            Self::External { schema, arguments } => HostSchemaType::External {
+                schema: schema.clone(),
                 arguments: arguments
                     .iter()
                     .map(Self::schema_type)
@@ -169,7 +248,7 @@ impl HostTypeDescriptor {
                     .collect::<Vec<_>>()
                     .into_boxed_slice(),
             ),
-            Self::Function { arguments, return_ } => {
+            Self::Function { arguments, return_ } | Self::OpaqueFunction { arguments, return_ } => {
                 crate::plan::ValueShape::Function(Box::new(crate::plan::FunctionShape::new(
                     arguments.iter().map(Self::value_shape).collect(),
                     return_.value_shape(),
@@ -185,11 +264,141 @@ impl HostTypeDescriptor {
                     arguments.iter().map(Self::value_type).collect(),
                 )),
             ),
+            Self::External { schema, arguments } => {
+                crate::plan::ValueShape::External(crate::plan::ExternalValueShape::new(
+                    crate::plan::ExternalTypeName::new(
+                        schema.package().clone(),
+                        schema.module().clone(),
+                        schema.name().clone(),
+                    ),
+                    arguments.iter().map(Self::value_shape).collect(),
+                ))
+            }
         }
     }
 
     pub(crate) fn value_type(&self) -> crate::plan::ValueType {
         self.value_shape().value_type()
+    }
+
+    pub(crate) fn resolve(
+        &self,
+        type_arguments: &[crate::plan::ValueType],
+    ) -> Option<crate::plan::ValueType> {
+        use crate::plan::ValueType;
+
+        match self {
+            Self::Parameter(index) => type_arguments.get(*index).cloned(),
+            Self::Int => Some(ValueType::Int),
+            Self::Float => Some(ValueType::Float),
+            Self::String => Some(ValueType::String),
+            Self::BitArray => Some(ValueType::BitArray),
+            Self::UtfCodepoint => Some(ValueType::UtfCodepoint),
+            Self::Bool => Some(ValueType::Bool),
+            Self::Nil => Some(ValueType::Nil),
+            Self::List(item) => Some(ValueType::List(Box::new(item.resolve(type_arguments)?))),
+            Self::Tuple(elements) => Some(ValueType::Tuple(
+                elements
+                    .iter()
+                    .map(|element| element.resolve(type_arguments))
+                    .collect::<Option<Vec<_>>>()?,
+            )),
+            Self::Function { arguments, return_ } | Self::OpaqueFunction { arguments, return_ } => {
+                Some(ValueType::Function(Box::new(
+                    crate::plan::FunctionType::new(
+                        arguments
+                            .iter()
+                            .map(|argument| argument.resolve(type_arguments))
+                            .collect::<Option<Vec<_>>>()?,
+                        return_.resolve(type_arguments)?,
+                    ),
+                )))
+            }
+            Self::Custom { schema, arguments } => {
+                Some(ValueType::Custom(crate::plan::CustomType::new(
+                    crate::plan::CustomTypeName::new(
+                        schema.package().clone(),
+                        schema.module().clone(),
+                        schema.name().clone(),
+                    ),
+                    arguments
+                        .iter()
+                        .map(|argument| argument.resolve(type_arguments))
+                        .collect::<Option<Vec<_>>>()?,
+                )))
+            }
+            Self::External { schema, arguments } => {
+                Some(ValueType::External(crate::plan::ExternalType::new(
+                    crate::plan::ExternalTypeName::new(
+                        schema.package().clone(),
+                        schema.module().clone(),
+                        schema.name().clone(),
+                    ),
+                    arguments
+                        .iter()
+                        .map(|argument| argument.resolve(type_arguments))
+                        .collect::<Option<Vec<_>>>()?,
+                )))
+            }
+        }
+    }
+
+    pub(crate) fn resolve_sealed(
+        &self,
+        type_arguments: &[crate::plan::ValueType],
+    ) -> crate::plan::ValueType {
+        use crate::plan::ValueType;
+
+        match self {
+            Self::Parameter(index) => type_arguments[*index].clone(),
+            Self::Int => ValueType::Int,
+            Self::Float => ValueType::Float,
+            Self::String => ValueType::String,
+            Self::BitArray => ValueType::BitArray,
+            Self::UtfCodepoint => ValueType::UtfCodepoint,
+            Self::Bool => ValueType::Bool,
+            Self::Nil => ValueType::Nil,
+            Self::List(item) => ValueType::List(Box::new(item.resolve_sealed(type_arguments))),
+            Self::Tuple(elements) => ValueType::Tuple(
+                elements
+                    .iter()
+                    .map(|element| element.resolve_sealed(type_arguments))
+                    .collect(),
+            ),
+            Self::Function { arguments, return_ } | Self::OpaqueFunction { arguments, return_ } => {
+                ValueType::Function(Box::new(crate::plan::FunctionType::new(
+                    arguments
+                        .iter()
+                        .map(|argument| argument.resolve_sealed(type_arguments))
+                        .collect(),
+                    return_.resolve_sealed(type_arguments),
+                )))
+            }
+            Self::Custom { schema, arguments } => ValueType::Custom(crate::plan::CustomType::new(
+                crate::plan::CustomTypeName::new(
+                    schema.package().clone(),
+                    schema.module().clone(),
+                    schema.name().clone(),
+                ),
+                arguments
+                    .iter()
+                    .map(|argument| argument.resolve_sealed(type_arguments))
+                    .collect(),
+            )),
+            Self::External { schema, arguments } => {
+                ValueType::External(crate::plan::ExternalType::new(
+                    crate::plan::ExternalTypeName::new(
+                        schema.package().clone(),
+                        schema.module().clone(),
+                        schema.name().clone(),
+                    ),
+                    arguments
+                        .iter()
+                        .map(|argument| argument.resolve_sealed(type_arguments))
+                        .collect(),
+                ))
+            }
+        }
     }
 
     pub(crate) fn collect_type_parameters(&self, output: &mut BTreeSet<usize>) {
@@ -203,13 +412,13 @@ impl HostTypeDescriptor {
                     element.collect_type_parameters(output);
                 }
             }
-            Self::Function { arguments, return_ } => {
+            Self::Function { arguments, return_ } | Self::OpaqueFunction { arguments, return_ } => {
                 for argument in arguments {
                     argument.collect_type_parameters(output);
                 }
                 return_.collect_type_parameters(output);
             }
-            Self::Custom { arguments, .. } => {
+            Self::Custom { arguments, .. } | Self::External { arguments, .. } => {
                 for argument in arguments {
                     argument.collect_type_parameters(output);
                 }
@@ -296,18 +505,18 @@ mod private {
 #[cfg(test)]
 mod tests {
     use super::{
-        HostAbiType, HostAbiTypeSequence, HostCustomConstructorDefinition,
-        HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomConstructorSchema,
-        HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomFieldSchema,
-        HostCustomSchema, HostCustomType, HostCustomTypeSchema, HostListType, HostSchemaType,
-        HostTupleType, HostTypeDescriptor, HostTypeList, HostTypeListEnd, HostTypeParameter,
-        from_token, from_tokens,
+        HostAbiType, HostAbiTypeSequence, HostCustomConstructor, HostCustomConstructorAt,
+        HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
+        HostCustomConstructorSchema, HostCustomField, HostCustomFieldList, HostCustomFieldListEnd,
+        HostCustomFieldSchema, HostCustomIndex0, HostCustomSchema, HostCustomType,
+        HostCustomTypeSchema, HostListType, HostSchemaType, HostTupleType, HostTypeDescriptor,
+        HostTypeList, HostTypeListEnd, HostTypeParameter, from_token, from_tokens,
     };
     use crate::host::function::CallArguments;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{
-        HostCustom, HostCustomToken, HostList, HostListToken, HostScopedValue, HostTuple,
-        HostTupleToken, HostValue, HostValueFamily, HostValueToken,
+        HostCustom, HostCustomToken, HostExternalTypeSchema, HostList, HostListToken,
+        HostScopedValue, HostTuple, HostTupleToken, HostValue, HostValueFamily, HostValueToken,
     };
     use crate::runtime::BitArrayValue;
     use ecow::EcoString;
@@ -501,6 +710,122 @@ mod tests {
     }
 
     #[test]
+    fn descriptor_resolves_every_shape_through_concrete_type_arguments() {
+        use crate::plan::{
+            CustomType, CustomTypeName, ExternalType, ExternalTypeName, FunctionType, ValueType,
+        };
+
+        let arguments = [ValueType::String, ValueType::Bool];
+        let custom_schema =
+            HostCustomTypeSchema::new("domain", "domain/box", "Boxed", 1, Vec::new());
+        let external_schema =
+            HostExternalTypeSchema::new("domain", "domain/resource", "Resource", 1);
+        let descriptor = HostTypeDescriptor::Tuple(
+            vec![
+                HostTypeDescriptor::Int,
+                HostTypeDescriptor::Float,
+                HostTypeDescriptor::String,
+                HostTypeDescriptor::BitArray,
+                HostTypeDescriptor::UtfCodepoint,
+                HostTypeDescriptor::Bool,
+                HostTypeDescriptor::Nil,
+                HostTypeDescriptor::Parameter(0),
+                HostTypeDescriptor::List(Box::new(HostTypeDescriptor::Parameter(1))),
+                HostTypeDescriptor::Function {
+                    arguments: vec![HostTypeDescriptor::Parameter(0)].into_boxed_slice(),
+                    return_: Box::new(HostTypeDescriptor::Parameter(1)),
+                },
+                HostTypeDescriptor::OpaqueFunction {
+                    arguments: vec![HostTypeDescriptor::Parameter(1)].into_boxed_slice(),
+                    return_: Box::new(HostTypeDescriptor::Parameter(0)),
+                },
+                HostTypeDescriptor::Custom {
+                    schema: custom_schema,
+                    arguments: vec![HostTypeDescriptor::Parameter(0)].into_boxed_slice(),
+                },
+                HostTypeDescriptor::External {
+                    schema: external_schema,
+                    arguments: vec![HostTypeDescriptor::Parameter(1)].into_boxed_slice(),
+                },
+            ]
+            .into_boxed_slice(),
+        );
+
+        let expected = ValueType::Tuple(vec![
+            ValueType::Int,
+            ValueType::Float,
+            ValueType::String,
+            ValueType::BitArray,
+            ValueType::UtfCodepoint,
+            ValueType::Bool,
+            ValueType::Nil,
+            ValueType::String,
+            ValueType::List(Box::new(ValueType::Bool)),
+            ValueType::Function(Box::new(FunctionType::new(
+                vec![ValueType::String],
+                ValueType::Bool,
+            ))),
+            ValueType::Function(Box::new(FunctionType::new(
+                vec![ValueType::Bool],
+                ValueType::String,
+            ))),
+            ValueType::Custom(CustomType::new(
+                CustomTypeName::new("domain".into(), "domain/box".into(), "Boxed".into()),
+                vec![ValueType::String],
+            )),
+            ValueType::External(ExternalType::new(
+                ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into()),
+                vec![ValueType::Bool],
+            )),
+        ]);
+        assert_eq!(descriptor.resolve(&arguments), Some(expected.clone()));
+        assert_eq!(descriptor.resolve_sealed(&arguments), expected);
+        assert_eq!(HostTypeDescriptor::Parameter(2).resolve(&arguments), None);
+
+        let missing = HostTypeDescriptor::Parameter(2);
+        assert_eq!(
+            HostTypeDescriptor::List(Box::new(missing.clone())).resolve(&arguments),
+            None,
+        );
+        assert_eq!(
+            HostTypeDescriptor::Tuple(vec![missing.clone()].into_boxed_slice()).resolve(&arguments),
+            None,
+        );
+        assert_eq!(
+            HostTypeDescriptor::Function {
+                arguments: vec![missing.clone()].into_boxed_slice(),
+                return_: Box::new(HostTypeDescriptor::Int),
+            }
+            .resolve(&arguments),
+            None,
+        );
+        assert_eq!(
+            HostTypeDescriptor::Function {
+                arguments: Box::new([]),
+                return_: Box::new(missing.clone()),
+            }
+            .resolve(&arguments),
+            None,
+        );
+        assert_eq!(
+            HostTypeDescriptor::Custom {
+                schema: HostCustomTypeSchema::new("domain", "domain/box", "Boxed", 1, Vec::new(),),
+                arguments: vec![missing.clone()].into_boxed_slice(),
+            }
+            .resolve(&arguments),
+            None,
+        );
+        assert_eq!(
+            HostTypeDescriptor::External {
+                schema: HostExternalTypeSchema::new("domain", "domain/resource", "Resource", 1,),
+                arguments: vec![missing].into_boxed_slice(),
+            }
+            .resolve(&arguments),
+            None,
+        );
+    }
+
+    #[test]
     fn schema_types_include_function_fields_without_runtime_metadata() {
         let descriptors = [
             (HostTypeDescriptor::Int, HostSchemaType::Int),
@@ -528,6 +853,26 @@ mod tests {
             HostSchemaType::Function {
                 arguments: vec![HostSchemaType::Int, HostSchemaType::Bool].into_boxed_slice(),
                 return_: Box::new(HostSchemaType::String),
+            },
+        );
+        assert_eq!(
+            HostTypeDescriptor::OpaqueFunction {
+                arguments: vec![HostTypeDescriptor::String].into_boxed_slice(),
+                return_: Box::new(HostTypeDescriptor::Nil),
+            }
+            .schema_type(),
+            HostSchemaType::function([HostSchemaType::String], HostSchemaType::Nil),
+        );
+        let external = HostExternalTypeSchema::new("domain", "domain/resource", "Resource", 1);
+        assert_eq!(
+            HostTypeDescriptor::External {
+                schema: external.clone(),
+                arguments: vec![HostTypeDescriptor::Parameter(0)].into_boxed_slice(),
+            }
+            .schema_type(),
+            HostSchemaType::External {
+                schema: external,
+                arguments: vec![HostSchemaType::parameter(0)].into_boxed_slice(),
             },
         );
     }
@@ -596,8 +941,10 @@ mod tests {
 
     #[test]
     fn custom_field_sequence_preserves_layout_and_nested_custom_schemas() {
-        type Fields = HostCustomFieldList<RecursiveNextField, HostCustomFieldListEnd>;
         type Recursive = HostCustomType<RecursiveSchema>;
+        type Constructor =
+            HostCustomConstructorAt<Recursive, HostCustomIndex0, RecursiveConstructor>;
+        type Fields = <Constructor as HostCustomConstructor>::Fields;
 
         assert_eq!(
             <Fields as HostAbiTypeSequence>::descriptors(),

@@ -2,8 +2,8 @@ use super::super::super::plan_expr_with_expected_source_stop_shape;
 use super::super::invalid_case_shape;
 use super::{CaseClause, OrderedCaseClauseInput};
 use crate::plan::{
-    BitArrayFunctionExpr, BoolExpr, CustomFunctionExpr, Expr, ExprKind, FunctionExpr,
-    FunctionFunctionExpr, FunctionType, IntFunctionExpr, IntFunctionLocalId, Step,
+    BitArrayFunctionExpr, BoolExpr, CustomFunctionExpr, Expr, ExprKind, ExternalFunctionExpr,
+    FunctionExpr, FunctionFunctionExpr, FunctionType, IntFunctionExpr, IntFunctionLocalId, Step,
     TypedFunctionExprKind, ValueShape, ValueType,
 };
 use crate::planner::context::PlanContext;
@@ -34,6 +34,7 @@ pub(super) fn plan(
     let mut ordered_clauses = Vec::new();
     for clause in clauses {
         for pattern in clause.patterns() {
+            let (pattern, reachable, exhaustive_remainder) = pattern.into_parts();
             let pattern = plan_function_case_pattern(pattern, &subject_value_type, context)?;
             let bindings = super::branch_bindings(pattern.bound_names(), subject.clone());
             let is_total = clause.guard.is_none();
@@ -46,6 +47,8 @@ pub(super) fn plan(
                     guard: clause.guard.clone(),
                     match_condition: BoolExpr::value(true),
                     is_total,
+                    reachable,
+                    exhaustive_remainder,
                 },
                 context,
             )?);
@@ -196,6 +199,16 @@ fn bind_function_case_subject(
                 FunctionExpr::custom(CustomFunctionExpr::local_get(local, name)),
             )
         }
+        TypedFunctionExprKind::External(subject) => {
+            let local = context.define_internal_external_function_local(
+                subject.expression().external_function_type().clone(),
+            );
+            let name = internal_external_function_case_subject_name(&local);
+            (
+                Step::let_external_function_expr(local.id(), name.clone(), subject),
+                FunctionExpr::external(ExternalFunctionExpr::local_get(local, name)),
+            )
+        }
         TypedFunctionExprKind::Float(subject) => {
             let shape = subject.shape().clone();
             let local = context.define_internal_float_function_local();
@@ -316,6 +329,12 @@ fn internal_custom_function_case_subject_name(
     format!("<case:custom_function:{}>", local.id().0).into()
 }
 
+fn internal_external_function_case_subject_name(
+    local: &crate::plan::ExternalFunctionLocal,
+) -> EcoString {
+    format!("<case:external_function:{}>", local.id().0).into()
+}
+
 fn internal_float_function_case_subject_name(
     local: crate::plan::FloatFunctionLocalId,
 ) -> EcoString {
@@ -353,10 +372,12 @@ mod tests {
     use crate::plan::{
         BitArrayFunctionExpr, BitArrayFunctionLocalId, CustomConstructorRefinement,
         CustomFunctionExpr, CustomFunctionLocalId, CustomType, CustomTypeName, CustomValueShape,
-        Expr, FunctionExpr, FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
-        FunctionFunctionLocalId, FunctionType, GenericFunctionExpr, GenericFunctionLocal,
-        GenericFunctionLocalId, GenericFunctionType, IntLocalId, LocalId, Step, TypeParameterId,
-        ValueShape, ValueType,
+        Expr, ExternalFunctionExpr, ExternalFunctionLocal, ExternalFunctionLocalId,
+        ExternalFunctionType, ExternalTypeName, ExternalValueShape, FunctionExpr,
+        FunctionFunctionExpr, FunctionFunctionFunctionId, FunctionFunctionId,
+        FunctionFunctionLocalId, FunctionShape, FunctionType, GenericFunctionExpr,
+        GenericFunctionLocal, GenericFunctionLocalId, GenericFunctionType, IntLocalId, LocalId,
+        Step, TypeParameterId, ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
     use crate::planner::dsl::{
@@ -608,6 +629,34 @@ pub fn main() {
                         custom_function_type,
                     ),
                     "<case:custom_function:0>".into(),
+                ))),
+            ),
+        );
+        let external_shape = ExternalValueShape::new(
+            ExternalTypeName::new("geam".into(), "main".into(), "Resource".into()),
+            Vec::new(),
+        );
+        let external_function_shape =
+            FunctionShape::new(Vec::new(), ValueShape::External(external_shape.clone()));
+        let external_function_type = ExternalFunctionType::from_shapes(Vec::new(), external_shape);
+        let external_subject = ExternalFunctionExpr::local_get(
+            ExternalFunctionLocal::new(ExternalFunctionLocalId(7), external_function_type.clone()),
+            "source".into(),
+        );
+        assert_eq!(
+            bind_function_case_subject(
+                FunctionExpr::external(external_subject.clone()),
+                &mut context,
+            ),
+            (
+                Step::let_external_function_expr(
+                    ExternalFunctionLocalId(0),
+                    "<case:external_function:0>".into(),
+                    TypedFunctionExpr::new(external_function_shape, external_subject),
+                ),
+                Expr::function(FunctionExpr::external(ExternalFunctionExpr::local_get(
+                    ExternalFunctionLocal::new(ExternalFunctionLocalId(0), external_function_type,),
+                    "<case:external_function:0>".into(),
                 ))),
             ),
         );

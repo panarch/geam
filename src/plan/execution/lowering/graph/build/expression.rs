@@ -1,6 +1,7 @@
 mod bit_array;
 pub(super) mod bool;
 mod custom;
+mod external;
 mod float;
 pub(super) mod function;
 pub(super) mod generic;
@@ -21,6 +22,7 @@ use crate::plan::module;
 pub(in crate::plan::execution::lowering) use bit_array::bit_array_expr;
 pub(in crate::plan::execution::lowering) use bool::bool_expr;
 pub(in crate::plan::execution::lowering) use custom::{custom_expr, custom_expr_kind};
+pub(in crate::plan::execution::lowering) use external::{external_expr, external_expr_kind};
 pub(in crate::plan::execution::lowering) use float::float_expr;
 pub(in crate::plan::execution::lowering) use function::function_expr;
 pub(in crate::plan::execution::lowering) use generic::{
@@ -28,8 +30,8 @@ pub(in crate::plan::execution::lowering) use generic::{
 };
 pub(in crate::plan::execution::lowering) use int::int_expr;
 pub(in crate::plan::execution::lowering) use list::{
-    bit_array_list_expr, bool_list_expr, custom_list_expr, float_list_expr, function_list_expr,
-    generic_list_expr, int_list_expr, list_expr, list_list_expr, nil_list_expr,
+    bit_array_list_expr, bool_list_expr, custom_list_expr, external_list_expr, float_list_expr,
+    function_list_expr, generic_list_expr, int_list_expr, list_expr, list_list_expr, nil_list_expr,
     parameter_list_list_expr, string_list_expr, tuple_list_expr, utf_codepoint_list_expr,
 };
 pub(in crate::plan::execution::lowering) use nil::nil_expr;
@@ -64,6 +66,9 @@ pub(super) fn expr(
             .map(|flow| flow.map(|value| value.erase())),
         E::Custom(value) => {
             custom_expr(value, cursor, graph, context).map(|flow| flow.map(|value| value.erase()))
+        }
+        E::External(value) => {
+            external_expr(value, cursor, graph, context).map(|flow| flow.map(|value| value.erase()))
         }
         E::Bool(value) => {
             bool_expr(value, cursor, graph, context).map(|flow| flow.map(|value| value.erase()))
@@ -628,10 +633,11 @@ mod tests {
         BoolExpr, CallArg, CaptureArg, CustomConstructorDefinition, CustomConstructorRefinement,
         CustomExpr, CustomFieldDefinition, CustomLocal, CustomLocalId, CustomTypeDefinition,
         CustomTypeName, CustomTypeParameterId, CustomTypePublicity, CustomTypeTemplate,
-        CustomValueShape, Expr, FloatExpr, FunctionExpr, FunctionShape, FunctionTemplateId,
-        FunctionTemplateSignature, FunctionType, GenericExpr, GenericLocal, GenericLocalId,
-        IntExpr, IntFunctionExpr, ListExpr, NilExpr, PanicExpr, PanicSite, Step, StringExpr,
-        TupleExpr, TypeParameterId, TypeScheme, UtfCodepointExpr, ValueShape, ValueType,
+        CustomValueShape, Expr, ExternalExpr, ExternalTypeName, ExternalValueShape, FloatExpr,
+        FunctionExpr, FunctionShape, FunctionTemplateId, FunctionTemplateSignature, FunctionType,
+        GenericExpr, GenericLocal, GenericLocalId, IntExpr, IntFunctionExpr, ListExpr, NilExpr,
+        PanicExpr, PanicSite, Step, StringExpr, TupleExpr, TypeParameterId, TypeScheme,
+        UtfCodepointExpr, ValueShape, ValueType,
     };
 
     #[derive(Debug, PartialEq, Eq)]
@@ -1535,6 +1541,10 @@ pub fn main() {{
             )],
         );
         let function_type = FunctionType::new(Vec::new(), ValueType::Int);
+        let external_shape = ExternalValueShape::new(
+            ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into()),
+            Vec::new(),
+        );
         let panic = || PanicExpr::panic_at(None, PanicSite::unknown());
         let expressions = vec![
             Expr::int(IntExpr::list_index(
@@ -1609,6 +1619,13 @@ pub fn main() {{
                 0,
                 function_type,
             ))),
+            Expr::external(ExternalExpr::list_index_shape(
+                ListExpr::panic(panic(), ValueType::External(external_shape.type_().clone()))
+                    .into_external()
+                    .expect("an external item type should create an external list"),
+                0,
+                external_shape,
+            )),
         ];
         let mut context = crate::plan::execution::lowering::test_support::lowering_context(vec![
             custom_definition,

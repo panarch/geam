@@ -23,6 +23,7 @@ use crate::planner::error::{
 };
 use gleam_core::ast::TodoKind;
 use gleam_core::ast::TypedExpr;
+use gleam_core::strings::convert_string_escape_chars;
 
 pub(super) fn plan_expr(
     expression: TypedExpr,
@@ -31,7 +32,9 @@ pub(super) fn plan_expr(
     let shape = context.value_shape(&expression.type_());
     let expression = match expression {
         TypedExpr::Int { int_value, .. } => Ok(Expr::int(IntExpr::value(int_value))),
-        TypedExpr::String { value, .. } => Ok(Expr::string(StringExpr::value(value))),
+        TypedExpr::String { value, .. } => Ok(Expr::string(StringExpr::value(
+            convert_string_escape_chars(&value),
+        ))),
         TypedExpr::Float { float_value, .. } => {
             Ok(Expr::float(FloatExpr::value(float_value.value())))
         }
@@ -87,8 +90,9 @@ pub(super) fn plan_expr(
             type_,
             subjects,
             clauses,
+            compiled_case,
             ..
-        } => case::plan_case(type_, subjects, clauses, context),
+        } => case::plan_case(type_, subjects, clauses, compiled_case, context),
         TypedExpr::RecordAccess {
             type_,
             label,
@@ -317,6 +321,9 @@ fn panic_expr(panic: PanicExpr, return_shape: ValueShape) -> Expr {
             Expr::utf_codepoint(crate::plan::UtfCodepointExpr::panic(panic))
         }
         ValueShape::Custom(shape) => Expr::custom(CustomExpr::panic_shape(panic, shape)),
+        ValueShape::External(shape) => {
+            Expr::external(crate::plan::ExternalExpr::panic_shape(panic, shape))
+        }
         ValueShape::Float => Expr::float(FloatExpr::panic(panic)),
         ValueShape::Bool => Expr::bool(BoolExpr::panic(panic)),
         ValueShape::Nil => Expr::nil(crate::plan::NilExpr::panic(panic)),
@@ -366,6 +373,15 @@ fn panic_function_expr(panic: PanicExpr, shape: FunctionShape) -> Expr {
             Expr::function(FunctionExpr::custom(CustomFunctionExpr::panic(
                 panic, callable,
             )))
+        }
+        ValueShape::External(return_shape) => {
+            let callable = crate::plan::ExternalFunctionType::from_shapes(
+                shape.argument_shapes().to_vec(),
+                return_shape,
+            );
+            Expr::function(FunctionExpr::external(
+                crate::plan::ExternalFunctionExpr::panic(panic, callable),
+            ))
         }
         ValueShape::Float => Expr::function(FunctionExpr::float_with_shape(
             crate::plan::FloatFunctionExpr::panic(panic, type_),
@@ -637,6 +653,13 @@ pub(super) fn list_index_expr(
         {
             Expr::custom(CustomExpr::list_index_shape(list, index, shape))
         }
+        (crate::plan::ValueShape::External(shape), ListExpr::External(list))
+            if list.item().item_type() == *shape.type_() =>
+        {
+            Expr::external(crate::plan::ExternalExpr::list_index_shape(
+                list, index, shape,
+            ))
+        }
         (crate::plan::ValueShape::Float, ListExpr::Float(list)) => {
             Expr::float(FloatExpr::list_index(list, index))
         }
@@ -733,6 +756,16 @@ fn list_index_function_expr(
                 ),
             )))
         }
+        crate::plan::ValueShape::External(return_shape) => Expr::function(FunctionExpr::external(
+            crate::plan::ExternalFunctionExpr::list_index(
+                list.clone(),
+                index,
+                crate::plan::ExternalFunctionType::from_shapes(
+                    shape.argument_shapes().to_vec(),
+                    return_shape,
+                ),
+            ),
+        )),
         crate::plan::ValueShape::Float => Expr::function(FunctionExpr::float_with_shape(
             crate::plan::FloatFunctionExpr::list_index(list.clone(), index, type_),
             shape,
@@ -939,9 +972,10 @@ mod tests {
     };
     use crate::plan::{
         BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionId, BoolLocalId, CustomExpr,
-        CustomLocalId, CustomType, CustomTypeName, Expr, FloatExpr, FunctionExpr,
+        CustomLocalId, CustomType, CustomTypeName, Expr, ExternalExpr, ExternalFunctionExpr,
+        ExternalFunctionType, ExternalTypeName, ExternalValueShape, FloatExpr, FunctionExpr,
         FunctionFunctionExpr, FunctionFunctionId, FunctionFunctionType, FunctionReference,
-        FunctionType, GenericExpr, GenericFunctionExpr, GenericFunctionLocal,
+        FunctionShape, FunctionType, GenericExpr, GenericFunctionExpr, GenericFunctionLocal,
         GenericFunctionLocalId, GenericFunctionType, GenericLocal, GenericLocalId, IntExpr,
         IntFunctionExpr, IntFunctionFunctionId, IntFunctionId, IntLocalId, ListExpr, NilExpr,
         NilLocalId, PanicExpr, PanicSite, ParamLocal, ReturnBody, SourceSpan, StringExpr,
@@ -1745,6 +1779,91 @@ pub fn main() -> Int {
                 panic,
                 function_type,
             ))),
+        );
+    }
+
+    #[test]
+    fn external_projection_and_panic_helpers_preserve_nominal_shapes() {
+        let first_shape = ExternalValueShape::new(
+            ExternalTypeName::new("application".into(), "main".into(), "First".into()),
+            Vec::new(),
+        );
+        let second_shape = ExternalValueShape::new(
+            ExternalTypeName::new("application".into(), "main".into(), "Second".into()),
+            Vec::new(),
+        );
+        let panic = PanicExpr::panic_at(
+            None,
+            PanicSite::new("main".into(), "external".into(), SourceSpan::new(0, 1)),
+        );
+
+        assert_eq!(
+            super::panic_expr(panic.clone(), ValueShape::External(first_shape.clone())),
+            Expr::external(ExternalExpr::panic_shape(
+                panic.clone(),
+                first_shape.clone(),
+            )),
+        );
+
+        let function_shape = FunctionShape::new(
+            vec![ValueShape::Int],
+            ValueShape::External(first_shape.clone()),
+        );
+        let external_function_type =
+            ExternalFunctionType::from_shapes(vec![ValueShape::Int], first_shape.clone());
+        assert_eq!(
+            super::panic_function_expr(panic.clone(), function_shape.clone()),
+            Expr::function(FunctionExpr::external(ExternalFunctionExpr::panic(
+                panic,
+                external_function_type.clone(),
+            ))),
+        );
+
+        let list = ListExpr::value(Vec::new(), ValueType::External(first_shape.type_().clone()));
+        let external_list = list
+            .clone()
+            .into_external()
+            .expect("an external item list should preserve its nominal item");
+        assert_eq!(
+            super::list_index_expr(
+                list.clone(),
+                2,
+                ValueType::External(first_shape.type_().clone()),
+            ),
+            Ok(Expr::external(ExternalExpr::list_index_shape(
+                external_list,
+                2,
+                first_shape.clone(),
+            ))),
+        );
+        let mismatched_list = list.with_item_shape(ValueShape::External(second_shape.clone()));
+        assert_eq!(
+            super::list_index_expr(
+                mismatched_list,
+                2,
+                ValueType::External(second_shape.type_().clone()),
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::List,
+                    actual: InvalidExpressionType::External,
+                },
+            }),
+        );
+
+        let function_list = ListExpr::value(
+            Vec::new(),
+            ValueType::Function(Box::new(function_shape.type_())),
+        )
+        .into_function()
+        .expect("an external-returning function list should preserve its callable shape");
+        assert_eq!(
+            super::list_index_function_expr(function_list.clone(), 3, function_shape),
+            Expr::function(FunctionExpr::external(ExternalFunctionExpr::list_index(
+                function_list,
+                3,
+                external_function_type
+            ),)),
         );
     }
 

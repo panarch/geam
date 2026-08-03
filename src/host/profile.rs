@@ -1,8 +1,10 @@
 use crate::host::{
     HostCallArguments, HostCallCompletion, HostCustom, HostCustomArgumentSlot,
-    HostCustomConstructor, HostCustomType, HostFunctionArgumentSlot, HostList,
-    HostListArgumentSlot, HostListType, HostTuple, HostTupleArgumentSlot, HostTupleType, HostType,
-    HostTypeSequence, HostValue, HostValueArgumentSlot,
+    HostCustomConstructor, HostCustomType, HostExternal, HostExternalArgumentSlot,
+    HostExternalPayloadBuilder, HostExternalPayloadView, HostExternalSchema, HostExternalStorage,
+    HostExternalType, HostFunctionArgumentSlot, HostList, HostListArgumentSlot, HostListType,
+    HostStoredValue, HostTuple, HostTupleArgumentSlot, HostTupleType, HostType, HostTypeSequence,
+    HostValue, HostValueArgumentSlot,
 };
 use std::marker::PhantomData;
 
@@ -14,6 +16,7 @@ pub(crate) use runtime::test;
 
 pub trait HostProfile: Send + Sync + 'static {
     type RunState;
+    type ExternalStores: Default + 'static;
 }
 
 pub trait HostProvider<Profile: HostProfile>: Send + Sync + 'static {
@@ -37,6 +40,7 @@ where
 
 impl HostProfile for StatelessHostProfile {
     type RunState = ();
+    type ExternalStores = ();
 }
 
 impl<'call, Profile, Provider, Return> HostCall<'call, Profile, Provider, Return>
@@ -74,6 +78,21 @@ where
         )
     }
 
+    /// Hashes a call-scoped value consistently with Gleam source equality.
+    ///
+    /// The result is intended for runtime lookup within this execution. It is
+    /// not a stable serialization or a process-independent value.
+    pub fn source_hash<Type: HostType>(&self, value: Type::Value<'call>) -> u64 {
+        self.runtime
+            .source_hash(crate::host::type_::into_scoped::<Type>(value))
+    }
+
+    /// Returns the canonical Gleam-facing inspection of a call-scoped value.
+    pub fn inspect<Type: HostType>(&self, value: Type::Value<'call>) -> ecow::EcoString {
+        self.runtime
+            .inspect(crate::host::type_::into_scoped::<Type>(value))
+    }
+
     pub(crate) fn arguments(&self) -> &dyn HostCallArguments {
         self.runtime.arguments()
     }
@@ -95,6 +114,13 @@ where
 
     pub(crate) fn custom<Custom>(&self, slot: HostCustomArgumentSlot) -> HostCustom<'call, Custom> {
         HostCustom::new(self.runtime.custom(slot))
+    }
+
+    pub(crate) fn external<Type>(
+        &self,
+        slot: HostExternalArgumentSlot,
+    ) -> HostExternal<'call, Type> {
+        HostExternal::new(self.runtime.external(slot))
     }
 
     pub(crate) fn function<Arguments, FunctionReturn>(
@@ -130,6 +156,50 @@ where
         crate::host::type_::from_tokens::<Elements, Profile>(self.runtime, &values)
     }
 
+    pub(crate) fn create_tuple<Elements: HostTypeSequence>(
+        &mut self,
+        values: Elements::Values<'call>,
+    ) -> HostTuple<'call, Elements> {
+        let mut output = Vec::new();
+        crate::host::type_::into_scoped_values::<Elements>(values, &mut output);
+        let value = self.runtime.build_tuple(output.into_boxed_slice());
+        HostTuple::new(self.runtime.tuple_token(value))
+    }
+
+    pub(crate) fn create_list<Item: HostType>(
+        &mut self,
+        values: impl IntoIterator<Item = Item::Value<'call>>,
+    ) -> HostList<'call, Item> {
+        let values = values
+            .into_iter()
+            .map(crate::host::type_::into_scoped::<Item>)
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        let value = self.runtime.build_list(
+            &crate::host::HostTypeDescriptor::of::<HostListType<Item>>(),
+            values,
+        );
+        HostList::new(self.runtime.list_token(value))
+    }
+
+    pub(crate) fn create_custom<Constructor>(
+        &mut self,
+        fields: <Constructor::Fields as HostTypeSequence>::Values<'call>,
+    ) -> HostCustom<'call, Constructor::Custom>
+    where
+        Constructor: HostCustomConstructor,
+        Constructor::Fields: HostTypeSequence,
+    {
+        let mut output = Vec::new();
+        crate::host::type_::into_scoped_values::<Constructor::Fields>(fields, &mut output);
+        let value = self.runtime.build_custom(
+            &crate::host::HostTypeDescriptor::of::<Constructor::Custom>(),
+            crate::host::type_::custom_constructor_index::<Constructor>(),
+            output.into_boxed_slice(),
+        );
+        HostCustom::new(self.runtime.custom_token(value))
+    }
+
     pub fn custom_constructor<Custom>(&self, value: HostCustom<'call, Custom>) -> usize {
         self.runtime.custom_constructor(value.token)
     }
@@ -153,6 +223,59 @@ where
         >(self.runtime, &fields))
     }
 
+    pub(crate) fn sole_custom_fields<Constructor>(
+        &mut self,
+        value: HostCustom<'call, Constructor::Custom>,
+    ) -> <Constructor::Fields as HostTypeSequence>::Values<'call>
+    where
+        Constructor: crate::host::type_::SoleHostCustomConstructor,
+    {
+        let fields = self.runtime.custom_fields(value.token);
+        crate::host::type_::from_tokens::<Constructor::Fields, Profile>(self.runtime, &fields)
+    }
+
+    /// Borrows the Rust payload behind one typed external value.
+    pub fn external_payload<Schema, Arguments>(
+        &self,
+        value: HostExternal<'call, HostExternalType<Schema, Arguments>>,
+    ) -> HostExternalPayloadView<'call, <Profile as HostExternalStorage<Schema>>::Payload, Arguments>
+    where
+        Schema: HostExternalSchema,
+        Profile: HostExternalStorage<Schema>,
+        Arguments: HostTypeSequence,
+    {
+        let lease = self.runtime.external_lease(value.token);
+        HostExternalPayloadView::new(Profile::store(self.runtime.external_stores()).view(&lease))
+    }
+
+    pub(crate) fn restore_stored<Type, Stored>(
+        &mut self,
+        value: &HostStoredValue<Stored>,
+    ) -> Type::Value<'call>
+    where
+        Type: HostType,
+    {
+        self.restore_runtime_value::<Type>(&value.value)
+    }
+
+    pub(in crate::host) fn restore_runtime_value<Type>(
+        &mut self,
+        value: &crate::runtime::StoredRuntimeValue,
+    ) -> Type::Value<'call>
+    where
+        Type: HostType,
+    {
+        let token = self.runtime.restore_stored(value);
+        crate::host::type_::from_token::<Type, Profile>(self.runtime, token)
+    }
+
+    pub(in crate::host) fn resolve_host_type<Type: HostType>(
+        &self,
+    ) -> Option<crate::plan::ValueType> {
+        self.runtime
+            .resolve_host_type(&crate::host::HostTypeDescriptor::of::<Type>())
+    }
+
     /// Invokes a Gleam callable while this host call owns the active runtime.
     ///
     /// A provider-state borrow must end before re-entry.
@@ -169,6 +292,7 @@ where
     ///
     /// impl HostProfile for Profile {
     ///     type RunState = usize;
+    ///     type ExternalStores = ();
     /// }
     ///
     /// impl HostProvider<Profile> for Provider {
@@ -210,6 +334,113 @@ where
             returned,
         ))
     }
+
+    pub(crate) fn create_external_value_with<Schema, Arguments>(
+        &mut self,
+        build: impl FnOnce(
+            &mut HostExternalPayloadBuilder<'_, Profile, Arguments>,
+        ) -> <Profile as HostExternalStorage<Schema>>::Payload,
+    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>>
+    where
+        Schema: HostExternalSchema,
+        Profile: HostExternalStorage<Schema>,
+        Arguments: HostTypeSequence,
+        HostExternalType<Schema, Arguments>: HostType,
+    {
+        let value = {
+            let mut builder = HostExternalPayloadBuilder::new(self.runtime);
+            build(&mut builder)
+        };
+        let lease = self.insert_external_payload::<Schema, Arguments>(value);
+        HostExternal::new(self.runtime.build_external(
+            &crate::host::HostTypeDescriptor::of::<HostExternalType<Schema, Arguments>>(),
+            lease,
+        ))
+    }
+}
+
+impl<'call, Profile, Provider, Schema, Arguments>
+    HostCall<'call, Profile, Provider, HostExternalType<Schema, Arguments>>
+where
+    Profile: HostProfile + HostExternalStorage<Schema>,
+    Provider: HostProvider<Profile>,
+    Schema: HostExternalSchema,
+    Arguments: HostTypeSequence,
+    HostExternalType<Schema, Arguments>: HostType,
+{
+    pub fn create_external(
+        &mut self,
+        value: <Profile as HostExternalStorage<Schema>>::Payload,
+    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>> {
+        self.seal_external_payload(value)
+    }
+
+    /// Creates an external payload that may retain typed Gleam values.
+    pub fn create_external_with(
+        &mut self,
+        build: impl FnOnce(
+            &mut HostExternalPayloadBuilder<'_, Profile, Arguments>,
+        ) -> <Profile as HostExternalStorage<Schema>>::Payload,
+    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>> {
+        self.create_external_value_with(build)
+    }
+
+    fn seal_external_payload(
+        &mut self,
+        value: <Profile as HostExternalStorage<Schema>>::Payload,
+    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>> {
+        let lease = self.insert_external_payload::<Schema, Arguments>(value);
+        HostExternal::new(self.runtime.build_external(
+            &crate::host::HostTypeDescriptor::of::<HostExternalType<Schema, Arguments>>(),
+            lease,
+        ))
+    }
+}
+
+impl<'call, Profile, Provider, Return> HostCall<'call, Profile, Provider, Return>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+{
+    fn insert_external_payload<Schema, Arguments>(
+        &self,
+        value: <Profile as HostExternalStorage<Schema>>::Payload,
+    ) -> crate::host::ExternalPayloadLease
+    where
+        Schema: HostExternalSchema,
+        Profile: HostExternalStorage<Schema>,
+        Arguments: HostTypeSequence,
+        HostExternalType<Schema, Arguments>: HostType,
+    {
+        Profile::store(self.runtime.external_stores()).insert(
+            value,
+            Profile::source_equal,
+            Profile::source_hash,
+            Profile::inspect,
+        )
+    }
+}
+
+impl<'call, Profile, Provider, Schema, Arguments>
+    HostCall<'call, Profile, Provider, HostListType<HostExternalType<Schema, Arguments>>>
+where
+    Profile: HostProfile + HostExternalStorage<Schema>,
+    Provider: HostProvider<Profile>,
+    Schema: HostExternalSchema,
+    Arguments: HostTypeSequence,
+    HostExternalType<Schema, Arguments>: HostType,
+{
+    pub(crate) fn create_external_item(
+        &mut self,
+        value: <Profile as HostExternalStorage<Schema>>::Payload,
+    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>> {
+        let lease = self.insert_external_payload::<Schema, Arguments>(value);
+        HostExternal::new(self.runtime.build_external(
+            &crate::host::HostTypeDescriptor::of::<HostExternalType<Schema, Arguments>>(),
+            lease,
+        ))
+    }
 }
 
 impl<'call, Profile, Provider, Item> HostCall<'call, Profile, Provider, HostListType<Item>>
@@ -227,7 +458,10 @@ where
             .map(crate::host::type_::into_scoped::<Item>)
             .collect::<Vec<_>>()
             .into_boxed_slice();
-        HostCallCompletion::new(self.runtime.build_list(values))
+        HostCallCompletion::new(self.runtime.build_list(
+            &crate::host::HostTypeDescriptor::of::<HostListType<Item>>(),
+            values,
+        ))
     }
 }
 
@@ -266,6 +500,7 @@ where
         let mut output = Vec::new();
         crate::host::type_::into_scoped_values::<Constructor::Fields>(fields, &mut output);
         HostCallCompletion::new(self.runtime.build_custom(
+            &crate::host::HostTypeDescriptor::of::<HostCustomType<Schema, Arguments>>(),
             crate::host::type_::custom_constructor_index::<Constructor>(),
             output.into_boxed_slice(),
         ))
@@ -401,6 +636,8 @@ mod tests {
         assert!(!call.equal::<HostListType<BigInt>>(list, list));
         assert!(!call.equal::<EmptyTuple>(tuple, tuple));
         assert!(!call.equal::<MarkerType>(custom, custom));
+        assert_eq!(call.source_hash::<BigInt>(1.into()), 17);
+        assert_eq!(call.inspect::<BigInt>(1.into()), "inspected");
     }
 
     #[test]
@@ -487,9 +724,10 @@ mod tests {
         let list = HostCall::<TestHostProfile, Counter, List>::new(&mut runtime)
             .return_list([BigInt::from(1), BigInt::from(2)])
             .token;
-        let tuple = HostCall::<TestHostProfile, Counter, Tuple>::new(&mut runtime)
-            .return_tuple(())
-            .token;
+        let mut call = HostCall::<TestHostProfile, Counter, Tuple>::new(&mut runtime);
+        let nested_tuple = call.create_tuple::<HostTypeListEnd>(());
+        assert_eq!(nested_tuple.token, HostTupleToken(0));
+        let tuple = call.return_tuple(()).token;
         let custom = HostCall::<TestHostProfile, Counter, MarkerType>::new(&mut runtime)
             .return_custom::<Marker>(())
             .token;

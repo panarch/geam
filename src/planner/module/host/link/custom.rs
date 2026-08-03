@@ -50,24 +50,71 @@ fn validate_host_custom_schema(
         actual.module().clone(),
         actual.name().clone(),
     );
-    let definition = host_custom_type_definition(registry, package, site, &name)?;
-    let visible = match access {
-        HostCustomTypeAccess::SourceLessPublicSurface => {
-            !definition.is_opaque()
-                && definition.publicity() == crate::plan::CustomTypePublicity::Public
-        }
-        HostCustomTypeAccess::SourceDeclaration => {
-            let same_package = definition.name().package() == package;
-            let same_module = same_package && definition.name().module() == site.module();
-            if definition.is_opaque() {
-                same_module
-            } else {
-                match definition.publicity() {
-                    crate::plan::CustomTypePublicity::Public => true,
-                    crate::plan::CustomTypePublicity::Internal => same_package,
-                    crate::plan::CustomTypePublicity::Private => same_module,
+    let (visible, expected, parameter_count) = match registry.custom_type(&name) {
+        Some(definition) => {
+            let visible = match access {
+                HostCustomTypeAccess::SourceLessPublicSurface => {
+                    !definition.is_opaque()
+                        && definition.publicity() == crate::plan::CustomTypePublicity::Public
                 }
-            }
+                HostCustomTypeAccess::SourceDeclaration => {
+                    let same_package = definition.name().package() == package;
+                    let same_module = same_package && definition.name().module() == site.module();
+                    if definition.is_opaque() {
+                        same_module
+                    } else {
+                        match definition.publicity() {
+                            crate::plan::CustomTypePublicity::Public => true,
+                            crate::plan::CustomTypePublicity::Internal => same_package,
+                            crate::plan::CustomTypePublicity::Private => same_module,
+                        }
+                    }
+                }
+            };
+            (
+                visible,
+                host_custom_type_schema(definition),
+                definition.parameters().len(),
+            )
+        }
+        None if name.package().is_empty()
+            && name.module() == "gleam"
+            && name.name() == "Result" =>
+        {
+            (
+                true,
+                crate::host::HostCustomTypeSchema::new(
+                    "",
+                    "gleam",
+                    "Result",
+                    2,
+                    [
+                        crate::host::HostCustomConstructorSchema::new(
+                            "Ok",
+                            [crate::host::HostCustomFieldSchema::new(
+                                None::<EcoString>,
+                                crate::host::HostSchemaType::parameter(0),
+                            )],
+                        ),
+                        crate::host::HostCustomConstructorSchema::new(
+                            "Error",
+                            [crate::host::HostCustomFieldSchema::new(
+                                None::<EcoString>,
+                                crate::host::HostSchemaType::parameter(1),
+                            )],
+                        ),
+                    ],
+                ),
+                2,
+            )
+        }
+        None => {
+            return Err(PlanError::HostProviderLink {
+                package: package.clone(),
+                module: site.module().clone(),
+                function: site.function().clone(),
+                reason: Box::new(HostProviderLinkReason::MissingCustomType { custom_type: name }),
+            });
         }
     };
     if !visible {
@@ -78,7 +125,6 @@ fn validate_host_custom_schema(
             reason: Box::new(HostProviderLinkReason::CustomTypeVisibility { custom_type: name }),
         });
     }
-    let expected = host_custom_type_schema(definition);
     if actual != &expected {
         return Err(PlanError::HostProviderLink {
             package: package.clone(),
@@ -96,8 +142,7 @@ fn validate_host_custom_schema(
         .iter()
         .chain([signature.shape().return_shape()])
     {
-        if let Some(actual) =
-            invalid_host_custom_type_argument_count(shape, &name, definition.parameters().len())
+        if let Some(actual) = invalid_host_custom_type_argument_count(shape, &name, parameter_count)
         {
             return Err(PlanError::HostProviderLink {
                 package: package.clone(),
@@ -105,7 +150,7 @@ fn validate_host_custom_schema(
                 function: site.function().clone(),
                 reason: Box::new(HostProviderLinkReason::CustomTypeArgumentCount {
                     custom_type: name,
-                    expected: definition.parameters().len(),
+                    expected: parameter_count,
                     actual,
                 }),
             });
@@ -132,6 +177,9 @@ fn invalid_host_custom_type_argument_count(
                 }
                 pending.extend(custom.arguments().iter().rev());
             }
+            crate::plan::ValueShape::External(external) => {
+                pending.extend(external.arguments().iter().rev());
+            }
             crate::plan::ValueShape::Parameter(_)
             | crate::plan::ValueShape::Int
             | crate::plan::ValueShape::Float
@@ -144,24 +192,6 @@ fn invalid_host_custom_type_argument_count(
         }
     }
     None
-}
-
-fn host_custom_type_definition<'registry>(
-    registry: &'registry ProgramRegistry,
-    package: &EcoString,
-    site: &crate::plan::HostCallSite,
-    name: &crate::plan::CustomTypeName,
-) -> Result<&'registry crate::plan::CustomTypeDefinition, PlanError> {
-    registry
-        .custom_type(name)
-        .ok_or_else(|| PlanError::HostProviderLink {
-            package: package.clone(),
-            module: site.module().clone(),
-            function: site.function().clone(),
-            reason: Box::new(HostProviderLinkReason::MissingCustomType {
-                custom_type: name.clone(),
-            }),
-        })
 }
 
 fn host_custom_type_schema(
@@ -210,6 +240,19 @@ fn host_schema_type(type_: &crate::plan::CustomTypeTemplate) -> crate::host::Hos
             name.name().clone(),
             arguments.iter().map(host_schema_type),
         ),
+        T::External { name, arguments } => H::External {
+            schema: crate::host::HostExternalTypeSchema::new(
+                name.package().clone(),
+                name.module().clone(),
+                name.name().clone(),
+                arguments.len(),
+            ),
+            arguments: arguments
+                .iter()
+                .map(host_schema_type)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        },
         T::Parameter(parameter) => H::parameter(parameter.0),
     }
 }
@@ -223,9 +266,9 @@ mod tests {
     use crate::plan::{
         CustomConstructorDefinition, CustomConstructorRefinement, CustomFieldDefinition,
         CustomTypeDefinition, CustomTypeName, CustomTypeParameterId, CustomTypePublicity,
-        CustomTypeTemplate, CustomValueShape, FunctionShape, FunctionTemplateId,
-        FunctionTemplateSignature, HostCallSite, ModuleId, SourceSpan, TypeParameterId, TypeScheme,
-        ValueShape,
+        CustomTypeTemplate, CustomValueShape, ExternalTypeName, ExternalValueShape, FunctionShape,
+        FunctionTemplateId, FunctionTemplateSignature, HostCallSite, ModuleId, SourceSpan,
+        TypeParameterId, TypeScheme, ValueShape,
     };
     use crate::planner::module::constant::ConstantSignatures;
     use crate::planner::module::registry::{ModuleRegistry, ProgramRegistry};
@@ -277,6 +320,25 @@ mod tests {
                 ),
             ),
             (
+                CustomTypeTemplate::External {
+                    name: ExternalTypeName::new(
+                        "storage".into(),
+                        "storage/cell".into(),
+                        "Cell".into(),
+                    ),
+                    arguments: vec![CustomTypeTemplate::Int],
+                },
+                HostSchemaType::External {
+                    schema: crate::host::HostExternalTypeSchema::new(
+                        "storage",
+                        "storage/cell",
+                        "Cell",
+                        1,
+                    ),
+                    arguments: vec![HostSchemaType::Int].into_boxed_slice(),
+                },
+            ),
+            (
                 CustomTypeTemplate::Parameter(CustomTypeParameterId(1)),
                 HostSchemaType::parameter(1),
             ),
@@ -325,6 +387,134 @@ mod tests {
     }
 
     #[test]
+    fn validates_the_compiler_owned_result_schema_without_a_source_definition() {
+        let result = CustomTypeName::new("".into(), "gleam".into(), "Result".into());
+        let actual = HostCustomTypeSchema::new(
+            "",
+            "gleam",
+            "Result",
+            2,
+            [
+                HostCustomConstructorSchema::new(
+                    "Ok",
+                    [HostCustomFieldSchema::new(
+                        None::<EcoString>,
+                        HostSchemaType::parameter(0),
+                    )],
+                ),
+                HostCustomConstructorSchema::new(
+                    "Error",
+                    [HostCustomFieldSchema::new(
+                        None::<EcoString>,
+                        HostSchemaType::parameter(1),
+                    )],
+                ),
+            ],
+        );
+        let signature = FunctionTemplateSignature::new(
+            FunctionTemplateId::in_module(ModuleId::new(0), 0),
+            TypeScheme::new(1),
+            FunctionShape::new(
+                Vec::new(),
+                ValueShape::Custom(CustomValueShape::new(
+                    result,
+                    vec![ValueShape::Parameter(TypeParameterId(0)), ValueShape::Nil],
+                    CustomConstructorRefinement::Any,
+                )),
+            ),
+        );
+
+        assert_eq!(
+            validate_host_custom_schema(
+                &ProgramRegistry::new(Vec::new()),
+                &"application".into(),
+                &HostCallSite::new(
+                    "host/result".into(),
+                    "produce".into(),
+                    SourceSpan::new(0, 0),
+                ),
+                &signature,
+                &actual,
+                HostCustomTypeAccess::SourceDeclaration,
+            ),
+            Ok(()),
+        );
+    }
+
+    #[test]
+    fn rejects_a_malformed_compiler_owned_result_schema_before_argument_count() {
+        let result = CustomTypeName::new("".into(), "gleam".into(), "Result".into());
+        let expected = HostCustomTypeSchema::new(
+            "",
+            "gleam",
+            "Result",
+            2,
+            [
+                HostCustomConstructorSchema::new(
+                    "Ok",
+                    [HostCustomFieldSchema::new(
+                        None::<EcoString>,
+                        HostSchemaType::parameter(0),
+                    )],
+                ),
+                HostCustomConstructorSchema::new(
+                    "Error",
+                    [HostCustomFieldSchema::new(
+                        None::<EcoString>,
+                        HostSchemaType::parameter(1),
+                    )],
+                ),
+            ],
+        );
+        let actual = HostCustomTypeSchema::new(
+            "",
+            "gleam",
+            "Result",
+            2,
+            [HostCustomConstructorSchema::new(
+                "Success",
+                [HostCustomFieldSchema::new(
+                    None::<EcoString>,
+                    HostSchemaType::parameter(0),
+                )],
+            )],
+        );
+        let signature = FunctionTemplateSignature::new(
+            FunctionTemplateId::in_module(ModuleId::new(0), 0),
+            TypeScheme::new(0),
+            FunctionShape::new(
+                Vec::new(),
+                ValueShape::Custom(CustomValueShape::new(
+                    result,
+                    vec![ValueShape::Int],
+                    CustomConstructorRefinement::Any,
+                )),
+            ),
+        );
+
+        assert_eq!(
+            validate_host_custom_schema(
+                &ProgramRegistry::new(Vec::new()),
+                &"application".into(),
+                &HostCallSite::new(
+                    "host/result".into(),
+                    "produce".into(),
+                    SourceSpan::new(0, 0),
+                ),
+                &signature,
+                &actual,
+                HostCustomTypeAccess::SourceDeclaration,
+            ),
+            Err(PlanError::HostProviderLink {
+                package: "application".into(),
+                module: "host/result".into(),
+                function: "produce".into(),
+                reason: Box::new(HostProviderLinkReason::CustomSchemaMismatch { expected, actual }),
+            }),
+        );
+    }
+
+    #[test]
     fn validates_a_custom_schema_referenced_through_a_nested_type_argument() {
         let custom_type = CustomTypeName::new("application".into(), "main".into(), "Boxed".into());
         let definition = CustomTypeDefinition::new(
@@ -344,6 +534,7 @@ mod tests {
         let registry = ProgramRegistry::new(vec![ModuleRegistry::new(
             "main".into(),
             vec![definition],
+            Vec::new(),
             std::collections::HashMap::new(),
             ConstantSignatures::default(),
         )]);
@@ -362,13 +553,16 @@ mod tests {
         );
         let parameter = TypeParameterId(0);
         let shape = FunctionShape::new(
-            vec![ValueShape::List(Box::new(ValueShape::Custom(
-                CustomValueShape::new(
-                    custom_type,
-                    vec![ValueShape::Parameter(parameter)],
-                    CustomConstructorRefinement::Any,
-                ),
-            )))],
+            vec![ValueShape::External(ExternalValueShape::new(
+                ExternalTypeName::new("storage".into(), "storage/cell".into(), "Cell".into()),
+                vec![ValueShape::List(Box::new(ValueShape::Custom(
+                    CustomValueShape::new(
+                        custom_type,
+                        vec![ValueShape::Parameter(parameter)],
+                        CustomConstructorRefinement::Any,
+                    ),
+                )))],
+            ))],
             ValueShape::Bool,
         );
         let module = ModuleId::new(0);
@@ -414,6 +608,7 @@ mod tests {
         let registry = ProgramRegistry::new(vec![ModuleRegistry::new(
             "domain/marker".into(),
             vec![definition],
+            Vec::new(),
             std::collections::HashMap::new(),
             ConstantSignatures::default(),
         )]);
@@ -573,6 +768,7 @@ mod tests {
             let registry = ProgramRegistry::new(vec![ModuleRegistry::new(
                 "domain/marker".into(),
                 vec![definition],
+                Vec::new(),
                 std::collections::HashMap::new(),
                 ConstantSignatures::default(),
             )]);
@@ -631,6 +827,7 @@ mod tests {
             let registry = ProgramRegistry::new(vec![ModuleRegistry::new(
                 "domain/marker".into(),
                 vec![definition],
+                Vec::new(),
                 std::collections::HashMap::new(),
                 ConstantSignatures::default(),
             )]);
@@ -677,6 +874,7 @@ mod tests {
         let registry = ProgramRegistry::new(vec![ModuleRegistry::new(
             "domain/marker".into(),
             vec![definition],
+            Vec::new(),
             std::collections::HashMap::new(),
             ConstantSignatures::default(),
         )]);
@@ -737,6 +935,7 @@ mod tests {
         let registry = ProgramRegistry::new(vec![ModuleRegistry::new(
             "domain/box".into(),
             vec![definition],
+            Vec::new(),
             std::collections::HashMap::new(),
             ConstantSignatures::default(),
         )]);

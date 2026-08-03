@@ -1,9 +1,9 @@
 use crate::plan::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomExpr, CustomFunctionExpr,
-    Expr, FloatExpr, FloatFunctionExpr, FunctionExpr, FunctionFunctionExpr, GenericFunctionExpr,
-    IntExpr, IntFunctionExpr, ListExpr, ListFunctionExpr, LocalId, NilExpr, NilFunctionExpr,
-    StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr, UtfCodepointExpr,
-    UtfCodepointFunctionExpr,
+    Expr, ExternalExpr, ExternalFunctionExpr, FloatExpr, FloatFunctionExpr, FunctionExpr,
+    FunctionFunctionExpr, GenericFunctionExpr, IntExpr, IntFunctionExpr, ListExpr,
+    ListFunctionExpr, LocalId, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
+    TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
 use crate::planner::context::{FunctionLocalBinding, ModuleFunctionTarget, PlanContext};
 use crate::planner::error::{
@@ -33,6 +33,8 @@ pub(super) fn plan_var(
                 Expr::tuple(TupleExpr::local_get(local, name, type_).with_shape(shape))
             } else if let Some(local) = context.lookup_custom_local(&name) {
                 Expr::custom(CustomExpr::local_get(local, name))
+            } else if let Some(local) = context.lookup_external_local(&name) {
+                Expr::external(ExternalExpr::local_get(local, name))
             } else if let Some((local, item_shape)) = context.lookup_list_local(&name) {
                 Expr::list(ListExpr::local_get(local, name).with_item_shape(item_shape))
             } else if let Some((binding, shape)) = context.lookup_function_local(&name) {
@@ -184,6 +186,9 @@ fn function_local_get(
         }
         FunctionLocalBinding::Custom(local) => {
             FunctionExpr::custom(CustomFunctionExpr::local_get(local, name))
+        }
+        FunctionLocalBinding::External(local) => {
+            FunctionExpr::external(ExternalFunctionExpr::local_get(local, name))
         }
         FunctionLocalBinding::Float { local, type_ } => {
             FunctionExpr::float(FloatFunctionExpr::local_get(local, name, type_))

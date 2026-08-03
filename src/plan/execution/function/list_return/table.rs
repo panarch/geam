@@ -1,12 +1,15 @@
 use super::{
-    BitArrayListFunctionBody, BitArrayListFunctionId, BoolListFunctionBody, BoolListFunctionId,
-    CustomListFunctionBody, CustomListFunctionId, FloatListFunctionBody, FloatListFunctionId,
-    FunctionListFunctionBody, FunctionListFunctionId, IntListFunctionBody, IntListFunctionId,
-    ListListFunctionBody, ListListFunctionId, NilListFunctionBody, NilListFunctionId,
-    ParameterListFunctionBody, ParameterListFunctionId, ParameterListListFunctionBody,
-    ParameterListListFunctionId, StringListFunctionBody, StringListFunctionId,
-    TupleListFunctionBody, TupleListFunctionId, UtfCodepointListFunctionBody,
-    UtfCodepointListFunctionId,
+    BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId,
+    ExecutionBitArrayListFunctionBody, ExecutionBoolListFunctionBody,
+    ExecutionCustomListFunctionBody, ExecutionExternalListFunctionBody,
+    ExecutionFloatListFunctionBody, ExecutionFunctionListFunctionBody,
+    ExecutionIntListFunctionBody, ExecutionListListFunctionBody, ExecutionNilListFunctionBody,
+    ExecutionParameterListFunctionBody, ExecutionParameterListListFunctionBody,
+    ExecutionStringListFunctionBody, ExecutionTupleListFunctionBody,
+    ExecutionUtfCodepointListFunctionBody, ExternalListFunctionId, FloatListFunctionId,
+    FunctionListFunctionId, IntListFunctionId, ListListFunctionId, NilListFunctionId,
+    ParameterListFunctionId, ParameterListListFunctionId, StringListFunctionId,
+    TupleListFunctionId, UtfCodepointListFunctionId,
 };
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::{ExecutionFunction, ExecutionProfile, write_table};
@@ -15,55 +18,59 @@ use std::convert::Infallible;
 pub(in crate::plan::execution) struct ListFunctionTables<Profile: ExecutionProfile> {
     pub(in crate::plan::execution) parameter_list_functions: Vec<(
         ParameterListFunctionId,
-        ExecutionFunction<Profile, ParameterListFunctionBody>,
+        ExecutionFunction<Profile, ExecutionParameterListFunctionBody<Profile>>,
     )>,
     pub(in crate::plan::execution) int_list_functions: Vec<(
         IntListFunctionId,
-        ExecutionFunction<Profile, IntListFunctionBody>,
+        ExecutionFunction<Profile, ExecutionIntListFunctionBody<Profile>>,
     )>,
     pub(in crate::plan::execution) string_list_functions: Vec<(
         StringListFunctionId,
-        ExecutionFunction<Profile, StringListFunctionBody>,
+        ExecutionFunction<Profile, ExecutionStringListFunctionBody<Profile>>,
     )>,
     pub(in crate::plan::execution) bit_array_list_functions: Vec<(
         BitArrayListFunctionId,
-        ExecutionFunction<Profile, BitArrayListFunctionBody>,
+        ExecutionFunction<Profile, ExecutionBitArrayListFunctionBody<Profile>>,
     )>,
     pub(in crate::plan::execution) utf_codepoint_list_functions: Vec<(
         UtfCodepointListFunctionId,
-        ExecutionFunction<Profile, UtfCodepointListFunctionBody>,
+        ExecutionFunction<Profile, ExecutionUtfCodepointListFunctionBody<Profile>>,
     )>,
     pub(in crate::plan::execution) custom_list_functions: Vec<(
         CustomListFunctionId,
-        ExecutionFunction<Profile, CustomListFunctionBody>,
+        ExecutionFunction<Profile, ExecutionCustomListFunctionBody<Profile>>,
+    )>,
+    pub(in crate::plan::execution) external_list_functions: Vec<(
+        ExternalListFunctionId,
+        ExecutionFunction<Profile, ExecutionExternalListFunctionBody<Profile>>,
     )>,
     pub(in crate::plan::execution) float_list_functions: Vec<(
         FloatListFunctionId,
-        ExecutionFunction<Profile, FloatListFunctionBody>,
+        ExecutionFunction<Profile, ExecutionFloatListFunctionBody<Profile>>,
     )>,
     pub(in crate::plan::execution) bool_list_functions: Vec<(
         BoolListFunctionId,
-        ExecutionFunction<Profile, BoolListFunctionBody>,
+        ExecutionFunction<Profile, ExecutionBoolListFunctionBody<Profile>>,
     )>,
     pub(in crate::plan::execution) nil_list_functions: Vec<(
         NilListFunctionId,
-        ExecutionFunction<Profile, NilListFunctionBody>,
+        ExecutionFunction<Profile, ExecutionNilListFunctionBody<Profile>>,
     )>,
     pub(in crate::plan::execution) tuple_list_functions: Vec<(
         TupleListFunctionId,
-        ExecutionFunction<Profile, TupleListFunctionBody>,
+        ExecutionFunction<Profile, ExecutionTupleListFunctionBody<Profile>>,
     )>,
     pub(in crate::plan::execution) parameter_list_list_functions: Vec<(
         ParameterListListFunctionId,
-        ExecutionFunction<Profile, ParameterListListFunctionBody>,
+        ExecutionFunction<Profile, ExecutionParameterListListFunctionBody<Profile>>,
     )>,
     pub(in crate::plan::execution) list_list_functions: Vec<(
         ListListFunctionId,
-        ExecutionFunction<Profile, ListListFunctionBody>,
+        ExecutionFunction<Profile, ExecutionListListFunctionBody<Profile>>,
     )>,
     pub(in crate::plan::execution) function_list_functions: Vec<(
         FunctionListFunctionId,
-        ExecutionFunction<Profile, FunctionListFunctionBody>,
+        ExecutionFunction<Profile, ExecutionFunctionListFunctionBody<Profile>>,
     )>,
 }
 
@@ -106,6 +113,13 @@ impl Explain for ListFunctionTables<Infallible> {
             context,
             "list.custom",
             self.custom_list_functions
+                .iter()
+                .map(|(_, function)| function),
+        );
+        write_table(
+            context,
+            "list.external",
+            self.external_list_functions
                 .iter()
                 .map(|(_, function)| function),
         );

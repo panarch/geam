@@ -66,6 +66,14 @@ impl GraphValue for crate::plan::execution::graph::CustomLocal {
     }
 }
 
+impl GraphValue for crate::plan::execution::graph::ExternalLocal {
+    type Evaluated = crate::runtime::EvaluatedExternalValue;
+
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
+        environment.external(*self)
+    }
+}
+
 impl GraphValue for crate::plan::execution::graph::BoolLocalId {
     type Evaluated = bool;
 
@@ -104,67 +112,72 @@ macro_rules! list_graph_value {
 
 list_graph_value!(
     crate::plan::execution::graph::ParameterListLocalId,
-    crate::runtime::state::ParameterListValueId,
+    crate::runtime::state::list::ParameterListValueId,
     parameter_list
 );
 list_graph_value!(
     crate::plan::execution::graph::IntListLocalId,
-    crate::runtime::state::IntListValueId,
+    crate::runtime::state::list::IntListValueId,
     int_list
 );
 list_graph_value!(
     crate::plan::execution::graph::StringListLocalId,
-    crate::runtime::state::StringListValueId,
+    crate::runtime::state::list::StringListValueId,
     string_list
 );
 list_graph_value!(
     crate::plan::execution::graph::BitArrayListLocalId,
-    crate::runtime::state::BitArrayListValueId,
+    crate::runtime::state::list::BitArrayListValueId,
     bit_array_list
 );
 list_graph_value!(
     crate::plan::execution::graph::UtfCodepointListLocalId,
-    crate::runtime::state::UtfCodepointListValueId,
+    crate::runtime::state::list::UtfCodepointListValueId,
     utf_codepoint_list
 );
 list_graph_value!(
     crate::plan::execution::graph::CustomListLocalId,
-    crate::runtime::state::CustomListValueId,
+    crate::runtime::state::list::CustomListValueId,
     custom_list
 );
 list_graph_value!(
+    crate::plan::execution::graph::ExternalListLocalId,
+    crate::runtime::state::list::ExternalListValueId,
+    external_list
+);
+list_graph_value!(
     crate::plan::execution::graph::FloatListLocalId,
-    crate::runtime::state::FloatListValueId,
+    crate::runtime::state::list::FloatListValueId,
     float_list
 );
 list_graph_value!(
     crate::plan::execution::graph::BoolListLocalId,
-    crate::runtime::state::BoolListValueId,
+    crate::runtime::state::list::BoolListValueId,
     bool_list
 );
 list_graph_value!(
     crate::plan::execution::graph::NilListLocalId,
-    crate::runtime::state::NilListValueId,
+    crate::runtime::state::list::NilListValueId,
     nil_list
 );
 list_graph_value!(
     crate::plan::execution::graph::TupleListLocalId,
-    crate::runtime::state::TupleListValueId,
+    crate::runtime::state::list::TupleListValueId,
     tuple_list
 );
 list_graph_value!(
     crate::plan::execution::graph::ParameterListListLocalId,
-    crate::runtime::state::ParameterListListValueId,
+    crate::runtime::state::list::ParameterListListValueId,
     parameter_list_list
 );
 list_graph_value!(
     crate::plan::execution::graph::ListListLocalId,
-    crate::runtime::state::ListListValueId,
+    crate::runtime::state::list::ListListValueId,
     list_list
 );
 list_graph_value!(
     crate::plan::execution::graph::FunctionListLocalId,
-    crate::runtime::state::FunctionListValueId,
+    crate::runtime::state::list::FunctionListValueId,
     function_list
 );
 
@@ -245,6 +258,14 @@ impl GraphValue for crate::plan::execution::graph::CustomFunctionLocal {
     }
 }
 
+impl GraphValue for crate::plan::execution::graph::ExternalFunctionLocal {
+    type Evaluated = crate::runtime::EvaluatedExternalFunction;
+
+    fn read(&self, environment: &BlockEnvironment) -> Self::Evaluated {
+        environment.external_function(self)
+    }
+}
+
 impl GraphValue for crate::plan::execution::graph::ListFunctionLocal {
     type Evaluated = crate::runtime::EvaluatedListFunction;
 
@@ -274,6 +295,7 @@ impl GraphValue for crate::plan::execution::graph::FunctionLocal {
             Self::BitArray(local) => environment.bit_array_function(*local).into(),
             Self::UtfCodepoint(local) => environment.utf_codepoint_function(*local).into(),
             Self::Custom(local) => environment.custom_function(local).into(),
+            Self::External(local) => environment.external_function(local).into(),
             Self::Bool(local) => environment.bool_function(*local).into(),
             Self::Nil(local) => environment.nil_function(*local).into(),
             Self::Tuple(local) => environment.tuple_function(*local).into(),

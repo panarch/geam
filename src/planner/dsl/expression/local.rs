@@ -74,6 +74,9 @@ pub(super) fn list_local(index: usize, element_type: ValueType) -> ListLocal {
             ListLocal::utf_codepoint(crate::plan::UtfCodepointListLocalId(index))
         }
         ValueType::Custom(item_type) => ListLocal::custom(CustomListLocalId(index), item_type),
+        ValueType::External(item_type) => {
+            ListLocal::external(crate::plan::ExternalListLocalId(index), item_type)
+        }
         ValueType::Float => ListLocal::float(FloatListLocalId(index)),
         ValueType::Bool => ListLocal::bool(BoolListLocalId(index)),
         ValueType::Nil => ListLocal::nil(NilListLocalId(index)),
@@ -93,9 +96,10 @@ mod tests {
     };
     use crate::plan::{
         BitArrayExpr, BitArrayListLocalId, BitArrayLocalId, BoolExpr, BoolListLocalId, BoolLocalId,
-        CustomListLocalId, CustomType, CustomTypeName, FloatExpr, FloatListLocalId, FloatLocalId,
-        FunctionListLocalId, FunctionType, GenericListLocalId, IntExpr, IntListLocalId, IntLocalId,
-        ListExpr, ListListLocalId, ListLocal, NilExpr, NilListLocalId, NilLocalId, StringExpr,
+        CustomListLocalId, CustomType, CustomTypeName, ExternalListLocalId, ExternalType,
+        ExternalTypeName, FloatExpr, FloatListLocalId, FloatLocalId, FunctionListLocalId,
+        FunctionType, GenericListLocalId, IntExpr, IntListLocalId, IntLocalId, ListExpr,
+        ListListLocalId, ListLocal, NilExpr, NilListLocalId, NilLocalId, StringExpr,
         StringListLocalId, StringLocalId, TupleExpr, TupleListLocalId, TupleLocalId,
         TypeParameterId, UtfCodepointExpr, UtfCodepointListLocalId, UtfCodepointLocalId, ValueType,
     };
@@ -178,6 +182,17 @@ mod tests {
             ListExpr::local_get(
                 ListLocal::custom(CustomListLocalId(16), custom_type),
                 "customs".into(),
+            ),
+        );
+        let external_type = ExternalType::new(
+            ExternalTypeName::new("geam".into(), "main".into(), "Counter".into()),
+            Vec::new(),
+        );
+        assert_eq!(
+            local_list(18, "externals", ValueType::External(external_type.clone()),).0,
+            ListExpr::local_get(
+                ListLocal::external(ExternalListLocalId(18), external_type),
+                "externals".into(),
             ),
         );
         assert_eq!(

@@ -1,22 +1,22 @@
 use super::expression::{
     BitArrayExpr, BitArrayListExpr, BoolExpr, BoolListExpr, CallArg, CustomExpr, CustomListExpr,
-    FloatExpr, FloatListExpr, FunctionListExpr, IntExpr, IntListExpr, ListListExpr, NilExpr,
-    NilListExpr, StringExpr, StringListExpr, TupleExpr, TupleListExpr, UtfCodepointExpr,
-    UtfCodepointListExpr,
+    ExternalExpr, ExternalListExpr, FloatExpr, FloatListExpr, FunctionListExpr, IntExpr,
+    IntListExpr, ListListExpr, NilExpr, NilListExpr, StringExpr, StringListExpr, TupleExpr,
+    TupleListExpr, UtfCodepointExpr, UtfCodepointListExpr,
 };
 use super::id::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
-    CustomFunctionLocal, CustomLocal, CustomLocalId, FloatFunctionLocalId, FloatLocalId,
-    FunctionFunctionLocal, FunctionTemplateId, GenericFunctionLocal, GenericLocal,
-    IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId,
-    StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
-    UtfCodepointFunctionLocalId, UtfCodepointLocalId,
+    CustomFunctionLocal, CustomLocal, CustomLocalId, ExternalFunctionLocal, ExternalLocal,
+    ExternalLocalId, FloatFunctionLocalId, FloatLocalId, FunctionFunctionLocal, FunctionTemplateId,
+    GenericFunctionLocal, GenericLocal, IntFunctionLocalId, IntLocalId, ListFunctionLocal,
+    ListLocal, NilFunctionLocalId, NilLocalId, StringFunctionLocalId, StringLocalId,
+    TupleFunctionLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
 use super::step::Step;
 use super::{FunctionInstantiation, FunctionTemplateSignature, TypeScheme};
 use crate::plan::{
-    CustomFunctionType, CustomType, FunctionFunctionType, FunctionType, ValueStorageShape,
-    ValueType,
+    CustomFunctionType, CustomType, ExternalFunctionType, ExternalType, FunctionFunctionType,
+    FunctionType, ValueStorageShape, ValueType,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -73,6 +73,7 @@ pub(crate) enum ParamLocal {
     BitArray(BitArrayLocalId),
     UtfCodepoint(UtfCodepointLocalId),
     Custom(CustomLocal),
+    External(ExternalLocal),
     Bool(BoolLocalId),
     Nil(NilLocalId),
     Tuple {
@@ -101,6 +102,7 @@ pub(crate) enum ParamLocal {
         type_: FunctionType,
     },
     CustomFunction(CustomFunctionLocal),
+    ExternalFunction(ExternalFunctionLocal),
     BoolFunction {
         local: BoolFunctionLocalId,
         type_: FunctionType,
@@ -136,6 +138,13 @@ pub(crate) struct CustomReturn {
     body_shape: crate::plan::CustomValueShape,
     body: ReturnBody<super::CustomExprKind, crate::plan::FunctionCallTarget<FunctionInstantiation>>,
 }
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ExternalReturn {
+    signature_shape: crate::plan::ExternalValueShape,
+    body_shape: crate::plan::ExternalValueShape,
+    body:
+        ReturnBody<super::ExternalExprKind, crate::plan::FunctionCallTarget<FunctionInstantiation>>,
+}
 pub(crate) type BoolReturn =
     ReturnBody<BoolExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
 pub(crate) type NilReturn =
@@ -160,6 +169,8 @@ pub(crate) type UtfCodepointListReturn =
     ReturnBody<UtfCodepointListExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
 pub(crate) type CustomListReturn =
     ReturnBody<CustomListExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
+pub(crate) type ExternalListReturn =
+    ReturnBody<ExternalListExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
 pub(crate) type BoolListReturn =
     ReturnBody<BoolListExpr, crate::plan::FunctionCallTarget<FunctionInstantiation>>;
 pub(crate) type NilListReturn =
@@ -189,6 +200,14 @@ pub(crate) struct CustomFunctionReturn {
     type_: CustomFunctionType,
     body: ReturnBody<
         super::CustomFunctionExprKind,
+        crate::plan::FunctionCallTarget<FunctionInstantiation>,
+    >,
+}
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ExternalFunctionReturn {
+    type_: ExternalFunctionType,
+    body: ReturnBody<
+        super::ExternalFunctionExprKind,
         crate::plan::FunctionCallTarget<FunctionInstantiation>,
     >,
 }
@@ -224,6 +243,10 @@ pub(crate) enum ListReturn {
     Custom {
         item_type: CustomType,
         body: CustomListReturn,
+    },
+    External {
+        item_type: ExternalType,
+        body: ExternalListReturn,
     },
     Bool(BoolListReturn),
     Nil(NilListReturn),
@@ -263,6 +286,10 @@ impl ListReturn {
             ListExpr::Custom(expression) => Self::Custom {
                 item_type: expression.item().item_type(),
                 body: CustomListReturn::expr(expression),
+            },
+            ListExpr::External(expression) => Self::External {
+                item_type: expression.item().item_type(),
+                body: ExternalListReturn::expr(expression),
             },
             ListExpr::Bool(expression) => Self::Bool(BoolListReturn::expr(expression)),
             ListExpr::Nil(expression) => Self::Nil(NilListReturn::expr(expression)),
@@ -305,6 +332,10 @@ impl ListReturn {
             ValueType::Custom(item_type) => Self::Custom {
                 item_type,
                 body: CustomListReturn::tail_call(function, args),
+            },
+            ValueType::External(item_type) => Self::External {
+                item_type,
+                body: ExternalListReturn::tail_call(function, args),
             },
             ValueType::Bool => Self::Bool(BoolListReturn::tail_call(function, args)),
             ValueType::Nil => Self::Nil(NilListReturn::tail_call(function, args)),
@@ -373,6 +404,19 @@ impl ListReturn {
             ) if true_type == false_type => Self::Custom {
                 item_type: true_type,
                 body: CustomListReturn::bool_case(subject, true_, false_),
+            },
+            (
+                Self::External {
+                    item_type: true_type,
+                    body: true_,
+                },
+                Self::External {
+                    item_type: false_type,
+                    body: false_,
+                },
+            ) if true_type == false_type => Self::External {
+                item_type: true_type,
+                body: ExternalListReturn::bool_case(subject, true_, false_),
             },
             (Self::Bool(true_), Self::Bool(false_)) => {
                 Self::Bool(BoolListReturn::bool_case(subject, true_, false_))
@@ -514,6 +558,22 @@ impl ListReturn {
                 Some(Self::Custom {
                     item_type,
                     body: CustomListReturn::int_case(subject, clauses, fallback),
+                })
+            }
+            Self::External {
+                item_type,
+                body: fallback,
+            } => {
+                let clauses = into_list_return_clauses(clauses, |branch| match branch {
+                    Self::External {
+                        item_type: branch_type,
+                        body,
+                    } if branch_type == item_type => Some(body),
+                    _ => None,
+                })?;
+                Some(Self::External {
+                    item_type,
+                    body: ExternalListReturn::int_case(subject, clauses, fallback),
                 })
             }
             Self::Bool(fallback) => Some(Self::Bool(BoolListReturn::int_case(
@@ -679,6 +739,22 @@ impl ListReturn {
                     body: CustomListReturn::float_case(subject, clauses, fallback),
                 })
             }
+            Self::External {
+                item_type,
+                body: fallback,
+            } => {
+                let clauses = into_list_return_clauses(clauses, |branch| match branch {
+                    Self::External {
+                        item_type: branch_type,
+                        body,
+                    } if branch_type == item_type => Some(body),
+                    _ => None,
+                })?;
+                Some(Self::External {
+                    item_type,
+                    body: ExternalListReturn::float_case(subject, clauses, fallback),
+                })
+            }
             Self::Bool(fallback) => Some(Self::Bool(BoolListReturn::float_case(
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
@@ -842,6 +918,22 @@ impl ListReturn {
                     body: CustomListReturn::string_case(subject, clauses, fallback),
                 })
             }
+            Self::External {
+                item_type,
+                body: fallback,
+            } => {
+                let clauses = into_list_return_clauses(clauses, |branch| match branch {
+                    Self::External {
+                        item_type: branch_type,
+                        body,
+                    } if branch_type == item_type => Some(body),
+                    _ => None,
+                })?;
+                Some(Self::External {
+                    item_type,
+                    body: ExternalListReturn::string_case(subject, clauses, fallback),
+                })
+            }
             Self::Bool(fallback) => Some(Self::Bool(BoolListReturn::string_case(
                 subject,
                 into_list_return_clauses(clauses, |branch| match branch {
@@ -944,6 +1036,10 @@ impl ListReturn {
             Self::Custom { item_type, body } => Self::Custom {
                 item_type,
                 body: CustomListReturn::block(steps, body),
+            },
+            Self::External { item_type, body } => Self::External {
+                item_type,
+                body: ExternalListReturn::block(steps, body),
             },
             Self::Bool(return_) => Self::Bool(BoolListReturn::block(steps, return_)),
             Self::Nil(return_) => Self::Nil(NilListReturn::block(steps, return_)),
@@ -1048,6 +1144,9 @@ pub(crate) enum ReturnExprKind {
     Custom {
         body: CustomReturn,
     },
+    External {
+        body: ExternalReturn,
+    },
     Bool {
         body: BoolReturn,
     },
@@ -1081,6 +1180,10 @@ pub(crate) enum ReturnExprKind {
     CustomList {
         item_type: CustomType,
         body: CustomListReturn,
+    },
+    ExternalList {
+        item_type: ExternalType,
+        body: ExternalListReturn,
     },
     FloatList {
         body: FloatListReturn,
@@ -1130,6 +1233,10 @@ pub(crate) enum ReturnExprKind {
     CustomFunction {
         shape: crate::plan::FunctionShape,
         body: CustomFunctionReturn,
+    },
+    ExternalFunction {
+        shape: crate::plan::FunctionShape,
+        body: ExternalFunctionReturn,
     },
     BoolFunction {
         shape: crate::plan::FunctionShape,
@@ -1287,6 +1394,12 @@ impl ReturnExpr {
         }
     }
 
+    pub(crate) fn external_body(body: ExternalReturn) -> Self {
+        Self {
+            kind: ReturnExprKind::External { body },
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn bool(_runtime_id: BoolFunctionId, expression: BoolExpr) -> Self {
         Self::bool_body(ReturnBody::expr(expression))
@@ -1355,6 +1468,12 @@ impl ReturnExpr {
     pub(crate) fn custom_list_body(item_type: CustomType, body: CustomListReturn) -> Self {
         Self {
             kind: ReturnExprKind::CustomList { item_type, body },
+        }
+    }
+
+    pub(crate) fn external_list_body(item_type: ExternalType, body: ExternalListReturn) -> Self {
+        Self {
+            kind: ReturnExprKind::ExternalList { item_type, body },
         }
     }
 
@@ -1457,6 +1576,15 @@ impl ReturnExpr {
         }
     }
 
+    pub(crate) fn external_function_shape_body(
+        shape: crate::plan::FunctionShape,
+        body: ExternalFunctionReturn,
+    ) -> Self {
+        Self {
+            kind: ReturnExprKind::ExternalFunction { shape, body },
+        }
+    }
+
     pub(crate) fn bool_function_shape_body(
         shape: crate::plan::FunctionShape,
         body: BoolFunctionReturn,
@@ -1520,6 +1648,7 @@ impl ReturnExpr {
             ReturnExprKind::BitArray { .. } => ValueType::BitArray,
             ReturnExprKind::UtfCodepoint { .. } => ValueType::UtfCodepoint,
             ReturnExprKind::Custom { body } => ValueType::Custom(body.shape().type_().clone()),
+            ReturnExprKind::External { body } => ValueType::External(body.shape().type_().clone()),
             ReturnExprKind::Bool { .. } => ValueType::Bool,
             ReturnExprKind::Nil { .. } => ValueType::Nil,
             ReturnExprKind::Tuple { type_, .. } => ValueType::Tuple(type_.clone()),
@@ -1537,6 +1666,9 @@ impl ReturnExpr {
             }
             ReturnExprKind::CustomList { item_type, .. } => {
                 ValueType::List(Box::new(ValueType::Custom(item_type.clone())))
+            }
+            ReturnExprKind::ExternalList { item_type, .. } => {
+                ValueType::List(Box::new(ValueType::External(item_type.clone())))
             }
             ReturnExprKind::FloatList { .. } => ValueType::List(Box::new(ValueType::Float)),
             ReturnExprKind::BoolList { .. } => ValueType::List(Box::new(ValueType::Bool)),
@@ -1557,6 +1689,7 @@ impl ReturnExpr {
             | ReturnExprKind::BitArrayFunction { shape, .. }
             | ReturnExprKind::UtfCodepointFunction { shape, .. }
             | ReturnExprKind::CustomFunction { shape, .. }
+            | ReturnExprKind::ExternalFunction { shape, .. }
             | ReturnExprKind::BoolFunction { shape, .. }
             | ReturnExprKind::NilFunction { shape, .. }
             | ReturnExprKind::TupleFunction { shape, .. }
@@ -1673,6 +1806,105 @@ fn custom_return_body(
     }
 }
 
+impl ExternalReturn {
+    pub(crate) fn with_signature_shape(
+        signature_shape: crate::plan::ExternalValueShape,
+        expression: ExternalExpr,
+    ) -> Self {
+        let (body_shape, kind) = expression.into_parts();
+        Self {
+            signature_shape,
+            body_shape,
+            body: external_return_body(kind),
+        }
+    }
+
+    pub(crate) fn shape(&self) -> &crate::plan::ExternalValueShape {
+        &self.body_shape
+    }
+
+    pub(crate) fn signature_shape(&self) -> &crate::plan::ExternalValueShape {
+        &self.signature_shape
+    }
+
+    pub(crate) fn body(
+        &self,
+    ) -> &ReturnBody<super::ExternalExprKind, crate::plan::FunctionCallTarget<FunctionInstantiation>>
+    {
+        &self.body
+    }
+}
+
+fn external_return_body(
+    kind: super::ExternalExprKind,
+) -> ReturnBody<super::ExternalExprKind, crate::plan::FunctionCallTarget<FunctionInstantiation>> {
+    use super::ExternalExprKind as K;
+
+    match kind {
+        K::Call {
+            function,
+            args,
+            site,
+        } => ReturnBody::tail_call(crate::plan::FunctionCallTarget::new(function, site), args),
+        K::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            *subject,
+            external_return_expression(*true_),
+            external_return_expression(*false_),
+        ),
+        K::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            *subject,
+            clauses
+                .into_iter()
+                .map(|(pattern, branch)| (pattern, external_return_expression(branch)))
+                .collect(),
+            external_return_expression(*fallback),
+        ),
+        K::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::float_case(
+            *subject,
+            clauses
+                .into_iter()
+                .map(|(pattern, branch)| (pattern, external_return_expression(branch)))
+                .collect(),
+            external_return_expression(*fallback),
+        ),
+        K::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
+            *subject,
+            clauses
+                .into_iter()
+                .map(|(pattern, branch)| (pattern, external_return_expression(branch)))
+                .collect(),
+            external_return_expression(*fallback),
+        ),
+        K::Block { steps, return_ } => {
+            ReturnBody::block(steps, external_return_expression(*return_))
+        }
+        kind => ReturnBody::expr(kind),
+    }
+}
+
+fn external_return_expression(
+    expression: ExternalExpr,
+) -> ReturnBody<super::ExternalExprKind, crate::plan::FunctionCallTarget<FunctionInstantiation>> {
+    let (_, kind) = expression.into_parts();
+    external_return_body(kind)
+}
+
 impl CustomFunctionReturn {
     pub(crate) fn expr(expression: super::CustomFunctionExpr) -> Self {
         let (type_, kind) = expression.into_parts();
@@ -1755,6 +1987,95 @@ fn custom_function_return_body(
         ),
         K::Block { steps, return_ } => {
             ReturnBody::block(steps, custom_function_return_body(*return_))
+        }
+        kind => ReturnBody::expr(kind),
+    }
+}
+
+impl ExternalFunctionReturn {
+    pub(crate) fn expr(expression: super::ExternalFunctionExpr) -> Self {
+        let (type_, kind) = expression.into_parts();
+        Self {
+            type_,
+            body: external_function_return_body(kind),
+        }
+    }
+
+    pub(crate) fn type_(&self) -> &ExternalFunctionType {
+        &self.type_
+    }
+
+    pub(crate) fn body(
+        &self,
+    ) -> &ReturnBody<
+        super::ExternalFunctionExprKind,
+        crate::plan::FunctionCallTarget<FunctionInstantiation>,
+    > {
+        &self.body
+    }
+}
+
+fn external_function_return_body(
+    kind: super::ExternalFunctionExprKind,
+) -> ReturnBody<
+    super::ExternalFunctionExprKind,
+    crate::plan::FunctionCallTarget<FunctionInstantiation>,
+> {
+    use super::ExternalFunctionExprKind as K;
+
+    match kind {
+        K::Call {
+            function,
+            args,
+            site,
+        } => ReturnBody::tail_call(crate::plan::FunctionCallTarget::new(function, site), args),
+        K::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            *subject,
+            external_function_return_body(*true_),
+            external_function_return_body(*false_),
+        ),
+        K::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            *subject,
+            clauses
+                .into_iter()
+                .map(|(pattern, branch)| (pattern, external_function_return_body(branch)))
+                .collect(),
+            external_function_return_body(*fallback),
+        ),
+        K::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::float_case(
+            *subject,
+            clauses
+                .into_iter()
+                .map(|(pattern, branch)| (pattern, external_function_return_body(branch)))
+                .collect(),
+            external_function_return_body(*fallback),
+        ),
+        K::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
+            *subject,
+            clauses
+                .into_iter()
+                .map(|(pattern, branch)| (pattern, external_function_return_body(branch)))
+                .collect(),
+            external_function_return_body(*fallback),
+        ),
+        K::Block { steps, return_ } => {
+            ReturnBody::block(steps, external_function_return_body(*return_))
         }
         kind => ReturnBody::expr(kind),
     }
@@ -2095,6 +2416,13 @@ impl ParamLocal {
         Self::Custom(CustomLocal::from_shape(local, shape))
     }
 
+    pub(crate) fn external_shape(
+        local: ExternalLocalId,
+        shape: crate::plan::ExternalValueShape,
+    ) -> Self {
+        Self::External(ExternalLocal::from_shape(local, shape))
+    }
+
     pub(crate) fn bool(local: BoolLocalId) -> Self {
         Self::Bool(local)
     }
@@ -2138,6 +2466,10 @@ impl ParamLocal {
         Self::CustomFunction(local)
     }
 
+    pub(crate) fn external_function(local: ExternalFunctionLocal) -> Self {
+        Self::ExternalFunction(local)
+    }
+
     pub(crate) fn bool_function(local: BoolFunctionLocalId, type_: FunctionType) -> Self {
         Self::BoolFunction { local, type_ }
     }
@@ -2171,6 +2503,7 @@ impl ParamLocal {
             Self::BitArray(_) => ValueType::BitArray,
             Self::UtfCodepoint(_) => ValueType::UtfCodepoint,
             Self::Custom(local) => ValueType::Custom(local.type_().clone()),
+            Self::External(local) => ValueType::External(local.type_().clone()),
             Self::Bool(_) => ValueType::Bool,
             Self::Nil(_) => ValueType::Nil,
             Self::Tuple { type_, .. } => ValueType::Tuple(type_.clone()),
@@ -2184,6 +2517,9 @@ impl ParamLocal {
             | Self::NilFunction { type_, .. }
             | Self::TupleFunction { type_, .. } => ValueType::Function(Box::new(type_.clone())),
             Self::CustomFunction(local) => {
+                ValueType::Function(Box::new(local.type_().to_function_type()))
+            }
+            Self::ExternalFunction(local) => {
                 ValueType::Function(Box::new(local.type_().to_function_type()))
             }
             Self::ListFunction(local) => local.value_type(),
@@ -2201,10 +2537,17 @@ impl ParamLocal {
         match self {
             Self::Generic(local) => crate::plan::ValueShape::Parameter(local.parameter()),
             Self::Custom(local) => crate::plan::ValueShape::Custom(local.shape().clone()),
+            Self::External(local) => crate::plan::ValueShape::External(local.shape().clone()),
             Self::CustomFunction(local) => {
                 crate::plan::ValueShape::Function(Box::new(crate::plan::FunctionShape::new(
                     local.type_().argument_shapes().to_vec(),
                     crate::plan::ValueShape::Custom(local.type_().return_().clone()),
+                )))
+            }
+            Self::ExternalFunction(local) => {
+                crate::plan::ValueShape::Function(Box::new(crate::plan::FunctionShape::new(
+                    local.type_().argument_shapes().to_vec(),
+                    crate::plan::ValueShape::External(local.type_().return_().clone()),
                 )))
             }
             Self::GenericFunction(local) => {
@@ -2219,29 +2562,39 @@ impl ParamLocal {
 mod tests {
     use super::{
         BitArrayFunctionReturn, BitArrayListReturn, BoolListReturn, CapturePosition,
-        CustomFunctionReturn, CustomListReturn, CustomReturn, FloatListReturn,
-        FunctionFunctionReturn, FunctionListReturn, FunctionTemplate, GenericFunctionReturn,
-        GenericListReturn, GenericReturn, IntListReturn, ListListReturn, ListReturn, NilListReturn,
-        Param, ParamBinding, ParamLocal, ParamSlot, ParameterListListReturn, ReturnBody,
-        ReturnBodyKind, ReturnExpr, StringListReturn, TupleListReturn, UtfCodepointFunctionReturn,
+        CustomFunctionReturn, CustomListReturn, CustomReturn, ExternalFunctionReturn,
+        ExternalListReturn, ExternalReturn, FloatListReturn, FunctionFunctionReturn,
+        FunctionListReturn, FunctionTemplate, GenericFunctionReturn, GenericListReturn,
+        GenericReturn, IntListReturn, ListListReturn, ListReturn, NilListReturn, Param,
+        ParamBinding, ParamLocal, ParamSlot, ParameterListListReturn, ReturnBody, ReturnBodyKind,
+        ReturnExpr, StringListReturn, TupleListReturn, UtfCodepointFunctionReturn,
     };
     use crate::plan::{
         BitArrayExpr, BoolExpr, BoolFunctionLocalId, BoolLocalId, CustomConstructorRefinement,
         CustomExpr, CustomFunctionExpr, CustomFunctionLocal, CustomFunctionLocalId,
-        CustomFunctionType, CustomType, CustomTypeName, CustomValueShape, FloatExpr,
+        CustomFunctionType, CustomType, CustomTypeName, CustomValueShape, ExternalExpr,
+        ExternalFunctionExpr, ExternalFunctionLocal, ExternalFunctionLocalId, ExternalFunctionType,
+        ExternalLocalId, ExternalType, ExternalTypeName, ExternalValueShape, FloatExpr,
         FloatFunctionLocalId, FloatLocalId, FunctionFunctionExpr, FunctionFunctionLocal,
-        FunctionFunctionLocalId, FunctionFunctionType, FunctionTemplateId, FunctionType,
-        GenericFunctionLocal, GenericFunctionLocalId, GenericFunctionType, GenericLocal,
-        GenericLocalId, IntExpr, IntFunctionLocalId, IntListLocalId, IntLocalId, ListExpr,
-        ListLocal, NilExpr, NilFunctionLocalId, StringExpr, StringFunctionLocalId, TupleExpr,
-        TupleFunctionLocalId, TypeParameterId, UtfCodepointExpr, UtfCodepointListReturn,
-        UtfCodepointLocalId, ValueShape, ValueStorageShape, ValueType,
+        FunctionFunctionLocalId, FunctionFunctionType, FunctionShape, FunctionTemplateId,
+        FunctionType, GenericFunctionLocal, GenericFunctionLocalId, GenericFunctionType,
+        GenericLocal, GenericLocalId, IntExpr, IntFunctionLocalId, IntListLocalId, IntLocalId,
+        ListExpr, ListLocal, NilExpr, NilFunctionLocalId, PanicExpr, PanicSite, StringExpr,
+        StringFunctionLocalId, TupleExpr, TupleFunctionLocalId, TypeParameterId, UtfCodepointExpr,
+        UtfCodepointListReturn, UtfCodepointLocalId, ValueShape, ValueStorageShape, ValueType,
     };
     use num_bigint::BigInt;
 
     fn custom_type() -> CustomType {
         CustomType::new(
             CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
+            Vec::new(),
+        )
+    }
+
+    fn external_type(name: &str) -> ExternalType {
+        ExternalType::new(
+            ExternalTypeName::new("geam".into(), "main".into(), name.into()),
             Vec::new(),
         )
     }
@@ -2488,6 +2841,8 @@ mod tests {
     fn return_expr_value_type_preserves_parametric_and_compound_families() {
         let parameter = TypeParameterId(0);
         let custom = custom_type();
+        let external = external_type("Token");
+        let external_shape = ExternalValueShape::any(external.clone());
         let tuple = vec![ValueType::Int, ValueType::String];
         let nested_type = Box::new(ValueType::List(Box::new(ValueType::Bool)));
         let nested_shape = ValueStorageShape::List(Box::new(ValueShape::Bool));
@@ -2530,6 +2885,17 @@ mod tests {
                 custom.clone(),
                 CustomListReturn::tail_call(tail_call.clone(), Vec::new()),
             ),
+            ReturnExpr::external_body(ExternalReturn::with_signature_shape(
+                external_shape.clone(),
+                ExternalExpr::panic_shape(
+                    PanicExpr::panic_at(None, PanicSite::unknown()),
+                    external_shape.clone(),
+                ),
+            )),
+            ReturnExpr::external_list_body(
+                external.clone(),
+                ExternalListReturn::tail_call(tail_call.clone(), Vec::new()),
+            ),
             ReturnExpr::float_list_body(FloatListReturn::tail_call(tail_call.clone(), Vec::new())),
             ReturnExpr::bool_list_body(BoolListReturn::tail_call(tail_call.clone(), Vec::new())),
             ReturnExpr::nil_list_body(NilListReturn::tail_call(tail_call.clone(), Vec::new())),
@@ -2548,6 +2914,19 @@ mod tests {
             ReturnExpr::generic_function_shape_body(
                 function_shape.clone(),
                 GenericFunctionReturn::tail_call(tail_call.clone(), Vec::new()),
+            ),
+            ReturnExpr::external_function_shape_body(
+                FunctionShape::new(
+                    vec![ValueShape::Int],
+                    ValueShape::External(external_shape.clone()),
+                ),
+                ExternalFunctionReturn::expr(ExternalFunctionExpr::panic(
+                    PanicExpr::panic_at(None, PanicSite::unknown()),
+                    ExternalFunctionType::from_shapes(
+                        vec![ValueShape::Int],
+                        external_shape.clone(),
+                    ),
+                )),
             ),
             ReturnExpr::bit_array_function_shape_body(
                 function_shape.clone(),
@@ -2571,6 +2950,8 @@ mod tests {
                 ValueType::List(Box::new(ValueType::BitArray)),
                 ValueType::List(Box::new(ValueType::UtfCodepoint)),
                 ValueType::List(Box::new(ValueType::Custom(custom))),
+                ValueType::External(external.clone()),
+                ValueType::List(Box::new(ValueType::External(external.clone()))),
                 ValueType::List(Box::new(ValueType::Float)),
                 ValueType::List(Box::new(ValueType::Bool)),
                 ValueType::List(Box::new(ValueType::Nil)),
@@ -2578,6 +2959,10 @@ mod tests {
                 ValueType::List(Box::new(ValueType::List(nested_type))),
                 ValueType::List(Box::new(ValueType::Function(Box::new(function)))),
                 ValueType::Function(Box::new(function_shape.type_())),
+                ValueType::Function(Box::new(FunctionType::new(
+                    vec![ValueType::Int],
+                    ValueType::External(external),
+                ))),
                 ValueType::Function(Box::new(function_shape.type_())),
                 ValueType::Function(Box::new(function_shape.type_())),
             ],
@@ -2617,6 +3002,35 @@ mod tests {
         assert_eq!(
             generic_function.value_shape(),
             ValueShape::Function(Box::new(generic_function_type.shape())),
+        );
+
+        let external_shape = ExternalValueShape::any(external_type("Token"));
+        let external = ParamLocal::external_shape(ExternalLocalId(0), external_shape.clone());
+        assert_eq!(
+            external.value_type(),
+            ValueType::External(external_shape.type_().clone()),
+        );
+        assert_eq!(
+            external.value_shape(),
+            ValueShape::External(external_shape.clone()),
+        );
+
+        let external_function_type =
+            ExternalFunctionType::from_shapes(vec![ValueShape::Int], external_shape.clone());
+        let external_function = ParamLocal::external_function(ExternalFunctionLocal::new(
+            ExternalFunctionLocalId(0),
+            external_function_type.clone(),
+        ));
+        assert_eq!(
+            external_function.value_type(),
+            ValueType::Function(Box::new(external_function_type.to_function_type())),
+        );
+        assert_eq!(
+            external_function.value_shape(),
+            ValueShape::Function(Box::new(FunctionShape::new(
+                vec![ValueShape::Int],
+                ValueShape::External(external_shape),
+            ))),
         );
 
         assert_eq!(ParamLocal::int(IntLocalId(0)).value_type(), ValueType::Int);
@@ -2836,6 +3250,16 @@ mod tests {
             },
         );
 
+        let external_type = external_type("Token");
+        let external = ListExpr::value(Vec::new(), ValueType::External(external_type.clone()));
+        assert_eq!(
+            ListReturn::expr(external.clone()),
+            ListReturn::External {
+                item_type: external_type,
+                body: ExternalListReturn::expr(external.into_external().expect("external list"),),
+            },
+        );
+
         let bool_ = ListExpr::value(
             vec![crate::plan::Expr::bool(BoolExpr::value(true))],
             ValueType::Bool,
@@ -2990,6 +3414,20 @@ mod tests {
             ListReturn::Custom {
                 item_type: custom_type,
                 body: CustomListReturn::tail_call(function, Vec::new()),
+            },
+        );
+
+        let external_type = external_type("Token");
+        let function = tail_call_function(ValueType::External(external_type.clone()));
+        assert_eq!(
+            ListReturn::tail_call(
+                function.clone(),
+                ValueType::External(external_type.clone()),
+                Vec::new(),
+            ),
+            ListReturn::External {
+                item_type: external_type,
+                body: ExternalListReturn::tail_call(function, Vec::new()),
             },
         );
 
@@ -3316,6 +3754,7 @@ mod tests {
             ValueType::BitArray,
             ValueType::UtfCodepoint,
             ValueType::Custom(custom_type()),
+            ValueType::External(external_type("Token")),
             ValueType::Bool,
             ValueType::Nil,
             ValueType::Tuple(vec![ValueType::Int]),
@@ -3388,6 +3827,7 @@ mod tests {
             ValueType::BitArray,
             ValueType::UtfCodepoint,
             ValueType::Custom(custom_type()),
+            ValueType::External(external_type("Token")),
             ValueType::Bool,
             ValueType::Nil,
             ValueType::Tuple(vec![ValueType::Int]),
@@ -3483,6 +3923,10 @@ mod tests {
             ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::String))),
             ValueType::Function(Box::new(FunctionType::new(Vec::new(), ValueType::Int))),
         );
+        assert_case_helpers_reject(
+            ValueType::External(external_type("Left")),
+            ValueType::External(external_type("Right")),
+        );
     }
 
     fn list_return_item_type(return_: &ListReturn) -> ValueType {
@@ -3494,6 +3938,7 @@ mod tests {
             ListReturn::BitArray(_) => ValueType::BitArray,
             ListReturn::UtfCodepoint(_) => ValueType::UtfCodepoint,
             ListReturn::Custom { item_type, .. } => ValueType::Custom(item_type.clone()),
+            ListReturn::External { item_type, .. } => ValueType::External(item_type.clone()),
             ListReturn::Bool(_) => ValueType::Bool,
             ListReturn::Nil(_) => ValueType::Nil,
             ListReturn::Tuple { item_type, .. } => ValueType::Tuple(item_type.clone()),

@@ -1,24 +1,25 @@
 use super::evaluated::{
     EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture, EvaluatedCaptureKind,
-    EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedFloatFunction,
-    EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedFunctionValueKind,
-    EvaluatedGenericFunction, EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction,
-    EvaluatedNeverFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
+    EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedExternalFunction,
+    EvaluatedExternalValue, EvaluatedFloatFunction, EvaluatedFunctionFunction,
+    EvaluatedFunctionValue, EvaluatedFunctionValueKind, EvaluatedGenericFunction,
+    EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction, EvaluatedNeverFunction,
+    EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
     EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
-use super::state::{ParameterListValueId, RuntimeState, StoredListValueId};
+use super::state::list::{ParameterListValueId, RuntimeListStorage, StoredListValueId};
 use super::{
     BitArrayFunctionValue, BoolFunctionValue, CaptureListValue, CaptureValue, CustomFieldValue,
-    CustomFunctionValue, CustomFunctionValueTarget, CustomValue, FloatFunctionValue,
-    FunctionFunctionValue, FunctionValue, FunctionValueKind, GenericFunctionValue,
-    IntFunctionValue, ListFunctionValue, ListValue, NeverFunctionValue, NilFunctionValue,
-    StringFunctionValue, TupleFunctionValue, UtfCodepointFunctionValue, Value,
+    CustomFunctionValue, CustomFunctionValueTarget, CustomValue, ExternalFunctionValue,
+    ExternalValue, FloatFunctionValue, FunctionFunctionValue, FunctionValue, FunctionValueKind,
+    GenericFunctionValue, IntFunctionValue, ListFunctionValue, ListValue, NeverFunctionValue,
+    NilFunctionValue, StringFunctionValue, TupleFunctionValue, UtfCodepointFunctionValue, Value,
 };
-use crate::plan::execution::runtime::RuntimeExecutionPlan;
+use crate::plan::execution::runtime::RuntimeValueMetadata;
 
 pub(super) fn value(
-    plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState<'_, impl Sized>,
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
     value: EvaluatedValue,
 ) -> Value {
     match value {
@@ -28,6 +29,7 @@ pub(super) fn value(
         EvaluatedValue::BitArray(value) => Value::BitArray(value.value()),
         EvaluatedValue::UtfCodepoint(value) => Value::UtfCodepoint(value),
         EvaluatedValue::Custom(value) => Value::Custom(custom(plan, state, value)),
+        EvaluatedValue::External(value) => Value::External(external(plan, state, value)),
         EvaluatedValue::Bool(value) => Value::Bool(value),
         EvaluatedValue::Nil => Value::Nil,
         EvaluatedValue::Tuple(values) => Value::Tuple(
@@ -42,48 +44,66 @@ pub(super) fn value(
     }
 }
 
+fn external(
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
+    value: EvaluatedExternalValue,
+) -> ExternalValue {
+    let (type_id, lease) = value.into_parts();
+    let inspect = |value: &crate::runtime::StoredRuntimeValue| {
+        self::value(plan, state, value.value().clone())
+            .inspect()
+            .to_string()
+            .into()
+    };
+    let inspection = lease
+        .inspection(&crate::host::HostExternalInspection::new(&inspect))
+        .clone();
+    ExternalValue::from_evaluated(plan.external_value_type(type_id), lease, inspection)
+}
+
 fn list(
-    plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState<'_, impl Sized>,
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
     value: &StoredListValueId,
 ) -> ListValue {
     match value {
-        StoredListValueId::Int(value) => ListValue::int(state.values().int_values(value).to_vec()),
-        StoredListValueId::String(value) => {
-            ListValue::string(state.values().string_values(value).to_vec())
-        }
+        StoredListValueId::Int(value) => ListValue::int(state.int_values(value).to_vec()),
+        StoredListValueId::String(value) => ListValue::string(state.string_values(value).to_vec()),
         StoredListValueId::BitArray(value) => ListValue::bit_array(
             state
-                .values()
                 .bit_array_values(value)
                 .iter()
                 .map(|value| value.value())
                 .collect(),
         ),
         StoredListValueId::UtfCodepoint(value) => {
-            ListValue::utf_codepoint(state.values().utf_codepoint_values(value).to_vec())
+            ListValue::utf_codepoint(state.utf_codepoint_values(value).to_vec())
         }
         StoredListValueId::Custom(value) => ListValue::from_evaluated_custom(
             plan.custom_value_type(value.type_id().item_type()),
             state
-                .values()
                 .custom_values(value)
                 .iter()
                 .cloned()
                 .map(|value| custom(plan, state, value))
                 .collect(),
         ),
-        StoredListValueId::Float(value) => {
-            ListValue::float(state.values().float_values(value).to_vec())
-        }
-        StoredListValueId::Bool(value) => {
-            ListValue::bool(state.values().bool_values(value).to_vec())
-        }
-        StoredListValueId::Nil(value) => ListValue::nil(state.values().nil_len(value)),
+        StoredListValueId::External(value) => ListValue::from_evaluated_external(
+            plan.external_value_type(value.type_id().item_type()),
+            state
+                .external_values(value)
+                .iter()
+                .cloned()
+                .map(|value| external(plan, state, value))
+                .collect(),
+        ),
+        StoredListValueId::Float(value) => ListValue::float(state.float_values(value).to_vec()),
+        StoredListValueId::Bool(value) => ListValue::bool(state.bool_values(value).to_vec()),
+        StoredListValueId::Nil(value) => ListValue::nil(state.nil_len(value)),
         StoredListValueId::Tuple(value) => ListValue::from_evaluated_tuple(
             plan.tuple_list_item_type(value.type_id()),
             state
-                .values()
                 .tuple_values(value)
                 .iter()
                 .cloned()
@@ -99,13 +119,12 @@ fn list(
             let item_type = crate::plan::ValueType::Parameter(value.type_id().item_type().item());
             ListValue::from_evaluated_list(
                 item_type.clone(),
-                vec![ListValue::empty(item_type); state.values().parameter_list_list_len(value)],
+                vec![ListValue::empty(item_type); state.parameter_list_list_len(value)],
             )
         }
         StoredListValueId::List(value) => ListValue::from_evaluated_list(
             plan.nested_list_item_type(value.type_id()),
             state
-                .values()
                 .list_values(value)
                 .iter()
                 .map(|value| list(plan, state, value))
@@ -114,7 +133,6 @@ fn list(
         StoredListValueId::Function(value) => ListValue::from_evaluated_function(
             plan.function_list_item_type(value.type_id()),
             state
-                .values()
                 .function_values(value)
                 .iter()
                 .cloned()
@@ -129,8 +147,8 @@ fn parameter_list(value: ParameterListValueId) -> ListValue {
 }
 
 fn function(
-    plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState<'_, impl Sized>,
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
     value: EvaluatedFunctionValue,
 ) -> FunctionValue {
     let kind = match value.kind() {
@@ -158,6 +176,9 @@ fn function(
         EvaluatedFunctionValueKind::Custom(value) => {
             FunctionValueKind::Custom(custom_function(plan, state, value))
         }
+        EvaluatedFunctionValueKind::External(value) => {
+            FunctionValueKind::External(external_function(plan, state, value))
+        }
         EvaluatedFunctionValueKind::Bool(value) => {
             FunctionValueKind::Bool(bool_function(plan, state, value))
         }
@@ -178,8 +199,8 @@ fn function(
 }
 
 fn custom(
-    plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState<'_, impl Sized>,
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
     value: EvaluatedCustomValue,
 ) -> CustomValue {
     let constructor = plan.custom_constructor(value.constructor());
@@ -203,8 +224,8 @@ fn custom(
 }
 
 fn int_function(
-    plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState<'_, impl Sized>,
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
     value: &EvaluatedIntFunction,
 ) -> IntFunctionValue {
     IntFunctionValue::new_with_captures(
@@ -216,8 +237,8 @@ fn int_function(
 }
 
 fn generic_function(
-    plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState<'_, impl Sized>,
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
     value: &EvaluatedGenericFunction,
 ) -> GenericFunctionValue {
     GenericFunctionValue::from_evaluated(
@@ -229,8 +250,8 @@ fn generic_function(
 }
 
 fn never_function(
-    plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState<'_, impl Sized>,
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
     value: &EvaluatedNeverFunction,
 ) -> NeverFunctionValue {
     NeverFunctionValue::from_evaluated(
@@ -242,8 +263,8 @@ fn never_function(
 }
 
 fn float_function(
-    plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState<'_, impl Sized>,
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
     value: &EvaluatedFloatFunction,
 ) -> FloatFunctionValue {
     FloatFunctionValue::new_with_captures(
@@ -255,8 +276,8 @@ fn float_function(
 }
 
 fn string_function(
-    plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState<'_, impl Sized>,
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
     value: &EvaluatedStringFunction,
 ) -> StringFunctionValue {
     StringFunctionValue::new_with_captures(
@@ -268,8 +289,8 @@ fn string_function(
 }
 
 fn bit_array_function(
-    plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState<'_, impl Sized>,
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
     value: &EvaluatedBitArrayFunction,
 ) -> BitArrayFunctionValue {
     BitArrayFunctionValue::new_with_captures(
@@ -281,8 +302,8 @@ fn bit_array_function(
 }
 
 fn utf_codepoint_function(
-    plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState<'_, impl Sized>,
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
     value: &EvaluatedUtfCodepointFunction,
 ) -> UtfCodepointFunctionValue {
     UtfCodepointFunctionValue::new_with_captures(
@@ -294,8 +315,8 @@ fn utf_codepoint_function(
 }
 
 fn custom_function(
-    plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState<'_, impl Sized>,
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
     value: &EvaluatedCustomFunction,
 ) -> CustomFunctionValue {
     let target = match value {
@@ -314,9 +335,22 @@ fn custom_function(
     )
 }
 
+fn external_function(
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
+    value: &EvaluatedExternalFunction,
+) -> ExternalFunctionValue {
+    ExternalFunctionValue::new_with_captures(
+        value.runtime_id(),
+        value.params().to_vec(),
+        captures(plan, state, value.captures()),
+        plan.function_type(value.type_()),
+    )
+}
+
 fn bool_function(
-    plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState<'_, impl Sized>,
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
     value: &EvaluatedBoolFunction,
 ) -> BoolFunctionValue {
     BoolFunctionValue::new_with_captures(
@@ -328,8 +362,8 @@ fn bool_function(
 }
 
 fn nil_function(
-    plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState<'_, impl Sized>,
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
     value: &EvaluatedNilFunction,
 ) -> NilFunctionValue {
     NilFunctionValue::new_with_captures(
@@ -341,8 +375,8 @@ fn nil_function(
 }
 
 fn tuple_function(
-    plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState<'_, impl Sized>,
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
     value: &EvaluatedTupleFunction,
 ) -> TupleFunctionValue {
     TupleFunctionValue::from_evaluated(
@@ -354,8 +388,8 @@ fn tuple_function(
 }
 
 fn list_function(
-    plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState<'_, impl Sized>,
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
     value: &EvaluatedListFunction,
 ) -> ListFunctionValue {
     ListFunctionValue::new_with_captures(
@@ -367,12 +401,20 @@ fn list_function(
 }
 
 fn function_function(
-    plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState<'_, impl Sized>,
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
     value: &EvaluatedFunctionFunction,
 ) -> FunctionFunctionValue {
+    let runtime_id = match value {
+        EvaluatedFunctionFunction::Core(value) => {
+            <std::convert::Infallible as crate::plan::execution::function::ExecutionGraphProfile>::function_function(
+                &value.runtime_id(),
+            )
+        }
+        EvaluatedFunctionFunction::External(value) => value.runtime_id().runtime_id(),
+    };
     FunctionFunctionValue::from_evaluated(
-        value.runtime_id(),
+        runtime_id,
         value.params().to_vec(),
         captures(plan, state, value.captures()),
         plan.function_type(value.type_()),
@@ -380,12 +422,11 @@ fn function_function(
 }
 
 fn nested_list_values(
-    plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState<'_, impl Sized>,
-    value: &super::state::ListListValueId,
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
+    value: &super::state::list::ListListValueId,
 ) -> Vec<ListValue> {
     state
-        .values()
         .list_values(value)
         .iter()
         .map(|value| list(plan, state, value))
@@ -393,8 +434,8 @@ fn nested_list_values(
 }
 
 fn captures(
-    plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState<'_, impl Sized>,
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
     values: &[EvaluatedCapture],
 ) -> Vec<CaptureValue> {
     values
@@ -404,8 +445,8 @@ fn captures(
 }
 
 fn capture(
-    plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState<'_, impl Sized>,
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
     value: &EvaluatedCapture,
 ) -> CaptureValue {
     match value.kind() {
@@ -422,6 +463,9 @@ fn capture(
         }
         EvaluatedCaptureKind::Custom { local, value } => {
             CaptureValue::custom(*local, custom(plan, state, value.clone()))
+        }
+        EvaluatedCaptureKind::External { local, value } => {
+            CaptureValue::external(*local, external(plan, state, value.clone()))
         }
         EvaluatedCaptureKind::Bool { local, value } => CaptureValue::bool(*local, *value),
         EvaluatedCaptureKind::Nil { local } => CaptureValue::nil(*local),
@@ -452,6 +496,9 @@ fn capture(
         EvaluatedCaptureKind::CustomFunction { local, value } => {
             CaptureValue::custom_function(local.id(), custom_function(plan, state, value))
         }
+        EvaluatedCaptureKind::ExternalFunction { local, value } => {
+            CaptureValue::external_function(local.id(), external_function(plan, state, value))
+        }
         EvaluatedCaptureKind::GenericFunction { local, value } => {
             CaptureValue::generic_function(local.id(), generic_function(plan, state, value))
         }
@@ -471,14 +518,14 @@ fn capture(
             CaptureValue::list_function(local.clone(), list_function(plan, state, value))
         }
         EvaluatedCaptureKind::FunctionFunction { local, value } => {
-            CaptureValue::function_function(local.id(), function_function(plan, state, value))
+            CaptureValue::function_function(local.clone(), function_function(plan, state, value))
         }
     }
 }
 
 fn list_capture(
-    plan: &impl RuntimeExecutionPlan,
-    state: &RuntimeState<'_, impl Sized>,
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
     value: &EvaluatedListCapture,
 ) -> CaptureListValue {
     match value {
@@ -489,20 +536,19 @@ fn list_capture(
         EvaluatedListCapture::ParameterList { local, value } => CaptureListValue::ParameterList {
             local: *local,
             item_type: value.type_id().item_type().item(),
-            len: state.values().parameter_list_list_len(value),
+            len: state.parameter_list_list_len(value),
         },
         EvaluatedListCapture::Int { local, value } => CaptureListValue::Int {
             local: *local,
-            value: state.values().int_values(value).to_vec(),
+            value: state.int_values(value).to_vec(),
         },
         EvaluatedListCapture::String { local, value } => CaptureListValue::String {
             local: *local,
-            value: state.values().string_values(value).to_vec(),
+            value: state.string_values(value).to_vec(),
         },
         EvaluatedListCapture::BitArray { local, value } => CaptureListValue::BitArray {
             local: *local,
             value: state
-                .values()
                 .bit_array_values(value)
                 .iter()
                 .map(|value| value.value())
@@ -510,36 +556,44 @@ fn list_capture(
         },
         EvaluatedListCapture::UtfCodepoint { local, value } => CaptureListValue::UtfCodepoint {
             local: *local,
-            value: state.values().utf_codepoint_values(value).to_vec(),
+            value: state.utf_codepoint_values(value).to_vec(),
         },
         EvaluatedListCapture::Custom { local, value } => CaptureListValue::Custom {
             local: *local,
             item_type: plan.custom_value_type(value.type_id().item_type()),
             value: state
-                .values()
                 .custom_values(value)
                 .iter()
                 .cloned()
                 .map(|value| custom(plan, state, value))
                 .collect(),
         },
+        EvaluatedListCapture::External { local, value } => CaptureListValue::External {
+            local: *local,
+            item_type: plan.external_value_type(value.type_id().item_type()),
+            value: state
+                .external_values(value)
+                .iter()
+                .cloned()
+                .map(|value| external(plan, state, value))
+                .collect(),
+        },
         EvaluatedListCapture::Float { local, value } => CaptureListValue::Float {
             local: *local,
-            value: state.values().float_values(value).to_vec(),
+            value: state.float_values(value).to_vec(),
         },
         EvaluatedListCapture::Bool { local, value } => CaptureListValue::Bool {
             local: *local,
-            value: state.values().bool_values(value).to_vec(),
+            value: state.bool_values(value).to_vec(),
         },
         EvaluatedListCapture::Nil { local, value } => CaptureListValue::Nil {
             local: *local,
-            len: state.values().nil_len(value),
+            len: state.nil_len(value),
         },
         EvaluatedListCapture::Tuple { local, value } => CaptureListValue::Tuple {
             local: *local,
             item_type: plan.tuple_list_item_type(value.type_id()),
             value: state
-                .values()
                 .tuple_values(value)
                 .iter()
                 .cloned()
@@ -560,7 +614,6 @@ fn list_capture(
             local: *local,
             item_type: plan.function_list_item_type(value.type_id()),
             value: state
-                .values()
                 .function_values(value)
                 .iter()
                 .cloned()
@@ -575,29 +628,31 @@ mod tests {
     use super::value;
     use crate::plan::execution::function::{
         BitArrayFunctionId, BoolFunctionId, FloatFunctionId, FunctionFunctionId,
-        IntFunctionFunctionId, IntFunctionId, ListFunctionId, NilFunctionId, StringFunctionId,
-        TupleFunctionId, UtfCodepointFunctionId,
+        IntFunctionFunctionId, IntFunctionId, ListFunctionId, NilFunctionId,
+        ProfiledFunctionFunctionId, RuntimeListFunctionId, StringFunctionId, TupleFunctionId,
+        UtfCodepointFunctionId,
     };
     use crate::plan::execution::graph::{
         BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
         BoolListLocalId, BoolLocalId, CustomFunctionLocal, CustomFunctionLocalId,
         CustomListLocalId, CustomLocal, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
-        FunctionFunctionLocal, FunctionFunctionLocalId, FunctionListLocalId, IntFunctionLocalId,
-        IntListFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionLocal, ListListLocalId,
-        NilFunctionLocalId, NilListLocalId, NilLocalId, ParamLocal, ParamSlot,
-        StringFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionLocalId,
-        TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
-        UtfCodepointLocalId,
+        FunctionFunctionLocal, FunctionListLocalId, IntFunctionLocalId, IntListFunctionLocalId,
+        IntListLocalId, IntLocalId, ListFunctionLocal, ListListLocalId, NilFunctionLocalId,
+        NilListLocalId, NilLocalId, ParamLocal, ParamSlot, StringFunctionLocalId,
+        StringListLocalId, StringLocalId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
+        UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
     };
+    use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::plan::{FunctionType, TypeParameterId, ValueType};
     use crate::runtime::evaluated::{
         EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
-        EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedFloatFunction,
+        EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedFloatFunction, EvaluatedFunction,
         EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedIntFunction,
         EvaluatedListCapture, EvaluatedListFunction, EvaluatedNilFunction, EvaluatedStringFunction,
         EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
     };
-    use crate::runtime::state::{CustomListAllocation, ListValueId, RuntimeState};
+    use crate::runtime::state::RuntimeState;
+    use crate::runtime::state::list::{CustomListAllocation, ListValueId};
     use crate::runtime::{
         BitArrayValue, CaptureListValue, CaptureValue, CustomFieldValue, CustomFunctionValue,
         CustomFunctionValueTarget, CustomValue, FunctionValue, ListValue, Value,
@@ -699,53 +754,53 @@ pub fn main() {
             ),
         );
         let int_list = state
-            .values_mut()
+            .lists_mut()
             .int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
-        let string_list = state.values_mut().string(
+        let string_list = state.lists_mut().string(
             plan.string_list_function_id(0).type_id(),
             vec!["one".into()],
         );
         let bit_array = EvaluatedBitArray::new(BitVec::from_vec(vec![1]));
-        let bit_array_list = state.values_mut().bit_array(
+        let bit_array_list = state.lists_mut().bit_array(
             plan.bit_array_list_function_id(0).type_id(),
             vec![bit_array.clone()],
         );
-        let utf_codepoint_list = state.values_mut().utf_codepoint(
+        let utf_codepoint_list = state.lists_mut().utf_codepoint(
             plan.utf_codepoint_list_function_id(0).type_id(),
             vec!['\u{10ffff}'],
         );
-        let custom_list = state.values_mut().custom(CustomListAllocation::new(
+        let custom_list = state.lists_mut().custom(CustomListAllocation::new(
             plan.custom_list_function_id(0).type_id(),
             vec![custom_value.clone()],
         ));
         let float_list = state
-            .values_mut()
+            .lists_mut()
             .float(plan.float_list_function_id(0).type_id(), vec![1.5]);
         let bool_list = state
-            .values_mut()
+            .lists_mut()
             .bool(plan.bool_list_function_id(0).type_id(), vec![true]);
         let nil_list = state
-            .values_mut()
+            .lists_mut()
             .nil(plan.nil_list_function_id(0).type_id(), 1);
-        let tuple_list = state.values_mut().tuple(
+        let tuple_list = state.lists_mut().tuple(
             plan.tuple_list_function_id(0).type_id(),
             vec![vec![EvaluatedValue::Int(1.into())]],
         );
         let nested_child = state
-            .values_mut()
+            .lists_mut()
             .int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
-        let nested_list = state.values_mut().list(
+        let nested_list = state.lists_mut().list(
             plan.list_list_function_id(0).type_id(),
             vec![nested_child.into()],
         );
-        let function_list = state.values_mut().function(
+        let function_list = state.lists_mut().function(
             plan.function_list_function_id(0).type_id(),
             vec![EvaluatedFunctionValue::from(int_function)],
         );
 
         let actual = value(
-            &plan,
-            &state,
+            plan.value_metadata(),
+            state.lists(),
             EvaluatedValue::Tuple(vec![
                 EvaluatedValue::Int(1.into()),
                 EvaluatedValue::Float(1.5),
@@ -806,7 +861,11 @@ pub fn main() {
                 Value::List(ListValue::from_evaluated_function(
                     FunctionType::new(Vec::new(), ValueType::Int),
                     vec![crate::runtime::FunctionValue::new(
-                        crate::plan::execution::function::RuntimeFunctionId::Int(IntFunctionId(0)),
+                        crate::plan::execution::function::RuntimeFunctionId::Core(
+                            crate::plan::execution::function::CoreRuntimeFunctionId::Int(
+                                IntFunctionId(0),
+                            ),
+                        ),
                         Vec::new(),
                         FunctionType::new(Vec::new(), ValueType::Int),
                     )],
@@ -841,8 +900,8 @@ pub fn main() {
         );
         assert_eq!(
             value(
-                &plan,
-                &state,
+                plan.value_metadata(),
+                state.lists(),
                 EvaluatedValue::Function(EvaluatedFunctionValue::from(constructor_function)),
             ),
             Value::Function(FunctionValue::from(CustomFunctionValue::new_with_captures(
@@ -937,7 +996,8 @@ pub fn main() {
                 ]),
             ),
         );
-        let list_function_id = ListFunctionId::Int(plan.int_list_function_id(0));
+        let list_function_id =
+            RuntimeListFunctionId::Core(ListFunctionId::Int(plan.int_list_function_id(0)));
         let list_function = EvaluatedListFunction::reference(
             list_function_id.clone(),
             Vec::new(),
@@ -949,8 +1009,8 @@ pub fn main() {
                 ),
             ),
         );
-        let function_function = EvaluatedFunctionFunction::reference(
-            FunctionFunctionId::Int(IntFunctionFunctionId(0)),
+        let function_function = EvaluatedFunctionFunction::Core(EvaluatedFunction::reference(
+            ProfiledFunctionFunctionId::<std::convert::Infallible>::Int(IntFunctionFunctionId(0)),
             Vec::new(),
             Vec::new(),
             crate::plan::execution::type_::FunctionType::new(
@@ -959,7 +1019,7 @@ pub fn main() {
                     execution_int_type.clone(),
                 )),
             ),
-        );
+        ));
         let custom_function_owner = plan.int_function(IntFunctionId(1));
         let custom_function_param = only_param(
             custom_function_owner
@@ -975,46 +1035,46 @@ pub fn main() {
         );
         let function_function_local = function_function_local(function_function_param.local());
         let int_list = state
-            .values_mut()
+            .lists_mut()
             .int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
-        let string_list = state.values_mut().string(
+        let string_list = state.lists_mut().string(
             plan.string_list_function_id(0).type_id(),
             vec!["one".into()],
         );
         let bit_array = EvaluatedBitArray::new(BitVec::from_vec(vec![1]));
-        let bit_array_list = state.values_mut().bit_array(
+        let bit_array_list = state.lists_mut().bit_array(
             plan.bit_array_list_function_id(0).type_id(),
             vec![bit_array.clone()],
         );
-        let utf_codepoint_list = state.values_mut().utf_codepoint(
+        let utf_codepoint_list = state.lists_mut().utf_codepoint(
             plan.utf_codepoint_list_function_id(0).type_id(),
             vec!['\u{10ffff}'],
         );
-        let custom_list = state.values_mut().custom(CustomListAllocation::new(
+        let custom_list = state.lists_mut().custom(CustomListAllocation::new(
             plan.custom_list_function_id(0).type_id(),
             vec![custom_value.clone()],
         ));
         let float_list = state
-            .values_mut()
+            .lists_mut()
             .float(plan.float_list_function_id(0).type_id(), vec![1.5]);
         let bool_list = state
-            .values_mut()
+            .lists_mut()
             .bool(plan.bool_list_function_id(0).type_id(), vec![true]);
         let nil_list = state
-            .values_mut()
+            .lists_mut()
             .nil(plan.nil_list_function_id(0).type_id(), 1);
-        let tuple_list = state.values_mut().tuple(
+        let tuple_list = state.lists_mut().tuple(
             plan.tuple_list_function_id(0).type_id(),
             vec![vec![EvaluatedValue::Int(1.into())]],
         );
         let nested_child = state
-            .values_mut()
+            .lists_mut()
             .int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
-        let nested_list = state.values_mut().list(
+        let nested_list = state.lists_mut().list(
             plan.list_list_function_id(0).type_id(),
             vec![nested_child.into()],
         );
-        let function_list = state.values_mut().function(
+        let function_list = state.lists_mut().function(
             plan.function_list_function_id(0).type_id(),
             vec![EvaluatedFunctionValue::from(int_function.clone())],
         );
@@ -1101,7 +1161,10 @@ pub fn main() {
             EvaluatedCapture::nil_function(NilFunctionLocalId(0), nil_function.clone()),
             EvaluatedCapture::tuple_function(TupleFunctionLocalId(0), tuple_function.clone()),
             EvaluatedCapture::list_function(list_function_local.clone(), list_function.clone()),
-            EvaluatedCapture::function_function(function_function_local, function_function.clone()),
+            EvaluatedCapture::function_function(
+                function_function_local.clone(),
+                function_function.clone(),
+            ),
         ];
         let expected = [
             CaptureValue::int(IntLocalId(0), 1.into()),
@@ -1160,7 +1223,11 @@ pub fn main() {
                 local: FunctionListLocalId(0),
                 item_type: module_int_type.clone(),
                 value: vec![crate::runtime::FunctionValue::new(
-                    crate::plan::execution::function::RuntimeFunctionId::Int(IntFunctionId(0)),
+                    crate::plan::execution::function::RuntimeFunctionId::Core(
+                        crate::plan::execution::function::CoreRuntimeFunctionId::Int(
+                            IntFunctionId(0),
+                        ),
+                    ),
                     Vec::new(),
                     module_int_type.clone(),
                 )],
@@ -1255,7 +1322,7 @@ pub fn main() {
                 ),
             ),
             CaptureValue::function_function(
-                FunctionFunctionLocalId(0),
+                function_function_local,
                 crate::runtime::FunctionFunctionValue::from_evaluated(
                     FunctionFunctionId::Int(IntFunctionFunctionId(0)),
                     Vec::new(),
@@ -1266,7 +1333,10 @@ pub fn main() {
         ];
 
         for (capture, expected) in captures.iter().zip(expected) {
-            assert_eq!(super::capture(&plan, &state, capture), expected);
+            assert_eq!(
+                super::capture(plan.value_metadata(), state.lists(), capture),
+                expected,
+            );
         }
 
         let functions = [
@@ -1284,7 +1354,11 @@ pub fn main() {
         ];
         for function in functions {
             let expected_type = ValueType::Function(Box::new(plan.function_type(function.type_())));
-            let materialized = value(&plan, &state, EvaluatedValue::Function(function));
+            let materialized = value(
+                plan.value_metadata(),
+                state.lists(),
+                EvaluatedValue::Function(function),
+            );
             assert_eq!(materialized.value_type(), expected_type);
         }
     }
@@ -1310,8 +1384,8 @@ pub fn main() {
 
         assert_eq!(
             value(
-                &plan,
-                &state,
+                plan.value_metadata(),
+                state.lists(),
                 EvaluatedValue::Function(EvaluatedFunctionValue::from(function)),
             ),
             Value::Function(crate::runtime::FunctionValue::from(

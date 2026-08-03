@@ -364,6 +364,7 @@ mod control_flow {
             string_prefix_empty,
             tuple_inner_string_prefix_pattern,
             string_prefix_closure_capture,
+            string_escape_semantics,
             alternative_patterns,
             alternative_guard_fallthrough,
             alternative_tuple_binding_positions,
@@ -375,6 +376,7 @@ mod control_flow {
             multiple_subject_alternative_guard,
             multiple_subject_mixed_patterns,
             multiple_subject_list_pattern,
+            exhaustive_pattern_sets,
             multiple_subject_closure_capture,
             bit_array_subject,
             multiple_subject_bit_array_subject,
@@ -1357,6 +1359,12 @@ fn render_value(value: &Value) -> String {
                 .collect::<Vec<_>>()
                 .join(", "),
         ),
+        Value::External(value) => format!(
+            "External(type={}, identity={:?}, inspection={:?})",
+            render_external_type(value.type_()),
+            value.identity(),
+            value.inspection(),
+        ),
         Value::Bool(value) => format!("Bool({value})"),
         Value::Nil => "Nil".into(),
         Value::Tuple(values) => format!(
@@ -1404,6 +1412,7 @@ fn render_value_type(type_: &ValueType) -> String {
         ValueType::BitArray => "BitArray".into(),
         ValueType::UtfCodepoint => "UtfCodepoint".into(),
         ValueType::Custom(type_) => render_custom_type(type_),
+        ValueType::External(type_) => render_external_type(type_),
         ValueType::Bool => "Bool".into(),
         ValueType::Nil => "Nil".into(),
         ValueType::Tuple(elements) => format!(
@@ -1420,6 +1429,21 @@ fn render_value_type(type_: &ValueType) -> String {
 }
 
 fn render_custom_type(type_: &geam::CustomType) -> String {
+    let name = type_.type_name();
+    let arguments = type_
+        .arguments()
+        .iter()
+        .map(render_value_type)
+        .collect::<Vec<_>>();
+    let identity = format!("{}/{}/{}", name.package(), name.module(), name.name());
+    if arguments.is_empty() {
+        identity
+    } else {
+        format!("{identity}({})", arguments.join(", "))
+    }
+}
+
+fn render_external_type(type_: &geam::ExternalType) -> String {
     let name = type_.type_name();
     let arguments = type_
         .arguments()

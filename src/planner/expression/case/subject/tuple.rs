@@ -11,6 +11,7 @@ use crate::planner::error::{InvalidCaseShapeReason, PlanError};
 use crate::planner::pattern::plan_custom_subject_pattern;
 use ecow::EcoString;
 use gleam_core::ast::{AssignName, Pattern, SrcSpan, TypedExpr};
+use gleam_core::strings::convert_string_escape_chars;
 use gleam_core::type_::Type;
 use std::sync::Arc;
 
@@ -36,12 +37,15 @@ pub(super) fn plan(
     let mut ordered_clauses = Vec::new();
     for clause in clauses {
         for pattern in clause.patterns() {
+            let (pattern, reachable, exhaustive_remainder) = pattern.into_parts();
             ordered_clauses.push(super::plan_ordered_case_candidate(
                 OrderedCaseCandidateInput {
                     case_type: type_.as_ref(),
                     return_shape: &return_shape,
                     then: clause.then.clone(),
                     guard: clause.guard.clone(),
+                    reachable,
+                    exhaustive_remainder,
                 },
                 context,
                 |context| {
@@ -187,9 +191,12 @@ fn plan_tuple_case_pattern_with_context(
         Pattern::Float { float_value, .. } if subject_type == ValueType::Float => Ok(
             TupleCasePattern::literal(value, Expr::float(FloatExpr::value(float_value.value()))),
         ),
-        Pattern::String { value: literal, .. } if subject_type == ValueType::String => Ok(
-            TupleCasePattern::literal(value, Expr::string(StringExpr::value(literal))),
-        ),
+        Pattern::String { value: literal, .. } if subject_type == ValueType::String => {
+            Ok(TupleCasePattern::literal(
+                value,
+                Expr::string(StringExpr::value(convert_string_escape_chars(&literal))),
+            ))
+        }
         Pattern::Constructor {
             name,
             arguments,
@@ -239,14 +246,17 @@ fn plan_tuple_case_pattern_with_context(
             };
             let pattern =
                 plan_custom_subject_pattern(pattern.clone(), value.shape().clone(), context)?;
-            let mut total_branch_steps = Vec::new();
-            if let Some(binding) = pattern
+            let total_branch_steps = pattern
                 .custom_binding
                 .clone()
-                .and_then(|binding| binding.into_intrinsic_binding())
-            {
-                total_branch_steps = total_custom_binding_steps(value.clone(), binding, context);
-            }
+                .map(|binding| {
+                    binding
+                        .clone()
+                        .into_intrinsic_binding()
+                        .unwrap_or_else(|| binding.into_exhaustive_remainder_binding())
+                })
+                .map(|binding| total_custom_binding_steps(value.clone(), binding, context))
+                .unwrap_or_default();
             Ok(TupleCasePattern {
                 match_condition: Some(BoolExpr::custom_matches(value, pattern.pattern)),
                 branch_bindings: Vec::new(),
@@ -272,7 +282,7 @@ fn plan_tuple_case_pattern_with_context(
             ..
         } if subject_type == ValueType::String => TupleCasePattern::string_prefix(
             value,
-            left_side_string,
+            convert_string_escape_chars(&left_side_string),
             left_side_assignment,
             right_side_assignment,
         ),

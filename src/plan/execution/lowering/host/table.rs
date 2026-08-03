@@ -2,20 +2,20 @@ use super::super::function;
 use super::super::specialization::{
     SpecializationKey, SpecializedFunctionShape, ValueInhabitation,
 };
-use super::super::{LoweredExecution, LoweringCompletion, LoweringContext};
+use super::super::{LoweredExecution, LoweringCompletion, LoweringContext, SpecializationOutcome};
 use super::{parameter, return_, sealing};
 use crate::host::{
     HostFunctionImplementation as RegisteredHostFunctionImplementation, HostProfile,
 };
 use crate::plan::execution::host::{
     HostFunctionTables, HostSpecializationError, HostedExecutionProfile, HostedFunction,
-    HostedNeverFunction, HostedValueFunction,
+    HostedFunctionMetadata, HostedNeverFunction, HostedValueFunction,
 };
 use crate::plan::{HostFunctionTemplate, HostImplementationBinding};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-type HostedLoweredExecution<Profile> = LoweredExecution<HostedExecutionProfile<Profile>>;
+type HostedLoweredExecution = LoweredExecution<HostedExecutionProfile>;
 
 pub(super) struct HostFunctionRegistry<Profile: HostProfile> {
     functions: HashMap<
@@ -28,7 +28,7 @@ pub(super) struct HostFunctionLowering<'registry, Profile: HostProfile> {
     registered: &'registry HostFunctionRegistry<Profile>,
     value_functions: Vec<HostedValueFunction<Profile>>,
     never_functions: Vec<HostedNeverFunction<Profile>>,
-    additional: function::AdditionalFunctions<HostedExecutionProfile<Profile>>,
+    additional: function::ProfiledFunctionEntries<HostedExecutionProfile>,
 }
 
 impl<Profile: HostProfile> HostFunctionRegistry<Profile> {
@@ -46,9 +46,10 @@ impl<Profile: HostProfile> HostFunctionRegistry<Profile> {
             registered: self,
             value_functions: Vec::new(),
             never_functions: Vec::new(),
-            additional: function::AdditionalFunctions {
+            additional: function::ProfiledFunctionEntries {
                 never: Vec::new(),
                 custom: Vec::new(),
+                external: Vec::new(),
                 int: Vec::new(),
                 float: Vec::new(),
                 string: Vec::new(),
@@ -63,6 +64,7 @@ impl<Profile: HostProfile> HostFunctionRegistry<Profile> {
                 bit_array_list: Vec::new(),
                 utf_codepoint_list: Vec::new(),
                 custom_list: Vec::new(),
+                external_list: Vec::new(),
                 float_list: Vec::new(),
                 bool_list: Vec::new(),
                 nil_list: Vec::new(),
@@ -76,6 +78,7 @@ impl<Profile: HostProfile> HostFunctionRegistry<Profile> {
                 bit_array_function_functions: Vec::new(),
                 utf_codepoint_function_functions: Vec::new(),
                 custom_function_functions: Vec::new(),
+                external_function_functions: Vec::new(),
                 bool_function_functions: Vec::new(),
                 nil_function_functions: Vec::new(),
                 tuple_function_functions: Vec::new(),
@@ -88,6 +91,7 @@ impl<Profile: HostProfile> HostFunctionRegistry<Profile> {
                 bit_array_list_function_functions: Vec::new(),
                 utf_codepoint_list_function_functions: Vec::new(),
                 custom_list_function_functions: Vec::new(),
+                external_list_function_functions: Vec::new(),
                 float_list_function_functions: Vec::new(),
                 bool_list_function_functions: Vec::new(),
                 nil_list_function_functions: Vec::new(),
@@ -111,6 +115,13 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
         let shape =
             SpecializedFunctionShape::instantiate(template.signature().shape(), key.substitution());
         let parameters = context.specialization_parameters(key).to_vec();
+        let type_arguments = key
+            .substitution()
+            .arguments()
+            .iter()
+            .map(|argument| argument.to_module_shape().value_type())
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
         let implementation = Arc::clone(&self.registered.functions[&template.id()]);
         let return_ = context.representations.inhabitation(shape.return_());
 
@@ -125,17 +136,21 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
                     ));
                 };
                 sealing::seal_callbacks(template, key, &shape, &context.representations, true)?;
+                let constructions = sealing::seal_host_types(template, key, context);
                 let parameters =
                     parameter::lower_host_parameters(&parameters, template.layout(), context);
                 let type_ = context.lower_concrete_function_type(&shape);
                 let host_index = self.value_functions.len();
                 self.value_functions.push(HostedFunction::new(
-                    template.package().clone(),
-                    template.site().clone(),
-                    shape.to_module_shape().type_(),
-                    parameters.entry,
-                    parameters.call,
-                    type_,
+                    HostedFunctionMetadata::new(
+                        template.package().clone(),
+                        template.site().clone(),
+                        shape.to_module_shape().type_(),
+                        type_arguments,
+                        parameters,
+                        constructions,
+                        type_,
+                    ),
                     implementation.clone(),
                 ));
                 return_::lower_host_return(
@@ -149,17 +164,21 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
             }
             RegisteredHostFunctionImplementation::Never(implementation) => {
                 sealing::seal_callbacks(template, key, &shape, &context.representations, false)?;
+                let constructions = sealing::seal_host_types(template, key, context);
                 let parameters =
                     parameter::lower_host_parameters(&parameters, template.layout(), context);
                 let type_ = context.lower_concrete_function_type(&shape);
                 let host_index = self.never_functions.len();
                 self.never_functions.push(HostedFunction::new(
-                    template.package().clone(),
-                    template.site().clone(),
-                    shape.to_module_shape().type_(),
-                    parameters.entry,
-                    parameters.call,
-                    type_,
+                    HostedFunctionMetadata::new(
+                        template.package().clone(),
+                        template.site().clone(),
+                        shape.to_module_shape().type_(),
+                        type_arguments,
+                        parameters,
+                        constructions,
+                        type_,
+                    ),
                     implementation.clone(),
                 ));
                 match return_ {
@@ -189,7 +208,7 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
         self,
         context: LoweringContext,
     ) -> (
-        LoweringCompletion<HostedLoweredExecution<Profile>>,
+        LoweringCompletion<HostedLoweredExecution>,
         HostFunctionTables<Profile>,
     ) {
         let Self {
@@ -208,10 +227,10 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
 }
 
 impl LoweringContext {
-    fn finish_hosted<Profile: HostProfile>(
+    fn finish_hosted(
         self,
-        additional: function::AdditionalFunctions<HostedExecutionProfile<Profile>>,
-    ) -> LoweringCompletion<HostedLoweredExecution<Profile>> {
+        additional: function::ProfiledFunctionEntries<HostedExecutionProfile>,
+    ) -> LoweringCompletion<HostedLoweredExecution> {
         let Self {
             constant_templates,
             constants,
@@ -223,16 +242,21 @@ impl LoweringContext {
         } = self;
         let outcome = functions
             .finish_hosted(additional)
-            .map(|functions| {
-                let (list_types, custom_types, value_shapes) = types.into_tables();
-                Box::new(LoweredExecution {
-                    constants: constants.finish(),
-                    functions: *functions,
-                    list_types,
-                    custom_types,
-                    value_shapes,
-                })
-            })
+            .zip_with(
+                SpecializationOutcome::Complete(constants.finish_hosted()),
+                |functions, constants| {
+                    let (list_types, custom_types, external_types, value_shapes) =
+                        types.into_tables();
+                    Box::new(LoweredExecution {
+                        constants,
+                        functions: *functions,
+                        list_types,
+                        custom_types,
+                        external_types,
+                        value_shapes,
+                    })
+                },
+            )
             .include_prior_erasure(erased_specializations);
         (constant_templates, representations, outcome)
     }

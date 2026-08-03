@@ -31,6 +31,7 @@ pub(super) enum SpecializedFunctionLocal {
         type_: execution::type_::FunctionType,
     },
     Custom(execution::graph::CustomFunctionLocal),
+    External(execution::graph::ExternalFunctionLocal),
     Bool {
         local: execution::graph::BoolFunctionLocalId,
         type_: execution::type_::FunctionType,
@@ -56,6 +57,7 @@ pub(super) enum LocalKind {
     BitArray,
     UtfCodepoint,
     Custom,
+    External,
     Bool,
     Nil,
     Tuple,
@@ -65,6 +67,7 @@ pub(super) enum LocalKind {
     BitArrayList,
     UtfCodepointList,
     CustomList,
+    ExternalList,
     FloatList,
     BoolList,
     NilList,
@@ -78,6 +81,7 @@ pub(super) enum LocalKind {
     BitArrayFunction,
     UtfCodepointFunction,
     CustomFunction,
+    ExternalFunction,
     BoolFunction,
     NilFunction,
     TupleFunction,
@@ -87,6 +91,7 @@ pub(super) enum LocalKind {
     BitArrayListFunction,
     UtfCodepointListFunction,
     CustomListFunction,
+    ExternalListFunction,
     FloatListFunction,
     BoolListFunction,
     NilListFunction,
@@ -122,6 +127,7 @@ enum StorageFamily {
     BitArray,
     UtfCodepoint,
     Custom,
+    External,
     Bool,
     Nil,
     Tuple,
@@ -131,6 +137,7 @@ enum StorageFamily {
     BitArrayList,
     UtfCodepointList,
     CustomList,
+    ExternalList,
     FloatList,
     BoolList,
     NilList,
@@ -144,6 +151,7 @@ enum StorageFamily {
     BitArrayFunction,
     UtfCodepointFunction,
     CustomFunction,
+    ExternalFunction,
     BoolFunction,
     NilFunction,
     TupleFunction,
@@ -155,6 +163,7 @@ enum StorageFamily {
     BitArrayListFunction,
     UtfCodepointListFunction,
     CustomListFunction,
+    ExternalListFunction,
     FloatListFunction,
     BoolListFunction,
     NilListFunction,
@@ -163,6 +172,7 @@ enum StorageFamily {
     ListListFunction,
     FunctionListFunction,
     FunctionFunction,
+    ExternalFunctionFunction,
 }
 
 #[derive(Default)]
@@ -255,6 +265,7 @@ impl StorageFamily {
             StoredValueShape::BitArray => Self::BitArray,
             StoredValueShape::UtfCodepoint => Self::UtfCodepoint,
             StoredValueShape::Custom(_) => Self::Custom,
+            StoredValueShape::External(_) => Self::External,
             StoredValueShape::Bool => Self::Bool,
             StoredValueShape::Nil => Self::Nil,
             StoredValueShape::Tuple(_) => Self::Tuple,
@@ -271,6 +282,7 @@ impl StorageFamily {
             SpecializedValueShape::BitArray => Self::BitArrayList,
             SpecializedValueShape::UtfCodepoint => Self::UtfCodepointList,
             SpecializedValueShape::Custom(_) => Self::CustomList,
+            SpecializedValueShape::External(_) => Self::ExternalList,
             SpecializedValueShape::Float => Self::FloatList,
             SpecializedValueShape::Bool => Self::BoolList,
             SpecializedValueShape::Nil => Self::NilList,
@@ -297,11 +309,18 @@ impl StorageFamily {
                 StoredValueShape::BitArray => Self::BitArrayFunction,
                 StoredValueShape::UtfCodepoint => Self::UtfCodepointFunction,
                 StoredValueShape::Custom(_) => Self::CustomFunction,
+                StoredValueShape::External(_) => Self::ExternalFunction,
                 StoredValueShape::Bool => Self::BoolFunction,
                 StoredValueShape::Nil => Self::NilFunction,
                 StoredValueShape::Tuple(_) => Self::TupleFunction,
                 StoredValueShape::List(item) => Self::list_function(&item),
-                StoredValueShape::Function(_) => Self::FunctionFunction,
+                StoredValueShape::Function(returned) => {
+                    if is_external_function_function(&returned, representations) {
+                        Self::ExternalFunctionFunction
+                    } else {
+                        Self::FunctionFunction
+                    }
+                }
             },
         }
     }
@@ -314,6 +333,7 @@ impl StorageFamily {
             SpecializedValueShape::BitArray => Self::BitArrayListFunction,
             SpecializedValueShape::UtfCodepoint => Self::UtfCodepointListFunction,
             SpecializedValueShape::Custom(_) => Self::CustomListFunction,
+            SpecializedValueShape::External(_) => Self::ExternalListFunction,
             SpecializedValueShape::Float => Self::FloatListFunction,
             SpecializedValueShape::Bool => Self::BoolListFunction,
             SpecializedValueShape::Nil => Self::NilListFunction,
@@ -336,6 +356,7 @@ pub(super) fn param_local_key(local: &module::ParamLocal) -> LocalKey {
         module::ParamLocal::BitArray(local) => LocalKey::new(LocalKind::BitArray, local.0),
         module::ParamLocal::UtfCodepoint(local) => LocalKey::new(LocalKind::UtfCodepoint, local.0),
         module::ParamLocal::Custom(local) => LocalKey::new(LocalKind::Custom, local.id().0),
+        module::ParamLocal::External(local) => LocalKey::new(LocalKind::External, local.id().0),
         module::ParamLocal::Bool(local) => LocalKey::new(LocalKind::Bool, local.0),
         module::ParamLocal::Nil(local) => LocalKey::new(LocalKind::Nil, local.0),
         module::ParamLocal::Tuple { local, .. } => LocalKey::new(LocalKind::Tuple, local.0),
@@ -357,6 +378,9 @@ pub(super) fn param_local_key(local: &module::ParamLocal) -> LocalKey {
         }
         module::ParamLocal::CustomFunction(local) => {
             LocalKey::new(LocalKind::CustomFunction, local.id().0)
+        }
+        module::ParamLocal::ExternalFunction(local) => {
+            LocalKey::new(LocalKind::ExternalFunction, local.id().0)
         }
         module::ParamLocal::BoolFunction { local, .. } => {
             LocalKey::new(LocalKind::BoolFunction, local.0)
@@ -387,6 +411,9 @@ pub(super) fn list_local_key(local: &module::ListLocal) -> LocalKey {
             LocalKey::new(LocalKind::UtfCodepointList, local.0)
         }
         module::ListLocal::Custom { local, .. } => LocalKey::new(LocalKind::CustomList, local.0),
+        module::ListLocal::External { local, .. } => {
+            LocalKey::new(LocalKind::ExternalList, local.0)
+        }
         module::ListLocal::Float(local) => LocalKey::new(LocalKind::FloatList, local.0),
         module::ListLocal::Bool(local) => LocalKey::new(LocalKind::BoolList, local.0),
         module::ListLocal::Nil(local) => LocalKey::new(LocalKind::NilList, local.0),
@@ -424,6 +451,9 @@ fn list_function_local_parts(
         }
         module::ListFunctionLocal::Custom { local, type_, .. } => {
             (LocalKind::CustomListFunction, local.0, type_.clone())
+        }
+        module::ListFunctionLocal::External { local, type_, .. } => {
+            (LocalKind::ExternalListFunction, local.0, type_.clone())
         }
         module::ListFunctionLocal::Float { local, type_ } => {
             (LocalKind::FloatListFunction, local.0, type_.clone())
@@ -471,6 +501,12 @@ pub(super) fn stored_value_local_at(
             execution::graph::ParamLocal::Custom(execution::graph::CustomLocal::new(
                 execution::graph::CustomLocalId(index),
                 context.lower_concrete_custom_shape(shape),
+            ))
+        }
+        StoredValueShape::External(shape) => {
+            execution::graph::ParamLocal::External(execution::graph::ExternalLocal::new(
+                execution::graph::ExternalLocalId(index),
+                context.lower_concrete_external_type(shape),
             ))
         }
         StoredValueShape::Bool => {
@@ -524,6 +560,10 @@ pub(super) fn list_local_at(
         SpecializedValueShape::Custom(custom) => execution::graph::ListLocal::Custom {
             local: execution::graph::CustomListLocalId(index),
             type_id: context.specialized_custom_list_type(custom),
+        },
+        SpecializedValueShape::External(external) => execution::graph::ListLocal::External {
+            local: execution::graph::ExternalListLocalId(index),
+            type_id: context.specialized_external_list_type(external),
         },
         SpecializedValueShape::Float => execution::graph::ListLocal::Float {
             local: execution::graph::FloatListLocalId(index),
@@ -618,6 +658,13 @@ pub(super) fn function_local_at(
                 type_,
             ))
         }
+        FunctionRepresentation::Executable(StoredValueShape::External(external)) => {
+            let type_ = context.specialized_external_function_type(shape.arguments(), &external);
+            SpecializedFunctionLocal::External(execution::graph::ExternalFunctionLocal::new(
+                execution::graph::ExternalFunctionLocalId(index),
+                type_,
+            ))
+        }
         FunctionRepresentation::Executable(StoredValueShape::Bool) => {
             SpecializedFunctionLocal::Bool {
                 local: execution::graph::BoolFunctionLocalId(index),
@@ -641,11 +688,38 @@ pub(super) fn function_local_at(
         }
         FunctionRepresentation::Executable(StoredValueShape::Function(returned)) => {
             let type_ = context.specialized_function_function_type(shape.arguments(), &returned);
-            SpecializedFunctionLocal::Function(execution::graph::FunctionFunctionLocal::new(
-                execution::graph::FunctionFunctionLocalId(index),
-                type_,
-            ))
+            let local = if is_external_function_function(&returned, &context.representations) {
+                execution::graph::FunctionFunctionLocal::External(
+                    execution::graph::ExternalFunctionFunctionLocal::new(
+                        execution::graph::ExternalFunctionFunctionLocalId(index),
+                        type_,
+                    ),
+                )
+            } else {
+                execution::graph::FunctionFunctionLocal::Core(
+                    execution::graph::CoreFunctionFunctionLocal::new(
+                        execution::graph::CoreFunctionFunctionLocalId(index),
+                        type_,
+                    ),
+                )
+            };
+            SpecializedFunctionLocal::Function(local)
         }
+    }
+}
+
+fn is_external_function_function(
+    returned: &SpecializedFunctionShape,
+    representations: &super::specialization::RepresentationContext,
+) -> bool {
+    match returned.representation(representations) {
+        FunctionRepresentation::Executable(StoredValueShape::External(_)) => true,
+        FunctionRepresentation::Executable(StoredValueShape::List(item)) => {
+            matches!(item.as_ref(), SpecializedValueShape::External(_))
+        }
+        FunctionRepresentation::Symbolic
+        | FunctionRepresentation::Never(_)
+        | FunctionRepresentation::Executable(_) => false,
     }
 }
 
@@ -687,6 +761,11 @@ pub(super) fn list_function_local_at(
             local: execution::graph::CustomListFunctionLocalId(index),
             type_,
             list_type: context.specialized_custom_list_type(custom),
+        },
+        SpecializedValueShape::External(external) => L::External {
+            local: execution::graph::ExternalListFunctionLocalId(index),
+            type_,
+            list_type: context.specialized_external_list_type(external),
         },
         SpecializedValueShape::Float => L::Float {
             local: execution::graph::FloatListFunctionLocalId(index),
@@ -755,6 +834,9 @@ pub(super) fn function_local_as_param(
         }
         SpecializedFunctionLocal::Custom(local) => {
             execution::graph::ParamLocal::CustomFunction(local)
+        }
+        SpecializedFunctionLocal::External(local) => {
+            execution::graph::ParamLocal::ExternalFunction(local)
         }
         SpecializedFunctionLocal::Bool { local, type_ } => {
             execution::graph::ParamLocal::BoolFunction { local, type_ }

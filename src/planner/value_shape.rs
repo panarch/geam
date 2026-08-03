@@ -1,6 +1,6 @@
 use crate::plan::{
-    CustomConstructorRefinement, CustomTypeName, CustomValueShape, FunctionShape, ValueShape,
-    ValueType,
+    CustomConstructorRefinement, CustomTypeName, CustomValueShape, ExternalTypeName,
+    ExternalValueShape, FunctionShape, ValueShape, ValueType,
 };
 use gleam_core::type_::{Type, TypeVar};
 use std::ops::Deref;
@@ -75,10 +75,16 @@ impl ValueShape {
         }
     }
 
-    pub(super) fn from_gleam_in(type_: &Type, parameters: &mut TypeParameterScope) -> Self {
+    pub(super) fn from_gleam_in_with_external(
+        type_: &Type,
+        parameters: &mut TypeParameterScope,
+        is_external: &impl Fn(&ExternalTypeName) -> bool,
+    ) -> Self {
         match type_ {
             Type::Var { type_ } => match type_.borrow().deref() {
-                TypeVar::Link { type_ } => Self::from_gleam_in(type_.as_ref(), parameters),
+                TypeVar::Link { type_ } => {
+                    Self::from_gleam_in_with_external(type_.as_ref(), parameters, is_external)
+                }
                 TypeVar::Unbound { id } | TypeVar::Generic { id } => {
                     Self::Parameter(parameters.resolve(*id))
                 }
@@ -86,16 +92,24 @@ impl ValueShape {
             Type::Tuple { elements } => Self::Tuple(
                 elements
                     .iter()
-                    .map(|element| Self::from_gleam_in(element.as_ref(), parameters))
+                    .map(|element| {
+                        Self::from_gleam_in_with_external(element.as_ref(), parameters, is_external)
+                    })
                     .collect::<Vec<_>>()
                     .into_boxed_slice(),
             ),
             Type::Fn { arguments, return_ } => Self::Function(Box::new(FunctionShape::new(
                 arguments
                     .iter()
-                    .map(|argument| Self::from_gleam_in(argument.as_ref(), parameters))
+                    .map(|argument| {
+                        Self::from_gleam_in_with_external(
+                            argument.as_ref(),
+                            parameters,
+                            is_external,
+                        )
+                    })
                     .collect(),
-                Self::from_gleam_in(return_.as_ref(), parameters),
+                Self::from_gleam_in_with_external(return_.as_ref(), parameters, is_external),
             ))),
             Type::Named {
                 package,
@@ -119,20 +133,40 @@ impl ValueShape {
                 } else if type_.is_nil() {
                     Self::Nil
                 } else if let Some(element) = type_.list_type() {
-                    Self::List(Box::new(Self::from_gleam_in(element.as_ref(), parameters)))
+                    Self::List(Box::new(Self::from_gleam_in_with_external(
+                        element.as_ref(),
+                        parameters,
+                        is_external,
+                    )))
                 } else {
-                    Self::Custom(CustomValueShape::new(
-                        CustomTypeName::new(package.clone(), module.clone(), name.clone()),
-                        arguments
-                            .iter()
-                            .map(|argument| Self::from_gleam_in(argument.as_ref(), parameters))
-                            .collect(),
-                        type_
-                            .custom_type_inferred_variant()
-                            .map_or(CustomConstructorRefinement::Any, |index| {
-                                CustomConstructorRefinement::Exact(usize::from(index))
-                            }),
-                    ))
+                    let name = ExternalTypeName::new(package.clone(), module.clone(), name.clone());
+                    let arguments = arguments
+                        .iter()
+                        .map(|argument| {
+                            Self::from_gleam_in_with_external(
+                                argument.as_ref(),
+                                parameters,
+                                is_external,
+                            )
+                        })
+                        .collect();
+                    if is_external(&name) {
+                        Self::External(ExternalValueShape::new(name, arguments))
+                    } else {
+                        Self::Custom(CustomValueShape::new(
+                            CustomTypeName::new(
+                                name.package().clone(),
+                                name.module().clone(),
+                                name.name().clone(),
+                            ),
+                            arguments,
+                            type_
+                                .custom_type_inferred_variant()
+                                .map_or(CustomConstructorRefinement::Any, |index| {
+                                    CustomConstructorRefinement::Exact(usize::from(index))
+                                }),
+                        ))
+                    }
                 }
             }
         }

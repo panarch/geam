@@ -22,6 +22,15 @@ pub(crate) struct CustomLocal {
     shape: crate::plan::execution::type_::CustomValueShape,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ExternalLocalId(pub(crate) usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct ExternalLocal {
+    id: ExternalLocalId,
+    type_id: crate::plan::execution::type_::ExternalTypeId,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoolLocalId(pub(crate) usize);
 
@@ -40,6 +49,19 @@ impl CustomLocal {
     }
 
     pub(crate) fn id(self) -> CustomLocalId {
+        self.id
+    }
+}
+
+impl ExternalLocal {
+    pub(in crate::plan::execution) fn new(
+        id: ExternalLocalId,
+        type_id: crate::plan::execution::type_::ExternalTypeId,
+    ) -> Self {
+        Self { id, type_id }
+    }
+
+    pub(crate) fn id(self) -> ExternalLocalId {
         self.id
     }
 }

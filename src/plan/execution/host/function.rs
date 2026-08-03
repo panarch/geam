@@ -6,6 +6,7 @@ use crate::plan::execution::graph::{
 };
 use crate::plan::execution::type_::FunctionType;
 use ecow::EcoString;
+use std::collections::HashMap;
 use std::marker::PhantomData;
 
 pub(crate) struct HostedFunction<Implementation> {
@@ -22,9 +23,16 @@ pub(crate) struct HostedFunctionMetadata {
     package: EcoString,
     site: crate::plan::HostCallSite,
     signature: crate::plan::FunctionType,
-    parameters: Box<[ParamLocal]>,
-    call_parameters: Box<[HostCallParameter]>,
+    type_arguments: Box<[crate::plan::ValueType]>,
+    parameters: HostedFunctionParameters,
+    constructions: HostConstructionTypes,
     type_: FunctionType,
+}
+
+pub(crate) struct HostConstructionTypes {
+    lists: HashMap<crate::plan::ValueType, crate::plan::execution::type_::ListTypeId>,
+    customs: HashMap<crate::plan::ValueType, crate::plan::execution::type_::CustomTypeId>,
+    externals: HashMap<crate::plan::ValueType, crate::plan::execution::type_::ExternalTypeId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,7 +48,13 @@ pub(crate) enum HostCallParameter {
     List(ParamLocal),
     Tuple(ParamLocal),
     Custom(ParamLocal),
+    External(ParamLocal),
     Function(ParamLocal),
+}
+
+pub(in crate::plan::execution) struct HostedFunctionParameters {
+    entry: Box<[ParamLocal]>,
+    call: Box<[HostCallParameter]>,
 }
 
 #[derive(Debug)]
@@ -175,23 +189,11 @@ impl<Body: ExecutionFunctionBody> HostedFunctionTarget<Body> {
 
 impl<Implementation> HostedFunction<Implementation> {
     pub(in crate::plan::execution) fn new(
-        package: EcoString,
-        site: crate::plan::HostCallSite,
-        signature: crate::plan::FunctionType,
-        parameters: Box<[ParamLocal]>,
-        call_parameters: Box<[HostCallParameter]>,
-        type_: FunctionType,
+        metadata: HostedFunctionMetadata,
         implementation: Implementation,
     ) -> Self {
         Self {
-            metadata: HostedFunctionMetadata {
-                package,
-                site,
-                signature,
-                parameters,
-                call_parameters,
-                type_,
-            },
+            metadata,
             implementation,
         }
     }
@@ -212,8 +214,16 @@ impl<Implementation> HostedFunction<Implementation> {
         self.metadata.parameters()
     }
 
+    pub(crate) fn type_arguments(&self) -> &[crate::plan::ValueType] {
+        self.metadata.type_arguments()
+    }
+
     pub(crate) fn call_parameters(&self) -> &[HostCallParameter] {
         self.metadata.call_parameters()
+    }
+
+    pub(crate) fn constructions(&self) -> &HostConstructionTypes {
+        self.metadata.constructions()
     }
 
     pub(crate) fn type_(&self) -> &FunctionType {
@@ -230,6 +240,26 @@ impl<Implementation> HostedFunction<Implementation> {
 }
 
 impl HostedFunctionMetadata {
+    pub(in crate::plan::execution) fn new(
+        package: EcoString,
+        site: crate::plan::HostCallSite,
+        signature: crate::plan::FunctionType,
+        type_arguments: Box<[crate::plan::ValueType]>,
+        parameters: HostedFunctionParameters,
+        constructions: HostConstructionTypes,
+        type_: FunctionType,
+    ) -> Self {
+        Self {
+            package,
+            site,
+            signature,
+            type_arguments,
+            parameters,
+            constructions,
+            type_,
+        }
+    }
+
     pub(crate) fn package(&self) -> &EcoString {
         &self.package
     }
@@ -250,16 +280,76 @@ impl HostedFunctionMetadata {
         &self.signature
     }
 
+    fn type_arguments(&self) -> &[crate::plan::ValueType] {
+        &self.type_arguments
+    }
+
     fn parameters(&self) -> &[ParamLocal] {
-        &self.parameters
+        self.parameters.entry()
     }
 
     fn call_parameters(&self) -> &[HostCallParameter] {
-        &self.call_parameters
+        self.parameters.call()
+    }
+
+    fn constructions(&self) -> &HostConstructionTypes {
+        &self.constructions
     }
 
     fn type_(&self) -> &FunctionType {
         &self.type_
+    }
+}
+
+impl HostConstructionTypes {
+    pub(in crate::plan::execution) fn new(
+        lists: HashMap<crate::plan::ValueType, crate::plan::execution::type_::ListTypeId>,
+        customs: HashMap<crate::plan::ValueType, crate::plan::execution::type_::CustomTypeId>,
+        externals: HashMap<crate::plan::ValueType, crate::plan::execution::type_::ExternalTypeId>,
+    ) -> Self {
+        Self {
+            lists,
+            customs,
+            externals,
+        }
+    }
+
+    pub(crate) fn list(
+        &self,
+        type_: &crate::plan::ValueType,
+    ) -> crate::plan::execution::type_::ListTypeId {
+        self.lists[type_]
+    }
+
+    pub(crate) fn custom(
+        &self,
+        type_: &crate::plan::ValueType,
+    ) -> crate::plan::execution::type_::CustomTypeId {
+        self.customs[type_]
+    }
+
+    pub(crate) fn external(
+        &self,
+        type_: &crate::plan::ValueType,
+    ) -> crate::plan::execution::type_::ExternalTypeId {
+        self.externals[type_]
+    }
+}
+
+impl HostedFunctionParameters {
+    pub(in crate::plan::execution) fn new(
+        entry: Box<[ParamLocal]>,
+        call: Box<[HostCallParameter]>,
+    ) -> Self {
+        Self { entry, call }
+    }
+
+    fn entry(&self) -> &[ParamLocal] {
+        &self.entry
+    }
+
+    fn call(&self) -> &[HostCallParameter] {
+        &self.call
     }
 }
 
@@ -277,6 +367,7 @@ impl HostCallParameter {
             Self::List(local) => local.clone(),
             Self::Tuple(local) => local.clone(),
             Self::Custom(local) => local.clone(),
+            Self::External(local) => local.clone(),
             Self::Function(local) => local.clone(),
         }
     }

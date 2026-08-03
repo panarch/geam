@@ -64,6 +64,7 @@ fn plan_hosted_module(
                 module: registry.module_name(module.id).clone(),
                 source_context: module.source_context,
                 custom_types: module.custom_types,
+                external_types: module.external_types,
                 constants: module.constants,
                 functions,
                 anonymous_functions: module.anonymous_functions.into_functions(),

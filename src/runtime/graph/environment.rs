@@ -4,28 +4,31 @@ use crate::host::{
 };
 use crate::plan::execution::graph::{
     BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
-    BoolListLocalId, BoolLocalId, CustomFunctionLocal, CustomListLocalId, CustomLocal,
-    FloatFunctionLocalId, FloatListLocalId, FloatLocalId, FunctionFunctionLocal,
-    FunctionListLocalId, GenericFunctionLocal, IntFunctionLocalId, IntListLocalId, IntLocalId,
-    ListFunctionLocal, ListListLocalId, ListLocal, NeverFunctionLocal, NilFunctionLocalId,
-    NilListLocalId, NilLocalId, ParamLocal, ParameterListListLocalId, ParameterListLocalId,
-    StringFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionLocalId,
-    TupleListLocalId, TupleLocalId, UtfCodepointFunctionLocalId, UtfCodepointListLocalId,
-    UtfCodepointLocalId,
+    BoolListLocalId, BoolLocalId, CoreFunctionFunctionLocal, CustomFunctionLocal,
+    CustomListLocalId, CustomLocal, ExternalFunctionFunctionLocal, ExternalFunctionLocal,
+    ExternalListFunctionLocalId, ExternalListLocalId, ExternalLocal, FloatFunctionLocalId,
+    FloatListLocalId, FloatLocalId, FunctionFunctionLocal, FunctionListLocalId,
+    GenericFunctionLocal, IntFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionLocal,
+    ListListLocalId, ListLocal, NeverFunctionLocal, NilFunctionLocalId, NilListLocalId, NilLocalId,
+    ParamLocal, ParameterListListLocalId, ParameterListLocalId, StringFunctionLocalId,
+    StringListLocalId, StringLocalId, TupleFunctionLocalId, TupleListLocalId, TupleLocalId,
+    UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
 };
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
-    EvaluatedCaptureKind, EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedFloatFunction,
+    EvaluatedCaptureKind, EvaluatedCoreFunctionFunction, EvaluatedCustomFunction,
+    EvaluatedCustomValue, EvaluatedExternalFunction, EvaluatedExternalFunctionFunction,
+    EvaluatedExternalListFunction, EvaluatedExternalValue, EvaluatedFloatFunction,
     EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedGenericFunction,
     EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction, EvaluatedNeverFunction,
     EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
     EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
-use crate::runtime::state::{
-    BitArrayListValueId, BoolListValueId, CustomListValueId, FloatListValueId, FunctionListValueId,
-    IntListValueId, ListListValueId, ListValueId, NilListValueId, ParameterListListValueId,
-    ParameterListValueId, StoredListValueId, StringListValueId, TupleListValueId,
-    UtfCodepointListValueId,
+use crate::runtime::state::list::{
+    BitArrayListValueId, BoolListValueId, CustomListValueId, ExternalListValueId, FloatListValueId,
+    FunctionListValueId, IntListValueId, ListListValueId, ListValueId, NilListValueId,
+    ParameterListListValueId, ParameterListValueId, StoredListValueId, StringListValueId,
+    TupleListValueId, UtfCodepointListValueId,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -38,6 +41,7 @@ struct BlockValues {
     bit_arrays: Vec<EvaluatedBitArray>,
     utf_codepoints: Vec<char>,
     customs: Vec<EvaluatedCustomValue>,
+    externals: Vec<EvaluatedExternalValue>,
     bools: Vec<bool>,
     tuples: Vec<Vec<EvaluatedValue>>,
     parameter_lists: Vec<ParameterListValueId>,
@@ -46,6 +50,7 @@ struct BlockValues {
     bit_array_lists: Vec<BitArrayListValueId>,
     utf_codepoint_lists: Vec<UtfCodepointListValueId>,
     custom_lists: Vec<CustomListValueId>,
+    external_lists: Vec<ExternalListValueId>,
     float_lists: Vec<FloatListValueId>,
     bool_lists: Vec<BoolListValueId>,
     nil_lists: Vec<NilListValueId>,
@@ -59,6 +64,7 @@ struct BlockValues {
     bit_array_functions: Vec<EvaluatedBitArrayFunction>,
     utf_codepoint_functions: Vec<EvaluatedUtfCodepointFunction>,
     custom_functions: Vec<EvaluatedCustomFunction>,
+    external_functions: Vec<EvaluatedExternalFunction>,
     bool_functions: Vec<EvaluatedBoolFunction>,
     nil_functions: Vec<EvaluatedNilFunction>,
     tuple_functions: Vec<EvaluatedTupleFunction>,
@@ -69,13 +75,15 @@ struct BlockValues {
     bit_array_list_functions: Vec<EvaluatedListFunction>,
     utf_codepoint_list_functions: Vec<EvaluatedListFunction>,
     custom_list_functions: Vec<EvaluatedListFunction>,
+    external_list_functions: Vec<EvaluatedExternalListFunction>,
     float_list_functions: Vec<EvaluatedListFunction>,
     bool_list_functions: Vec<EvaluatedListFunction>,
     nil_list_functions: Vec<EvaluatedListFunction>,
     tuple_list_functions: Vec<EvaluatedListFunction>,
     list_list_functions: Vec<EvaluatedListFunction>,
     function_list_functions: Vec<EvaluatedListFunction>,
-    function_functions: Vec<EvaluatedFunctionFunction>,
+    core_function_functions: Vec<EvaluatedCoreFunctionFunction>,
+    external_function_functions: Vec<EvaluatedExternalFunctionFunction>,
     generic_functions: Vec<EvaluatedGenericFunction>,
     never_functions: Vec<EvaluatedNeverFunction>,
 }
@@ -113,6 +121,7 @@ impl BlockEnvironment {
                 EvaluatedValue::UtfCodepoint(self.utf_codepoint(*local))
             }
             ParamLocal::Custom(local) => EvaluatedValue::Custom(self.custom(*local)),
+            ParamLocal::External(local) => EvaluatedValue::External(self.external(*local)),
             ParamLocal::Bool(local) => EvaluatedValue::Bool(self.bool(*local)),
             ParamLocal::Nil(local) => {
                 self.nil(*local);
@@ -143,6 +152,9 @@ impl BlockEnvironment {
             }
             ParamLocal::CustomFunction(local) => {
                 EvaluatedValue::Function(self.custom_function(local).into())
+            }
+            ParamLocal::ExternalFunction(local) => {
+                EvaluatedValue::Function(self.external_function(local).into())
             }
             ParamLocal::BoolFunction { local, .. } => {
                 EvaluatedValue::Function(self.bool_function(*local).into())
@@ -218,6 +230,14 @@ impl BlockEnvironment {
         self.values.customs[local.id().0].clone()
     }
 
+    pub(super) fn push_external(&mut self, value: EvaluatedExternalValue) {
+        self.values.externals.push(value);
+    }
+
+    pub(super) fn external(&self, local: ExternalLocal) -> EvaluatedExternalValue {
+        self.values.externals[local.id().0].clone()
+    }
+
     pub(super) fn push_bool(&mut self, value: bool) {
         self.values.bools.push(value);
     }
@@ -289,6 +309,14 @@ impl BlockEnvironment {
         self.values.custom_lists[local.0].clone()
     }
 
+    pub(super) fn push_external_list(&mut self, value: ExternalListValueId) {
+        self.values.external_lists.push(value);
+    }
+
+    pub(super) fn external_list(&self, local: ExternalListLocalId) -> ExternalListValueId {
+        self.values.external_lists[local.0].clone()
+    }
+
     pub(super) fn push_float_list(&mut self, value: FloatListValueId) {
         self.values.float_lists.push(value);
     }
@@ -357,6 +385,7 @@ impl BlockEnvironment {
             ListLocal::BitArray { local, .. } => self.bit_array_list(*local).into(),
             ListLocal::UtfCodepoint { local, .. } => self.utf_codepoint_list(*local).into(),
             ListLocal::Custom { local, .. } => self.custom_list(*local).into(),
+            ListLocal::External { local, .. } => self.external_list(*local).into(),
             ListLocal::Float { local, .. } => self.float_list(*local).into(),
             ListLocal::Bool { local, .. } => self.bool_list(*local).into(),
             ListLocal::Nil { local, .. } => self.nil_list(*local).into(),
@@ -379,6 +408,7 @@ impl BlockEnvironment {
             L::BitArray(local) => self.bit_array_list(*local).into(),
             L::UtfCodepoint(local) => self.utf_codepoint_list(*local).into(),
             L::Custom(local) => self.custom_list(*local).into(),
+            L::External(local) => self.external_list(*local).into(),
             L::Float(local) => self.float_list(*local).into(),
             L::Bool(local) => self.bool_list(*local).into(),
             L::Nil(local) => self.nil_list(*local).into(),
@@ -442,6 +472,17 @@ impl BlockEnvironment {
         self.values.custom_functions[local.id().0].clone()
     }
 
+    pub(super) fn push_external_function(&mut self, value: EvaluatedExternalFunction) {
+        self.values.external_functions.push(value);
+    }
+
+    pub(super) fn external_function(
+        &self,
+        local: &ExternalFunctionLocal,
+    ) -> EvaluatedExternalFunction {
+        self.values.external_functions[local.id().0].clone()
+    }
+
     pub(super) fn push_bool_function(&mut self, value: EvaluatedBoolFunction) {
         self.values.bool_functions.push(value);
     }
@@ -487,6 +528,9 @@ impl BlockEnvironment {
             ListFunctionLocal::Custom { local, .. } => {
                 self.values.custom_list_functions[local.0].clone()
             }
+            ListFunctionLocal::External { local, .. } => self
+                .external_list_function(*local)
+                .map_runtime_id(crate::plan::execution::function::RuntimeListFunctionId::External),
             ListFunctionLocal::Float { local, .. } => {
                 self.values.float_list_functions[local.0].clone()
             }
@@ -506,15 +550,50 @@ impl BlockEnvironment {
         }
     }
 
+    pub(super) fn external_list_function(
+        &self,
+        local: ExternalListFunctionLocalId,
+    ) -> EvaluatedExternalListFunction {
+        self.values.external_list_functions[local.0].clone()
+    }
+
     pub(super) fn push_function_function(&mut self, value: EvaluatedFunctionFunction) {
-        self.values.function_functions.push(value);
+        match value {
+            EvaluatedFunctionFunction::Core(value) => {
+                self.values.core_function_functions.push(value)
+            }
+            EvaluatedFunctionFunction::External(value) => {
+                self.values.external_function_functions.push(value);
+            }
+        }
     }
 
     pub(super) fn function_function(
         &self,
         local: &FunctionFunctionLocal,
     ) -> EvaluatedFunctionFunction {
-        self.values.function_functions[local.id().0].clone()
+        match local {
+            FunctionFunctionLocal::Core(local) => {
+                EvaluatedFunctionFunction::Core(self.core_function_function(local))
+            }
+            FunctionFunctionLocal::External(local) => {
+                EvaluatedFunctionFunction::External(self.external_function_function(local))
+            }
+        }
+    }
+
+    pub(super) fn core_function_function(
+        &self,
+        local: &CoreFunctionFunctionLocal,
+    ) -> EvaluatedCoreFunctionFunction {
+        self.values.core_function_functions[local.id().0].clone()
+    }
+
+    pub(super) fn external_function_function(
+        &self,
+        local: &ExternalFunctionFunctionLocal,
+    ) -> EvaluatedExternalFunctionFunction {
+        self.values.external_function_functions[local.id().0].clone()
     }
 
     pub(super) fn push_generic_function(&mut self, value: EvaluatedGenericFunction) {
@@ -548,6 +627,7 @@ impl BlockEnvironment {
             F::BitArray(value) => self.push_bit_array_function(value.clone()),
             F::UtfCodepoint(value) => self.push_utf_codepoint_function(value.clone()),
             F::Custom(value) => self.push_custom_function(value.clone()),
+            F::External(value) => self.push_external_function(value.clone()),
             F::Bool(value) => self.push_bool_function(value.clone()),
             F::Nil(value) => self.push_nil_function(value.clone()),
             F::Tuple(value) => self.push_tuple_function(value.clone()),
@@ -571,6 +651,7 @@ impl BlockEnvironment {
             L::BitArray(local) => self.bit_array_function(*local).into(),
             L::UtfCodepoint(local) => self.utf_codepoint_function(*local).into(),
             L::Custom(local) => self.custom_function(local).into(),
+            L::External(local) => self.external_function(local).into(),
             L::Bool(local) => self.bool_function(*local).into(),
             L::Nil(local) => self.nil_function(*local).into(),
             L::Tuple(local) => self.tuple_function(*local).into(),
@@ -595,6 +676,7 @@ impl RetainedValues {
             EvaluatedValue::BitArray(value) => self.values.bit_arrays.push(value),
             EvaluatedValue::UtfCodepoint(value) => self.values.utf_codepoints.push(value),
             EvaluatedValue::Custom(value) => self.values.customs.push(value),
+            EvaluatedValue::External(value) => self.values.externals.push(value),
             EvaluatedValue::Bool(value) => self.values.bools.push(value),
             EvaluatedValue::Nil => {}
             EvaluatedValue::Tuple(value) => self.values.tuples.push(value),
@@ -628,6 +710,10 @@ impl RetainedValues {
         self.values.customs.push(value);
     }
 
+    pub(in crate::runtime) fn push_external(&mut self, value: EvaluatedExternalValue) {
+        self.values.externals.push(value);
+    }
+
     pub(in crate::runtime) fn push_bool(&mut self, value: bool) {
         self.values.bools.push(value);
     }
@@ -655,6 +741,9 @@ impl RetainedValues {
                 EvaluatedCaptureKind::Custom { value, .. } => {
                     self.values.customs.push(value.clone())
                 }
+                EvaluatedCaptureKind::External { value, .. } => {
+                    self.values.externals.push(value.clone())
+                }
                 EvaluatedCaptureKind::Bool { value, .. } => self.values.bools.push(*value),
                 EvaluatedCaptureKind::Nil { .. } => {}
                 EvaluatedCaptureKind::Tuple { value, .. } => self.values.tuples.push(value.clone()),
@@ -677,6 +766,9 @@ impl RetainedValues {
                 EvaluatedCaptureKind::CustomFunction { value, .. } => {
                     self.values.custom_functions.push(value.clone())
                 }
+                EvaluatedCaptureKind::ExternalFunction { value, .. } => {
+                    self.values.external_functions.push(value.clone())
+                }
                 EvaluatedCaptureKind::BoolFunction { value, .. } => {
                     self.values.bool_functions.push(value.clone())
                 }
@@ -689,9 +781,14 @@ impl RetainedValues {
                 EvaluatedCaptureKind::ListFunction { value, .. } => {
                     self.values.push_list_function(value.clone())
                 }
-                EvaluatedCaptureKind::FunctionFunction { value, .. } => {
-                    self.values.function_functions.push(value.clone())
-                }
+                EvaluatedCaptureKind::FunctionFunction { value, .. } => match value {
+                    EvaluatedFunctionFunction::Core(value) => {
+                        self.values.core_function_functions.push(value.clone());
+                    }
+                    EvaluatedFunctionFunction::External(value) => {
+                        self.values.external_function_functions.push(value.clone());
+                    }
+                },
                 EvaluatedCaptureKind::GenericFunction { value, .. } => {
                     self.values.generic_functions.push(value.clone())
                 }
@@ -714,6 +811,7 @@ impl RetainedValues {
             ListValueId::BitArray(value) => self.values.bit_array_lists.push(value),
             ListValueId::UtfCodepoint(value) => self.values.utf_codepoint_lists.push(value),
             ListValueId::Custom(value) => self.values.custom_lists.push(value),
+            ListValueId::External(value) => self.values.external_lists.push(value),
             ListValueId::Float(value) => self.values.float_lists.push(value),
             ListValueId::Bool(value) => self.values.bool_lists.push(value),
             ListValueId::Nil(value) => self.values.nil_lists.push(value),
@@ -736,11 +834,17 @@ impl RetainedValues {
             F::BitArray(value) => self.values.bit_array_functions.push(value.clone()),
             F::UtfCodepoint(value) => self.values.utf_codepoint_functions.push(value.clone()),
             F::Custom(value) => self.values.custom_functions.push(value.clone()),
+            F::External(value) => self.values.external_functions.push(value.clone()),
             F::Bool(value) => self.values.bool_functions.push(value.clone()),
             F::Nil(value) => self.values.nil_functions.push(value.clone()),
             F::Tuple(value) => self.values.tuple_functions.push(value.clone()),
             F::List(value) => self.values.push_list_function(value.clone()),
-            F::Function(value) => self.values.function_functions.push(value.clone()),
+            F::Function(EvaluatedFunctionFunction::Core(value)) => {
+                self.values.core_function_functions.push(value.clone());
+            }
+            F::Function(EvaluatedFunctionFunction::External(value)) => {
+                self.values.external_function_functions.push(value.clone());
+            }
         }
     }
 
@@ -764,6 +868,9 @@ impl RetainedValues {
             }
             EvaluatedListCapture::Custom { value, .. } => {
                 self.values.custom_lists.push(value.clone())
+            }
+            EvaluatedListCapture::External { value, .. } => {
+                self.values.external_lists.push(value.clone())
             }
             EvaluatedListCapture::Float { value, .. } => {
                 self.values.float_lists.push(value.clone())
@@ -812,21 +919,27 @@ impl HostCallArguments for RetainedValues {
 impl BlockValues {
     fn push_list_function(&mut self, value: EvaluatedListFunction) {
         use crate::plan::execution::function::ListFunctionId as F;
+        use crate::plan::execution::function::RuntimeListFunctionId as R;
 
         match value.runtime_id() {
-            F::Parameter(_) => self.parameter_list_functions.push(value),
-            F::ParameterList(_) => self.parameter_list_list_functions.push(value),
-            F::Int(_) => self.int_list_functions.push(value),
-            F::String(_) => self.string_list_functions.push(value),
-            F::BitArray(_) => self.bit_array_list_functions.push(value),
-            F::UtfCodepoint(_) => self.utf_codepoint_list_functions.push(value),
-            F::Custom(_) => self.custom_list_functions.push(value),
-            F::Float(_) => self.float_list_functions.push(value),
-            F::Bool(_) => self.bool_list_functions.push(value),
-            F::Nil(_) => self.nil_list_functions.push(value),
-            F::Tuple(_) => self.tuple_list_functions.push(value),
-            F::List(_) => self.list_list_functions.push(value),
-            F::Function(_) => self.function_list_functions.push(value),
+            R::Core(function) => match function {
+                F::Parameter(_) => self.parameter_list_functions.push(value),
+                F::ParameterList(_) => self.parameter_list_list_functions.push(value),
+                F::Int(_) => self.int_list_functions.push(value),
+                F::String(_) => self.string_list_functions.push(value),
+                F::BitArray(_) => self.bit_array_list_functions.push(value),
+                F::UtfCodepoint(_) => self.utf_codepoint_list_functions.push(value),
+                F::Custom(_) => self.custom_list_functions.push(value),
+                F::Float(_) => self.float_list_functions.push(value),
+                F::Bool(_) => self.bool_list_functions.push(value),
+                F::Nil(_) => self.nil_list_functions.push(value),
+                F::Tuple(_) => self.tuple_list_functions.push(value),
+                F::List(_) => self.list_list_functions.push(value),
+                F::Function(_) => self.function_list_functions.push(value),
+            },
+            R::External(function) => self
+                .external_list_functions
+                .push(value.map_runtime_id(|_| function)),
         }
     }
 }

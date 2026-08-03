@@ -1,9 +1,10 @@
 use crate::plan::{
     BitArrayExpr, BitArrayExprKind, BitArrayReturn, BoolExpr, BoolExprKind, BoolReturn, CustomExpr,
-    CustomReturn, FloatExpr, FloatExprKind, FloatReturn, GenericExpr, GenericExprKind,
-    GenericReturn, IntExpr, IntExprKind, IntReturn, ListItem, NilExpr, NilExprKind, NilReturn,
-    ReturnBody, StringExpr, StringExprKind, StringReturn, TupleExpr, TupleExprKind, TupleReturn,
-    TypedListExpr, TypedListReturnKind, UtfCodepointExpr, UtfCodepointExprKind, UtfCodepointReturn,
+    CustomReturn, ExternalExpr, ExternalReturn, FloatExpr, FloatExprKind, FloatReturn, GenericExpr,
+    GenericExprKind, GenericReturn, IntExpr, IntExprKind, IntReturn, ListItem, NilExpr,
+    NilExprKind, NilReturn, ReturnBody, StringExpr, StringExprKind, StringReturn, TupleExpr,
+    TupleExprKind, TupleReturn, TypedListExpr, TypedListReturnKind, UtfCodepointExpr,
+    UtfCodepointExprKind, UtfCodepointReturn,
 };
 
 pub(super) fn custom_return(
@@ -11,6 +12,13 @@ pub(super) fn custom_return(
     expression: CustomExpr,
 ) -> CustomReturn {
     CustomReturn::with_signature_shape(signature_shape, expression)
+}
+
+pub(super) fn external_return(
+    signature_shape: crate::plan::ExternalValueShape,
+    expression: ExternalExpr,
+) -> ExternalReturn {
+    ExternalReturn::with_signature_shape(signature_shape, expression)
 }
 
 pub(super) fn generic_return(expression: GenericExpr) -> GenericReturn {
@@ -591,6 +599,10 @@ pub(super) fn list_return(expression: ListExpr) -> ListReturn {
             item_type: expression.item().item_type(),
             body: typed_list_return_body(expression),
         },
+        ListExpr::External(expression) => ListReturn::External {
+            item_type: expression.item().item_type(),
+            body: typed_list_return_body(expression),
+        },
         ListExpr::Float(expression) => ListReturn::Float(typed_list_return_body(expression)),
         ListExpr::Bool(expression) => ListReturn::Bool(typed_list_return_body(expression)),
         ListExpr::Nil(expression) => ListReturn::Nil(typed_list_return_body(expression)),
@@ -680,9 +692,9 @@ mod tests {
         bool_return, float_return, int_return, list_return, nil_return, string_return, tuple_return,
     };
     use crate::plan::{
-        BoolExpr, CustomType, CustomTypeName, Expr, FloatExpr, FunctionType, IntExpr,
-        ListCaseBranches, ListExpr, ListReturn, NilExpr, ReturnBody, Step, StringExpr, TupleExpr,
-        TypeParameterId, ValueType,
+        BoolExpr, CustomType, CustomTypeName, Expr, ExternalType, ExternalTypeName, FloatExpr,
+        FunctionType, IntExpr, ListCaseBranches, ListExpr, ListReturn, NilExpr, ReturnBody, Step,
+        StringExpr, TupleExpr, TypeParameterId, ValueType,
     };
     use num_bigint::BigInt;
 
@@ -791,6 +803,20 @@ mod tests {
                 ValueType::Custom(custom_type.clone()),
             )),
             ListReturn::expr(ListExpr::value(Vec::new(), ValueType::Custom(custom_type),)),
+        );
+        let external_type = ExternalType::new(
+            ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into()),
+            Vec::new(),
+        );
+        assert_eq!(
+            list_return(ListExpr::value(
+                Vec::new(),
+                ValueType::External(external_type.clone()),
+            )),
+            ListReturn::expr(ListExpr::value(
+                Vec::new(),
+                ValueType::External(external_type),
+            )),
         );
         assert_eq!(
             list_return(ListExpr::value(Vec::new(), ValueType::Bool)),

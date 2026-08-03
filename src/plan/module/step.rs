@@ -1,17 +1,18 @@
 use super::expression::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CustomExpr, CustomFunctionExpr,
-    CustomLocalExpr, Expr, FloatExpr, FloatFunctionExpr, FunctionFunctionExpr, GenericExpr,
-    GenericFunctionExpr, IntExpr, IntFunctionExpr, ListFunctionExpr, ListLocalExpr, NilExpr,
-    NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
-    TypedFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    CustomLocalExpr, Expr, ExternalExpr, ExternalFunctionExpr, FloatExpr, FloatFunctionExpr,
+    FunctionFunctionExpr, GenericExpr, GenericFunctionExpr, IntExpr, IntFunctionExpr,
+    ListFunctionExpr, ListLocalExpr, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr,
+    TupleExpr, TupleFunctionExpr, TypedFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
 use super::function::{ParamLocal, ParamSlot};
 use super::id::{
     BitArrayFunctionLocalId, BitArrayLocalId, BoolFunctionLocalId, BoolLocalId,
-    CustomFunctionLocal, CustomFunctionLocalId, CustomLocal, CustomLocalId, FloatFunctionLocalId,
-    FloatLocalId, FunctionFunctionLocal, FunctionFunctionLocalId, GenericFunctionLocal,
-    GenericLocal, IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId,
-    NilLocalId, StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
+    CustomFunctionLocal, CustomFunctionLocalId, CustomLocal, CustomLocalId, ExternalFunctionLocal,
+    ExternalFunctionLocalId, ExternalLocal, FloatFunctionLocalId, FloatLocalId,
+    FunctionFunctionLocal, FunctionFunctionLocalId, GenericFunctionLocal, GenericLocal,
+    IntFunctionLocalId, IntLocalId, ListFunctionLocal, ListLocal, NilFunctionLocalId, NilLocalId,
+    StringFunctionLocalId, StringLocalId, TupleFunctionLocalId, TupleLocalId,
     UtfCodepointFunctionLocalId, UtfCodepointLocalId,
 };
 use crate::plan::{BitArrayPattern, CustomBindingPattern};
@@ -127,6 +128,11 @@ pub(crate) enum StepKind {
         binding: CustomLocalExpr,
         name: EcoString,
     },
+    LetExternal {
+        local: ExternalLocal,
+        name: EcoString,
+        value: ExternalExpr,
+    },
     LetBool {
         local: BoolLocalId,
         name: EcoString,
@@ -175,6 +181,11 @@ pub(crate) enum StepKind {
         local: CustomFunctionLocal,
         name: EcoString,
         value: TypedFunctionExpr<CustomFunctionExpr>,
+    },
+    LetExternalFunction {
+        local: ExternalFunctionLocal,
+        name: EcoString,
+        value: TypedFunctionExpr<ExternalFunctionExpr>,
     },
     LetBoolFunction {
         local: BoolFunctionLocalId,
@@ -260,6 +271,10 @@ pub(crate) enum EchoSubject {
         value: UtfCodepointExpr,
     },
     Custom(CustomLocalExpr),
+    External {
+        local: ExternalLocal,
+        value: ExternalExpr,
+    },
     Bool {
         local: BoolLocalId,
         value: BoolExpr,
@@ -296,6 +311,10 @@ pub(crate) enum EchoSubject {
     CustomFunction {
         local: CustomFunctionLocal,
         value: TypedFunctionExpr<CustomFunctionExpr>,
+    },
+    ExternalFunction {
+        local: ExternalFunctionLocal,
+        value: TypedFunctionExpr<ExternalFunctionExpr>,
     },
     BoolFunction {
         local: BoolFunctionLocalId,
@@ -473,6 +492,12 @@ impl Step {
         }
     }
 
+    pub(crate) fn let_external(local: ExternalLocal, name: EcoString, value: ExternalExpr) -> Self {
+        Self {
+            kind: StepKind::LetExternal { local, name, value },
+        }
+    }
+
     pub(crate) fn let_bool(local: BoolLocalId, name: EcoString, value: BoolExpr) -> Self {
         Self {
             kind: StepKind::LetBool { local, name, value },
@@ -556,6 +581,18 @@ impl Step {
             CustomFunctionLocal::new(local, value.expression().custom_function_type().clone());
         Self {
             kind: StepKind::LetCustomFunction { local, name, value },
+        }
+    }
+
+    pub(crate) fn let_external_function_expr(
+        local: ExternalFunctionLocalId,
+        name: EcoString,
+        value: TypedFunctionExpr<ExternalFunctionExpr>,
+    ) -> Self {
+        let local =
+            ExternalFunctionLocal::new(local, value.expression().external_function_type().clone());
+        Self {
+            kind: StepKind::LetExternalFunction { local, name, value },
         }
     }
 

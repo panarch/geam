@@ -13,9 +13,11 @@ use ecow::EcoString;
 use gleam_core::ast::{ArgNames, TypedFunction, TypedModule};
 use gleam_core::type_::Type;
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use constant::{ConstantBodies, plan_constant_bodies, reserve_constants};
 use registry::{ModuleRegistry, ProgramRegistry};
+mod external_type;
 
 pub use host::plan_host_program;
 
@@ -156,6 +158,7 @@ fn plan_modules(root_index: usize, modules: Vec<ModuleInput>) -> Result<ModulePl
         registry_modules.push(ModuleRegistry::new(
             declaration.module_name,
             declaration.custom_types,
+            Vec::new(),
             declaration.functions_by_name,
             constant_signatures,
         ));
@@ -240,13 +243,29 @@ fn function_table(
     functions: &[gleam_core::ast::TypedFunction],
     role: ModuleRole,
 ) -> Result<FunctionTable, PlanError> {
+    function_table_with_external_types(module, functions, role, &HashSet::new())
+}
+
+fn function_table_with_external_types(
+    module: ModuleId,
+    functions: &[gleam_core::ast::TypedFunction],
+    role: ModuleRole,
+    external_types: &HashSet<crate::plan::ExternalTypeName>,
+) -> Result<FunctionTable, PlanError> {
     let mut seeds = Vec::new();
 
     for function in functions {
         let name = function_name(function)?;
         let mut type_parameters = TypeParameterScope::default();
-        let return_shape = function_return_shape_in(&function.return_type, &mut type_parameters);
-        let params = function_params_allowing_labels_in(&function.arguments, &mut type_parameters);
+        let return_shape =
+            function_return_shape_in(&function.return_type, &mut type_parameters, &|name| {
+                external_types.contains(name)
+            });
+        let params = function_params_allowing_labels_in(
+            &function.arguments,
+            &mut type_parameters,
+            &|name| external_types.contains(name),
+        );
         let scheme = type_parameters.scheme();
         seeds.push(FunctionSeed {
             name,
@@ -344,14 +363,16 @@ struct FunctionSeed {
 fn function_return_shape_in(
     type_: &Type,
     parameters: &mut TypeParameterScope,
+    is_external: &impl Fn(&crate::plan::ExternalTypeName) -> bool,
 ) -> crate::plan::ValueShape {
-    crate::plan::ValueShape::from_gleam_in(type_, parameters)
+    crate::plan::ValueShape::from_gleam_in_with_external(type_, parameters, is_external)
 }
 
 pub(super) fn function_params_in(
     function_name: EcoString,
     arguments: &[gleam_core::ast::TypedArg],
     parameters: &mut TypeParameterScope,
+    is_external: &impl Fn(&crate::plan::ExternalTypeName) -> bool,
 ) -> Result<Vec<FunctionParam>, PlanError> {
     if arguments.iter().any(|argument| {
         matches!(
@@ -367,12 +388,17 @@ pub(super) fn function_params_in(
         });
     }
 
-    Ok(function_params_allowing_labels_in(arguments, parameters))
+    Ok(function_params_allowing_labels_in(
+        arguments,
+        parameters,
+        is_external,
+    ))
 }
 
 fn function_params_allowing_labels_in(
     arguments: &[gleam_core::ast::TypedArg],
     parameters: &mut TypeParameterScope,
+    is_external: &impl Fn(&crate::plan::ExternalTypeName) -> bool,
 ) -> Vec<FunctionParam> {
     let mut locals = FunctionParamLocalCounters::default();
 
@@ -390,7 +416,11 @@ fn function_params_allowing_labels_in(
                 }
             };
 
-            let shape = crate::plan::ValueShape::from_gleam_in(&argument.type_, parameters);
+            let shape = crate::plan::ValueShape::from_gleam_in_with_external(
+                &argument.type_,
+                parameters,
+                is_external,
+            );
             let local = locals.next_value_shape(&shape);
             FunctionParam::new(local, shape, binding, label)
         })
@@ -422,6 +452,7 @@ struct FunctionParamLocalCounters {
     next_bit_array: usize,
     next_utf_codepoint: usize,
     next_custom: usize,
+    next_external: usize,
     next_bool: usize,
     next_nil: usize,
     next_tuple: usize,
@@ -431,6 +462,7 @@ struct FunctionParamLocalCounters {
     next_bit_array_list: usize,
     next_utf_codepoint_list: usize,
     next_custom_list: usize,
+    next_external_list: usize,
     next_float_list: usize,
     next_bool_list: usize,
     next_nil_list: usize,
@@ -449,6 +481,7 @@ struct FunctionParamFunctionLocalCounters {
     next_bit_array: usize,
     next_utf_codepoint: usize,
     next_custom: usize,
+    next_external: usize,
     next_bool: usize,
     next_nil: usize,
     next_tuple: usize,
@@ -501,6 +534,14 @@ impl FunctionParamLocalCounters {
                     custom_shape.clone(),
                 );
                 self.next_custom += 1;
+                local
+            }
+            crate::plan::ValueShape::External(external_shape) => {
+                let local = ParamLocal::external_shape(
+                    crate::plan::ExternalLocalId(self.next_external),
+                    external_shape.clone(),
+                );
+                self.next_external += 1;
                 local
             }
             crate::plan::ValueShape::Bool => {
@@ -568,6 +609,14 @@ impl FunctionParamLocalCounters {
                             item_shape.type_().clone(),
                         );
                         self.next_custom_list += 1;
+                        local
+                    }
+                    crate::plan::ValueShape::External(item_shape) => {
+                        let local = crate::plan::ListLocal::external(
+                            crate::plan::ExternalListLocalId(self.next_external_list),
+                            item_shape.type_().clone(),
+                        );
+                        self.next_external_list += 1;
                         local
                     }
                     crate::plan::ValueShape::Float => {
@@ -690,6 +739,17 @@ impl FunctionParamFunctionLocalCounters {
                     ),
                 ));
                 self.next_custom += 1;
+                local
+            }
+            crate::plan::ValueShape::External(return_shape) => {
+                let local = ParamLocal::external_function(crate::plan::ExternalFunctionLocal::new(
+                    crate::plan::ExternalFunctionLocalId(self.next_external),
+                    crate::plan::ExternalFunctionType::from_shapes(
+                        shape.argument_shapes().to_vec(),
+                        return_shape.clone(),
+                    ),
+                ));
+                self.next_external += 1;
                 local
             }
             crate::plan::ValueShape::Bool => {
@@ -1400,8 +1460,12 @@ pub fn main() {
     fn preserve_unbound_return_type_as_parameter() {
         let mut parameters = super::TypeParameterScope::default();
         assert_eq!(
-            super::function_return_shape_in(type_::unbound_var(0).as_ref(), &mut parameters)
-                .value_type(),
+            super::function_return_shape_in(
+                type_::unbound_var(0).as_ref(),
+                &mut parameters,
+                &|_| false,
+            )
+            .value_type(),
             ValueType::Parameter(TypeParameterId(0)),
         );
         assert_eq!(parameters.scheme(), TypeScheme::new(1));
@@ -1411,7 +1475,11 @@ pub fn main() {
     fn parametric_function_return_shapes_preserve_inferred_results() {
         let mut concrete_parameters = super::TypeParameterScope::default();
         assert_eq!(
-            super::function_return_shape_in(type_::int().as_ref(), &mut concrete_parameters),
+            super::function_return_shape_in(
+                type_::int().as_ref(),
+                &mut concrete_parameters,
+                &|_| false,
+            ),
             ValueShape::Int,
         );
 
@@ -1420,6 +1488,7 @@ pub fn main() {
             super::function_return_shape_in(
                 type_::unbound_var(41).as_ref(),
                 &mut source_stop_parameters,
+                &|_| false,
             ),
             ValueShape::Parameter(TypeParameterId(0)),
         );
@@ -1429,7 +1498,8 @@ pub fn main() {
         assert_eq!(
             super::function_return_shape_in(
                 type_::unbound_var(41).as_ref(),
-                &mut inferred_parameters
+                &mut inferred_parameters,
+                &|_| false,
             ),
             ValueShape::Parameter(TypeParameterId(0)),
         );
@@ -1440,8 +1510,12 @@ pub fn main() {
     fn preserve_generic_return_without_template_scope() {
         let mut parameters = super::TypeParameterScope::default();
         assert_eq!(
-            super::function_return_shape_in(type_::generic_var(0).as_ref(), &mut parameters)
-                .value_type(),
+            super::function_return_shape_in(
+                type_::generic_var(0).as_ref(),
+                &mut parameters,
+                &|_| false,
+            )
+            .value_type(),
             ValueType::Parameter(TypeParameterId(0)),
         );
         assert_eq!(parameters.scheme(), TypeScheme::new(1));

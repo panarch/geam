@@ -30,13 +30,13 @@ to_int: fn(Order) -> Int
 #[test]
 #[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn tracks_official_gleam_order_public_surface() {
-    assert_surface("gleam_order", "gleam/order", &SURFACE);
+    assert_surface("gleam_order", "gleam/order", &["gleam/order"], &SURFACE);
 }
 
 #[test]
 #[ignore = "requires `gleam deps download` in the gleam_stdlib fixture"]
 fn runs_official_gleam_order_behavior() {
-    let value = run_fixture("gleam_order", "gleam/order");
+    let value = run_fixture("gleam_order", &["gleam/order"]);
     let Value::Custom(order) = value else {
         panic!("gleam/order fixture should return Order");
     };

@@ -3,10 +3,10 @@ use std::collections::HashMap;
 use crate::plan;
 use crate::plan::execution::type_::{
     BitArrayListTypeId, BoolListTypeId, CustomConstructorId, CustomFunctionType, CustomListTypeId,
-    CustomTypeId, FloatListTypeId, FunctionFunctionType, FunctionListTypeId, FunctionType,
-    GenericFunctionType, IntListTypeId, ListListTypeId, ListStorageTypeId, ListTypeId,
-    NilListTypeId, ParameterListListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
-    UtfCodepointListTypeId, ValueType,
+    CustomTypeId, ExternalFunctionType, ExternalListTypeId, ExternalTypeId, FloatListTypeId,
+    FunctionFunctionType, FunctionListTypeId, FunctionType, GenericFunctionType, IntListTypeId,
+    ListListTypeId, ListStorageTypeId, ListTypeId, NilListTypeId, ParameterListListTypeId,
+    ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId, ValueType,
 };
 use crate::plan::execution::type_::{
     CustomConstructorRefinement, CustomValueShape, CustomValueShapeId, FunctionShape, ValueShapeId,
@@ -14,11 +14,12 @@ use crate::plan::execution::type_::{
 
 use super::super::type_::{
     CustomConstructorDescriptor, CustomFieldDescriptor, CustomTypeDescriptor, CustomTypeTable,
-    CustomValueShapeDescriptor, ListTypeTable, ValueShapeDescriptor, ValueShapeTable,
+    CustomValueShapeDescriptor, ExternalTypeTable, ListTypeTable, ValueShapeDescriptor,
+    ValueShapeTable,
 };
 use super::specialization::{
-    SpecializedCustomConstructor, SpecializedCustomValueShape, SpecializedFunctionShape,
-    SpecializedValueShape, StoredValueShape,
+    SpecializedCustomConstructor, SpecializedCustomValueShape, SpecializedExternalValueShape,
+    SpecializedFunctionShape, SpecializedValueShape, StoredValueShape,
 };
 
 pub(super) struct TypeInterner {
@@ -29,10 +30,13 @@ pub(super) struct TypeInterner {
     list_ids: HashMap<StoredValueShape, ListListTypeId>,
     function_ids: HashMap<SpecializedValueShape, FunctionListTypeId>,
     custom_list_ids: HashMap<plan::CustomType, CustomListTypeId>,
+    external_list_ids: HashMap<plan::ExternalType, ExternalListTypeId>,
     tuple_items: Vec<Vec<ValueType>>,
     function_items: Vec<FunctionType>,
     custom_ids: HashMap<plan::CustomType, CustomTypeId>,
     custom_types: Vec<CustomTypeDescriptor>,
+    external_ids: HashMap<plan::ExternalType, ExternalTypeId>,
+    external_types: Vec<plan::ExternalType>,
     shape_ids: HashMap<SpecializedValueShape, ValueShapeId>,
     shapes: Vec<ValueShapeDescriptor>,
     shape_types: Vec<ValueType>,
@@ -65,10 +69,13 @@ impl TypeInterner {
             list_ids: HashMap::new(),
             function_ids: HashMap::new(),
             custom_list_ids: HashMap::new(),
+            external_list_ids: HashMap::new(),
             tuple_items: Vec::new(),
             function_items: Vec::new(),
             custom_ids: HashMap::new(),
             custom_types: Vec::new(),
+            external_ids: HashMap::new(),
+            external_types: Vec::new(),
             shape_ids: HashMap::new(),
             shapes: Vec::new(),
             shape_types: Vec::new(),
@@ -98,6 +105,9 @@ impl TypeInterner {
                 ValueType::Function(Box::new(self.function_type(type_)))
             }
             SpecializedValueShape::Custom(shape) => ValueType::Custom(self.custom_type(shape)),
+            SpecializedValueShape::External(shape) => {
+                ValueType::External(self.external_type(shape))
+            }
         }
     }
 
@@ -138,6 +148,9 @@ impl TypeInterner {
             SpecializedValueShape::Custom(shape) => {
                 ValueShapeDescriptor::Custom(self.custom_shape_id(shape))
             }
+            SpecializedValueShape::External(shape) => {
+                ValueShapeDescriptor::External(self.external_type(shape))
+            }
         };
         let nominal = self.value_type(&key);
         let id = ValueShapeId::new(self.shapes.len());
@@ -154,6 +167,24 @@ impl TypeInterner {
         let type_id = self.custom_type(shape);
         let shape_id = self.custom_shape_id(shape);
         CustomValueShape::new(type_id, shape_id)
+    }
+
+    pub(super) fn external_function_type(
+        &mut self,
+        arguments: &[SpecializedValueShape],
+        return_: &SpecializedExternalValueShape,
+    ) -> ExternalFunctionType {
+        let shape = SpecializedFunctionShape::new(
+            arguments.to_vec(),
+            SpecializedValueShape::External(return_.clone()),
+        );
+        let nominal = self.function_type(&shape);
+        let arguments = arguments
+            .iter()
+            .map(|argument| self.value_shape(argument))
+            .collect();
+        let return_ = self.external_type(return_);
+        ExternalFunctionType::from_shapes(nominal, arguments, return_)
     }
 
     pub(super) fn function_shape(&mut self, shape: &SpecializedFunctionShape) -> FunctionShape {
@@ -267,6 +298,7 @@ impl TypeInterner {
             SpecializedValueShape::List(item) => self.list_list_type(item).list_type(),
             SpecializedValueShape::Function(item) => self.function_list_type(item).list_type(),
             SpecializedValueShape::Custom(item) => self.custom_list_type(item).list_type(),
+            SpecializedValueShape::External(item) => self.external_list_type(item).list_type(),
         }
     }
 
@@ -416,6 +448,7 @@ impl TypeInterner {
             StoredValueShape::BitArray => self.bit_array_list_type().list_type(),
             StoredValueShape::UtfCodepoint => self.utf_codepoint_list_type().list_type(),
             StoredValueShape::Custom(item) => self.custom_list_type(item).list_type(),
+            StoredValueShape::External(item) => self.external_list_type(item).list_type(),
             StoredValueShape::Float => self.float_list_type().list_type(),
             StoredValueShape::Bool => self.bool_list_type().list_type(),
             StoredValueShape::Nil => self.nil_list_type().list_type(),
@@ -469,6 +502,23 @@ impl TypeInterner {
         id
     }
 
+    pub(super) fn external_list_type(
+        &mut self,
+        item: &SpecializedExternalValueShape,
+    ) -> ExternalListTypeId {
+        let type_ = item.to_module_shape().type_().clone();
+        if let Some(id) = self.external_list_ids.get(&type_) {
+            return *id;
+        }
+
+        let item_type = self.external_type(item);
+        let list_type = ListTypeId::new(self.types.len());
+        let id = ExternalListTypeId::new(list_type, item_type);
+        self.types.push(ListStorageTypeId::External(id));
+        self.external_list_ids.insert(type_, id);
+        id
+    }
+
     pub(super) fn custom_type(&mut self, shape: &SpecializedCustomValueShape) -> CustomTypeId {
         let type_ = shape.to_module_shape().type_().clone();
         if let Some(id) = self.custom_ids.get(&type_) {
@@ -478,6 +528,21 @@ impl TypeInterner {
         let id = CustomTypeId::new(self.custom_types.len());
         self.custom_ids.insert(type_.clone(), id);
         self.custom_types.push(CustomTypeDescriptor::new(type_));
+        id
+    }
+
+    pub(super) fn external_type(
+        &mut self,
+        shape: &SpecializedExternalValueShape,
+    ) -> ExternalTypeId {
+        let type_ = shape.to_module_shape().type_().clone();
+        if let Some(id) = self.external_ids.get(&type_) {
+            return *id;
+        }
+
+        let id = ExternalTypeId::new(self.external_types.len());
+        self.external_ids.insert(type_.clone(), id);
+        self.external_types.push(type_);
         id
     }
 
@@ -504,10 +569,18 @@ impl TypeInterner {
         id
     }
 
-    pub(super) fn into_tables(self) -> (ListTypeTable, CustomTypeTable, ValueShapeTable) {
+    pub(super) fn into_tables(
+        self,
+    ) -> (
+        ListTypeTable,
+        CustomTypeTable,
+        ExternalTypeTable,
+        ValueShapeTable,
+    ) {
         (
             ListTypeTable::from_parts(self.types, self.tuple_items, self.function_items),
             CustomTypeTable::new(self.custom_types),
+            ExternalTypeTable::new(self.external_types),
             ValueShapeTable::new(self.shapes, self.shape_types, self.custom_shapes),
         )
     }
