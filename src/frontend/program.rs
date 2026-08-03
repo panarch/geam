@@ -518,6 +518,99 @@ impl HostedParsedModule {
     }
 }
 
+fn dependency_order(
+    modules: &[ParsedModule],
+    hosts: &[RegisteredHostModule],
+) -> Result<Vec<EcoString>, FrontendError> {
+    #[derive(Clone, Copy)]
+    enum Visit {
+        Visiting(usize),
+        Visited,
+    }
+
+    fn visit(
+        module: &EcoString,
+        dependencies: &BTreeMap<EcoString, BTreeSet<EcoString>>,
+        visits: &mut BTreeMap<EcoString, Visit>,
+        path: &mut Vec<EcoString>,
+        order: &mut Vec<EcoString>,
+    ) -> Result<(), FrontendError> {
+        match visits.get(module).copied() {
+            Some(Visit::Visited) => return Ok(()),
+            Some(Visit::Visiting(position)) => {
+                let mut modules = path[position..].to_vec();
+                modules.push(module.clone());
+                return Err(FrontendError::ImportCycle { modules });
+            }
+            None => {}
+        }
+
+        visits.insert(module.clone(), Visit::Visiting(path.len()));
+        path.push(module.clone());
+        for dependency in &dependencies[module] {
+            visit(dependency, dependencies, visits, path, order)?;
+        }
+        path.pop();
+        visits.insert(module.clone(), Visit::Visited);
+        order.push(module.clone());
+        Ok(())
+    }
+
+    let supplied = modules
+        .iter()
+        .map(|module| module.module.name.clone())
+        .chain(hosts.iter().map(|module| module.module().clone()))
+        .collect::<BTreeSet<_>>();
+    let package_modules = modules
+        .iter()
+        .map(|module| (&module.package, &module.module.name))
+        .chain(
+            hosts
+                .iter()
+                .map(|module| (module.package(), module.module())),
+        )
+        .fold(
+            BTreeMap::<EcoString, BTreeSet<EcoString>>::new(),
+            |mut packages, (package, module)| {
+                packages
+                    .entry(package.clone())
+                    .or_default()
+                    .insert(module.clone());
+                packages
+            },
+        );
+    let dependencies = modules
+        .iter()
+        .map(|module| {
+            let mut internal = module
+                .module
+                .dependencies(Target::Erlang)
+                .into_iter()
+                .map(|(dependency, _)| dependency)
+                .filter(|dependency| supplied.contains(dependency))
+                .collect::<BTreeSet<_>>();
+            for package in &module.direct_dependencies {
+                if let Some(dependencies) = package_modules.get(package) {
+                    internal.extend(dependencies.iter().cloned());
+                }
+            }
+            (module.module.name.clone(), internal)
+        })
+        .chain(
+            hosts
+                .iter()
+                .map(|module| (module.module().clone(), BTreeSet::new())),
+        )
+        .collect::<BTreeMap<_, _>>();
+    let mut order = Vec::with_capacity(modules.len());
+    let mut visits = BTreeMap::new();
+    let mut path = Vec::new();
+    for module in dependencies.keys() {
+        visit(module, &dependencies, &mut visits, &mut path, &mut order)?;
+    }
+    Ok(order)
+}
+
 fn host_module_interface(
     module: &RegisteredHostModule,
     prelude: &ModuleInterface,
@@ -614,99 +707,6 @@ fn host_type(type_: &HostTypeDescriptor) -> std::sync::Arc<gleam_core::type_::Ty
             arguments.iter().map(host_type).collect(),
         ),
     }
-}
-
-fn dependency_order(
-    modules: &[ParsedModule],
-    hosts: &[RegisteredHostModule],
-) -> Result<Vec<EcoString>, FrontendError> {
-    #[derive(Clone, Copy)]
-    enum Visit {
-        Visiting(usize),
-        Visited,
-    }
-
-    fn visit(
-        module: &EcoString,
-        dependencies: &BTreeMap<EcoString, BTreeSet<EcoString>>,
-        visits: &mut BTreeMap<EcoString, Visit>,
-        path: &mut Vec<EcoString>,
-        order: &mut Vec<EcoString>,
-    ) -> Result<(), FrontendError> {
-        match visits.get(module).copied() {
-            Some(Visit::Visited) => return Ok(()),
-            Some(Visit::Visiting(position)) => {
-                let mut modules = path[position..].to_vec();
-                modules.push(module.clone());
-                return Err(FrontendError::ImportCycle { modules });
-            }
-            None => {}
-        }
-
-        visits.insert(module.clone(), Visit::Visiting(path.len()));
-        path.push(module.clone());
-        for dependency in &dependencies[module] {
-            visit(dependency, dependencies, visits, path, order)?;
-        }
-        path.pop();
-        visits.insert(module.clone(), Visit::Visited);
-        order.push(module.clone());
-        Ok(())
-    }
-
-    let supplied = modules
-        .iter()
-        .map(|module| module.module.name.clone())
-        .chain(hosts.iter().map(|module| module.module().clone()))
-        .collect::<BTreeSet<_>>();
-    let package_modules = modules
-        .iter()
-        .map(|module| (&module.package, &module.module.name))
-        .chain(
-            hosts
-                .iter()
-                .map(|module| (module.package(), module.module())),
-        )
-        .fold(
-            BTreeMap::<EcoString, BTreeSet<EcoString>>::new(),
-            |mut packages, (package, module)| {
-                packages
-                    .entry(package.clone())
-                    .or_default()
-                    .insert(module.clone());
-                packages
-            },
-        );
-    let dependencies = modules
-        .iter()
-        .map(|module| {
-            let mut internal = module
-                .module
-                .dependencies(Target::Erlang)
-                .into_iter()
-                .map(|(dependency, _)| dependency)
-                .filter(|dependency| supplied.contains(dependency))
-                .collect::<BTreeSet<_>>();
-            for package in &module.direct_dependencies {
-                if let Some(dependencies) = package_modules.get(package) {
-                    internal.extend(dependencies.iter().cloned());
-                }
-            }
-            (module.module.name.clone(), internal)
-        })
-        .chain(
-            hosts
-                .iter()
-                .map(|module| (module.module().clone(), BTreeSet::new())),
-        )
-        .collect::<BTreeMap<_, _>>();
-    let mut order = Vec::with_capacity(modules.len());
-    let mut visits = BTreeMap::new();
-    let mut path = Vec::new();
-    for module in dependencies.keys() {
-        visit(module, &dependencies, &mut visits, &mut path, &mut order)?;
-    }
-    Ok(order)
 }
 
 #[cfg(test)]
