@@ -1,0 +1,7 @@
+name = "geam_http_test"
+version = "1.0.0"
+gleam = ">= 1.17.0"
+
+[dependencies]
+gleam_http = ">= 4.3.0 and < 4.3.1"
+gleam_stdlib = ">= 1.0.3 and < 1.0.4"

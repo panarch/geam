@@ -68,6 +68,13 @@ project loading. The verified module set is `gleam/bit_array`, `gleam/bool`,
 `gleam/option`, `gleam/order`, `gleam/pair`, `gleam/result`, `gleam/set`,
 `gleam/string`, `gleam/string_tree`, and `gleam/uri`.
 
+Geam also verifies the unchanged `gleam_http` `v4.3.0` package as an
+independently pinned Hex dependency. The package adds no Geam provider; its
+resolved project explicitly composes the existing stdlib provider bundle for
+its transitive dependencies. This compatibility covers HTTP data structures,
+parsers, cookies, requests, responses, and deprecated service helpers, not a
+network client, server, socket, or transport runtime.
+
 The main public entry points are:
 
 - `compile_typed_module`
@@ -131,6 +138,8 @@ re-entry, and sealing rules.
 Current Gleam compiler baseline: `v1.17.0`.
 
 Current Gleam stdlib integration baseline: `gleam_stdlib` `v1.0.3`.
+
+Current Gleam HTTP integration baseline: `gleam_http` `v4.3.0`.
 
 See [docs/upstream-gleam.md](docs/upstream-gleam.md) for the exact commit,
 compiler-boundary details, and sync policy.

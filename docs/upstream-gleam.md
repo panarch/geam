@@ -35,6 +35,19 @@ externals use the hosted pipeline with the explicit Rust provider bundle. Each
 tracked module locks its public names, argument labels, and signatures while
 allowing private implementation and declaration-order changes.
 
+The first independently versioned Pure Gleam package baseline is:
+
+```text
+Repository:  https://github.com/gleam-lang/http
+Hex package: gleam_http
+Release:     v4.3.0
+```
+
+Geam does not bundle or patch this source either. Its compatibility suite locks
+`gleam_http` and `gleam_stdlib` independently, then uses the hosted resolved
+project pipeline because the selected stdlib closure requires the existing
+explicit provider bundle.
+
 ## Used Gleam Areas
 
 The first compiler-boundary milestone depends on `gleam-core` pinned to the
@@ -232,6 +245,29 @@ stderr events through the `IoSink` projected by `GleamStdlibHostProfile`. The
 default run state collects those events, and project loading does not select a
 terminal destination.
 
+### Gleam HTTP v4.3.0 Compatibility
+
+The HTTP compatibility suite tracks all five unchanged package modules:
+
+- [x] `gleam/http`
+- [x] `gleam/http/cookie`
+- [x] `gleam/http/request`
+- [x] `gleam/http/response`
+- [x] `gleam/http/service`
+
+The package declares no external functions or external types, so Geam adds no
+HTTP provider. Its 44 public functions execute through official source, while
+the suite separately fixes 9 public custom types and 3 public type aliases.
+The deprecated service aliases and functions remain part of the `v4.3.0`
+compatibility surface.
+
+This baseline covers HTTP values and transformations, method and scheme
+handling, cookies, URI-backed requests, responses, content disposition, and
+streaming multipart parsing. It does not provide a client, server, socket,
+transport, or network capability. Provider selection remains explicit and the
+project loader does not inject the stdlib bundle merely because an HTTP module
+is imported.
+
 The current public execution APIs are:
 
 ```rust
@@ -328,6 +364,7 @@ When updating Geam to a newer Gleam baseline, record:
 - Old and new Gleam release tags.
 - Old and new commit hashes.
 - Old and new `gleam_stdlib` integration releases when that baseline changes.
+- Old and new `gleam_http` integration releases when that baseline changes.
 - Compiler-boundary files compared.
 - Geam compiler-boundary wrapper or lowering changes made.
 - Profile/lowering fixture changes.
