@@ -6,21 +6,29 @@ mod dynamic;
 mod dynamic_decode;
 mod float;
 mod int;
+mod io;
 mod option;
 mod result;
 mod run_state;
 mod string;
 mod string_tree;
 
+pub use io::{IoOutput, IoSink, IoStream};
 pub use run_state::{GleamStdlibRunState, GleamStdlibRunStateError};
 
-/// A host profile that exposes storage for the official Gleam standard library.
+/// A host profile that exposes state and storage for the official Gleam standard library.
 pub trait GleamStdlibHostProfile: HostProfile {
+    /// The concrete caller-owned sink used by official Gleam IO functions.
+    type Io: IoSink;
+
     /// Projects the standard-library external stores from this profile.
     fn gleam_stdlib_stores(stores: &Self::ExternalStores) -> &GleamStdlibStores;
 
     /// Projects caller-owned standard-library run state from this profile.
     fn gleam_stdlib_run_state(state: &mut Self::RunState) -> &mut GleamStdlibRunState;
+
+    /// Projects the caller-owned standard-library IO sink from this profile.
+    fn gleam_stdlib_io(state: &mut Self::RunState) -> &mut Self::Io;
 }
 
 /// External value stores used by the official Gleam standard library providers.
@@ -41,12 +49,18 @@ impl HostProfile for GleamStdlibProfile {
 }
 
 impl GleamStdlibHostProfile for GleamStdlibProfile {
+    type Io = Vec<IoOutput>;
+
     fn gleam_stdlib_stores(stores: &Self::ExternalStores) -> &GleamStdlibStores {
         stores
     }
 
     fn gleam_stdlib_run_state(state: &mut Self::RunState) -> &mut GleamStdlibRunState {
         state
+    }
+
+    fn gleam_stdlib_io(state: &mut Self::RunState) -> &mut Self::Io {
+        state.io_sink()
     }
 }
 
@@ -55,39 +69,32 @@ pub fn host_providers<Profile>() -> Result<Vec<HostProviderModule<Profile>>, Hos
 where
     Profile: GleamStdlibHostProfile,
 {
-    dict::host_provider::<Profile>().and_then(|dict| {
-        dynamic::host_provider::<Profile>().and_then(|dynamic| {
-            float::host_provider::<Profile>().and_then(|float| {
-                int::host_provider::<Profile>().and_then(|int| {
-                    string_tree::host_provider::<Profile>().and_then(|string_tree| {
-                        string::host_provider::<Profile>().and_then(|string| {
-                            bit_array::host_provider::<Profile>().and_then(|bit_array| {
-                                dynamic_decode::host_provider::<Profile>().map(|dynamic_decode| {
-                                    vec![
-                                        dict,
-                                        dynamic,
-                                        float,
-                                        int,
-                                        string_tree,
-                                        string,
-                                        bit_array,
-                                        dynamic_decode,
-                                    ]
-                                })
-                            })
-                        })
-                    })
-                })
-            })
-        })
-    })
+    let registrations: [ProviderRegistration<Profile>; 9] = [
+        dict::host_provider::<Profile>,
+        dynamic::host_provider::<Profile>,
+        float::host_provider::<Profile>,
+        int::host_provider::<Profile>,
+        string_tree::host_provider::<Profile>,
+        string::host_provider::<Profile>,
+        bit_array::host_provider::<Profile>,
+        dynamic_decode::host_provider::<Profile>,
+        io::host_provider::<Profile>,
+    ];
+
+    registrations
+        .into_iter()
+        .map(|register| register())
+        .collect()
 }
+
+type ProviderRegistration<Profile> =
+    fn() -> Result<HostProviderModule<Profile>, HostRegistrationError>;
 
 #[cfg(test)]
 mod tests {
     use super::{
         GleamStdlibHostProfile, GleamStdlibProfile, GleamStdlibRunState, GleamStdlibStores,
-        host_providers,
+        IoOutput, IoSink, IoStream, host_providers,
     };
     use crate::HostProfile;
 
@@ -100,6 +107,18 @@ mod tests {
 
     struct CustomRunState {
         stdlib: GleamStdlibRunState,
+        io: RecordingSink,
+    }
+
+    #[derive(Default)]
+    struct RecordingSink {
+        outputs: Vec<IoOutput>,
+    }
+
+    impl IoSink for RecordingSink {
+        fn emit(&mut self, output: IoOutput) {
+            self.outputs.push(output);
+        }
     }
 
     impl HostProfile for CustomProfile {
@@ -108,12 +127,18 @@ mod tests {
     }
 
     impl GleamStdlibHostProfile for CustomProfile {
+        type Io = RecordingSink;
+
         fn gleam_stdlib_stores(stores: &Self::ExternalStores) -> &GleamStdlibStores {
             &stores.stdlib
         }
 
         fn gleam_stdlib_run_state(state: &mut Self::RunState) -> &mut GleamStdlibRunState {
             &mut state.stdlib
+        }
+
+        fn gleam_stdlib_io(state: &mut Self::RunState) -> &mut Self::Io {
+            &mut state.io
         }
     }
 
@@ -136,6 +161,7 @@ mod tests {
                 "gleam/string",
                 "gleam/bit_array",
                 "gleam/dynamic/decode",
+                "gleam/io",
             ],
         );
         let provider = &providers[0];
@@ -181,12 +207,13 @@ mod tests {
     }
 
     #[test]
-    fn custom_profiles_project_their_stdlib_store_bundle() {
+    fn custom_profiles_project_stdlib_stores_state_and_io() {
         let default_stores = GleamStdlibStores::default();
         let stores = CustomStores::default();
         let mut default_state = GleamStdlibRunState::from_seed([1; 32]);
         let mut state = CustomRunState {
             stdlib: GleamStdlibRunState::from_seed([2; 32]),
+            io: RecordingSink::default(),
         };
 
         assert!(std::ptr::eq(
@@ -201,5 +228,14 @@ mod tests {
         assert!(std::ptr::eq(default_projected, &default_state));
         let projected = CustomProfile::gleam_stdlib_run_state(&mut state);
         assert!(std::ptr::eq(projected, &state.stdlib));
+
+        let default_io = GleamStdlibProfile::gleam_stdlib_io(&mut default_state);
+        default_io.emit(IoOutput::new(IoStream::Stdout, "default".into()));
+        assert_eq!(default_state.io_outputs()[0].text(), "default");
+
+        let custom_io = CustomProfile::gleam_stdlib_io(&mut state);
+        custom_io.emit(IoOutput::new(IoStream::Stderr, "custom".into()));
+        assert_eq!(state.io.outputs[0].stream(), IoStream::Stderr);
+        assert_eq!(state.io.outputs[0].text(), "custom");
     }
 }

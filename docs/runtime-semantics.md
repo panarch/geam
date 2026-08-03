@@ -292,6 +292,25 @@ global output queue, or default stdout/stderr destination, and sink failures
 are not part of `ExecutionError`. A future build profile that omits source
 metadata is a separate design concern.
 
+## Standard-Library IO
+
+Official `gleam/io` functions emit through the `IoSink` projected by the
+caller's `GleamStdlibHostProfile`. Each owned `IoOutput` records either stdout
+or stderr and one exact text chunk. `print` operations preserve their input;
+`println` operations append exactly one newline before emitting. All four
+operations emit before returning `Nil`, so output remains caller-owned if a
+later source expression panics.
+
+The default `GleamStdlibRunState` collects events in cross-stream source order.
+A custom profile may project another concrete sink, including an adapter that
+streams to an outer host. Delivery is infallible at the Geam boundary: writer
+failure policy belongs to that adapter and does not become an `ExecutionError`
+or `HostFailure`.
+
+Stdlib IO and language Echo remain separate capabilities. They do not share a
+global queue or select a process output destination. A host that needs one
+combined transcript can compose both adapters over its own shared recorder.
+
 ## Execution Graph
 
 An executable function owns its entry bindings and a `FunctionBody`. The body

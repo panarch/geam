@@ -64,9 +64,9 @@ provides an explicitly composed host-provider bundle for unchanged official
 `gleam_stdlib` `v1.0.3` modules that require externals; it is not injected by
 project loading. The verified module set is `gleam/bit_array`, `gleam/bool`,
 `gleam/bytes_tree`, `gleam/dict`, `gleam/dynamic`, `gleam/dynamic/decode`,
-`gleam/float`, `gleam/function`, `gleam/int`, `gleam/list`, `gleam/option`,
-`gleam/order`, `gleam/pair`, `gleam/result`, `gleam/set`, `gleam/string`, and
-`gleam/string_tree`.
+`gleam/float`, `gleam/function`, `gleam/int`, `gleam/io`, `gleam/list`,
+`gleam/option`, `gleam/order`, `gleam/pair`, `gleam/result`, `gleam/set`,
+`gleam/string`, and `gleam/string_tree`.
 
 The main public entry points are:
 
@@ -85,9 +85,13 @@ The main public entry points are:
 - `run_main`
 - `HostedExecution::run_main`
 
-`run_main` takes a caller-owned `EchoSink`; Geam never selects stdout, stderr,
-or a hidden output destination for the host. Ordinary and pipeline Echo both
-emit through that boundary and continue with their original value.
+`run_main` takes a caller-owned `EchoSink`; language Echo does not select
+stdout, stderr, or a hidden output destination. Ordinary and pipeline Echo
+both emit through that boundary and continue with their original value.
+Official `gleam/io` functions use a separate caller-owned
+`geam::gleam_stdlib::IoSink`. The default stdlib run state collects owned
+stdout and stderr events, while custom profiles can project another concrete
+sink without changing the hosted execution boundary.
 
 The existing `TypedProgram -> ModulePlan -> ExecutionPlan -> run_main` path is
 host-free. Rust callbacks enter only through
