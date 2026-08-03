@@ -144,6 +144,22 @@ where
             .map(|token| crate::host::type_::from_token::<Item, Profile>(self.runtime, token))
     }
 
+    pub(crate) fn create_list<Item: HostType>(
+        &mut self,
+        values: impl IntoIterator<Item = Item::Value<'call>>,
+    ) -> HostList<'call, Item> {
+        let values = values
+            .into_iter()
+            .map(crate::host::type_::into_scoped::<Item>)
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        let value = self.runtime.build_list(
+            &crate::host::HostTypeDescriptor::of::<HostListType<Item>>(),
+            values,
+        );
+        HostList::new(self.runtime.list_token(value))
+    }
+
     pub fn tuple_len<Elements>(&self, value: HostTuple<'call, Elements>) -> usize {
         self.runtime.tuple_len(value.token)
     }
@@ -164,40 +180,6 @@ where
         crate::host::type_::into_scoped_values::<Elements>(values, &mut output);
         let value = self.runtime.build_tuple(output.into_boxed_slice());
         HostTuple::new(self.runtime.tuple_token(value))
-    }
-
-    pub(crate) fn create_list<Item: HostType>(
-        &mut self,
-        values: impl IntoIterator<Item = Item::Value<'call>>,
-    ) -> HostList<'call, Item> {
-        let values = values
-            .into_iter()
-            .map(crate::host::type_::into_scoped::<Item>)
-            .collect::<Vec<_>>()
-            .into_boxed_slice();
-        let value = self.runtime.build_list(
-            &crate::host::HostTypeDescriptor::of::<HostListType<Item>>(),
-            values,
-        );
-        HostList::new(self.runtime.list_token(value))
-    }
-
-    pub(crate) fn create_custom<Constructor>(
-        &mut self,
-        fields: <Constructor::Fields as HostTypeSequence>::Values<'call>,
-    ) -> HostCustom<'call, Constructor::Custom>
-    where
-        Constructor: HostCustomConstructor,
-        Constructor::Fields: HostTypeSequence,
-    {
-        let mut output = Vec::new();
-        crate::host::type_::into_scoped_values::<Constructor::Fields>(fields, &mut output);
-        let value = self.runtime.build_custom(
-            &crate::host::HostTypeDescriptor::of::<Constructor::Custom>(),
-            crate::host::type_::custom_constructor_index::<Constructor>(),
-            output.into_boxed_slice(),
-        );
-        HostCustom::new(self.runtime.custom_token(value))
     }
 
     pub fn custom_constructor<Custom>(&self, value: HostCustom<'call, Custom>) -> usize {
@@ -232,6 +214,24 @@ where
     {
         let fields = self.runtime.custom_fields(value.token);
         crate::host::type_::from_tokens::<Constructor::Fields, Profile>(self.runtime, &fields)
+    }
+
+    pub(crate) fn create_custom<Constructor>(
+        &mut self,
+        fields: <Constructor::Fields as HostTypeSequence>::Values<'call>,
+    ) -> HostCustom<'call, Constructor::Custom>
+    where
+        Constructor: HostCustomConstructor,
+        Constructor::Fields: HostTypeSequence,
+    {
+        let mut output = Vec::new();
+        crate::host::type_::into_scoped_values::<Constructor::Fields>(fields, &mut output);
+        let value = self.runtime.build_custom(
+            &crate::host::HostTypeDescriptor::of::<Constructor::Custom>(),
+            crate::host::type_::custom_constructor_index::<Constructor>(),
+            output.into_boxed_slice(),
+        );
+        HostCustom::new(self.runtime.custom_token(value))
     }
 
     /// Borrows the Rust payload behind one typed external value.
