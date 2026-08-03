@@ -42,12 +42,12 @@ impl FunctionType {
         }
     }
 
-    pub(crate) fn return_(&self) -> &ValueType {
-        &self.return_
-    }
-
     pub(crate) fn argument_types(&self) -> &[ValueType] {
         &self.arguments
+    }
+
+    pub(crate) fn return_(&self) -> &ValueType {
+        &self.return_
     }
 }
 

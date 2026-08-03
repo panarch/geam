@@ -69,17 +69,17 @@ impl CustomTypeTable {
         &self.types[id.type_id().index()].constructors[&id.index()]
     }
 
-    #[cfg(test)]
-    pub(crate) fn len(&self) -> usize {
-        self.types.len()
-    }
-
     pub(crate) fn constructor_id_for_type(
         &self,
         type_id: CustomTypeId,
         constructor_index: usize,
     ) -> CustomConstructorId {
         self.types[type_id.index()].constructors[&constructor_index].id()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
+        self.types.len()
     }
 
     #[cfg(test)]

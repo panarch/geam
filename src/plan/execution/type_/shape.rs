@@ -119,13 +119,13 @@ impl ValueShapeTable {
         }
     }
 
+    pub(crate) fn value_type(&self, id: ValueShapeId) -> &super::ValueType {
+        &self.shape_types[id.index()]
+    }
+
     #[cfg(test)]
     pub(crate) fn get(&self, id: ValueShapeId) -> &ValueShapeDescriptor {
         &self.shapes[id.index()]
-    }
-
-    pub(crate) fn value_type(&self, id: ValueShapeId) -> &super::ValueType {
-        &self.shape_types[id.index()]
     }
 
     #[cfg(test)]

@@ -128,6 +128,97 @@ where
     }
 }
 
+pub(super) fn write_binary<Value: LocalLabel>(
+    output: &mut String,
+    opcode: &str,
+    left: &Value,
+    right: &Value,
+) {
+    output.push_str(opcode);
+    output.push(' ');
+    left.write_local_label(output);
+    output.push(' ');
+    right.write_local_label(output);
+}
+
+pub(super) fn write_call<Function: FunctionLabelSource>(
+    output: &mut String,
+    opcode: &str,
+    function: &Function,
+    args: &[ParamLocal],
+) {
+    output.push_str(opcode);
+    output.push(' ');
+    function.function_label().write(output);
+    write_args(output, args);
+}
+
+pub(super) fn write_function_call<Function: LocalLabel>(
+    output: &mut String,
+    opcode: &str,
+    function: &Function,
+    args: &[ParamLocal],
+) {
+    output.push_str(opcode);
+    output.push(' ');
+    function.write_local_label(output);
+    write_args(output, args);
+}
+
+pub(super) fn write_args(output: &mut String, args: &[ParamLocal]) {
+    output.push_str(" args=");
+    write_local_labels(output, args);
+}
+
+pub(super) fn write_constant<Value>(
+    output: &mut String,
+    family: &str,
+    id: crate::plan::execution::constant::ConstantId<Value>,
+) {
+    output.push_str("constant.");
+    output.push_str(family);
+    output.push('#');
+    output.push_str(&id.index().to_string());
+}
+
+pub(super) fn write_length<Value: LocalLabel>(
+    output: &mut String,
+    opcode: &str,
+    value: &Value,
+    length: usize,
+) {
+    output.push_str(opcode);
+    output.push(' ');
+    value.write_local_label(output);
+    output.push_str(" length=");
+    output.push_str(&length.to_string());
+}
+
+pub(super) fn write_literal(output: &mut String, opcode: &str, value: &str) {
+    output.push_str(opcode);
+    output.push(' ');
+    output.push_str(value);
+}
+
+pub(super) fn write_projection<Source: LocalLabel>(
+    output: &mut String,
+    opcode: &str,
+    source: &Source,
+    index: usize,
+) {
+    output.push_str(opcode);
+    output.push(' ');
+    source.write_local_label(output);
+    output.push_str(" index=");
+    output.push_str(&index.to_string());
+}
+
+pub(super) fn write_unary<Value: LocalLabel>(output: &mut String, opcode: &str, value: &Value) {
+    output.push_str(opcode);
+    output.push(' ');
+    value.write_local_label(output);
+}
+
 #[cfg(test)]
 mod instruction_explain_tests {
     use crate::plan::execution::explain;
@@ -233,95 +324,4 @@ pub fn main() { #(Boxed) }
             context.write(instruction.kind());
         });
     }
-}
-
-pub(super) fn write_binary<Value: LocalLabel>(
-    output: &mut String,
-    opcode: &str,
-    left: &Value,
-    right: &Value,
-) {
-    output.push_str(opcode);
-    output.push(' ');
-    left.write_local_label(output);
-    output.push(' ');
-    right.write_local_label(output);
-}
-
-pub(super) fn write_call<Function: FunctionLabelSource>(
-    output: &mut String,
-    opcode: &str,
-    function: &Function,
-    args: &[ParamLocal],
-) {
-    output.push_str(opcode);
-    output.push(' ');
-    function.function_label().write(output);
-    write_args(output, args);
-}
-
-pub(super) fn write_function_call<Function: LocalLabel>(
-    output: &mut String,
-    opcode: &str,
-    function: &Function,
-    args: &[ParamLocal],
-) {
-    output.push_str(opcode);
-    output.push(' ');
-    function.write_local_label(output);
-    write_args(output, args);
-}
-
-pub(super) fn write_args(output: &mut String, args: &[ParamLocal]) {
-    output.push_str(" args=");
-    write_local_labels(output, args);
-}
-
-pub(super) fn write_constant<Value>(
-    output: &mut String,
-    family: &str,
-    id: crate::plan::execution::constant::ConstantId<Value>,
-) {
-    output.push_str("constant.");
-    output.push_str(family);
-    output.push('#');
-    output.push_str(&id.index().to_string());
-}
-
-pub(super) fn write_length<Value: LocalLabel>(
-    output: &mut String,
-    opcode: &str,
-    value: &Value,
-    length: usize,
-) {
-    output.push_str(opcode);
-    output.push(' ');
-    value.write_local_label(output);
-    output.push_str(" length=");
-    output.push_str(&length.to_string());
-}
-
-pub(super) fn write_literal(output: &mut String, opcode: &str, value: &str) {
-    output.push_str(opcode);
-    output.push(' ');
-    output.push_str(value);
-}
-
-pub(super) fn write_projection<Source: LocalLabel>(
-    output: &mut String,
-    opcode: &str,
-    source: &Source,
-    index: usize,
-) {
-    output.push_str(opcode);
-    output.push(' ');
-    source.write_local_label(output);
-    output.push_str(" index=");
-    output.push_str(&index.to_string());
-}
-
-pub(super) fn write_unary<Value: LocalLabel>(output: &mut String, opcode: &str, value: &Value) {
-    output.push_str(opcode);
-    output.push(' ');
-    value.write_local_label(output);
 }
