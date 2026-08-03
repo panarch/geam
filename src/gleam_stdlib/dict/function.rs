@@ -12,7 +12,6 @@ use crate::{
     HostExternalPayloadBuilder, HostExternalPayloadView, HostProfile, HostProvider, HostType,
     HostTypeAt, HostTypeSequence, HostValue,
 };
-use ecow::EcoString;
 use num_bigint::BigInt;
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -53,20 +52,34 @@ where
     )
 }
 
-pub(crate) fn create_string_dynamic_dict<'call, Profile, Provider, Return>(
+pub(crate) fn create_dynamic_dict<'call, Profile, Provider, Return>(
     call: &mut HostCall<'call, Profile, Provider, Return>,
-    entries: impl IntoIterator<Item = (EcoString, HostExternal<'call, Dynamic>)>,
-) -> HostExternal<'call, super::schema::DictOf<EcoString, Dynamic>>
+    entries: impl IntoIterator<Item = (HostExternal<'call, Dynamic>, HostExternal<'call, Dynamic>)>,
+) -> HostExternal<'call, super::schema::DictOf<Dynamic, Dynamic>>
 where
     Profile: GleamStdlibHostProfile,
     Provider: HostProvider<Profile>,
     Return: HostType,
 {
-    let mut buckets = HashMap::<u64, Vec<(EcoString, HostExternal<'call, Dynamic>)>>::new();
+    create_dict(call, entries)
+}
+
+fn create_dict<'call, Profile, Provider, Return, KeyType, ValueType>(
+    call: &mut HostCall<'call, Profile, Provider, Return>,
+    entries: impl IntoIterator<Item = (KeyType::Value<'call>, ValueType::Value<'call>)>,
+) -> HostExternal<'call, super::schema::DictOf<KeyType, ValueType>>
+where
+    Profile: GleamStdlibHostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    KeyType: HostType,
+    ValueType: HostType,
+{
+    let mut buckets = HashMap::<u64, Vec<(KeyType::Value<'call>, ValueType::Value<'call>)>>::new();
     for (key, value) in entries {
-        let key_hash = call.source_hash::<EcoString>(key.clone());
+        let key_hash = call.source_hash::<KeyType>(key.clone());
         insert_first(&mut buckets, key_hash, key, value, |stored, candidate| {
-            call.equal::<EcoString>(stored.clone(), candidate.clone())
+            call.equal::<KeyType>(stored.clone(), candidate.clone())
         });
     }
 

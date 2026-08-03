@@ -98,6 +98,22 @@ It fixes the public surface of all five package modules and executes every
 public function. CI owns dependency preparation for this target; normal Cargo
 tests and coverage remain network-free.
 
+The tracked `tests/fixtures/projects/gleam_json` project independently locks
+official `gleam_json` `v3.1.0` and `gleam_stdlib` `v1.0.3`. Prepare and run its
+ignored integration target separately:
+
+```sh
+cd tests/fixtures/projects/gleam_json
+gleam deps download
+cd ../../../..
+cargo test --test gleam_json -- --ignored
+```
+
+This target explicitly composes the stdlib and JSON provider bundles, fixes the
+complete public `gleam/json` surface, and executes every public function. The
+normal Cargo suite and coverage remain independent of downloaded package
+source and the Gleam CLI.
+
 Source-level rejection fixtures live under categorized
 `tests/fixtures/rejection/**/*.gleam` paths. They are reserved for public
 boundary cases that are clearer as complete Gleam modules than as planner unit

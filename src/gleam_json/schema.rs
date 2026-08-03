@@ -39,7 +39,7 @@ pub(super) type JsonDynamicOk = GleamOk<Dynamic, DecodeError>;
 pub(super) type JsonDynamicError = GleamError<Dynamic, DecodeError>;
 
 pub(super) type DynamicList = HostListType<Dynamic>;
-pub(super) type DynamicDict = DictOf<EcoString, Dynamic>;
+pub(super) type DynamicDict = DictOf<Dynamic, Dynamic>;
 pub(super) type DecodeConstructions =
     HostTypeList<DynamicList, HostTypeList<DynamicDict, HostTypeListEnd>>;
 

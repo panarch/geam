@@ -94,6 +94,10 @@ Provider selection is completed before source body planning. An exact provider
 selects a host template, an external declaration with no provider uses its
 Gleam body when one exists, and an external-only declaration without a
 provider is rejected. A provider cannot replace an ordinary Gleam function.
+Dependency functions that Gleam analysis marks unavailable on the selected
+Erlang target are omitted before hosted function indexing when no provider was
+registered for them. This preserves explicit provider ownership while avoiding
+missing-provider failures for unselected target-only declarations.
 
 Host calls use the same family-specific runtime function IDs as Gleam
 functions. Direct calls, tail calls, function-value calls, and top-level
@@ -206,6 +210,14 @@ source owner of their operations, and dictionary iteration order is not a
 runtime contract. Canonical inspection sorts rendered entries only to make
 escaped values deterministic to read; that display order does not define
 iteration semantics.
+
+The separate `gleam_json` provider stores encoded Json as persistent shared
+StringTree structure. Array and object construction retain child trees without
+flattening them; `to_string_tree` shares the same root. Json source equality and
+hashing follow that encoded structure, while canonical inspection seals the
+flattened encoded text rather than backend iodata details. Its iterative parser
+constructs exact Dynamic List and Dynamic-keyed Dict values directly, retaining
+an acyclic child-first external graph without a general JSON runtime family.
 
 ### Specialization And Re-entry
 

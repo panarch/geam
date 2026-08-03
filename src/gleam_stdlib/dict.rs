@@ -2,7 +2,7 @@ mod function;
 mod schema;
 mod storage;
 
-pub(crate) use function::create_string_dynamic_dict;
+pub(crate) use function::create_dynamic_dict;
 pub(in crate::gleam_stdlib) use function::lookup;
 pub(crate) use schema::{DictOf, DictSchema};
 pub(super) use storage::Stores;

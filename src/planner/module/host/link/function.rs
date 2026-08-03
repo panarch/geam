@@ -9,7 +9,28 @@ use crate::planner::context::FunctionInfo;
 use crate::planner::error::{HostProviderLinkReason, PlanError};
 use crate::planner::type_parameter::TypeParameterScope;
 use ecow::EcoString;
+use gleam_core::ast::TypedFunction;
 use std::collections::{BTreeMap, HashMap, HashSet};
+
+pub(super) fn select_erlang_hosted_functions(
+    functions: Vec<TypedFunction>,
+    providers: &[RegisteredHostFunction],
+) -> Vec<TypedFunction> {
+    let provided = providers
+        .iter()
+        .map(|provider| provider.schema().name())
+        .collect::<HashSet<_>>();
+    functions
+        .into_iter()
+        .filter(|function| {
+            function.implementations.can_run_on_erlang
+                || function
+                    .name
+                    .as_ref()
+                    .is_none_or(|(_, name)| provided.contains(name))
+        })
+        .collect()
+}
 
 pub(super) fn link_source_functions(
     package: EcoString,
@@ -221,6 +242,117 @@ mod tests {
     use crate::planner::{HostProviderLinkReason, PlanError};
     use ecow::EcoString;
     use num_bigint::BigInt;
+
+    #[test]
+    fn omits_unprovided_functions_unavailable_on_the_selected_target() {
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [
+                PackageSource::new(
+                    "application",
+                    ["library"],
+                    [ModuleSource::new(
+                        "main",
+                        "main.gleam",
+                        r#"
+import support
+
+pub fn main() {
+  support.available()
+}
+"#,
+                    )],
+                ),
+                PackageSource::new(
+                    "library",
+                    Vec::<EcoString>::new(),
+                    [ModuleSource::new(
+                        "support",
+                        "support.gleam",
+                        r#"
+@external(javascript, "./support.mjs", "javascript_only")
+fn javascript_only() -> Int
+
+pub fn available() {
+  1
+}
+"#,
+                    )],
+                ),
+            ],
+            HostProviderSet::new(Vec::<HostModule>::new())
+                .expect("empty host modules should be valid"),
+        )
+        .expect("target-unavailable private dependency function should compile");
+
+        let plan = plan_host_program(typed).expect("selected target functions should plan");
+
+        assert_eq!(
+            plan.modules()[0]
+                .functions()
+                .iter()
+                .map(|function| {
+                    function
+                        .gleam_body()
+                        .expect("selected source function should have a body")
+                        .name()
+                        .as_str()
+                })
+                .collect::<Vec<_>>(),
+            ["available"],
+        );
+        assert_eq!(plan.modules()[1].functions().len(), 1);
+        assert_eq!(
+            plan.modules()[1].functions()[0]
+                .gleam_body()
+                .expect("root main should have a body")
+                .name(),
+            "main",
+        );
+    }
+
+    #[test]
+    fn retains_target_unavailable_external_when_a_provider_is_registered() {
+        let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
+            .expect("provider module should be valid")
+            .with_function("javascript_only", BigInt::default)
+            .expect("provider function should be valid");
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<EcoString>::new(),
+                [ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    r#"
+@external(javascript, "./support.mjs", "javascript_only")
+fn javascript_only() -> Int
+
+pub fn main() {
+  1
+}
+"#,
+                )],
+            )],
+            HostProviderSet::with_providers(Vec::<HostModule>::new(), [provider])
+                .expect("provider module should be unique"),
+        )
+        .expect("target-unavailable private function should compile");
+
+        let plan = plan_host_program(typed).expect("explicit provider should link");
+
+        assert_eq!(plan.modules()[0].functions().len(), 2);
+        assert_eq!(
+            plan.modules()[0].functions()[1]
+                .host_template()
+                .expect("registered target-unavailable external should remain a host template")
+                .name(),
+            "javascript_only",
+        );
+    }
 
     #[test]
     fn source_provider_and_gleam_fallback_keep_distinct_body_owners() {

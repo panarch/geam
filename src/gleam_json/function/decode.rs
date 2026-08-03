@@ -7,7 +7,7 @@ use crate::gleam_json::schema::{
     DynamicDict, DynamicList, JsonDynamicError, JsonDynamicOk, JsonDynamicResult, UnexpectedByte,
     UnexpectedEndOfInput, UnexpectedSequence,
 };
-use crate::gleam_stdlib::{Dynamic, create_dynamic_value, create_string_dynamic_dict};
+use crate::gleam_stdlib::{Dynamic, create_dynamic_dict, create_dynamic_value};
 use crate::{BitArrayValue, HostCall, HostCallCompletion, HostCallError, HostExternal, HostList};
 use ecow::EcoString;
 use jiter::{Jiter, Peek};
@@ -248,7 +248,19 @@ fn create_dynamic_object<'call, Profile>(
 where
     Profile: GleamJsonHostProfile,
 {
-    let dict = create_string_dynamic_dict(call, entries);
+    let entries = entries
+        .into_iter()
+        .map(|(key, value)| {
+            let key = create_dynamic_value::<
+                Profile,
+                JsonProvider<Profile>,
+                JsonDynamicResult,
+                EcoString,
+            >(call, key);
+            (key, value)
+        })
+        .collect::<Vec<_>>();
+    let dict = create_dynamic_dict(call, entries);
     create_dynamic_value::<Profile, JsonProvider<Profile>, JsonDynamicResult, DynamicDict>(
         call, dict,
     )

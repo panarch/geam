@@ -19,7 +19,7 @@ pub use run_state::{GleamStdlibRunState, GleamStdlibRunStateError};
 
 #[cfg(test)]
 pub(crate) use dict::DictSchema;
-pub(crate) use dict::{DictOf, create_string_dynamic_dict};
+pub(crate) use dict::{DictOf, create_dynamic_dict};
 #[cfg(test)]
 pub(crate) use dynamic::DynamicSchema;
 pub(crate) use dynamic::{Dynamic, create_value as create_dynamic_value};
