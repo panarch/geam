@@ -29,11 +29,11 @@ Release:     v1.0.3
 
 Geam does not bundle or patch that source. A dedicated integration test uses
 Gleam CLI `v1.17.0` to download the locked package, then executes selected
-official pure-Gleam modules through Geam's normal resolved-project pipeline
-and executes unchanged `gleam/dict` through the hosted project pipeline with
-an explicit Rust provider. Each tracked module locks its public names,
-argument labels, and signatures while allowing private implementation and
-declaration-order changes.
+official modules through Geam's resolved-project pipelines. Provider-free
+modules use the plain pipeline, while modules whose selected closure contains
+externals use the hosted pipeline with the explicit Rust provider bundle. Each
+tracked module locks its public names, argument labels, and signatures while
+allowing private implementation and declaration-order changes.
 
 ## Used Gleam Areas
 

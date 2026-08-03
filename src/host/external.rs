@@ -7,6 +7,7 @@ use ecow::EcoString;
 use std::marker::PhantomData;
 
 pub use dynamic::HostStoredDynamic;
+pub(crate) use dynamic::HostStoredValueFamily;
 pub(crate) use store::ExternalPayloadLease;
 pub use store::HostExternalStore;
 pub use stored::{

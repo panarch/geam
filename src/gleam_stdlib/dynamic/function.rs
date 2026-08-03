@@ -70,7 +70,7 @@ where
     call.create_external_value_with::<DynamicSchema, crate::HostTypeListEnd>(|builder| {
         let value = builder.store_dynamic::<Type>(value);
         DynamicPayload::Stored {
-            representation: DynamicRepresentation::from_type(value.value_type()),
+            representation: DynamicRepresentation::from_value(&value),
             value,
         }
     })

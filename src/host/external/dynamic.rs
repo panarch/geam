@@ -38,6 +38,22 @@ pub struct HostStoredDynamic {
     value: crate::runtime::StoredRuntimeValue,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HostStoredValueFamily {
+    Int,
+    Float,
+    String,
+    BitArray,
+    UtfCodepoint,
+    Bool,
+    Nil,
+    List,
+    Tuple,
+    Custom,
+    External,
+    Function,
+}
+
 impl HostStoredDynamic {
     pub(super) fn new(value: crate::runtime::StoredRuntimeValue) -> Self {
         Self { value }
@@ -49,6 +65,10 @@ impl HostStoredDynamic {
 
     pub(crate) fn value_type(&self) -> &crate::plan::ValueType {
         self.value.type_()
+    }
+
+    pub(crate) fn value_family(&self) -> HostStoredValueFamily {
+        self.value.family()
     }
 
     pub(super) fn runtime_value(&self) -> &crate::runtime::StoredRuntimeValue {

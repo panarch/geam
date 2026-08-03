@@ -1,6 +1,6 @@
 use crate::host::{
     HostCustomToken, HostExternalToken, HostFunctionToken, HostListToken, HostScopedValue,
-    HostTupleToken, HostValueFamily, HostValueToken,
+    HostStoredValueFamily, HostTupleToken, HostValueFamily, HostValueToken,
 };
 use crate::plan::execution::type_::ListStorageTypeId;
 use crate::runtime::evaluated::{
@@ -58,6 +58,25 @@ impl StoredRuntimeValue {
 
     pub(crate) fn type_(&self) -> &crate::plan::ValueType {
         &self.type_
+    }
+
+    pub(crate) fn family(&self) -> HostStoredValueFamily {
+        match &self.value {
+            EvaluatedValue::Int(_) => HostStoredValueFamily::Int,
+            EvaluatedValue::Float(_) => HostStoredValueFamily::Float,
+            EvaluatedValue::String(_) => HostStoredValueFamily::String,
+            EvaluatedValue::BitArray(_) => HostStoredValueFamily::BitArray,
+            EvaluatedValue::UtfCodepoint(_) => HostStoredValueFamily::UtfCodepoint,
+            EvaluatedValue::Custom(_) => HostStoredValueFamily::Custom,
+            EvaluatedValue::External(_) => HostStoredValueFamily::External,
+            EvaluatedValue::Bool(_) => HostStoredValueFamily::Bool,
+            EvaluatedValue::Nil => HostStoredValueFamily::Nil,
+            EvaluatedValue::Tuple(_) => HostStoredValueFamily::Tuple,
+            EvaluatedValue::ParameterList(_) | EvaluatedValue::List(_) => {
+                HostStoredValueFamily::List
+            }
+            EvaluatedValue::Function(_) => HostStoredValueFamily::Function,
+        }
     }
 }
 

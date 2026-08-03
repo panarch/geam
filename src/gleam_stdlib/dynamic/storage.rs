@@ -1,5 +1,6 @@
 use super::schema::DynamicSchema;
 use crate::gleam_stdlib::GleamStdlibHostProfile;
+use crate::host::HostStoredValueFamily;
 use crate::{
     HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalStorage,
     HostExternalStore, HostStoredDynamic,
@@ -39,32 +40,35 @@ pub(in crate::gleam_stdlib) enum DynamicRepresentation {
     Function,
     Custom,
     External,
-    Unknown,
 }
 
 impl DynamicRepresentation {
-    pub(super) fn from_type(type_: &crate::ValueType) -> Self {
-        match type_ {
-            crate::ValueType::Parameter(_) => Self::Unknown,
-            crate::ValueType::Int => Self::Int,
-            crate::ValueType::Float => Self::Float,
-            crate::ValueType::String => Self::String,
-            crate::ValueType::BitArray => Self::BitArray,
-            crate::ValueType::UtfCodepoint => Self::UtfCodepoint,
-            crate::ValueType::Bool => Self::Bool,
-            crate::ValueType::Nil => Self::Nil,
-            crate::ValueType::Tuple(_) => Self::Array,
-            crate::ValueType::List(_) => Self::List,
-            crate::ValueType::Function(_) => Self::Function,
-            crate::ValueType::Custom(_) => Self::Custom,
-            crate::ValueType::External(type_)
-                if type_.type_name().package() == "gleam_stdlib"
-                    && type_.type_name().module() == "gleam/dict"
-                    && type_.type_name().name() == "Dict" =>
-            {
-                Self::Dict
-            }
-            crate::ValueType::External(_) => Self::External,
+    pub(super) fn from_value(value: &HostStoredDynamic) -> Self {
+        Self::from_family(value.value_family(), value.value_type())
+    }
+
+    fn from_family(family: HostStoredValueFamily, type_: &crate::ValueType) -> Self {
+        if let crate::ValueType::External(type_) = type_
+            && type_.type_name().package() == "gleam_stdlib"
+            && type_.type_name().module() == "gleam/dict"
+            && type_.type_name().name() == "Dict"
+        {
+            return Self::Dict;
+        }
+
+        match family {
+            HostStoredValueFamily::Int => Self::Int,
+            HostStoredValueFamily::Float => Self::Float,
+            HostStoredValueFamily::String => Self::String,
+            HostStoredValueFamily::BitArray => Self::BitArray,
+            HostStoredValueFamily::UtfCodepoint => Self::UtfCodepoint,
+            HostStoredValueFamily::Bool => Self::Bool,
+            HostStoredValueFamily::Nil => Self::Nil,
+            HostStoredValueFamily::List => Self::List,
+            HostStoredValueFamily::Tuple => Self::Array,
+            HostStoredValueFamily::Custom => Self::Custom,
+            HostStoredValueFamily::External => Self::External,
+            HostStoredValueFamily::Function => Self::Function,
         }
     }
 
@@ -83,7 +87,6 @@ impl DynamicRepresentation {
             Self::Function => "Function",
             Self::Custom => "Custom",
             Self::External => "External",
-            Self::Unknown => "Unknown",
         }
     }
 }
@@ -150,7 +153,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::DynamicRepresentation;
-    use crate::plan::TypeParameterId;
+    use crate::host::HostStoredValueFamily;
     use crate::{
         CustomType, CustomTypeName, ExternalType, ExternalTypeName, FunctionType, ValueType,
     };
@@ -170,30 +173,61 @@ mod tests {
             Vec::new(),
         );
         let cases = [
-            (ValueType::Parameter(TypeParameterId(0)), "Unknown"),
-            (ValueType::Int, "Int"),
-            (ValueType::Float, "Float"),
-            (ValueType::String, "String"),
-            (ValueType::BitArray, "BitArray"),
-            (ValueType::UtfCodepoint, "UtfCodepoint"),
-            (ValueType::Bool, "Bool"),
-            (ValueType::Nil, "Nil"),
-            (ValueType::Tuple(vec![ValueType::Int]), "Array"),
-            (ValueType::List(Box::new(ValueType::Int)), "List"),
+            (HostStoredValueFamily::Int, ValueType::Int, "Int"),
+            (HostStoredValueFamily::Float, ValueType::Float, "Float"),
+            (HostStoredValueFamily::String, ValueType::String, "String"),
             (
+                HostStoredValueFamily::BitArray,
+                ValueType::BitArray,
+                "BitArray",
+            ),
+            (
+                HostStoredValueFamily::UtfCodepoint,
+                ValueType::UtfCodepoint,
+                "UtfCodepoint",
+            ),
+            (HostStoredValueFamily::Bool, ValueType::Bool, "Bool"),
+            (HostStoredValueFamily::Nil, ValueType::Nil, "Nil"),
+            (
+                HostStoredValueFamily::Tuple,
+                ValueType::Tuple(vec![ValueType::Int]),
+                "Array",
+            ),
+            (
+                HostStoredValueFamily::List,
+                ValueType::List(Box::new(ValueType::Int)),
+                "List",
+            ),
+            (
+                HostStoredValueFamily::Function,
                 ValueType::Function(Box::new(FunctionType::new(
                     vec![ValueType::Int],
                     ValueType::Bool,
                 ))),
                 "Function",
             ),
-            (ValueType::Custom(custom), "Custom"),
-            (ValueType::External(dict), "Dict"),
-            (ValueType::External(resource), "External"),
+            (
+                HostStoredValueFamily::Custom,
+                ValueType::Custom(custom),
+                "Custom",
+            ),
+            (
+                HostStoredValueFamily::External,
+                ValueType::External(dict),
+                "Dict",
+            ),
+            (
+                HostStoredValueFamily::External,
+                ValueType::External(resource),
+                "External",
+            ),
         ];
 
-        for (type_, expected) in cases {
-            assert_eq!(DynamicRepresentation::from_type(&type_).name(), expected);
+        for (family, type_, expected) in cases {
+            assert_eq!(
+                DynamicRepresentation::from_family(family, &type_).name(),
+                expected,
+            );
         }
     }
 }

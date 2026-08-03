@@ -8,7 +8,7 @@ mod type_;
 mod value;
 
 pub use error::HostRegistrationError;
-pub(crate) use external::ExternalPayloadLease;
+pub(crate) use external::{ExternalPayloadLease, HostStoredValueFamily};
 pub use external::{
     HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalPayloadBuilder,
     HostExternalPayloadView, HostExternalSchema, HostExternalStorage, HostExternalStore,
