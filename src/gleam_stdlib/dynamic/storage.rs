@@ -47,6 +47,24 @@ impl DynamicRepresentation {
         Self::from_family(value.value_family(), value.value_type())
     }
 
+    pub(super) fn name(self) -> &'static str {
+        match self {
+            Self::Bool => "Bool",
+            Self::String => "String",
+            Self::Float => "Float",
+            Self::Int => "Int",
+            Self::BitArray => "BitArray",
+            Self::UtfCodepoint => "UtfCodepoint",
+            Self::List => "List",
+            Self::Array => "Array",
+            Self::Dict => "Dict",
+            Self::Nil => "Nil",
+            Self::Function => "Function",
+            Self::Custom => "Custom",
+            Self::External => "External",
+        }
+    }
+
     fn from_family(family: HostStoredValueFamily, type_: &crate::ValueType) -> Self {
         if let crate::ValueType::External(type_) = type_
             && type_.type_name().package() == "gleam_stdlib"
@@ -69,24 +87,6 @@ impl DynamicRepresentation {
             HostStoredValueFamily::Custom => Self::Custom,
             HostStoredValueFamily::External => Self::External,
             HostStoredValueFamily::Function => Self::Function,
-        }
-    }
-
-    pub(super) fn name(self) -> &'static str {
-        match self {
-            Self::Bool => "Bool",
-            Self::String => "String",
-            Self::Float => "Float",
-            Self::Int => "Int",
-            Self::BitArray => "BitArray",
-            Self::UtfCodepoint => "UtfCodepoint",
-            Self::List => "List",
-            Self::Array => "Array",
-            Self::Dict => "Dict",
-            Self::Nil => "Nil",
-            Self::Function => "Function",
-            Self::Custom => "Custom",
-            Self::External => "External",
         }
     }
 }

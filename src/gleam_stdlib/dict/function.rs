@@ -29,28 +29,6 @@ where
     }
 }
 
-fn matching_entry<'call, Profile, Provider, Return, Payload, Arguments>(
-    call: &mut HostCall<'call, Profile, Provider, Return>,
-    payload: &HostExternalPayloadView<'call, Payload, Arguments>,
-    key_hash: u64,
-    key: <<Arguments as HostTypeAt<KeyIndex>>::Type as HostType>::Value<'call>,
-) -> Option<usize>
-where
-    Profile: HostProfile,
-    Provider: HostProvider<Profile>,
-    Return: HostType,
-    Payload: DictPayloadStorage,
-    Arguments: HostTypeSequence + HostTypeAt<KeyIndex>,
-{
-    payload.storage().matching_index(key_hash, &mut |index| {
-        let candidate = payload
-            .restore_argument::<Profile, Provider, Return, KeyIndex>(call, |payload| {
-                &payload.storage().buckets[&key_hash][index].key
-            });
-        call.equal::<<Arguments as HostTypeAt<KeyIndex>>::Type>(candidate, key.clone())
-    })
-}
-
 pub(in crate::gleam_stdlib) fn lookup<'call, Profile, Provider, Return, KeyType, ValueType>(
     call: &mut HostCall<'call, Profile, Provider, Return>,
     dict: HostExternal<'call, super::schema::DictOf<KeyType, ValueType>>,
@@ -71,23 +49,6 @@ where
             &payload.storage.buckets[&key_hash][index].value
         }),
     )
-}
-
-fn create_entry<'call, Profile, Arguments>(
-    builder: &mut HostExternalPayloadBuilder<'_, Profile, Arguments>,
-    key_hash: u64,
-    key: <<Arguments as HostTypeAt<KeyIndex>>::Type as HostType>::Value<'call>,
-    value: <<Arguments as HostTypeAt<ItemIndex>>::Type as HostType>::Value<'call>,
-) -> Rc<DictEntry>
-where
-    Profile: HostProfile,
-    Arguments: HostTypeSequence + HostTypeAt<KeyIndex> + HostTypeAt<ItemIndex>,
-{
-    Rc::new(DictEntry {
-        key_hash,
-        key: builder.store_argument::<KeyIndex>(key),
-        value: builder.store_argument::<ItemIndex>(value),
-    })
 }
 
 pub(super) fn to_transient<'call, Profile>(
@@ -329,6 +290,45 @@ where
         storage: storage.with_entry(key_hash, index, create_entry(builder, key_hash, key, value)),
     });
     Ok(call.return_value(transient))
+}
+
+fn matching_entry<'call, Profile, Provider, Return, Payload, Arguments>(
+    call: &mut HostCall<'call, Profile, Provider, Return>,
+    payload: &HostExternalPayloadView<'call, Payload, Arguments>,
+    key_hash: u64,
+    key: <<Arguments as HostTypeAt<KeyIndex>>::Type as HostType>::Value<'call>,
+) -> Option<usize>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    Payload: DictPayloadStorage,
+    Arguments: HostTypeSequence + HostTypeAt<KeyIndex>,
+{
+    payload.storage().matching_index(key_hash, &mut |index| {
+        let candidate = payload
+            .restore_argument::<Profile, Provider, Return, KeyIndex>(call, |payload| {
+                &payload.storage().buckets[&key_hash][index].key
+            });
+        call.equal::<<Arguments as HostTypeAt<KeyIndex>>::Type>(candidate, key.clone())
+    })
+}
+
+fn create_entry<'call, Profile, Arguments>(
+    builder: &mut HostExternalPayloadBuilder<'_, Profile, Arguments>,
+    key_hash: u64,
+    key: <<Arguments as HostTypeAt<KeyIndex>>::Type as HostType>::Value<'call>,
+    value: <<Arguments as HostTypeAt<ItemIndex>>::Type as HostType>::Value<'call>,
+) -> Rc<DictEntry>
+where
+    Profile: HostProfile,
+    Arguments: HostTypeSequence + HostTypeAt<KeyIndex> + HostTypeAt<ItemIndex>,
+{
+    Rc::new(DictEntry {
+        key_hash,
+        key: builder.store_argument::<KeyIndex>(key),
+        value: builder.store_argument::<ItemIndex>(value),
+    })
 }
 
 #[cfg(test)]
