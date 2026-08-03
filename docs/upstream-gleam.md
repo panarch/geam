@@ -60,6 +60,18 @@ Its compatibility suite locks `gleam_json` and `gleam_stdlib` independently.
 The resolved project explicitly composes the separate stdlib and JSON provider
 bundles; project loading does not infer either bundle.
 
+The caller-clock package baseline is:
+
+```text
+Repository:  https://github.com/gleam-lang/time
+Hex package: gleam_time
+Release:     v1.8.0
+```
+
+Its compatibility suite locks `gleam_time` and `gleam_stdlib` independently.
+The resolved project explicitly composes the stdlib and Time provider bundles;
+the caller supplies both stdlib run state and the wall-clock source.
+
 ## Used Gleam Areas
 
 The first compiler-boundary milestone depends on `gleam-core` pinned to the
@@ -298,6 +310,26 @@ Dynamic-keyed dictionaries whose keys are Dynamic String values, matching the
 official Decode ABI; duplicate encoded object fields remain ordered, while
 decoded dictionaries preserve the first key occurrence.
 
+### Gleam Time v1.8.0 Compatibility
+
+The Time compatibility suite tracks all three unchanged package modules:
+
+- [x] `gleam/time/duration`
+- [x] `gleam/time/calendar`
+- [x] `gleam/time/timestamp`
+
+The explicit package provider binds only
+`calendar.local_time_offset_seconds` and `timestamp.get_system_time`. All 34
+public functions, 6 public types, and the `utc_offset` and `unix_epoch`
+constants are exercised through official source. Duration arithmetic,
+calendar conversion, RFC3339 parsing, and formatting remain Pure Gleam.
+
+`GleamTimeRunState` owns the stdlib state and a caller-selected `TimeSource`.
+The source reports a non-monotonic wall clock and the current system UTC offset;
+it does not expose timezone history, monotonic time, timers, or sleep. Provider
+failures remain explicit host failures rather than silent UTC or clock
+fallbacks.
+
 The current public execution APIs are:
 
 ```rust
@@ -396,6 +428,7 @@ When updating Geam to a newer Gleam baseline, record:
 - Old and new `gleam_stdlib` integration releases when that baseline changes.
 - Old and new `gleam_http` integration releases when that baseline changes.
 - Old and new `gleam_json` integration releases when that baseline changes.
+- Old and new `gleam_time` integration releases when that baseline changes.
 - Compiler-boundary files compared.
 - Geam compiler-boundary wrapper or lowering changes made.
 - Profile/lowering fixture changes.

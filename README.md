@@ -81,6 +81,12 @@ bundle; neither is injected by project loading. Encoded JSON uses persistent
 shared text trees, while parsing constructs exact Dynamic List and Dict values
 without a generic JSON runtime value.
 
+The unchanged `gleam_time` `v1.8.0` package has a separate explicit provider
+for its two system effects. Callers supply the wall clock and current local UTC
+offset through `GleamTimeRunState`; duration, calendar conversion, and RFC3339
+behavior remain in the official Gleam source. This boundary does not provide a
+monotonic clock, timezone history, timers, or sleep.
+
 The main public entry points are:
 
 - `compile_typed_module`
@@ -148,6 +154,8 @@ Current Gleam stdlib integration baseline: `gleam_stdlib` `v1.0.3`.
 Current Gleam HTTP integration baseline: `gleam_http` `v4.3.0`.
 
 Current Gleam JSON integration baseline: `gleam_json` `v3.1.0`.
+
+Current Gleam Time integration baseline: `gleam_time` `v1.8.0`.
 
 See [docs/upstream-gleam.md](docs/upstream-gleam.md) for the exact commit,
 compiler-boundary details, and sync policy.

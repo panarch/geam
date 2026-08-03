@@ -1,6 +1,6 @@
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidTypedAstReason, InvalidUseShapeReason, PlanError};
-use crate::planner::expression::plan_use_call;
+use crate::planner::expression::{UseAssignmentNormalization, plan_use_call};
 use gleam_core::ast::{Pattern, TypedPattern, TypedUseAssignment};
 
 use super::assignment::{non_variable_pattern_error, plan_binding_pattern_in_context};
@@ -9,18 +9,48 @@ pub(super) fn plan_use_statement(
     use_: gleam_core::ast::TypedUse,
     context: &mut PlanContext<'_>,
 ) -> Result<crate::plan::Expr, PlanError> {
-    let use_assignment_count = validate_use_assignments(&use_.assignments, context)?;
-    plan_use_call(*use_.call, use_assignment_count, context)
+    let use_assignments = validate_use_assignments(&use_.assignments, context)?;
+    plan_use_call(*use_.call, use_assignments, context)
 }
 
 fn validate_use_assignments(
     assignments: &[TypedUseAssignment],
     context: &PlanContext<'_>,
-) -> Result<usize, PlanError> {
+) -> Result<Vec<UseAssignmentNormalization>, PlanError> {
+    let mut validated = Vec::with_capacity(assignments.len());
     for assignment in assignments {
-        validate_use_assignment_pattern(&assignment.pattern, context)?;
+        let expected = assignment.pattern.clone();
+        let normalized = match normalize_nil_use_assignment(&expected) {
+            Some(normalized) => normalized,
+            None => {
+                validate_use_assignment_pattern(&expected, context)?;
+                expected.clone()
+            }
+        };
+        validated.push(UseAssignmentNormalization::new(expected, normalized));
     }
-    Ok(assignments.len())
+    Ok(validated)
+}
+
+fn normalize_nil_use_assignment(pattern: &TypedPattern) -> Option<TypedPattern> {
+    let Pattern::Constructor {
+        location,
+        name,
+        arguments,
+        spread,
+        type_,
+        ..
+    } = pattern
+    else {
+        return None;
+    };
+    (name == "Nil" && arguments.is_empty() && spread.is_none() && type_.is_nil()).then(|| {
+        Pattern::Discard {
+            location: *location,
+            name: "_".into(),
+            type_: type_.clone(),
+        }
+    })
 }
 
 fn validate_use_assignment_pattern(
@@ -52,15 +82,15 @@ fn invalid_use_shape(reason: InvalidUseShapeReason) -> PlanError {
 mod tests {
     use super::invalid_use_shape;
     use crate::plan::{
-        Expr, IntListLocalId, IntLocalId, ListLocal, LocalId, Param, ParamLocal, ReturnExpr,
-        TupleLocalId, ValueType,
+        Expr, IntListLocalId, IntLocalId, ListLocal, LocalId, NilLocalId, Param, ParamLocal,
+        ReturnExpr, TupleLocalId, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
         call_int_function_at, capture_int, function, host_call_site, int, int_arg,
         int_function_arg, int_function_call_arg, int_function_closure, int_return_tail_call_at,
-        let_list_step, let_tuple_step, local_int, local_int_function, local_list, local_tuple,
-        module_with_anonymous, tuple, tuple_arg,
+        let_list_step, let_tuple_step, local_int, local_int_function, local_list, local_nil,
+        local_tuple, module_with_anonymous, nil, nil_arg, tuple, tuple_arg,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
@@ -343,6 +373,50 @@ pub fn main() {
     }
 
     #[test]
+    fn plan_use_syntax_with_nil_constructor_assignment() {
+        let source = r#"
+fn with_nil(continue: fn(Nil) -> Int) {
+  continue(Nil)
+}
+
+pub fn main() {
+  use Nil <- with_nil
+  42
+}
+"#;
+        let actual = plan_module(compile(source)).expect("source should plan");
+        let expected = module_with_anonymous(
+            "main",
+            function(
+                "main",
+                int_return_tail_call_at(
+                    1,
+                    [int_function_arg(int_function_closure(
+                        2,
+                        [LocalId::Nil(NilLocalId(0))],
+                        [],
+                    ))],
+                    host_call_site(source, "main", "use Nil <- with_nil\n  42"),
+                ),
+            ),
+            [function(
+                "with_nil",
+                call_int_function_at(
+                    local_int_function(0, "continue", [ValueType::Nil]),
+                    [nil_arg(nil())],
+                    host_call_site(source, "with_nil", "continue(Nil)"),
+                ),
+            )
+            .param_int_function(0, "continue", [ValueType::Nil])],
+            [function("<anonymous:0>", int(42))
+                .param_nil(0, "_use0")
+                .evaluate(local_nil(0, "_use0"))],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn plan_use_syntax_with_list_tail_assignment() {
         let actual = plan_module(compile(
             r#"
@@ -568,6 +642,48 @@ pub fn main() {
                 reason: InvalidTypedAstReason::InvalidPattern,
             }),
         );
+
+        let nil_pattern = |name, arguments, spread, type_| Pattern::Constructor {
+            location: dummy_span(),
+            name_location: dummy_span(),
+            name,
+            arguments,
+            module: None,
+            constructor: Default::default(),
+            spread,
+            type_,
+        };
+        assert_eq!(
+            super::normalize_nil_use_assignment(&nil_pattern(
+                "Nil".into(),
+                Vec::new(),
+                None,
+                type_::nil(),
+            )),
+            Some(Pattern::Discard {
+                location: dummy_span(),
+                name: "_".into(),
+                type_: type_::nil(),
+            }),
+        );
+        let argument = CallArg {
+            label: None,
+            location: dummy_span(),
+            value: Pattern::Discard {
+                location: dummy_span(),
+                name: "_".into(),
+                type_: type_::int(),
+            },
+            implicit: None,
+        };
+        for pattern in [
+            nil_pattern("Other".into(), Vec::new(), None, type_::nil()),
+            nil_pattern("Nil".into(), vec![argument], None, type_::nil()),
+            nil_pattern("Nil".into(), Vec::new(), Some(dummy_span()), type_::nil()),
+            nil_pattern("Nil".into(), Vec::new(), None, type_::int()),
+        ] {
+            assert_eq!(super::normalize_nil_use_assignment(&pattern), None);
+        }
     }
 
     #[test]
@@ -762,6 +878,20 @@ pub fn main() {
             AssignmentKind::Let;
         assert_eq!(
             plan_module(non_generated_assignment),
+            Err(invalid_use_shape(
+                InvalidUseShapeReason::InvalidGeneratedAssignment
+            )),
+        );
+
+        let mut mismatched_generated_pattern = compile_tuple_use_module();
+        expect_use_callback_assignment_mut(&mut mismatched_generated_pattern).pattern =
+            Pattern::Int {
+                location: dummy_span(),
+                value: "1".into(),
+                int_value: BigInt::from(1),
+            };
+        assert_eq!(
+            plan_module(mismatched_generated_pattern),
             Err(invalid_use_shape(
                 InvalidUseShapeReason::InvalidGeneratedAssignment
             )),

@@ -114,6 +114,23 @@ complete public `gleam/json` surface, and executes every public function. The
 normal Cargo suite and coverage remain independent of downloaded package
 source and the Gleam CLI.
 
+The tracked `tests/fixtures/projects/gleam_time` project independently locks
+official `gleam_time` `v1.8.0` and `gleam_stdlib` `v1.0.3`. Prepare and run its
+ignored integration target separately:
+
+```sh
+cd tests/fixtures/projects/gleam_time
+gleam deps download
+cd ../../../..
+cargo test --test gleam_time -- --ignored
+```
+
+This target explicitly composes the stdlib and Time provider bundles. It fixes
+the complete public surfaces of `gleam/time/duration`, `gleam/time/calendar`,
+and `gleam/time/timestamp`, executes every public function, and supplies a
+deterministic caller-owned clock for system effects. Normal Cargo tests and
+coverage remain independent of downloaded package source and the Gleam CLI.
+
 Source-level rejection fixtures live under categorized
 `tests/fixtures/rejection/**/*.gleam` paths. They are reserved for public
 boundary cases that are clearer as complete Gleam modules than as planner unit
