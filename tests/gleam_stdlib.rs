@@ -17,6 +17,8 @@ mod gleam_dynamic;
 mod gleam_dynamic_decode;
 #[path = "gleam_stdlib/gleam_float.rs"]
 mod gleam_float;
+#[path = "gleam_stdlib/gleam_function.rs"]
+mod gleam_function;
 #[path = "gleam_stdlib/gleam_int.rs"]
 mod gleam_int;
 #[path = "gleam_stdlib/gleam_list.rs"]
@@ -25,6 +27,8 @@ mod gleam_list;
 mod gleam_option;
 #[path = "gleam_stdlib/gleam_order.rs"]
 mod gleam_order;
+#[path = "gleam_stdlib/gleam_pair.rs"]
+mod gleam_pair;
 #[path = "gleam_stdlib/gleam_string.rs"]
 mod gleam_string;
 #[path = "gleam_stdlib/gleam_string_tree.rs"]
