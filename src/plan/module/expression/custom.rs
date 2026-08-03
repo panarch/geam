@@ -424,12 +424,12 @@ impl CustomConstruction {
         })
     }
 
-    pub(crate) fn fields(&self) -> &[super::Expr] {
-        &self.fields
-    }
-
     pub(crate) fn constructor(&self) -> &CustomConstructor {
         &self.constructor
+    }
+
+    pub(crate) fn fields(&self) -> &[super::Expr] {
+        &self.fields
     }
 }
 

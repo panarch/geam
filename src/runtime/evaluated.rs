@@ -39,6 +39,26 @@ pub(in crate::runtime) struct EvaluatedCustomValue {
     fields: Box<[EvaluatedValue]>,
 }
 
+impl EvaluatedBitArray {
+    pub(in crate::runtime) fn new(bits: BitVec<u8, Msb0>) -> Self {
+        Self {
+            value: crate::BitArrayValue::from_evaluated(bits),
+        }
+    }
+
+    pub(in crate::runtime) fn bits(&self) -> &bitvec::slice::BitSlice<u8, Msb0> {
+        self.value.bits()
+    }
+
+    pub(in crate::runtime) fn value(&self) -> crate::BitArrayValue {
+        self.value.clone()
+    }
+
+    pub(in crate::runtime) fn from_value(value: crate::BitArrayValue) -> Self {
+        Self { value }
+    }
+}
+
 impl EvaluatedCustomValue {
     pub(in crate::runtime) fn from_fields(
         constructor: CustomConstructorId,
@@ -60,26 +80,6 @@ impl EvaluatedCustomValue {
 
     pub(in crate::runtime) fn fields(&self) -> &[EvaluatedValue] {
         &self.fields
-    }
-}
-
-impl EvaluatedBitArray {
-    pub(in crate::runtime) fn new(bits: BitVec<u8, Msb0>) -> Self {
-        Self {
-            value: crate::BitArrayValue::from_evaluated(bits),
-        }
-    }
-
-    pub(in crate::runtime) fn bits(&self) -> &bitvec::slice::BitSlice<u8, Msb0> {
-        self.value.bits()
-    }
-
-    pub(in crate::runtime) fn value(&self) -> crate::BitArrayValue {
-        self.value.clone()
-    }
-
-    pub(in crate::runtime) fn from_value(value: crate::BitArrayValue) -> Self {
-        Self { value }
     }
 }
 

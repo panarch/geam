@@ -374,19 +374,19 @@ impl AssertPattern {
         Self::List(pattern)
     }
 
-    pub(crate) fn alias(pattern: AssertPattern, binding: AssertBinding) -> Self {
-        Self::Alias {
-            pattern: Box::new(pattern),
-            binding,
-        }
-    }
-
     pub(crate) fn bit_array(pattern: BitArrayPattern) -> Self {
         Self::BitArray(pattern)
     }
 
     pub(crate) fn custom(pattern: crate::plan::CustomPattern) -> Self {
         Self::Custom(pattern)
+    }
+
+    pub(crate) fn alias(pattern: AssertPattern, binding: AssertBinding) -> Self {
+        Self::Alias {
+            pattern: Box::new(pattern),
+            binding,
+        }
     }
 }
 
@@ -403,12 +403,12 @@ impl ListAssertPattern {
         }
     }
 
-    pub(crate) fn elements(&self) -> &[AssertPattern] {
-        &self.elements
-    }
-
     pub(crate) fn element_type(&self) -> &ValueType {
         &self.element_type
+    }
+
+    pub(crate) fn elements(&self) -> &[AssertPattern] {
+        &self.elements
     }
 
     pub(crate) fn tail(&self) -> Option<&ListAssertTail> {
@@ -432,16 +432,6 @@ impl Step {
     pub(crate) fn let_generic(local: GenericLocal, name: EcoString, value: GenericExpr) -> Self {
         Self {
             kind: StepKind::LetGeneric { local, name, value },
-        }
-    }
-
-    pub(crate) fn echo(subject: EchoSubject, message: Option<StringExpr>, site: EchoSite) -> Self {
-        Self {
-            kind: StepKind::Echo(Echo {
-                subject,
-                message,
-                site,
-            }),
         }
     }
 
@@ -658,6 +648,16 @@ impl Step {
         }
     }
 
+    pub(crate) fn echo(subject: EchoSubject, message: Option<StringExpr>, site: EchoSite) -> Self {
+        Self {
+            kind: StepKind::Echo(Echo {
+                subject,
+                message,
+                site,
+            }),
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn let_int_function(
         local: IntFunctionLocalId,
@@ -771,26 +771,6 @@ impl Step {
         Self::let_function_function_expr(local, name, TypedFunctionExpr::new(shape, value))
     }
 
-    pub(crate) fn evaluate(value: Expr) -> Self {
-        Self {
-            kind: StepKind::Evaluate(value),
-        }
-    }
-
-    pub(crate) fn assert_bool_at(
-        condition: BoolExpr,
-        message: Option<StringExpr>,
-        site: PanicSite,
-    ) -> Self {
-        Self {
-            kind: StepKind::AssertBool {
-                condition,
-                message,
-                site,
-            },
-        }
-    }
-
     pub(crate) fn assert_pattern_at(
         subject: AssertSubject,
         pattern: AssertPattern,
@@ -813,6 +793,26 @@ impl Step {
         let local = CustomLocal::from_shape(local, pattern.source_shape().clone());
         Self {
             kind: StepKind::BindCustomFields { local, pattern },
+        }
+    }
+
+    pub(crate) fn assert_bool_at(
+        condition: BoolExpr,
+        message: Option<StringExpr>,
+        site: PanicSite,
+    ) -> Self {
+        Self {
+            kind: StepKind::AssertBool {
+                condition,
+                message,
+                site,
+            },
+        }
+    }
+
+    pub(crate) fn evaluate(value: Expr) -> Self {
+        Self {
+            kind: StepKind::Evaluate(value),
         }
     }
 

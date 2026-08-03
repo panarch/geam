@@ -247,20 +247,6 @@ impl EvaluatedCapture {
         Self::from_kind(EvaluatedCaptureKind::IntFunction { local, value })
     }
 
-    pub(in crate::runtime) fn generic_function(
-        local: GenericFunctionLocal,
-        value: EvaluatedGenericFunction,
-    ) -> Self {
-        Self::from_kind(EvaluatedCaptureKind::GenericFunction { local, value })
-    }
-
-    pub(in crate::runtime) fn never_function(
-        local: NeverFunctionLocal,
-        value: EvaluatedNeverFunction,
-    ) -> Self {
-        Self::from_kind(EvaluatedCaptureKind::NeverFunction { local, value })
-    }
-
     pub(in crate::runtime) fn float_function(
         local: FloatFunctionLocalId,
         value: EvaluatedFloatFunction,
@@ -336,6 +322,20 @@ impl EvaluatedCapture {
         value: EvaluatedFunctionFunction,
     ) -> Self {
         Self::from_kind(EvaluatedCaptureKind::FunctionFunction { local, value })
+    }
+
+    pub(in crate::runtime) fn generic_function(
+        local: GenericFunctionLocal,
+        value: EvaluatedGenericFunction,
+    ) -> Self {
+        Self::from_kind(EvaluatedCaptureKind::GenericFunction { local, value })
+    }
+
+    pub(in crate::runtime) fn never_function(
+        local: NeverFunctionLocal,
+        value: EvaluatedNeverFunction,
+    ) -> Self {
+        Self::from_kind(EvaluatedCaptureKind::NeverFunction { local, value })
     }
 }
 

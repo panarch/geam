@@ -13,75 +13,6 @@ use self::terminator::{GraphAction, NeverCall, terminator_action};
 use crate::plan::execution::graph::{BlockGraphExitId, ParamLocal, ProfiledBlockGraph};
 use crate::runtime::{ExecutableRuntimePlan, RuntimeGraph};
 
-pub(in crate::runtime) fn execute_external_list_instruction<Plan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &mut BlockEnvironment,
-    instruction: &crate::plan::execution::graph::ExternalListInstruction,
-    expected: &crate::plan::ValueType,
-) -> ExecutionResult<()>
-where
-    Plan: ExecutableRuntimePlan
-        + crate::plan::execution::runtime::RuntimeExecutionPlan<
-            Profile = crate::plan::execution::host::HostedExecutionProfile,
-        >,
-{
-    instruction::execute_external_list(plan, state, environment, instruction, expected)
-}
-
-pub(in crate::runtime) fn execute_external_function_instruction<Plan>(
-    plan: &Plan,
-    state: &mut RuntimeStateFor<'_, Plan>,
-    environment: &mut BlockEnvironment,
-    instruction: &crate::plan::execution::graph::ExternalFunctionInstruction,
-) -> ExecutionResult<()>
-where
-    Plan: ExecutableRuntimePlan
-        + crate::plan::execution::runtime::RuntimeExecutionPlan<
-            Profile = crate::plan::execution::host::HostedExecutionProfile,
-        >,
-{
-    instruction::execute_external_function(plan, state, environment, instruction)
-}
-use crate::runtime::error::ExecutionResult;
-use crate::runtime::state::{RuntimeState, RuntimeStateFor};
-
-pub(super) struct CompletedGraph {
-    exit: BlockGraphExitId,
-    environment: BlockEnvironment,
-}
-
-impl CompletedGraph {
-    pub(super) fn exit(&self) -> BlockGraphExitId {
-        self.exit
-    }
-
-    pub(super) fn into_value<Value, State>(
-        self,
-        state: &mut RuntimeState<'_, State>,
-        value: &Value,
-    ) -> Value::Evaluated
-    where
-        Value: GraphValue,
-    {
-        let value = value.read(&self.environment);
-        drop(self.environment);
-        state.lists_mut().drain_releases();
-        value
-    }
-
-    pub(super) fn into_retained<State>(
-        self,
-        state: &mut RuntimeState<'_, State>,
-        values: &[ParamLocal],
-    ) -> RetainedValues {
-        let retained = self.environment.retain(values);
-        drop(self.environment);
-        state.lists_mut().drain_releases();
-        retained
-    }
-}
-
 pub(super) fn execute<Plan: ExecutableRuntimePlan>(
     plan: &Plan,
     state: &mut RuntimeStateFor<'_, Plan>,
@@ -126,6 +57,75 @@ pub(super) fn execute<Plan: ExecutableRuntimePlan>(
             }
         }
     }
+}
+use crate::runtime::error::ExecutionResult;
+use crate::runtime::state::{RuntimeState, RuntimeStateFor};
+
+pub(super) struct CompletedGraph {
+    exit: BlockGraphExitId,
+    environment: BlockEnvironment,
+}
+
+impl CompletedGraph {
+    pub(super) fn exit(&self) -> BlockGraphExitId {
+        self.exit
+    }
+
+    pub(super) fn into_value<Value, State>(
+        self,
+        state: &mut RuntimeState<'_, State>,
+        value: &Value,
+    ) -> Value::Evaluated
+    where
+        Value: GraphValue,
+    {
+        let value = value.read(&self.environment);
+        drop(self.environment);
+        state.lists_mut().drain_releases();
+        value
+    }
+
+    pub(super) fn into_retained<State>(
+        self,
+        state: &mut RuntimeState<'_, State>,
+        values: &[ParamLocal],
+    ) -> RetainedValues {
+        let retained = self.environment.retain(values);
+        drop(self.environment);
+        state.lists_mut().drain_releases();
+        retained
+    }
+}
+
+pub(in crate::runtime) fn execute_external_list_instruction<Plan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
+    environment: &mut BlockEnvironment,
+    instruction: &crate::plan::execution::graph::ExternalListInstruction,
+    expected: &crate::plan::ValueType,
+) -> ExecutionResult<()>
+where
+    Plan: ExecutableRuntimePlan
+        + crate::plan::execution::runtime::RuntimeExecutionPlan<
+            Profile = crate::plan::execution::host::HostedExecutionProfile,
+        >,
+{
+    instruction::execute_external_list(plan, state, environment, instruction, expected)
+}
+
+pub(in crate::runtime) fn execute_external_function_instruction<Plan>(
+    plan: &Plan,
+    state: &mut RuntimeStateFor<'_, Plan>,
+    environment: &mut BlockEnvironment,
+    instruction: &crate::plan::execution::graph::ExternalFunctionInstruction,
+) -> ExecutionResult<()>
+where
+    Plan: ExecutableRuntimePlan
+        + crate::plan::execution::runtime::RuntimeExecutionPlan<
+            Profile = crate::plan::execution::host::HostedExecutionProfile,
+        >,
+{
+    instruction::execute_external_function(plan, state, environment, instruction)
 }
 
 #[cfg(test)]

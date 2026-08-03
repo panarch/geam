@@ -157,10 +157,6 @@ fn inspect_storage(context: &HostExternalInspection<'_>, storage: &DictStorage) 
 }
 
 impl DictStorage {
-    fn entries(&self) -> impl Iterator<Item = &Rc<DictEntry>> {
-        self.buckets.values().flat_map(Vector::iter)
-    }
-
     pub(super) fn with_entry(
         &self,
         key_hash: u64,
@@ -206,6 +202,10 @@ impl DictStorage {
     ) -> Option<usize> {
         let bucket = self.buckets.get(&key_hash)?;
         (0..bucket.len()).find(|index| is_equal(*index))
+    }
+
+    fn entries(&self) -> impl Iterator<Item = &Rc<DictEntry>> {
+        self.buckets.values().flat_map(Vector::iter)
     }
 }
 

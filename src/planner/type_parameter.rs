@@ -17,6 +17,17 @@ pub(super) enum FunctionInstantiationMismatch {
     UnresolvedParameter,
 }
 
+impl TypeParameterScope {
+    pub(super) fn resolve(&mut self, source_id: u64) -> TypeParameterId {
+        let next = TypeParameterId(self.parameters.len());
+        *self.parameters.entry(source_id).or_insert(next)
+    }
+
+    pub(super) fn scheme(&self) -> TypeScheme {
+        TypeScheme::new(self.parameters.len())
+    }
+}
+
 pub(super) fn instantiate(
     signature: &FunctionTemplateSignature,
     actual: &crate::plan::FunctionShape,
@@ -149,17 +160,6 @@ fn match_shape(
             Some(())
         }
         _ => None,
-    }
-}
-
-impl TypeParameterScope {
-    pub(super) fn resolve(&mut self, source_id: u64) -> TypeParameterId {
-        let next = TypeParameterId(self.parameters.len());
-        *self.parameters.entry(source_id).or_insert(next)
-    }
-
-    pub(super) fn scheme(&self) -> TypeScheme {
-        TypeScheme::new(self.parameters.len())
     }
 }
 

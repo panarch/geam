@@ -144,6 +144,14 @@ impl TailCallLabelIndex for usize {
     }
 }
 
+impl<Function: TailCallLabelIndex> TailCallLabelIndex
+    for crate::plan::FunctionCallTarget<Function>
+{
+    fn tail_call_label_index(&self) -> usize {
+        self.function().tail_call_label_index()
+    }
+}
+
 impl TailCallLabelIndex for NeverFunctionId {
     fn tail_call_label_index(&self) -> usize {
         self.0
@@ -153,14 +161,6 @@ impl TailCallLabelIndex for NeverFunctionId {
 impl TailCallLabelIndex for IntFunctionId {
     fn tail_call_label_index(&self) -> usize {
         self.0
-    }
-}
-
-impl<Function: TailCallLabelIndex> TailCallLabelIndex
-    for crate::plan::FunctionCallTarget<Function>
-{
-    fn tail_call_label_index(&self) -> usize {
-        self.function().tail_call_label_index()
     }
 }
 

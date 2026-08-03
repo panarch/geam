@@ -565,13 +565,6 @@ impl EvaluatedCustomFunction {
 }
 
 impl EvaluatedFunctionFunction {
-    pub(super) fn identity(&self) -> &EvaluatedFunctionIdentity {
-        match self {
-            Self::Core(value) => &value.identity,
-            Self::External(value) => &value.identity,
-        }
-    }
-
     pub(in crate::runtime) fn type_(&self) -> &FunctionType {
         match self {
             Self::Core(value) => value.type_(),
@@ -597,6 +590,13 @@ impl EvaluatedFunctionFunction {
         match self {
             Self::Core(value) => Self::Core(value.with_type(type_)),
             Self::External(value) => Self::External(value.with_type(type_)),
+        }
+    }
+
+    pub(super) fn identity(&self) -> &EvaluatedFunctionIdentity {
+        match self {
+            Self::Core(value) => &value.identity,
+            Self::External(value) => &value.identity,
         }
     }
 }

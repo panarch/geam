@@ -122,63 +122,6 @@ fn write_function<Body>(
     );
 }
 
-#[cfg(test)]
-mod explain_tests {
-    use crate::plan::execution::explain;
-
-    #[test]
-    fn writes_value_list_and_function_return_groups_in_order() {
-        let source = r#"
-fn ints() -> List(Int) { [] }
-fn callable() -> fn() -> Int { fn() { 1 } }
-
-pub fn main() {
-  let _ = #(ints(), callable())
-  0
-}
-"#;
-        let expected = concat!(
-            "\nfunction int#0\n",
-            "  entry b0 params=[] captures=[]\n",
-            "  block b0 params=[]\n",
-            "    %list.int#0:shape#1(list_type#0) = list.int[type#0] call ",
-            "list.int#0 args=[]\n",
-            "    %function.int#0:shape#2(fn() -> Int) = function[Int] call ",
-            "function.int#0 args=[]\n",
-            "    %tuple#0:shape#3(#(list_type#0, fn() -> Int)) = tuple.value ",
-            "elements=[%list.int#0, %function.int#0]\n",
-            "    %int#0:shape#0(Int) = int.value 0\n",
-            "    return %int#0\n",
-            "\nfunction int#1\n",
-            "  entry b0 params=[] captures=[]\n",
-            "  block b0 params=[]\n",
-            "    %int#0:shape#0(Int) = int.value 1\n",
-            "    return %int#0\n",
-            "\nfunction list.int#0\n",
-            "  entry b0 params=[] captures=[]\n",
-            "  block b0 params=[]\n",
-            "    %list.int#0:shape#1(list_type#0) = list.int[type#0] value ",
-            "elements=[]\n",
-            "    return %list.int#0\n",
-            "\nfunction function.int#0\n",
-            "  entry b0 params=[] captures=[]\n",
-            "  block b0 params=[]\n",
-            "    %function.int#0:shape#2(fn() -> Int) = function[Int] closure ",
-            "target=int#1 captures=[]\n",
-            "    return %function.int#0\n",
-        );
-
-        assert_explanation(source, expected);
-    }
-
-    fn assert_explanation(source: &str, expected: &str) {
-        explain::assert_rendered(source, expected, |plan, output| {
-            let mut context = explain::ExplainContext::new(plan, output);
-            context.write(&plan.program.functions);
-        });
-    }
-}
-
 impl<Profile: ExecutionProfile> FunctionTables<Profile> {
     pub(in crate::plan::execution) fn never_function(
         &self,
@@ -603,6 +546,63 @@ impl<Profile: ExecutionProfile> FunctionTables<Profile> {
         id: &FunctionFunctionFunctionId,
     ) -> &ExecutionFunction<Profile, ExecutionFunctionFunctionFunctionBody<Profile>> {
         &self.function_returns.function_function_functions[id.index()]
+    }
+}
+
+#[cfg(test)]
+mod explain_tests {
+    use crate::plan::execution::explain;
+
+    #[test]
+    fn writes_value_list_and_function_return_groups_in_order() {
+        let source = r#"
+fn ints() -> List(Int) { [] }
+fn callable() -> fn() -> Int { fn() { 1 } }
+
+pub fn main() {
+  let _ = #(ints(), callable())
+  0
+}
+"#;
+        let expected = concat!(
+            "\nfunction int#0\n",
+            "  entry b0 params=[] captures=[]\n",
+            "  block b0 params=[]\n",
+            "    %list.int#0:shape#1(list_type#0) = list.int[type#0] call ",
+            "list.int#0 args=[]\n",
+            "    %function.int#0:shape#2(fn() -> Int) = function[Int] call ",
+            "function.int#0 args=[]\n",
+            "    %tuple#0:shape#3(#(list_type#0, fn() -> Int)) = tuple.value ",
+            "elements=[%list.int#0, %function.int#0]\n",
+            "    %int#0:shape#0(Int) = int.value 0\n",
+            "    return %int#0\n",
+            "\nfunction int#1\n",
+            "  entry b0 params=[] captures=[]\n",
+            "  block b0 params=[]\n",
+            "    %int#0:shape#0(Int) = int.value 1\n",
+            "    return %int#0\n",
+            "\nfunction list.int#0\n",
+            "  entry b0 params=[] captures=[]\n",
+            "  block b0 params=[]\n",
+            "    %list.int#0:shape#1(list_type#0) = list.int[type#0] value ",
+            "elements=[]\n",
+            "    return %list.int#0\n",
+            "\nfunction function.int#0\n",
+            "  entry b0 params=[] captures=[]\n",
+            "  block b0 params=[]\n",
+            "    %function.int#0:shape#2(fn() -> Int) = function[Int] closure ",
+            "target=int#1 captures=[]\n",
+            "    return %function.int#0\n",
+        );
+
+        assert_explanation(source, expected);
+    }
+
+    fn assert_explanation(source: &str, expected: &str) {
+        explain::assert_rendered(source, expected, |plan, output| {
+            let mut context = explain::ExplainContext::new(plan, output);
+            context.write(&plan.program.functions);
+        });
     }
 }
 

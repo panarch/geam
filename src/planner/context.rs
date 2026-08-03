@@ -617,14 +617,6 @@ pub(super) enum FunctionLocalBinding {
 }
 
 impl<'a> PlanContext<'a> {
-    fn executable_external(&self, module: &EcoString, name: &EcoString) -> bool {
-        match self.registry {
-            RegistryAccess::Program { registry } => registry.executable_external(module, name),
-            #[cfg(test)]
-            RegistryAccess::Local { .. } => false,
-        }
-    }
-
     #[cfg(test)]
     pub(super) fn new(
         module_name: &'a EcoString,
@@ -2334,6 +2326,14 @@ impl<'a> PlanContext<'a> {
                 },
             }
         })
+    }
+
+    fn executable_external(&self, module: &EcoString, name: &EcoString) -> bool {
+        match self.registry {
+            RegistryAccess::Program { registry } => registry.executable_external(module, name),
+            #[cfg(test)]
+            RegistryAccess::Local { .. } => false,
+        }
     }
 
     fn validate_constructor_arity(

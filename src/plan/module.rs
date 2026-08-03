@@ -243,6 +243,18 @@ impl ModulePlan {
         self
     }
 
+    pub fn root(&self) -> ModuleId {
+        self.root
+    }
+
+    pub fn entry(&self) -> FunctionTemplateId {
+        self.entry
+    }
+
+    pub fn modules(&self) -> &[PlannedModule] {
+        &self.modules
+    }
+
     pub fn module(&self) -> &EcoString {
         self.root_module().module()
     }
@@ -265,18 +277,6 @@ impl ModulePlan {
 
     pub fn functions(&self) -> &[FunctionTemplate] {
         &self.root_module().functions[1..]
-    }
-
-    pub fn root(&self) -> ModuleId {
-        self.root
-    }
-
-    pub fn entry(&self) -> FunctionTemplateId {
-        self.entry
-    }
-
-    pub fn modules(&self) -> &[PlannedModule] {
-        &self.modules
     }
 
     #[cfg(test)]

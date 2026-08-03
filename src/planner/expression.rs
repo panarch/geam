@@ -182,92 +182,6 @@ pub(super) fn plan_expr(
     Ok(expression)
 }
 
-fn plan_panic_expr(
-    location: gleam_core::ast::SrcSpan,
-    message: Option<TypedExpr>,
-    type_: std::sync::Arc<gleam_core::type_::Type>,
-    context: &mut PlanContext<'_>,
-) -> Result<Expr, PlanError> {
-    let return_shape = context.value_shape(type_.as_ref());
-
-    let site = context.panic_site(location);
-    plan_panic_expr_with_shape(message, return_shape, site, context)
-}
-
-fn plan_todo_expr(
-    location: gleam_core::ast::SrcSpan,
-    kind: TodoKind,
-    message: Option<TypedExpr>,
-    type_: std::sync::Arc<gleam_core::type_::Type>,
-    context: &mut PlanContext<'_>,
-) -> Result<Expr, PlanError> {
-    let return_shape = context.value_shape(type_.as_ref());
-
-    plan_todo_expr_with_shape(location, kind, message, return_shape, context)
-}
-
-fn plan_panic_expr_with_shape(
-    message: Option<TypedExpr>,
-    return_shape: ValueShape,
-    site: crate::plan::PanicSite,
-    context: &mut PlanContext<'_>,
-) -> Result<Expr, PlanError> {
-    let message = plan_panic_message(message, context)?;
-
-    Ok(panic_expr(PanicExpr::panic_at(message, site), return_shape))
-}
-
-fn plan_todo_expr_with_shape(
-    location: gleam_core::ast::SrcSpan,
-    kind: TodoKind,
-    message: Option<TypedExpr>,
-    return_shape: ValueShape,
-    context: &mut PlanContext<'_>,
-) -> Result<Expr, PlanError> {
-    let site = match &kind {
-        TodoKind::EmptyFunction { function_location } => context.panic_site(*function_location),
-        TodoKind::Keyword | TodoKind::EmptyBlock | TodoKind::IncompleteUse => {
-            context.panic_site(location)
-        }
-    };
-    let panic = match kind {
-        TodoKind::Keyword => PanicExpr::todo_at(plan_panic_message(message, context)?, site),
-        TodoKind::EmptyFunction { .. } => {
-            generated_todo_expr(message, PanicExpr::empty_function_at(site))?
-        }
-        TodoKind::EmptyBlock => generated_todo_expr(message, PanicExpr::empty_block_at(site))?,
-        TodoKind::IncompleteUse => {
-            generated_todo_expr(message, PanicExpr::incomplete_use_at(site))?
-        }
-    };
-
-    Ok(panic_expr(panic, return_shape))
-}
-
-fn plan_panic_message(
-    message: Option<TypedExpr>,
-    context: &mut PlanContext<'_>,
-) -> Result<Option<StringExpr>, PlanError> {
-    message
-        .map(|message| plan_string_expr(message, context))
-        .transpose()
-}
-
-fn generated_todo_expr(
-    message: Option<TypedExpr>,
-    expression: PanicExpr,
-) -> Result<PanicExpr, PlanError> {
-    if message.is_some() {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::Invalid,
-            },
-        });
-    }
-
-    Ok(expression)
-}
-
 pub(super) fn plan_expr_with_expected_source_stop_type(
     expression: TypedExpr,
     expected: ValueType,
@@ -309,6 +223,100 @@ pub(super) fn plan_expr_with_expected_source_stop_shape(
         }
         expression => plan_expr(expression, context),
     }
+}
+
+pub(super) fn plan_use_call(
+    call: TypedExpr,
+    use_assignment_count: usize,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    call::plan_use_call(call, use_assignment_count, context)
+}
+
+fn plan_todo_expr(
+    location: gleam_core::ast::SrcSpan,
+    kind: TodoKind,
+    message: Option<TypedExpr>,
+    type_: std::sync::Arc<gleam_core::type_::Type>,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    let return_shape = context.value_shape(type_.as_ref());
+
+    plan_todo_expr_with_shape(location, kind, message, return_shape, context)
+}
+
+fn plan_panic_expr(
+    location: gleam_core::ast::SrcSpan,
+    message: Option<TypedExpr>,
+    type_: std::sync::Arc<gleam_core::type_::Type>,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    let return_shape = context.value_shape(type_.as_ref());
+
+    let site = context.panic_site(location);
+    plan_panic_expr_with_shape(message, return_shape, site, context)
+}
+
+fn plan_todo_expr_with_shape(
+    location: gleam_core::ast::SrcSpan,
+    kind: TodoKind,
+    message: Option<TypedExpr>,
+    return_shape: ValueShape,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    let site = match &kind {
+        TodoKind::EmptyFunction { function_location } => context.panic_site(*function_location),
+        TodoKind::Keyword | TodoKind::EmptyBlock | TodoKind::IncompleteUse => {
+            context.panic_site(location)
+        }
+    };
+    let panic = match kind {
+        TodoKind::Keyword => PanicExpr::todo_at(plan_panic_message(message, context)?, site),
+        TodoKind::EmptyFunction { .. } => {
+            generated_todo_expr(message, PanicExpr::empty_function_at(site))?
+        }
+        TodoKind::EmptyBlock => generated_todo_expr(message, PanicExpr::empty_block_at(site))?,
+        TodoKind::IncompleteUse => {
+            generated_todo_expr(message, PanicExpr::incomplete_use_at(site))?
+        }
+    };
+
+    Ok(panic_expr(panic, return_shape))
+}
+
+fn plan_panic_expr_with_shape(
+    message: Option<TypedExpr>,
+    return_shape: ValueShape,
+    site: crate::plan::PanicSite,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    let message = plan_panic_message(message, context)?;
+
+    Ok(panic_expr(PanicExpr::panic_at(message, site), return_shape))
+}
+
+fn plan_panic_message(
+    message: Option<TypedExpr>,
+    context: &mut PlanContext<'_>,
+) -> Result<Option<StringExpr>, PlanError> {
+    message
+        .map(|message| plan_string_expr(message, context))
+        .transpose()
+}
+
+fn generated_todo_expr(
+    message: Option<TypedExpr>,
+    expression: PanicExpr,
+) -> Result<PanicExpr, PlanError> {
+    if message.is_some() {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::Invalid,
+            },
+        });
+    }
+
+    Ok(expression)
 }
 
 fn panic_expr(panic: PanicExpr, return_shape: ValueShape) -> Expr {
@@ -805,14 +813,6 @@ fn list_index_function_expr(
             ))
         }
     }
-}
-
-pub(super) fn plan_use_call(
-    call: TypedExpr,
-    use_assignment_count: usize,
-    context: &mut PlanContext<'_>,
-) -> Result<Expr, PlanError> {
-    call::plan_use_call(call, use_assignment_count, context)
 }
 
 fn plan_int_expr(

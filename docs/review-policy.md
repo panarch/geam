@@ -106,6 +106,16 @@ actual callers before assigning a semantic role.
   contained or open structures.
 - Within an owner module, declare the representative owner or protocol before
   its variants, payloads, IDs, adapters, and other supporting types.
+- Arrange production functions in reader order. Put public or representative
+  entry points before the private functions they introduce, and order a private
+  implementation chain by first use so its primary path can be followed from
+  top to bottom. Do not place helpers before callers merely out of
+  declaration-before-use habit.
+- When the call graph does not provide the clearest reading order, use the
+  protocol or domain order instead. Trait implementations follow the trait, and
+  independent sibling operations keep a stable domain order. Shared helpers
+  follow the entry points that establish their purpose; mutually recursive
+  functions stay together with the conceptual entry point first.
 - Treat a one-caller type that mirrors a final type and is immediately consumed
   as a design smell. Make it a real final substructure or keep it phase-local
   behind a narrow constructor.

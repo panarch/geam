@@ -32,6 +32,10 @@ pub(crate) use param::{ParamLocal, ParamSlot};
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use std::convert::Infallible;
 
+pub(in crate::plan::execution) trait LocalLabel {
+    fn write_local_label(&self, output: &mut String);
+}
+
 impl<Value> Explain for Value
 where
     Value: LocalLabel,
@@ -39,6 +43,12 @@ where
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
         self.write_local_label(context.output());
     }
+}
+
+pub(in crate::plan::execution) fn write_local_labels(output: &mut String, locals: &[ParamLocal]) {
+    write_list(output, locals, |output, local| {
+        local.write_local_label(output)
+    });
 }
 
 fn write_list<Value>(
@@ -54,16 +64,6 @@ fn write_list<Value>(
         write_value(output, value);
     }
     output.push(']');
-}
-
-pub(in crate::plan::execution) trait LocalLabel {
-    fn write_local_label(&self, output: &mut String);
-}
-
-pub(in crate::plan::execution) fn write_local_labels(output: &mut String, locals: &[ParamLocal]) {
-    write_list(output, locals, |output, local| {
-        local.write_local_label(output)
-    });
 }
 
 impl LocalLabel for IntLocalId {

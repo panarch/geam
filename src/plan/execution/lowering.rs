@@ -62,6 +62,121 @@ type PlainLoweredExecution = LoweredExecution<Infallible>;
 
 pub(super) use host::lower_hosted;
 
+pub(super) fn lower(module_plan: ModulePlan) -> ExecutionProgram<Infallible> {
+    let parts = module_plan.into_parts();
+    let root = parts.root;
+    let entry = parts.entry;
+    let mut module_contexts = Vec::with_capacity(parts.modules.len());
+    let mut module_templates = Vec::with_capacity(parts.modules.len());
+    let mut constant_templates = Vec::with_capacity(parts.modules.len());
+    let mut custom_types = Vec::new();
+
+    for module in parts.modules {
+        let parts = module.into_parts();
+        module_contexts.push(super::ExecutionModuleContext::new(
+            parts.module,
+            parts.source_context,
+        ));
+        custom_types.extend(parts.custom_types);
+        constant_templates.push(parts.constants);
+        let mut templates = parts.functions;
+        templates.extend(parts.anonymous_functions);
+        templates.sort_by_key(|template| template.id().index());
+        module_templates.push(templates);
+    }
+
+    let templates = FunctionTemplates::new(module_templates);
+    let main_return_shape = templates
+        .get(entry)
+        .signature()
+        .shape()
+        .return_shape()
+        .clone();
+    let main_key = SpecializationKey::monomorphic(entry);
+    let initial = SpecializationState {
+        constant_templates: ProgramConstantTemplates {
+            modules: constant_templates,
+        },
+        representations: RepresentationContext::new(custom_types),
+        erased_specializations: HashSet::new(),
+    };
+
+    // Function indices remain provisional until a pass produces no new erasures.
+    let (main, lowered) = resolve_specialization_fixed_point(initial, |state| {
+        let SpecializationState {
+            constant_templates,
+            representations,
+            erased_specializations,
+        } = state;
+        let main_value_shape = specialization::SpecializedValueShape::instantiate(
+            &main_return_shape,
+            main_key.substitution(),
+        );
+        let main_return_shape = representations.inhabitation(&main_value_shape);
+        let mut context = LoweringContext::new(
+            templates.entry_templates(),
+            representations,
+            constant_templates,
+            main_key.clone(),
+            erased_specializations,
+        );
+
+        let main = context.reserve_main(main_key.clone(), main_return_shape);
+
+        while let Some(key) = context.pending.pop_front() {
+            context.begin(&key);
+            function::lower_specialized(templates.get(key.template()), &key, &mut context);
+        }
+
+        let (constant_templates, representations, lowered) = context.finish();
+        let outcome = SpecializationOutcome::from_representability(
+            graph::seal_plain_runtime_function_id(main),
+            main_key.clone(),
+        )
+        .zip_with(lowered, |main, lowered| (main, lowered));
+        let erased_specializations = outcome.erased_specializations();
+        outcome.into_fixed_point(SpecializationState {
+            constant_templates,
+            representations,
+            erased_specializations,
+        })
+    });
+
+    ExecutionProgram {
+        common: ExecutionProgramCommon {
+            root,
+            modules: module_contexts.into_boxed_slice(),
+            main,
+            constants: lowered.constants,
+            list_types: lowered.list_types,
+            custom_types: lowered.custom_types,
+            external_types: lowered.external_types,
+            value_shapes: lowered.value_shapes,
+        },
+        functions: lowered.functions,
+    }
+}
+
+impl FunctionTemplates {
+    fn new(templates: Vec<Vec<crate::plan::FunctionTemplate>>) -> Self {
+        Self { templates }
+    }
+
+    fn get(&self, id: crate::plan::FunctionTemplateId) -> &crate::plan::FunctionTemplate {
+        &self.templates[id.module().index()][id.index()]
+    }
+
+    fn entry_templates(
+        &self,
+    ) -> HashMap<crate::plan::FunctionTemplateId, local::FunctionEntryTemplate> {
+        self.templates
+            .iter()
+            .flatten()
+            .map(|template| (template.id(), local::FunctionEntryTemplate::new(template)))
+            .collect()
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 enum FixedPointStep<State, Output> {
     Complete(Output),
@@ -1220,121 +1335,6 @@ impl LoweringContext {
             })
             .include_prior_erasure(erased_specializations);
         (constant_templates, representations, outcome)
-    }
-}
-
-pub(super) fn lower(module_plan: ModulePlan) -> ExecutionProgram<Infallible> {
-    let parts = module_plan.into_parts();
-    let root = parts.root;
-    let entry = parts.entry;
-    let mut module_contexts = Vec::with_capacity(parts.modules.len());
-    let mut module_templates = Vec::with_capacity(parts.modules.len());
-    let mut constant_templates = Vec::with_capacity(parts.modules.len());
-    let mut custom_types = Vec::new();
-
-    for module in parts.modules {
-        let parts = module.into_parts();
-        module_contexts.push(super::ExecutionModuleContext::new(
-            parts.module,
-            parts.source_context,
-        ));
-        custom_types.extend(parts.custom_types);
-        constant_templates.push(parts.constants);
-        let mut templates = parts.functions;
-        templates.extend(parts.anonymous_functions);
-        templates.sort_by_key(|template| template.id().index());
-        module_templates.push(templates);
-    }
-
-    let templates = FunctionTemplates::new(module_templates);
-    let main_return_shape = templates
-        .get(entry)
-        .signature()
-        .shape()
-        .return_shape()
-        .clone();
-    let main_key = SpecializationKey::monomorphic(entry);
-    let initial = SpecializationState {
-        constant_templates: ProgramConstantTemplates {
-            modules: constant_templates,
-        },
-        representations: RepresentationContext::new(custom_types),
-        erased_specializations: HashSet::new(),
-    };
-
-    // Function indices remain provisional until a pass produces no new erasures.
-    let (main, lowered) = resolve_specialization_fixed_point(initial, |state| {
-        let SpecializationState {
-            constant_templates,
-            representations,
-            erased_specializations,
-        } = state;
-        let main_value_shape = specialization::SpecializedValueShape::instantiate(
-            &main_return_shape,
-            main_key.substitution(),
-        );
-        let main_return_shape = representations.inhabitation(&main_value_shape);
-        let mut context = LoweringContext::new(
-            templates.entry_templates(),
-            representations,
-            constant_templates,
-            main_key.clone(),
-            erased_specializations,
-        );
-
-        let main = context.reserve_main(main_key.clone(), main_return_shape);
-
-        while let Some(key) = context.pending.pop_front() {
-            context.begin(&key);
-            function::lower_specialized(templates.get(key.template()), &key, &mut context);
-        }
-
-        let (constant_templates, representations, lowered) = context.finish();
-        let outcome = SpecializationOutcome::from_representability(
-            graph::seal_plain_runtime_function_id(main),
-            main_key.clone(),
-        )
-        .zip_with(lowered, |main, lowered| (main, lowered));
-        let erased_specializations = outcome.erased_specializations();
-        outcome.into_fixed_point(SpecializationState {
-            constant_templates,
-            representations,
-            erased_specializations,
-        })
-    });
-
-    ExecutionProgram {
-        common: ExecutionProgramCommon {
-            root,
-            modules: module_contexts.into_boxed_slice(),
-            main,
-            constants: lowered.constants,
-            list_types: lowered.list_types,
-            custom_types: lowered.custom_types,
-            external_types: lowered.external_types,
-            value_shapes: lowered.value_shapes,
-        },
-        functions: lowered.functions,
-    }
-}
-
-impl FunctionTemplates {
-    fn new(templates: Vec<Vec<crate::plan::FunctionTemplate>>) -> Self {
-        Self { templates }
-    }
-
-    fn get(&self, id: crate::plan::FunctionTemplateId) -> &crate::plan::FunctionTemplate {
-        &self.templates[id.module().index()][id.index()]
-    }
-
-    fn entry_templates(
-        &self,
-    ) -> HashMap<crate::plan::FunctionTemplateId, local::FunctionEntryTemplate> {
-        self.templates
-            .iter()
-            .flatten()
-            .map(|template| (template.id(), local::FunctionEntryTemplate::new(template)))
-            .collect()
     }
 }
 

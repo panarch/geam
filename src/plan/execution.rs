@@ -158,6 +158,55 @@ impl ExecutionPlan {
     }
 }
 
+impl<Profile: HostProfile> HostedExecution<Profile> {
+    /// Seals all entry-reachable host specializations into executable storage.
+    ///
+    /// A linked but unused provider does not participate in sealing.
+    pub fn try_from_module_plan(
+        module_plan: HostedModulePlan<Profile>,
+    ) -> Result<Self, HostSpecializationError> {
+        let (program, host_functions) = lowering::lower_hosted(module_plan)?;
+        Ok(Self {
+            program,
+            host_functions,
+            external_stores: Profile::ExternalStores::default(),
+        })
+    }
+
+    pub fn run_main(
+        &self,
+        state: &mut Profile::RunState,
+        echo: &mut dyn crate::EchoSink,
+    ) -> Result<crate::Value, crate::ExecutionError> {
+        crate::runtime::run_hosted_main(self, state, echo)
+    }
+
+    pub fn explain(&self) -> ExecutionPlanExplanation<'_> {
+        ExecutionPlanExplanation::new_hosted(self)
+    }
+
+    pub(crate) fn host_value_function<Body>(
+        &self,
+        id: &host::HostFunctionId<Body>,
+    ) -> &host::HostedValueFunction<Profile>
+    where
+        Body: function::ExecutionFunctionBody,
+    {
+        self.host_functions.value(id)
+    }
+
+    pub(crate) fn host_never_function(
+        &self,
+        id: host::HostNeverFunctionId,
+    ) -> &host::HostedNeverFunction<Profile> {
+        self.host_functions.never(id)
+    }
+
+    pub(crate) fn external_stores(&self) -> &Profile::ExternalStores {
+        &self.external_stores
+    }
+}
+
 #[cfg(test)]
 impl ExecutionPlan {
     pub(crate) fn main_runtime(&self) -> self::function::RuntimeFunctionId {
@@ -500,55 +549,6 @@ impl ExecutionPlan {
     #[cfg(test)]
     pub(crate) fn function_function_function_id(&self, index: usize) -> FunctionFunctionFunctionId {
         self.program.functions.function_function_function_id(index)
-    }
-}
-
-impl<Profile: HostProfile> HostedExecution<Profile> {
-    /// Seals all entry-reachable host specializations into executable storage.
-    ///
-    /// A linked but unused provider does not participate in sealing.
-    pub fn try_from_module_plan(
-        module_plan: HostedModulePlan<Profile>,
-    ) -> Result<Self, HostSpecializationError> {
-        let (program, host_functions) = lowering::lower_hosted(module_plan)?;
-        Ok(Self {
-            program,
-            host_functions,
-            external_stores: Profile::ExternalStores::default(),
-        })
-    }
-
-    pub fn run_main(
-        &self,
-        state: &mut Profile::RunState,
-        echo: &mut dyn crate::EchoSink,
-    ) -> Result<crate::Value, crate::ExecutionError> {
-        crate::runtime::run_hosted_main(self, state, echo)
-    }
-
-    pub fn explain(&self) -> ExecutionPlanExplanation<'_> {
-        ExecutionPlanExplanation::new_hosted(self)
-    }
-
-    pub(crate) fn host_value_function<Body>(
-        &self,
-        id: &host::HostFunctionId<Body>,
-    ) -> &host::HostedValueFunction<Profile>
-    where
-        Body: function::ExecutionFunctionBody,
-    {
-        self.host_functions.value(id)
-    }
-
-    pub(crate) fn host_never_function(
-        &self,
-        id: host::HostNeverFunctionId,
-    ) -> &host::HostedNeverFunction<Profile> {
-        self.host_functions.never(id)
-    }
-
-    pub(crate) fn external_stores(&self) -> &Profile::ExternalStores {
-        &self.external_stores
     }
 }
 

@@ -295,14 +295,14 @@ fn bind_function_case_subject(
     (step, Expr::function(subject))
 }
 
-fn internal_int_function_case_subject_name(local: IntFunctionLocalId) -> EcoString {
-    format!("<case:int_function:{}>", local.0).into()
-}
-
 fn internal_generic_function_case_subject_name(
     local: &crate::plan::GenericFunctionLocal,
 ) -> EcoString {
     format!("<case:generic_function:{}>", local.id().0).into()
+}
+
+fn internal_int_function_case_subject_name(local: IntFunctionLocalId) -> EcoString {
+    format!("<case:int_function:{}>", local.0).into()
 }
 
 fn internal_string_function_case_subject_name(

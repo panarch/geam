@@ -703,6 +703,12 @@ impl<Return, TailCall> DraftGraphBuilder<Return, TailCall> {
     }
 }
 
+impl<Return, TailCall> DraftGraphBuilder<Return, TailCall> {
+    pub(in crate::plan::execution::lowering) fn graph(&self) -> &DraftGraph {
+        &self.graph
+    }
+}
+
 impl<Return, TailCall> std::ops::Deref for DraftGraphBuilder<Return, TailCall> {
     type Target = DraftGraph;
 
@@ -714,12 +720,6 @@ impl<Return, TailCall> std::ops::Deref for DraftGraphBuilder<Return, TailCall> {
 impl<Return, TailCall> std::ops::DerefMut for DraftGraphBuilder<Return, TailCall> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.graph
-    }
-}
-
-impl<Return, TailCall> DraftGraphBuilder<Return, TailCall> {
-    pub(in crate::plan::execution::lowering) fn graph(&self) -> &DraftGraph {
-        &self.graph
     }
 }
 

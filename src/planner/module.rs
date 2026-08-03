@@ -360,14 +360,6 @@ struct FunctionSeed {
     type_parameters: TypeParameterScope,
 }
 
-fn function_return_shape_in(
-    type_: &Type,
-    parameters: &mut TypeParameterScope,
-    is_external: &impl Fn(&crate::plan::ExternalTypeName) -> bool,
-) -> crate::plan::ValueShape {
-    crate::plan::ValueShape::from_gleam_in_with_external(type_, parameters, is_external)
-}
-
 pub(super) fn function_params_in(
     function_name: EcoString,
     arguments: &[gleam_core::ast::TypedArg],
@@ -393,6 +385,30 @@ pub(super) fn function_params_in(
         parameters,
         is_external,
     ))
+}
+
+pub(super) fn discarded_function_params(shapes: &[crate::plan::ValueShape]) -> Vec<FunctionParam> {
+    let mut locals = FunctionParamLocalCounters::default();
+    shapes
+        .iter()
+        .cloned()
+        .map(|shape| {
+            FunctionParam::new(
+                locals.next_value_shape(&shape),
+                shape,
+                ParamBinding::Discard,
+                None,
+            )
+        })
+        .collect()
+}
+
+fn function_return_shape_in(
+    type_: &Type,
+    parameters: &mut TypeParameterScope,
+    is_external: &impl Fn(&crate::plan::ExternalTypeName) -> bool,
+) -> crate::plan::ValueShape {
+    crate::plan::ValueShape::from_gleam_in_with_external(type_, parameters, is_external)
 }
 
 fn function_params_allowing_labels_in(
@@ -423,22 +439,6 @@ fn function_params_allowing_labels_in(
             );
             let local = locals.next_value_shape(&shape);
             FunctionParam::new(local, shape, binding, label)
-        })
-        .collect()
-}
-
-pub(super) fn discarded_function_params(shapes: &[crate::plan::ValueShape]) -> Vec<FunctionParam> {
-    let mut locals = FunctionParamLocalCounters::default();
-    shapes
-        .iter()
-        .cloned()
-        .map(|shape| {
-            FunctionParam::new(
-                locals.next_value_shape(&shape),
-                shape,
-                ParamBinding::Discard,
-                None,
-            )
         })
         .collect()
 }

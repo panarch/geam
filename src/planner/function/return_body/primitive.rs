@@ -7,20 +7,6 @@ use crate::plan::{
     UtfCodepointExprKind, UtfCodepointReturn,
 };
 
-pub(super) fn custom_return(
-    signature_shape: crate::plan::CustomValueShape,
-    expression: CustomExpr,
-) -> CustomReturn {
-    CustomReturn::with_signature_shape(signature_shape, expression)
-}
-
-pub(super) fn external_return(
-    signature_shape: crate::plan::ExternalValueShape,
-    expression: ExternalExpr,
-) -> ExternalReturn {
-    ExternalReturn::with_signature_shape(signature_shape, expression)
-}
-
 pub(super) fn generic_return(expression: GenericExpr) -> GenericReturn {
     match expression.kind() {
         GenericExprKind::Call {
@@ -334,6 +320,82 @@ pub(super) fn utf_codepoint_return(expression: UtfCodepointExpr) -> UtfCodepoint
     }
 }
 
+pub(super) fn custom_return(
+    signature_shape: crate::plan::CustomValueShape,
+    expression: CustomExpr,
+) -> CustomReturn {
+    CustomReturn::with_signature_shape(signature_shape, expression)
+}
+
+pub(super) fn external_return(
+    signature_shape: crate::plan::ExternalValueShape,
+    expression: ExternalExpr,
+) -> ExternalReturn {
+    ExternalReturn::with_signature_shape(signature_shape, expression)
+}
+
+pub(super) fn float_return(expression: FloatExpr) -> FloatReturn {
+    match expression.kind() {
+        FloatExprKind::Call {
+            function,
+            args,
+            site,
+        } => ReturnBody::tail_call(
+            crate::plan::FunctionCallTarget::new(function.clone(), site.clone()),
+            args.clone(),
+        ),
+        FloatExprKind::BoolCase {
+            subject,
+            true_,
+            false_,
+        } => ReturnBody::bool_case(
+            (**subject).clone(),
+            float_return((**true_).clone()),
+            float_return((**false_).clone()),
+        ),
+        FloatExprKind::IntCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::int_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), float_return(branch.clone())))
+                .collect(),
+            float_return((**fallback).clone()),
+        ),
+        FloatExprKind::StringCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::string_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (value.clone(), float_return(branch.clone())))
+                .collect(),
+            float_return((**fallback).clone()),
+        ),
+        FloatExprKind::FloatCase {
+            subject,
+            clauses,
+            fallback,
+        } => ReturnBody::float_case(
+            (**subject).clone(),
+            clauses
+                .iter()
+                .map(|(value, branch)| (*value, float_return(branch.clone())))
+                .collect(),
+            float_return((**fallback).clone()),
+        ),
+        FloatExprKind::Block { steps, return_ } => {
+            ReturnBody::block(steps.clone(), float_return((**return_).clone()))
+        }
+        _ => ReturnBody::expr(expression),
+    }
+}
+
 pub(super) fn bool_return(expression: BoolExpr) -> BoolReturn {
     match expression.kind() {
         BoolExprKind::Call {
@@ -453,68 +515,6 @@ pub(super) fn nil_return(expression: NilExpr) -> NilReturn {
         ),
         NilExprKind::Block { steps, return_ } => {
             ReturnBody::block(steps.clone(), nil_return((**return_).clone()))
-        }
-        _ => ReturnBody::expr(expression),
-    }
-}
-
-pub(super) fn float_return(expression: FloatExpr) -> FloatReturn {
-    match expression.kind() {
-        FloatExprKind::Call {
-            function,
-            args,
-            site,
-        } => ReturnBody::tail_call(
-            crate::plan::FunctionCallTarget::new(function.clone(), site.clone()),
-            args.clone(),
-        ),
-        FloatExprKind::BoolCase {
-            subject,
-            true_,
-            false_,
-        } => ReturnBody::bool_case(
-            (**subject).clone(),
-            float_return((**true_).clone()),
-            float_return((**false_).clone()),
-        ),
-        FloatExprKind::IntCase {
-            subject,
-            clauses,
-            fallback,
-        } => ReturnBody::int_case(
-            (**subject).clone(),
-            clauses
-                .iter()
-                .map(|(value, branch)| (value.clone(), float_return(branch.clone())))
-                .collect(),
-            float_return((**fallback).clone()),
-        ),
-        FloatExprKind::StringCase {
-            subject,
-            clauses,
-            fallback,
-        } => ReturnBody::string_case(
-            (**subject).clone(),
-            clauses
-                .iter()
-                .map(|(value, branch)| (value.clone(), float_return(branch.clone())))
-                .collect(),
-            float_return((**fallback).clone()),
-        ),
-        FloatExprKind::FloatCase {
-            subject,
-            clauses,
-            fallback,
-        } => ReturnBody::float_case(
-            (**subject).clone(),
-            clauses
-                .iter()
-                .map(|(value, branch)| (*value, float_return(branch.clone())))
-                .collect(),
-            float_return((**fallback).clone()),
-        ),
-        FloatExprKind::Block { steps, return_ } => {
-            ReturnBody::block(steps.clone(), float_return((**return_).clone()))
         }
         _ => ReturnBody::expr(expression),
     }

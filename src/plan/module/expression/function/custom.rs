@@ -313,6 +313,9 @@ impl CustomFunctionExpr {
         }
     }
 
+    pub fn type_(&self) -> FunctionType {
+        self.type_.to_function_type()
+    }
     pub(crate) fn custom_function_type(&self) -> &CustomFunctionType {
         &self.type_
     }
@@ -322,9 +325,6 @@ impl CustomFunctionExpr {
         self
     }
 
-    pub fn type_(&self) -> FunctionType {
-        self.type_.to_function_type()
-    }
     pub(crate) fn kind(&self) -> &CustomFunctionExprKind {
         &self.kind
     }

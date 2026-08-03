@@ -40,6 +40,22 @@ pub(super) fn plan_non_empty_steps_and_return(
     plan_ordered_steps_and_return(statements, last_statement, context, expected_return_shape)
 }
 
+pub(super) fn plan_runtime_steps(
+    statement: gleam_core::ast::TypedStatement,
+    context: &mut PlanContext<'_>,
+) -> Result<Vec<Step>, PlanError> {
+    match statement {
+        Statement::Expression(expression) => Ok(vec![Step::evaluate(
+            plan_expr_with_expected_source_stop_shape(expression, ValueShape::Nil, context)?,
+        )]),
+        Statement::Assignment(assignment) => assignment::plan_assignment(*assignment, context),
+        Statement::Use(_) => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::UseStatement,
+        }),
+        Statement::Assert(assert) => Ok(vec![plan_assert_step(assert, context)?]),
+    }
+}
+
 fn plan_ordered_steps_and_return(
     statements: Vec<gleam_core::ast::TypedStatement>,
     last_statement: gleam_core::ast::TypedStatement,
@@ -71,22 +87,6 @@ fn plan_ordered_steps_and_return(
     };
 
     Ok(PlannedStatements { steps, return_ })
-}
-
-pub(super) fn plan_runtime_steps(
-    statement: gleam_core::ast::TypedStatement,
-    context: &mut PlanContext<'_>,
-) -> Result<Vec<Step>, PlanError> {
-    match statement {
-        Statement::Expression(expression) => Ok(vec![Step::evaluate(
-            plan_expr_with_expected_source_stop_shape(expression, ValueShape::Nil, context)?,
-        )]),
-        Statement::Assignment(assignment) => assignment::plan_assignment(*assignment, context),
-        Statement::Use(_) => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::UseStatement,
-        }),
-        Statement::Assert(assert) => Ok(vec![plan_assert_step(assert, context)?]),
-    }
 }
 
 fn plan_assert_step(assert: TypedAssert, context: &mut PlanContext<'_>) -> Result<Step, PlanError> {

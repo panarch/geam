@@ -325,6 +325,14 @@ impl ListTypeTable {
         }
     }
 
+    pub(crate) fn storage_type(&self, id: ListTypeId) -> ListStorageTypeId {
+        self.get(id)
+    }
+
+    fn get(&self, id: ListTypeId) -> ListStorageTypeId {
+        self.types[id.index()]
+    }
+
     #[cfg(test)]
     pub(in crate::plan::execution) fn entries(
         &self,
@@ -334,14 +342,6 @@ impl ListTypeTable {
             .copied()
             .enumerate()
             .map(|(index, type_)| (ListTypeId(index), type_))
-    }
-
-    fn get(&self, id: ListTypeId) -> ListStorageTypeId {
-        self.types[id.index()]
-    }
-
-    pub(crate) fn storage_type(&self, id: ListTypeId) -> ListStorageTypeId {
-        self.get(id)
     }
 
     pub(crate) fn value_type(

@@ -96,6 +96,56 @@ enum SegmentKind {
     UtfCodepoint(StringEncoding),
 }
 
+fn segment_kind(
+    segment: &BitArraySegment<Pattern<Arc<Type>>, Arc<Type>>,
+) -> Result<SegmentKind, PlanError> {
+    let mut kind = None;
+    for option in &segment.options {
+        let next = match option {
+            BitArrayOption::Bytes { .. } | BitArrayOption::Bits { .. } => Some(SegmentKind::Bits),
+            BitArrayOption::Int { .. } => Some(SegmentKind::Int),
+            BitArrayOption::Float { .. } => Some(SegmentKind::Float),
+            BitArrayOption::Utf8 { .. } => Some(SegmentKind::String(StringEncoding::Utf8)),
+            BitArrayOption::Utf16 { .. } => Some(SegmentKind::String(StringEncoding::Utf16(
+                segment_endianness(segment),
+            ))),
+            BitArrayOption::Utf32 { .. } => Some(SegmentKind::String(StringEncoding::Utf32(
+                segment_endianness(segment),
+            ))),
+            BitArrayOption::Utf8Codepoint { .. } => {
+                Some(SegmentKind::UtfCodepoint(StringEncoding::Utf8))
+            }
+            BitArrayOption::Utf16Codepoint { .. } => Some(SegmentKind::UtfCodepoint(
+                StringEncoding::Utf16(segment_endianness(segment)),
+            )),
+            BitArrayOption::Utf32Codepoint { .. } => Some(SegmentKind::UtfCodepoint(
+                StringEncoding::Utf32(segment_endianness(segment)),
+            )),
+            BitArrayOption::Signed { .. }
+            | BitArrayOption::Unsigned { .. }
+            | BitArrayOption::Big { .. }
+            | BitArrayOption::Little { .. }
+            | BitArrayOption::Native { .. }
+            | BitArrayOption::Size { .. }
+            | BitArrayOption::Unit { .. } => None,
+        };
+        if let Some(next) = next {
+            if kind.is_some() {
+                return Err(invalid_pattern());
+            }
+            kind = Some(next);
+        }
+    }
+    if let Some(kind) = kind {
+        return Ok(kind);
+    }
+    if matches!(segment.value_unwrapping_assign(), Pattern::String { .. }) {
+        Ok(SegmentKind::String(StringEncoding::Utf8))
+    } else {
+        Ok(SegmentKind::Int)
+    }
+}
+
 fn validate_segment_options(
     segment: &BitArraySegment<Pattern<Arc<Type>>, Arc<Type>>,
     kind: SegmentKind,
@@ -162,56 +212,6 @@ fn validate_segment_options(
         Err(invalid_pattern())
     } else {
         Ok(())
-    }
-}
-
-fn segment_kind(
-    segment: &BitArraySegment<Pattern<Arc<Type>>, Arc<Type>>,
-) -> Result<SegmentKind, PlanError> {
-    let mut kind = None;
-    for option in &segment.options {
-        let next = match option {
-            BitArrayOption::Bytes { .. } | BitArrayOption::Bits { .. } => Some(SegmentKind::Bits),
-            BitArrayOption::Int { .. } => Some(SegmentKind::Int),
-            BitArrayOption::Float { .. } => Some(SegmentKind::Float),
-            BitArrayOption::Utf8 { .. } => Some(SegmentKind::String(StringEncoding::Utf8)),
-            BitArrayOption::Utf16 { .. } => Some(SegmentKind::String(StringEncoding::Utf16(
-                segment_endianness(segment),
-            ))),
-            BitArrayOption::Utf32 { .. } => Some(SegmentKind::String(StringEncoding::Utf32(
-                segment_endianness(segment),
-            ))),
-            BitArrayOption::Utf8Codepoint { .. } => {
-                Some(SegmentKind::UtfCodepoint(StringEncoding::Utf8))
-            }
-            BitArrayOption::Utf16Codepoint { .. } => Some(SegmentKind::UtfCodepoint(
-                StringEncoding::Utf16(segment_endianness(segment)),
-            )),
-            BitArrayOption::Utf32Codepoint { .. } => Some(SegmentKind::UtfCodepoint(
-                StringEncoding::Utf32(segment_endianness(segment)),
-            )),
-            BitArrayOption::Signed { .. }
-            | BitArrayOption::Unsigned { .. }
-            | BitArrayOption::Big { .. }
-            | BitArrayOption::Little { .. }
-            | BitArrayOption::Native { .. }
-            | BitArrayOption::Size { .. }
-            | BitArrayOption::Unit { .. } => None,
-        };
-        if let Some(next) = next {
-            if kind.is_some() {
-                return Err(invalid_pattern());
-            }
-            kind = Some(next);
-        }
-    }
-    if let Some(kind) = kind {
-        return Ok(kind);
-    }
-    if matches!(segment.value_unwrapping_assign(), Pattern::String { .. }) {
-        Ok(SegmentKind::String(StringEncoding::Utf8))
-    } else {
-        Ok(SegmentKind::Int)
     }
 }
 

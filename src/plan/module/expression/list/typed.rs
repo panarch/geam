@@ -134,27 +134,6 @@ impl<Item: ListItem> ListIndexSource<Item> {
 }
 
 impl<Item: ListItem> TypedListExpr<Item> {
-    fn new(item: Item, kind: TypedListExprKind<Item>) -> Self {
-        let item_shape = crate::plan::ValueShape::from_value_type(item.value_type());
-        Self {
-            item_shape,
-            item,
-            kind,
-        }
-    }
-
-    fn from_shape_item_and_kind(
-        item_shape: crate::plan::ValueShape,
-        item: Item,
-        kind: TypedListExprKind<Item>,
-    ) -> Self {
-        Self {
-            item_shape,
-            item,
-            kind,
-        }
-    }
-
     pub(in crate::plan::module) fn constant(
         item_shape: crate::plan::ValueShape,
         item: Item,
@@ -501,6 +480,27 @@ impl<Item: ListItem> TypedListExpr<Item> {
                 return_: Box::new(return_),
             },
         )
+    }
+
+    fn new(item: Item, kind: TypedListExprKind<Item>) -> Self {
+        let item_shape = crate::plan::ValueShape::from_value_type(item.value_type());
+        Self {
+            item_shape,
+            item,
+            kind,
+        }
+    }
+
+    fn from_shape_item_and_kind(
+        item_shape: crate::plan::ValueShape,
+        item: Item,
+        kind: TypedListExprKind<Item>,
+    ) -> Self {
+        Self {
+            item_shape,
+            item,
+            kind,
+        }
     }
 }
 

@@ -146,6 +146,28 @@ impl TupleCasePattern {
     }
 }
 
+impl TupleCasePattern {
+    fn from_list_pattern(pattern: super::list::ListCasePattern) -> Self {
+        let (match_condition, branch_bindings, total_branch_steps, is_total) = pattern.into_parts();
+        Self {
+            match_condition,
+            branch_bindings,
+            total_branch_steps,
+            is_total,
+        }
+    }
+
+    fn from_bit_array_pattern(pattern: super::bit_array::BitArrayCasePattern) -> Self {
+        let (match_condition, branch_bindings, is_total) = pattern.into_parts();
+        Self {
+            match_condition: Some(match_condition),
+            branch_bindings,
+            total_branch_steps: Vec::new(),
+            is_total,
+        }
+    }
+}
+
 fn plan_tuple_case_pattern_with_context(
     pattern: Pattern<Arc<Type>>,
     value: Expr,
@@ -394,28 +416,6 @@ fn combine_tuple_case_patterns(patterns: Vec<TupleCasePattern>) -> TupleCasePatt
     }
 
     combined
-}
-
-impl TupleCasePattern {
-    fn from_list_pattern(pattern: super::list::ListCasePattern) -> Self {
-        let (match_condition, branch_bindings, total_branch_steps, is_total) = pattern.into_parts();
-        Self {
-            match_condition,
-            branch_bindings,
-            total_branch_steps,
-            is_total,
-        }
-    }
-
-    fn from_bit_array_pattern(pattern: super::bit_array::BitArrayCasePattern) -> Self {
-        let (match_condition, branch_bindings, is_total) = pattern.into_parts();
-        Self {
-            match_condition: Some(match_condition),
-            branch_bindings,
-            total_branch_steps: Vec::new(),
-            is_total,
-        }
-    }
 }
 
 fn total_custom_binding_steps(

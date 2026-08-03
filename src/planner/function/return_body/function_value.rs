@@ -119,14 +119,6 @@ fn generic_function_return(expression: GenericFunctionExpr) -> GenericFunctionRe
     }
 }
 
-fn custom_function_return(expression: CustomFunctionExpr) -> CustomFunctionReturn {
-    CustomFunctionReturn::expr(expression)
-}
-
-fn external_function_return(expression: ExternalFunctionExpr) -> ExternalFunctionReturn {
-    ExternalFunctionReturn::expr(expression)
-}
-
 fn int_function_return(expression: IntFunctionExpr) -> IntFunctionReturn {
     match expression.kind() {
         IntFunctionExprKind::Call {
@@ -385,6 +377,14 @@ fn utf_codepoint_function_return(
         ),
         _ => ReturnBody::expr(expression),
     }
+}
+
+fn custom_function_return(expression: CustomFunctionExpr) -> CustomFunctionReturn {
+    CustomFunctionReturn::expr(expression)
+}
+
+fn external_function_return(expression: ExternalFunctionExpr) -> ExternalFunctionReturn {
+    ExternalFunctionReturn::expr(expression)
 }
 
 fn float_function_return(expression: FloatFunctionExpr) -> FloatFunctionReturn {

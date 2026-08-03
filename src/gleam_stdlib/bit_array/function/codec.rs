@@ -39,14 +39,6 @@ where
     })
 }
 
-fn decode_base64(value: &str) -> Result<Vec<u8>, base64::DecodeError> {
-    let encoded = value
-        .bytes()
-        .filter(|byte| !matches!(byte, b' ' | b'\t' | b'\r' | b'\n'))
-        .collect::<Vec<_>>();
-    ERLANG_BASE64.decode(encoded)
-}
-
 pub(in crate::gleam_stdlib::bit_array) fn base16_encode(value: BitArrayValue) -> EcoString {
     hex::encode_upper(value.pad_to_bytes().bytes()).into()
 }
@@ -62,6 +54,14 @@ where
         Ok(bytes) => call.return_custom::<BitArrayOk>((BitArrayValue::from_bytes(bytes), ())),
         Err(_) => call.return_custom::<BitArrayError>(((), ())),
     })
+}
+
+fn decode_base64(value: &str) -> Result<Vec<u8>, base64::DecodeError> {
+    let encoded = value
+        .bytes()
+        .filter(|byte| !matches!(byte, b' ' | b'\t' | b'\r' | b'\n'))
+        .collect::<Vec<_>>();
+    ERLANG_BASE64.decode(encoded)
 }
 
 #[cfg(test)]

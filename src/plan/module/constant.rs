@@ -302,21 +302,6 @@ impl ConstantNilReference {
 }
 
 impl ConstantInstantiation {
-    pub(crate) fn module(&self) -> crate::plan::ModuleId {
-        match &self.kind {
-            ConstantInstantiationKind::Int(value) => value.module(),
-            ConstantInstantiationKind::String(value) => value.module(),
-            ConstantInstantiationKind::BitArray(value) => value.module(),
-            ConstantInstantiationKind::Custom(value) => value.module(),
-            ConstantInstantiationKind::Float(value) => value.module(),
-            ConstantInstantiationKind::Bool(value) => value.module(),
-            ConstantInstantiationKind::Nil(value) => value.module(),
-            ConstantInstantiationKind::Tuple(value) => value.module(),
-            ConstantInstantiationKind::List(value) => value.module(),
-            ConstantInstantiationKind::Function(value) => value.module(),
-        }
-    }
-
     pub(crate) fn from_int(value: ConstantIntInstantiation) -> Self {
         Self {
             kind: ConstantInstantiationKind::Int(value),
@@ -374,6 +359,21 @@ impl ConstantInstantiation {
     pub(crate) fn from_function(value: ConstantFunctionInstantiation) -> Self {
         Self {
             kind: ConstantInstantiationKind::Function(value),
+        }
+    }
+
+    pub(crate) fn module(&self) -> crate::plan::ModuleId {
+        match &self.kind {
+            ConstantInstantiationKind::Int(value) => value.module(),
+            ConstantInstantiationKind::String(value) => value.module(),
+            ConstantInstantiationKind::BitArray(value) => value.module(),
+            ConstantInstantiationKind::Custom(value) => value.module(),
+            ConstantInstantiationKind::Float(value) => value.module(),
+            ConstantInstantiationKind::Bool(value) => value.module(),
+            ConstantInstantiationKind::Nil(value) => value.module(),
+            ConstantInstantiationKind::Tuple(value) => value.module(),
+            ConstantInstantiationKind::List(value) => value.module(),
+            ConstantInstantiationKind::Function(value) => value.module(),
         }
     }
 
@@ -640,6 +640,52 @@ impl ConstantTemplates {
         templates
     }
 
+    fn push_value(&mut self, value: ConstantValue) {
+        match value.kind {
+            ConstantValueKind::Int(value) => self.ints.push(value),
+            ConstantValueKind::Float(value) => self.floats.push(value),
+            ConstantValueKind::String(value) => self.strings.push(value),
+            ConstantValueKind::Bool(value) => self.bools.push(value),
+            ConstantValueKind::Nil(value) => self.nils.push(value),
+            ConstantValueKind::Tuple(value) => self.tuples.push(value),
+            ConstantValueKind::List(value) => match value {
+                ConstantListValue::Generic(value) => self.generic_lists.push(value),
+                ConstantListValue::ParameterList(value) => self.parameter_list_lists.push(value),
+                ConstantListValue::Int(value) => self.int_lists.push(value),
+                ConstantListValue::String(value) => self.string_lists.push(value),
+                ConstantListValue::BitArray(value) => self.bit_array_lists.push(value),
+                ConstantListValue::UtfCodepoint(value) => self.utf_codepoint_lists.push(value),
+                ConstantListValue::Custom(value) => self.custom_lists.push(value),
+                ConstantListValue::External(value) => self.external_lists.push(value),
+                ConstantListValue::Float(value) => self.float_lists.push(value),
+                ConstantListValue::Bool(value) => self.bool_lists.push(value),
+                ConstantListValue::Nil(value) => self.nil_lists.push(value),
+                ConstantListValue::Tuple(value) => self.tuple_lists.push(value),
+                ConstantListValue::List(value) => self.list_lists.push(value),
+                ConstantListValue::Function(value) => self.function_lists.push(value),
+            },
+            ConstantValueKind::BitArray(value) => self.bit_arrays.push(value),
+            ConstantValueKind::Custom(value) => self.custom_values.push(value),
+            ConstantValueKind::Function(value) => match value {
+                ConstantFunctionValue::Generic(value) => self.generic_functions.push(value),
+                ConstantFunctionValue::Int(value) => self.int_functions.push(value),
+                ConstantFunctionValue::String(value) => self.string_functions.push(value),
+                ConstantFunctionValue::BitArray(value) => self.bit_array_functions.push(value),
+                ConstantFunctionValue::UtfCodepoint(value) => {
+                    self.utf_codepoint_functions.push(value)
+                }
+                ConstantFunctionValue::Custom(value) => self.custom_functions.push(value),
+                ConstantFunctionValue::External(value) => self.external_functions.push(value),
+                ConstantFunctionValue::Float(value) => self.float_functions.push(value),
+                ConstantFunctionValue::Bool(value) => self.bool_functions.push(value),
+                ConstantFunctionValue::Nil(value) => self.nil_functions.push(value),
+                ConstantFunctionValue::Tuple(value) => self.tuple_functions.push(value),
+                ConstantFunctionValue::List(value) => self.list_functions.push(value),
+                ConstantFunctionValue::Function(value) => self.function_functions.push(value),
+            },
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn from_entries(entries: Vec<(ConstantTemplate, ConstantValue)>) -> Self {
         Self::from_module_entries(crate::plan::ModuleId::root(), entries)
@@ -828,52 +874,6 @@ impl ConstantTemplates {
         id: ConstantFunctionFunctionTemplateId,
     ) -> &ConstantFunctionFunctionValue {
         &self.function_functions[id.0]
-    }
-
-    fn push_value(&mut self, value: ConstantValue) {
-        match value.kind {
-            ConstantValueKind::Int(value) => self.ints.push(value),
-            ConstantValueKind::Float(value) => self.floats.push(value),
-            ConstantValueKind::String(value) => self.strings.push(value),
-            ConstantValueKind::Bool(value) => self.bools.push(value),
-            ConstantValueKind::Nil(value) => self.nils.push(value),
-            ConstantValueKind::Tuple(value) => self.tuples.push(value),
-            ConstantValueKind::List(value) => match value {
-                ConstantListValue::Generic(value) => self.generic_lists.push(value),
-                ConstantListValue::ParameterList(value) => self.parameter_list_lists.push(value),
-                ConstantListValue::Int(value) => self.int_lists.push(value),
-                ConstantListValue::String(value) => self.string_lists.push(value),
-                ConstantListValue::BitArray(value) => self.bit_array_lists.push(value),
-                ConstantListValue::UtfCodepoint(value) => self.utf_codepoint_lists.push(value),
-                ConstantListValue::Custom(value) => self.custom_lists.push(value),
-                ConstantListValue::External(value) => self.external_lists.push(value),
-                ConstantListValue::Float(value) => self.float_lists.push(value),
-                ConstantListValue::Bool(value) => self.bool_lists.push(value),
-                ConstantListValue::Nil(value) => self.nil_lists.push(value),
-                ConstantListValue::Tuple(value) => self.tuple_lists.push(value),
-                ConstantListValue::List(value) => self.list_lists.push(value),
-                ConstantListValue::Function(value) => self.function_lists.push(value),
-            },
-            ConstantValueKind::BitArray(value) => self.bit_arrays.push(value),
-            ConstantValueKind::Custom(value) => self.custom_values.push(value),
-            ConstantValueKind::Function(value) => match value {
-                ConstantFunctionValue::Generic(value) => self.generic_functions.push(value),
-                ConstantFunctionValue::Int(value) => self.int_functions.push(value),
-                ConstantFunctionValue::String(value) => self.string_functions.push(value),
-                ConstantFunctionValue::BitArray(value) => self.bit_array_functions.push(value),
-                ConstantFunctionValue::UtfCodepoint(value) => {
-                    self.utf_codepoint_functions.push(value)
-                }
-                ConstantFunctionValue::Custom(value) => self.custom_functions.push(value),
-                ConstantFunctionValue::External(value) => self.external_functions.push(value),
-                ConstantFunctionValue::Float(value) => self.float_functions.push(value),
-                ConstantFunctionValue::Bool(value) => self.bool_functions.push(value),
-                ConstantFunctionValue::Nil(value) => self.nil_functions.push(value),
-                ConstantFunctionValue::Tuple(value) => self.tuple_functions.push(value),
-                ConstantFunctionValue::List(value) => self.list_functions.push(value),
-                ConstantFunctionValue::Function(value) => self.function_functions.push(value),
-            },
-        }
     }
 
     pub(crate) fn reference(instantiation: ConstantInstantiation) -> Expr {

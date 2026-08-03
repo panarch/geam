@@ -322,34 +322,6 @@ impl ExecutionGraphProfile for HostedExecutionGraph {
     }
 }
 
-#[cfg(test)]
-pub(super) fn plain_core_runtime_function_id(
-    id: &ProfiledCoreRuntimeFunctionId<Infallible>,
-) -> CoreRuntimeFunctionId {
-    use ProfiledCoreRuntimeFunctionId as F;
-
-    match id {
-        F::Never(id) => CoreRuntimeFunctionId::Never(*id),
-        F::Int(id) => CoreRuntimeFunctionId::Int(*id),
-        F::Float(id) => CoreRuntimeFunctionId::Float(*id),
-        F::String(id) => CoreRuntimeFunctionId::String(*id),
-        F::BitArray(id) => CoreRuntimeFunctionId::BitArray(*id),
-        F::UtfCodepoint(id) => CoreRuntimeFunctionId::UtfCodepoint(*id),
-        F::Custom(id) => CoreRuntimeFunctionId::Custom(*id),
-        F::Bool(id) => CoreRuntimeFunctionId::Bool(*id),
-        F::Nil(id) => CoreRuntimeFunctionId::Nil(*id),
-        F::Tuple { id, return_type } => CoreRuntimeFunctionId::Tuple {
-            id: *id,
-            return_type: return_type.clone(),
-        },
-        F::List(id) => CoreRuntimeFunctionId::List(Infallible::list_function(id)),
-        F::Function { id, return_type } => CoreRuntimeFunctionId::Function {
-            id: RuntimeFunctionFunctionTarget::Core(id.clone()),
-            return_type: return_type.clone(),
-        },
-    }
-}
-
 impl FunctionLabelSource for Infallible {
     fn function_label(&self) -> crate::plan::execution::explain::FunctionLabel {
         match *self {}
@@ -378,6 +350,34 @@ impl<Body, HostTarget> ExecutionFunctionEntry<Body> for ValueFunctionEntry<Body,
             ValueFunctionEntry::Graph(function) => ExecutionFunctionRef::Graph(function),
             ValueFunctionEntry::Host(target) => ExecutionFunctionRef::Host(target),
         }
+    }
+}
+
+#[cfg(test)]
+pub(super) fn plain_core_runtime_function_id(
+    id: &ProfiledCoreRuntimeFunctionId<Infallible>,
+) -> CoreRuntimeFunctionId {
+    use ProfiledCoreRuntimeFunctionId as F;
+
+    match id {
+        F::Never(id) => CoreRuntimeFunctionId::Never(*id),
+        F::Int(id) => CoreRuntimeFunctionId::Int(*id),
+        F::Float(id) => CoreRuntimeFunctionId::Float(*id),
+        F::String(id) => CoreRuntimeFunctionId::String(*id),
+        F::BitArray(id) => CoreRuntimeFunctionId::BitArray(*id),
+        F::UtfCodepoint(id) => CoreRuntimeFunctionId::UtfCodepoint(*id),
+        F::Custom(id) => CoreRuntimeFunctionId::Custom(*id),
+        F::Bool(id) => CoreRuntimeFunctionId::Bool(*id),
+        F::Nil(id) => CoreRuntimeFunctionId::Nil(*id),
+        F::Tuple { id, return_type } => CoreRuntimeFunctionId::Tuple {
+            id: *id,
+            return_type: return_type.clone(),
+        },
+        F::List(id) => CoreRuntimeFunctionId::List(Infallible::list_function(id)),
+        F::Function { id, return_type } => CoreRuntimeFunctionId::Function {
+            id: RuntimeFunctionFunctionTarget::Core(id.clone()),
+            return_type: return_type.clone(),
+        },
     }
 }
 #[cfg(test)]

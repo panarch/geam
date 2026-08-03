@@ -88,11 +88,6 @@ impl FunctionFunctionExpr {
         }
     }
 
-    pub(crate) fn with_type(mut self, type_: FunctionFunctionType) -> Self {
-        self.type_ = type_;
-        self
-    }
-
     pub(crate) fn reference(value: FunctionFunctionReference, return_type: FunctionType) -> Self {
         let type_ = FunctionFunctionType::new(
             value
@@ -320,11 +315,16 @@ impl FunctionFunctionExpr {
         }
     }
 
+    pub fn type_(&self) -> FunctionType {
+        self.type_.to_function_type()
+    }
     pub(crate) fn function_function_type(&self) -> &FunctionFunctionType {
         &self.type_
     }
-    pub fn type_(&self) -> FunctionType {
-        self.type_.to_function_type()
+
+    pub(crate) fn with_type(mut self, type_: FunctionFunctionType) -> Self {
+        self.type_ = type_;
+        self
     }
 
     pub(crate) fn kind(&self) -> &FunctionFunctionExprKind {

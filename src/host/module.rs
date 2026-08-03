@@ -346,6 +346,28 @@ impl HostModuleIdentity {
     }
 }
 
+fn validate_module_name(module: &EcoString) -> Result<(), HostRegistrationError> {
+    let valid = module != PRELUDE_MODULE_NAME
+        && !module.is_empty()
+        && module.split('/').all(|segment| {
+            !segment.is_empty()
+                && string_to_keyword(segment).is_none()
+                && check_name_case(
+                    SrcSpan::new(0, 0),
+                    &EcoString::from(segment),
+                    Named::Function,
+                )
+                .is_ok()
+        });
+    if valid {
+        Ok(())
+    } else {
+        Err(HostRegistrationError::InvalidModuleName {
+            module: module.clone(),
+        })
+    }
+}
+
 fn validate_module_identities(
     identities: &[(&EcoString, &EcoString)],
 ) -> Result<(), HostRegistrationError> {
@@ -525,28 +547,6 @@ impl<Profile: HostProfile> RegisteredHostImplementations<Profile> {
         id: RegisteredHostImplementationId,
     ) -> Arc<HostFunctionImplementation<Profile>> {
         Arc::clone(&self.functions[id.0])
-    }
-}
-
-fn validate_module_name(module: &EcoString) -> Result<(), HostRegistrationError> {
-    let valid = module != PRELUDE_MODULE_NAME
-        && !module.is_empty()
-        && module.split('/').all(|segment| {
-            !segment.is_empty()
-                && string_to_keyword(segment).is_none()
-                && check_name_case(
-                    SrcSpan::new(0, 0),
-                    &EcoString::from(segment),
-                    Named::Function,
-                )
-                .is_ok()
-        });
-    if valid {
-        Ok(())
-    } else {
-        Err(HostRegistrationError::InvalidModuleName {
-            module: module.clone(),
-        })
     }
 }
 

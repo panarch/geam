@@ -159,6 +159,25 @@ impl FunctionValue {
         Self { kind }
     }
 
+    pub fn type_(&self) -> FunctionType {
+        match &self.kind {
+            FunctionValueKind::Generic(value) => value.type_(),
+            FunctionValueKind::Never(value) => value.type_(),
+            FunctionValueKind::Int(value) => value.type_(),
+            FunctionValueKind::Float(value) => value.type_(),
+            FunctionValueKind::String(value) => value.type_(),
+            FunctionValueKind::BitArray(value) => value.type_(),
+            FunctionValueKind::UtfCodepoint(value) => value.type_(),
+            FunctionValueKind::Custom(value) => value.type_(),
+            FunctionValueKind::External(value) => value.type_(),
+            FunctionValueKind::Bool(value) => value.type_(),
+            FunctionValueKind::Nil(value) => value.type_(),
+            FunctionValueKind::Tuple(value) => value.type_(),
+            FunctionValueKind::List(value) => value.type_(),
+            FunctionValueKind::Function(value) => value.type_(),
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn new(
         runtime_id: RuntimeFunctionId,
@@ -232,25 +251,6 @@ impl FunctionValue {
         };
 
         Self { kind }
-    }
-
-    pub fn type_(&self) -> FunctionType {
-        match &self.kind {
-            FunctionValueKind::Generic(value) => value.type_(),
-            FunctionValueKind::Never(value) => value.type_(),
-            FunctionValueKind::Int(value) => value.type_(),
-            FunctionValueKind::Float(value) => value.type_(),
-            FunctionValueKind::String(value) => value.type_(),
-            FunctionValueKind::BitArray(value) => value.type_(),
-            FunctionValueKind::UtfCodepoint(value) => value.type_(),
-            FunctionValueKind::Custom(value) => value.type_(),
-            FunctionValueKind::External(value) => value.type_(),
-            FunctionValueKind::Bool(value) => value.type_(),
-            FunctionValueKind::Nil(value) => value.type_(),
-            FunctionValueKind::Tuple(value) => value.type_(),
-            FunctionValueKind::List(value) => value.type_(),
-            FunctionValueKind::Function(value) => value.type_(),
-        }
     }
 
     #[cfg(test)]
@@ -570,14 +570,6 @@ impl FunctionFunctionValue {
     }
 }
 
-impl From<IntFunctionValue> for FunctionValue {
-    fn from(value: IntFunctionValue) -> Self {
-        Self {
-            kind: FunctionValueKind::Int(value),
-        }
-    }
-}
-
 impl From<GenericFunctionValue> for FunctionValue {
     fn from(value: GenericFunctionValue) -> Self {
         Self {
@@ -590,6 +582,14 @@ impl From<NeverFunctionValue> for FunctionValue {
     fn from(value: NeverFunctionValue) -> Self {
         Self {
             kind: FunctionValueKind::Never(value),
+        }
+    }
+}
+
+impl From<IntFunctionValue> for FunctionValue {
+    fn from(value: IntFunctionValue) -> Self {
+        Self {
+            kind: FunctionValueKind::Int(value),
         }
     }
 }

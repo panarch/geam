@@ -27,6 +27,12 @@ impl GleamStdlibRunState {
         Self::try_from_seed_source(|seed| SysRng.try_fill_bytes(seed))
     }
 
+    pub(super) fn random_float(&mut self) -> f64 {
+        const SCALE: f64 = 1.0 / ((1u64 << 53) as f64);
+
+        ((self.random.next_u64() >> 11) as f64) * SCALE
+    }
+
     fn try_from_seed_source<Error>(
         fill: impl FnOnce(&mut [u8; 32]) -> Result<(), Error>,
     ) -> Result<Self, GleamStdlibRunStateError>
@@ -39,12 +45,6 @@ impl GleamStdlibRunState {
             .map_err(|error| GleamStdlibRunStateError {
                 reason: error.to_string().into(),
             })
-    }
-
-    pub(super) fn random_float(&mut self) -> f64 {
-        const SCALE: f64 = 1.0 / ((1u64 << 53) as f64);
-
-        ((self.random.next_u64() >> 11) as f64) * SCALE
     }
 }
 

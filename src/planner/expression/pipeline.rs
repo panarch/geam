@@ -59,24 +59,6 @@ fn plan_pipeline_value(
     }
 }
 
-fn plan_echo(expression: TypedExpr, context: &mut PlanContext<'_>) -> Result<Expr, PlanError> {
-    let TypedExpr::Echo {
-        location,
-        expression: None,
-        message,
-        type_,
-    } = expression
-    else {
-        return Err(invalid_pipeline_shape(InvalidPipelineShapeReason::EchoStep));
-    };
-    let shape = context.value_shape(&type_);
-    let constructor =
-        ValueConstructor::local_variable(location, VariableOrigin::generated(), type_);
-    let value = var::plan_var(PIPE_VARIABLE.into(), constructor, shape, context)?;
-
-    echo::plan_value(location, value, message.map(|message| *message), context)
-}
-
 fn plan_direct_call(
     expression: TypedExpr,
     context: &mut PlanContext<'_>,
@@ -112,6 +94,24 @@ fn plan_hole_call(expression: TypedExpr, context: &mut PlanContext<'_>) -> Resul
     };
 
     call::plan_pipeline_hole_call(location, type_, *fun, arguments, context)
+}
+
+fn plan_echo(expression: TypedExpr, context: &mut PlanContext<'_>) -> Result<Expr, PlanError> {
+    let TypedExpr::Echo {
+        location,
+        expression: None,
+        message,
+        type_,
+    } = expression
+    else {
+        return Err(invalid_pipeline_shape(InvalidPipelineShapeReason::EchoStep));
+    };
+    let shape = context.value_shape(&type_);
+    let constructor =
+        ValueConstructor::local_variable(location, VariableOrigin::generated(), type_);
+    let value = var::plan_var(PIPE_VARIABLE.into(), constructor, shape, context)?;
+
+    echo::plan_value(location, value, message.map(|message| *message), context)
 }
 
 fn invalid_pipeline_shape(reason: InvalidPipelineShapeReason) -> PlanError {

@@ -32,18 +32,6 @@ where
     Ok(call.return_value(name))
 }
 
-pub(in crate::gleam_stdlib) fn classification<'call, Profile, Provider, Return>(
-    call: &HostCall<'call, Profile, Provider, Return>,
-    value: HostExternal<'call, Dynamic>,
-) -> EcoString
-where
-    Profile: GleamStdlibHostProfile,
-    Provider: HostProvider<Profile>,
-    Return: HostType,
-{
-    call.external_payload(value).representation().name().into()
-}
-
 pub(super) fn cast<'call, Profile, Type>(
     mut call: HostCall<'call, Profile, DynamicProvider<Profile>, Dynamic>,
     value: Type::Value<'call>,
@@ -55,6 +43,41 @@ where
     let dynamic =
         create_value::<Profile, DynamicProvider<Profile>, Dynamic, Type>(&mut call, value);
     Ok(call.return_value(dynamic))
+}
+
+pub(super) fn array<'call, Profile>(
+    mut call: HostCall<'call, Profile, DynamicProvider<Profile>, Dynamic>,
+    values: HostList<'call, Dynamic>,
+) -> Result<HostCallCompletion<'call, Dynamic>, HostCallError>
+where
+    Profile: GleamStdlibHostProfile,
+{
+    let mut index = 0;
+    let mut sequence = Vec::new();
+    while let Some(value) = call.list_item(values, index) {
+        sequence.push(value);
+        index += 1;
+    }
+    let dynamic = call.create_external_with(move |builder| DynamicPayload::Array {
+        value: builder.store_dynamic::<DynamicList>(values),
+        elements: sequence
+            .into_iter()
+            .map(|value| builder.store_dynamic::<Dynamic>(value))
+            .collect(),
+    });
+    Ok(call.return_value(dynamic))
+}
+
+pub(in crate::gleam_stdlib) fn classification<'call, Profile, Provider, Return>(
+    call: &HostCall<'call, Profile, Provider, Return>,
+    value: HostExternal<'call, Dynamic>,
+) -> EcoString
+where
+    Profile: GleamStdlibHostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+{
+    call.external_payload(value).representation().name().into()
 }
 
 pub(in crate::gleam_stdlib) fn create_value<'call, Profile, Provider, Return, Type>(
@@ -108,29 +131,6 @@ where
     payload
         .decode::<Profile, Provider, Return, DynamicList>(call, DynamicPayload::value)
         .map(sequence)
-}
-
-pub(super) fn array<'call, Profile>(
-    mut call: HostCall<'call, Profile, DynamicProvider<Profile>, Dynamic>,
-    values: HostList<'call, Dynamic>,
-) -> Result<HostCallCompletion<'call, Dynamic>, HostCallError>
-where
-    Profile: GleamStdlibHostProfile,
-{
-    let mut index = 0;
-    let mut sequence = Vec::new();
-    while let Some(value) = call.list_item(values, index) {
-        sequence.push(value);
-        index += 1;
-    }
-    let dynamic = call.create_external_with(move |builder| DynamicPayload::Array {
-        value: builder.store_dynamic::<DynamicList>(values),
-        elements: sequence
-            .into_iter()
-            .map(|value| builder.store_dynamic::<Dynamic>(value))
-            .collect(),
-    });
-    Ok(call.return_value(dynamic))
 }
 
 #[cfg(test)]

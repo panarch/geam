@@ -915,6 +915,28 @@ pub(super) fn plan_binding_pattern_in_context(
     }
 }
 
+pub(super) fn non_variable_pattern_error(pattern: &TypedPattern) -> PlanError {
+    match pattern {
+        Pattern::List { .. } => PlanError::UnsupportedPattern {
+            kind: UnsupportedPatternKind::List,
+        },
+        Pattern::Int { .. }
+        | Pattern::Float { .. }
+        | Pattern::String { .. }
+        | Pattern::BitArray { .. }
+        | Pattern::BitArraySize(_)
+        | Pattern::Constructor { .. }
+        | Pattern::StringPrefix { .. }
+        | Pattern::Invalid { .. }
+        | Pattern::Discard { .. }
+        | Pattern::Variable { .. }
+        | Pattern::Assign { .. }
+        | Pattern::Tuple { .. } => PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::InvalidPattern,
+        },
+    }
+}
+
 fn plan_total_bit_array_binding_pattern(
     segments: Vec<
         gleam_core::ast::BitArraySegment<TypedPattern, std::sync::Arc<gleam_core::type_::Type>>,
@@ -1055,28 +1077,6 @@ fn list_tail_type_matches(
         Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::InvalidPattern,
         })
-    }
-}
-
-pub(super) fn non_variable_pattern_error(pattern: &TypedPattern) -> PlanError {
-    match pattern {
-        Pattern::List { .. } => PlanError::UnsupportedPattern {
-            kind: UnsupportedPatternKind::List,
-        },
-        Pattern::Int { .. }
-        | Pattern::Float { .. }
-        | Pattern::String { .. }
-        | Pattern::BitArray { .. }
-        | Pattern::BitArraySize(_)
-        | Pattern::Constructor { .. }
-        | Pattern::StringPrefix { .. }
-        | Pattern::Invalid { .. }
-        | Pattern::Discard { .. }
-        | Pattern::Variable { .. }
-        | Pattern::Assign { .. }
-        | Pattern::Tuple { .. } => PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::InvalidPattern,
-        },
     }
 }
 

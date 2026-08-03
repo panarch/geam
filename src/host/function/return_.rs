@@ -54,6 +54,17 @@ type HostScopedCallback<Profile> = dyn Fn(&mut dyn HostCallRuntime<Profile>) -> 
     + Send
     + Sync;
 
+pub(super) trait HostReturn: Sized {
+    fn descriptor() -> crate::host::HostTypeDescriptor;
+
+    fn implementation<Profile: HostProfile>(
+        function: impl Fn(&mut Profile::RunState, &dyn HostCallArguments) -> Result<Self, HostCallError>
+        + Send
+        + Sync
+        + 'static,
+    ) -> HostFunctionImplementation<Profile>;
+}
+
 impl<Profile: HostProfile> Clone for HostValueFunction<Profile> {
     fn clone(&self) -> Self {
         Self {
@@ -191,17 +202,6 @@ pub(crate) fn expect_value_implementation<Profile: HostProfile>(
         panic!("host callback should produce a value");
     };
     implementation
-}
-
-pub(super) trait HostReturn: Sized {
-    fn descriptor() -> crate::host::HostTypeDescriptor;
-
-    fn implementation<Profile: HostProfile>(
-        function: impl Fn(&mut Profile::RunState, &dyn HostCallArguments) -> Result<Self, HostCallError>
-        + Send
-        + Sync
-        + 'static,
-    ) -> HostFunctionImplementation<Profile>;
 }
 
 #[cfg(test)]

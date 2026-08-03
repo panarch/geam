@@ -59,10 +59,6 @@ impl HostStoredDynamic {
         Self { value }
     }
 
-    fn has_type(&self, type_: &crate::plan::ValueType) -> bool {
-        self.value.type_() == type_
-    }
-
     pub(crate) fn value_type(&self) -> &crate::plan::ValueType {
         self.value.type_()
     }
@@ -90,6 +86,10 @@ impl HostStoredDynamic {
             return None;
         }
         Some(call.restore_runtime_value::<Type>(&self.value))
+    }
+
+    fn has_type(&self, type_: &crate::plan::ValueType) -> bool {
+        self.value.type_() == type_
     }
 }
 
