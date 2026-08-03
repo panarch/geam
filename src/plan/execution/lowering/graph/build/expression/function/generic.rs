@@ -451,6 +451,148 @@ generic_primitive_function!(
     tuple_function_function_id
 );
 
+pub(super) fn symbolic_function_expr(
+    expression: &module::FunctionExpr,
+    shape: &SpecializedFunctionShape,
+    cursor: DraftCursor,
+    graph: &mut DraftGraph,
+    context: &mut super::super::super::LoweringContext,
+) -> Representability<DraftFlow<DraftFunction>> {
+    symbolic_kind_from_function(expression, shape, cursor, graph, context)
+        .map(|flow| flow.map(|value| value.value().clone()))
+}
+
+pub(in crate::plan::execution::lowering) fn symbolic_int_function_expr(
+    expression: &module::IntFunctionExpr,
+    shape: &SpecializedFunctionShape,
+    cursor: DraftCursor,
+    graph: &mut DraftGraph,
+    context: &mut super::super::super::LoweringContext,
+) -> Representability<DraftFlow<DraftGenericFunction>> {
+    symbolic_int_kind(expression.kind(), shape, cursor, graph, context)
+}
+
+pub(in crate::plan::execution::lowering) fn symbolic_float_function_expr(
+    expression: &module::FloatFunctionExpr,
+    shape: &SpecializedFunctionShape,
+    cursor: DraftCursor,
+    graph: &mut DraftGraph,
+    context: &mut super::super::super::LoweringContext,
+) -> Representability<DraftFlow<DraftGenericFunction>> {
+    symbolic_float_kind(expression.kind(), shape, cursor, graph, context)
+}
+
+pub(in crate::plan::execution::lowering) fn symbolic_string_function_expr(
+    expression: &module::StringFunctionExpr,
+    shape: &SpecializedFunctionShape,
+    cursor: DraftCursor,
+    graph: &mut DraftGraph,
+    context: &mut super::super::super::LoweringContext,
+) -> Representability<DraftFlow<DraftGenericFunction>> {
+    symbolic_string_kind(expression.kind(), shape, cursor, graph, context)
+}
+
+pub(in crate::plan::execution::lowering) fn symbolic_bit_array_function_expr(
+    expression: &module::BitArrayFunctionExpr,
+    shape: &SpecializedFunctionShape,
+    cursor: DraftCursor,
+    graph: &mut DraftGraph,
+    context: &mut super::super::super::LoweringContext,
+) -> Representability<DraftFlow<DraftGenericFunction>> {
+    symbolic_bit_array_kind(expression.kind(), shape, cursor, graph, context)
+}
+
+pub(in crate::plan::execution::lowering) fn symbolic_utf_codepoint_function_expr(
+    expression: &module::UtfCodepointFunctionExpr,
+    shape: &SpecializedFunctionShape,
+    cursor: DraftCursor,
+    graph: &mut DraftGraph,
+    context: &mut super::super::super::LoweringContext,
+) -> Representability<DraftFlow<DraftGenericFunction>> {
+    symbolic_utf_codepoint_kind(expression.kind(), shape, cursor, graph, context)
+}
+
+pub(in crate::plan::execution::lowering) fn symbolic_custom_function_expr_kind(
+    kind: &module::CustomFunctionExprKind,
+    shape: &SpecializedFunctionShape,
+    cursor: DraftCursor,
+    graph: &mut DraftGraph,
+    context: &mut super::super::super::LoweringContext,
+) -> Representability<DraftFlow<DraftGenericFunction>> {
+    symbolic_custom_kind(kind, shape, cursor, graph, context)
+}
+
+pub(in crate::plan::execution::lowering) fn symbolic_external_function_expr_kind(
+    kind: &module::ExternalFunctionExprKind,
+    shape: &SpecializedFunctionShape,
+    cursor: DraftCursor,
+    graph: &mut DraftGraph,
+    context: &mut super::super::super::LoweringContext,
+) -> Representability<DraftFlow<DraftGenericFunction>> {
+    symbolic_external_kind(kind, shape, cursor, graph, context)
+}
+
+pub(in crate::plan::execution::lowering) fn symbolic_bool_function_expr(
+    expression: &module::BoolFunctionExpr,
+    shape: &SpecializedFunctionShape,
+    cursor: DraftCursor,
+    graph: &mut DraftGraph,
+    context: &mut super::super::super::LoweringContext,
+) -> Representability<DraftFlow<DraftGenericFunction>> {
+    symbolic_bool_kind(expression.kind(), shape, cursor, graph, context)
+}
+
+pub(in crate::plan::execution::lowering) fn symbolic_nil_function_expr(
+    expression: &module::NilFunctionExpr,
+    shape: &SpecializedFunctionShape,
+    cursor: DraftCursor,
+    graph: &mut DraftGraph,
+    context: &mut super::super::super::LoweringContext,
+) -> Representability<DraftFlow<DraftGenericFunction>> {
+    symbolic_nil_kind(expression.kind(), shape, cursor, graph, context)
+}
+
+pub(in crate::plan::execution::lowering) fn symbolic_tuple_function_expr(
+    expression: &module::TupleFunctionExpr,
+    shape: &SpecializedFunctionShape,
+    cursor: DraftCursor,
+    graph: &mut DraftGraph,
+    context: &mut super::super::super::LoweringContext,
+) -> Representability<DraftFlow<DraftGenericFunction>> {
+    symbolic_tuple_kind(expression.kind(), shape, cursor, graph, context)
+}
+
+pub(in crate::plan::execution::lowering) fn symbolic_list_function_expr(
+    expression: &module::ListFunctionExpr,
+    shape: &SpecializedFunctionShape,
+    cursor: DraftCursor,
+    graph: &mut DraftGraph,
+    context: &mut super::super::super::LoweringContext,
+) -> Representability<DraftFlow<DraftGenericFunction>> {
+    symbolic_list_kind(expression.kind(), shape, cursor, graph, context)
+}
+
+pub(in crate::plan::execution::lowering) fn symbolic_function_function_expr_kind(
+    kind: &module::FunctionFunctionExprKind,
+    shape: &SpecializedFunctionShape,
+    cursor: DraftCursor,
+    graph: &mut DraftGraph,
+    context: &mut super::super::super::LoweringContext,
+) -> Representability<DraftFlow<DraftGenericFunction>> {
+    symbolic_returning_function_kind(kind, shape, cursor, graph, context)
+}
+
+pub(in crate::plan::execution::lowering) fn symbolic_generic_function_expr(
+    expression: &module::GenericFunctionExpr,
+    shape: &SpecializedFunctionShape,
+    cursor: DraftCursor,
+    graph: &mut DraftGraph,
+    context: &mut super::super::super::LoweringContext,
+) -> Representability<DraftFlow<DraftFunction>> {
+    symbolic_generic_kind(expression.kind(), shape, cursor, graph, context)
+        .map(|flow| flow.map(|value| value.value().clone()))
+}
+
 macro_rules! define_symbolic_fixed_function {
     ($name:ident, $module_kind:ident, $constant:ident, $local_kind:ident) => {
         fn $name(
@@ -1582,148 +1724,6 @@ fn symbolic_returning_function_kind(
             })
         }
     }
-}
-
-pub(super) fn symbolic_function_expr(
-    expression: &module::FunctionExpr,
-    shape: &SpecializedFunctionShape,
-    cursor: DraftCursor,
-    graph: &mut DraftGraph,
-    context: &mut super::super::super::LoweringContext,
-) -> Representability<DraftFlow<DraftFunction>> {
-    symbolic_kind_from_function(expression, shape, cursor, graph, context)
-        .map(|flow| flow.map(|value| value.value().clone()))
-}
-
-pub(in crate::plan::execution::lowering) fn symbolic_int_function_expr(
-    expression: &module::IntFunctionExpr,
-    shape: &SpecializedFunctionShape,
-    cursor: DraftCursor,
-    graph: &mut DraftGraph,
-    context: &mut super::super::super::LoweringContext,
-) -> Representability<DraftFlow<DraftGenericFunction>> {
-    symbolic_int_kind(expression.kind(), shape, cursor, graph, context)
-}
-
-pub(in crate::plan::execution::lowering) fn symbolic_float_function_expr(
-    expression: &module::FloatFunctionExpr,
-    shape: &SpecializedFunctionShape,
-    cursor: DraftCursor,
-    graph: &mut DraftGraph,
-    context: &mut super::super::super::LoweringContext,
-) -> Representability<DraftFlow<DraftGenericFunction>> {
-    symbolic_float_kind(expression.kind(), shape, cursor, graph, context)
-}
-
-pub(in crate::plan::execution::lowering) fn symbolic_string_function_expr(
-    expression: &module::StringFunctionExpr,
-    shape: &SpecializedFunctionShape,
-    cursor: DraftCursor,
-    graph: &mut DraftGraph,
-    context: &mut super::super::super::LoweringContext,
-) -> Representability<DraftFlow<DraftGenericFunction>> {
-    symbolic_string_kind(expression.kind(), shape, cursor, graph, context)
-}
-
-pub(in crate::plan::execution::lowering) fn symbolic_bit_array_function_expr(
-    expression: &module::BitArrayFunctionExpr,
-    shape: &SpecializedFunctionShape,
-    cursor: DraftCursor,
-    graph: &mut DraftGraph,
-    context: &mut super::super::super::LoweringContext,
-) -> Representability<DraftFlow<DraftGenericFunction>> {
-    symbolic_bit_array_kind(expression.kind(), shape, cursor, graph, context)
-}
-
-pub(in crate::plan::execution::lowering) fn symbolic_utf_codepoint_function_expr(
-    expression: &module::UtfCodepointFunctionExpr,
-    shape: &SpecializedFunctionShape,
-    cursor: DraftCursor,
-    graph: &mut DraftGraph,
-    context: &mut super::super::super::LoweringContext,
-) -> Representability<DraftFlow<DraftGenericFunction>> {
-    symbolic_utf_codepoint_kind(expression.kind(), shape, cursor, graph, context)
-}
-
-pub(in crate::plan::execution::lowering) fn symbolic_custom_function_expr_kind(
-    kind: &module::CustomFunctionExprKind,
-    shape: &SpecializedFunctionShape,
-    cursor: DraftCursor,
-    graph: &mut DraftGraph,
-    context: &mut super::super::super::LoweringContext,
-) -> Representability<DraftFlow<DraftGenericFunction>> {
-    symbolic_custom_kind(kind, shape, cursor, graph, context)
-}
-
-pub(in crate::plan::execution::lowering) fn symbolic_external_function_expr_kind(
-    kind: &module::ExternalFunctionExprKind,
-    shape: &SpecializedFunctionShape,
-    cursor: DraftCursor,
-    graph: &mut DraftGraph,
-    context: &mut super::super::super::LoweringContext,
-) -> Representability<DraftFlow<DraftGenericFunction>> {
-    symbolic_external_kind(kind, shape, cursor, graph, context)
-}
-
-pub(in crate::plan::execution::lowering) fn symbolic_bool_function_expr(
-    expression: &module::BoolFunctionExpr,
-    shape: &SpecializedFunctionShape,
-    cursor: DraftCursor,
-    graph: &mut DraftGraph,
-    context: &mut super::super::super::LoweringContext,
-) -> Representability<DraftFlow<DraftGenericFunction>> {
-    symbolic_bool_kind(expression.kind(), shape, cursor, graph, context)
-}
-
-pub(in crate::plan::execution::lowering) fn symbolic_nil_function_expr(
-    expression: &module::NilFunctionExpr,
-    shape: &SpecializedFunctionShape,
-    cursor: DraftCursor,
-    graph: &mut DraftGraph,
-    context: &mut super::super::super::LoweringContext,
-) -> Representability<DraftFlow<DraftGenericFunction>> {
-    symbolic_nil_kind(expression.kind(), shape, cursor, graph, context)
-}
-
-pub(in crate::plan::execution::lowering) fn symbolic_tuple_function_expr(
-    expression: &module::TupleFunctionExpr,
-    shape: &SpecializedFunctionShape,
-    cursor: DraftCursor,
-    graph: &mut DraftGraph,
-    context: &mut super::super::super::LoweringContext,
-) -> Representability<DraftFlow<DraftGenericFunction>> {
-    symbolic_tuple_kind(expression.kind(), shape, cursor, graph, context)
-}
-
-pub(in crate::plan::execution::lowering) fn symbolic_list_function_expr(
-    expression: &module::ListFunctionExpr,
-    shape: &SpecializedFunctionShape,
-    cursor: DraftCursor,
-    graph: &mut DraftGraph,
-    context: &mut super::super::super::LoweringContext,
-) -> Representability<DraftFlow<DraftGenericFunction>> {
-    symbolic_list_kind(expression.kind(), shape, cursor, graph, context)
-}
-
-pub(in crate::plan::execution::lowering) fn symbolic_function_function_expr_kind(
-    kind: &module::FunctionFunctionExprKind,
-    shape: &SpecializedFunctionShape,
-    cursor: DraftCursor,
-    graph: &mut DraftGraph,
-    context: &mut super::super::super::LoweringContext,
-) -> Representability<DraftFlow<DraftGenericFunction>> {
-    symbolic_returning_function_kind(kind, shape, cursor, graph, context)
-}
-
-pub(in crate::plan::execution::lowering) fn symbolic_generic_function_expr(
-    expression: &module::GenericFunctionExpr,
-    shape: &SpecializedFunctionShape,
-    cursor: DraftCursor,
-    graph: &mut DraftGraph,
-    context: &mut super::super::super::LoweringContext,
-) -> Representability<DraftFlow<DraftFunction>> {
-    symbolic_generic_kind(expression.kind(), shape, cursor, graph, context)
-        .map(|flow| flow.map(|value| value.value().clone()))
 }
 
 fn symbolic_kind_from_function(
