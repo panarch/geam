@@ -6,6 +6,40 @@ use crate::runtime::Value;
 use miette::{Diagnostic, LabeledSpan, SourceCode};
 use std::fmt;
 
+impl Diagnostic for ExecutionError {
+    fn code<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
+        match self {
+            Self::Panic(panic) => panic.code(),
+            Self::Invariant(error) => error.code(),
+            Self::Host(error) => error.code(),
+        }
+    }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
+        match self {
+            Self::Panic(panic) => panic.help(),
+            Self::Invariant(error) => error.help(),
+            Self::Host(error) => error.help(),
+        }
+    }
+
+    fn source_code(&self) -> Option<&dyn SourceCode> {
+        match self {
+            Self::Panic(panic) => panic.source_code(),
+            Self::Invariant(error) => error.source_code(),
+            Self::Host(error) => error.source_code(),
+        }
+    }
+
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        match self {
+            Self::Panic(panic) => panic.labels(),
+            Self::Invariant(error) => error.labels(),
+            Self::Host(error) => error.labels(),
+        }
+    }
+}
+
 impl Diagnostic for Panic {
     fn code<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
         Some(Box::new(format!("geam::{}", self.kind().code())))
@@ -50,40 +84,6 @@ impl Diagnostic for Panic {
         }
 
         Some(Box::new(labels.into_iter()))
-    }
-}
-
-impl Diagnostic for ExecutionError {
-    fn code<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
-        match self {
-            Self::Panic(panic) => panic.code(),
-            Self::Invariant(error) => error.code(),
-            Self::Host(error) => error.code(),
-        }
-    }
-
-    fn help<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
-        match self {
-            Self::Panic(panic) => panic.help(),
-            Self::Invariant(error) => error.help(),
-            Self::Host(error) => error.help(),
-        }
-    }
-
-    fn source_code(&self) -> Option<&dyn SourceCode> {
-        match self {
-            Self::Panic(panic) => panic.source_code(),
-            Self::Invariant(error) => error.source_code(),
-            Self::Host(error) => error.source_code(),
-        }
-    }
-
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        match self {
-            Self::Panic(panic) => panic.labels(),
-            Self::Invariant(error) => error.labels(),
-            Self::Host(error) => error.labels(),
-        }
     }
 }
 

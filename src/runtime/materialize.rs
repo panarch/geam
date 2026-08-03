@@ -44,6 +44,31 @@ pub(super) fn value(
     }
 }
 
+fn custom(
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
+    value: EvaluatedCustomValue,
+) -> CustomValue {
+    let constructor = plan.custom_constructor(value.constructor());
+    let fields = value
+        .fields()
+        .iter()
+        .enumerate()
+        .map(|(index, value)| {
+            CustomFieldValue::from_evaluated(
+                constructor.fields()[index].label().cloned(),
+                self::value(plan, state, value.clone()),
+            )
+        })
+        .collect();
+    CustomValue::from_evaluated(
+        plan.custom_value_type(value.type_id()),
+        constructor.name().clone(),
+        constructor.id().index(),
+        fields,
+    )
+}
+
 fn external(
     plan: RuntimeValueMetadata<'_>,
     state: &RuntimeListStorage,
@@ -60,6 +85,10 @@ fn external(
         .inspection(&crate::host::HostExternalInspection::new(&inspect))
         .clone();
     ExternalValue::from_evaluated(plan.external_value_type(type_id), lease, inspection)
+}
+
+fn parameter_list(value: ParameterListValueId) -> ListValue {
+    ListValue::empty(crate::plan::ValueType::Parameter(value.type_id().item()))
 }
 
 fn list(
@@ -142,10 +171,6 @@ fn list(
     }
 }
 
-fn parameter_list(value: ParameterListValueId) -> ListValue {
-    ListValue::empty(crate::plan::ValueType::Parameter(value.type_id().item()))
-}
-
 fn function(
     plan: RuntimeValueMetadata<'_>,
     state: &RuntimeListStorage,
@@ -198,44 +223,6 @@ fn function(
     FunctionValue::from_kind(kind)
 }
 
-fn custom(
-    plan: RuntimeValueMetadata<'_>,
-    state: &RuntimeListStorage,
-    value: EvaluatedCustomValue,
-) -> CustomValue {
-    let constructor = plan.custom_constructor(value.constructor());
-    let fields = value
-        .fields()
-        .iter()
-        .enumerate()
-        .map(|(index, value)| {
-            CustomFieldValue::from_evaluated(
-                constructor.fields()[index].label().cloned(),
-                self::value(plan, state, value.clone()),
-            )
-        })
-        .collect();
-    CustomValue::from_evaluated(
-        plan.custom_value_type(value.type_id()),
-        constructor.name().clone(),
-        constructor.id().index(),
-        fields,
-    )
-}
-
-fn int_function(
-    plan: RuntimeValueMetadata<'_>,
-    state: &RuntimeListStorage,
-    value: &EvaluatedIntFunction,
-) -> IntFunctionValue {
-    IntFunctionValue::new_with_captures(
-        value.runtime_id(),
-        value.params().to_vec(),
-        captures(plan, state, value.captures()),
-        plan.function_type(value.type_()),
-    )
-}
-
 fn generic_function(
     plan: RuntimeValueMetadata<'_>,
     state: &RuntimeListStorage,
@@ -255,6 +242,19 @@ fn never_function(
     value: &EvaluatedNeverFunction,
 ) -> NeverFunctionValue {
     NeverFunctionValue::from_evaluated(
+        value.runtime_id(),
+        value.params().to_vec(),
+        captures(plan, state, value.captures()),
+        plan.function_type(value.type_()),
+    )
+}
+
+fn int_function(
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
+    value: &EvaluatedIntFunction,
+) -> IntFunctionValue {
+    IntFunctionValue::new_with_captures(
         value.runtime_id(),
         value.params().to_vec(),
         captures(plan, state, value.captures()),
@@ -419,18 +419,6 @@ fn function_function(
         captures(plan, state, value.captures()),
         plan.function_type(value.type_()),
     )
-}
-
-fn nested_list_values(
-    plan: RuntimeValueMetadata<'_>,
-    state: &RuntimeListStorage,
-    value: &super::state::list::ListListValueId,
-) -> Vec<ListValue> {
-    state
-        .list_values(value)
-        .iter()
-        .map(|value| list(plan, state, value))
-        .collect()
 }
 
 fn captures(
@@ -621,6 +609,18 @@ fn list_capture(
                 .collect(),
         },
     }
+}
+
+fn nested_list_values(
+    plan: RuntimeValueMetadata<'_>,
+    state: &RuntimeListStorage,
+    value: &super::state::list::ListListValueId,
+) -> Vec<ListValue> {
+    state
+        .list_values(value)
+        .iter()
+        .map(|value| list(plan, state, value))
+        .collect()
 }
 
 #[cfg(test)]
