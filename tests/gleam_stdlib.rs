@@ -29,6 +29,8 @@ mod gleam_option;
 mod gleam_order;
 #[path = "gleam_stdlib/gleam_pair.rs"]
 mod gleam_pair;
+#[path = "gleam_stdlib/gleam_result.rs"]
+mod gleam_result;
 #[path = "gleam_stdlib/gleam_string.rs"]
 mod gleam_string;
 #[path = "gleam_stdlib/gleam_string_tree.rs"]
