@@ -79,6 +79,25 @@ fixes its analyzed public surface and executes grouped source behavior. This
 integration suite does not replace hermetic synthetic owner coverage for the
 loader or providers.
 
+The tracked `tests/fixtures/projects/gleam_http` project independently locks
+official `gleam_http` `v4.3.0` and `gleam_stdlib` `v1.0.3`. It likewise keeps
+downloaded package source out of Git and runs through a separate ignored
+integration target:
+
+```sh
+cd tests/fixtures/projects/gleam_http
+gleam deps download
+cd ../../../..
+cargo test --test gleam_http -- --ignored
+```
+
+The HTTP package itself is Pure Gleam and registers no provider. Its selected
+dependency closure reaches provider-backed stdlib modules, so the suite uses
+the hosted resolved-project pipeline with the explicit stdlib provider bundle.
+It fixes the public surface of all five package modules and executes every
+public function. CI owns dependency preparation for this target; normal Cargo
+tests and coverage remain network-free.
+
 Source-level rejection fixtures live under categorized
 `tests/fixtures/rejection/**/*.gleam` paths. They are reserved for public
 boundary cases that are clearer as complete Gleam modules than as planner unit

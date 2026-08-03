@@ -3,7 +3,11 @@ use geam::{
     ExecutionPlan, HostProfile, HostProviderSet, HostedExecution, TypedProgram, Value,
     compile_typed_host_project, compile_typed_project, plan_host_program, plan_program, run_main,
 };
-use gleam_core::type_::printer::Printer;
+
+#[path = "support/upstream_surface.rs"]
+mod upstream_surface;
+
+use upstream_surface::{ExpectedSurface, assert_module_surface};
 
 #[path = "gleam_stdlib/gleam_bit_array.rs"]
 mod gleam_bit_array;
@@ -44,14 +48,6 @@ mod gleam_string_tree;
 #[path = "gleam_stdlib/gleam_uri.rs"]
 mod gleam_uri;
 
-struct ExpectedSurface {
-    values: &'static [&'static str],
-    types: &'static [(&'static str, usize)],
-    type_aliases: &'static [&'static str],
-    constructors: &'static [(&'static str, &'static str, usize)],
-    functions: &'static str,
-}
-
 fn assert_surface(
     root_module: &str,
     dependency_module: &str,
@@ -59,116 +55,7 @@ fn assert_surface(
     expected: &ExpectedSurface,
 ) {
     let program = compile_fixture(root_module, dependency_modules);
-    let module = program
-        .modules()
-        .find(|module| {
-            module.type_info.package == "gleam_stdlib" && module.name == dependency_module
-        })
-        .expect("stdlib dependency module should be loaded");
-
-    let mut values = module
-        .type_info
-        .values
-        .iter()
-        .filter(|(_, value)| value.publicity.is_public())
-        .map(|(name, _)| name.as_str())
-        .collect::<Vec<_>>();
-    values.sort_unstable();
-    assert_eq!(values.as_slice(), expected.values);
-
-    let mut types = module
-        .type_info
-        .types
-        .iter()
-        .filter(|(_, type_)| type_.publicity.is_public())
-        .map(|(name, _)| name.as_str())
-        .collect::<Vec<_>>();
-    types.sort_unstable();
-    let mut expected_types = expected
-        .types
-        .iter()
-        .map(|(name, _)| *name)
-        .chain(expected.type_aliases.iter().copied())
-        .collect::<Vec<_>>();
-    expected_types.sort_unstable();
-    assert_eq!(types, expected_types);
-
-    let mut type_aliases = module
-        .type_info
-        .types
-        .iter()
-        .filter(|(name, type_)| {
-            type_.publicity.is_public() && module.type_info.type_aliases.contains_key(*name)
-        })
-        .map(|(name, _)| name.as_str())
-        .collect::<Vec<_>>();
-    type_aliases.sort_unstable();
-    assert_eq!(type_aliases.as_slice(), expected.type_aliases);
-
-    let mut custom_types = module
-        .definitions
-        .custom_types
-        .iter()
-        .filter(|type_| type_.publicity.is_public())
-        .map(|type_| (type_.name.as_str(), type_.parameters.len()))
-        .collect::<Vec<_>>();
-    custom_types.sort_unstable();
-    assert_eq!(custom_types.as_slice(), expected.types);
-
-    let mut constructors = module
-        .definitions
-        .custom_types
-        .iter()
-        .filter(|type_| type_.publicity.is_public())
-        .flat_map(|type_| {
-            type_
-                .constructors
-                .iter()
-                .filter(|constructor| values.contains(&constructor.name.as_str()))
-                .map(|constructor| {
-                    (
-                        type_.name.as_str(),
-                        constructor.name.as_str(),
-                        constructor.arguments.len(),
-                    )
-                })
-        })
-        .collect::<Vec<_>>();
-    constructors.sort_unstable();
-    assert_eq!(constructors.as_slice(), expected.constructors);
-
-    let mut functions = module
-        .definitions
-        .functions
-        .iter()
-        .filter(|function| function.publicity.is_public())
-        .map(|function| {
-            let (_, name) = function
-                .name
-                .as_ref()
-                .expect("public module function should have a name");
-            let mut printer = Printer::new_without_type_variables(&module.names);
-            let mut signature = String::from(name.as_str());
-            signature.push_str(": fn(");
-
-            for (index, argument) in function.arguments.iter().enumerate() {
-                if index > 0 {
-                    signature.push_str(", ");
-                }
-                if let Some(label) = argument.names.get_label() {
-                    signature.push_str(label);
-                    signature.push_str(": ");
-                }
-                signature.push_str(&printer.print_type(&argument.type_));
-            }
-
-            signature.push_str(") -> ");
-            signature.push_str(&printer.print_type(&function.return_type));
-            signature
-        })
-        .collect::<Vec<_>>();
-    functions.sort_unstable();
-    assert_eq!(functions.join("\n"), expected.functions.trim());
+    assert_module_surface(&program, "gleam_stdlib", dependency_module, expected);
 }
 
 fn run_fixture(root_module: &str, dependency_modules: &[&str]) -> Value {
