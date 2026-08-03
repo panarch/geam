@@ -181,16 +181,46 @@ Private transient-style external APIs can be represented by returning new
 persistent payload versions that share immutable retained entries. This does
 not add a general mutable external-value model or cyclic runtime graph support.
 
+### Gleam Stdlib v1.0.3 Compatibility
+
+Checked modules have exact public-surface coverage and execute unchanged
+official source through the upstream integration suite. An unchecked module is
+not necessarily rejected; it has not yet been verified end to end.
+
+#### No Module-Specific Provider
+
+- [x] `gleam/bool`
+- [x] `gleam/bytes_tree`
+- [x] `gleam/function`
+- [x] `gleam/list`
+- [x] `gleam/option`
+- [x] `gleam/order`
+- [x] `gleam/pair`
+- [x] `gleam/result`
+- [x] `gleam/set`
+
+#### Explicit Rust Provider
+
+- [x] `gleam/bit_array`
+- [x] `gleam/dict`
+- [x] `gleam/dynamic`
+- [x] `gleam/dynamic/decode`
+- [x] `gleam/float`
+- [x] `gleam/int`
+- [x] `gleam/string`
+- [x] `gleam/string_tree`
+
+#### Not Yet Verified
+
+- [ ] `gleam/io`: requires a caller-owned output boundary.
+- [ ] `gleam/uri`: requires implementations for bodyless externals.
+
 `geam::gleam_stdlib::host_providers` supplies the explicit provider bundle for
-the verified `gleam_stdlib` `v1.0.3` modules. Callers compose that bundle into a
-`HostProviderSet`; project loading selects only providers in the resolved
-source closure and does not infer or inject the bundle. The verified set is
-`gleam/bit_array`, `gleam/bool`, `gleam/bytes_tree`, `gleam/dict`,
-`gleam/dynamic`, `gleam/dynamic/decode`, `gleam/float`, `gleam/function`,
-`gleam/int`, `gleam/list`, `gleam/option`, `gleam/order`, `gleam/pair`,
-`gleam/result`, `gleam/set`, `gleam/string`, and `gleam/string_tree`. Functions
-with valid Gleam fallback bodies, including the annotated `gleam/bytes_tree`
-operations, continue to compile and execute from the unchanged package source.
+provider-backed modules. Callers compose that bundle into a `HostProviderSet`;
+project loading selects only providers in the resolved source closure and does
+not infer or inject the bundle. Functions with valid Gleam fallback bodies,
+including the annotated `gleam/bytes_tree` operations, continue to compile and
+execute from the unchanged package source.
 
 The provider-backed modules retain their source-facing value distinctions.
 Dictionary lookup uses source hashing followed by source equality within a
