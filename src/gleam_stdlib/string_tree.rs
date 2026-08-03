@@ -2,8 +2,9 @@ mod function;
 mod schema;
 mod storage;
 
-pub(in crate::gleam_stdlib) use schema::{StringTree, StringTreeSchema};
-pub(super) use storage::{Stores, StringTree as StoredStringTree, StringTreePayload};
+pub(crate) use schema::{StringTree, StringTreeSchema};
+pub(super) use storage::Stores;
+pub(crate) use storage::{StringTree as StoredStringTree, StringTreePayload};
 
 use self::function::{
     StringTreeProvider, append_tree, byte_size, concat, do_to_graphemes, erl_split, from_string,

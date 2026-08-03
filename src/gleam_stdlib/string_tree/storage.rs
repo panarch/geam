@@ -15,12 +15,12 @@ pub(in crate::gleam_stdlib) struct Stores {
     values: HostExternalStore<StringTreePayload>,
 }
 
-pub(in crate::gleam_stdlib) struct StringTreePayload {
-    pub(in crate::gleam_stdlib) tree: StringTree,
+pub(crate) struct StringTreePayload {
+    pub(crate) tree: StringTree,
 }
 
 #[derive(Clone)]
-pub(in crate::gleam_stdlib) struct StringTree {
+pub(crate) struct StringTree {
     root: Rc<StringTreeNode>,
 }
 
@@ -35,7 +35,7 @@ enum StringTreeNodeKind {
 }
 
 impl StringTree {
-    pub(in crate::gleam_stdlib) fn text(text: EcoString) -> Self {
+    pub(crate) fn text(text: EcoString) -> Self {
         Self {
             root: Rc::new(StringTreeNode {
                 byte_len: text.len(),
@@ -44,7 +44,7 @@ impl StringTree {
         }
     }
 
-    pub(super) fn sequence(trees: impl IntoIterator<Item = Self>) -> Self {
+    pub(crate) fn sequence(trees: impl IntoIterator<Item = Self>) -> Self {
         let children = trees
             .into_iter()
             .map(|tree| tree.root)
@@ -66,7 +66,7 @@ impl StringTree {
         self.root.byte_len
     }
 
-    pub(super) fn flatten(&self) -> EcoString {
+    pub(crate) fn flatten(&self) -> EcoString {
         let mut output = String::with_capacity(self.byte_len());
         let mut pending = vec![self.root.as_ref()];
         while let Some(node) = pending.pop() {
@@ -80,7 +80,7 @@ impl StringTree {
         output.into()
     }
 
-    pub(super) fn structurally_equal(&self, other: &Self) -> bool {
+    pub(crate) fn structurally_equal(&self, other: &Self) -> bool {
         if self.byte_len() != other.byte_len() {
             return false;
         }
@@ -112,7 +112,7 @@ impl StringTree {
         true
     }
 
-    pub(super) fn structural_hash(&self) -> u64 {
+    pub(crate) fn structural_hash(&self) -> u64 {
         let mut hasher = DefaultHasher::new();
         let mut pending = vec![self.root.as_ref()];
         while let Some(node) = pending.pop() {

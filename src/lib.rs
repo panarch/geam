@@ -1,4 +1,5 @@
 pub mod frontend;
+pub mod gleam_json;
 pub mod gleam_stdlib;
 pub mod host;
 pub mod plan;

@@ -37,12 +37,15 @@ pub use value::{
 
 #[cfg(test)]
 pub(crate) use external::{ExternalTestProfile, ExternalTestRunState, ExternalTestStores};
+#[cfg(test)]
+pub(crate) use function::CallArguments;
 pub(crate) use function::{
     HostBitArrayArgumentSlot, HostBoolArgumentSlot, HostCallArguments, HostCustomArgumentSlot,
     HostExternalArgumentSlot, HostFloatArgumentSlot, HostFunctionArgumentSlot,
-    HostFunctionDefinition, HostFunctionImplementation, HostIntArgumentSlot, HostListArgumentSlot,
-    HostNeverFunction, HostNilArgumentSlot, HostParameter, HostStringArgumentSlot,
-    HostTupleArgumentSlot, HostUtfCodepointArgumentSlot, HostValueArgumentSlot, HostValueFunction,
+    HostFunctionConstructions, HostFunctionDefinition, HostFunctionImplementation,
+    HostIntArgumentSlot, HostListArgumentSlot, HostNeverFunction, HostNilArgumentSlot,
+    HostParameter, HostStringArgumentSlot, HostTupleArgumentSlot, HostUtfCodepointArgumentSlot,
+    HostValueArgumentSlot, HostValueFunction,
 };
 #[cfg(test)]
 pub(crate) use function::{expect_never_implementation, expect_value_implementation};

@@ -1,9 +1,9 @@
 use crate::{HostExternalSchema, HostExternalType, HostListType, HostTypeParameter};
 
-pub(in crate::gleam_stdlib) struct DynamicSchema;
+pub(crate) struct DynamicSchema;
 
-pub(in crate::gleam_stdlib) type Dynamic = HostExternalType<DynamicSchema>;
-pub(in crate::gleam_stdlib) type DynamicList = HostListType<Dynamic>;
+pub(crate) type Dynamic = HostExternalType<DynamicSchema>;
+pub(crate) type DynamicList = HostListType<Dynamic>;
 pub(super) type Parameter = HostTypeParameter<0>;
 
 impl HostExternalSchema for DynamicSchema {

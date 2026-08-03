@@ -14,7 +14,7 @@ pub(in crate::gleam_stdlib) struct Stores {
     values: HostExternalStore<DynamicPayload>,
 }
 
-pub(in crate::gleam_stdlib) enum DynamicPayload {
+pub(crate) enum DynamicPayload {
     Stored {
         representation: DynamicRepresentation,
         value: HostStoredDynamic,
@@ -26,7 +26,7 @@ pub(in crate::gleam_stdlib) enum DynamicPayload {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(in crate::gleam_stdlib) enum DynamicRepresentation {
+pub(crate) enum DynamicRepresentation {
     Bool,
     String,
     Float,

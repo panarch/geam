@@ -1,6 +1,9 @@
 use super::super::super::{AnonymousFunctions, FunctionToPlan, discarded_function_params};
 use super::{LinkedFunction, LinkedModule};
-use crate::host::{HostFunctionSchema, RegisteredHostFunction, RegisteredHostImplementationId};
+use crate::host::{
+    HostFunctionConstructions, HostFunctionSchema, RegisteredHostFunction,
+    RegisteredHostImplementationId,
+};
 use crate::plan::{FunctionTemplateId, HostFunctionTemplate, ModuleId};
 use crate::planner::context::FunctionInfo;
 use crate::planner::error::{HostProviderLinkReason, PlanError};
@@ -42,9 +45,10 @@ pub(super) fn link_source_functions(
                         provider,
                         &function.info,
                     )
-                    .map(|(template, implementation)| {
+                    .map(|(template, constructions, implementation)| {
                         linked.push(LinkedFunction::Host {
                             template,
+                            constructions,
                             implementation,
                         });
                         (linked, providers, executable_externals)
@@ -98,7 +102,7 @@ pub(super) fn link_source_less_module(
     let mut linked_functions = Vec::with_capacity(function_count);
     for (function_index, definition) in functions.into_iter().enumerate() {
         let function_id = FunctionTemplateId::in_module(id, function_index);
-        let (template, implementation) = bind_source_less_host_function(
+        let (template, constructions, implementation) = bind_source_less_host_function(
             function_id,
             package.clone(),
             module_name.clone(),
@@ -108,6 +112,7 @@ pub(super) fn link_source_less_module(
         functions_by_name.insert(template.name().clone(), info);
         linked_functions.push(LinkedFunction::Host {
             template,
+            constructions,
             implementation,
         });
     }
@@ -131,8 +136,15 @@ fn bind_source_host_function(
     module: EcoString,
     definition: RegisteredHostFunction,
     source: &FunctionInfo,
-) -> Result<(HostFunctionTemplate, RegisteredHostImplementationId), PlanError> {
-    let (schema, implementation) = definition.into_parts();
+) -> Result<
+    (
+        HostFunctionTemplate,
+        HostFunctionConstructions,
+        RegisteredHostImplementationId,
+    ),
+    PlanError,
+> {
+    let (schema, constructions, implementation) = definition.into_parts();
     let registered_shape = host_function_shape(&schema);
     if source.signature.scheme() != schema.scheme() || source.signature.shape() != &registered_shape
     {
@@ -152,7 +164,7 @@ fn bind_source_host_function(
         crate::plan::HostCallSite::new(module, schema.name().clone(), source.definition_span);
     let template =
         HostFunctionTemplate::from_schema(source.signature.clone(), package, site, schema);
-    Ok((template, implementation))
+    Ok((template, constructions, implementation))
 }
 
 fn bind_source_less_host_function(
@@ -160,8 +172,12 @@ fn bind_source_less_host_function(
     package: EcoString,
     module: EcoString,
     definition: RegisteredHostFunction,
-) -> (HostFunctionTemplate, RegisteredHostImplementationId) {
-    let (schema, implementation) = definition.into_parts();
+) -> (
+    HostFunctionTemplate,
+    HostFunctionConstructions,
+    RegisteredHostImplementationId,
+) {
+    let (schema, constructions, implementation) = definition.into_parts();
     let registered_shape = host_function_shape(&schema);
     let signature =
         crate::plan::FunctionTemplateSignature::new(id, schema.scheme().clone(), registered_shape);
@@ -171,7 +187,7 @@ fn bind_source_less_host_function(
         crate::plan::SourceSpan::new(0, 0),
     );
     let template = HostFunctionTemplate::from_schema(signature, package, site, schema);
-    (template, implementation)
+    (template, constructions, implementation)
 }
 
 fn host_function_shape(schema: &HostFunctionSchema) -> crate::plan::FunctionShape {

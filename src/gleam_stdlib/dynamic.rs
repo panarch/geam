@@ -2,11 +2,12 @@ mod function;
 mod schema;
 mod storage;
 
-pub(in crate::gleam_stdlib) use schema::{Dynamic, DynamicList, DynamicSchema};
+pub(crate) use schema::{Dynamic, DynamicList, DynamicSchema};
 pub(super) use storage::Stores;
 
+pub(crate) use self::function::create_value;
 pub(in crate::gleam_stdlib) use self::function::{
-    DynamicProvider, classification, create_value, decode_value, sequence,
+    DynamicProvider, classification, decode_value, sequence,
 };
 use self::function::{array, cast, classify};
 use self::schema::Parameter;

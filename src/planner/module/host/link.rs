@@ -3,7 +3,7 @@ mod function;
 
 use super::super::{AnonymousFunctions, ModuleRole};
 use super::declaration::HostedModuleDeclaration;
-use crate::host::RegisteredHostImplementationId;
+use crate::host::{HostFunctionConstructions, RegisteredHostImplementationId};
 use crate::plan::{HostFunctionTemplate, ModuleId, SourceContext};
 use crate::planner::context::FunctionInfo;
 use crate::planner::error::PlanError;
@@ -39,6 +39,7 @@ pub(super) enum LinkedFunction {
     },
     Host {
         template: HostFunctionTemplate,
+        constructions: HostFunctionConstructions,
         implementation: RegisteredHostImplementationId,
     },
 }

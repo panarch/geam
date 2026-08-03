@@ -5,13 +5,13 @@ use crate::{
 };
 use ecow::EcoString;
 
-pub(in crate::gleam_stdlib) struct StringTreeSchema;
+pub(crate) struct StringTreeSchema;
 
 pub(super) struct DirectionSchema;
 
 pub(super) struct AllDefinition;
 
-pub(in crate::gleam_stdlib) type StringTree = HostExternalType<StringTreeSchema>;
+pub(crate) type StringTree = HostExternalType<StringTreeSchema>;
 pub(super) type StringTreeList = HostListType<StringTree>;
 pub(super) type StringList = HostListType<EcoString>;
 pub(super) type Direction = HostCustomType<DirectionSchema>;

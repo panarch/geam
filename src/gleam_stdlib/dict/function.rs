@@ -6,13 +6,15 @@ use super::schema::{
 use super::storage::{
     DictEntry, DictPayload, DictPayloadStorage, DictStorage, TransientDictPayload,
 };
-use crate::gleam_stdlib::GleamStdlibHostProfile;
+use crate::gleam_stdlib::{Dynamic, GleamStdlibHostProfile};
 use crate::{
     HostCall, HostCallCompletion, HostCallError, HostCallable, HostExternal,
     HostExternalPayloadBuilder, HostExternalPayloadView, HostProfile, HostProvider, HostType,
     HostTypeAt, HostTypeSequence, HostValue,
 };
+use ecow::EcoString;
 use num_bigint::BigInt;
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
@@ -49,6 +51,54 @@ where
             &payload.storage.buckets[&key_hash][index].value
         }),
     )
+}
+
+pub(crate) fn create_string_dynamic_dict<'call, Profile, Provider, Return>(
+    call: &mut HostCall<'call, Profile, Provider, Return>,
+    entries: impl IntoIterator<Item = (EcoString, HostExternal<'call, Dynamic>)>,
+) -> HostExternal<'call, super::schema::DictOf<EcoString, Dynamic>>
+where
+    Profile: GleamStdlibHostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+{
+    let mut buckets = HashMap::<u64, Vec<(EcoString, HostExternal<'call, Dynamic>)>>::new();
+    for (key, value) in entries {
+        let key_hash = call.source_hash::<EcoString>(key.clone());
+        insert_first(&mut buckets, key_hash, key, value, |stored, candidate| {
+            call.equal::<EcoString>(stored.clone(), candidate.clone())
+        });
+    }
+
+    call.create_external_value_with(move |builder| {
+        let len = buckets.values().map(Vec::len).sum();
+        let buckets = buckets
+            .into_iter()
+            .map(|(key_hash, entries)| {
+                let entries = entries
+                    .into_iter()
+                    .map(|(key, value)| create_entry(builder, key_hash, key, value))
+                    .collect();
+                (key_hash, entries)
+            })
+            .collect();
+        DictPayload {
+            storage: DictStorage { buckets, len },
+        }
+    })
+}
+
+fn insert_first<Key, Value>(
+    buckets: &mut HashMap<u64, Vec<(Key, Value)>>,
+    key_hash: u64,
+    key: Key,
+    value: Value,
+    mut equal: impl FnMut(&Key, &Key) -> bool,
+) {
+    let bucket = buckets.entry(key_hash).or_default();
+    if !bucket.iter().any(|(stored, _)| equal(stored, &key)) {
+        bucket.push((key, value));
+    }
 }
 
 pub(super) fn to_transient<'call, Profile>(
@@ -334,7 +384,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::super::host_provider;
-    use super::DictProvider;
+    use super::{DictProvider, insert_first};
     use crate::gleam_stdlib::{GleamStdlibProfile, GleamStdlibRunState};
     use crate::{
         HostFailure, HostModule, HostProvider, HostProviderSet, HostedExecution, ModuleSource,
@@ -342,6 +392,21 @@ mod tests {
     };
     use ecow::EcoString;
     use num_bigint::BigInt;
+
+    #[test]
+    fn batch_staging_resolves_hash_collisions_and_preserves_the_first_duplicate() {
+        fn equal(left: &&str, right: &&str) -> bool {
+            left == right
+        }
+
+        let mut buckets = std::collections::HashMap::new();
+
+        insert_first(&mut buckets, 7, "first", 1, equal);
+        insert_first(&mut buckets, 7, "second", 2, equal);
+        insert_first(&mut buckets, 7, "first", 3, equal);
+
+        assert_eq!(buckets[&7], [("first", 1), ("second", 2)]);
+    }
 
     const DICT_DECLARATIONS: &str = r#"
 pub type Dict(key, value)

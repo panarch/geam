@@ -18,10 +18,12 @@ use std::sync::Arc;
 type HostedLoweredExecution = LoweredExecution<HostedExecutionProfile>;
 
 pub(super) struct HostFunctionRegistry<Profile: HostProfile> {
-    functions: HashMap<
-        crate::plan::FunctionTemplateId,
-        Arc<RegisteredHostFunctionImplementation<Profile>>,
-    >,
+    functions: HashMap<crate::plan::FunctionTemplateId, RegisteredHostFunction<Profile>>,
+}
+
+struct RegisteredHostFunction<Profile: HostProfile> {
+    constructions: crate::host::HostFunctionConstructions,
+    implementation: Arc<RegisteredHostFunctionImplementation<Profile>>,
 }
 
 pub(super) struct HostFunctionLowering<'registry, Profile: HostProfile> {
@@ -36,7 +38,16 @@ impl<Profile: HostProfile> HostFunctionRegistry<Profile> {
         Self {
             functions: implementation_bindings
                 .into_iter()
-                .map(HostImplementationBinding::into_parts)
+                .map(|binding| {
+                    let (template, constructions, implementation) = binding.into_parts();
+                    (
+                        template,
+                        RegisteredHostFunction {
+                            constructions,
+                            implementation,
+                        },
+                    )
+                })
                 .collect(),
         }
     }
@@ -122,7 +133,8 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
             .map(|argument| argument.to_module_shape().value_type())
             .collect::<Vec<_>>()
             .into_boxed_slice();
-        let implementation = Arc::clone(&self.registered.functions[&template.id()]);
+        let registered = &self.registered.functions[&template.id()];
+        let implementation = Arc::clone(&registered.implementation);
         let return_ = context.representations.inhabitation(shape.return_());
 
         match implementation.as_ref() {
@@ -136,7 +148,8 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
                     ));
                 };
                 sealing::seal_callbacks(template, key, &shape, &context.representations, true)?;
-                let constructions = sealing::seal_host_types(template, key, context);
+                let constructions =
+                    sealing::seal_host_types(template, &registered.constructions, key, context);
                 let parameters =
                     parameter::lower_host_parameters(&parameters, template.layout(), context);
                 let type_ = context.lower_concrete_function_type(&shape);
@@ -164,7 +177,8 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
             }
             RegisteredHostFunctionImplementation::Never(implementation) => {
                 sealing::seal_callbacks(template, key, &shape, &context.representations, false)?;
-                let constructions = sealing::seal_host_types(template, key, context);
+                let constructions =
+                    sealing::seal_host_types(template, &registered.constructions, key, context);
                 let parameters =
                     parameter::lower_host_parameters(&parameters, template.layout(), context);
                 let type_ = context.lower_concrete_function_type(&shape);

@@ -2,8 +2,9 @@ mod function;
 mod schema;
 mod storage;
 
+pub(crate) use function::create_string_dynamic_dict;
 pub(in crate::gleam_stdlib) use function::lookup;
-pub(in crate::gleam_stdlib) use schema::DictOf;
+pub(crate) use schema::{DictOf, DictSchema};
 pub(super) use storage::Stores;
 
 use self::function::{
@@ -11,9 +12,8 @@ use self::function::{
     to_transient, transient_delete, transient_insert, transient_update_with,
 };
 use self::schema::{
-    Dict, DictSchema, FoldAccumulator, FoldDict, FoldFunction, GetDict, GetKey, GetResult, Item,
-    Key, MapFunction, MapInputDict, MapOutputDict, TransientDict, TransientDictSchema,
-    UpdateFunction,
+    Dict, FoldAccumulator, FoldDict, FoldFunction, GetDict, GetKey, GetResult, Item, Key,
+    MapFunction, MapInputDict, MapOutputDict, TransientDict, TransientDictSchema, UpdateFunction,
 };
 use super::GleamStdlibHostProfile;
 use crate::{HostProviderModule, HostRegistrationError};

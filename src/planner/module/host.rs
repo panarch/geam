@@ -16,9 +16,10 @@ pub fn plan_host_program<Profile: HostProfile>(
         let implementation_bindings = planned
             .implementations
             .into_iter()
-            .map(|(template, implementation)| {
+            .map(|(template, constructions, implementation)| {
                 HostImplementationBinding::new(
                     template,
+                    constructions,
                     implementations.implementation(implementation),
                 )
             })
