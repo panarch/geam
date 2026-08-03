@@ -23,6 +23,8 @@ mod gleam_float;
 mod gleam_function;
 #[path = "gleam_stdlib/gleam_int.rs"]
 mod gleam_int;
+#[path = "gleam_stdlib/gleam_io.rs"]
+mod gleam_io;
 #[path = "gleam_stdlib/gleam_list.rs"]
 mod gleam_list;
 #[path = "gleam_stdlib/gleam_option.rs"]

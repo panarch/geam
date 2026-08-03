@@ -3,9 +3,12 @@ use rand::rngs::{ChaCha12Rng, SysRng};
 use rand::{Rng, SeedableRng, TryRng};
 use std::fmt::{self, Display, Formatter};
 
+use super::IoOutput;
+
 /// Caller-owned mutable state used by the official Gleam standard library.
 pub struct GleamStdlibRunState {
     random: ChaCha12Rng,
+    io_outputs: Vec<IoOutput>,
 }
 
 /// Failure to initialize standard-library run state from system entropy.
@@ -19,6 +22,7 @@ impl GleamStdlibRunState {
     pub fn from_seed(seed: [u8; 32]) -> Self {
         Self {
             random: ChaCha12Rng::from_seed(seed),
+            io_outputs: Vec::new(),
         }
     }
 
@@ -27,10 +31,24 @@ impl GleamStdlibRunState {
         Self::try_from_seed_source(|seed| SysRng.try_fill_bytes(seed))
     }
 
+    /// Returns the standard-library IO events collected by this run state.
+    pub fn io_outputs(&self) -> &[IoOutput] {
+        &self.io_outputs
+    }
+
+    /// Takes all collected standard-library IO events, leaving the state empty.
+    pub fn take_io_outputs(&mut self) -> Vec<IoOutput> {
+        std::mem::take(&mut self.io_outputs)
+    }
+
     pub(super) fn random_float(&mut self) -> f64 {
         const SCALE: f64 = 1.0 / ((1u64 << 53) as f64);
 
         ((self.random.next_u64() >> 11) as f64) * SCALE
+    }
+
+    pub(super) fn io_sink(&mut self) -> &mut Vec<IoOutput> {
+        &mut self.io_outputs
     }
 
     fn try_from_seed_source<Error>(
@@ -70,6 +88,7 @@ impl std::error::Error for GleamStdlibRunStateError {}
 #[cfg(test)]
 mod tests {
     use super::{GleamStdlibRunState, GleamStdlibRunStateError};
+    use crate::gleam_stdlib::{IoOutput, IoSink, IoStream};
     use std::fmt::{self, Display, Formatter};
 
     #[derive(Debug)]
@@ -94,6 +113,30 @@ mod tests {
         assert_ne!(first_next, first_value);
         assert_eq!(first_next, second.random_float());
         assert!((0.0..1.0).contains(&first_value));
+        assert!(first.io_outputs().is_empty());
+        assert!(second.io_outputs().is_empty());
+    }
+
+    #[test]
+    fn io_outputs_accumulate_and_can_be_taken() {
+        let mut state = GleamStdlibRunState::from_seed([8; 32]);
+        state
+            .io_sink()
+            .emit(IoOutput::new(IoStream::Stdout, "first".into()));
+        state
+            .io_sink()
+            .emit(IoOutput::new(IoStream::Stderr, "second".into()));
+
+        assert_eq!(
+            state
+                .io_outputs()
+                .iter()
+                .map(|output| (output.stream(), output.text().as_str()))
+                .collect::<Vec<_>>(),
+            [(IoStream::Stdout, "first"), (IoStream::Stderr, "second")],
+        );
+        assert_eq!(state.take_io_outputs().len(), 2);
+        assert!(state.io_outputs().is_empty());
     }
 
     #[test]
@@ -121,5 +164,6 @@ mod tests {
             .expect("system entropy should be available in the test environment");
 
         assert!((0.0..1.0).contains(&state.random_float()));
+        assert!(state.io_outputs().is_empty());
     }
 }

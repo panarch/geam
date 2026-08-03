@@ -186,6 +186,7 @@ not add a general mutable external-value model or cyclic runtime graph support.
 Checked modules have exact public-surface coverage and execute unchanged
 official source through the upstream integration suite. An unchecked module is
 not necessarily rejected; it has not yet been verified end to end.
+Geam currently verifies 18 of the 19 public modules in this baseline.
 
 #### No Module-Specific Provider
 
@@ -207,12 +208,12 @@ not necessarily rejected; it has not yet been verified end to end.
 - [x] `gleam/dynamic/decode`
 - [x] `gleam/float`
 - [x] `gleam/int`
+- [x] `gleam/io`
 - [x] `gleam/string`
 - [x] `gleam/string_tree`
 
 #### Not Yet Verified
 
-- [ ] `gleam/io`: requires a caller-owned output boundary.
 - [ ] `gleam/uri`: requires implementations for bodyless externals.
 
 `geam::gleam_stdlib::host_providers` supplies the explicit provider bundle for
@@ -228,7 +229,10 @@ collision bucket. Dynamic values retain their exact specialized shape for
 typed Decode operations. StringTree uses persistent acyclic structure, and
 BitArray values preserve logical bit ranges over shared immutable backing.
 Random operations use caller-owned `GleamStdlibRunState`; there is no hidden
-seed or global random state.
+seed or global random state. Official IO operations emit owned stdout and
+stderr events through the `IoSink` projected by `GleamStdlibHostProfile`. The
+default run state collects those events, and project loading does not select a
+terminal destination.
 
 The current public execution APIs are:
 
@@ -297,6 +301,8 @@ state remains owned by the caller and is borrowed only for
 The caller supplies the `EchoSink` used by `run_main`. Each emitted
 `EchoOutput` owns its materialized value, optional message, and compact source
 location; Geam does not select an output destination for the host.
+The official `gleam/io` provider uses a separate caller-owned `IoSink` for
+stdout and stderr text events. Echo and stdlib IO do not share a hidden queue.
 
 ## Intentionally Out Of Scope
 
