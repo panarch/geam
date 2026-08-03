@@ -70,12 +70,13 @@ CI prepares this fixture with Gleam `v1.17.0`. Provider-free roots run through
 run_main`; roots whose selected closure uses registered externals run through
 `compile_typed_host_project -> plan_host_program ->
 HostedExecution::try_from_module_plan -> run_main` with the explicit
-`geam::gleam_stdlib` provider bundle. The tracked set covers `gleam/bool`,
-`gleam/option`, `gleam/order`, `gleam/dict`, `gleam/dynamic`, `gleam/float`,
-`gleam/int`, `gleam/list`, `gleam/string_tree`, `gleam/string`,
-`gleam/bit_array`, and `gleam/dynamic/decode`. Each module fixes its analyzed
-public surface and executes grouped source behavior. This integration suite
-does not replace hermetic synthetic owner coverage for the loader or
+`geam::gleam_stdlib` provider bundle. The tracked set covers `gleam/bit_array`,
+`gleam/bool`, `gleam/bytes_tree`, `gleam/dict`, `gleam/dynamic`,
+`gleam/dynamic/decode`, `gleam/float`, `gleam/function`, `gleam/int`,
+`gleam/list`, `gleam/option`, `gleam/order`, `gleam/pair`, `gleam/result`,
+`gleam/set`, `gleam/string`, and `gleam/string_tree`. Each module fixes its
+analyzed public surface and executes grouped source behavior. This integration
+suite does not replace hermetic synthetic owner coverage for the loader or
 providers.
 
 Source-level rejection fixtures live under categorized

@@ -9,6 +9,8 @@ use gleam_core::type_::printer::Printer;
 mod gleam_bit_array;
 #[path = "gleam_stdlib/gleam_bool.rs"]
 mod gleam_bool;
+#[path = "gleam_stdlib/gleam_bytes_tree.rs"]
+mod gleam_bytes_tree;
 #[path = "gleam_stdlib/gleam_dict.rs"]
 mod gleam_dict;
 #[path = "gleam_stdlib/gleam_dynamic.rs"]
@@ -17,6 +19,8 @@ mod gleam_dynamic;
 mod gleam_dynamic_decode;
 #[path = "gleam_stdlib/gleam_float.rs"]
 mod gleam_float;
+#[path = "gleam_stdlib/gleam_function.rs"]
+mod gleam_function;
 #[path = "gleam_stdlib/gleam_int.rs"]
 mod gleam_int;
 #[path = "gleam_stdlib/gleam_list.rs"]
@@ -25,6 +29,12 @@ mod gleam_list;
 mod gleam_option;
 #[path = "gleam_stdlib/gleam_order.rs"]
 mod gleam_order;
+#[path = "gleam_stdlib/gleam_pair.rs"]
+mod gleam_pair;
+#[path = "gleam_stdlib/gleam_result.rs"]
+mod gleam_result;
+#[path = "gleam_stdlib/gleam_set.rs"]
+mod gleam_set;
 #[path = "gleam_stdlib/gleam_string.rs"]
 mod gleam_string;
 #[path = "gleam_stdlib/gleam_string_tree.rs"]
@@ -81,9 +91,12 @@ fn assert_surface(
 
     let mut type_aliases = module
         .type_info
-        .type_aliases
-        .keys()
-        .map(|name| name.as_str())
+        .types
+        .iter()
+        .filter(|(name, type_)| {
+            type_.publicity.is_public() && module.type_info.type_aliases.contains_key(*name)
+        })
+        .map(|(name, _)| name.as_str())
         .collect::<Vec<_>>();
     type_aliases.sort_unstable();
     assert_eq!(type_aliases.as_slice(), expected.type_aliases);
