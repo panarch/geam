@@ -5,6 +5,13 @@ pub(crate) enum Endianness {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FloatBitSize {
+    Sixteen,
+    ThirtyTwo,
+    SixtyFour,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StringEncoding {
     Utf8,
     Utf16(Endianness),
@@ -65,11 +72,4 @@ mod explain_tests {
             "utf32.little",
         );
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FloatBitSize {
-    Sixteen,
-    ThirtyTwo,
-    SixtyFour,
 }
