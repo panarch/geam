@@ -9,6 +9,8 @@ use gleam_core::type_::printer::Printer;
 mod gleam_bit_array;
 #[path = "gleam_stdlib/gleam_bool.rs"]
 mod gleam_bool;
+#[path = "gleam_stdlib/gleam_bytes_tree.rs"]
+mod gleam_bytes_tree;
 #[path = "gleam_stdlib/gleam_dict.rs"]
 mod gleam_dict;
 #[path = "gleam_stdlib/gleam_dynamic.rs"]

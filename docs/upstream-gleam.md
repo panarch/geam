@@ -185,11 +185,12 @@ not add a general mutable external-value model or cyclic runtime graph support.
 the verified `gleam_stdlib` `v1.0.3` modules. Callers compose that bundle into a
 `HostProviderSet`; project loading selects only providers in the resolved
 source closure and does not infer or inject the bundle. The verified set is
-`gleam/bool`, `gleam/option`, `gleam/order`, `gleam/dict`, `gleam/dynamic`,
-`gleam/float`, `gleam/int`, `gleam/list`, `gleam/string_tree`, `gleam/string`,
-`gleam/bit_array`, and `gleam/dynamic/decode`. Functions with valid Gleam
-fallback bodies continue to compile and execute from the unchanged package
-source.
+`gleam/bit_array`, `gleam/bool`, `gleam/bytes_tree`, `gleam/dict`,
+`gleam/dynamic`, `gleam/dynamic/decode`, `gleam/float`, `gleam/function`,
+`gleam/int`, `gleam/list`, `gleam/option`, `gleam/order`, `gleam/pair`,
+`gleam/result`, `gleam/set`, `gleam/string`, and `gleam/string_tree`. Functions
+with valid Gleam fallback bodies, including the annotated `gleam/bytes_tree`
+operations, continue to compile and execute from the unchanged package source.
 
 The provider-backed modules retain their source-facing value distinctions.
 Dictionary lookup uses source hashing followed by source equality within a

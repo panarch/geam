@@ -62,10 +62,11 @@ equally, while collisions are resolved by equality. Their public runtime
 values remain opaque and self-contained. The `geam::gleam_stdlib` module
 provides an explicitly composed host-provider bundle for unchanged official
 `gleam_stdlib` `v1.0.3` modules that require externals; it is not injected by
-project loading. The verified module set is `gleam/bool`, `gleam/option`,
-`gleam/order`, `gleam/dict`, `gleam/dynamic`, `gleam/float`, `gleam/int`,
-`gleam/list`, `gleam/string_tree`, `gleam/string`, `gleam/bit_array`, and
-`gleam/dynamic/decode`.
+project loading. The verified module set is `gleam/bit_array`, `gleam/bool`,
+`gleam/bytes_tree`, `gleam/dict`, `gleam/dynamic`, `gleam/dynamic/decode`,
+`gleam/float`, `gleam/function`, `gleam/int`, `gleam/list`, `gleam/option`,
+`gleam/order`, `gleam/pair`, `gleam/result`, `gleam/set`, `gleam/string`, and
+`gleam/string_tree`.
 
 The main public entry points are:
 
