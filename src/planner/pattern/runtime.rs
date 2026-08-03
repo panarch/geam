@@ -273,6 +273,57 @@ pub(in crate::planner) fn plan_custom_subject_pattern(
     plan_custom_pattern(arguments, constructor, type_, source_shape, context)
 }
 
+pub(in crate::planner) fn pattern_value_type(
+    pattern: &TypedPattern,
+    context: &mut PlanContext<'_>,
+) -> Result<ValueType, PlanError> {
+    let mut value_shape = |type_: &Type| context.value_shape(type_);
+    pattern_value_shape_with(pattern, &mut value_shape).map(|shape| shape.value_type())
+}
+
+pub(in crate::planner) fn pattern_value_type_in_context(
+    pattern: &TypedPattern,
+    context: &PlanContext<'_>,
+) -> Result<ValueType, PlanError> {
+    let mut value_shape = |type_: &Type| context.value_shape_in_scope(type_);
+    pattern_value_shape_with(pattern, &mut value_shape).map(|shape| shape.value_type())
+}
+
+fn pattern_value_shape(
+    pattern: &TypedPattern,
+    context: &mut PlanContext<'_>,
+) -> Result<ValueShape, PlanError> {
+    let mut value_shape = |type_: &Type| context.value_shape(type_);
+    pattern_value_shape_with(pattern, &mut value_shape)
+}
+
+fn pattern_value_shape_with(
+    pattern: &TypedPattern,
+    value_shape: &mut impl FnMut(&Type) -> ValueShape,
+) -> Result<ValueShape, PlanError> {
+    let shape = match pattern {
+        Pattern::Int { .. } => ValueShape::Int,
+        Pattern::Float { .. } => ValueShape::Float,
+        Pattern::String { .. } | Pattern::StringPrefix { .. } => ValueShape::String,
+        Pattern::Variable { type_, .. }
+        | Pattern::Discard { type_, .. }
+        | Pattern::List { type_, .. }
+        | Pattern::Constructor { type_, .. }
+        | Pattern::Invalid { type_, .. } => value_shape(type_.as_ref()),
+        Pattern::Tuple { elements, .. } => ValueShape::Tuple(
+            elements
+                .iter()
+                .map(|element| pattern_value_shape_with(element, value_shape))
+                .collect::<Result<Vec<_>, _>>()?
+                .into_boxed_slice(),
+        ),
+        Pattern::BitArray { .. } => ValueShape::BitArray,
+        Pattern::Assign { pattern, .. } => pattern_value_shape_with(pattern, value_shape)?,
+        Pattern::BitArraySize(_) => return Err(invalid_pattern()),
+    };
+    Ok(shape)
+}
+
 fn plan_list_pattern(
     elements: Vec<TypedPattern>,
     tail: Option<TailPattern<Arc<Type>>>,
@@ -487,57 +538,6 @@ fn define_string_binding(
     context: &mut PlanContext<'_>,
 ) -> crate::plan::StringAssertBinding {
     crate::plan::StringAssertBinding::new(context.define_string_local(name.clone()), name)
-}
-
-pub(in crate::planner) fn pattern_value_type(
-    pattern: &TypedPattern,
-    context: &mut PlanContext<'_>,
-) -> Result<ValueType, PlanError> {
-    let mut value_shape = |type_: &Type| context.value_shape(type_);
-    pattern_value_shape_with(pattern, &mut value_shape).map(|shape| shape.value_type())
-}
-
-fn pattern_value_shape(
-    pattern: &TypedPattern,
-    context: &mut PlanContext<'_>,
-) -> Result<ValueShape, PlanError> {
-    let mut value_shape = |type_: &Type| context.value_shape(type_);
-    pattern_value_shape_with(pattern, &mut value_shape)
-}
-
-pub(in crate::planner) fn pattern_value_type_in_context(
-    pattern: &TypedPattern,
-    context: &PlanContext<'_>,
-) -> Result<ValueType, PlanError> {
-    let mut value_shape = |type_: &Type| context.value_shape_in_scope(type_);
-    pattern_value_shape_with(pattern, &mut value_shape).map(|shape| shape.value_type())
-}
-
-fn pattern_value_shape_with(
-    pattern: &TypedPattern,
-    value_shape: &mut impl FnMut(&Type) -> ValueShape,
-) -> Result<ValueShape, PlanError> {
-    let shape = match pattern {
-        Pattern::Int { .. } => ValueShape::Int,
-        Pattern::Float { .. } => ValueShape::Float,
-        Pattern::String { .. } | Pattern::StringPrefix { .. } => ValueShape::String,
-        Pattern::Variable { type_, .. }
-        | Pattern::Discard { type_, .. }
-        | Pattern::List { type_, .. }
-        | Pattern::Constructor { type_, .. }
-        | Pattern::Invalid { type_, .. } => value_shape(type_.as_ref()),
-        Pattern::Tuple { elements, .. } => ValueShape::Tuple(
-            elements
-                .iter()
-                .map(|element| pattern_value_shape_with(element, value_shape))
-                .collect::<Result<Vec<_>, _>>()?
-                .into_boxed_slice(),
-        ),
-        Pattern::BitArray { .. } => ValueShape::BitArray,
-        Pattern::Assign { pattern, .. } => pattern_value_shape_with(pattern, value_shape)?,
-        Pattern::BitArraySize(_) => return Err(invalid_pattern()),
-    };
-    Ok(shape)
 }
 
 fn invalid_pattern() -> PlanError {

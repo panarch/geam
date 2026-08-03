@@ -98,6 +98,21 @@ pub(super) fn plan_custom_constructor_args(
         .collect()
 }
 
+fn plan_argument_value(
+    argument: GleamCallArg<TypedExpr>,
+    expected: ValueShape,
+    capture: Option<&CaptureSubstitution>,
+    context: &mut PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    if let Some(capture) = capture
+        && super::is_capture_local(&argument.value, &capture.name)
+    {
+        return Ok(capture.value.clone());
+    }
+
+    super::super::plan_expr_with_expected_source_stop_shape(argument.value, expected, context)
+}
+
 fn call_arg_type_mismatch(expected: ValueType, actual: ValueType) -> PlanError {
     if matches!(expected, ValueType::Function(_)) && matches!(actual, ValueType::Function(_)) {
         PlanError::InvalidTypedAst {
@@ -121,21 +136,6 @@ fn call_arg_shape_mismatch() -> PlanError {
             reason: InvalidCallShapeReason::FunctionCallArgumentTypeMismatch,
         },
     }
-}
-
-fn plan_argument_value(
-    argument: GleamCallArg<TypedExpr>,
-    expected: ValueShape,
-    capture: Option<&CaptureSubstitution>,
-    context: &mut PlanContext<'_>,
-) -> Result<Expr, PlanError> {
-    if let Some(capture) = capture
-        && super::is_capture_local(&argument.value, &capture.name)
-    {
-        return Ok(capture.value.clone());
-    }
-
-    super::super::plan_expr_with_expected_source_stop_shape(argument.value, expected, context)
 }
 
 #[cfg(test)]

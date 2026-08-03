@@ -57,6 +57,119 @@ pub(super) fn plan_anonymous(
     )
 }
 
+fn invalid_function_literal_kind_error() -> PlanError {
+    PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::ExpressionShape {
+            kind: InvalidExpressionShapeKind::Invalid,
+        },
+    }
+}
+
+fn validate_capture_literal(
+    arguments: &[TypedArg],
+    body: &Vec1<TypedStatement>,
+) -> Result<(), PlanError> {
+    let [argument] = arguments else {
+        return Err(invalid_capture_literal_shape());
+    };
+
+    if argument.get_variable_name().map(|name| name.as_str()) != Some(CAPTURE_VARIABLE) {
+        return Err(invalid_capture_literal_shape());
+    }
+
+    let [Statement::Expression(TypedExpr::Call { arguments, .. })] = body.as_slice() else {
+        return Err(invalid_capture_literal_shape());
+    };
+
+    if count_capture_literal_arguments(arguments) == 1 {
+        Ok(())
+    } else {
+        Err(invalid_capture_literal_shape())
+    }
+}
+
+fn invalid_capture_literal_shape() -> PlanError {
+    PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::ExpressionShape {
+            kind: InvalidExpressionShapeKind::FunctionCaptureLiteral,
+        },
+    }
+}
+
+fn count_capture_literal_arguments(arguments: &[GleamCallArg<TypedExpr>]) -> usize {
+    arguments
+        .iter()
+        .filter(|argument| is_capture_literal_local(&argument.value))
+        .count()
+}
+
+fn is_capture_literal_local(expression: &TypedExpr) -> bool {
+    matches!(
+        expression,
+        TypedExpr::Var {
+            name,
+            constructor,
+            ..
+        } if name.as_str() == CAPTURE_VARIABLE
+            && matches!(
+                constructor.variant,
+                ValueConstructorVariant::LocalVariable { .. }
+            )
+    )
+}
+
+fn anonymous_function_shape(shape: ValueShape) -> Result<FunctionShape, PlanError> {
+    let actual = match shape {
+        ValueShape::Function(shape) => return Ok(*shape),
+        ValueShape::Int => InvalidExpressionType::Int,
+        ValueShape::Float => InvalidExpressionType::Float,
+        ValueShape::String => InvalidExpressionType::String,
+        ValueShape::BitArray => InvalidExpressionType::BitArray,
+        ValueShape::UtfCodepoint => InvalidExpressionType::UtfCodepoint,
+        ValueShape::Custom(_) => InvalidExpressionType::Custom,
+        ValueShape::External(_) => InvalidExpressionType::External,
+        ValueShape::Bool => InvalidExpressionType::Bool,
+        ValueShape::Nil => InvalidExpressionType::Nil,
+        ValueShape::Tuple(_) => InvalidExpressionType::Tuple,
+        ValueShape::List(_) => InvalidExpressionType::List,
+        ValueShape::Parameter(_) => {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::Invalid,
+                },
+            });
+        }
+    };
+    Err(PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::ExpressionType {
+            expected: InvalidExpressionType::Function,
+            actual,
+        },
+    })
+}
+
+fn validate_argument_types(
+    name: &ecow::EcoString,
+    type_: &FunctionType,
+    params: &[crate::planner::context::FunctionParam],
+) -> Result<(), PlanError> {
+    let actual = params
+        .iter()
+        .map(|param| param.local().value_type())
+        .collect::<Vec<_>>();
+
+    if actual == type_.argument_types() {
+        Ok(())
+    } else {
+        Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::FunctionShape {
+                name: name.clone(),
+                reason: InvalidFunctionShapeReason::ArgumentTypeMismatch,
+            },
+        })
+    }
+}
+
 fn plan_anonymous_with_valid_arguments(
     function_shape: FunctionShape,
     params: Vec<crate::planner::context::FunctionParam>,
@@ -115,67 +228,6 @@ fn plan_anonymous_with_captures(
         .with_resolved_shape(function_shape)
         .map(Expr::function)
         .ok_or_else(invalid_function_literal_kind_error)
-}
-
-fn validate_capture_literal(
-    arguments: &[TypedArg],
-    body: &Vec1<TypedStatement>,
-) -> Result<(), PlanError> {
-    let [argument] = arguments else {
-        return Err(invalid_capture_literal_shape());
-    };
-
-    if argument.get_variable_name().map(|name| name.as_str()) != Some(CAPTURE_VARIABLE) {
-        return Err(invalid_capture_literal_shape());
-    }
-
-    let [Statement::Expression(TypedExpr::Call { arguments, .. })] = body.as_slice() else {
-        return Err(invalid_capture_literal_shape());
-    };
-
-    if count_capture_literal_arguments(arguments) == 1 {
-        Ok(())
-    } else {
-        Err(invalid_capture_literal_shape())
-    }
-}
-
-fn count_capture_literal_arguments(arguments: &[GleamCallArg<TypedExpr>]) -> usize {
-    arguments
-        .iter()
-        .filter(|argument| is_capture_literal_local(&argument.value))
-        .count()
-}
-
-fn is_capture_literal_local(expression: &TypedExpr) -> bool {
-    matches!(
-        expression,
-        TypedExpr::Var {
-            name,
-            constructor,
-            ..
-        } if name.as_str() == CAPTURE_VARIABLE
-            && matches!(
-                constructor.variant,
-                ValueConstructorVariant::LocalVariable { .. }
-            )
-    )
-}
-
-fn invalid_function_literal_kind_error() -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionShape {
-            kind: InvalidExpressionShapeKind::Invalid,
-        },
-    }
-}
-
-fn invalid_capture_literal_shape() -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionShape {
-            kind: InvalidExpressionShapeKind::FunctionCaptureLiteral,
-        },
-    }
 }
 
 fn closure_expr(
@@ -256,58 +308,6 @@ fn closure_expr(
                 ),
             ))
         }
-    }
-}
-
-fn anonymous_function_shape(shape: ValueShape) -> Result<FunctionShape, PlanError> {
-    let actual = match shape {
-        ValueShape::Function(shape) => return Ok(*shape),
-        ValueShape::Int => InvalidExpressionType::Int,
-        ValueShape::Float => InvalidExpressionType::Float,
-        ValueShape::String => InvalidExpressionType::String,
-        ValueShape::BitArray => InvalidExpressionType::BitArray,
-        ValueShape::UtfCodepoint => InvalidExpressionType::UtfCodepoint,
-        ValueShape::Custom(_) => InvalidExpressionType::Custom,
-        ValueShape::External(_) => InvalidExpressionType::External,
-        ValueShape::Bool => InvalidExpressionType::Bool,
-        ValueShape::Nil => InvalidExpressionType::Nil,
-        ValueShape::Tuple(_) => InvalidExpressionType::Tuple,
-        ValueShape::List(_) => InvalidExpressionType::List,
-        ValueShape::Parameter(_) => {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
-                },
-            });
-        }
-    };
-    Err(PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionType {
-            expected: InvalidExpressionType::Function,
-            actual,
-        },
-    })
-}
-
-fn validate_argument_types(
-    name: &ecow::EcoString,
-    type_: &FunctionType,
-    params: &[crate::planner::context::FunctionParam],
-) -> Result<(), PlanError> {
-    let actual = params
-        .iter()
-        .map(|param| param.local().value_type())
-        .collect::<Vec<_>>();
-
-    if actual == type_.argument_types() {
-        Ok(())
-    } else {
-        Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::FunctionShape {
-                name: name.clone(),
-                reason: InvalidFunctionShapeReason::ArgumentTypeMismatch,
-            },
-        })
     }
 }
 
