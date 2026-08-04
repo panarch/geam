@@ -224,6 +224,14 @@ family-local parameter layout, and callback adapter together. Planner and
 runtime phases may consume that layout, but must not independently infer the
 same signature or parameter indexing.
 
+Treat an external provider component as a static assembly owner. It owns its
+explicit configuration interpretation, initialization, stores, run state, and
+provider registrations; a concrete aggregate profile only projects those
+owners. Initialization failure belongs before planning and execution. Do not
+move component identity, configuration, mutable state, or initialization into
+canonical plans, graphs, Explain metadata, runtime registries, or host callback
+errors.
+
 Source provider selection must finish before function body planning. Match an
 exact external scheme, preserve a declared Gleam fallback when no provider is
 selected, reject missing providers for bodyless externals, and never defer
@@ -235,13 +243,21 @@ execution specialization seals concrete locals and return storage. Do not
 replace these boundaries with materialized public values, per-specialization
 user registration, or runtime shape validation.
 
+Intermediate compound construction must be declared by the same sealed
+registration that creates its callback adapter. Give the callback exact typed
+tokens for those registered positions; do not expose broad construction
+helpers or defer construction permission to runtime type or arity checks.
+
 Keep external storage distinct from ordinary custom values and provider run
 state. Canonical plans may retain nominal external identity and typed storage
 metadata, but not Rust payloads. Hosted execution owns typed storage access,
-while each public external value must own its opaque payload lifetime without
-borrowing runtime state. Retained Gleam values may be created and restored only
-through an external payload and an active typed host call; do not expose them
-through run state, public `Value`, Rust downcasts, or cross-execution import.
+while a provider-owned storage adapter supplies schema-specific payload
+semantics through the aggregate profile's store projection. Do not require the
+final profile to own a foreign provider's binding. Each public external value
+must own its opaque payload lifetime without borrowing runtime state. Retained
+Gleam values may be created and restored only through an external payload and
+an active typed host call; do not expose them through run state, public `Value`,
+Rust downcasts, or cross-execution import.
 
 External source equality, hashing, and inspection must use narrow
 operation-specific contexts for retained values. Equal payloads must produce

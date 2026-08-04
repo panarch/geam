@@ -201,6 +201,41 @@ jobs:
       - name: Run Gleam Time tests
         run: cargo test --test gleam_time -- --ignored
 
+  external-provider-sdk:
+    name: External Provider SDK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy, llvm-tools-preview
+          cache: false
+          rustflags: ""
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov@0.8.7
+
+      - name: Check fixture formatting
+        run: cargo fmt --manifest-path tests/fixtures/provider_sdk/Cargo.toml --all --check
+
+      - name: Run fixture tests
+        run: cargo test --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspace --locked
+
+      - name: Run fixture clippy
+        run: cargo clippy --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspace --all-targets -- -D warnings
+
+      - name: Check fixture coverage
+        run: cargo llvm-cov --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspace --summary-only --fail-under-lines 100 --fail-under-regions 100
+
   coverage:
     name: coverage
     runs-on: ubuntu-latest

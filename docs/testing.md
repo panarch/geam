@@ -131,6 +131,22 @@ and `gleam/time/timestamp`, executes every public function, and supplies a
 deterministic caller-owned clock for system effects. Normal Cargo tests and
 coverage remain independent of downloaded package source and the Gleam CLI.
 
+The independent `tests/fixtures/provider_sdk` Cargo workspace verifies the
+public path-provider boundary without adding its crates to Geam's development
+dependencies. Its `runner/tests/public_usage.rs` keeps the complete Gleam
+source, explicit component configuration, generated-like profile, provider
+composition, hosted pipeline, expected value, and state assertions visible as
+one executable example.
+
+```sh
+cargo test --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspace --locked
+cargo clippy --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspace --all-targets -- -D warnings
+cargo llvm-cov --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspace --summary-only --fail-under-lines 100 --fail-under-regions 100
+```
+
+This workspace is independently locked and needs neither network access nor a
+Gleam CLI. CI runs it as a separate provider SDK boundary.
+
 Source-level rejection fixtures live under categorized
 `tests/fixtures/rejection/**/*.gleam` paths. They are reserved for public
 boundary cases that are clearer as complete Gleam modules than as planner unit

@@ -37,9 +37,7 @@ impl HostComponentProfile<Component> for Profile {
     }
 }
 
-#[test]
-fn path_component_runs_with_explicit_configuration_state_and_callback() {
-    let provider_source = r#"
+const PROVIDER_SOURCE: &str = r#"
 @external(erlang, "provider_sdk", "Catalog")
 pub type Catalog
 
@@ -62,6 +60,70 @@ pub type Summary {
 @external(erlang, "provider_sdk", "summarize")
 pub fn summarize(value: String, transform: fn(String) -> String) -> Summary
 "#;
+
+#[test]
+fn independent_path_provider_public_usage() {
+    let main_source = r#"
+import provider/sdk
+
+pub fn main() {
+  let decorated = sdk.decorate("item", fn(value) { value <> "!" })
+  let empty = sdk.catalog_new()
+  let catalog = sdk.catalog_insert(empty, "one", decorated)
+  let matching = sdk.catalog_insert(sdk.catalog_new(), "one", "sdk:item!")
+  assert empty != catalog
+  assert catalog == matching
+  assert sdk.catalog_hash(catalog) == sdk.catalog_hash(matching)
+  let summary = sdk.summarize(decorated, fn(value) { value <> "?" })
+  #(catalog, summary)
+}
+"#;
+    let configuration = HostProviderConfiguration::new(BTreeMap::from([(
+        EcoString::from("prefix"),
+        EcoString::from("sdk:").into(),
+    )]));
+    let component_state = Component::initialize(&configuration)
+        .expect("explicit component configuration should initialize");
+    let provider_modules = <Component as HostProviderComponentRegistration<Profile>>::providers()
+        .expect("path component should register its provider modules");
+    let hosts =
+        HostProviderSet::with_providers(Vec::<HostModule<Profile>>::new(), provider_modules)
+            .expect("path component modules should be unique");
+    let typed = compile_typed_host_program(
+        "provider_sdk_example",
+        "main",
+        [PackageSource::new(
+            "provider_sdk_example",
+            Vec::<&str>::new(),
+            [
+                ModuleSource::new("provider/sdk", "src/provider/sdk.gleam", PROVIDER_SOURCE),
+                ModuleSource::new("main", "src/main.gleam", main_source),
+            ],
+        )],
+        hosts,
+    )
+    .expect("complete path provider example should compile");
+    let plan = plan_host_program(typed).expect("complete path provider example should plan");
+    let execution =
+        HostedExecution::try_from_module_plan(plan).expect("path provider example should seal");
+    let mut state = RunState {
+        provider: component_state,
+    };
+
+    let returned = execution
+        .run_main(&mut state, &mut Vec::new())
+        .expect("path provider example should run");
+
+    assert_eq!(
+        returned.inspect().to_string(),
+        r#"#(Catalog([#("one", "sdk:item!")]), Summary(count: 1, items: ["sdk:item!?"]))"#,
+    );
+    assert_eq!(state.provider.prefix(), "sdk:");
+    assert_eq!(state.provider.calls(), 1);
+}
+
+#[test]
+fn component_run_states_are_independent() {
     let main_source = r#"
 import provider/sdk
 
@@ -73,12 +135,11 @@ pub fn main() {
         EcoString::from("prefix"),
         EcoString::from("sdk:").into(),
     )]));
-    let provider_state = Component::initialize(&configuration)
-        .expect("explicit component configuration should initialize");
-    let providers = <Component as HostProviderComponentRegistration<Profile>>::providers()
+    let provider_modules = <Component as HostProviderComponentRegistration<Profile>>::providers()
         .expect("path component should register its provider modules");
-    let hosts = HostProviderSet::with_providers(Vec::<HostModule<Profile>>::new(), providers)
-        .expect("path component modules should be unique");
+    let hosts =
+        HostProviderSet::with_providers(Vec::<HostModule<Profile>>::new(), provider_modules)
+            .expect("path component modules should be unique");
     let typed = compile_typed_host_program(
         "provider_sdk_example",
         "main",
@@ -86,139 +147,43 @@ pub fn main() {
             "provider_sdk_example",
             Vec::<&str>::new(),
             [
-                ModuleSource::new("provider/sdk", "src/provider/sdk.gleam", provider_source),
+                ModuleSource::new("provider/sdk", "src/provider/sdk.gleam", PROVIDER_SOURCE),
                 ModuleSource::new("main", "src/main.gleam", main_source),
             ],
         )],
         hosts,
     )
-    .expect("complete provider example should compile");
-    let plan = plan_host_program(typed).expect("complete provider example should plan");
+    .expect("independent state example should compile");
+    let plan = plan_host_program(typed).expect("independent state example should plan");
     let execution =
-        HostedExecution::try_from_module_plan(plan).expect("provider example should seal");
-    let mut state = RunState {
-        provider: provider_state,
+        HostedExecution::try_from_module_plan(plan).expect("independent state example should seal");
+    let mut first = RunState {
+        provider: Component::initialize(&configuration)
+            .expect("first component state should initialize"),
+    };
+    let mut second = RunState {
+        provider: Component::initialize(&configuration)
+            .expect("second component state should initialize"),
     };
 
     assert_eq!(
-        execution.run_main(&mut state, &mut Vec::new()),
+        execution.run_main(&mut first, &mut Vec::new()),
         Ok(Value::String("sdk:item!".into())),
     );
-    assert_eq!(state.provider.prefix(), "sdk:");
-    assert_eq!(state.provider.calls(), 1);
-
     assert_eq!(
-        execution.run_main(&mut state, &mut Vec::new()),
+        execution.run_main(&mut first, &mut Vec::new()),
         Ok(Value::String("sdk:item!".into())),
     );
-    assert_eq!(state.provider.calls(), 2);
-
-    let independent_provider_state = Component::initialize(&configuration)
-        .expect("same configuration should create independent state");
-    let mut independent_state = RunState {
-        provider: independent_provider_state,
-    };
     assert_eq!(
-        execution.run_main(&mut independent_state, &mut Vec::new()),
+        execution.run_main(&mut second, &mut Vec::new()),
         Ok(Value::String("sdk:item!".into())),
     );
-    assert_eq!(independent_state.provider.calls(), 1);
-    assert_eq!(state.provider.calls(), 2);
+    assert_eq!(first.provider.calls(), 2);
+    assert_eq!(second.provider.calls(), 1);
 }
 
 #[test]
-fn path_component_preserves_nested_callback_failures_after_state_updates() {
-    let provider_source = r#"
-@external(erlang, "provider_sdk", "Catalog")
-pub type Catalog
-
-@external(erlang, "provider_sdk", "decorate")
-pub fn decorate(value: String, transform: fn(String) -> String) -> String
-
-@external(erlang, "provider_sdk", "catalog_new")
-pub fn catalog_new() -> Catalog
-
-@external(erlang, "provider_sdk", "catalog_insert")
-pub fn catalog_insert(catalog: Catalog, key: String, value: String) -> Catalog
-
-@external(erlang, "provider_sdk", "catalog_hash")
-pub fn catalog_hash(catalog: Catalog) -> Int
-
-pub type Summary {
-  Summary(count: Int, items: List(String))
-}
-
-@external(erlang, "provider_sdk", "summarize")
-pub fn summarize(value: String, transform: fn(String) -> String) -> Summary
-"#;
-    let main_source = r#"
-import provider/sdk
-
-pub fn main() {
-  sdk.decorate("item", fn(_) { panic as "callback failed" })
-}
-"#;
-    let configuration = HostProviderConfiguration::new(BTreeMap::from([(
-        EcoString::from("prefix"),
-        EcoString::from("sdk:").into(),
-    )]));
-    let providers = <Component as HostProviderComponentRegistration<Profile>>::providers()
-        .expect("path component should register its provider modules");
-    let hosts = HostProviderSet::with_providers(Vec::<HostModule<Profile>>::new(), providers)
-        .expect("path component modules should be unique");
-    let typed = compile_typed_host_program(
-        "provider_sdk_example",
-        "main",
-        [PackageSource::new(
-            "provider_sdk_example",
-            Vec::<&str>::new(),
-            [
-                ModuleSource::new("provider/sdk", "src/provider/sdk.gleam", provider_source),
-                ModuleSource::new("main", "src/main.gleam", main_source),
-            ],
-        )],
-        hosts,
-    )
-    .expect("nested callback failure source should compile");
-    let plan = plan_host_program(typed).expect("nested callback failure source should plan");
-    let execution =
-        HostedExecution::try_from_module_plan(plan).expect("callback failure source should seal");
-    let provider = Component::initialize(&configuration)
-        .expect("explicit component configuration should initialize");
-    let mut state = RunState { provider };
-
-    let error = execution
-        .run_main(&mut state, &mut Vec::new())
-        .expect_err("nested callback should preserve the source panic");
-    assert!(matches!(error, ExecutionError::Panic(_)));
-    assert_eq!(state.provider.calls(), 1);
-}
-
-#[test]
-fn path_component_external_storage_is_persistent_opaque_and_self_owned() {
-    let provider_source = r#"
-@external(erlang, "provider_sdk", "Catalog")
-pub type Catalog
-
-@external(erlang, "provider_sdk", "decorate")
-pub fn decorate(value: String, transform: fn(String) -> String) -> String
-
-@external(erlang, "provider_sdk", "catalog_new")
-pub fn catalog_new() -> Catalog
-
-@external(erlang, "provider_sdk", "catalog_insert")
-pub fn catalog_insert(catalog: Catalog, key: String, value: String) -> Catalog
-
-@external(erlang, "provider_sdk", "catalog_hash")
-pub fn catalog_hash(catalog: Catalog) -> Int
-
-pub type Summary {
-  Summary(count: Int, items: List(String))
-}
-
-@external(erlang, "provider_sdk", "summarize")
-pub fn summarize(value: String, transform: fn(String) -> String) -> Summary
-"#;
+fn escaped_external_value_owns_its_payload() {
     let main_source = r#"
 import provider/sdk
 
@@ -236,12 +201,13 @@ pub fn main() {
         EcoString::from("prefix"),
         EcoString::from("sdk:").into(),
     )]));
-    let provider = Component::initialize(&configuration)
+    let component_state = Component::initialize(&configuration)
         .expect("explicit component configuration should initialize");
-    let providers = <Component as HostProviderComponentRegistration<Profile>>::providers()
+    let provider_modules = <Component as HostProviderComponentRegistration<Profile>>::providers()
         .expect("path component should register its provider modules");
-    let hosts = HostProviderSet::with_providers(Vec::<HostModule<Profile>>::new(), providers)
-        .expect("path component modules should be unique");
+    let hosts =
+        HostProviderSet::with_providers(Vec::<HostModule<Profile>>::new(), provider_modules)
+            .expect("path component modules should be unique");
     let typed = compile_typed_host_program(
         "provider_sdk_example",
         "main",
@@ -249,73 +215,53 @@ pub fn main() {
             "provider_sdk_example",
             Vec::<&str>::new(),
             [
-                ModuleSource::new("provider/sdk", "src/provider/sdk.gleam", provider_source),
+                ModuleSource::new("provider/sdk", "src/provider/sdk.gleam", PROVIDER_SOURCE),
                 ModuleSource::new("main", "src/main.gleam", main_source),
             ],
         )],
         hosts,
     )
-    .expect("external storage example should compile");
-    let plan = plan_host_program(typed).expect("external storage example should plan");
-    let execution =
-        HostedExecution::try_from_module_plan(plan).expect("external storage example should seal");
-    let mut state = RunState { provider };
+    .expect("external ownership example should compile");
+    let plan = plan_host_program(typed).expect("external ownership example should plan");
+    let execution = HostedExecution::try_from_module_plan(plan)
+        .expect("external ownership example should seal");
+    let mut state = RunState {
+        provider: component_state,
+    };
     let returned = execution
         .run_main(&mut state, &mut Vec::new())
-        .expect("external storage example should run");
+        .expect("external ownership example should run");
 
     drop(state);
     drop(execution);
 
     let Value::External(catalog) = returned else {
-        panic!("external storage example should return an opaque external value");
+        panic!("external ownership example should return an opaque external value");
     };
     assert_eq!(catalog.inspection(), "Catalog([#(\"one\", \"1\")])");
     assert_eq!(catalog.clone(), catalog);
 }
 
 #[test]
-fn path_component_constructs_only_registered_compound_results() {
-    let provider_source = r#"
-@external(erlang, "provider_sdk", "Catalog")
-pub type Catalog
-
-@external(erlang, "provider_sdk", "decorate")
-pub fn decorate(value: String, transform: fn(String) -> String) -> String
-
-@external(erlang, "provider_sdk", "catalog_new")
-pub fn catalog_new() -> Catalog
-
-@external(erlang, "provider_sdk", "catalog_insert")
-pub fn catalog_insert(catalog: Catalog, key: String, value: String) -> Catalog
-
-@external(erlang, "provider_sdk", "catalog_hash")
-pub fn catalog_hash(catalog: Catalog) -> Int
-
-pub type Summary {
-  Summary(count: Int, items: List(String))
-}
-
-@external(erlang, "provider_sdk", "summarize")
-pub fn summarize(value: String, transform: fn(String) -> String) -> Summary
-"#;
+fn stateful_callbacks_preserve_nested_source_failures() {
     let main_source = r#"
 import provider/sdk
 
 pub fn main() {
-  sdk.summarize("item", fn(value) { value <> "!" })
+  sdk.decorate("item", fn(_) { panic as "callback failed" })
 }
 "#;
     let configuration = HostProviderConfiguration::new(BTreeMap::from([(
         EcoString::from("prefix"),
         EcoString::from("sdk:").into(),
     )]));
-    let provider = Component::initialize(&configuration)
+    let component_state = Component::initialize(&configuration)
         .expect("explicit component configuration should initialize");
-    let providers = <Component as HostProviderComponentRegistration<Profile>>::providers()
+    let provider_modules = <Component as HostProviderComponentRegistration<Profile>>::providers()
         .expect("path component should register its provider modules");
-    let hosts = HostProviderSet::with_providers(Vec::<HostModule<Profile>>::new(), providers)
-        .expect("path component modules should be unique");
+    let hosts =
+        HostProviderSet::with_providers(Vec::<HostModule<Profile>>::new(), provider_modules)
+            .expect("path component modules should be unique");
     let typed = compile_typed_host_program(
         "provider_sdk_example",
         "main",
@@ -323,53 +269,30 @@ pub fn main() {
             "provider_sdk_example",
             Vec::<&str>::new(),
             [
-                ModuleSource::new("provider/sdk", "src/provider/sdk.gleam", provider_source),
+                ModuleSource::new("provider/sdk", "src/provider/sdk.gleam", PROVIDER_SOURCE),
                 ModuleSource::new("main", "src/main.gleam", main_source),
             ],
         )],
         hosts,
     )
-    .expect("compound provider example should compile");
-    let plan = plan_host_program(typed).expect("compound provider example should plan");
-    let execution =
-        HostedExecution::try_from_module_plan(plan).expect("compound provider example should seal");
-    let mut state = RunState { provider };
-    let returned = execution
-        .run_main(&mut state, &mut Vec::new())
-        .expect("compound provider example should run");
+    .expect("stateful callback failure source should compile");
+    let plan = plan_host_program(typed).expect("stateful callback failure source should plan");
+    let execution = HostedExecution::try_from_module_plan(plan)
+        .expect("stateful callback failure source should seal");
+    let mut state = RunState {
+        provider: component_state,
+    };
 
-    assert_eq!(
-        returned.inspect().to_string(),
-        r#"Summary(count: 1, items: ["item!"])"#,
-    );
-    assert_eq!(state.provider.calls(), 0);
+    let error = execution
+        .run_main(&mut state, &mut Vec::new())
+        .expect_err("nested callback should preserve the source panic");
+
+    assert!(matches!(error, ExecutionError::Panic(_)));
+    assert_eq!(state.provider.calls(), 1);
 }
 
 #[test]
-fn path_component_preserves_callback_failures_before_compound_construction() {
-    let provider_source = r#"
-@external(erlang, "provider_sdk", "Catalog")
-pub type Catalog
-
-@external(erlang, "provider_sdk", "decorate")
-pub fn decorate(value: String, transform: fn(String) -> String) -> String
-
-@external(erlang, "provider_sdk", "catalog_new")
-pub fn catalog_new() -> Catalog
-
-@external(erlang, "provider_sdk", "catalog_insert")
-pub fn catalog_insert(catalog: Catalog, key: String, value: String) -> Catalog
-
-@external(erlang, "provider_sdk", "catalog_hash")
-pub fn catalog_hash(catalog: Catalog) -> Int
-
-pub type Summary {
-  Summary(count: Int, items: List(String))
-}
-
-@external(erlang, "provider_sdk", "summarize")
-pub fn summarize(value: String, transform: fn(String) -> String) -> Summary
-"#;
+fn constructing_callbacks_preserve_nested_source_failures() {
     let main_source = r#"
 import provider/sdk
 
@@ -381,12 +304,13 @@ pub fn main() {
         EcoString::from("prefix"),
         EcoString::from("sdk:").into(),
     )]));
-    let provider = Component::initialize(&configuration)
+    let component_state = Component::initialize(&configuration)
         .expect("explicit component configuration should initialize");
-    let providers = <Component as HostProviderComponentRegistration<Profile>>::providers()
+    let provider_modules = <Component as HostProviderComponentRegistration<Profile>>::providers()
         .expect("path component should register its provider modules");
-    let hosts = HostProviderSet::with_providers(Vec::<HostModule<Profile>>::new(), providers)
-        .expect("path component modules should be unique");
+    let hosts =
+        HostProviderSet::with_providers(Vec::<HostModule<Profile>>::new(), provider_modules)
+            .expect("path component modules should be unique");
     let typed = compile_typed_host_program(
         "provider_sdk_example",
         "main",
@@ -394,21 +318,23 @@ pub fn main() {
             "provider_sdk_example",
             Vec::<&str>::new(),
             [
-                ModuleSource::new("provider/sdk", "src/provider/sdk.gleam", provider_source),
+                ModuleSource::new("provider/sdk", "src/provider/sdk.gleam", PROVIDER_SOURCE),
                 ModuleSource::new("main", "src/main.gleam", main_source),
             ],
         )],
         hosts,
     )
-    .expect("compound callback failure source should compile");
-    let plan = plan_host_program(typed).expect("compound callback failure source should plan");
+    .expect("constructing callback failure source should compile");
+    let plan = plan_host_program(typed).expect("constructing callback failure source should plan");
     let execution = HostedExecution::try_from_module_plan(plan)
-        .expect("compound callback failure source should seal");
-    let mut state = RunState { provider };
+        .expect("constructing callback failure source should seal");
+    let mut state = RunState {
+        provider: component_state,
+    };
 
     let error = execution
         .run_main(&mut state, &mut Vec::new())
-        .expect_err("compound callback should preserve the source panic");
+        .expect_err("constructing callback should preserve the source panic");
 
     assert!(matches!(error, ExecutionError::Panic(_)));
     assert_eq!(state.provider.calls(), 0);
