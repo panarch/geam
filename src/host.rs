@@ -1,3 +1,4 @@
+mod component;
 mod error;
 mod external;
 mod failure;
@@ -7,6 +8,10 @@ mod profile;
 mod type_;
 mod value;
 
+pub use component::{
+    HostComponentProfile, HostProviderComponent, HostProviderComponentRegistration,
+    HostProviderConfiguration, HostProviderConfigurationValue, HostProviderInitializationError,
+};
 pub use error::HostRegistrationError;
 pub(crate) use external::{ExternalPayloadLease, HostStoredValueFamily};
 pub use external::{

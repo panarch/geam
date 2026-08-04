@@ -1,0 +1,13 @@
+[package]
+name = "provider-sdk-example-runner"
+version = "0.1.0"
+edition = "2024"
+
+[[test]]
+name = "public_usage"
+path = "tests/public_usage.rs"
+
+[dependencies]
+ecow = "=0.2.6"
+geam = { path = "../../../.." }
+provider-sdk-example-provider = { path = "../provider" }
