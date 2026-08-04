@@ -1,12 +1,13 @@
 use ecow::EcoString;
 use geam::{
-    HostCall, HostCallCompletion, HostCallError, HostCustom, HostCustomConstructorDefinition,
-    HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomConstructorSchema,
-    HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomFieldSchema,
-    HostCustomSchema, HostCustomType, HostCustomTypeSchema, HostModule, HostProvider,
-    HostProviderLinkReason, HostProviderModule, HostProviderSet, HostSchemaType, HostTypeList,
-    HostTypeListEnd, HostTypeParameter, HostedExecution, ModuleSource, PackageSource, PlanError,
-    StatelessHostProfile, Value, compile_typed_host_program, plan_host_program,
+    HostCall, HostCallCompletion, HostCallError, HostConstructions, HostCustom,
+    HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
+    HostCustomConstructorSchema, HostCustomField, HostCustomFieldList, HostCustomFieldListEnd,
+    HostCustomFieldSchema, HostCustomSchema, HostCustomType, HostCustomTypeSchema, HostListType,
+    HostModule, HostProvider, HostProviderLinkReason, HostProviderModule, HostProviderSet,
+    HostRegistrationError, HostSchemaType, HostTypeList, HostTypeListEnd, HostTypeParameter,
+    HostValue, HostedExecution, ModuleSource, PackageSource, PlanError, StatelessHostProfile,
+    Value, compile_typed_host_program, plan_host_program,
 };
 #[test]
 fn executes_external_gleam_fallback_without_a_provider() {
@@ -50,6 +51,84 @@ impl HostProvider<StatelessHostProfile> for SchemaProvider {
     fn project(state: &mut ()) -> &mut Self::State {
         state
     }
+}
+
+#[test]
+fn construction_registration_validates_function_and_construction_type_parameters() {
+    type Parameter = HostTypeParameter<0>;
+    type SparseParameter = HostTypeParameter<1>;
+    type ConstructionTypes = HostTypeList<HostListType<Parameter>, HostTypeListEnd>;
+
+    fn bound<'call>(
+        call: HostCall<'call, StatelessHostProfile, SchemaProvider, bool>,
+        _constructions: HostConstructions<'call, ConstructionTypes>,
+        _value: HostValue<'call, Parameter>,
+    ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
+        Ok(call.return_value(true))
+    }
+
+    fn unbound<'call>(
+        call: HostCall<'call, StatelessHostProfile, SchemaProvider, bool>,
+        _constructions: HostConstructions<'call, ConstructionTypes>,
+    ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
+        Ok(call.return_value(true))
+    }
+
+    fn sparse<'call>(
+        call: HostCall<'call, StatelessHostProfile, SchemaProvider, bool>,
+        _constructions: HostConstructions<'call, ConstructionTypes>,
+        _value: HostValue<'call, SparseParameter>,
+    ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
+        Ok(call.return_value(true))
+    }
+
+    let error = HostProviderModule::<StatelessHostProfile>::new("application", "main")
+        .expect("provider module should be valid")
+        .with_scoped_function_and_constructions::<
+            SchemaProvider,
+            (SparseParameter,),
+            bool,
+            ConstructionTypes,
+            _,
+        >("sparse", sparse)
+        .err()
+        .expect("sparse signature type parameters should be rejected first");
+    assert_eq!(
+        error,
+        HostRegistrationError::NonContiguousTypeParameters {
+            function: "sparse".into(),
+            parameters: vec![1].into_boxed_slice(),
+        },
+    );
+
+    let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
+        .expect("provider module should be valid")
+        .with_scoped_function_and_constructions::<
+            SchemaProvider,
+            (Parameter,),
+            bool,
+            ConstructionTypes,
+            _,
+        >("bound", bound)
+        .expect("signature-bound construction parameter should register");
+    let error = provider
+        .with_scoped_function_and_constructions::<SchemaProvider, (), bool, ConstructionTypes, _>(
+            "unbound", unbound,
+        )
+        .err()
+        .expect("construction-only type parameter should be rejected");
+
+    assert_eq!(
+        error,
+        HostRegistrationError::UnboundConstructionTypeParameters {
+            function: "unbound".into(),
+            parameters: vec![0].into_boxed_slice(),
+        },
+    );
+    assert_eq!(
+        error.to_string(),
+        "host function unbound registers construction type parameter indices [0] that do not occur in its signature",
+    );
 }
 
 #[test]
