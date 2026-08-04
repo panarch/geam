@@ -6,3 +6,5 @@ edition = "2024"
 [dependencies]
 ecow = "=0.2.6"
 geam = { path = "../../../.." }
+num-bigint = "0.4"
+provider-sdk-example-domain = { path = "../domain" }

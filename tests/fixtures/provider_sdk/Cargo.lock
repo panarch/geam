@@ -2070,11 +2070,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "provider-sdk-example-domain"
+version = "0.1.0"
+dependencies = [
+ "im",
+]
+
+[[package]]
 name = "provider-sdk-example-provider"
 version = "0.1.0"
 dependencies = [
  "ecow",
  "geam",
+ "num-bigint",
+ "provider-sdk-example-domain",
 ]
 
 [[package]]

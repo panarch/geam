@@ -77,7 +77,7 @@ fn preserves_external_values_through_lists_customs_captures_and_calls() {
 
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<CounterSchema>()
+        .with_external_type::<CounterProvider, CounterSchema>()
         .expect("external type should be valid")
         .with_scoped_function::<CounterProvider, (BigInt,), HostCounter, _>(
             "new_counter",
@@ -504,7 +504,7 @@ fn passes_external_values_and_lists_through_scoped_callbacks() {
 
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<CounterSchema>()
+        .with_external_type::<CounterProvider, CounterSchema>()
         .expect("external type should be valid")
         .with_scoped_function::<CounterProvider, (BigInt,), HostCounter, _>(
             "new_counter",
@@ -629,7 +629,7 @@ fn returns_captured_external_function_values_from_the_program_entry() {
 
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<CounterSchema>()
+        .with_external_type::<CounterProvider, CounterSchema>()
         .expect("external type should be valid")
         .with_scoped_function::<CounterProvider, (BigInt,), HostCounter, _>(
             "new_counter",

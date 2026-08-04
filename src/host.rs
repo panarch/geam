@@ -15,9 +15,10 @@ pub use component::{
 pub use error::HostRegistrationError;
 pub(crate) use external::{ExternalPayloadLease, HostStoredValueFamily};
 pub use external::{
-    HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalPayloadBuilder,
-    HostExternalPayloadView, HostExternalSchema, HostExternalStorage, HostExternalStore,
-    HostExternalType, HostExternalTypeSchema, HostStoredDynamic, HostStoredType, HostStoredValue,
+    HostExternalBinding, HostExternalEquality, HostExternalHashing, HostExternalInspection,
+    HostExternalPayloadBuilder, HostExternalPayloadView, HostExternalSchema, HostExternalStorage,
+    HostExternalStore, HostExternalType, HostExternalTypeSchema, HostStoredDynamic, HostStoredType,
+    HostStoredValue,
 };
 pub(crate) use failure::HostCallErrorKind;
 pub use failure::{HostCallError, HostFailure};

@@ -5,6 +5,7 @@ mod storage;
 pub(crate) use function::create_dynamic_dict;
 pub(in crate::gleam_stdlib) use function::lookup;
 pub(crate) use schema::{DictOf, DictSchema};
+pub(crate) use storage::DictExternalStorage;
 pub(super) use storage::Stores;
 
 use self::function::{
@@ -24,8 +25,10 @@ where
     Profile: GleamStdlibHostProfile,
 {
     HostProviderModule::new("gleam_stdlib", "gleam/dict")
-        .and_then(HostProviderModule::with_external_type::<DictSchema>)
-        .and_then(HostProviderModule::with_external_type::<TransientDictSchema>)
+        .and_then(HostProviderModule::with_external_type::<DictProvider<Profile>, DictSchema>)
+        .and_then(
+            HostProviderModule::with_external_type::<DictProvider<Profile>, TransientDictSchema>,
+        )
         .and_then(|provider| {
             provider.with_scoped_function::<DictProvider<Profile>, (Dict,), TransientDict, _>(
                 "to_transient",

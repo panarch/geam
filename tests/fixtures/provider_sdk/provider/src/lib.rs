@@ -1,15 +1,23 @@
 use ecow::EcoString;
 use geam::{
-    HostCall, HostCallCompletion, HostCallError, HostCallable, HostComponentProfile,
-    HostFunctionType, HostProvider, HostProviderComponent, HostProviderComponentRegistration,
+    HostCall, HostCallCompletion, HostCallError, HostCallable, HostComponentProfile, HostExternal,
+    HostExternalBinding, HostExternalEquality, HostExternalHashing, HostExternalInspection,
+    HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType, HostFunctionType,
+    HostProvider, HostProviderComponent, HostProviderComponentRegistration,
     HostProviderConfiguration, HostProviderInitializationError, HostProviderModule,
     HostRegistrationError, HostTypeList, HostTypeListEnd,
 };
+use num_bigint::BigInt;
+use provider_sdk_example_domain::Catalog;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 pub struct Component;
 
-#[derive(Debug, Default)]
-pub struct Stores;
+#[derive(Default)]
+pub struct Stores {
+    catalogs: HostExternalStore<Catalog>,
+}
 
 #[derive(Debug)]
 pub struct RunState {
@@ -19,8 +27,13 @@ pub struct RunState {
 
 struct Provider;
 
+struct CatalogSchema;
+
+struct CatalogStorage;
+
 type TransformArguments = HostTypeList<EcoString, HostTypeListEnd>;
 type Transform = HostFunctionType<TransformArguments, EcoString>;
+type HostCatalog = HostExternalType<CatalogSchema>;
 
 impl HostProviderComponent for Component {
     const ID: &'static str = "provider-sdk-example";
@@ -50,10 +63,31 @@ where
 {
     fn providers() -> Result<Vec<HostProviderModule<Profile>>, HostRegistrationError> {
         HostProviderModule::new("provider_sdk_example", "provider/sdk")
+            .and_then(HostProviderModule::with_external_type::<Provider, CatalogSchema>)
             .and_then(|provider| {
                 provider.with_scoped_function::<Provider, (EcoString, Transform), EcoString, _>(
                     "decorate",
                     decorate::<Profile>,
+                )
+            })
+            .and_then(|provider| {
+                provider.with_scoped_function::<Provider, (), HostCatalog, _>(
+                    "catalog_new",
+                    catalog_new::<Profile>,
+                )
+            })
+            .and_then(|provider| {
+                provider.with_scoped_function::<
+                    Provider,
+                    (HostCatalog, EcoString, EcoString),
+                    HostCatalog,
+                    _,
+                >("catalog_insert", catalog_insert::<Profile>)
+            })
+            .and_then(|provider| {
+                provider.with_scoped_function::<Provider, (HostCatalog,), BigInt, _>(
+                    "catalog_hash",
+                    catalog_hash::<Profile>,
                 )
             })
             .map(|provider| vec![provider])
@@ -69,6 +103,57 @@ where
     fn project(state: &mut Profile::RunState) -> &mut Self::State {
         Profile::component_state(state)
     }
+}
+
+impl HostExternalSchema for CatalogSchema {
+    const PACKAGE: &'static str = "provider_sdk_example";
+    const MODULE: &'static str = "provider/sdk";
+    const NAME: &'static str = "Catalog";
+    const PARAMETER_COUNT: usize = 0;
+}
+
+impl<Profile> HostExternalStorage<Profile, CatalogSchema> for CatalogStorage
+where
+    Profile: HostComponentProfile<Component>,
+{
+    type Payload = Catalog;
+
+    fn store(stores: &Profile::ExternalStores) -> &HostExternalStore<Self::Payload> {
+        &Profile::component_stores(stores).catalogs
+    }
+
+    fn source_equal(
+        _context: &HostExternalEquality<'_>,
+        left: &Self::Payload,
+        right: &Self::Payload,
+    ) -> bool {
+        left == right
+    }
+
+    fn source_hash(_context: &HostExternalHashing<'_>, value: &Self::Payload) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        for (key, value) in value.iter() {
+            key.hash(&mut hasher);
+            value.hash(&mut hasher);
+        }
+        hasher.finish()
+    }
+
+    fn inspect(_context: &HostExternalInspection<'_>, value: &Self::Payload) -> EcoString {
+        let entries = value
+            .iter()
+            .map(|(key, value)| format!("#({key:?}, {value:?})"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("Catalog([{entries}])").into()
+    }
+}
+
+impl<Profile> HostExternalBinding<Profile, CatalogSchema> for Provider
+where
+    Profile: HostComponentProfile<Component>,
+{
+    type Storage = CatalogStorage;
 }
 
 impl RunState {
@@ -96,6 +181,43 @@ where
     };
     let transformed = call.invoke(transform, (decorated.into(), ()))?;
     Ok(call.return_value(transformed))
+}
+
+fn catalog_new<'call, Profile>(
+    mut call: HostCall<'call, Profile, Provider, HostCatalog>,
+) -> Result<HostCallCompletion<'call, HostCatalog>, HostCallError>
+where
+    Profile: HostComponentProfile<Component>,
+{
+    let catalog = call.create_external(Catalog::default());
+    Ok(call.return_value(catalog))
+}
+
+fn catalog_insert<'call, Profile>(
+    mut call: HostCall<'call, Profile, Provider, HostCatalog>,
+    catalog: HostExternal<'call, HostCatalog>,
+    key: EcoString,
+    value: EcoString,
+) -> Result<HostCallCompletion<'call, HostCatalog>, HostCallError>
+where
+    Profile: HostComponentProfile<Component>,
+{
+    let updated = call
+        .external_payload(catalog)
+        .insert(key.as_str(), value.as_str());
+    let updated = call.create_external(updated);
+    Ok(call.return_value(updated))
+}
+
+fn catalog_hash<'call, Profile>(
+    call: HostCall<'call, Profile, Provider, BigInt>,
+    catalog: HostExternal<'call, HostCatalog>,
+) -> Result<HostCallCompletion<'call, BigInt>, HostCallError>
+where
+    Profile: HostComponentProfile<Component>,
+{
+    let hash = BigInt::from(call.source_hash::<HostCatalog>(catalog));
+    Ok(call.return_value(hash))
 }
 
 #[cfg(test)]

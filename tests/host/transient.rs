@@ -1,12 +1,13 @@
 use ecow::EcoString;
 use geam::{
     ExecutionError, HostCall, HostCallCompletion, HostCallError, HostCallable, HostExternal,
-    HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalPayloadBuilder,
-    HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType, HostFailure,
-    HostFunctionType, HostListType, HostProfile, HostProvider, HostProviderModule, HostProviderSet,
-    HostStoredType, HostStoredValue, HostTypeIndex0, HostTypeIndexNext, HostTypeList,
-    HostTypeListEnd, HostTypeParameter, HostValue, HostedExecution, ListValue, ModuleSource,
-    PackageSource, PanicKind, Value, compile_typed_host_program, plan_host_program,
+    HostExternalBinding, HostExternalEquality, HostExternalHashing, HostExternalInspection,
+    HostExternalPayloadBuilder, HostExternalSchema, HostExternalStorage, HostExternalStore,
+    HostExternalType, HostFailure, HostFunctionType, HostListType, HostProfile, HostProvider,
+    HostProviderModule, HostProviderSet, HostStoredType, HostStoredValue, HostTypeIndex0,
+    HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue,
+    HostedExecution, ListValue, ModuleSource, PackageSource, PanicKind, Value,
+    compile_typed_host_program, plan_host_program,
 };
 use num_bigint::BigInt;
 use std::rc::Rc;
@@ -33,6 +34,9 @@ struct TransientMapSchema;
 struct TokenSchema;
 
 struct TransientProvider;
+
+struct TransientMapStorage;
+struct TokenStorage;
 
 struct TransientPayload {
     entries: Box<[Rc<TransientEntry>]>,
@@ -108,10 +112,10 @@ impl HostExternalSchema for TransientMapSchema {
     const PARAMETER_COUNT: usize = 2;
 }
 
-impl HostExternalStorage<TransientMapSchema> for TransientProfile {
+impl HostExternalStorage<TransientProfile, TransientMapSchema> for TransientMapStorage {
     type Payload = TransientPayload;
 
-    fn store(stores: &Self::ExternalStores) -> &HostExternalStore<Self::Payload> {
+    fn store(stores: &TransientStores) -> &HostExternalStore<Self::Payload> {
         &stores.maps
     }
 
@@ -163,10 +167,10 @@ impl HostExternalSchema for TokenSchema {
     const PARAMETER_COUNT: usize = 0;
 }
 
-impl HostExternalStorage<TokenSchema> for TransientProfile {
+impl HostExternalStorage<TransientProfile, TokenSchema> for TokenStorage {
     type Payload = TokenPayload;
 
-    fn store(stores: &Self::ExternalStores) -> &HostExternalStore<Self::Payload> {
+    fn store(stores: &TransientStores) -> &HostExternalStore<Self::Payload> {
         &stores.tokens
     }
 
@@ -187,6 +191,14 @@ impl HostExternalStorage<TokenSchema> for TransientProfile {
     fn inspect(_: &HostExternalInspection<'_>, value: &Self::Payload) -> EcoString {
         format!("Token({})", value.value).into()
     }
+}
+
+impl HostExternalBinding<TransientProfile, TransientMapSchema> for TransientProvider {
+    type Storage = TransientMapStorage;
+}
+
+impl HostExternalBinding<TransientProfile, TokenSchema> for TransientProvider {
+    type Storage = TokenStorage;
 }
 
 fn new_entry(
@@ -376,7 +388,7 @@ fn make_token<'call>(
 fn round_trips_grouped_insert_replace_remove_and_merge() {
     let provider = HostProviderModule::<TransientProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<TransientMapSchema>()
+        .with_external_type::<TransientProvider, TransientMapSchema>()
         .expect("transient map type should be valid")
         .with_scoped_function::<TransientProvider, (), TransientMap, _>("empty", empty)
         .expect("empty provider should be valid")
@@ -524,9 +536,9 @@ pub fn main() {
 fn preserves_aliased_compound_keys_and_external_values() {
     let provider = HostProviderModule::<TransientProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<TransientMapSchema>()
+        .with_external_type::<TransientProvider, TransientMapSchema>()
         .expect("transient map type should be valid")
-        .with_external_type::<TokenSchema>()
+        .with_external_type::<TransientProvider, TokenSchema>()
         .expect("token type should be valid")
         .with_scoped_function::<TransientProvider, (), TransientMap, _>("empty", empty)
         .expect("empty provider should be valid")
@@ -616,7 +628,7 @@ pub fn main() {
 fn maps_large_transient_values_through_nested_reentry() {
     let provider = HostProviderModule::<TransientProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<TransientMapSchema>()
+        .with_external_type::<TransientProvider, TransientMapSchema>()
         .expect("transient map type should be valid")
         .with_scoped_function::<TransientProvider, (), TransientMap, _>("empty", empty)
         .expect("empty provider should be valid")
@@ -719,7 +731,7 @@ pub fn main() {
 fn releases_transient_storage_after_nested_host_failure() {
     let provider = HostProviderModule::<TransientProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<TransientMapSchema>()
+        .with_external_type::<TransientProvider, TransientMapSchema>()
         .expect("transient map type should be valid")
         .with_scoped_function::<TransientProvider, (), TransientMap, _>("empty", empty)
         .expect("empty provider should be valid")
@@ -814,7 +826,7 @@ pub fn main() {
 fn releases_transient_storage_after_source_panic() {
     let provider = HostProviderModule::<TransientProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<TransientMapSchema>()
+        .with_external_type::<TransientProvider, TransientMapSchema>()
         .expect("transient map type should be valid")
         .with_scoped_function::<TransientProvider, (), TransientMap, _>("empty", empty)
         .expect("empty provider should be valid")

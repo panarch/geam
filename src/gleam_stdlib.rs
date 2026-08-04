@@ -17,17 +17,15 @@ mod uri;
 pub use io::{IoOutput, IoSink, IoStream};
 pub use run_state::{GleamStdlibRunState, GleamStdlibRunStateError};
 
-#[cfg(test)]
-pub(crate) use dict::DictSchema;
-pub(crate) use dict::{DictOf, create_dynamic_dict};
-#[cfg(test)]
-pub(crate) use dynamic::DynamicSchema;
-pub(crate) use dynamic::{Dynamic, create_value as create_dynamic_value};
+pub(crate) use dict::{DictExternalStorage, DictOf, DictSchema, create_dynamic_dict};
+pub(crate) use dynamic::{
+    Dynamic, DynamicExternalStorage, DynamicSchema, create_value as create_dynamic_value,
+};
 pub(crate) use dynamic_decode::DynamicDecodeError;
 pub(crate) use result::{GleamError, GleamOk, GleamResult};
-#[cfg(test)]
-pub(crate) use string_tree::StringTreeSchema;
-pub(crate) use string_tree::{StoredStringTree, StringTree, StringTreePayload};
+pub(crate) use string_tree::{
+    StoredStringTree, StringTree, StringTreeExternalStorage, StringTreePayload, StringTreeSchema,
+};
 
 /// A host profile that exposes state and storage for the official Gleam standard library.
 pub trait GleamStdlibHostProfile: HostProfile {

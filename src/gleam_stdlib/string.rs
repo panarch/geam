@@ -89,6 +89,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::function::StringProvider;
     use super::host_provider;
     use crate::gleam_stdlib::string_tree::StringTreeSchema;
     use crate::gleam_stdlib::{GleamStdlibProfile, GleamStdlibRunState};
@@ -245,7 +246,12 @@ pub fn main() {{
         );
         let string_tree =
             HostProviderModule::<GleamStdlibProfile>::new("gleam_stdlib", "gleam/string_tree")
-                .and_then(HostProviderModule::with_external_type::<StringTreeSchema>)
+                .and_then(
+                    HostProviderModule::with_external_type::<
+                        StringProvider<GleamStdlibProfile>,
+                        StringTreeSchema,
+                    >,
+                )
                 .expect("synthetic StringTree storage should register");
         let string = host_provider::<GleamStdlibProfile>()
             .expect("official string provider should register");

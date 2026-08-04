@@ -1,9 +1,10 @@
 use super::DynamicSequence;
 use super::schema::{Dynamic, DynamicList, DynamicSchema};
-use super::storage::{DynamicPayload, DynamicRepresentation};
+use super::storage::{DynamicExternalStorage, DynamicPayload, DynamicRepresentation};
 use crate::gleam_stdlib::GleamStdlibHostProfile;
 use crate::{
-    HostCall, HostCallCompletion, HostCallError, HostExternal, HostList, HostProvider, HostType,
+    HostCall, HostCallCompletion, HostCallError, HostExternal, HostExternalBinding, HostList,
+    HostProvider, HostType,
 };
 use ecow::EcoString;
 use std::marker::PhantomData;
@@ -19,6 +20,13 @@ where
     fn project(state: &mut Profile::RunState) -> &mut Self::State {
         state
     }
+}
+
+impl<Profile> HostExternalBinding<Profile, DynamicSchema> for DynamicProvider<Profile>
+where
+    Profile: GleamStdlibHostProfile,
+{
+    type Storage = DynamicExternalStorage;
 }
 
 pub(super) fn classify<'call, Profile>(
@@ -74,7 +82,7 @@ pub(in crate::gleam_stdlib) fn classification<'call, Profile, Provider, Return>(
 ) -> EcoString
 where
     Profile: GleamStdlibHostProfile,
-    Provider: HostProvider<Profile>,
+    Provider: HostExternalBinding<Profile, DynamicSchema, Storage = DynamicExternalStorage>,
     Return: HostType,
 {
     call.external_payload(value).representation().name().into()
@@ -86,7 +94,7 @@ pub(crate) fn create_value<'call, Profile, Provider, Return, Type>(
 ) -> HostExternal<'call, Dynamic>
 where
     Profile: GleamStdlibHostProfile,
-    Provider: HostProvider<Profile>,
+    Provider: HostExternalBinding<Profile, DynamicSchema, Storage = DynamicExternalStorage>,
     Return: HostType,
     Type: HostType,
 {
@@ -105,7 +113,7 @@ pub(in crate::gleam_stdlib) fn decode_value<'call, Profile, Provider, Return, Ty
 ) -> Option<Type::Value<'call>>
 where
     Profile: GleamStdlibHostProfile,
-    Provider: HostProvider<Profile>,
+    Provider: HostExternalBinding<Profile, DynamicSchema, Storage = DynamicExternalStorage>,
     Return: HostType,
     Type: HostType,
 {
@@ -119,7 +127,7 @@ pub(in crate::gleam_stdlib) fn sequence<'call, Profile, Provider, Return>(
 ) -> Option<DynamicSequence<'call>>
 where
     Profile: GleamStdlibHostProfile,
-    Provider: HostProvider<Profile>,
+    Provider: HostExternalBinding<Profile, DynamicSchema, Storage = DynamicExternalStorage>,
     Return: HostType,
 {
     let payload = call.external_payload(value);

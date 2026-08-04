@@ -2,7 +2,7 @@ mod dynamic;
 mod store;
 mod stored;
 
-use crate::host::{HostProfile, HostTypeListEnd};
+use crate::host::{HostProfile, HostProvider, HostTypeListEnd};
 use ecow::EcoString;
 use std::marker::PhantomData;
 
@@ -22,21 +22,22 @@ pub trait HostExternalSchema: Send + Sync + 'static {
     const PARAMETER_COUNT: usize;
 }
 
-/// The profile-owned storage and Gleam source semantics for one external schema.
+/// Provider-owned storage and Gleam source semantics for one external schema.
 ///
 /// Payloads are immutable after creation. Values that compare equal through
 /// [`HostExternalStorage::source_equal`] must return the same
 /// [`HostExternalStorage::source_hash`]. Hash collisions are allowed and are
 /// resolved through source equality. Source hashes are runtime indexes, not
 /// stable serialized values.
-pub trait HostExternalStorage<Schema>: HostProfile
+pub trait HostExternalStorage<Profile, Schema>: Send + Sync + 'static
 where
+    Profile: HostProfile,
     Schema: HostExternalSchema,
 {
     type Payload: 'static;
 
-    /// Projects the typed payload store from this profile's external stores.
-    fn store(stores: &Self::ExternalStores) -> &HostExternalStore<Self::Payload>;
+    /// Projects the typed payload store from the final profile's external stores.
+    fn store(stores: &Profile::ExternalStores) -> &HostExternalStore<Self::Payload>;
 
     /// Compares two payloads using Gleam source equality.
     fn source_equal(
@@ -50,6 +51,15 @@ where
 
     /// Produces the payload's canonical source-oriented inspection.
     fn inspect(context: &HostExternalInspection<'_>, value: &Self::Payload) -> EcoString;
+}
+
+/// Selects a provider-owned external storage adapter for one source schema.
+pub trait HostExternalBinding<Profile, Schema>: HostProvider<Profile>
+where
+    Profile: HostProfile,
+    Schema: HostExternalSchema,
+{
+    type Storage: HostExternalStorage<Profile, Schema>;
 }
 
 /// Gleam source equality for values retained by an external payload.

@@ -502,8 +502,8 @@ mod tests {
     use crate::host::test::{StatelessTestProvider, TestTypeParameter, stateless_identity};
     use crate::host::{
         ExternalTestProfile, ExternalTestRunState, HostCall, HostCallCompletion, HostCallError,
-        HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType, HostProvider,
-        HostProviderModule,
+        HostExternalBinding, HostExternalSchema, HostExternalStorage, HostExternalStore,
+        HostExternalType, HostProvider, HostProviderModule,
     };
     use crate::plan::execution::explain;
     use crate::{
@@ -517,6 +517,8 @@ mod tests {
 
     struct CounterProvider;
 
+    struct CounterStorage;
+
     type HostCounter = HostExternalType<CounterSchema>;
 
     impl HostExternalSchema for CounterSchema {
@@ -526,10 +528,12 @@ mod tests {
         const PARAMETER_COUNT: usize = 0;
     }
 
-    impl HostExternalStorage<CounterSchema> for ExternalTestProfile {
+    impl HostExternalStorage<ExternalTestProfile, CounterSchema> for CounterStorage {
         type Payload = BigInt;
 
-        fn store(stores: &Self::ExternalStores) -> &HostExternalStore<Self::Payload> {
+        fn store(
+            stores: &<ExternalTestProfile as crate::HostProfile>::ExternalStores,
+        ) -> &HostExternalStore<Self::Payload> {
             &stores.integers
         }
 
@@ -563,6 +567,10 @@ mod tests {
         }
     }
 
+    impl HostExternalBinding<ExternalTestProfile, CounterSchema> for CounterProvider {
+        type Storage = CounterStorage;
+    }
+
     fn new_counter<'call>(
         mut call: HostCall<'call, ExternalTestProfile, CounterProvider, HostCounter>,
         value: BigInt,
@@ -581,7 +589,7 @@ mod tests {
         std::hash::Hash::hash(&value, &mut expected);
 
         assert_eq!(
-            <ExternalTestProfile as HostExternalStorage<CounterSchema>>::source_hash(
+            <CounterStorage as HostExternalStorage<ExternalTestProfile, CounterSchema>>::source_hash(
                 &hashing, &value,
             ),
             std::hash::Hasher::finish(&expected),
@@ -780,7 +788,7 @@ function function.int#0
     fn writes_external_value_list_and_function_tables_in_family_order() {
         let provider = HostProviderModule::<ExternalTestProfile>::new("application", "main")
             .expect("provider module should be valid")
-            .with_external_type::<CounterSchema>()
+            .with_external_type::<CounterProvider, CounterSchema>()
             .expect("external type should be valid")
             .with_scoped_function::<CounterProvider, (BigInt,), HostCounter, _>(
                 "new_counter",

@@ -30,7 +30,7 @@ fn external_function_block_rejects_an_unrepresentable_step_before_its_callable()
 
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<CounterSchema>()
+        .with_external_type::<CounterProvider, CounterSchema>()
         .expect("external type should be valid")
         .with_scoped_function::<CounterProvider, (), Item, _>("produce", produce)
         .expect("generic producer should be valid")
@@ -97,7 +97,7 @@ fn specializes_generic_external_tail_calls_and_list_cases() {
 
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<CounterSchema>()
+        .with_external_type::<CounterProvider, CounterSchema>()
         .expect("external type should be valid")
         .with_scoped_function::<CounterProvider, (BigInt,), HostCounter, _>(
             "new_counter",
@@ -200,7 +200,7 @@ fn specializes_symbolic_external_function_constants_and_capturing_closures() {
 
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<CounterSchema>()
+        .with_external_type::<CounterProvider, CounterSchema>()
         .expect("external type should be valid")
         .with_scoped_function::<CounterProvider, (BigInt,), HostCounter, _>(
             "new_counter",
@@ -288,7 +288,7 @@ fn specializes_generic_external_types_by_their_source_arguments() {
 
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<GenericCounterSchema>()
+        .with_external_type::<CounterProvider, GenericCounterSchema>()
         .expect("external type should be valid")
         .with_scoped_function::<CounterProvider, (ValueType, BigInt), HostGenericCounter, _>(
             "tag", tag,
@@ -346,7 +346,7 @@ pub fn main() {
 fn specializes_generic_function_expressions_to_external_returns() {
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<CounterSchema>()
+        .with_external_type::<CounterProvider, CounterSchema>()
         .expect("external type should be valid");
     let source = r#"
 @external(erlang, "host", "Counter")
@@ -478,7 +478,7 @@ pub fn main() {
 fn evaluates_external_return_function_sources_before_uninhabited_arguments() {
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<CounterSchema>()
+        .with_external_type::<CounterProvider, CounterSchema>()
         .expect("external type should be valid");
     let source = r#"
 @external(erlang, "host", "Counter")
@@ -560,7 +560,7 @@ fn preserves_external_constants_and_list_expression_owners() {
 
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<CounterSchema>()
+        .with_external_type::<CounterProvider, CounterSchema>()
         .expect("external type should be valid")
         .with_scoped_function::<CounterProvider, (BigInt,), HostCounter, _>(
             "new_counter",
@@ -789,7 +789,7 @@ fn preserves_external_expression_divergence_in_specialized_graphs() {
 
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<CounterSchema>()
+        .with_external_type::<CounterProvider, CounterSchema>()
         .expect("external type should be valid")
         .with_scoped_function::<CounterProvider, (BigInt,), HostCounter, _>(
             "new_counter",

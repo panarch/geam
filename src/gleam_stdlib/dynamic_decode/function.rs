@@ -8,8 +8,10 @@ pub(super) use scalar::{
     cast, dynamic_bit_array, dynamic_float, dynamic_int, dynamic_string, is_null,
 };
 
-use crate::HostProvider;
-use crate::gleam_stdlib::GleamStdlibHostProfile;
+use crate::gleam_stdlib::{
+    DictExternalStorage, DictSchema, DynamicExternalStorage, DynamicSchema, GleamStdlibHostProfile,
+};
+use crate::{HostExternalBinding, HostProvider};
 use std::marker::PhantomData;
 
 pub(super) struct DynamicDecodeProvider<Profile>(PhantomData<Profile>);
@@ -23,6 +25,20 @@ where
     fn project(state: &mut Profile::RunState) -> &mut Self::State {
         state
     }
+}
+
+impl<Profile> HostExternalBinding<Profile, DynamicSchema> for DynamicDecodeProvider<Profile>
+where
+    Profile: GleamStdlibHostProfile,
+{
+    type Storage = DynamicExternalStorage;
+}
+
+impl<Profile> HostExternalBinding<Profile, DictSchema> for DynamicDecodeProvider<Profile>
+where
+    Profile: GleamStdlibHostProfile,
+{
+    type Storage = DictExternalStorage;
 }
 
 #[cfg(test)]

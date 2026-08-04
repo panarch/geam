@@ -40,8 +40,20 @@ impl HostComponentProfile<Component> for Profile {
 #[test]
 fn path_component_runs_with_explicit_configuration_state_and_callback() {
     let provider_source = r#"
+@external(erlang, "provider_sdk", "Catalog")
+pub type Catalog
+
 @external(erlang, "provider_sdk", "decorate")
 pub fn decorate(value: String, transform: fn(String) -> String) -> String
+
+@external(erlang, "provider_sdk", "catalog_new")
+pub fn catalog_new() -> Catalog
+
+@external(erlang, "provider_sdk", "catalog_insert")
+pub fn catalog_insert(catalog: Catalog, key: String, value: String) -> Catalog
+
+@external(erlang, "provider_sdk", "catalog_hash")
+pub fn catalog_hash(catalog: Catalog) -> Int
 "#;
     let main_source = r#"
 import provider/sdk
@@ -110,8 +122,20 @@ pub fn main() {
 #[test]
 fn path_component_preserves_nested_callback_failures_after_state_updates() {
     let provider_source = r#"
+@external(erlang, "provider_sdk", "Catalog")
+pub type Catalog
+
 @external(erlang, "provider_sdk", "decorate")
 pub fn decorate(value: String, transform: fn(String) -> String) -> String
+
+@external(erlang, "provider_sdk", "catalog_new")
+pub fn catalog_new() -> Catalog
+
+@external(erlang, "provider_sdk", "catalog_insert")
+pub fn catalog_insert(catalog: Catalog, key: String, value: String) -> Catalog
+
+@external(erlang, "provider_sdk", "catalog_hash")
+pub fn catalog_hash(catalog: Catalog) -> Int
 "#;
     let main_source = r#"
 import provider/sdk
@@ -154,4 +178,77 @@ pub fn main() {
         .expect_err("nested callback should preserve the source panic");
     assert!(matches!(error, ExecutionError::Panic(_)));
     assert_eq!(state.provider.calls(), 1);
+}
+
+#[test]
+fn path_component_external_storage_is_persistent_opaque_and_self_owned() {
+    let provider_source = r#"
+@external(erlang, "provider_sdk", "Catalog")
+pub type Catalog
+
+@external(erlang, "provider_sdk", "decorate")
+pub fn decorate(value: String, transform: fn(String) -> String) -> String
+
+@external(erlang, "provider_sdk", "catalog_new")
+pub fn catalog_new() -> Catalog
+
+@external(erlang, "provider_sdk", "catalog_insert")
+pub fn catalog_insert(catalog: Catalog, key: String, value: String) -> Catalog
+
+@external(erlang, "provider_sdk", "catalog_hash")
+pub fn catalog_hash(catalog: Catalog) -> Int
+"#;
+    let main_source = r#"
+import provider/sdk
+
+pub fn main() {
+  let empty = sdk.catalog_new()
+  let first = sdk.catalog_insert(empty, "one", "1")
+  let same = sdk.catalog_insert(sdk.catalog_new(), "one", "1")
+  assert empty != first
+  assert first == same
+  assert sdk.catalog_hash(first) == sdk.catalog_hash(same)
+  first
+}
+"#;
+    let configuration = HostProviderConfiguration::new(BTreeMap::from([(
+        EcoString::from("prefix"),
+        EcoString::from("sdk:").into(),
+    )]));
+    let provider = Component::initialize(&configuration)
+        .expect("explicit component configuration should initialize");
+    let providers = <Component as HostProviderComponentRegistration<Profile>>::providers()
+        .expect("path component should register its provider modules");
+    let hosts = HostProviderSet::with_providers(Vec::<HostModule<Profile>>::new(), providers)
+        .expect("path component modules should be unique");
+    let typed = compile_typed_host_program(
+        "provider_sdk_example",
+        "main",
+        [PackageSource::new(
+            "provider_sdk_example",
+            Vec::<&str>::new(),
+            [
+                ModuleSource::new("provider/sdk", "src/provider/sdk.gleam", provider_source),
+                ModuleSource::new("main", "src/main.gleam", main_source),
+            ],
+        )],
+        hosts,
+    )
+    .expect("external storage example should compile");
+    let plan = plan_host_program(typed).expect("external storage example should plan");
+    let execution =
+        HostedExecution::try_from_module_plan(plan).expect("external storage example should seal");
+    let mut state = RunState { provider };
+    let returned = execution
+        .run_main(&mut state, &mut Vec::new())
+        .expect("external storage example should run");
+
+    drop(state);
+    drop(execution);
+
+    let Value::External(catalog) = returned else {
+        panic!("external storage example should return an opaque external value");
+    };
+    assert_eq!(catalog.inspection(), "Catalog([#(\"one\", \"1\")])");
+    assert_eq!(catalog.clone(), catalog);
 }

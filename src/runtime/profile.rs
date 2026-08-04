@@ -258,14 +258,15 @@ pub(in crate::runtime) mod external_test {
         HostExternalStorage, HostExternalStore,
     };
     use crate::{
-        HostExternalType, HostFunctionType, HostProvider, HostTypeList, HostTypeListEnd,
-        HostTypeParameter,
+        HostExternalBinding, HostExternalType, HostFunctionType, HostProvider, HostTypeList,
+        HostTypeListEnd, HostTypeParameter,
     };
     use ecow::EcoString;
     use num_bigint::BigInt;
 
     pub(in crate::runtime) struct RuntimeCounterSchema;
     pub(in crate::runtime) struct RuntimeCounterProvider;
+    pub(in crate::runtime) struct RuntimeCounterStorage;
     pub(in crate::runtime) type RuntimeHostCounter = HostExternalType<RuntimeCounterSchema>;
     pub(in crate::runtime) type RuntimeIntArguments = HostTypeList<BigInt, HostTypeListEnd>;
     pub(in crate::runtime) type RuntimeCounterCallable =
@@ -281,7 +282,7 @@ pub(in crate::runtime) mod external_test {
         const PARAMETER_COUNT: usize = 0;
     }
 
-    impl HostExternalStorage<RuntimeCounterSchema> for ExternalTestProfile {
+    impl HostExternalStorage<ExternalTestProfile, RuntimeCounterSchema> for RuntimeCounterStorage {
         type Payload = BigInt;
 
         fn store(stores: &ExternalTestStores) -> &HostExternalStore<Self::Payload> {
@@ -318,6 +319,10 @@ pub(in crate::runtime) mod external_test {
         }
     }
 
+    impl HostExternalBinding<ExternalTestProfile, RuntimeCounterSchema> for RuntimeCounterProvider {
+        type Storage = RuntimeCounterStorage;
+    }
+
     #[test]
     fn runtime_counter_fixture_source_hash_is_exact() {
         let retained_hash = |_: &crate::runtime::StoredRuntimeValue| 0;
@@ -327,9 +332,10 @@ pub(in crate::runtime) mod external_test {
         std::hash::Hash::hash(&value, &mut expected);
 
         assert_eq!(
-            <ExternalTestProfile as HostExternalStorage<RuntimeCounterSchema>>::source_hash(
-                &hashing, &value,
-            ),
+            <RuntimeCounterStorage as HostExternalStorage<
+                ExternalTestProfile,
+                RuntimeCounterSchema,
+            >>::source_hash(&hashing, &value,),
             std::hash::Hasher::finish(&expected),
         );
     }
@@ -412,7 +418,7 @@ mod tests {
 
         let provider = HostProviderModule::<ExternalTestProfile>::new("application", "main")
             .expect("provider module should be valid")
-            .with_external_type::<RuntimeCounterSchema>()
+            .with_external_type::<RuntimeCounterProvider, RuntimeCounterSchema>()
             .expect("external type should be valid")
             .with_scoped_function::<RuntimeCounterProvider, (BigInt,), RuntimeHostCounter, _>(
                 "new_counter",

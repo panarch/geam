@@ -194,7 +194,7 @@ pub fn main() {
                 .expect("provider module should be valid");
             let provider = match family {
                 ReturnFamily::Value => provider
-                    .with_external_type::<RuntimeCounterSchema>()
+                    .with_external_type::<RuntimeCounterProvider, RuntimeCounterSchema>()
                     .expect("external type should be valid")
                     .with_scoped_diverging_function::<
                         RuntimeCounterProvider,
@@ -207,7 +207,7 @@ pub fn main() {
                     )
                     .expect("external value target should be valid"),
                 ReturnFamily::List => provider
-                    .with_external_type::<RuntimeCounterSchema>()
+                    .with_external_type::<RuntimeCounterProvider, RuntimeCounterSchema>()
                     .expect("external type should be valid")
                     .with_scoped_diverging_function::<
                         RuntimeCounterProvider,
@@ -217,7 +217,7 @@ pub fn main() {
                     >("stop_list", stop_list)
                     .expect("external list target should be valid"),
                 ReturnFamily::Function => provider
-                    .with_external_type::<RuntimeCounterSchema>()
+                    .with_external_type::<RuntimeCounterProvider, RuntimeCounterSchema>()
                     .expect("external type should be valid")
                     .with_scoped_diverging_function::<
                         RuntimeCounterProvider,
