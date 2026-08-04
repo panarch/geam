@@ -54,6 +54,13 @@ pub fn catalog_insert(catalog: Catalog, key: String, value: String) -> Catalog
 
 @external(erlang, "provider_sdk", "catalog_hash")
 pub fn catalog_hash(catalog: Catalog) -> Int
+
+pub type Summary {
+  Summary(count: Int, items: List(String))
+}
+
+@external(erlang, "provider_sdk", "summarize")
+pub fn summarize(value: String, transform: fn(String) -> String) -> Summary
 "#;
     let main_source = r#"
 import provider/sdk
@@ -136,6 +143,13 @@ pub fn catalog_insert(catalog: Catalog, key: String, value: String) -> Catalog
 
 @external(erlang, "provider_sdk", "catalog_hash")
 pub fn catalog_hash(catalog: Catalog) -> Int
+
+pub type Summary {
+  Summary(count: Int, items: List(String))
+}
+
+@external(erlang, "provider_sdk", "summarize")
+pub fn summarize(value: String, transform: fn(String) -> String) -> Summary
 "#;
     let main_source = r#"
 import provider/sdk
@@ -197,6 +211,13 @@ pub fn catalog_insert(catalog: Catalog, key: String, value: String) -> Catalog
 
 @external(erlang, "provider_sdk", "catalog_hash")
 pub fn catalog_hash(catalog: Catalog) -> Int
+
+pub type Summary {
+  Summary(count: Int, items: List(String))
+}
+
+@external(erlang, "provider_sdk", "summarize")
+pub fn summarize(value: String, transform: fn(String) -> String) -> Summary
 "#;
     let main_source = r#"
 import provider/sdk
@@ -251,4 +272,144 @@ pub fn main() {
     };
     assert_eq!(catalog.inspection(), "Catalog([#(\"one\", \"1\")])");
     assert_eq!(catalog.clone(), catalog);
+}
+
+#[test]
+fn path_component_constructs_only_registered_compound_results() {
+    let provider_source = r#"
+@external(erlang, "provider_sdk", "Catalog")
+pub type Catalog
+
+@external(erlang, "provider_sdk", "decorate")
+pub fn decorate(value: String, transform: fn(String) -> String) -> String
+
+@external(erlang, "provider_sdk", "catalog_new")
+pub fn catalog_new() -> Catalog
+
+@external(erlang, "provider_sdk", "catalog_insert")
+pub fn catalog_insert(catalog: Catalog, key: String, value: String) -> Catalog
+
+@external(erlang, "provider_sdk", "catalog_hash")
+pub fn catalog_hash(catalog: Catalog) -> Int
+
+pub type Summary {
+  Summary(count: Int, items: List(String))
+}
+
+@external(erlang, "provider_sdk", "summarize")
+pub fn summarize(value: String, transform: fn(String) -> String) -> Summary
+"#;
+    let main_source = r#"
+import provider/sdk
+
+pub fn main() {
+  sdk.summarize("item", fn(value) { value <> "!" })
+}
+"#;
+    let configuration = HostProviderConfiguration::new(BTreeMap::from([(
+        EcoString::from("prefix"),
+        EcoString::from("sdk:").into(),
+    )]));
+    let provider = Component::initialize(&configuration)
+        .expect("explicit component configuration should initialize");
+    let providers = <Component as HostProviderComponentRegistration<Profile>>::providers()
+        .expect("path component should register its provider modules");
+    let hosts = HostProviderSet::with_providers(Vec::<HostModule<Profile>>::new(), providers)
+        .expect("path component modules should be unique");
+    let typed = compile_typed_host_program(
+        "provider_sdk_example",
+        "main",
+        [PackageSource::new(
+            "provider_sdk_example",
+            Vec::<&str>::new(),
+            [
+                ModuleSource::new("provider/sdk", "src/provider/sdk.gleam", provider_source),
+                ModuleSource::new("main", "src/main.gleam", main_source),
+            ],
+        )],
+        hosts,
+    )
+    .expect("compound provider example should compile");
+    let plan = plan_host_program(typed).expect("compound provider example should plan");
+    let execution =
+        HostedExecution::try_from_module_plan(plan).expect("compound provider example should seal");
+    let mut state = RunState { provider };
+    let returned = execution
+        .run_main(&mut state, &mut Vec::new())
+        .expect("compound provider example should run");
+
+    assert_eq!(
+        returned.inspect().to_string(),
+        r#"Summary(count: 1, items: ["item!"])"#,
+    );
+    assert_eq!(state.provider.calls(), 0);
+}
+
+#[test]
+fn path_component_preserves_callback_failures_before_compound_construction() {
+    let provider_source = r#"
+@external(erlang, "provider_sdk", "Catalog")
+pub type Catalog
+
+@external(erlang, "provider_sdk", "decorate")
+pub fn decorate(value: String, transform: fn(String) -> String) -> String
+
+@external(erlang, "provider_sdk", "catalog_new")
+pub fn catalog_new() -> Catalog
+
+@external(erlang, "provider_sdk", "catalog_insert")
+pub fn catalog_insert(catalog: Catalog, key: String, value: String) -> Catalog
+
+@external(erlang, "provider_sdk", "catalog_hash")
+pub fn catalog_hash(catalog: Catalog) -> Int
+
+pub type Summary {
+  Summary(count: Int, items: List(String))
+}
+
+@external(erlang, "provider_sdk", "summarize")
+pub fn summarize(value: String, transform: fn(String) -> String) -> Summary
+"#;
+    let main_source = r#"
+import provider/sdk
+
+pub fn main() {
+  sdk.summarize("item", fn(_) { panic as "summary callback failed" })
+}
+"#;
+    let configuration = HostProviderConfiguration::new(BTreeMap::from([(
+        EcoString::from("prefix"),
+        EcoString::from("sdk:").into(),
+    )]));
+    let provider = Component::initialize(&configuration)
+        .expect("explicit component configuration should initialize");
+    let providers = <Component as HostProviderComponentRegistration<Profile>>::providers()
+        .expect("path component should register its provider modules");
+    let hosts = HostProviderSet::with_providers(Vec::<HostModule<Profile>>::new(), providers)
+        .expect("path component modules should be unique");
+    let typed = compile_typed_host_program(
+        "provider_sdk_example",
+        "main",
+        [PackageSource::new(
+            "provider_sdk_example",
+            Vec::<&str>::new(),
+            [
+                ModuleSource::new("provider/sdk", "src/provider/sdk.gleam", provider_source),
+                ModuleSource::new("main", "src/main.gleam", main_source),
+            ],
+        )],
+        hosts,
+    )
+    .expect("compound callback failure source should compile");
+    let plan = plan_host_program(typed).expect("compound callback failure source should plan");
+    let execution = HostedExecution::try_from_module_plan(plan)
+        .expect("compound callback failure source should seal");
+    let mut state = RunState { provider };
+
+    let error = execution
+        .run_main(&mut state, &mut Vec::new())
+        .expect_err("compound callback should preserve the source panic");
+
+    assert!(matches!(error, ExecutionError::Panic(_)));
+    assert_eq!(state.provider.calls(), 0);
 }

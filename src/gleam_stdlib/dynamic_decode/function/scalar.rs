@@ -70,7 +70,7 @@ pub(in crate::gleam_stdlib::dynamic_decode) fn cast<'call, Profile>(
 where
     Profile: GleamStdlibHostProfile,
 {
-    let value = dynamic::create_value::<_, _, _, CastValue>(&mut call, value);
+    let value = dynamic::create_return_value::<_, _, CastValue>(&mut call, value);
     Ok(call.return_value(value))
 }
 

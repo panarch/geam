@@ -7,7 +7,9 @@ use self::function::{
     remove_suffix, starts_with, unsafe_byte_slice, unsafe_int_to_utf_codepoint, uppercase,
     utf_codepoint_to_int,
 };
-use self::schema::{Direction, InspectValue, PopResult, StringList, UtfCodepointList};
+use self::schema::{
+    Direction, InspectValue, PopConstructions, PopResult, StringList, UtfCodepointList,
+};
 use super::GleamStdlibHostProfile;
 use crate::{HostProviderModule, HostRegistrationError};
 use ecow::EcoString;
@@ -55,10 +57,13 @@ where
             >("erl_trim", erl_trim::<Profile>)
         })
         .and_then(|provider| {
-            provider.with_scoped_function::<StringProvider<Profile>, (EcoString,), PopResult, _>(
-                "pop_grapheme",
-                pop_grapheme::<Profile>,
-            )
+            provider.with_scoped_function_and_constructions::<
+                StringProvider<Profile>,
+                (EcoString,),
+                PopResult,
+                PopConstructions,
+                _,
+            >("pop_grapheme", pop_grapheme::<Profile>)
         })
         .and_then(|provider| {
             provider.with_fallible_function::<(BigInt,), char, _>(

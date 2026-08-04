@@ -12,7 +12,7 @@ use self::function::{
     StringTreeProvider, append_tree, byte_size, concat, do_to_graphemes, erl_split, from_string,
     from_strings, is_empty, is_equal, lowercase, replace, to_string, uppercase,
 };
-use self::schema::{Direction, StringList, StringTreeList};
+use self::schema::{Direction, SplitConstructions, StringList, StringTreeList};
 use super::GleamStdlibHostProfile;
 use crate::{HostProviderModule, HostRegistrationError};
 use ecow::EcoString;
@@ -91,10 +91,11 @@ where
                 )
         })
         .and_then(|provider| {
-            provider.with_scoped_function::<
+            provider.with_scoped_function_and_constructions::<
                 StringTreeProvider<Profile>,
                 (StringTree, EcoString, Direction),
                 StringTreeList,
+                SplitConstructions,
                 _,
             >("erl_split", erl_split::<Profile>)
         })

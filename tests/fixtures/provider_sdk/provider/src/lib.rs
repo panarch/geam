@@ -1,11 +1,14 @@
 use ecow::EcoString;
 use geam::{
-    HostCall, HostCallCompletion, HostCallError, HostCallable, HostComponentProfile, HostExternal,
+    HostCall, HostCallCompletion, HostCallError, HostCallable, HostComponentProfile,
+    HostConstructions, HostCustomConstructorAt, HostCustomConstructorDefinition,
+    HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomField, HostCustomFieldList,
+    HostCustomFieldListEnd, HostCustomIndex0, HostCustomSchema, HostCustomType, HostExternal,
     HostExternalBinding, HostExternalEquality, HostExternalHashing, HostExternalInspection,
     HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType, HostFunctionType,
-    HostProvider, HostProviderComponent, HostProviderComponentRegistration,
+    HostListType, HostProvider, HostProviderComponent, HostProviderComponentRegistration,
     HostProviderConfiguration, HostProviderInitializationError, HostProviderModule,
-    HostRegistrationError, HostTypeList, HostTypeListEnd,
+    HostRegistrationError, HostTypeIndex0, HostTypeList, HostTypeListEnd,
 };
 use num_bigint::BigInt;
 use provider_sdk_example_domain::Catalog;
@@ -31,9 +34,21 @@ struct CatalogSchema;
 
 struct CatalogStorage;
 
+struct SummarySchema;
+
+struct SummaryDefinition;
+
+struct SummaryCountField;
+
+struct SummaryItemsField;
+
 type TransformArguments = HostTypeList<EcoString, HostTypeListEnd>;
 type Transform = HostFunctionType<TransformArguments, EcoString>;
 type HostCatalog = HostExternalType<CatalogSchema>;
+type Summary = HostCustomType<SummarySchema>;
+type SummaryConstructor = HostCustomConstructorAt<Summary, HostCustomIndex0, SummaryDefinition>;
+type SummaryItems = HostListType<EcoString>;
+type SummaryConstructions = HostTypeList<SummaryItems, HostTypeListEnd>;
 
 impl HostProviderComponent for Component {
     const ID: &'static str = "provider-sdk-example";
@@ -89,6 +104,15 @@ where
                     "catalog_hash",
                     catalog_hash::<Profile>,
                 )
+            })
+            .and_then(|provider| {
+                provider.with_scoped_function_and_constructions::<
+                    Provider,
+                    (EcoString, Transform),
+                    Summary,
+                    SummaryConstructions,
+                    _,
+                >("summarize", summarize::<Profile>)
             })
             .map(|provider| vec![provider])
     }
@@ -156,6 +180,36 @@ where
     type Storage = CatalogStorage;
 }
 
+impl HostCustomField for SummaryCountField {
+    const LABEL: Option<&'static str> = Some("count");
+
+    type Type = BigInt;
+}
+
+impl HostCustomField for SummaryItemsField {
+    const LABEL: Option<&'static str> = Some("items");
+
+    type Type = SummaryItems;
+}
+
+impl HostCustomConstructorDefinition for SummaryDefinition {
+    const NAME: &'static str = "Summary";
+
+    type Fields = HostCustomFieldList<
+        SummaryCountField,
+        HostCustomFieldList<SummaryItemsField, HostCustomFieldListEnd>,
+    >;
+}
+
+impl HostCustomSchema for SummarySchema {
+    const PACKAGE: &'static str = "provider_sdk_example";
+    const MODULE: &'static str = "provider/sdk";
+    const NAME: &'static str = "Summary";
+    const PARAMETER_COUNT: usize = 0;
+
+    type Constructors = HostCustomConstructorList<SummaryDefinition, HostCustomConstructorListEnd>;
+}
+
 impl RunState {
     pub fn prefix(&self) -> &str {
         &self.prefix
@@ -218,6 +272,20 @@ where
 {
     let hash = BigInt::from(call.source_hash::<HostCatalog>(catalog));
     Ok(call.return_value(hash))
+}
+
+fn summarize<'call, Profile>(
+    mut call: HostCall<'call, Profile, Provider, Summary>,
+    constructions: HostConstructions<'call, SummaryConstructions>,
+    value: EcoString,
+    transform: HostCallable<'call, TransformArguments, EcoString>,
+) -> Result<HostCallCompletion<'call, Summary>, HostCallError>
+where
+    Profile: HostComponentProfile<Component>,
+{
+    let item = call.invoke(transform, (value, ()))?;
+    let items = call.construct_list(constructions.at::<HostTypeIndex0>(), [item]);
+    Ok(call.return_custom::<SummaryConstructor>((BigInt::from(1), (items, ()))))
 }
 
 #[cfg(test)]

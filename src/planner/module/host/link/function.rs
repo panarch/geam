@@ -1,7 +1,7 @@
 use super::super::super::{AnonymousFunctions, FunctionToPlan, discarded_function_params};
 use super::{LinkedFunction, LinkedModule};
 use crate::host::{
-    HostFunctionConstructions, HostFunctionSchema, RegisteredHostFunction,
+    HostFunctionSchema, RegisteredHostConstructions, RegisteredHostFunction,
     RegisteredHostImplementationId,
 };
 use crate::plan::{FunctionTemplateId, HostFunctionTemplate, ModuleId};
@@ -160,7 +160,7 @@ fn bind_source_host_function(
 ) -> Result<
     (
         HostFunctionTemplate,
-        HostFunctionConstructions,
+        RegisteredHostConstructions,
         RegisteredHostImplementationId,
     ),
     PlanError,
@@ -195,7 +195,7 @@ fn bind_source_less_host_function(
     definition: RegisteredHostFunction,
 ) -> (
     HostFunctionTemplate,
-    HostFunctionConstructions,
+    RegisteredHostConstructions,
     RegisteredHostImplementationId,
 ) {
     let (schema, constructions, implementation) = definition.into_parts();

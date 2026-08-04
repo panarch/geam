@@ -3,8 +3,8 @@ use super::schema::{Dynamic, DynamicList, DynamicSchema};
 use super::storage::{DynamicExternalStorage, DynamicPayload, DynamicRepresentation};
 use crate::gleam_stdlib::GleamStdlibHostProfile;
 use crate::{
-    HostCall, HostCallCompletion, HostCallError, HostExternal, HostExternalBinding, HostList,
-    HostProvider, HostType,
+    HostCall, HostCallCompletion, HostCallError, HostConstruction, HostExternal,
+    HostExternalBinding, HostList, HostProvider, HostType,
 };
 use ecow::EcoString;
 use std::marker::PhantomData;
@@ -48,8 +48,7 @@ where
     Profile: GleamStdlibHostProfile,
     Type: HostType,
 {
-    let dynamic =
-        create_value::<Profile, DynamicProvider<Profile>, Dynamic, Type>(&mut call, value);
+    let dynamic = create_return_value::<Profile, DynamicProvider<Profile>, Type>(&mut call, value);
     Ok(call.return_value(dynamic))
 }
 
@@ -88,8 +87,27 @@ where
     call.external_payload(value).representation().name().into()
 }
 
+pub(crate) fn create_return_value<'call, Profile, Provider, Type>(
+    call: &mut HostCall<'call, Profile, Provider, Dynamic>,
+    value: Type::Value<'call>,
+) -> HostExternal<'call, Dynamic>
+where
+    Profile: GleamStdlibHostProfile,
+    Provider: HostExternalBinding<Profile, DynamicSchema, Storage = DynamicExternalStorage>,
+    Type: HostType,
+{
+    call.create_external_with(|builder| {
+        let value = builder.store_dynamic::<Type>(value);
+        DynamicPayload::Stored {
+            representation: DynamicRepresentation::from_value(&value),
+            value,
+        }
+    })
+}
+
 pub(crate) fn create_value<'call, Profile, Provider, Return, Type>(
     call: &mut HostCall<'call, Profile, Provider, Return>,
+    construction: HostConstruction<'call, Dynamic>,
     value: Type::Value<'call>,
 ) -> HostExternal<'call, Dynamic>
 where
@@ -98,7 +116,7 @@ where
     Return: HostType,
     Type: HostType,
 {
-    call.create_external_value_with::<DynamicSchema, crate::HostTypeListEnd>(|builder| {
+    call.construct_external_with::<DynamicSchema, crate::HostTypeListEnd>(construction, |builder| {
         let value = builder.store_dynamic::<Type>(value);
         DynamicPayload::Stored {
             representation: DynamicRepresentation::from_value(&value),

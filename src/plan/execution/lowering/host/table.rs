@@ -22,7 +22,7 @@ pub(super) struct HostFunctionRegistry<Profile: HostProfile> {
 }
 
 struct RegisteredHostFunction<Profile: HostProfile> {
-    constructions: crate::host::HostFunctionConstructions,
+    constructions: crate::host::RegisteredHostConstructions,
     implementation: Arc<RegisteredHostFunctionImplementation<Profile>>,
 }
 

@@ -9,9 +9,9 @@ use super::storage::{
 };
 use crate::gleam_stdlib::{Dynamic, GleamStdlibHostProfile};
 use crate::{
-    HostCall, HostCallCompletion, HostCallError, HostCallable, HostExternal, HostExternalBinding,
-    HostExternalPayloadBuilder, HostExternalPayloadView, HostProfile, HostProvider, HostType,
-    HostTypeAt, HostTypeSequence, HostValue,
+    HostCall, HostCallCompletion, HostCallError, HostCallable, HostConstruction, HostExternal,
+    HostExternalBinding, HostExternalPayloadBuilder, HostExternalPayloadView, HostProfile,
+    HostProvider, HostType, HostTypeAt, HostTypeSequence, HostValue,
 };
 use num_bigint::BigInt;
 use std::collections::HashMap;
@@ -71,6 +71,7 @@ where
 
 pub(crate) fn create_dynamic_dict<'call, Profile, Provider, Return>(
     call: &mut HostCall<'call, Profile, Provider, Return>,
+    construction: HostConstruction<'call, super::schema::DictOf<Dynamic, Dynamic>>,
     entries: impl IntoIterator<Item = (HostExternal<'call, Dynamic>, HostExternal<'call, Dynamic>)>,
 ) -> HostExternal<'call, super::schema::DictOf<Dynamic, Dynamic>>
 where
@@ -79,11 +80,12 @@ where
         HostExternalBinding<Profile, super::schema::DictSchema, Storage = DictExternalStorage>,
     Return: HostType,
 {
-    create_dict(call, entries)
+    create_dict(call, construction, entries)
 }
 
 fn create_dict<'call, Profile, Provider, Return, KeyType, ValueType>(
     call: &mut HostCall<'call, Profile, Provider, Return>,
+    construction: HostConstruction<'call, super::schema::DictOf<KeyType, ValueType>>,
     entries: impl IntoIterator<Item = (KeyType::Value<'call>, ValueType::Value<'call>)>,
 ) -> HostExternal<'call, super::schema::DictOf<KeyType, ValueType>>
 where
@@ -102,7 +104,7 @@ where
         });
     }
 
-    call.create_external_value_with(move |builder| {
+    call.construct_external_with(construction, move |builder| {
         let len = buckets.values().map(Vec::len).sum();
         let buckets = buckets
             .into_iter()

@@ -14,12 +14,13 @@ pub use frontend::{
 };
 pub use host::{
     FallibleHostFunction, HostCall, HostCallCompletion, HostCallError, HostCallable,
-    HostComponentProfile, HostCustom, HostCustomConstructor, HostCustomConstructorAt,
-    HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
-    HostCustomConstructorSchema, HostCustomField, HostCustomFieldList, HostCustomFieldListEnd,
-    HostCustomFieldSchema, HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType,
-    HostCustomTypeArgument, HostCustomTypeSchema, HostExternal, HostExternalBinding,
-    HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalPayloadBuilder,
+    HostComponentProfile, HostConstruction, HostConstructions, HostCustom, HostCustomConstructor,
+    HostCustomConstructorAt, HostCustomConstructorDefinition, HostCustomConstructorList,
+    HostCustomConstructorListEnd, HostCustomConstructorSchema, HostCustomField,
+    HostCustomFieldList, HostCustomFieldListEnd, HostCustomFieldSchema, HostCustomIndex0,
+    HostCustomIndexNext, HostCustomSchema, HostCustomType, HostCustomTypeArgument,
+    HostCustomTypeSchema, HostExternal, HostExternalBinding, HostExternalEquality,
+    HostExternalHashing, HostExternalInspection, HostExternalPayloadBuilder,
     HostExternalPayloadView, HostExternalSchema, HostExternalStorage, HostExternalStore,
     HostExternalType, HostExternalTypeSchema, HostFailure, HostFunction, HostFunctionSchema,
     HostFunctionType, HostList, HostListType, HostModule, HostProfile, HostProvider,
@@ -28,7 +29,8 @@ pub use host::{
     HostProviderSet, HostRegistrationError, HostSchemaType, HostStoredDynamic, HostStoredType,
     HostStoredValue, HostTuple, HostTupleType, HostType, HostTypeAt, HostTypeIndex0,
     HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter, HostTypeSequence,
-    HostValue, ScopedDivergingHostFunction, ScopedHostFunction, StatelessHostProfile,
+    HostValue, ScopedConstructingHostFunction, ScopedDivergingHostFunction, ScopedHostFunction,
+    StatelessHostProfile,
 };
 pub use plan::execution::{
     ExecutionPlan, ExecutionPlanExplanation, HostSpecializationError,

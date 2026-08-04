@@ -38,7 +38,7 @@ pub(super) fn seal_callbacks(
 
 pub(super) fn seal_host_types(
     template: &HostFunctionTemplate,
-    constructions: &crate::host::HostFunctionConstructions,
+    constructions: &crate::host::RegisteredHostConstructions,
     key: &SpecializationKey,
     context: &mut LoweringContext,
 ) -> HostConstructionTypes {
@@ -418,12 +418,13 @@ mod tests {
     use super::{CallbackSearch, identity, schema_descriptor};
     use crate::host::test::StatelessTestProvider;
     use crate::host::{
-        HostCustomConstructorAt, HostCustomConstructorDefinition, HostCustomConstructorList,
-        HostCustomConstructorListEnd, HostCustomConstructorSchema, HostCustomField,
-        HostCustomFieldList, HostCustomFieldListEnd, HostCustomFieldSchema, HostCustomIndex0,
-        HostCustomSchema, HostCustomType, HostCustomTypeSchema, HostExternalTypeSchema,
-        HostFunctionType, HostList, HostListType, HostSchemaType, HostTypeDescriptor, HostTypeList,
-        HostTypeListEnd, HostTypeParameter, StatelessHostProfile,
+        HostConstructions, HostCustomConstructorAt, HostCustomConstructorDefinition,
+        HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomConstructorSchema,
+        HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomFieldSchema,
+        HostCustomIndex0, HostCustomSchema, HostCustomType, HostCustomTypeSchema,
+        HostExternalTypeSchema, HostFunctionType, HostList, HostListType, HostSchemaType,
+        HostTypeDescriptor, HostTypeIndex0, HostTypeList, HostTypeListEnd, HostTypeParameter,
+        StatelessHostProfile,
     };
     use crate::plan::TypeParameterId;
     use crate::plan::execution::lowering::specialization::{
@@ -799,16 +800,25 @@ pub fn main() {
 
     #[test]
     fn seals_recursive_host_construction_types_once() {
-        fn output(
-            mut call: HostCall<'_, StatelessHostProfile, StatelessTestProvider, RecursiveOutput>,
-        ) -> Result<HostCallCompletion<'_, RecursiveOutput>, HostCallError> {
-            let children = call.create_list::<RecursiveOutput>([]);
+        type Constructions = HostTypeList<HostListType<RecursiveOutput>, HostTypeListEnd>;
+
+        fn output<'call>(
+            mut call: HostCall<'call, StatelessHostProfile, StatelessTestProvider, RecursiveOutput>,
+            constructions: HostConstructions<'call, Constructions>,
+        ) -> Result<HostCallCompletion<'call, RecursiveOutput>, HostCallError> {
+            let children = call.construct_list(constructions.at::<HostTypeIndex0>(), []);
             Ok(call.return_custom::<RecursiveOutputConstructor>((children, ())))
         }
 
         let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
             .expect("provider module should be valid")
-            .with_scoped_function::<StatelessTestProvider, (), RecursiveOutput, _>("output", output)
+            .with_scoped_function_and_constructions::<
+                StatelessTestProvider,
+                (),
+                RecursiveOutput,
+                Constructions,
+                _,
+            >("output", output)
             .expect("recursive custom return provider should be valid");
         let source = r#"
 pub type RecursiveOutput {

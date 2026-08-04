@@ -1,7 +1,7 @@
 use crate::{
     HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
     HostCustomFieldListEnd, HostCustomSchema, HostCustomType, HostExternalSchema, HostExternalType,
-    HostListType,
+    HostListType, HostTypeIndex0, HostTypeList, HostTypeListEnd,
 };
 use ecow::EcoString;
 
@@ -15,6 +15,8 @@ pub(crate) type StringTree = HostExternalType<StringTreeSchema>;
 pub(super) type StringTreeList = HostListType<StringTree>;
 pub(super) type StringList = HostListType<EcoString>;
 pub(super) type Direction = HostCustomType<DirectionSchema>;
+pub(super) type SplitConstructions = HostTypeList<StringTree, HostTypeListEnd>;
+pub(super) type SplitStringTreeIndex = HostTypeIndex0;
 
 impl HostExternalSchema for StringTreeSchema {
     const PACKAGE: &'static str = "gleam_stdlib";

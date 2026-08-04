@@ -1,8 +1,8 @@
 use super::{
     FallibleHostFunction, HostExternalBinding, HostExternalSchema, HostExternalTypeSchema,
     HostFunction, HostFunctionDefinition, HostFunctionImplementation, HostFunctionSchema,
-    HostProfile, HostProvider, HostRegistrationError, ScopedDivergingHostFunction,
-    ScopedHostFunction, StatelessHostProfile,
+    HostProfile, HostProvider, HostRegistrationError, ScopedConstructingHostFunction,
+    ScopedDivergingHostFunction, ScopedHostFunction, StatelessHostProfile,
 };
 use ecow::EcoString;
 use gleam_core::analyse::name::check_name_case;
@@ -49,7 +49,7 @@ pub(crate) struct RegisteredHostProviderModule {
 
 pub(crate) struct RegisteredHostFunction {
     schema: HostFunctionSchema,
-    constructions: super::HostFunctionConstructions,
+    constructions: super::RegisteredHostConstructions,
     implementation: RegisteredHostImplementationId,
 }
 
@@ -221,7 +221,8 @@ impl<Profile: HostProfile> HostProviderModule<Profile> {
             .map(|()| self)
     }
 
-    pub(crate) fn with_scoped_function_and_constructions<
+    /// Registers a scoped callback and the exact intermediate types it may construct.
+    pub fn with_scoped_function_and_constructions<
         Provider,
         Arguments,
         Return,
@@ -235,7 +236,8 @@ impl<Profile: HostProfile> HostProviderModule<Profile> {
     where
         Provider: HostProvider<Profile>,
         Constructions: crate::host::HostTypeSequence,
-        Function: ScopedHostFunction<Profile, Provider, Arguments, Return>,
+        Function:
+            ScopedConstructingHostFunction<Profile, Provider, Arguments, Return, Constructions>,
     {
         self.functions
             .register(&self.identity.module, name.into(), |name| {
@@ -554,7 +556,7 @@ impl RegisteredHostFunction {
         self,
     ) -> (
         HostFunctionSchema,
-        super::HostFunctionConstructions,
+        super::RegisteredHostConstructions,
         RegisteredHostImplementationId,
     ) {
         (self.schema, self.constructions, self.implementation)
@@ -855,6 +857,7 @@ mod tests {
     #[test]
     fn external_storage_protocol_projects_payload_semantics() {
         let stores = ExternalTestStores::default();
+        let mut state = ExternalTestRunState::default();
         let equal =
             |_: &crate::runtime::StoredRuntimeValue, _: &crate::runtime::StoredRuntimeValue| false;
         let source_hash = |_: &crate::runtime::StoredRuntimeValue| 0;
@@ -866,6 +869,10 @@ mod tests {
             BigInt::from(7),
         ));
 
+        assert!(std::ptr::eq(
+            <Counter as HostProvider<ExternalTestProfile>>::project(&mut state),
+            &state.provider,
+        ));
         assert_eq!(inspection.inspect_stored_value(&stored), "");
         assert!(std::ptr::eq(
             <CounterStorage as HostExternalStorage<ExternalTestProfile, CounterSchema>>::store(

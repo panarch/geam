@@ -2,7 +2,7 @@ use super::super::result::{GleamError, GleamOk, GleamResult};
 use crate::{
     HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
     HostCustomFieldListEnd, HostCustomSchema, HostCustomType, HostListType, HostTupleType,
-    HostTypeList, HostTypeListEnd, HostTypeParameter,
+    HostTypeIndex0, HostTypeList, HostTypeListEnd, HostTypeParameter,
 };
 use ecow::EcoString;
 
@@ -21,6 +21,8 @@ pub(super) type StringPair = HostTupleType<StringPairElements>;
 pub(super) type PopResult = GleamResult<StringPair, ()>;
 pub(super) type PopOk = GleamOk<StringPair, ()>;
 pub(super) type PopError = GleamError<StringPair, ()>;
+pub(super) type PopConstructions = HostTypeList<StringPair, HostTypeListEnd>;
+pub(super) type PopPairIndex = HostTypeIndex0;
 pub(super) type InspectValue = HostTypeParameter<0>;
 
 impl HostCustomConstructorDefinition for LeadingDefinition {
