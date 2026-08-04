@@ -138,6 +138,20 @@ random operations. Construction requires either a seed or fallible system
 entropy; the runtime provides no hidden seed, global generator, or `Default`
 state.
 
+### Time Sources
+
+The separate `gleam_time` provider projects a caller-owned `TimeSource` from
+`GleamTimeRunState`. Its system time is a non-monotonic wall clock: Geam does
+not cache it, force forward progress, or substitute a hidden clock. The local
+offset operation reports the system's current UTC offset at the time of the
+call. Discovery and clock failures remain `HostFailure`s; they do not silently
+fall back to UTC.
+
+This boundary intentionally provides neither historical timezone lookup nor a
+monotonic clock, timer, sleep, or async capability. Duration arithmetic,
+calendar conversion, and RFC3339 behavior stay in the unchanged package source
+and do not become runtime semantics.
+
 ### External Values And Retained Storage
 
 A source-backed provider can register a constructorless external type with

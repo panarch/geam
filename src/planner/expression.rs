@@ -225,12 +225,14 @@ pub(super) fn plan_expr_with_expected_source_stop_shape(
     }
 }
 
+pub(super) use call::UseAssignmentNormalization;
+
 pub(super) fn plan_use_call(
     call: TypedExpr,
-    use_assignment_count: usize,
+    use_assignments: Vec<UseAssignmentNormalization>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    call::plan_use_call(call, use_assignment_count, context)
+    call::plan_use_call(call, use_assignments, context)
 }
 
 fn plan_todo_expr(

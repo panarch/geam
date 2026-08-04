@@ -33,12 +33,33 @@ pub(super) fn plan_call(
     plan_call_expression(location, type_, fun, arguments, context, None)
 }
 
+pub(in crate::planner) struct UseAssignmentNormalization {
+    expected: gleam_core::ast::TypedPattern,
+    normalized: gleam_core::ast::TypedPattern,
+}
+
+impl UseAssignmentNormalization {
+    pub(in crate::planner) fn new(
+        expected: gleam_core::ast::TypedPattern,
+        normalized: gleam_core::ast::TypedPattern,
+    ) -> Self {
+        Self {
+            expected,
+            normalized,
+        }
+    }
+
+    fn into_parts(self) -> (gleam_core::ast::TypedPattern, gleam_core::ast::TypedPattern) {
+        (self.expected, self.normalized)
+    }
+}
+
 pub(super) fn plan_use_call(
     call: TypedExpr,
-    use_assignment_count: usize,
+    use_assignments: Vec<UseAssignmentNormalization>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    implicit::plan_use_call(call, use_assignment_count, context)
+    implicit::plan_use_call(call, use_assignments, context)
 }
 
 pub(super) fn plan_pipeline_direct_call(
