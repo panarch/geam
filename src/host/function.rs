@@ -302,6 +302,18 @@ impl RegisteredHostConstructions {
     pub(crate) fn external_schemas(&self) -> &[crate::host::HostExternalTypeSchema] {
         &self.external_schemas
     }
+
+    fn unbound_type_parameters(&self, parameter_count: usize) -> Box<[usize]> {
+        let mut parameters = BTreeSet::new();
+        for type_ in &self.types {
+            type_.collect_type_parameters(&mut parameters);
+        }
+        parameters
+            .into_iter()
+            .filter(|parameter| *parameter >= parameter_count)
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
+    }
 }
 
 impl fmt::Debug for HostFunctionSchema {
@@ -441,7 +453,17 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
             return_: registration.return_type,
             custom_schemas: registration.custom_schemas,
         };
-        HostFunctionSchema::from_registration(name, schema).map(|schema| Self {
+        let schema = HostFunctionSchema::from_registration(name, schema)?;
+        let unbound = constructions.unbound_type_parameters(schema.scheme().parameters().len());
+        if !unbound.is_empty() {
+            return Err(
+                crate::HostRegistrationError::UnboundConstructionTypeParameters {
+                    function: schema.name().clone(),
+                    parameters: unbound,
+                },
+            );
+        }
+        Ok(Self {
             schema,
             constructions,
             implementation: registration.implementation,
@@ -473,8 +495,8 @@ mod tests {
         HostCall, HostCallCompletion, HostCallError, HostCustomConstructorSchema,
         HostCustomFieldSchema, HostCustomTypeSchema, HostExternalTypeSchema, HostListType,
         HostProvider, HostRegistrationError, HostSchemaType, HostScopedValue, HostTypeDescriptor,
-        HostTypeIndex0, HostTypeList, HostTypeListEnd, HostValueFamily,
-        expect_value_implementation,
+        HostTypeIndex0, HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue,
+        HostValueFamily, expect_value_implementation,
     };
     use crate::plan::ValueType;
     use ecow::EcoString;
@@ -503,6 +525,24 @@ mod tests {
         constructions: crate::HostConstructions<'call, ConstructionTypes>,
     ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
         let _ = constructions.at::<HostTypeIndex0>();
+        Ok(call.return_value(true))
+    }
+
+    type GenericConstructionTypes =
+        HostTypeList<HostListType<HostTypeParameter<0>>, HostTypeListEnd>;
+
+    fn ready_with_bound_construction<'call>(
+        call: HostCall<'call, TestHostProfile, ConstructionProvider, bool>,
+        _constructions: crate::HostConstructions<'call, GenericConstructionTypes>,
+        _value: HostValue<'call, HostTypeParameter<0>>,
+    ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
+        Ok(call.return_value(true))
+    }
+
+    fn ready_with_unbound_construction<'call>(
+        call: HostCall<'call, TestHostProfile, ConstructionProvider, bool>,
+        _constructions: crate::HostConstructions<'call, GenericConstructionTypes>,
+    ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
         Ok(call.return_value(true))
     }
 
@@ -676,6 +716,40 @@ mod tests {
             );
             assert_eq!(runtime.completed(), Some(&HostScopedValue::Bool(true)));
         }
+    }
+
+    #[test]
+    fn construction_type_parameters_must_be_bound_by_the_function_signature() {
+        let bound = HostFunctionDefinition::new_scoped_with_constructions::<
+            ConstructionProvider,
+            (HostTypeParameter<0>,),
+            bool,
+            GenericConstructionTypes,
+            _,
+        >("bound".into(), ready_with_bound_construction)
+        .expect("signature-bound construction parameter should register");
+        assert_eq!(bound.schema().scheme(), &crate::plan::TypeScheme::new(1));
+
+        let error = HostFunctionDefinition::new_scoped_with_constructions::<
+            ConstructionProvider,
+            (),
+            bool,
+            GenericConstructionTypes,
+            _,
+        >("unbound".into(), ready_with_unbound_construction)
+        .err()
+        .expect("construction-only type parameter should be rejected");
+        assert_eq!(
+            error,
+            HostRegistrationError::UnboundConstructionTypeParameters {
+                function: "unbound".into(),
+                parameters: vec![0].into_boxed_slice(),
+            },
+        );
+        assert_eq!(
+            error.to_string(),
+            "host function unbound registers construction type parameter indices [0] that do not occur in its signature",
+        );
     }
 
     #[test]

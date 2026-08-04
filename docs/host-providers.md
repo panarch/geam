@@ -168,7 +168,8 @@ the exact registered list type, which can be passed to
 `HostCall::construct_list`. The token cannot be forged, selected at the wrong
 type or index, or retained beyond the active call. Registration metadata and
 the callback capability come from the same type list, so runtime does not need
-signature or permission checks.
+signature or permission checks. Generic construction types may refer only to
+type parameters already bound by the function signature.
 
 ## Future CLI Boundary
 

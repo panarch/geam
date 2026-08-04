@@ -247,6 +247,8 @@ Intermediate compound construction must be declared by the same sealed
 registration that creates its callback adapter. Give the callback exact typed
 tokens for those registered positions; do not expose broad construction
 helpers or defer construction permission to runtime type or arity checks.
+Construction type parameters must already be bound by the public function
+signature.
 
 Keep external storage distinct from ordinary custom values and provider run
 state. Canonical plans may retain nominal external identity and typed storage
