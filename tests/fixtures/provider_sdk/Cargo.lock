@@ -985,7 +985,7 @@ dependencies = [
 
 [[package]]
 name = "geam"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64 0.22.1",
  "bitvec",
@@ -1010,9 +1010,9 @@ dependencies = [
 
 [[package]]
 name = "geam-gleam-core"
-version = "1.18.1-geam.1"
+version = "1.18.1-geam.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd35326343c72724b8070f856a09ee1ea28ac781df6e9499dd6585e1749f5162"
+checksum = "cd5b88b6c9781859113bda2bbfe191c8fd2159affb21efdc7b5f074368dc9a0c"
 dependencies = [
  "age",
  "askama",
@@ -1067,9 +1067,9 @@ dependencies = [
 
 [[package]]
 name = "geam-gleam-erlang-generation"
-version = "1.18.1-geam.1"
+version = "1.18.1-geam.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7666b902941502bb11a47097b193746d2059f68b2f021fd299baf122bfa2171b"
+checksum = "01a90ab8770e7a08091f45ed1876ebcbb166ffde47b5e58349e2afb5d4deb056"
 dependencies = [
  "ecow",
  "geam-gleam-erlang-term-format",
@@ -1081,9 +1081,9 @@ dependencies = [
 
 [[package]]
 name = "geam-gleam-erlang-term-format"
-version = "1.18.1-geam.1"
+version = "1.18.1-geam.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15c3f64360516f3bf999ac12631c345d7779f45984b334917d34625c8675881b"
+checksum = "3d92b21dc62910f10d818b611e6d9832034ace2b2f133ac494ee37b29334df9c"
 dependencies = [
  "num-bigint",
  "num-traits",
@@ -1091,9 +1091,9 @@ dependencies = [
 
 [[package]]
 name = "geam-gleam-hexpm"
-version = "1.18.1-geam.1"
+version = "1.18.1-geam.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d34c3fdb1c94e1226671c20c64723a363db5b69d54a8881a43f67ebb70c34c72"
+checksum = "37cfd616f9fcf56d9f8f79688df79108af1da14d243c7258a3d6ab9429ef7cc4"
 dependencies = [
  "base16",
  "bytes",
@@ -1116,9 +1116,9 @@ dependencies = [
 
 [[package]]
 name = "geam-gleam-pretty-arena"
-version = "1.18.1-geam.1"
+version = "1.18.1-geam.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b97f422f4e6812310550a53063f741cf8f480d9ff9d626b871521ed0cf61cb8"
+checksum = "b704b2930fd62e13e41294862decd0c177c435369920c215db15d8fa7540e3ab"
 dependencies = [
  "ecow",
  "im",

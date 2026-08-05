@@ -1,6 +1,6 @@
 [package]
 name = "geam"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.96"
 description = "Experimental Rust-embedded execution runtime for typed Gleam programs"
@@ -25,7 +25,7 @@ camino = "1"
 # Keep this aligned with the Gleam v1.18.1 dependency graph. geam-gleam-core
 # does not compile against ecow 0.3.0.
 ecow = "=0.2.6"
-gleam-core = { package = "geam-gleam-core", version = "=1.18.1-geam.1" }
+gleam-core = { package = "geam-gleam-core", version = "=1.18.1-geam.2" }
 half = { version = "2.7.1", default-features = false }
 hex = "0.4"
 im = "15"
