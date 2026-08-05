@@ -1302,7 +1302,7 @@ gleam = ">= 99.0.0"
 
         assert_eq!(
             error.to_string(),
-            "package application is incompatible with the embedded Gleam compiler: The package application requires a Gleam version satisfying >=99.0.0 and you are using v1.17.0",
+            "package application is incompatible with the embedded Gleam compiler: The package application requires a Gleam version satisfying >=99.0.0 and you are using v1.18.1",
         );
     }
 

@@ -155,7 +155,7 @@ re-entry, and sealing rules.
 
 ## Upstream
 
-Current Gleam compiler baseline: `v1.17.0`.
+Current Gleam compiler baseline: `v1.18.1`.
 
 Current Gleam stdlib integration baseline: `gleam_stdlib` `v1.0.3`.
 

@@ -11,9 +11,9 @@ Geam's compiler boundary reference is:
 
 ```text
 Repository: https://github.com/gleam-lang/gleam
-Release:    v1.17.0
-Commit:     afc1b7d956b433e638d52dbd06470f53a0b26f6a
-Published:  2026-06-02
+Release:    v1.18.1
+Commit:     4a83802ca33a8a96227a1b332768725f232f9779
+Published:  2026-08-01
 ```
 
 The baseline is release-based rather than `main`-based so typed AST and
@@ -28,7 +28,7 @@ Release:     v1.0.3
 ```
 
 Geam does not bundle or patch that source. A dedicated integration test uses
-Gleam CLI `v1.17.0` to download the locked package, then executes selected
+Gleam CLI `v1.18.1` to download the locked package, then executes selected
 official modules through Geam's resolved-project pipelines. Provider-free
 modules use the plain pipeline, while modules whose selected closure contains
 externals use the hosted pipeline with the explicit Rust provider bundle. Each
@@ -415,7 +415,7 @@ milestone:
 
 ## Current Source Boundary
 
-Source acceptance follows Gleam `v1.17.0` parser and analyse rules. Geam's
+Source acceptance follows Gleam `v1.18.1` parser and analyse rules. Geam's
 smaller execution profile is enforced by typed-AST planning, not by forking
 Gleam's parser or type inferencer.
 

@@ -1318,6 +1318,7 @@ pub fn main() {
                 module: None,
                 name: "Broken".into(),
                 arguments: None,
+                arguments_start_position: 0,
                 type_: type_::int(),
                 field_map: Inferred::Unknown,
                 record_constructor: None,
@@ -1330,6 +1331,7 @@ pub fn main() {
                 module: None,
                 name: "Broken".into(),
                 arguments: None,
+                arguments_start_position: 0,
                 type_: type_::int(),
                 field_map: Inferred::Unknown,
                 record_constructor: Some(Box::new(ValueConstructor::local_variable(
@@ -1365,6 +1367,7 @@ pub fn main() {
                 module: None,
                 name: "External".into(),
                 arguments: None,
+                arguments_start_position: 0,
                 type_: type_::int(),
                 field_map: Inferred::Unknown,
                 record_constructor: Some(Box::new(record_constructor(
@@ -2026,6 +2029,7 @@ pub fn main() {
             module: None,
             name: "Ok".into(),
             arguments,
+            arguments_start_position: 0,
             type_,
             field_map: Inferred::Unknown,
             record_constructor: Some(Box::new(constructor)),
