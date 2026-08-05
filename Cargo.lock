@@ -768,6 +768,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
+name = "erlang-generation"
+version = "1.0.0"
+source = "git+https://github.com/gleam-lang/gleam?rev=4a83802ca33a8a96227a1b332768725f232f9779#4a83802ca33a8a96227a1b332768725f232f9779"
+dependencies = [
+ "ecow",
+ "erlang-term-format",
+ "itertools",
+ "num-bigint",
+ "num-traits",
+ "regex",
+]
+
+[[package]]
+name = "erlang-term-format"
+version = "1.0.0"
+source = "git+https://github.com/gleam-lang/gleam?rev=4a83802ca33a8a96227a1b332768725f232f9779#4a83802ca33a8a96227a1b332768725f232f9779"
+dependencies = [
+ "num-bigint",
+ "num-traits",
+]
+
+[[package]]
 name = "errno"
 version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1067,8 +1089,8 @@ dependencies = [
 
 [[package]]
 name = "gleam-core"
-version = "1.17.0"
-source = "git+https://github.com/gleam-lang/gleam?rev=afc1b7d956b433e638d52dbd06470f53a0b26f6a#afc1b7d956b433e638d52dbd06470f53a0b26f6a"
+version = "1.18.1"
+source = "git+https://github.com/gleam-lang/gleam?rev=4a83802ca33a8a96227a1b332768725f232f9779#4a83802ca33a8a96227a1b332768725f232f9779"
 dependencies = [
  "age",
  "askama",
@@ -1083,6 +1105,7 @@ dependencies = [
  "debug-ignore",
  "dirs-next",
  "ecow",
+ "erlang-generation",
  "flate2",
  "futures",
  "gen-lsp-types",
@@ -1098,6 +1121,7 @@ dependencies = [
  "num-traits",
  "pathdiff",
  "petgraph",
+ "pretty-arena",
  "pubgrub",
  "pulldown-cmark",
  "radix_trie",
@@ -1179,8 +1203,8 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "hexpm"
-version = "1.17.0"
-source = "git+https://github.com/gleam-lang/gleam?rev=afc1b7d956b433e638d52dbd06470f53a0b26f6a#afc1b7d956b433e638d52dbd06470f53a0b26f6a"
+version = "1.18.1"
+source = "git+https://github.com/gleam-lang/gleam?rev=4a83802ca33a8a96227a1b332768725f232f9779#4a83802ca33a8a96227a1b332768725f232f9779"
 dependencies = [
  "base16",
  "bytes",
@@ -1960,6 +1984,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9"
 dependencies = [
  "zerocopy",
+]
+
+[[package]]
+name = "pretty-arena"
+version = "1.0.0"
+source = "git+https://github.com/gleam-lang/gleam?rev=4a83802ca33a8a96227a1b332768725f232f9779#4a83802ca33a8a96227a1b332768725f232f9779"
+dependencies = [
+ "ecow",
+ "im",
+ "num-bigint",
+ "typed-arena",
+ "unicode-segmentation",
 ]
 
 [[package]]
@@ -2886,6 +2922,12 @@ checksum = "cb30dbbd9036155e74adad6812e9898d03ec374946234fbcebd5dfc7b9187b90"
 dependencies = [
  "rustc-hash 2.1.2",
 ]
+
+[[package]]
+name = "typed-arena"
+version = "2.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6af6ae20167a9ece4bcb41af5b80f8a1f1df981f6391189ce00fd257af04126a"
 
 [[package]]
 name = "typenum"

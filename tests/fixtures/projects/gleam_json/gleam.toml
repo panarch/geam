@@ -1,6 +1,6 @@
 name = "geam_json_test"
 version = "1.0.0"
-gleam = ">= 1.17.0"
+gleam = ">= 1.18.1"
 
 [dependencies]
 gleam_json = ">= 3.1.0 and < 3.1.1"

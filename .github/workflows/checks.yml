@@ -89,7 +89,7 @@ jobs:
         uses: erlef/setup-beam@v1
         with:
           otp-version: "29"
-          gleam-version: "1.17.0"
+          gleam-version: "1.18.1"
           rebar3-version: "3"
 
       - name: Install Rust toolchain
@@ -120,7 +120,7 @@ jobs:
         uses: erlef/setup-beam@v1
         with:
           otp-version: "29"
-          gleam-version: "1.17.0"
+          gleam-version: "1.18.1"
           rebar3-version: "3"
 
       - name: Install Rust toolchain
@@ -151,7 +151,7 @@ jobs:
         uses: erlef/setup-beam@v1
         with:
           otp-version: "29"
-          gleam-version: "1.17.0"
+          gleam-version: "1.18.1"
           rebar3-version: "3"
 
       - name: Install Rust toolchain
@@ -182,7 +182,7 @@ jobs:
         uses: erlef/setup-beam@v1
         with:
           otp-version: "29"
-          gleam-version: "1.17.0"
+          gleam-version: "1.18.1"
           rebar3-version: "3"
 
       - name: Install Rust toolchain

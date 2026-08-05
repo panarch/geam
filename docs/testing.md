@@ -65,7 +65,7 @@ cd ../../../..
 cargo test --test gleam_stdlib -- --ignored
 ```
 
-CI prepares this fixture with Gleam `v1.17.0`. Provider-free roots run through
+CI prepares this fixture with Gleam `v1.18.1`. Provider-free roots run through
 `compile_typed_project -> plan_program -> ExecutionPlan::from_module_plan ->
 run_main`; roots whose selected closure uses registered externals run through
 `compile_typed_host_project -> plan_host_program ->
