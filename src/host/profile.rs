@@ -1,10 +1,10 @@
 use crate::host::{
-    HostCallArguments, HostCallCompletion, HostCustom, HostCustomArgumentSlot,
+    HostCallArguments, HostCallCompletion, HostConstruction, HostCustom, HostCustomArgumentSlot,
     HostCustomConstructor, HostCustomType, HostExternal, HostExternalArgumentSlot,
-    HostExternalPayloadBuilder, HostExternalPayloadView, HostExternalSchema, HostExternalStorage,
-    HostExternalType, HostFunctionArgumentSlot, HostList, HostListArgumentSlot, HostListType,
-    HostStoredValue, HostTuple, HostTupleArgumentSlot, HostTupleType, HostType, HostTypeSequence,
-    HostValue, HostValueArgumentSlot,
+    HostExternalBinding, HostExternalPayloadBuilder, HostExternalPayloadView, HostExternalSchema,
+    HostExternalStorage, HostExternalType, HostFunctionArgumentSlot, HostList,
+    HostListArgumentSlot, HostListType, HostStoredValue, HostTuple, HostTupleArgumentSlot,
+    HostTupleType, HostType, HostTypeSequence, HostValue, HostValueArgumentSlot,
 };
 use std::marker::PhantomData;
 
@@ -24,6 +24,14 @@ pub trait HostProvider<Profile: HostProfile>: Send + Sync + 'static {
 
     fn project(state: &mut Profile::RunState) -> &mut Self::State;
 }
+
+type BoundExternalStorage<Profile, Provider, Schema> =
+    <Provider as HostExternalBinding<Profile, Schema>>::Storage;
+type BoundExternalPayload<Profile, Provider, Schema> = <BoundExternalStorage<
+    Profile,
+    Provider,
+    Schema,
+> as HostExternalStorage<Profile, Schema>>::Payload;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct StatelessHostProfile;
@@ -144,8 +152,10 @@ where
             .map(|token| crate::host::type_::from_token::<Item, Profile>(self.runtime, token))
     }
 
-    pub(crate) fn create_list<Item: HostType>(
+    /// Constructs a list authorized by one registered construction token.
+    pub fn construct_list<Item: HostType>(
         &mut self,
+        _construction: HostConstruction<'call, HostListType<Item>>,
         values: impl IntoIterator<Item = Item::Value<'call>>,
     ) -> HostList<'call, Item> {
         let values = values
@@ -172,8 +182,10 @@ where
         crate::host::type_::from_tokens::<Elements, Profile>(self.runtime, &values)
     }
 
-    pub(crate) fn create_tuple<Elements: HostTypeSequence>(
+    /// Constructs a tuple authorized by one registered construction token.
+    pub fn construct_tuple<Elements: HostTypeSequence>(
         &mut self,
+        _construction: HostConstruction<'call, HostTupleType<Elements>>,
         values: Elements::Values<'call>,
     ) -> HostTuple<'call, Elements> {
         let mut output = Vec::new();
@@ -216,8 +228,10 @@ where
         crate::host::type_::from_tokens::<Constructor::Fields, Profile>(self.runtime, &fields)
     }
 
-    pub(crate) fn create_custom<Constructor>(
+    /// Constructs an ordinary custom value authorized by one registered type token.
+    pub fn construct_custom<Constructor>(
         &mut self,
+        _construction: HostConstruction<'call, Constructor::Custom>,
         fields: <Constructor::Fields as HostTypeSequence>::Values<'call>,
     ) -> HostCustom<'call, Constructor::Custom>
     where
@@ -238,14 +252,19 @@ where
     pub fn external_payload<Schema, Arguments>(
         &self,
         value: HostExternal<'call, HostExternalType<Schema, Arguments>>,
-    ) -> HostExternalPayloadView<'call, <Profile as HostExternalStorage<Schema>>::Payload, Arguments>
+    ) -> HostExternalPayloadView<'call, BoundExternalPayload<Profile, Provider, Schema>, Arguments>
     where
         Schema: HostExternalSchema,
-        Profile: HostExternalStorage<Schema>,
+        Provider: HostExternalBinding<Profile, Schema>,
         Arguments: HostTypeSequence,
     {
         let lease = self.runtime.external_lease(value.token);
-        HostExternalPayloadView::new(Profile::store(self.runtime.external_stores()).view(&lease))
+        HostExternalPayloadView::new(
+            BoundExternalStorage::<Profile, Provider, Schema>::store(
+                self.runtime.external_stores(),
+            )
+            .view(&lease),
+        )
     }
 
     pub(crate) fn restore_stored<Type, Stored>(
@@ -335,15 +354,17 @@ where
         ))
     }
 
-    pub(crate) fn create_external_value_with<Schema, Arguments>(
+    /// Constructs an intermediate external payload that retains typed Gleam values.
+    pub fn construct_external_with<Schema, Arguments>(
         &mut self,
+        _construction: HostConstruction<'call, HostExternalType<Schema, Arguments>>,
         build: impl FnOnce(
             &mut HostExternalPayloadBuilder<'_, Profile, Arguments>,
-        ) -> <Profile as HostExternalStorage<Schema>>::Payload,
+        ) -> BoundExternalPayload<Profile, Provider, Schema>,
     ) -> HostExternal<'call, HostExternalType<Schema, Arguments>>
     where
         Schema: HostExternalSchema,
-        Profile: HostExternalStorage<Schema>,
+        Provider: HostExternalBinding<Profile, Schema>,
         Arguments: HostTypeSequence,
         HostExternalType<Schema, Arguments>: HostType,
     {
@@ -362,15 +383,15 @@ where
 impl<'call, Profile, Provider, Schema, Arguments>
     HostCall<'call, Profile, Provider, HostExternalType<Schema, Arguments>>
 where
-    Profile: HostProfile + HostExternalStorage<Schema>,
-    Provider: HostProvider<Profile>,
+    Profile: HostProfile,
+    Provider: HostExternalBinding<Profile, Schema>,
     Schema: HostExternalSchema,
     Arguments: HostTypeSequence,
     HostExternalType<Schema, Arguments>: HostType,
 {
     pub fn create_external(
         &mut self,
-        value: <Profile as HostExternalStorage<Schema>>::Payload,
+        value: BoundExternalPayload<Profile, Provider, Schema>,
     ) -> HostExternal<'call, HostExternalType<Schema, Arguments>> {
         self.seal_external_payload(value)
     }
@@ -380,14 +401,18 @@ where
         &mut self,
         build: impl FnOnce(
             &mut HostExternalPayloadBuilder<'_, Profile, Arguments>,
-        ) -> <Profile as HostExternalStorage<Schema>>::Payload,
+        ) -> BoundExternalPayload<Profile, Provider, Schema>,
     ) -> HostExternal<'call, HostExternalType<Schema, Arguments>> {
-        self.create_external_value_with(build)
+        let value = {
+            let mut builder = HostExternalPayloadBuilder::new(self.runtime);
+            build(&mut builder)
+        };
+        self.seal_external_payload(value)
     }
 
     fn seal_external_payload(
         &mut self,
-        value: <Profile as HostExternalStorage<Schema>>::Payload,
+        value: BoundExternalPayload<Profile, Provider, Schema>,
     ) -> HostExternal<'call, HostExternalType<Schema, Arguments>> {
         let lease = self.insert_external_payload::<Schema, Arguments>(value);
         HostExternal::new(self.runtime.build_external(
@@ -403,43 +428,55 @@ where
     Provider: HostProvider<Profile>,
     Return: HostType,
 {
-    fn insert_external_payload<Schema, Arguments>(
-        &self,
-        value: <Profile as HostExternalStorage<Schema>>::Payload,
-    ) -> crate::host::ExternalPayloadLease
+    /// Constructs an intermediate external payload authorized by one registered type token.
+    pub fn construct_external<Schema, Arguments>(
+        &mut self,
+        _construction: HostConstruction<'call, HostExternalType<Schema, Arguments>>,
+        value: BoundExternalPayload<Profile, Provider, Schema>,
+    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>>
     where
         Schema: HostExternalSchema,
-        Profile: HostExternalStorage<Schema>,
+        Provider: HostExternalBinding<Profile, Schema>,
         Arguments: HostTypeSequence,
         HostExternalType<Schema, Arguments>: HostType,
     {
-        Profile::store(self.runtime.external_stores()).insert(
-            value,
-            Profile::source_equal,
-            Profile::source_hash,
-            Profile::inspect,
-        )
+        self.seal_constructed_external(value)
     }
-}
 
-impl<'call, Profile, Provider, Schema, Arguments>
-    HostCall<'call, Profile, Provider, HostListType<HostExternalType<Schema, Arguments>>>
-where
-    Profile: HostProfile + HostExternalStorage<Schema>,
-    Provider: HostProvider<Profile>,
-    Schema: HostExternalSchema,
-    Arguments: HostTypeSequence,
-    HostExternalType<Schema, Arguments>: HostType,
-{
-    pub(crate) fn create_external_item(
+    fn seal_constructed_external<Schema, Arguments>(
         &mut self,
-        value: <Profile as HostExternalStorage<Schema>>::Payload,
-    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>> {
+        value: BoundExternalPayload<Profile, Provider, Schema>,
+    ) -> HostExternal<'call, HostExternalType<Schema, Arguments>>
+    where
+        Schema: HostExternalSchema,
+        Provider: HostExternalBinding<Profile, Schema>,
+        Arguments: HostTypeSequence,
+        HostExternalType<Schema, Arguments>: HostType,
+    {
         let lease = self.insert_external_payload::<Schema, Arguments>(value);
         HostExternal::new(self.runtime.build_external(
             &crate::host::HostTypeDescriptor::of::<HostExternalType<Schema, Arguments>>(),
             lease,
         ))
+    }
+
+    fn insert_external_payload<Schema, Arguments>(
+        &self,
+        value: BoundExternalPayload<Profile, Provider, Schema>,
+    ) -> crate::host::ExternalPayloadLease
+    where
+        Schema: HostExternalSchema,
+        Provider: HostExternalBinding<Profile, Schema>,
+        Arguments: HostTypeSequence,
+        HostExternalType<Schema, Arguments>: HostType,
+    {
+        BoundExternalStorage::<Profile, Provider, Schema>::store(self.runtime.external_stores())
+            .insert(
+                value,
+                BoundExternalStorage::<Profile, Provider, Schema>::source_equal,
+                BoundExternalStorage::<Profile, Provider, Schema>::source_hash,
+                BoundExternalStorage::<Profile, Provider, Schema>::inspect,
+            )
     }
 }
 
@@ -516,12 +553,13 @@ mod tests {
         StatelessTestProvider, TestHostCallRuntime, TestHostProfile, TestRunState,
     };
     use crate::host::{
-        HostCallable, HostCustom, HostCustomConstructorAt, HostCustomConstructorDefinition,
-        HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomConstructorSchema,
-        HostCustomFieldListEnd, HostCustomFieldSchema, HostCustomIndex0, HostCustomIndexNext,
-        HostCustomSchema, HostCustomToken, HostCustomType, HostCustomTypeSchema, HostFunctionToken,
-        HostFunctionType, HostList, HostListToken, HostListType, HostScopedValue, HostTuple,
-        HostTupleToken, HostTupleType, HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue,
+        HostCallable, HostConstructions, HostCustom, HostCustomConstructorAt,
+        HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
+        HostCustomConstructorSchema, HostCustomFieldListEnd, HostCustomFieldSchema,
+        HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomToken, HostCustomType,
+        HostCustomTypeSchema, HostFunctionToken, HostFunctionType, HostList, HostListToken,
+        HostListType, HostScopedValue, HostTuple, HostTupleToken, HostTupleType, HostTypeIndex0,
+        HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue,
         HostValueFamily, HostValueToken, StatelessHostProfile,
     };
     use ecow::EcoString;
@@ -716,6 +754,10 @@ mod tests {
     fn host_call_builds_typed_compound_returns() {
         type List = HostListType<BigInt>;
         type Tuple = HostTupleType<HostTypeListEnd>;
+        type Constructions =
+            HostTypeList<List, HostTypeList<Tuple, HostTypeList<MarkerType, HostTypeListEnd>>>;
+        type TupleIndex = HostTypeIndexNext<HostTypeIndex0>;
+        type CustomIndex = HostTypeIndexNext<TupleIndex>;
 
         let mut state = TestRunState::default();
         let arguments = CallArguments::new(Vec::new(), Vec::new());
@@ -725,8 +767,14 @@ mod tests {
             .return_list([BigInt::from(1), BigInt::from(2)])
             .token;
         let mut call = HostCall::<TestHostProfile, Counter, Tuple>::new(&mut runtime);
-        let nested_tuple = call.create_tuple::<HostTypeListEnd>(());
+        let constructions = HostConstructions::<Constructions>::new();
+        let nested_list =
+            call.construct_list(constructions.at::<HostTypeIndex0>(), [BigInt::from(3)]);
+        let nested_tuple = call.construct_tuple(constructions.at::<TupleIndex>(), ());
+        let nested_custom = call.construct_custom::<Marker>(constructions.at::<CustomIndex>(), ());
+        assert_eq!(nested_list.token, HostListToken::Stored(0));
         assert_eq!(nested_tuple.token, HostTupleToken(0));
+        assert_eq!(nested_custom.token, HostCustomToken(0));
         let tuple = call.return_tuple(()).token;
         let custom = HostCall::<TestHostProfile, Counter, MarkerType>::new(&mut runtime)
             .return_custom::<Marker>(())

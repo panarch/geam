@@ -8,7 +8,8 @@ pub(super) use self::unicode::{
     from_utf_codepoints, pop_grapheme, unsafe_int_to_utf_codepoint, utf_codepoint_to_int,
 };
 
-use crate::HostProvider;
+use crate::gleam_stdlib::{StringTreeExternalStorage, StringTreeSchema};
+use crate::{HostExternalBinding, HostProvider};
 use ecow::EcoString;
 use num_bigint::BigInt;
 use std::marker::PhantomData;
@@ -24,6 +25,13 @@ where
     fn project(state: &mut Profile::RunState) -> &mut Self::State {
         state
     }
+}
+
+impl<Profile> HostExternalBinding<Profile, StringTreeSchema> for StringProvider<Profile>
+where
+    Profile: super::super::GleamStdlibHostProfile,
+{
+    type Storage = StringTreeExternalStorage;
 }
 
 pub(super) fn length(string: EcoString) -> BigInt {

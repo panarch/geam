@@ -1,12 +1,12 @@
 use ecow::EcoString;
 use geam::{
     ExecutionError, HostCall, HostCallCompletion, HostCallError, HostCallable, HostExternal,
-    HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalSchema,
-    HostExternalStorage, HostExternalStore, HostExternalType, HostFailure, HostFunctionType,
-    HostProfile, HostProvider, HostProviderModule, HostProviderSet, HostStoredType,
-    HostStoredValue, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
-    HostTypeParameter, HostValue, HostedExecution, ListValue, ModuleSource, PackageSource,
-    PanicKind, Value, compile_typed_host_program, plan_host_program,
+    HostExternalBinding, HostExternalEquality, HostExternalHashing, HostExternalInspection,
+    HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType, HostFailure,
+    HostFunctionType, HostProfile, HostProvider, HostProviderModule, HostProviderSet,
+    HostStoredType, HostStoredValue, HostTypeIndex0, HostTypeIndexNext, HostTypeList,
+    HostTypeListEnd, HostTypeParameter, HostValue, HostedExecution, ListValue, ModuleSource,
+    PackageSource, PanicKind, Value, compile_typed_host_program, plan_host_program,
 };
 use num_bigint::BigInt;
 use std::sync::Arc;
@@ -30,6 +30,9 @@ struct StoredMapSchema;
 struct StoredCallbackSchema;
 
 struct StoredProvider;
+
+struct StoredMapStorage;
+struct StoredCallbackStorage;
 
 type FirstParameter = HostTypeParameter<0>;
 type SecondParameter = HostTypeParameter<1>;
@@ -85,10 +88,10 @@ impl HostExternalSchema for StoredMapSchema {
     const PARAMETER_COUNT: usize = 2;
 }
 
-impl HostExternalStorage<StoredMapSchema> for StoredProfile {
+impl HostExternalStorage<StoredProfile, StoredMapSchema> for StoredMapStorage {
     type Payload = StoredMapPayload;
 
-    fn store(stores: &Self::ExternalStores) -> &HostExternalStore<Self::Payload> {
+    fn store(stores: &StoredStores) -> &HostExternalStore<Self::Payload> {
         &stores.maps
     }
 
@@ -123,10 +126,10 @@ impl HostExternalSchema for StoredCallbackSchema {
     const PARAMETER_COUNT: usize = 0;
 }
 
-impl HostExternalStorage<StoredCallbackSchema> for StoredProfile {
+impl HostExternalStorage<StoredProfile, StoredCallbackSchema> for StoredCallbackStorage {
     type Payload = StoredCallbackPayload;
 
-    fn store(stores: &Self::ExternalStores) -> &HostExternalStore<Self::Payload> {
+    fn store(stores: &StoredStores) -> &HostExternalStore<Self::Payload> {
         &stores.callbacks
     }
 
@@ -149,6 +152,14 @@ impl HostExternalStorage<StoredCallbackSchema> for StoredProfile {
         )
         .into()
     }
+}
+
+impl HostExternalBinding<StoredProfile, StoredMapSchema> for StoredProvider {
+    type Storage = StoredMapStorage;
+}
+
+impl HostExternalBinding<StoredProfile, StoredCallbackSchema> for StoredProvider {
+    type Storage = StoredCallbackStorage;
 }
 
 #[test]
@@ -187,7 +198,7 @@ fn retains_concrete_generic_keys_and_values() {
 
     let provider = HostProviderModule::<StoredProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<StoredMapSchema>()
+        .with_external_type::<StoredProvider, StoredMapSchema>()
         .expect("stored map type should be valid")
         .with_scoped_function::<StoredProvider, (FirstParameter, SecondParameter), StoreMap, _>(
             "store", store,
@@ -305,7 +316,7 @@ fn retains_nested_compounds_externals_and_function_identity() {
 
     let provider = HostProviderModule::<StoredProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<StoredMapSchema>()
+        .with_external_type::<StoredProvider, StoredMapSchema>()
         .expect("stored map type should be valid")
         .with_scoped_function::<StoredProvider, (FirstParameter, SecondParameter), StoreMap, _>(
             "store", store,
@@ -422,7 +433,7 @@ fn invokes_a_retained_callable_through_nested_host_reentry() {
 
     let provider = HostProviderModule::<StoredProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<StoredCallbackSchema>()
+        .with_external_type::<StoredProvider, StoredCallbackSchema>()
         .expect("stored callback type should be valid")
         .with_scoped_function::<StoredProvider, (IntFunction,), StoredCallback, _>(
             "store_callback",
@@ -512,7 +523,7 @@ fn retained_graph_outlives_run_state_and_hosted_execution() {
 
     let provider = HostProviderModule::<StoredProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<StoredMapSchema>()
+        .with_external_type::<StoredProvider, StoredMapSchema>()
         .expect("stored map type should be valid")
         .with_scoped_function::<StoredProvider, (FirstParameter, SecondParameter), StoreMap, _>(
             "store", store,
@@ -591,7 +602,7 @@ fn releases_a_retained_value_after_host_failure() {
 
     let provider = HostProviderModule::<StoredProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<StoredMapSchema>()
+        .with_external_type::<StoredProvider, StoredMapSchema>()
         .expect("stored map type should be valid")
         .with_scoped_function::<StoredProvider, (FirstParameter, SecondParameter), StoreMap, _>(
             "store", store,
@@ -659,7 +670,7 @@ fn releases_a_retained_value_after_source_panic() {
 
     let provider = HostProviderModule::<StoredProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<StoredMapSchema>()
+        .with_external_type::<StoredProvider, StoredMapSchema>()
         .expect("stored map type should be valid")
         .with_scoped_function::<StoredProvider, (FirstParameter, SecondParameter), StoreMap, _>(
             "store", store,

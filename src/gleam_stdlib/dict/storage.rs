@@ -40,13 +40,16 @@ pub(super) trait DictPayloadStorage {
     fn storage(&self) -> &DictStorage;
 }
 
-impl<Profile> HostExternalStorage<DictSchema> for Profile
+pub(crate) struct DictExternalStorage;
+pub(super) struct TransientDictExternalStorage;
+
+impl<Profile> HostExternalStorage<Profile, DictSchema> for DictExternalStorage
 where
     Profile: GleamStdlibHostProfile,
 {
     type Payload = DictPayload;
 
-    fn store(stores: &Self::ExternalStores) -> &HostExternalStore<Self::Payload> {
+    fn store(stores: &Profile::ExternalStores) -> &HostExternalStore<Self::Payload> {
         &Profile::gleam_stdlib_stores(stores).dict.dicts
     }
 
@@ -67,13 +70,13 @@ where
     }
 }
 
-impl<Profile> HostExternalStorage<TransientDictSchema> for Profile
+impl<Profile> HostExternalStorage<Profile, TransientDictSchema> for TransientDictExternalStorage
 where
     Profile: GleamStdlibHostProfile,
 {
     type Payload = TransientDictPayload;
 
-    fn store(stores: &Self::ExternalStores) -> &HostExternalStore<Self::Payload> {
+    fn store(stores: &Profile::ExternalStores) -> &HostExternalStore<Self::Payload> {
         &Profile::gleam_stdlib_stores(stores).dict.transients
     }
 
@@ -213,8 +216,9 @@ impl DictStorage {
 mod tests {
     use super::super::schema::{DictSchema, TransientDictSchema};
     use super::{
-        DictEntry, DictPayload, DictPayloadStorage, DictStorage, StoredKey, StoredValue,
-        TransientDictPayload, inspect_storage, storage_equal, storage_hash,
+        DictEntry, DictExternalStorage, DictPayload, DictPayloadStorage, DictStorage, StoredKey,
+        StoredValue, TransientDictExternalStorage, TransientDictPayload, inspect_storage,
+        storage_equal, storage_hash,
     };
     use crate::gleam_stdlib::{GleamStdlibProfile, GleamStdlibStores};
     use crate::{
@@ -257,36 +261,50 @@ mod tests {
         assert!(std::ptr::eq(dict.storage(), &dict.storage));
         assert!(std::ptr::eq(transient.storage(), &transient.storage));
         assert!(std::ptr::eq(
-            <GleamStdlibProfile as HostExternalStorage<DictSchema>>::store(&stores),
+            <DictExternalStorage as HostExternalStorage<GleamStdlibProfile, DictSchema>>::store(
+                &stores,
+            ),
             &stores.dict.dicts,
         ));
         assert!(std::ptr::eq(
-            <GleamStdlibProfile as HostExternalStorage<TransientDictSchema>>::store(&stores),
+            <TransientDictExternalStorage as HostExternalStorage<
+                GleamStdlibProfile,
+                TransientDictSchema,
+            >>::store(&stores),
             &stores.dict.transients,
         ));
-        assert!(
-            <GleamStdlibProfile as HostExternalStorage<DictSchema>>::source_equal(
-                &equality, &dict, &dict,
-            )
-        );
-        assert!(<GleamStdlibProfile as HostExternalStorage<
+        assert!(<DictExternalStorage as HostExternalStorage<
+            GleamStdlibProfile,
+            DictSchema,
+        >>::source_equal(&equality, &dict, &dict,));
+        assert!(<TransientDictExternalStorage as HostExternalStorage<
+            GleamStdlibProfile,
             TransientDictSchema,
         >>::source_equal(&equality, &transient, &transient,));
         assert_eq!(
-            <GleamStdlibProfile as HostExternalStorage<DictSchema>>::source_hash(&hashing, &dict),
-            <GleamStdlibProfile as HostExternalStorage<TransientDictSchema>>::source_hash(
+            <DictExternalStorage as HostExternalStorage<
+                GleamStdlibProfile,
+                DictSchema,
+            >>::source_hash(&hashing, &dict),
+            <TransientDictExternalStorage as HostExternalStorage<
+                GleamStdlibProfile,
+                TransientDictSchema,
+            >>::source_hash(
                 &hashing, &transient,
             ),
         );
         assert_eq!(
-            <GleamStdlibProfile as HostExternalStorage<DictSchema>>::inspect(&inspection, &dict),
+            <DictExternalStorage as HostExternalStorage<GleamStdlibProfile, DictSchema>>::inspect(
+                &inspection,
+                &dict
+            ),
             "dict.from_list([#(stored, stored)])",
         );
         assert_eq!(
-            <GleamStdlibProfile as HostExternalStorage<TransientDictSchema>>::inspect(
-                &inspection,
-                &transient,
-            ),
+            <TransientDictExternalStorage as HostExternalStorage<
+                GleamStdlibProfile,
+                TransientDictSchema,
+            >>::inspect(&inspection, &transient,),
             "dict.from_list([#(stored, stored)])",
         );
     }
@@ -299,24 +317,54 @@ mod tests {
         let initial = DictStorage::default().with_entry(7, None, first);
         let updated = initial.with_entry(7, Some(0), replacement);
         let removed = updated.without_entry(7, 0);
-        let store = <GleamStdlibProfile as HostExternalStorage<DictSchema>>::store(&stores);
+        let store =
+            <DictExternalStorage as HostExternalStorage<GleamStdlibProfile, DictSchema>>::store(
+                &stores,
+            );
         let initial = store.insert(
             DictPayload { storage: initial },
-            <GleamStdlibProfile as HostExternalStorage<DictSchema>>::source_equal,
-            <GleamStdlibProfile as HostExternalStorage<DictSchema>>::source_hash,
-            <GleamStdlibProfile as HostExternalStorage<DictSchema>>::inspect,
+            <DictExternalStorage as HostExternalStorage<
+                GleamStdlibProfile,
+                DictSchema,
+            >>::source_equal,
+            <DictExternalStorage as HostExternalStorage<
+                GleamStdlibProfile,
+                DictSchema,
+            >>::source_hash,
+            <DictExternalStorage as HostExternalStorage<
+                GleamStdlibProfile,
+                DictSchema,
+            >>::inspect,
         );
         let updated = store.insert(
             DictPayload { storage: updated },
-            <GleamStdlibProfile as HostExternalStorage<DictSchema>>::source_equal,
-            <GleamStdlibProfile as HostExternalStorage<DictSchema>>::source_hash,
-            <GleamStdlibProfile as HostExternalStorage<DictSchema>>::inspect,
+            <DictExternalStorage as HostExternalStorage<
+                GleamStdlibProfile,
+                DictSchema,
+            >>::source_equal,
+            <DictExternalStorage as HostExternalStorage<
+                GleamStdlibProfile,
+                DictSchema,
+            >>::source_hash,
+            <DictExternalStorage as HostExternalStorage<
+                GleamStdlibProfile,
+                DictSchema,
+            >>::inspect,
         );
         let removed = store.insert(
             DictPayload { storage: removed },
-            <GleamStdlibProfile as HostExternalStorage<DictSchema>>::source_equal,
-            <GleamStdlibProfile as HostExternalStorage<DictSchema>>::source_hash,
-            <GleamStdlibProfile as HostExternalStorage<DictSchema>>::inspect,
+            <DictExternalStorage as HostExternalStorage<
+                GleamStdlibProfile,
+                DictSchema,
+            >>::source_equal,
+            <DictExternalStorage as HostExternalStorage<
+                GleamStdlibProfile,
+                DictSchema,
+            >>::source_hash,
+            <DictExternalStorage as HostExternalStorage<
+                GleamStdlibProfile,
+                DictSchema,
+            >>::inspect,
         );
         let hash_calls = Cell::new(0);
         let inspection_calls = Cell::new(0);

@@ -13,10 +13,10 @@ use ecow::EcoString;
 use geam::{
     HostCustomConstructorAt, HostCustomConstructorDefinition, HostCustomConstructorList,
     HostCustomConstructorListEnd, HostCustomField, HostCustomFieldList, HostCustomFieldListEnd,
-    HostCustomIndex0, HostCustomSchema, HostCustomType, HostExternalEquality, HostExternalHashing,
-    HostExternalInspection, HostExternalSchema, HostExternalStorage, HostExternalStore,
-    HostExternalType, HostFunctionType, HostProfile, HostProvider, HostTypeList, HostTypeListEnd,
-    HostTypeParameter,
+    HostCustomIndex0, HostCustomSchema, HostCustomType, HostExternalBinding, HostExternalEquality,
+    HostExternalHashing, HostExternalInspection, HostExternalSchema, HostExternalStorage,
+    HostExternalStore, HostExternalType, HostFunctionType, HostProfile, HostProvider, HostTypeList,
+    HostTypeListEnd, HostTypeParameter,
 };
 use num_bigint::BigInt;
 use std::collections::hash_map::DefaultHasher;
@@ -44,6 +44,10 @@ pub(super) struct Counter {
 pub(super) struct CounterSchema;
 
 pub(super) struct CounterProvider;
+
+pub(super) struct CounterStorage;
+pub(super) struct DependencyCounterStorage;
+pub(super) struct GenericCounterStorage;
 
 pub(super) type HostCounter = HostExternalType<CounterSchema>;
 
@@ -106,10 +110,10 @@ impl HostExternalSchema for CounterSchema {
     const PARAMETER_COUNT: usize = 0;
 }
 
-impl HostExternalStorage<CounterSchema> for ExternalProfile {
+impl HostExternalStorage<ExternalProfile, CounterSchema> for CounterStorage {
     type Payload = Counter;
 
-    fn store(stores: &Self::ExternalStores) -> &HostExternalStore<Self::Payload> {
+    fn store(stores: &ExternalStores) -> &HostExternalStore<Self::Payload> {
         &stores.counters
     }
 
@@ -139,10 +143,10 @@ impl HostExternalSchema for DependencyCounterSchema {
     const PARAMETER_COUNT: usize = 0;
 }
 
-impl HostExternalStorage<DependencyCounterSchema> for ExternalProfile {
+impl HostExternalStorage<ExternalProfile, DependencyCounterSchema> for DependencyCounterStorage {
     type Payload = Counter;
 
-    fn store(stores: &Self::ExternalStores) -> &HostExternalStore<Self::Payload> {
+    fn store(stores: &ExternalStores) -> &HostExternalStore<Self::Payload> {
         &stores.dependency_counters
     }
 
@@ -172,10 +176,10 @@ impl HostExternalSchema for GenericCounterSchema {
     const PARAMETER_COUNT: usize = 1;
 }
 
-impl HostExternalStorage<GenericCounterSchema> for ExternalProfile {
+impl HostExternalStorage<ExternalProfile, GenericCounterSchema> for GenericCounterStorage {
     type Payload = Counter;
 
-    fn store(stores: &Self::ExternalStores) -> &HostExternalStore<Self::Payload> {
+    fn store(stores: &ExternalStores) -> &HostExternalStore<Self::Payload> {
         &stores.generic_counters
     }
 
@@ -204,4 +208,16 @@ impl HostProvider<ExternalProfile> for CounterProvider {
     fn project(state: &mut ExternalRunState) -> &mut Self::State {
         &mut state.provider
     }
+}
+
+impl HostExternalBinding<ExternalProfile, CounterSchema> for CounterProvider {
+    type Storage = CounterStorage;
+}
+
+impl HostExternalBinding<ExternalProfile, DependencyCounterSchema> for CounterProvider {
+    type Storage = DependencyCounterStorage;
+}
+
+impl HostExternalBinding<ExternalProfile, GenericCounterSchema> for CounterProvider {
+    type Storage = GenericCounterStorage;
 }

@@ -16,13 +16,15 @@ pub(super) struct JsonPayload {
     pub(super) tree: StoredStringTree,
 }
 
-impl<Profile> HostExternalStorage<JsonSchema> for Profile
+pub(super) struct JsonStorage;
+
+impl<Profile> HostExternalStorage<Profile, JsonSchema> for JsonStorage
 where
     Profile: GleamJsonHostProfile,
 {
     type Payload = JsonPayload;
 
-    fn store(stores: &Self::ExternalStores) -> &HostExternalStore<Self::Payload> {
+    fn store(stores: &Profile::ExternalStores) -> &HostExternalStore<Self::Payload> {
         &Profile::gleam_json_stores(stores).json.values
     }
 
@@ -45,7 +47,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{JsonPayload, JsonSchema};
+    use super::{JsonPayload, JsonSchema, JsonStorage};
     use crate::gleam_json::{GleamJsonHostProfile, GleamJsonProfile, GleamJsonProfileStores};
     use crate::gleam_stdlib::StoredStringTree;
     use crate::{
@@ -81,36 +83,41 @@ mod tests {
         let hashing = HostExternalHashing::new(&hash);
         let inspection = HostExternalInspection::new(&inspect);
 
-        assert!(
-            <GleamJsonProfile as HostExternalStorage<JsonSchema>>::source_equal(
-                &equality, &segmented, &same,
-            )
-        );
-        assert!(
-            !<GleamJsonProfile as HostExternalStorage<JsonSchema>>::source_equal(
-                &equality, &segmented, &flat,
-            )
-        );
+        assert!(<JsonStorage as HostExternalStorage<
+            GleamJsonProfile,
+            JsonSchema,
+        >>::source_equal(&equality, &segmented, &same,));
+        assert!(!<JsonStorage as HostExternalStorage<
+            GleamJsonProfile,
+            JsonSchema,
+        >>::source_equal(&equality, &segmented, &flat,));
         assert_eq!(
-            <GleamJsonProfile as HostExternalStorage<JsonSchema>>::source_hash(
+            <JsonStorage as HostExternalStorage<GleamJsonProfile, JsonSchema>>::source_hash(
                 &hashing, &segmented,
             ),
-            <GleamJsonProfile as HostExternalStorage<JsonSchema>>::source_hash(&hashing, &same),
+            <JsonStorage as HostExternalStorage<GleamJsonProfile, JsonSchema>>::source_hash(
+                &hashing, &same,
+            ),
         );
         assert_ne!(
-            <GleamJsonProfile as HostExternalStorage<JsonSchema>>::source_hash(
+            <JsonStorage as HostExternalStorage<GleamJsonProfile, JsonSchema>>::source_hash(
                 &hashing, &segmented,
             ),
-            <GleamJsonProfile as HostExternalStorage<JsonSchema>>::source_hash(&hashing, &flat),
+            <JsonStorage as HostExternalStorage<GleamJsonProfile, JsonSchema>>::source_hash(
+                &hashing, &flat,
+            ),
         );
         assert_eq!(
-            <GleamJsonProfile as HostExternalStorage<JsonSchema>>::inspect(&inspection, &segmented,),
+            <JsonStorage as HostExternalStorage<GleamJsonProfile, JsonSchema>>::inspect(
+                &inspection,
+                &segmented,
+            ),
             r#""[1]""#,
         );
 
         let stores = GleamJsonProfileStores::default();
         assert!(std::ptr::eq(
-            <GleamJsonProfile as HostExternalStorage<JsonSchema>>::store(&stores),
+            <JsonStorage as HostExternalStorage<GleamJsonProfile, JsonSchema>>::store(&stores),
             &GleamJsonProfile::gleam_json_stores(&stores).json.values,
         ));
     }

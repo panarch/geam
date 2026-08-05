@@ -3,7 +3,8 @@ use crate::{
     HostCustomConstructorAt, HostCustomConstructorDefinition, HostCustomConstructorList,
     HostCustomConstructorListEnd, HostCustomField, HostCustomFieldList, HostCustomFieldListEnd,
     HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType, HostExternalSchema,
-    HostExternalType, HostListType, HostTupleType, HostTypeList, HostTypeListEnd,
+    HostExternalType, HostListType, HostTupleType, HostTypeIndex0, HostTypeIndexNext, HostTypeList,
+    HostTypeListEnd,
 };
 use ecow::EcoString;
 
@@ -40,8 +41,17 @@ pub(super) type JsonDynamicError = GleamError<Dynamic, DecodeError>;
 
 pub(super) type DynamicList = HostListType<Dynamic>;
 pub(super) type DynamicDict = DictOf<Dynamic, Dynamic>;
-pub(super) type DecodeConstructions =
-    HostTypeList<DynamicList, HostTypeList<DynamicDict, HostTypeListEnd>>;
+pub(super) type DecodeConstructions = HostTypeList<
+    Dynamic,
+    HostTypeList<
+        DynamicList,
+        HostTypeList<DynamicDict, HostTypeList<DecodeError, HostTypeListEnd>>,
+    >,
+>;
+pub(super) type DecodeDynamicIndex = HostTypeIndex0;
+pub(super) type DecodeListIndex = HostTypeIndexNext<DecodeDynamicIndex>;
+pub(super) type DecodeDictIndex = HostTypeIndexNext<DecodeListIndex>;
+pub(super) type DecodeErrorIndex = HostTypeIndexNext<DecodeDictIndex>;
 
 pub(super) type ObjectEntryElements = HostTypeList<EcoString, HostTypeList<Json, HostTypeListEnd>>;
 pub(super) type ObjectEntry = HostTupleType<ObjectEntryElements>;

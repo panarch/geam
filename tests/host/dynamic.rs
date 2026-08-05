@@ -1,11 +1,12 @@
 use ecow::EcoString;
 use geam::{
     BitArrayValue, ExecutionError, HostCall, HostCallCompletion, HostCallError, HostExternal,
-    HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalSchema,
-    HostExternalStorage, HostExternalStore, HostExternalType, HostFailure, HostFunctionType,
-    HostProfile, HostProvider, HostProviderModule, HostProviderSet, HostStoredDynamic,
-    HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue, HostedExecution, ModuleSource,
-    PackageSource, PanicKind, Value, compile_typed_host_program, plan_host_program,
+    HostExternalBinding, HostExternalEquality, HostExternalHashing, HostExternalInspection,
+    HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType, HostFailure,
+    HostFunctionType, HostProfile, HostProvider, HostProviderModule, HostProviderSet,
+    HostStoredDynamic, HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue,
+    HostedExecution, ModuleSource, PackageSource, PanicKind, Value, compile_typed_host_program,
+    plan_host_program,
 };
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -25,6 +26,8 @@ struct DynamicStores {
 struct DynamicSchema;
 
 struct DynamicProvider;
+
+struct DynamicStorage;
 
 struct DynamicPayload {
     value: HostStoredDynamic,
@@ -64,10 +67,10 @@ impl HostExternalSchema for DynamicSchema {
     const PARAMETER_COUNT: usize = 0;
 }
 
-impl HostExternalStorage<DynamicSchema> for DynamicProfile {
+impl HostExternalStorage<DynamicProfile, DynamicSchema> for DynamicStorage {
     type Payload = DynamicPayload;
 
-    fn store(stores: &Self::ExternalStores) -> &HostExternalStore<Self::Payload> {
+    fn store(stores: &DynamicStores) -> &HostExternalStore<Self::Payload> {
         &stores.values
     }
 
@@ -86,6 +89,10 @@ impl HostExternalStorage<DynamicSchema> for DynamicProfile {
     fn inspect(context: &HostExternalInspection<'_>, value: &Self::Payload) -> EcoString {
         format!("Dynamic({})", context.inspect_dynamic_value(&value.value)).into()
     }
+}
+
+impl HostExternalBinding<DynamicProfile, DynamicSchema> for DynamicProvider {
+    type Storage = DynamicStorage;
 }
 
 fn encode<'call>(
@@ -152,7 +159,7 @@ fn has_resolved_type<'call>(
 fn decodes_every_scalar_and_rejects_mismatched_shapes() {
     let provider = HostProviderModule::<DynamicProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<DynamicSchema>()
+        .with_external_type::<DynamicProvider, DynamicSchema>()
         .expect("dynamic type should be valid")
         .with_scoped_function::<DynamicProvider, (Parameter,), Dynamic, _>("encode", encode)
         .expect("encode provider should be valid")
@@ -230,7 +237,7 @@ pub fn main() {
 fn decodes_compounds_functions_and_nested_external_values() {
     let provider = HostProviderModule::<DynamicProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<DynamicSchema>()
+        .with_external_type::<DynamicProvider, DynamicSchema>()
         .expect("dynamic type should be valid")
         .with_scoped_function::<DynamicProvider, (Parameter,), Dynamic, _>("encode", encode)
         .expect("encode provider should be valid")
@@ -318,7 +325,7 @@ pub fn main() {
 fn invokes_a_decoded_callable_through_nested_host_reentry() {
     let provider = HostProviderModule::<DynamicProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<DynamicSchema>()
+        .with_external_type::<DynamicProvider, DynamicSchema>()
         .expect("dynamic type should be valid")
         .with_scoped_function::<DynamicProvider, (Parameter,), Dynamic, _>("encode", encode)
         .expect("encode provider should be valid")
@@ -379,7 +386,7 @@ pub fn main() {
 fn reports_decode_mismatch_as_provider_semantics() {
     let provider = HostProviderModule::<DynamicProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<DynamicSchema>()
+        .with_external_type::<DynamicProvider, DynamicSchema>()
         .expect("dynamic type should be valid")
         .with_scoped_function::<DynamicProvider, (Parameter,), Dynamic, _>("encode", encode)
         .expect("encode provider should be valid")
@@ -436,7 +443,7 @@ pub fn main() {
 fn distinguishes_unresolved_resolved_and_mismatched_parameters() {
     let provider = HostProviderModule::<DynamicProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<DynamicSchema>()
+        .with_external_type::<DynamicProvider, DynamicSchema>()
         .expect("dynamic type should be valid")
         .with_scoped_function::<DynamicProvider, (Parameter,), Dynamic, _>("encode", encode)
         .expect("encode provider should be valid")
@@ -505,7 +512,7 @@ pub fn main() {
 fn escaped_dynamic_preserves_inspection_identity_and_cleanup() {
     let provider = HostProviderModule::<DynamicProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<DynamicSchema>()
+        .with_external_type::<DynamicProvider, DynamicSchema>()
         .expect("dynamic type should be valid")
         .with_scoped_function::<DynamicProvider, (Parameter,), Dynamic, _>("encode", encode)
         .expect("encode provider should be valid");
@@ -563,7 +570,7 @@ pub fn main() {
 fn releases_dynamic_storage_after_source_panic() {
     let provider = HostProviderModule::<DynamicProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<DynamicSchema>()
+        .with_external_type::<DynamicProvider, DynamicSchema>()
         .expect("dynamic type should be valid")
         .with_scoped_function::<DynamicProvider, (Parameter,), Dynamic, _>("encode", encode)
         .expect("encode provider should be valid");

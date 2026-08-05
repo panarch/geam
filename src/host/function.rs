@@ -77,6 +77,27 @@ where
 {
 }
 
+/// A scoped host function with statically registered intermediate value types.
+///
+/// Implementations receive [`crate::HostConstructions`] after the active
+/// [`crate::HostCall`] and before the source arguments.
+pub trait ScopedConstructingHostFunction<Profile, Provider, Arguments, Return, Constructions>:
+    adapter::ScopedConstructingHostFunctionAdapter<
+        Profile,
+        Provider,
+        Arguments,
+        Return,
+        Constructions,
+    > + Send
+    + Sync
+    + 'static
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Constructions: crate::host::HostTypeSequence,
+{
+}
+
 pub trait ScopedDivergingHostFunction<Profile, Provider, Arguments, Return>:
     adapter::ScopedDivergingHostFunctionAdapter<Profile, Provider, Arguments, Return>
     + Send
@@ -105,6 +126,24 @@ where
     Provider: HostProvider<Profile>,
     Function: adapter::ScopedHostFunctionAdapter<Profile, Provider, Arguments, Return>
         + Send
+        + Sync
+        + 'static,
+{
+}
+
+impl<Profile, Provider, Function, Arguments, Return, Constructions>
+    ScopedConstructingHostFunction<Profile, Provider, Arguments, Return, Constructions> for Function
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Constructions: crate::host::HostTypeSequence,
+    Function: adapter::ScopedConstructingHostFunctionAdapter<
+            Profile,
+            Provider,
+            Arguments,
+            Return,
+            Constructions,
+        > + Send
         + Sync
         + 'static,
 {
@@ -143,11 +182,11 @@ struct HostFunctionSchemaRegistration {
 
 pub(crate) struct HostFunctionDefinition<Profile: HostProfile> {
     schema: HostFunctionSchema,
-    constructions: HostFunctionConstructions,
+    constructions: RegisteredHostConstructions,
     implementation: HostFunctionImplementation<Profile>,
 }
 
-pub(crate) struct HostFunctionConstructions {
+pub(crate) struct RegisteredHostConstructions {
     types: Box<[crate::host::HostTypeDescriptor]>,
     custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
     external_schemas: Box<[crate::host::HostExternalTypeSchema]>,
@@ -231,7 +270,7 @@ impl HostFunctionSchema {
     }
 }
 
-impl HostFunctionConstructions {
+impl RegisteredHostConstructions {
     fn new(
         types: Box<[crate::host::HostTypeDescriptor]>,
         custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
@@ -262,6 +301,18 @@ impl HostFunctionConstructions {
 
     pub(crate) fn external_schemas(&self) -> &[crate::host::HostExternalTypeSchema] {
         &self.external_schemas
+    }
+
+    fn unbound_type_parameters(&self, parameter_count: usize) -> Box<[usize]> {
+        let mut parameters = BTreeSet::new();
+        for type_ in &self.types {
+            type_.collect_type_parameters(&mut parameters);
+        }
+        parameters
+            .into_iter()
+            .filter(|parameter| *parameter >= parameter_count)
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
     }
 }
 
@@ -340,13 +391,15 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
     where
         Provider: HostProvider<Profile>,
         Constructions: crate::host::HostTypeSequence,
-        Function: ScopedHostFunction<Profile, Provider, Arguments, Return>,
+        Function:
+            ScopedConstructingHostFunction<Profile, Provider, Arguments, Return, Constructions>,
     {
-        let registration = <Function as adapter::ScopedHostFunctionAdapter<
+        let registration = <Function as adapter::ScopedConstructingHostFunctionAdapter<
             Profile,
             Provider,
             Arguments,
             Return,
+            Constructions,
         >>::register(function);
         let construction_types =
             <Constructions as crate::host::HostAbiTypeSequence>::descriptors().into_boxed_slice();
@@ -357,7 +410,7 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
             &mut visited,
         );
         let constructions =
-            HostFunctionConstructions::new(construction_types, custom_schemas.into_boxed_slice());
+            RegisteredHostConstructions::new(construction_types, custom_schemas.into_boxed_slice());
         Self::from_registration_with_constructions(name, registration, constructions)
     }
 
@@ -385,14 +438,14 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
         Self::from_registration_with_constructions(
             name,
             registration,
-            HostFunctionConstructions::empty(),
+            RegisteredHostConstructions::empty(),
         )
     }
 
     fn from_registration_with_constructions(
         name: EcoString,
         registration: adapter::HostFunctionRegistration<Profile>,
-        constructions: HostFunctionConstructions,
+        constructions: RegisteredHostConstructions,
     ) -> Result<Self, crate::HostRegistrationError> {
         let schema = HostFunctionSchemaRegistration {
             layout: registration.parameters,
@@ -400,7 +453,17 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
             return_: registration.return_type,
             custom_schemas: registration.custom_schemas,
         };
-        HostFunctionSchema::from_registration(name, schema).map(|schema| Self {
+        let schema = HostFunctionSchema::from_registration(name, schema)?;
+        let unbound = constructions.unbound_type_parameters(schema.scheme().parameters().len());
+        if !unbound.is_empty() {
+            return Err(
+                crate::HostRegistrationError::UnboundConstructionTypeParameters {
+                    function: schema.name().clone(),
+                    parameters: unbound,
+                },
+            );
+        }
+        Ok(Self {
             schema,
             constructions,
             implementation: registration.implementation,
@@ -415,7 +478,7 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
         self,
     ) -> (
         HostFunctionSchema,
-        HostFunctionConstructions,
+        RegisteredHostConstructions,
         HostFunctionImplementation<Profile>,
     ) {
         (self.schema, self.constructions, self.implementation)
@@ -424,7 +487,7 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
 
 #[cfg(test)]
 mod tests {
-    use super::{HostFunctionDefinition, HostFunctionSchema};
+    use super::{HostFunctionDefinition, HostFunctionSchema, RegisteredHostConstructions};
     use crate::BitArrayValue;
     use crate::host::function::argument::CallArguments;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
@@ -432,7 +495,8 @@ mod tests {
         HostCall, HostCallCompletion, HostCallError, HostCustomConstructorSchema,
         HostCustomFieldSchema, HostCustomTypeSchema, HostExternalTypeSchema, HostListType,
         HostProvider, HostRegistrationError, HostSchemaType, HostScopedValue, HostTypeDescriptor,
-        HostTypeList, HostTypeListEnd, HostValueFamily, expect_value_implementation,
+        HostTypeIndex0, HostTypeList, HostTypeListEnd, HostValueFamily,
+        expect_value_implementation,
     };
     use crate::plan::ValueType;
     use ecow::EcoString;
@@ -451,6 +515,16 @@ mod tests {
     fn ready<'call>(
         call: HostCall<'call, TestHostProfile, ConstructionProvider, bool>,
     ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
+        Ok(call.return_value(true))
+    }
+
+    type ConstructionTypes = HostTypeList<HostListType<BigInt>, HostTypeListEnd>;
+
+    fn ready_with_constructions<'call>(
+        call: HostCall<'call, TestHostProfile, ConstructionProvider, bool>,
+        constructions: crate::HostConstructions<'call, ConstructionTypes>,
+    ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
+        let _ = constructions.at::<HostTypeIndex0>();
         Ok(call.return_value(true))
     }
 
@@ -583,8 +657,6 @@ mod tests {
 
     #[test]
     fn hidden_construction_types_stay_outside_the_public_function_schema() {
-        type Constructions = HostTypeList<HostListType<BigInt>, HostTypeListEnd>;
-
         let plain = HostFunctionDefinition::new_scoped::<ConstructionProvider, (), bool, _>(
             "ready".into(),
             ready,
@@ -594,11 +666,11 @@ mod tests {
             ConstructionProvider,
             (),
             bool,
-            Constructions,
+            ConstructionTypes,
             _,
-        >("ready".into(), ready)
+        >("ready".into(), ready_with_constructions)
         .expect("scoped function with hidden constructions should register");
-        let (schema, constructions, _) = with_constructions.into_parts();
+        let (schema, constructions, constructing_implementation) = with_constructions.into_parts();
 
         assert_eq!(schema, *plain.schema());
         assert_eq!(schema.scheme(), &crate::plan::TypeScheme::new(0));
@@ -610,28 +682,48 @@ mod tests {
         assert!(constructions.custom_schemas().is_empty());
         assert!(constructions.external_schemas().is_empty());
 
-        let mut state = TestRunState::default();
-        assert!(std::ptr::eq(
-            ConstructionProvider::project(&mut state),
-            &state.counter,
-        ));
-        let (_, _, implementation) = HostFunctionDefinition::new_scoped_with_constructions::<
-            ConstructionProvider,
-            (),
-            bool,
-            Constructions,
-            _,
-        >("ready".into(), ready)
-        .expect("invoked scoped function should register")
-        .into_parts();
-        let implementation = expect_value_implementation(&implementation);
-        let arguments = CallArguments::new(Vec::new(), Vec::new());
-        let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
-        assert_eq!(
-            implementation.call(&mut runtime).map(|token| token.family),
-            Ok(HostValueFamily::Bool),
+        let (_, _, plain_implementation) = plain.into_parts();
+        for implementation in [&plain_implementation, &constructing_implementation] {
+            let implementation = expect_value_implementation(implementation);
+            let mut state = TestRunState::default();
+            assert!(std::ptr::eq(
+                ConstructionProvider::project(&mut state),
+                &state.counter,
+            ));
+            let arguments = CallArguments::new(Vec::new(), Vec::new());
+            let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
+            assert_eq!(
+                implementation.call(&mut runtime).map(|token| token.family),
+                Ok(HostValueFamily::Bool),
+            );
+            assert_eq!(runtime.completed(), Some(&HostScopedValue::Bool(true)));
+        }
+    }
+
+    #[test]
+    fn registered_constructions_report_parameters_outside_the_function_scheme() {
+        let constructions = RegisteredHostConstructions::new(
+            vec![
+                HostTypeDescriptor::List(Box::new(HostTypeDescriptor::Parameter(0))),
+                HostTypeDescriptor::Parameter(2),
+                HostTypeDescriptor::Parameter(2),
+            ]
+            .into_boxed_slice(),
+            Box::new([]),
         );
-        assert_eq!(runtime.completed(), Some(&HostScopedValue::Bool(true)));
+
+        assert_eq!(
+            constructions.unbound_type_parameters(0),
+            vec![0, 2].into_boxed_slice(),
+        );
+        assert_eq!(
+            constructions.unbound_type_parameters(1),
+            vec![2].into_boxed_slice(),
+        );
+        assert_eq!(
+            constructions.unbound_type_parameters(3),
+            Vec::<usize>::new().into_boxed_slice(),
+        );
     }
 
     #[test]

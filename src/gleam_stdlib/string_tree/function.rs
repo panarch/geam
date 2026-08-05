@@ -1,8 +1,13 @@
-use super::schema::{Direction, StringList, StringTree, StringTreeList};
-use super::storage::{StringTree as StoredStringTree, StringTreePayload};
+use super::schema::{
+    Direction, SplitConstructions, SplitStringTreeIndex, StringList, StringTree, StringTreeList,
+};
+use super::storage::{
+    StringTree as StoredStringTree, StringTreeExternalStorage, StringTreePayload,
+};
 use crate::gleam_stdlib::GleamStdlibHostProfile;
 use crate::{
-    HostCall, HostCallCompletion, HostCallError, HostCustom, HostExternal, HostList, HostProvider,
+    HostCall, HostCallCompletion, HostCallError, HostConstructions, HostCustom, HostExternal,
+    HostExternalBinding, HostList, HostProvider,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -20,6 +25,14 @@ where
     fn project(state: &mut Profile::RunState) -> &mut Self::State {
         state
     }
+}
+
+impl<Profile> HostExternalBinding<Profile, super::schema::StringTreeSchema>
+    for StringTreeProvider<Profile>
+where
+    Profile: GleamStdlibHostProfile,
+{
+    type Storage = StringTreeExternalStorage;
 }
 
 pub(super) fn append_tree<'call, Profile>(
@@ -156,6 +169,7 @@ where
 
 pub(super) fn erl_split<'call, Profile>(
     mut call: HostCall<'call, Profile, StringTreeProvider<Profile>, StringTreeList>,
+    constructions: HostConstructions<'call, SplitConstructions>,
     tree: HostExternal<'call, StringTree>,
     pattern: EcoString,
     _direction: HostCustom<'call, Direction>,
@@ -171,9 +185,12 @@ where
     };
     let mut values = Vec::with_capacity(parts.len());
     for part in parts {
-        values.push(call.create_external_item(StringTreePayload {
-            tree: StoredStringTree::text(part),
-        }));
+        values.push(call.construct_external(
+            constructions.at::<SplitStringTreeIndex>(),
+            StringTreePayload {
+                tree: StoredStringTree::text(part),
+            },
+        ));
     }
     Ok(call.return_list(values))
 }

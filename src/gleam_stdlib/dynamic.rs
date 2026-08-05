@@ -3,13 +3,14 @@ mod schema;
 mod storage;
 
 pub(crate) use schema::{Dynamic, DynamicList, DynamicSchema};
+pub(crate) use storage::DynamicExternalStorage;
 pub(super) use storage::Stores;
 
-pub(crate) use self::function::create_value;
 pub(in crate::gleam_stdlib) use self::function::{
     DynamicProvider, classification, decode_value, sequence,
 };
 use self::function::{array, cast, classify};
+pub(crate) use self::function::{create_return_value, create_value};
 use self::schema::Parameter;
 use super::GleamStdlibHostProfile;
 use crate::{HostList, HostProviderModule, HostRegistrationError};
@@ -21,7 +22,7 @@ where
     Profile: GleamStdlibHostProfile,
 {
     HostProviderModule::new("gleam_stdlib", "gleam/dynamic")
-        .and_then(HostProviderModule::with_external_type::<DynamicSchema>)
+        .and_then(HostProviderModule::with_external_type::<DynamicProvider<Profile>, DynamicSchema>)
         .and_then(|provider| {
             provider.with_scoped_function::<DynamicProvider<Profile>, (Dynamic,), EcoString, _>(
                 "classify",

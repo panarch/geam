@@ -40,7 +40,7 @@ fn external_profile_preserves_every_callback_return_family() {
 
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<CounterSchema>()
+        .with_external_type::<CounterProvider, CounterSchema>()
         .expect("external type should be valid")
         .with_scoped_function::<CounterProvider, (BigInt,), HostCounter, _>(
             "new_counter",
@@ -153,7 +153,7 @@ fn external_profile_reports_diverging_external_function_returns() {
 
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<CounterSchema>()
+        .with_external_type::<CounterProvider, CounterSchema>()
         .expect("external type should be valid")
         .with_scoped_diverging_function::<CounterProvider, (), CounterCallable, _>("stop", stop)
         .expect("diverging external function provider should be valid");
@@ -215,7 +215,7 @@ fn external_function_block_stops_before_returning_its_callable() {
 
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<CounterSchema>()
+        .with_external_type::<CounterProvider, CounterSchema>()
         .expect("external type should be valid")
         .with_scoped_function::<CounterProvider, (BigInt,), HostCounter, _>(
             "new_counter",
@@ -338,7 +338,7 @@ fn preserves_external_function_values_across_expression_boundaries() {
 
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<CounterSchema>()
+        .with_external_type::<CounterProvider, CounterSchema>()
         .expect("external type should be valid")
         .with_scoped_function::<CounterProvider, (BigInt,), HostCounter, _>(
             "new_counter",
@@ -637,7 +637,7 @@ pub fn main() {
 fn returns_core_function_values_from_an_external_profile() {
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<CounterSchema>()
+        .with_external_type::<CounterProvider, CounterSchema>()
         .expect("external type should be valid");
     let source = r#"
 @external(erlang, "host", "Counter")
@@ -685,7 +685,7 @@ pub fn main() -> fn(Int) -> Int {
 fn preserves_symbolic_external_function_handoffs() {
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<CounterSchema>()
+        .with_external_type::<CounterProvider, CounterSchema>()
         .expect("external type should be valid");
     let source = r#"
 @external(erlang, "host", "Counter")
@@ -862,7 +862,7 @@ pub fn main() {
 fn preserves_executable_external_function_handoffs() {
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<CounterSchema>()
+        .with_external_type::<CounterProvider, CounterSchema>()
         .expect("external type should be valid");
     let source = r#"
 @external(erlang, "host", "Counter")
@@ -979,7 +979,7 @@ pub fn main() {
 fn preserves_generic_external_return_function_handoffs() {
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<GenericCounterSchema>()
+        .with_external_type::<CounterProvider, GenericCounterSchema>()
         .expect("generic external type should be valid");
     let source = r#"
 @external(erlang, "host", "GenericCounter")

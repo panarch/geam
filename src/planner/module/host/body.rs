@@ -1,6 +1,6 @@
 use super::constant::ModuleToPlan;
 use super::link::LinkedFunction;
-use crate::host::{HostFunctionConstructions, RegisteredHostImplementationId};
+use crate::host::{RegisteredHostConstructions, RegisteredHostImplementationId};
 use crate::plan::{
     FunctionTemplateId, HostedFunctionTemplate, HostedPlannedModule, HostedPlannedModuleParts,
     ModuleId,
@@ -16,7 +16,7 @@ pub(super) struct PlannedHostedProgram {
     pub(super) modules: Vec<HostedPlannedModule>,
     pub(super) implementations: Vec<(
         FunctionTemplateId,
-        HostFunctionConstructions,
+        RegisteredHostConstructions,
         RegisteredHostImplementationId,
     )>,
 }
@@ -44,7 +44,7 @@ fn plan_hosted_module(
     registry: &ProgramRegistry,
     implementations: &mut Vec<(
         FunctionTemplateId,
-        HostFunctionConstructions,
+        RegisteredHostConstructions,
         RegisteredHostImplementationId,
     )>,
 ) -> Result<HostedPlannedModule, PlanError> {
@@ -87,7 +87,7 @@ fn plan_hosted_function(
     anonymous_functions: &mut super::super::AnonymousFunctions,
     implementations: &mut Vec<(
         FunctionTemplateId,
-        HostFunctionConstructions,
+        RegisteredHostConstructions,
         RegisteredHostImplementationId,
     )>,
 ) -> Result<HostedFunctionTemplate, PlanError> {

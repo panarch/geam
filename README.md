@@ -123,14 +123,22 @@ one run. `compile_typed_host_project` applies the same hosted boundary to the
 read-only resolved-project loader without reparsing selected modules or
 running Gleam CLI.
 
+An ordinary Cargo crate can expose a `HostProviderComponent`, and a runner can
+statically combine its configuration, stores, run state, and provider modules
+into a concrete profile. Initialization happens before planning and execution;
+there is no runtime provider registry or hidden configuration source. See
+[host provider components](docs/host-providers.md) for the complete path-crate
+composition boundary.
+
 Owned scalar closures use `BigInt`, `f64`, `EcoString`, `BitArrayValue`,
 `char`, `bool`, and `()`. Scoped providers use `HostCall` with typed
 `HostList`, `HostTuple`, ordinary custom, and external handles; these handles
-cannot escape their invocation, and compound returns are built explicitly
-through the same call. An external payload can retain exact typed Gleam values
-with `HostStoredValue` and restore them only through a later active
-`HostCall`. It can instead retain an existential `HostStoredDynamic` together
-with its exact specialized Gleam shape; a later typed decode returns `None`
+cannot escape their invocation. Exact returns are built through the same call,
+while intermediate compound types require capabilities derived from the
+registration's sealed construction list. An external payload can retain exact
+typed Gleam values with `HostStoredValue` and restore them only through a later
+active `HostCall`. It can instead retain an existential `HostStoredDynamic`
+together with its exact specialized Gleam shape; a later typed decode returns `None`
 when that shape does not match. Generic providers and Gleam function values
 use the same typed specialization and call paths as ordinary Gleam functions.
 Private transient-style containers can use this storage through immutable

@@ -114,8 +114,8 @@ fn bind_subject(
 mod tests {
     use crate::host::{
         ExternalTestProfile, ExternalTestRunState, HostCall, HostCallCompletion, HostCallError,
-        HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType, HostProvider,
-        HostProviderModule, HostProviderSet,
+        HostExternalBinding, HostExternalSchema, HostExternalStorage, HostExternalStore,
+        HostExternalType, HostProvider, HostProviderModule, HostProviderSet,
     };
     use crate::plan::{ExternalTypeName, ExternalValueShape};
     use crate::planner::context::{AnonymousFunctions, PlanContext};
@@ -134,6 +134,8 @@ mod tests {
 
     struct TokenProvider;
 
+    struct TokenStorage;
+
     type HostToken = HostExternalType<TokenSchema>;
 
     impl HostExternalSchema for TokenSchema {
@@ -143,10 +145,12 @@ mod tests {
         const PARAMETER_COUNT: usize = 0;
     }
 
-    impl HostExternalStorage<TokenSchema> for ExternalTestProfile {
+    impl HostExternalStorage<ExternalTestProfile, TokenSchema> for TokenStorage {
         type Payload = ();
 
-        fn store(stores: &Self::ExternalStores) -> &HostExternalStore<Self::Payload> {
+        fn store(
+            stores: &<ExternalTestProfile as crate::HostProfile>::ExternalStores,
+        ) -> &HostExternalStore<Self::Payload> {
             &stores.units
         }
 
@@ -175,6 +179,10 @@ mod tests {
         }
     }
 
+    impl HostExternalBinding<ExternalTestProfile, TokenSchema> for TokenProvider {
+        type Storage = TokenStorage;
+    }
+
     fn new_token<'call>(
         mut call: HostCall<'call, ExternalTestProfile, TokenProvider, HostToken>,
     ) -> Result<HostCallCompletion<'call, HostToken>, HostCallError> {
@@ -189,7 +197,10 @@ mod tests {
         let hashing = crate::host::HostExternalHashing::new(&retained_hash);
 
         assert_eq!(
-            <ExternalTestProfile as HostExternalStorage<TokenSchema>>::source_hash(&hashing, &()),
+            <TokenStorage as HostExternalStorage<ExternalTestProfile, TokenSchema>>::source_hash(
+                &hashing,
+                &(),
+            ),
             0,
         );
     }
@@ -373,7 +384,7 @@ pub fn main() {
 "#;
         let provider = HostProviderModule::<ExternalTestProfile>::new("application", "main")
             .expect("provider module should be valid")
-            .with_external_type::<TokenSchema>()
+            .with_external_type::<TokenProvider, TokenSchema>()
             .expect("external type should be valid")
             .with_scoped_function::<TokenProvider, (), HostToken, _>("new_token", new_token)
             .expect("external constructor should be valid");
@@ -435,7 +446,7 @@ pub fn main() { 0 }
         ] {
             let provider = HostProviderModule::<ExternalTestProfile>::new("application", "main")
                 .expect("provider module should be valid")
-                .with_external_type::<TokenSchema>()
+                .with_external_type::<TokenProvider, TokenSchema>()
                 .expect("external type should be valid");
             let typed = crate::compile_typed_host_program(
                 "application",

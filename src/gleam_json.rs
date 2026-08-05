@@ -80,7 +80,9 @@ where
     Profile: GleamJsonHostProfile,
 {
     HostProviderModule::new("gleam_json", "gleam/json")
-        .and_then(HostProviderModule::with_external_type::<schema::JsonSchema>)
+        .and_then(
+            HostProviderModule::with_external_type::<JsonProvider<Profile>, schema::JsonSchema>,
+        )
         .and_then(|provider| {
             provider.with_scoped_function_and_constructions::<
                 JsonProvider<Profile>,

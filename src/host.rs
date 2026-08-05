@@ -1,3 +1,5 @@
+mod component;
+mod construction;
 mod error;
 mod external;
 mod failure;
@@ -7,18 +9,24 @@ mod profile;
 mod type_;
 mod value;
 
+pub use component::{
+    HostComponentProfile, HostProviderComponent, HostProviderComponentRegistration,
+    HostProviderConfiguration, HostProviderConfigurationValue, HostProviderInitializationError,
+};
+pub use construction::{HostConstruction, HostConstructions};
 pub use error::HostRegistrationError;
 pub(crate) use external::{ExternalPayloadLease, HostStoredValueFamily};
 pub use external::{
-    HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalPayloadBuilder,
-    HostExternalPayloadView, HostExternalSchema, HostExternalStorage, HostExternalStore,
-    HostExternalType, HostExternalTypeSchema, HostStoredDynamic, HostStoredType, HostStoredValue,
+    HostExternalBinding, HostExternalEquality, HostExternalHashing, HostExternalInspection,
+    HostExternalPayloadBuilder, HostExternalPayloadView, HostExternalSchema, HostExternalStorage,
+    HostExternalStore, HostExternalType, HostExternalTypeSchema, HostStoredDynamic, HostStoredType,
+    HostStoredValue,
 };
 pub(crate) use failure::HostCallErrorKind;
 pub use failure::{HostCallError, HostFailure};
 pub use function::{
-    FallibleHostFunction, HostFunction, HostFunctionSchema, ScopedDivergingHostFunction,
-    ScopedHostFunction,
+    FallibleHostFunction, HostFunction, HostFunctionSchema, ScopedConstructingHostFunction,
+    ScopedDivergingHostFunction, ScopedHostFunction,
 };
 pub use module::{HostModule, HostProviderModule, HostProviderSet};
 pub use profile::{HostCall, HostProfile, HostProvider, StatelessHostProfile};
@@ -39,13 +47,13 @@ pub use value::{
 pub(crate) use external::{ExternalTestProfile, ExternalTestRunState, ExternalTestStores};
 #[cfg(test)]
 pub(crate) use function::CallArguments;
+pub(crate) use function::RegisteredHostConstructions;
 pub(crate) use function::{
     HostBitArrayArgumentSlot, HostBoolArgumentSlot, HostCallArguments, HostCustomArgumentSlot,
     HostExternalArgumentSlot, HostFloatArgumentSlot, HostFunctionArgumentSlot,
-    HostFunctionConstructions, HostFunctionDefinition, HostFunctionImplementation,
-    HostIntArgumentSlot, HostListArgumentSlot, HostNeverFunction, HostNilArgumentSlot,
-    HostParameter, HostStringArgumentSlot, HostTupleArgumentSlot, HostUtfCodepointArgumentSlot,
-    HostValueArgumentSlot, HostValueFunction,
+    HostFunctionDefinition, HostFunctionImplementation, HostIntArgumentSlot, HostListArgumentSlot,
+    HostNeverFunction, HostNilArgumentSlot, HostParameter, HostStringArgumentSlot,
+    HostTupleArgumentSlot, HostUtfCodepointArgumentSlot, HostValueArgumentSlot, HostValueFunction,
 };
 #[cfg(test)]
 pub(crate) use function::{expect_never_implementation, expect_value_implementation};

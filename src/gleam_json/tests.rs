@@ -1,3 +1,5 @@
+use super::function::JsonProvider;
+use super::storage::JsonStorage;
 use super::{
     GleamJsonHostProfile, GleamJsonProfile, GleamJsonProfileStores, GleamJsonStores, host_providers,
 };
@@ -109,18 +111,35 @@ fn execution_with_modules(
     source: &str,
     modules: impl IntoIterator<Item = HostModule<GleamJsonProfile>>,
 ) -> HostedExecution<GleamJsonProfile> {
-    let providers = [
-        HostProviderModule::new("gleam_stdlib", "gleam/dynamic")
-            .and_then(HostProviderModule::with_external_type::<DynamicSchema>)
-            .expect("synthetic Dynamic declaration should register"),
-        HostProviderModule::new("gleam_stdlib", "gleam/dict")
-            .and_then(HostProviderModule::with_external_type::<DictSchema>)
-            .expect("synthetic Dict declaration should register"),
-        HostProviderModule::new("gleam_stdlib", "gleam/string_tree")
-            .and_then(HostProviderModule::with_external_type::<StringTreeSchema>)
-            .expect("synthetic StringTree declaration should register"),
-        super::host_provider::<GleamJsonProfile>().expect("official JSON provider should register"),
-    ];
+    let providers =
+        [
+            HostProviderModule::new("gleam_stdlib", "gleam/dynamic")
+                .and_then(
+                    HostProviderModule::with_external_type::<
+                        JsonProvider<GleamJsonProfile>,
+                        DynamicSchema,
+                    >,
+                )
+                .expect("synthetic Dynamic declaration should register"),
+            HostProviderModule::new("gleam_stdlib", "gleam/dict")
+                .and_then(
+                    HostProviderModule::with_external_type::<
+                        JsonProvider<GleamJsonProfile>,
+                        DictSchema,
+                    >,
+                )
+                .expect("synthetic Dict declaration should register"),
+            HostProviderModule::new("gleam_stdlib", "gleam/string_tree")
+                .and_then(
+                    HostProviderModule::with_external_type::<
+                        JsonProvider<GleamJsonProfile>,
+                        StringTreeSchema,
+                    >,
+                )
+                .expect("synthetic StringTree declaration should register"),
+            super::host_provider::<GleamJsonProfile>()
+                .expect("official JSON provider should register"),
+        ];
     let source = format!("{JSON_DECLARATIONS}\n{source}");
     let packages = [
         PackageSource::new(
@@ -181,7 +200,9 @@ fn default_and_custom_profiles_project_independent_stdlib_and_json_stores() {
         &custom.json,
     ));
     assert!(std::ptr::eq(
-        <CustomProfile as HostExternalStorage<super::schema::JsonSchema>>::store(&custom),
+        <JsonStorage as HostExternalStorage<CustomProfile, super::schema::JsonSchema>>::store(
+            &custom,
+        ),
         &custom.json.json.values,
     ));
 
@@ -194,7 +215,8 @@ fn default_and_custom_profiles_project_independent_stdlib_and_json_stores() {
     let inspect = |_: &crate::runtime::StoredRuntimeValue| "unused".into();
     let stored = crate::runtime::StoredRuntimeValue::test_int(0.into());
     assert_eq!(inspect(&stored), "unused");
-    assert!(<CustomProfile as HostExternalStorage<
+    assert!(<JsonStorage as HostExternalStorage<
+        CustomProfile,
         super::schema::JsonSchema,
     >>::source_equal(
         &HostExternalEquality::new(&equal),
@@ -202,14 +224,14 @@ fn default_and_custom_profiles_project_independent_stdlib_and_json_stores() {
         &payload,
     ));
     assert_eq!(
-        <CustomProfile as HostExternalStorage<super::schema::JsonSchema>>::source_hash(
+        <JsonStorage as HostExternalStorage<CustomProfile, super::schema::JsonSchema>>::source_hash(
             &HostExternalHashing::new(&hash),
             &payload,
         ),
         payload.tree.structural_hash(),
     );
     assert_eq!(
-        <CustomProfile as HostExternalStorage<super::schema::JsonSchema>>::inspect(
+        <JsonStorage as HostExternalStorage<CustomProfile, super::schema::JsonSchema>>::inspect(
             &HostExternalInspection::new(&inspect),
             &payload,
         ),

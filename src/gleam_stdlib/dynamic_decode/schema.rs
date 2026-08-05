@@ -7,7 +7,8 @@ use crate::{
     BitArrayValue, HostCustomConstructorAt, HostCustomConstructorDefinition,
     HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomField, HostCustomFieldList,
     HostCustomFieldListEnd, HostCustomIndex0, HostCustomSchema, HostCustomType, HostFunctionType,
-    HostListType, HostTupleType, HostTypeList, HostTypeListEnd, HostTypeParameter,
+    HostListType, HostTupleType, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
+    HostTypeParameter,
 };
 use ecow::EcoString;
 use num_bigint::BigInt;
@@ -30,6 +31,10 @@ pub(super) type IndexKey = HostTypeParameter<0>;
 pub(super) type IndexResult = GleamResult<DynamicOption, EcoString>;
 pub(super) type IndexOk = GleamOk<DynamicOption, EcoString>;
 pub(super) type IndexError = GleamError<DynamicOption, EcoString>;
+pub(super) type BareIndexConstructions =
+    HostTypeList<Dynamic, HostTypeList<DynamicOption, HostTypeListEnd>>;
+pub(super) type BareIndexDynamicIndex = HostTypeIndex0;
+pub(super) type BareIndexOptionIndex = HostTypeIndexNext<BareIndexDynamicIndex>;
 
 pub(super) type StringResult = GleamResult<EcoString, EcoString>;
 pub(super) type StringOk = GleamOk<EcoString, EcoString>;
@@ -58,6 +63,17 @@ pub(super) type ItemDecodeLayer = HostTupleType<ItemDecodeLayerElements>;
 pub(super) type DecodeListResultElements =
     HostTypeList<DecodedItems, HostTypeList<DecodeErrors, HostTypeListEnd>>;
 pub(super) type DecodeListResult = HostTupleType<DecodeListResultElements>;
+pub(super) type DecodeListConstructions = HostTypeList<
+    HostListType<EcoString>,
+    HostTypeList<
+        DecodeError,
+        HostTypeList<DecodedItems, HostTypeList<DecodeErrors, HostTypeListEnd>>,
+    >,
+>;
+pub(super) type DecodeListPathIndex = HostTypeIndex0;
+pub(super) type DecodeListErrorIndex = HostTypeIndexNext<DecodeListPathIndex>;
+pub(super) type DecodeListValuesIndex = HostTypeIndexNext<DecodeListErrorIndex>;
+pub(super) type DecodeListErrorsIndex = HostTypeIndexNext<DecodeListValuesIndex>;
 pub(super) type ItemDecoderArguments = HostTypeList<Dynamic, HostTypeListEnd>;
 pub(super) type ItemDecoder = HostFunctionType<ItemDecoderArguments, ItemDecodeLayer>;
 pub(super) type PushPathArguments =

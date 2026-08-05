@@ -4,13 +4,14 @@ use super::schema::{
     MapOutputDict, TransientDict, UpdateFunctionArguments,
 };
 use super::storage::{
-    DictEntry, DictPayload, DictPayloadStorage, DictStorage, TransientDictPayload,
+    DictEntry, DictExternalStorage, DictPayload, DictPayloadStorage, DictStorage,
+    TransientDictExternalStorage, TransientDictPayload,
 };
 use crate::gleam_stdlib::{Dynamic, GleamStdlibHostProfile};
 use crate::{
-    HostCall, HostCallCompletion, HostCallError, HostCallable, HostExternal,
-    HostExternalPayloadBuilder, HostExternalPayloadView, HostProfile, HostProvider, HostType,
-    HostTypeAt, HostTypeSequence, HostValue,
+    HostCall, HostCallCompletion, HostCallError, HostCallable, HostConstruction, HostExternal,
+    HostExternalBinding, HostExternalPayloadBuilder, HostExternalPayloadView, HostProfile,
+    HostProvider, HostType, HostTypeAt, HostTypeSequence, HostValue,
 };
 use num_bigint::BigInt;
 use std::collections::HashMap;
@@ -30,6 +31,21 @@ where
     }
 }
 
+impl<Profile> HostExternalBinding<Profile, super::schema::DictSchema> for DictProvider<Profile>
+where
+    Profile: GleamStdlibHostProfile,
+{
+    type Storage = DictExternalStorage;
+}
+
+impl<Profile> HostExternalBinding<Profile, super::schema::TransientDictSchema>
+    for DictProvider<Profile>
+where
+    Profile: GleamStdlibHostProfile,
+{
+    type Storage = TransientDictExternalStorage;
+}
+
 pub(in crate::gleam_stdlib) fn lookup<'call, Profile, Provider, Return, KeyType, ValueType>(
     call: &mut HostCall<'call, Profile, Provider, Return>,
     dict: HostExternal<'call, super::schema::DictOf<KeyType, ValueType>>,
@@ -37,7 +53,8 @@ pub(in crate::gleam_stdlib) fn lookup<'call, Profile, Provider, Return, KeyType,
 ) -> Option<ValueType::Value<'call>>
 where
     Profile: GleamStdlibHostProfile,
-    Provider: HostProvider<Profile>,
+    Provider:
+        HostExternalBinding<Profile, super::schema::DictSchema, Storage = DictExternalStorage>,
     Return: HostType,
     KeyType: HostType,
     ValueType: HostType,
@@ -54,23 +71,27 @@ where
 
 pub(crate) fn create_dynamic_dict<'call, Profile, Provider, Return>(
     call: &mut HostCall<'call, Profile, Provider, Return>,
+    construction: HostConstruction<'call, super::schema::DictOf<Dynamic, Dynamic>>,
     entries: impl IntoIterator<Item = (HostExternal<'call, Dynamic>, HostExternal<'call, Dynamic>)>,
 ) -> HostExternal<'call, super::schema::DictOf<Dynamic, Dynamic>>
 where
     Profile: GleamStdlibHostProfile,
-    Provider: HostProvider<Profile>,
+    Provider:
+        HostExternalBinding<Profile, super::schema::DictSchema, Storage = DictExternalStorage>,
     Return: HostType,
 {
-    create_dict(call, entries)
+    create_dict(call, construction, entries)
 }
 
 fn create_dict<'call, Profile, Provider, Return, KeyType, ValueType>(
     call: &mut HostCall<'call, Profile, Provider, Return>,
+    construction: HostConstruction<'call, super::schema::DictOf<KeyType, ValueType>>,
     entries: impl IntoIterator<Item = (KeyType::Value<'call>, ValueType::Value<'call>)>,
 ) -> HostExternal<'call, super::schema::DictOf<KeyType, ValueType>>
 where
     Profile: GleamStdlibHostProfile,
-    Provider: HostProvider<Profile>,
+    Provider:
+        HostExternalBinding<Profile, super::schema::DictSchema, Storage = DictExternalStorage>,
     Return: HostType,
     KeyType: HostType,
     ValueType: HostType,
@@ -83,7 +104,7 @@ where
         });
     }
 
-    call.create_external_value_with(move |builder| {
+    call.construct_external_with(construction, move |builder| {
         let len = buckets.values().map(Vec::len).sum();
         let buckets = buckets
             .into_iter()

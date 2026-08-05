@@ -138,6 +138,27 @@ random operations. Construction requires either a seed or fallible system
 entropy; the runtime provides no hidden seed, global generator, or `Default`
 state.
 
+Intermediate compound construction is a separate call-scoped capability. A
+registration seals an exact type list and supplies `HostConstructions` to that
+callback; each construction token names one position in that list. Direct
+return builders remain specific to the declared return type. Neither path uses
+runtime type lookup or a general-purpose materialized value builder.
+
+### Static Provider Components
+
+An independently compiled Rust crate can package its provider boundary as a
+`HostProviderComponent`. The component owns its configuration interpretation,
+external stores, caller-owned run state, and source-backed registrations. A
+runner combines selected components into concrete aggregate structs and
+implements static `HostComponentProfile` projections for each component. The
+runtime does not discover components or erase their stores and state.
+
+Component initialization consumes explicit owned configuration before source
+planning or execution begins. An initialization failure identifies the
+component and remains a runner assembly error; configuration, component
+identity, and mutable state do not enter ModulePlan, the execution graph,
+Explain metadata, or `ExecutionError`.
+
 ### Time Sources
 
 The separate `gleam_time` provider projects a caller-owned `TimeSource` from
@@ -154,11 +175,13 @@ and do not become runtime semantics.
 
 ### External Values And Retained Storage
 
-A source-backed provider can register a constructorless external type with
-`HostExternalStorage`. Planning links its exact package, module, type name, and
-parameter count. Canonical plan and graph nodes retain nominal type and storage
-IDs only. `HostedExecution` owns the profile's typed stores used for payload
-creation and access, while `HostExternalStorage` supplies payload source
+A source-backed provider can register a constructorless external type through
+a provider-owned `HostExternalStorage<Profile, Schema>` adapter. The provider's
+`HostExternalBinding` selects that adapter, while the aggregate profile only
+projects the component store it uses. Planning links the exact package, module,
+type name, and parameter count. Canonical plan and graph nodes retain nominal
+type and storage IDs only. `HostedExecution` owns the profile's typed stores
+used for payload creation and access, while the adapter supplies payload source
 equality, hashing, and inspection behavior. These operations receive narrow
 contexts that can compare, hash, or inspect retained typed and existential
 Gleam values without exposing runtime storage. Neither Rust payloads nor

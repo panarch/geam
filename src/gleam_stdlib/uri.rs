@@ -4,7 +4,7 @@ mod schema;
 use self::function::{
     UriProvider, codeunit_slice, parse_query, percent_decode, percent_encode, pop_codeunit,
 };
-use self::schema::{CodeunitPair, PercentDecodeResult, QueryResult};
+use self::schema::{CodeunitPair, PercentDecodeResult, QueryConstructions, QueryResult};
 use super::GleamStdlibHostProfile;
 use crate::{HostProviderModule, HostRegistrationError};
 use ecow::EcoString;
@@ -28,10 +28,13 @@ where
             )
         })
         .and_then(|provider| {
-            provider.with_scoped_function::<UriProvider<Profile>, (EcoString,), QueryResult, _>(
-                "parse_query",
-                parse_query::<Profile>,
-            )
+            provider.with_scoped_function_and_constructions::<
+                UriProvider<Profile>,
+                (EcoString,),
+                QueryResult,
+                QueryConstructions,
+                _,
+            >("parse_query", parse_query::<Profile>)
         })
         .and_then(|provider| provider.with_function("percent_encode", percent_encode))
         .and_then(|provider| {

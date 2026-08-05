@@ -89,7 +89,7 @@ fn links_dependency_package_external_values_by_nominal_identity() {
 
     let provider = HostProviderModule::<ExternalProfile>::new("support", "support/counter")
         .expect("provider module should be valid")
-        .with_external_type::<DependencyCounterSchema>()
+        .with_external_type::<CounterProvider, DependencyCounterSchema>()
         .expect("external type should be valid")
         .with_scoped_function::<CounterProvider, (BigInt,), HostDependencyCounter, _>(
             "new",
@@ -202,7 +202,7 @@ fn uses_source_declared_external_types_in_source_less_host_modules() {
 
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<CounterSchema>()
+        .with_external_type::<CounterProvider, CounterSchema>()
         .expect("external type should be valid")
         .with_scoped_function::<CounterProvider, (BigInt,), HostCounter, _>(
             "new_counter",

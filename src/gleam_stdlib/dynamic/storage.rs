@@ -106,13 +106,15 @@ impl DynamicPayload {
     }
 }
 
-impl<Profile> HostExternalStorage<DynamicSchema> for Profile
+pub(crate) struct DynamicExternalStorage;
+
+impl<Profile> HostExternalStorage<Profile, DynamicSchema> for DynamicExternalStorage
 where
     Profile: GleamStdlibHostProfile,
 {
     type Payload = DynamicPayload;
 
-    fn store(stores: &Self::ExternalStores) -> &HostExternalStore<Self::Payload> {
+    fn store(stores: &Profile::ExternalStores) -> &HostExternalStore<Self::Payload> {
         &Profile::gleam_stdlib_stores(stores).dynamic.values
     }
 

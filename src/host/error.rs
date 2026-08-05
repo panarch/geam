@@ -33,6 +33,14 @@ pub enum HostRegistrationError {
     },
 
     #[error(
+        "host function {function} registers construction type parameter indices {parameters:?} that do not occur in its signature"
+    )]
+    UnboundConstructionTypeParameters {
+        function: EcoString,
+        parameters: Box<[usize]>,
+    },
+
+    #[error(
         "host module {module} was registered by both package {first_package} and package {second_package}"
     )]
     DuplicateModule {

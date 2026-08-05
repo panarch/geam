@@ -6,14 +6,14 @@ use std::sync::Arc;
 
 pub(crate) struct HostImplementationBinding<Profile: HostProfile> {
     template: FunctionTemplateId,
-    constructions: crate::host::HostFunctionConstructions,
+    constructions: crate::host::RegisteredHostConstructions,
     implementation: Arc<RegisteredHostFunctionImplementation<Profile>>,
 }
 
 impl<Profile: HostProfile> HostImplementationBinding<Profile> {
     pub(crate) fn new(
         template: FunctionTemplateId,
-        constructions: crate::host::HostFunctionConstructions,
+        constructions: crate::host::RegisteredHostConstructions,
         implementation: Arc<RegisteredHostFunctionImplementation<Profile>>,
     ) -> Self {
         Self {
@@ -27,7 +27,7 @@ impl<Profile: HostProfile> HostImplementationBinding<Profile> {
         self,
     ) -> (
         FunctionTemplateId,
-        crate::host::HostFunctionConstructions,
+        crate::host::RegisteredHostConstructions,
         Arc<RegisteredHostFunctionImplementation<Profile>>,
     ) {
         (self.template, self.constructions, self.implementation)

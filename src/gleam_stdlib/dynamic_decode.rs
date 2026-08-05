@@ -8,8 +8,8 @@ use self::function::{
     dynamic_float, dynamic_int, dynamic_string, is_null,
 };
 use self::schema::{
-    BitArrayResult, CastValue, DecodeListResult, DecodedItems, DictResult, IndexKey, IndexResult,
-    ItemDecoder, PushPath, StringResult,
+    BareIndexConstructions, BitArrayResult, CastValue, DecodeListConstructions, DecodeListResult,
+    DecodedItems, DictResult, IndexKey, IndexResult, ItemDecoder, PushPath, StringResult,
 };
 use super::GleamStdlibHostProfile;
 use super::dynamic::Dynamic;
@@ -22,10 +22,11 @@ where
 {
     HostProviderModule::new("gleam_stdlib", "gleam/dynamic/decode")
         .and_then(|provider| {
-            provider.with_scoped_function::<
+            provider.with_scoped_function_and_constructions::<
                 DynamicDecodeProvider<Profile>,
                 (Dynamic, IndexKey),
                 IndexResult,
+                BareIndexConstructions,
                 _,
             >("bare_index", bare_index::<Profile>)
         })
@@ -62,10 +63,11 @@ where
             >("dynamic_bit_array", dynamic_bit_array::<Profile>)
         })
         .and_then(|provider| {
-            provider.with_scoped_function::<
+            provider.with_scoped_function_and_constructions::<
                 DynamicDecodeProvider<Profile>,
                 (Dynamic, ItemDecoder, PushPath, BigInt, DecodedItems),
                 DecodeListResult,
+                DecodeListConstructions,
                 _,
             >("decode_list", decode_list::<Profile>)
         })

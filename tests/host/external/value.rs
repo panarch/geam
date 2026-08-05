@@ -30,7 +30,7 @@ fn hashes_symbolic_and_external_function_values_through_the_host_call() {
 
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<CounterSchema>()
+        .with_external_type::<CounterProvider, CounterSchema>()
         .expect("external type should be valid")
         .with_scoped_function::<CounterProvider, (BigInt,), HostCounter, _>(
             "new_counter",
@@ -152,7 +152,7 @@ fn creates_compares_and_returns_opaque_external_values() {
 
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<CounterSchema>()
+        .with_external_type::<CounterProvider, CounterSchema>()
         .expect("external type should be valid")
         .with_scoped_function::<CounterProvider, (BigInt,), HostCounter, _>(
             "new_counter",
@@ -261,7 +261,7 @@ fn explains_external_targets_lists_and_captures() {
 
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<CounterSchema>()
+        .with_external_type::<CounterProvider, CounterSchema>()
         .expect("external type should be valid")
         .with_scoped_function::<CounterProvider, (BigInt,), HostCounter, _>(
             "new_counter",
@@ -365,7 +365,7 @@ fn external_storage_profiles_preserve_existing_runtime_families() {
         .expect("Nil host function should be valid");
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<CounterSchema>()
+        .with_external_type::<CounterProvider, CounterSchema>()
         .expect("external type should be valid")
         .with_scoped_function::<CounterProvider, (BigInt,), HostCounter, _>(
             "new_counter",
@@ -603,7 +603,7 @@ fn executes_external_values_across_expression_and_function_table_boundaries() {
 
     let provider = HostProviderModule::<ExternalProfile>::new("application", "main")
         .expect("provider module should be valid")
-        .with_external_type::<CounterSchema>()
+        .with_external_type::<CounterProvider, CounterSchema>()
         .expect("external type should be valid")
         .with_scoped_function::<CounterProvider, (BigInt,), HostCounter, _>(
             "new_counter",

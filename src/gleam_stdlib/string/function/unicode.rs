@@ -1,7 +1,9 @@
-use super::super::schema::{PopError, PopOk, PopResult, StringPairElements};
+use super::super::schema::{PopConstructions, PopError, PopOk, PopPairIndex, PopResult};
 use super::StringProvider;
 use crate::gleam_stdlib::GleamStdlibHostProfile;
-use crate::{HostCall, HostCallCompletion, HostCallError, HostFailure, HostList};
+use crate::{
+    HostCall, HostCallCompletion, HostCallError, HostConstructions, HostFailure, HostList,
+};
 use ecow::EcoString;
 use num_bigint::BigInt;
 use num_traits::ToPrimitive;
@@ -9,6 +11,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 pub(in crate::gleam_stdlib::string) fn pop_grapheme<'call, Profile>(
     mut call: HostCall<'call, Profile, StringProvider<Profile>, PopResult>,
+    constructions: HostConstructions<'call, PopConstructions>,
     string: EcoString,
 ) -> Result<HostCallCompletion<'call, PopResult>, HostCallError>
 where
@@ -18,7 +21,10 @@ where
         return Ok(call.return_custom::<PopError>(((), ())));
     };
     let rest = EcoString::from(&string[grapheme.len()..]);
-    let pair = call.create_tuple::<StringPairElements>((grapheme.into(), (rest, ())));
+    let pair = call.construct_tuple(
+        constructions.at::<PopPairIndex>(),
+        (grapheme.into(), (rest, ())),
+    );
     Ok(call.return_custom::<PopOk>((pair, ())))
 }
 

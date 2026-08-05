@@ -1,11 +1,13 @@
 mod codec;
 
 use super::schema::{
-    CodeunitPair, PercentDecodeError, PercentDecodeOk, PercentDecodeResult, QueryError, QueryOk,
-    QueryPair, QueryPairElements, QueryResult,
+    CodeunitPair, PercentDecodeError, PercentDecodeOk, PercentDecodeResult, QueryConstructions,
+    QueryError, QueryOk, QueryPairIndex, QueryPairsIndex, QueryResult,
 };
 use crate::gleam_stdlib::GleamStdlibHostProfile;
-use crate::{HostCall, HostCallCompletion, HostCallError, HostFailure, HostProvider};
+use crate::{
+    HostCall, HostCallCompletion, HostCallError, HostConstructions, HostFailure, HostProvider,
+};
 use ecow::EcoString;
 use num_bigint::BigInt;
 use num_traits::ToPrimitive;
@@ -63,6 +65,7 @@ pub(super) fn codeunit_slice(
 
 pub(super) fn parse_query<'call, Profile>(
     mut call: HostCall<'call, Profile, UriProvider<Profile>, QueryResult>,
+    constructions: HostConstructions<'call, QueryConstructions>,
     query: EcoString,
 ) -> Result<HostCallCompletion<'call, QueryResult>, HostCallError>
 where
@@ -73,9 +76,11 @@ where
     };
     let pairs = pairs
         .into_iter()
-        .map(|(key, value)| call.create_tuple::<QueryPairElements>((key, (value, ()))))
+        .map(|(key, value)| {
+            call.construct_tuple(constructions.at::<QueryPairIndex>(), (key, (value, ())))
+        })
         .collect::<Vec<_>>();
-    let pairs = call.create_list::<QueryPair>(pairs);
+    let pairs = call.construct_list(constructions.at::<QueryPairsIndex>(), pairs);
 
     Ok(call.return_custom::<QueryOk>((pairs, ())))
 }

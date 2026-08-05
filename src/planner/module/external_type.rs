@@ -249,9 +249,9 @@ mod tests {
     };
     use crate::host::{
         ExternalTestProfile, ExternalTestRunState, HostCall, HostCallCompletion, HostCallError,
-        HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType,
-        HostExternalTypeSchema, HostModule, HostProvider, HostProviderModule, HostProviderSet,
-        HostTypeDescriptor,
+        HostExternalBinding, HostExternalSchema, HostExternalStorage, HostExternalStore,
+        HostExternalType, HostExternalTypeSchema, HostModule, HostProvider, HostProviderModule,
+        HostProviderSet, HostTypeDescriptor,
     };
     use crate::plan::{
         CustomConstructorRefinement, CustomTypeName, CustomValueShape, ExternalTypeDefinition,
@@ -270,6 +270,8 @@ mod tests {
 
     struct ThingProvider;
 
+    struct ThingStorage;
+
     type HostThing = HostExternalType<ThingSchema>;
 
     impl HostExternalSchema for ThingSchema {
@@ -279,10 +281,12 @@ mod tests {
         const PARAMETER_COUNT: usize = 0;
     }
 
-    impl HostExternalStorage<ThingSchema> for ExternalTestProfile {
+    impl HostExternalStorage<ExternalTestProfile, ThingSchema> for ThingStorage {
         type Payload = ();
 
-        fn store(stores: &Self::ExternalStores) -> &HostExternalStore<Self::Payload> {
+        fn store(
+            stores: &<ExternalTestProfile as crate::HostProfile>::ExternalStores,
+        ) -> &HostExternalStore<Self::Payload> {
             &stores.units
         }
 
@@ -311,6 +315,10 @@ mod tests {
         }
     }
 
+    impl HostExternalBinding<ExternalTestProfile, ThingSchema> for ThingProvider {
+        type Storage = ThingStorage;
+    }
+
     fn new_thing<'call>(
         mut call: HostCall<'call, ExternalTestProfile, ThingProvider, HostThing>,
     ) -> Result<HostCallCompletion<'call, HostThing>, HostCallError> {
@@ -325,7 +333,10 @@ mod tests {
         let hashing = crate::host::HostExternalHashing::new(&retained_hash);
 
         assert_eq!(
-            <ExternalTestProfile as HostExternalStorage<ThingSchema>>::source_hash(&hashing, &()),
+            <ThingStorage as HostExternalStorage<ExternalTestProfile, ThingSchema>>::source_hash(
+                &hashing,
+                &(),
+            ),
             0,
         );
     }
@@ -530,7 +541,7 @@ pub fn main() {
 "#;
         let provider = HostProviderModule::<ExternalTestProfile>::new("application", "main")
             .expect("provider module should be valid")
-            .with_external_type::<ThingSchema>()
+            .with_external_type::<ThingProvider, ThingSchema>()
             .expect("external type should be valid")
             .with_scoped_function::<ThingProvider, (), HostThing, _>("new_thing", new_thing)
             .expect("external constructor should be valid");
@@ -621,7 +632,7 @@ pub fn main() { Thing }
 "#;
         let provider = HostProviderModule::<ExternalTestProfile>::new("application", "main")
             .expect("provider module should be valid")
-            .with_external_type::<ThingSchema>()
+            .with_external_type::<ThingProvider, ThingSchema>()
             .expect("external type should be valid");
         let typed = compile_typed_host_program(
             "application",
@@ -724,7 +735,7 @@ pub fn main() { 1 }
 "#;
         let provider = HostProviderModule::<ExternalTestProfile>::new("application", "main")
             .expect("provider module should be valid")
-            .with_external_type::<ThingSchema>()
+            .with_external_type::<ThingProvider, ThingSchema>()
             .expect("external type should be valid");
         let typed = compile_typed_host_program(
             "application",
@@ -760,7 +771,7 @@ pub fn main() { 1 }
     fn reject_profile_external_registration_without_a_declaration() {
         let provider = HostProviderModule::<ExternalTestProfile>::new("application", "main")
             .expect("provider module should be valid")
-            .with_external_type::<ThingSchema>()
+            .with_external_type::<ThingProvider, ThingSchema>()
             .expect("external type should be valid");
         let typed = compile_typed_host_program(
             "application",
@@ -797,7 +808,7 @@ pub fn main() { 1 }
     fn reject_profile_external_registration_without_a_source_module() {
         let provider = HostProviderModule::<ExternalTestProfile>::new("application", "missing")
             .expect("provider module should be valid")
-            .with_external_type::<ThingSchema>()
+            .with_external_type::<ThingProvider, ThingSchema>()
             .expect("external type should be valid");
         let typed = compile_typed_host_program(
             "application",

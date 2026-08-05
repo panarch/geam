@@ -1,8 +1,8 @@
 use super::{
-    FallibleHostFunction, HostExternalSchema, HostExternalStorage, HostExternalTypeSchema,
+    FallibleHostFunction, HostExternalBinding, HostExternalSchema, HostExternalTypeSchema,
     HostFunction, HostFunctionDefinition, HostFunctionImplementation, HostFunctionSchema,
-    HostProfile, HostProvider, HostRegistrationError, ScopedDivergingHostFunction,
-    ScopedHostFunction, StatelessHostProfile,
+    HostProfile, HostProvider, HostRegistrationError, ScopedConstructingHostFunction,
+    ScopedDivergingHostFunction, ScopedHostFunction, StatelessHostProfile,
 };
 use ecow::EcoString;
 use gleam_core::analyse::name::check_name_case;
@@ -49,7 +49,7 @@ pub(crate) struct RegisteredHostProviderModule {
 
 pub(crate) struct RegisteredHostFunction {
     schema: HostFunctionSchema,
-    constructions: super::HostFunctionConstructions,
+    constructions: super::RegisteredHostConstructions,
     implementation: RegisteredHostImplementationId,
 }
 
@@ -221,7 +221,8 @@ impl<Profile: HostProfile> HostProviderModule<Profile> {
             .map(|()| self)
     }
 
-    pub(crate) fn with_scoped_function_and_constructions<
+    /// Registers a scoped callback and the exact intermediate types it may construct.
+    pub fn with_scoped_function_and_constructions<
         Provider,
         Arguments,
         Return,
@@ -235,7 +236,8 @@ impl<Profile: HostProfile> HostProviderModule<Profile> {
     where
         Provider: HostProvider<Profile>,
         Constructions: crate::host::HostTypeSequence,
-        Function: ScopedHostFunction<Profile, Provider, Arguments, Return>,
+        Function:
+            ScopedConstructingHostFunction<Profile, Provider, Arguments, Return, Constructions>,
     {
         self.functions
             .register(&self.identity.module, name.into(), |name| {
@@ -266,10 +268,10 @@ impl<Profile: HostProfile> HostProviderModule<Profile> {
             .map(|()| self)
     }
 
-    pub fn with_external_type<Schema>(mut self) -> Result<Self, HostRegistrationError>
+    pub fn with_external_type<Provider, Schema>(mut self) -> Result<Self, HostRegistrationError>
     where
         Schema: HostExternalSchema,
-        Profile: HostExternalStorage<Schema>,
+        Provider: HostExternalBinding<Profile, Schema>,
     {
         let schema = HostExternalTypeSchema::of::<Schema>();
         self.external_types
@@ -554,7 +556,7 @@ impl RegisteredHostFunction {
         self,
     ) -> (
         HostFunctionSchema,
-        super::HostFunctionConstructions,
+        super::RegisteredHostConstructions,
         RegisteredHostImplementationId,
     ) {
         (self.schema, self.constructions, self.implementation)
@@ -593,11 +595,11 @@ mod tests {
     use crate::host::function::CallArguments;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{
-        ExternalTestProfile, ExternalTestStores, HostCall, HostCallCompletion, HostCallError,
-        HostExternalSchema, HostExternalStorage, HostExternalStore, HostFailure,
-        HostFunctionDefinition, HostProvider, HostRegistrationError, HostScopedValue,
-        HostStoredValue, StatelessHostProfile, expect_never_implementation,
-        expect_value_implementation,
+        ExternalTestProfile, ExternalTestRunState, ExternalTestStores, HostCall,
+        HostCallCompletion, HostCallError, HostExternalBinding, HostExternalSchema,
+        HostExternalStorage, HostExternalStore, HostFailure, HostFunctionDefinition, HostProvider,
+        HostRegistrationError, HostScopedValue, HostStoredValue, StatelessHostProfile,
+        expect_never_implementation, expect_value_implementation,
     };
     use crate::plan::ValueType;
     use ecow::EcoString;
@@ -612,11 +614,23 @@ mod tests {
 
     struct InvalidCounterSchema;
 
+    struct CounterStorage;
+
+    struct InvalidCounterStorage;
+
     impl HostProvider<TestHostProfile> for Counter {
         type State = usize;
 
         fn project(state: &mut TestRunState) -> &mut Self::State {
             &mut state.counter
+        }
+    }
+
+    impl HostProvider<ExternalTestProfile> for Counter {
+        type State = ();
+
+        fn project(state: &mut ExternalTestRunState) -> &mut Self::State {
+            &mut state.provider
         }
     }
 
@@ -627,10 +641,10 @@ mod tests {
         const PARAMETER_COUNT: usize = 1;
     }
 
-    impl HostExternalStorage<CounterSchema> for ExternalTestProfile {
+    impl HostExternalStorage<ExternalTestProfile, CounterSchema> for CounterStorage {
         type Payload = usize;
 
-        fn store(stores: &Self::ExternalStores) -> &HostExternalStore<Self::Payload> {
+        fn store(stores: &ExternalTestStores) -> &HostExternalStore<Self::Payload> {
             &stores.indices
         }
 
@@ -652,6 +666,10 @@ mod tests {
         ) -> EcoString {
             value.to_string().into()
         }
+    }
+
+    impl HostExternalBinding<ExternalTestProfile, CounterSchema> for Counter {
+        type Storage = CounterStorage;
     }
 
     impl HostExternalSchema for InvalidCounterSchema {
@@ -661,10 +679,10 @@ mod tests {
         const PARAMETER_COUNT: usize = 0;
     }
 
-    impl HostExternalStorage<InvalidCounterSchema> for ExternalTestProfile {
+    impl HostExternalStorage<ExternalTestProfile, InvalidCounterSchema> for InvalidCounterStorage {
         type Payload = usize;
 
-        fn store(stores: &Self::ExternalStores) -> &HostExternalStore<Self::Payload> {
+        fn store(stores: &ExternalTestStores) -> &HostExternalStore<Self::Payload> {
             &stores.indices
         }
 
@@ -686,6 +704,10 @@ mod tests {
         ) -> EcoString {
             value.to_string().into()
         }
+    }
+
+    impl HostExternalBinding<ExternalTestProfile, InvalidCounterSchema> for Counter {
+        type Storage = InvalidCounterStorage;
     }
 
     fn increment<'call>(
@@ -777,7 +799,7 @@ mod tests {
     fn provider_module_exposes_registered_external_type_schemas() {
         let provider = HostProviderModule::<ExternalTestProfile>::new("application", "main")
             .expect("provider module should be valid")
-            .with_external_type::<CounterSchema>()
+            .with_external_type::<Counter, CounterSchema>()
             .expect("external type should be valid");
         let schema = provider
             .external_types()
@@ -811,7 +833,7 @@ mod tests {
         assert_eq!(
             HostProviderModule::<ExternalTestProfile>::new("application", "main")
                 .expect("provider module should be valid")
-                .with_external_type::<InvalidCounterSchema>()
+                .with_external_type::<Counter, InvalidCounterSchema>()
                 .err(),
             Some(HostRegistrationError::InvalidExternalTypeName {
                 module: "main".into(),
@@ -821,9 +843,9 @@ mod tests {
         assert_eq!(
             HostProviderModule::<ExternalTestProfile>::new("application", "main")
                 .expect("provider module should be valid")
-                .with_external_type::<CounterSchema>()
+                .with_external_type::<Counter, CounterSchema>()
                 .expect("first external type should be valid")
-                .with_external_type::<CounterSchema>()
+                .with_external_type::<Counter, CounterSchema>()
                 .err(),
             Some(HostRegistrationError::DuplicateExternalType {
                 module: "main".into(),
@@ -835,6 +857,7 @@ mod tests {
     #[test]
     fn external_storage_protocol_projects_payload_semantics() {
         let stores = ExternalTestStores::default();
+        let mut state = ExternalTestRunState::default();
         let equal =
             |_: &crate::runtime::StoredRuntimeValue, _: &crate::runtime::StoredRuntimeValue| false;
         let source_hash = |_: &crate::runtime::StoredRuntimeValue| 0;
@@ -846,40 +869,57 @@ mod tests {
             BigInt::from(7),
         ));
 
+        assert!(std::ptr::eq(
+            <Counter as HostProvider<ExternalTestProfile>>::project(&mut state),
+            &state.provider,
+        ));
         assert_eq!(inspection.inspect_stored_value(&stored), "");
         assert!(std::ptr::eq(
-            <ExternalTestProfile as HostExternalStorage<CounterSchema>>::store(&stores),
+            <CounterStorage as HostExternalStorage<ExternalTestProfile, CounterSchema>>::store(
+                &stores,
+            ),
             &stores.indices,
         ));
-        assert!(<ExternalTestProfile as HostExternalStorage<
+        assert!(<CounterStorage as HostExternalStorage<
+            ExternalTestProfile,
             CounterSchema,
         >>::source_equal(&equality, &7, &7),);
         assert_eq!(
-            <ExternalTestProfile as HostExternalStorage<CounterSchema>>::source_hash(&hashing, &7,),
+            <CounterStorage as HostExternalStorage<ExternalTestProfile, CounterSchema>>::source_hash(
+                &hashing, &7,
+            ),
             7,
         );
         assert_eq!(
-            <ExternalTestProfile as HostExternalStorage<CounterSchema>>::inspect(&inspection, &7,),
+            <CounterStorage as HostExternalStorage<ExternalTestProfile, CounterSchema>>::inspect(
+                &inspection,
+                &7,
+            ),
             "7",
         );
         assert!(std::ptr::eq(
-            <ExternalTestProfile as HostExternalStorage<InvalidCounterSchema>>::store(&stores),
+            <InvalidCounterStorage as HostExternalStorage<
+                ExternalTestProfile,
+                InvalidCounterSchema,
+            >>::store(&stores),
             &stores.indices,
         ));
-        assert!(<ExternalTestProfile as HostExternalStorage<
+        assert!(<InvalidCounterStorage as HostExternalStorage<
+            ExternalTestProfile,
             InvalidCounterSchema,
         >>::source_equal(&equality, &8, &8),);
         assert_eq!(
-            <ExternalTestProfile as HostExternalStorage<InvalidCounterSchema>>::source_hash(
-                &hashing, &8,
-            ),
+            <InvalidCounterStorage as HostExternalStorage<
+                ExternalTestProfile,
+                InvalidCounterSchema,
+            >>::source_hash(&hashing, &8,),
             8,
         );
         assert_eq!(
-            <ExternalTestProfile as HostExternalStorage<InvalidCounterSchema>>::inspect(
-                &inspection,
-                &8,
-            ),
+            <InvalidCounterStorage as HostExternalStorage<
+                ExternalTestProfile,
+                InvalidCounterSchema,
+            >>::inspect(&inspection, &8,),
             "8",
         );
     }

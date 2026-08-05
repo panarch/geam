@@ -63,7 +63,7 @@ fn validate_host_custom_schema(
         signature,
         actual,
         access,
-        &crate::host::HostFunctionConstructions::empty(),
+        &crate::host::RegisteredHostConstructions::empty(),
     )
 }
 
@@ -74,7 +74,7 @@ fn validate_host_custom_schema_with_constructions(
     signature: &crate::plan::FunctionTemplateSignature,
     actual: &crate::host::HostCustomTypeSchema,
     access: HostCustomTypeAccess,
-    constructions: &crate::host::HostFunctionConstructions,
+    constructions: &crate::host::RegisteredHostConstructions,
 ) -> Result<(), PlanError> {
     let name = crate::plan::CustomTypeName::new(
         actual.package().clone(),
@@ -369,8 +369,11 @@ mod tests {
             HostCustomConstructorList<HiddenBoxDefinition, HostCustomConstructorListEnd>;
     }
 
+    type HiddenConstructions = HostTypeList<HostCustomType<HiddenBoxSchema>, HostTypeListEnd>;
+
     fn hidden_ready<'call>(
         call: HostCall<'call, TestHostProfile, HiddenConstructionProvider, bool>,
+        _constructions: crate::HostConstructions<'call, HiddenConstructions>,
     ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
         Ok(call.return_value(true))
     }
@@ -1130,7 +1133,6 @@ mod tests {
             FunctionShape::new(Vec::new(), ValueShape::Bool),
         );
         let actual = HostCustomTypeSchema::of::<HiddenBoxSchema>();
-        type HiddenConstructions = HostTypeList<HostCustomType<HiddenBoxSchema>, HostTypeListEnd>;
         let (_, constructions, implementation) =
             HostFunctionDefinition::new_scoped_with_constructions::<
                 HiddenConstructionProvider,

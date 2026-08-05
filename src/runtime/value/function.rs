@@ -687,8 +687,8 @@ mod tests {
     use super::{FunctionValue, FunctionValueKind, GenericFunctionValue};
     use crate::host::{
         ExternalTestProfile, ExternalTestRunState, HostCall, HostCallCompletion, HostCallError,
-        HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType, HostProvider,
-        HostProviderModule, HostProviderSet,
+        HostExternalBinding, HostExternalSchema, HostExternalStorage, HostExternalStore,
+        HostExternalType, HostProvider, HostProviderModule, HostProviderSet,
     };
     use crate::plan::execution::function::{FunctionReturnFamily, GenericCallableId};
     use crate::plan::execution::runtime::RuntimeExecutionPlan;
@@ -706,6 +706,8 @@ mod tests {
 
     struct ResourceProvider;
 
+    struct ResourceStorage;
+
     type HostResource = HostExternalType<ResourceSchema>;
 
     impl HostExternalSchema for ResourceSchema {
@@ -715,10 +717,12 @@ mod tests {
         const PARAMETER_COUNT: usize = 0;
     }
 
-    impl HostExternalStorage<ResourceSchema> for ExternalTestProfile {
+    impl HostExternalStorage<ExternalTestProfile, ResourceSchema> for ResourceStorage {
         type Payload = ();
 
-        fn store(stores: &Self::ExternalStores) -> &HostExternalStore<Self::Payload> {
+        fn store(
+            stores: &<ExternalTestProfile as crate::HostProfile>::ExternalStores,
+        ) -> &HostExternalStore<Self::Payload> {
             &stores.units
         }
 
@@ -747,6 +751,10 @@ mod tests {
         }
     }
 
+    impl HostExternalBinding<ExternalTestProfile, ResourceSchema> for ResourceProvider {
+        type Storage = ResourceStorage;
+    }
+
     fn external_main<'call>(
         mut call: HostCall<'call, ExternalTestProfile, ResourceProvider, HostResource>,
     ) -> Result<HostCallCompletion<'call, HostResource>, HostCallError> {
@@ -761,7 +769,7 @@ mod tests {
         let hashing = crate::host::HostExternalHashing::new(&retained_hash);
 
         assert_eq!(
-            <ExternalTestProfile as HostExternalStorage<ResourceSchema>>::source_hash(
+            <ResourceStorage as HostExternalStorage<ExternalTestProfile, ResourceSchema>>::source_hash(
                 &hashing,
                 &(),
             ),
@@ -914,7 +922,7 @@ mod tests {
     fn external_function_value_preserves_its_runtime_family_and_type() {
         let provider = HostProviderModule::<ExternalTestProfile>::new("application", "main")
             .expect("provider module should be valid")
-            .with_external_type::<ResourceSchema>()
+            .with_external_type::<ResourceProvider, ResourceSchema>()
             .expect("external type should be valid")
             .with_scoped_function::<ResourceProvider, (), HostResource, _>(
                 "resource",

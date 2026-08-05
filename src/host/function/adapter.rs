@@ -1,8 +1,8 @@
 use super::argument::{HostArgument, HostParameter, HostParameterLayout, HostScopedArgument};
 use super::return_::{HostFunctionImplementation, HostReturn};
 use crate::host::{
-    HostAbiType, HostCall, HostCallCompletion, HostCallError, HostFailure, HostProfile,
-    HostProvider, HostTypeDescriptor,
+    HostAbiType, HostCall, HostCallCompletion, HostCallError, HostConstructions, HostFailure,
+    HostProfile, HostProvider, HostTypeDescriptor, HostTypeSequence,
 };
 
 pub trait HostFunctionAdapter<Arguments, Return>: Send + Sync + 'static {
@@ -18,6 +18,16 @@ pub trait ScopedHostFunctionAdapter<Profile, Provider, Arguments, Return>:
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
+{
+    fn register(self) -> HostFunctionRegistration<Profile>;
+}
+
+pub trait ScopedConstructingHostFunctionAdapter<Profile, Provider, Arguments, Return, Constructions>:
+    Send + Sync + 'static
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Constructions: HostTypeSequence,
 {
     fn register(self) -> HostFunctionRegistration<Profile>;
 }
@@ -102,6 +112,42 @@ macro_rules! host_function {
                     custom_schemas: custom_schemas.into_boxed_slice(),
                     implementation: HostFunctionImplementation::scoped(move |runtime| {
                         self(HostCall::new(runtime)).map(|completion| completion.token)
+                    }),
+                }
+            }
+        }
+
+        impl<Profile, Provider, Function, Return, Constructions>
+            ScopedConstructingHostFunctionAdapter<Profile, Provider, (), Return, Constructions>
+            for Function
+        where
+            Profile: HostProfile,
+            Provider: HostProvider<Profile>,
+            Constructions: HostTypeSequence,
+            Function: for<'call> Fn(
+                    HostCall<'call, Profile, Provider, Return>,
+                    HostConstructions<'call, Constructions>,
+                ) -> Result<HostCallCompletion<'call, Return>, HostCallError>
+                + Send
+                + Sync
+                + 'static,
+            Return: HostAbiType,
+        {
+            fn register(self) -> HostFunctionRegistration<Profile> {
+                let mut custom_schemas = Vec::new();
+                let mut visited = std::collections::HashSet::new();
+                <Return as HostAbiType>::collect_custom_schemas(
+                    &mut custom_schemas,
+                    &mut visited,
+                );
+                HostFunctionRegistration {
+                    parameters: Box::new([]),
+                    parameter_types: Box::new([]),
+                    return_type: <Return as HostAbiType>::descriptor(),
+                    custom_schemas: custom_schemas.into_boxed_slice(),
+                    implementation: HostFunctionImplementation::scoped(move |runtime| {
+                        self(HostCall::new(runtime), HostConstructions::new())
+                            .map(|completion| completion.token)
                     }),
                 }
             }
@@ -232,6 +278,62 @@ macro_rules! host_function {
             }
         }
 
+        impl<Profile, Provider, Function, Return, Constructions, $($argument,)*>
+            ScopedConstructingHostFunctionAdapter<
+                Profile,
+                Provider,
+                ($($argument,)*),
+                Return,
+                Constructions,
+            > for Function
+        where
+            Profile: HostProfile,
+            Provider: HostProvider<Profile>,
+            Constructions: HostTypeSequence,
+            Function: for<'call> Fn(
+                HostCall<'call, Profile, Provider, Return>,
+                HostConstructions<'call, Constructions>,
+                    $(<$argument as crate::host::HostType>::Value<'call>),*
+                ) -> Result<HostCallCompletion<'call, Return>, HostCallError>
+                + Send
+                + Sync
+                + 'static,
+            Return: HostAbiType,
+            $($argument: HostScopedArgument,)*
+        {
+            fn register(self) -> HostFunctionRegistration<Profile> {
+                let mut layout = HostParameterLayout::default();
+                $(let $slot = <$argument as HostScopedArgument>::register(&mut layout);)*
+                let mut custom_schemas = Vec::new();
+                let mut visited = std::collections::HashSet::new();
+                $(<$argument as HostAbiType>::collect_custom_schemas(
+                    &mut custom_schemas,
+                    &mut visited,
+                );)*
+                <Return as HostAbiType>::collect_custom_schemas(
+                    &mut custom_schemas,
+                    &mut visited,
+                );
+                let implementation = HostFunctionImplementation::scoped(move |runtime| {
+                    let call = HostCall::new(runtime);
+                    $(let $slot = <$argument as HostScopedArgument>::read(&call, $slot);)*
+                    self(
+                        call,
+                        HostConstructions::new(),
+                        $($slot),*
+                    )
+                    .map(|completion| completion.token)
+                });
+                HostFunctionRegistration {
+                    parameters: layout.finish(),
+                    parameter_types: vec![$(<$argument as HostAbiType>::descriptor()),*].into_boxed_slice(),
+                    return_type: <Return as HostAbiType>::descriptor(),
+                    custom_schemas: custom_schemas.into_boxed_slice(),
+                    implementation,
+                }
+            }
+        }
+
         impl<Profile, Provider, Function, Return, $($argument,)*>
             ScopedDivergingHostFunctionAdapter<Profile, Provider, ($($argument,)*), Return> for Function
         where
@@ -300,16 +402,17 @@ host_function!(
 #[cfg(test)]
 mod tests {
     use super::{
-        FallibleHostFunctionAdapter, HostFunctionAdapter, ScopedDivergingHostFunctionAdapter,
-        ScopedHostFunctionAdapter,
+        FallibleHostFunctionAdapter, HostFunctionAdapter, ScopedConstructingHostFunctionAdapter,
+        ScopedDivergingHostFunctionAdapter, ScopedHostFunctionAdapter,
     };
     use crate::BitArrayValue;
     use crate::host::function::HostFunctionImplementation;
     use crate::host::function::argument::CallArguments;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{
-        HostCall, HostCallCompletion, HostCallError, HostFailure, HostProvider, HostScopedValue,
-        HostTypeDescriptor, expect_never_implementation, expect_value_implementation,
+        HostCall, HostCallCompletion, HostCallError, HostConstructions, HostFailure, HostListType,
+        HostProvider, HostScopedValue, HostTypeDescriptor, HostTypeIndex0, HostTypeList,
+        HostTypeListEnd, expect_never_implementation, expect_value_implementation,
     };
     use ecow::EcoString;
     use num_bigint::BigInt;
@@ -369,6 +472,75 @@ mod tests {
         (),
         (),
     ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError>;
+    type ConstructionTypes = HostTypeList<HostListType<BigInt>, HostTypeListEnd>;
+    type Constructing0 = for<'call> fn(
+        HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+        HostConstructions<'call, ConstructionTypes>,
+    )
+        -> Result<HostCallCompletion<'call, BigInt>, HostCallError>;
+    type Constructing1 = for<'call> fn(
+        HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+        HostConstructions<'call, ConstructionTypes>,
+        (),
+    )
+        -> Result<HostCallCompletion<'call, BigInt>, HostCallError>;
+    type Constructing2 = for<'call> fn(
+        HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+        HostConstructions<'call, ConstructionTypes>,
+        (),
+        (),
+    )
+        -> Result<HostCallCompletion<'call, BigInt>, HostCallError>;
+    type Constructing3 = for<'call> fn(
+        HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+        HostConstructions<'call, ConstructionTypes>,
+        (),
+        (),
+        (),
+    )
+        -> Result<HostCallCompletion<'call, BigInt>, HostCallError>;
+    type Constructing4 = for<'call> fn(
+        HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+        HostConstructions<'call, ConstructionTypes>,
+        (),
+        (),
+        (),
+        (),
+    )
+        -> Result<HostCallCompletion<'call, BigInt>, HostCallError>;
+    type Constructing5 = for<'call> fn(
+        HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+        HostConstructions<'call, ConstructionTypes>,
+        (),
+        (),
+        (),
+        (),
+        (),
+    )
+        -> Result<HostCallCompletion<'call, BigInt>, HostCallError>;
+    type Constructing6 = for<'call> fn(
+        HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+        HostConstructions<'call, ConstructionTypes>,
+        (),
+        (),
+        (),
+        (),
+        (),
+        (),
+    )
+        -> Result<HostCallCompletion<'call, BigInt>, HostCallError>;
+    type Constructing7 = for<'call> fn(
+        HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+        HostConstructions<'call, ConstructionTypes>,
+        (),
+        (),
+        (),
+        (),
+        (),
+        (),
+        (),
+    )
+        -> Result<HostCallCompletion<'call, BigInt>, HostCallError>;
     type Diverging0 = for<'call> fn(
         HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
     ) -> Result<Infallible, HostCallError>;
@@ -606,6 +778,123 @@ mod tests {
             );
             drop(runtime);
             assert_eq!(state.counter, usize::from(arity == 0));
+        }
+    }
+
+    #[test]
+    fn supports_every_scoped_constructing_argument_arity() {
+        let zero: Constructing0 = |call, constructions| {
+            let _ = constructions.at::<HostTypeIndex0>();
+            Ok(call.return_value(BigInt::from(0)))
+        };
+        let one: Constructing1 = |call, constructions, _| {
+            let _ = constructions.at::<HostTypeIndex0>();
+            Ok(call.return_value(BigInt::from(1)))
+        };
+        let two: Constructing2 = |call, constructions, _, _| {
+            let _ = constructions.at::<HostTypeIndex0>();
+            Ok(call.return_value(BigInt::from(2)))
+        };
+        let three: Constructing3 = |call, constructions, _, _, _| {
+            let _ = constructions.at::<HostTypeIndex0>();
+            Ok(call.return_value(BigInt::from(3)))
+        };
+        let four: Constructing4 = |call, constructions, _, _, _, _| {
+            let _ = constructions.at::<HostTypeIndex0>();
+            Ok(call.return_value(BigInt::from(4)))
+        };
+        let five: Constructing5 = |call, constructions, _, _, _, _, _| {
+            let _ = constructions.at::<HostTypeIndex0>();
+            Ok(call.return_value(BigInt::from(5)))
+        };
+        let six: Constructing6 = |call, constructions, _, _, _, _, _, _| {
+            let _ = constructions.at::<HostTypeIndex0>();
+            Ok(call.return_value(BigInt::from(6)))
+        };
+        let seven: Constructing7 = |call, constructions, _, _, _, _, _, _, _| {
+            let _ = constructions.at::<HostTypeIndex0>();
+            Ok(call.return_value(BigInt::from(7)))
+        };
+        let registrations = vec![
+            <_ as ScopedConstructingHostFunctionAdapter<
+                TestHostProfile,
+                ScopedProvider,
+                (),
+                BigInt,
+                ConstructionTypes,
+            >>::register(zero),
+            <_ as ScopedConstructingHostFunctionAdapter<
+                TestHostProfile,
+                ScopedProvider,
+                ((),),
+                BigInt,
+                ConstructionTypes,
+            >>::register(one),
+            <_ as ScopedConstructingHostFunctionAdapter<
+                TestHostProfile,
+                ScopedProvider,
+                ((), ()),
+                BigInt,
+                ConstructionTypes,
+            >>::register(two),
+            <_ as ScopedConstructingHostFunctionAdapter<
+                TestHostProfile,
+                ScopedProvider,
+                ((), (), ()),
+                BigInt,
+                ConstructionTypes,
+            >>::register(three),
+            <_ as ScopedConstructingHostFunctionAdapter<
+                TestHostProfile,
+                ScopedProvider,
+                ((), (), (), ()),
+                BigInt,
+                ConstructionTypes,
+            >>::register(four),
+            <_ as ScopedConstructingHostFunctionAdapter<
+                TestHostProfile,
+                ScopedProvider,
+                ((), (), (), (), ()),
+                BigInt,
+                ConstructionTypes,
+            >>::register(five),
+            <_ as ScopedConstructingHostFunctionAdapter<
+                TestHostProfile,
+                ScopedProvider,
+                ((), (), (), (), (), ()),
+                BigInt,
+                ConstructionTypes,
+            >>::register(six),
+            <_ as ScopedConstructingHostFunctionAdapter<
+                TestHostProfile,
+                ScopedProvider,
+                ((), (), (), (), (), (), ()),
+                BigInt,
+                ConstructionTypes,
+            >>::register(seven),
+        ];
+
+        for (arity, registration) in registrations.into_iter().enumerate() {
+            assert_eq!(
+                registration.parameter_types.as_ref(),
+                vec![HostTypeDescriptor::Nil; arity],
+            );
+            let arguments = CallArguments::new(Vec::new(), Vec::new()).with_scalar_values(
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                arity,
+            );
+            let mut state = TestRunState::default();
+            let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
+            expect_value_implementation(&registration.implementation)
+                .call(&mut runtime)
+                .expect("scoped constructing callback should succeed");
+            assert_eq!(
+                runtime.completed(),
+                Some(&HostScopedValue::Int(BigInt::from(arity))),
+            );
         }
     }
 
