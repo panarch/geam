@@ -14,10 +14,15 @@ Repository: https://github.com/gleam-lang/gleam
 Release:    v1.18.1
 Commit:     4a83802ca33a8a96227a1b332768725f232f9779
 Published:  2026-08-01
+Cargo:      geam-gleam-core 1.18.1-geam.1
 ```
 
 The baseline is release-based rather than `main`-based so typed AST and
 compiler-boundary behavior are compared against a published Gleam toolchain.
+The `geam-gleam-core` package and its compiler-component dependencies are
+published from the release-tracking `panarch/gleam` mirror. Geam pins that
+package exactly so the crates.io dependency graph and this recorded upstream
+source identity advance together.
 
 The official standard library has an independent baseline:
 
@@ -74,8 +79,9 @@ the caller supplies both stdlib run state and the wall-clock source.
 
 ## Used Gleam Areas
 
-The first compiler-boundary milestone depends on `gleam-core` pinned to the
-baseline commit. The primary compiler areas used by Geam are:
+The first compiler-boundary milestone imports the `gleam_core` Rust library
+from the exact `geam-gleam-core` package recorded above. The primary compiler
+areas used by Geam are:
 
 ```text
 compiler-core/src/parse.rs
@@ -425,6 +431,7 @@ When updating Geam to a newer Gleam baseline, record:
 
 - Old and new Gleam release tags.
 - Old and new commit hashes.
+- Old and new `geam-gleam-core` package versions and mirror releases.
 - Old and new `gleam_stdlib` integration releases when that baseline changes.
 - Old and new `gleam_http` integration releases when that baseline changes.
 - Old and new `gleam_json` integration releases when that baseline changes.
@@ -434,6 +441,6 @@ When updating Geam to a newer Gleam baseline, record:
 - Profile/lowering fixture changes.
 - License or provenance changes, if any.
 
-The README keeps the current upstream release and commit hash visible. This
-document explains the practical differences between Geam and the referenced
-Gleam version.
+The README keeps the current upstream release visible. This document records
+the exact upstream commit and packaged compiler version, and explains the
+practical differences between Geam and the referenced Gleam version.

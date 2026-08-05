@@ -768,28 +768,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
-name = "erlang-generation"
-version = "1.0.0"
-source = "git+https://github.com/gleam-lang/gleam?rev=4a83802ca33a8a96227a1b332768725f232f9779#4a83802ca33a8a96227a1b332768725f232f9779"
-dependencies = [
- "ecow",
- "erlang-term-format",
- "itertools",
- "num-bigint",
- "num-traits",
- "regex",
-]
-
-[[package]]
-name = "erlang-term-format"
-version = "1.0.0"
-source = "git+https://github.com/gleam-lang/gleam?rev=4a83802ca33a8a96227a1b332768725f232f9779#4a83802ca33a8a96227a1b332768725f232f9779"
-dependencies = [
- "num-bigint",
- "num-traits",
-]
-
-[[package]]
 name = "errno"
 version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1013,7 +991,7 @@ dependencies = [
  "bitvec",
  "camino",
  "ecow",
- "gleam-core",
+ "geam-gleam-core",
  "half",
  "hex",
  "im",
@@ -1029,6 +1007,125 @@ dependencies = [
  "toml 0.9.12+spec-1.1.0",
  "unicode-segmentation",
  "vec1",
+]
+
+[[package]]
+name = "geam-gleam-core"
+version = "1.18.1-geam.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd35326343c72724b8070f856a09ee1ea28ac781df6e9499dd6585e1749f5162"
+dependencies = [
+ "age",
+ "askama",
+ "async-trait",
+ "base16",
+ "bimap",
+ "bincode",
+ "bitvec",
+ "camino",
+ "clap",
+ "codespan-reporting",
+ "debug-ignore",
+ "dirs-next",
+ "ecow",
+ "flate2",
+ "futures",
+ "geam-gleam-erlang-generation",
+ "geam-gleam-hexpm",
+ "geam-gleam-pretty-arena",
+ "gen-lsp-types",
+ "globset",
+ "http",
+ "id-arena",
+ "im",
+ "indexmap",
+ "itertools",
+ "lsp-server",
+ "num-bigint",
+ "num-traits",
+ "pathdiff",
+ "petgraph",
+ "pubgrub",
+ "pulldown-cmark",
+ "radix_trie",
+ "regex",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "sourcemap",
+ "spdx",
+ "stacker",
+ "strum",
+ "tar",
+ "termcolor",
+ "thiserror 2.0.18",
+ "toml 0.9.12+spec-1.1.0",
+ "tracing",
+ "unicode-segmentation",
+ "vec1",
+ "xxhash-rust",
+]
+
+[[package]]
+name = "geam-gleam-erlang-generation"
+version = "1.18.1-geam.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7666b902941502bb11a47097b193746d2059f68b2f021fd299baf122bfa2171b"
+dependencies = [
+ "ecow",
+ "geam-gleam-erlang-term-format",
+ "itertools",
+ "num-bigint",
+ "num-traits",
+ "regex",
+]
+
+[[package]]
+name = "geam-gleam-erlang-term-format"
+version = "1.18.1-geam.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15c3f64360516f3bf999ac12631c345d7779f45984b334917d34625c8675881b"
+dependencies = [
+ "num-bigint",
+ "num-traits",
+]
+
+[[package]]
+name = "geam-gleam-hexpm"
+version = "1.18.1-geam.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d34c3fdb1c94e1226671c20c64723a363db5b69d54a8881a43f67ebb70c34c72"
+dependencies = [
+ "base16",
+ "bytes",
+ "clap",
+ "ecow",
+ "flate2",
+ "http",
+ "http-auth-basic",
+ "prost 0.13.5",
+ "prost-build",
+ "pubgrub",
+ "regex",
+ "ring",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "url",
+ "x509-parser",
+]
+
+[[package]]
+name = "geam-gleam-pretty-arena"
+version = "1.18.1-geam.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b97f422f4e6812310550a53063f741cf8f480d9ff9d626b871521ed0cf61cb8"
+dependencies = [
+ "ecow",
+ "im",
+ "num-bigint",
+ "typed-arena",
+ "unicode-segmentation",
 ]
 
 [[package]]
@@ -1088,62 +1185,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gleam-core"
-version = "1.18.1"
-source = "git+https://github.com/gleam-lang/gleam?rev=4a83802ca33a8a96227a1b332768725f232f9779#4a83802ca33a8a96227a1b332768725f232f9779"
-dependencies = [
- "age",
- "askama",
- "async-trait",
- "base16",
- "bimap",
- "bincode",
- "bitvec",
- "camino",
- "clap",
- "codespan-reporting",
- "debug-ignore",
- "dirs-next",
- "ecow",
- "erlang-generation",
- "flate2",
- "futures",
- "gen-lsp-types",
- "globset",
- "hexpm",
- "http",
- "id-arena",
- "im",
- "indexmap",
- "itertools",
- "lsp-server",
- "num-bigint",
- "num-traits",
- "pathdiff",
- "petgraph",
- "pretty-arena",
- "pubgrub",
- "pulldown-cmark",
- "radix_trie",
- "regex",
- "serde",
- "serde_derive",
- "serde_json",
- "sourcemap",
- "spdx",
- "stacker",
- "strum",
- "tar",
- "termcolor",
- "thiserror 2.0.18",
- "toml 0.9.12+spec-1.1.0",
- "tracing",
- "unicode-segmentation",
- "vec1",
- "xxhash-rust",
-]
-
-[[package]]
 name = "glob"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1200,30 +1241,6 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
-
-[[package]]
-name = "hexpm"
-version = "1.18.1"
-source = "git+https://github.com/gleam-lang/gleam?rev=4a83802ca33a8a96227a1b332768725f232f9779#4a83802ca33a8a96227a1b332768725f232f9779"
-dependencies = [
- "base16",
- "bytes",
- "clap",
- "ecow",
- "flate2",
- "http",
- "http-auth-basic",
- "prost 0.13.5",
- "prost-build",
- "pubgrub",
- "regex",
- "ring",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "url",
- "x509-parser",
-]
 
 [[package]]
 name = "hkdf"
@@ -1984,18 +2001,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9"
 dependencies = [
  "zerocopy",
-]
-
-[[package]]
-name = "pretty-arena"
-version = "1.0.0"
-source = "git+https://github.com/gleam-lang/gleam?rev=4a83802ca33a8a96227a1b332768725f232f9779#4a83802ca33a8a96227a1b332768725f232f9779"
-dependencies = [
- "ecow",
- "im",
- "num-bigint",
- "typed-arena",
- "unicode-segmentation",
 ]
 
 [[package]]
