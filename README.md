@@ -181,3 +181,7 @@ coverage commands, and validation expectations.
 
 See [docs/review-policy.md](docs/review-policy.md) for planner boundary, error,
 helper, and coverage review rules.
+
+## License
+
+Geam is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).

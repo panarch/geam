@@ -6,9 +6,10 @@ milestones.
 For guidance on constructing owner tests, promoting diagnostic probes, and
 closing coverage gaps, see [test-development.md](test-development.md).
 
-The current compiler-boundary and runtime milestones depend on `gleam-core`
-pinned to the upstream baseline recorded in the README. `cargo test` compiles
-that Git dependency as part of the normal suite.
+The current compiler-boundary and runtime milestones depend on the exact
+`geam-gleam-core` package recorded in the upstream guide. `cargo test` resolves
+that published package and its compiler components from the locked crates.io
+dependency graph as part of the normal suite.
 
 Source-level execution tests live under categorized
 `tests/fixtures/execution/**/*.gleam` paths. Each fixture must end with an

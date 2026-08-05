@@ -2,15 +2,30 @@
 name = "geam"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.96"
+description = "Experimental Rust-embedded execution runtime for typed Gleam programs"
+license = "Apache-2.0"
+repository = "https://github.com/panarch/geam"
+readme = "README.md"
+publish = ["crates-io"]
+keywords = ["gleam", "runtime", "interpreter", "embedded"]
+categories = ["compilers", "development-tools"]
+include = [
+    "/assets/geam-mascot.svg",
+    "/docs/**",
+    "/src/**",
+    "/LICENSE",
+    "/README.md",
+]
 
 [dependencies]
 base64 = "0.22"
 bitvec = "1.1.1"
 camino = "1"
-# Keep this aligned with the Gleam v1.18.1 dependency graph. gleam-core does not
-# compile against ecow 0.3.0.
+# Keep this aligned with the Gleam v1.18.1 dependency graph. geam-gleam-core
+# does not compile against ecow 0.3.0.
 ecow = "=0.2.6"
-gleam-core = { git = "https://github.com/gleam-lang/gleam", rev = "4a83802ca33a8a96227a1b332768725f232f9779", package = "gleam-core" }
+gleam-core = { package = "geam-gleam-core", version = "=1.18.1-geam.1" }
 half = { version = "2.7.1", default-features = false }
 hex = "0.4"
 im = "15"
