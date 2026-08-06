@@ -34,6 +34,311 @@ impl ResolvedCustomConstructor {
     }
 }
 
+impl PlanContext<'_> {
+    pub(in crate::planner) fn custom_constructor(
+        &self,
+        constructor: &ValueConstructor,
+    ) -> Result<CustomConstructor, PlanError> {
+        let ValueConstructorVariant::Record {
+            name,
+            module,
+            variant_index,
+            arity,
+            ..
+        } = &constructor.variant
+        else {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::CustomConstructorKind,
+                },
+            });
+        };
+
+        if module != PRELUDE_MODULE_NAME {
+            let _linked_module = self.resolve_module_reference(module, name)?;
+        }
+        let constructor = self.custom_constructor_from_type(
+            constructor.type_.as_ref(),
+            name.clone(),
+            module,
+            usize::from(*variant_index),
+        )?;
+        validate_constructor_arity(
+            constructor.constructor.type_(),
+            constructor.constructor.fields().len(),
+            usize::from(*arity),
+        )?;
+        Ok(constructor.into_constructor())
+    }
+
+    pub(in crate::planner) fn module_custom_constructor(
+        &self,
+        type_: &Type,
+        name: EcoString,
+        module: &EcoString,
+        variant_index: usize,
+        arity: usize,
+    ) -> Result<CustomConstructor, PlanError> {
+        let constructor = self.custom_constructor_from_type(type_, name, module, variant_index)?;
+        validate_constructor_arity(
+            constructor.constructor.type_(),
+            constructor.constructor.fields().len(),
+            arity,
+        )?;
+        Ok(constructor.into_constructor())
+    }
+
+    pub(in crate::planner) fn custom_construction_shape(
+        &self,
+        construction: &CustomConstruction,
+    ) -> Result<CustomValueShape, PlanError> {
+        let constructor = construction.constructor();
+        let fields = construction.fields();
+        let type_ = constructor.type_();
+        let (definition, _) = self.resolve_constructor_metadata(type_, constructor.index())?;
+        validate_constructor_arity(type_, definition.fields().len(), fields.len())?;
+
+        let mut arguments = vec![None; type_.arguments().len()];
+        for (index, (template, field)) in definition.fields().iter().zip(fields).enumerate() {
+            let expected = instantiate_custom_type_template(template.type_(), type_)?;
+            validate_field_type(type_, index, &expected, &field.value_type())?;
+            collect_parameter_shapes(template.type_(), field.value_shape(), &mut arguments, type_)?;
+        }
+        let arguments = arguments
+            .into_iter()
+            .zip(type_.arguments())
+            .map(|(shape, type_)| match shape {
+                Some(shape) => shape,
+                None => ValueShape::from_value_type(type_.clone()),
+            })
+            .collect();
+        Ok(CustomValueShape::new(
+            type_.type_name().clone(),
+            arguments,
+            CustomConstructorRefinement::Exact(constructor.index()),
+        ))
+    }
+
+    pub(in crate::planner) fn custom_expr_from_construction(
+        &self,
+        construction: CustomConstruction,
+    ) -> Result<CustomExpr, PlanError> {
+        let shape = self.custom_construction_shape(&construction)?;
+        Ok(CustomExpr::from_construction(shape, construction))
+    }
+
+    pub(in crate::planner) fn custom_pattern_constructor(
+        &self,
+        type_: &Type,
+        constructor: &PatternConstructor,
+        field_types: Vec<ValueType>,
+    ) -> Result<ResolvedCustomConstructor, PlanError> {
+        let source_shape =
+            self.custom_constructor_source_shape(type_, &constructor.module, &constructor.name)?;
+        let mut constructor = self.custom_constructor_from_parts(
+            source_shape.type_().clone(),
+            constructor.name.clone(),
+            &constructor.module,
+            usize::from(constructor.constructor_index),
+            field_types,
+        )?;
+        constructor.source_shape = source_shape;
+        Ok(constructor)
+    }
+
+    pub(in crate::planner) fn custom_field_access(
+        &self,
+        source: CustomExpr,
+        index: usize,
+        label: Option<EcoString>,
+        expected: &ValueType,
+    ) -> Result<(CustomFieldAccess, ValueShape), PlanError> {
+        let custom_type = source.type_();
+        let custom_shape = source.shape();
+        let type_definition = self.resolve_custom_type_definition(custom_type)?;
+        let constructors = match custom_shape.constructor() {
+            CustomConstructorRefinement::Exact(index) => vec![resolve_constructor_index(
+                custom_type,
+                type_definition.constructors(),
+                index,
+            )?],
+            CustomConstructorRefinement::Any => type_definition.constructors().iter().collect(),
+        };
+        let fields = resolve_shared_fields(custom_type, &constructors, index)?;
+        let (first_constructor, first_field) = fields.first;
+        validate_field_label(custom_type, index, first_field.label(), label.as_ref())?;
+        let mut result_shape =
+            instantiate_custom_shape_template(first_field.type_(), custom_shape)?;
+        validate_field_type(custom_type, index, expected, &result_shape.value_type())?;
+        validate_constructor_templates(first_constructor, custom_type)?;
+
+        for (constructor, field) in fields.rest {
+            validate_field_label(custom_type, index, field.label(), label.as_ref())?;
+            let field_shape = instantiate_custom_shape_template(field.type_(), custom_shape)?;
+            validate_field_type(custom_type, index, expected, &field_shape.value_type())?;
+            result_shape = merge_field_shape(custom_type, index, result_shape, &field_shape)?;
+            validate_constructor_templates(constructor, custom_type)?;
+        }
+        Ok((CustomFieldAccess::new(source, index, label), result_shape))
+    }
+
+    fn custom_constructor_from_type(
+        &self,
+        constructor_type: &Type,
+        name: EcoString,
+        module: &EcoString,
+        variant_index: usize,
+    ) -> Result<ResolvedCustomConstructor, PlanError> {
+        let signature = constructor_type.fn_types();
+        let return_type = match &signature {
+            Some((_, return_type)) => return_type.as_ref(),
+            None => constructor_type,
+        };
+        let type_ = self
+            .custom_constructor_source_shape(return_type, module, &name)?
+            .type_()
+            .clone();
+        let field_types = match signature {
+            Some((field_types, _)) => field_types,
+            None => Vec::new(),
+        };
+        let mut type_parameters = self.type_parameters.clone();
+        let field_types = field_types
+            .into_iter()
+            .map(|field| {
+                ValueShape::from_gleam_in_with_external(
+                    field.as_ref(),
+                    &mut type_parameters,
+                    &|name| self.registry.is_external_type(name),
+                )
+                .value_type()
+            })
+            .collect();
+
+        self.custom_constructor_from_parts(type_, name, module, variant_index, field_types)
+    }
+
+    fn custom_constructor_source_shape(
+        &self,
+        type_: &Type,
+        module: &EcoString,
+        name: &EcoString,
+    ) -> Result<CustomValueShape, PlanError> {
+        let mut type_parameters = self.type_parameters.clone();
+        let actual =
+            ValueShape::from_gleam_in_with_external(type_, &mut type_parameters, &|name| {
+                self.registry.is_external_type(name)
+            });
+        let ValueShape::Custom(shape) = actual else {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    package: EcoString::new(),
+                    module: module.clone(),
+                    name: name.clone(),
+                    reason: Box::new(InvalidCustomTypeReason::ConstructorType {
+                        actual: actual.value_type(),
+                    }),
+                },
+            });
+        };
+        Ok(shape)
+    }
+
+    fn custom_constructor_from_parts(
+        &self,
+        type_: CustomType,
+        name: EcoString,
+        module: &EcoString,
+        variant_index: usize,
+        field_types: Vec<ValueType>,
+    ) -> Result<ResolvedCustomConstructor, PlanError> {
+        validate_constructor_module(&type_, module)?;
+        let (definition, constructor_count) =
+            self.resolve_constructor_metadata(&type_, variant_index)?;
+        validate_constructor_name(&type_, variant_index, definition.name(), &name)?;
+        validate_constructor_arity(&type_, definition.fields().len(), field_types.len())?;
+
+        let mut fields = Vec::with_capacity(definition.fields().len());
+        for (index, (field, actual)) in definition.fields().iter().zip(&field_types).enumerate() {
+            let expected = instantiate_custom_type_template(field.type_(), &type_)?;
+            validate_field_type(&type_, index, &expected, actual)?;
+            fields.push(CustomConstructorField::new(
+                field.label().cloned(),
+                expected,
+            ));
+        }
+
+        let source_shape = CustomValueShape::any(type_.clone());
+        Ok(ResolvedCustomConstructor {
+            constructor: CustomConstructor::new(type_, name, variant_index, fields),
+            constructor_count,
+            source_shape,
+        })
+    }
+
+    fn resolve_constructor_metadata(
+        &self,
+        type_: &CustomType,
+        index: usize,
+    ) -> Result<(CustomConstructorDefinition, usize), PlanError> {
+        let constructors = if is_prelude_result(type_) {
+            validate_type_argument_count(type_, 2)?;
+            vec![
+                CustomConstructorDefinition::new(
+                    "Ok".into(),
+                    0,
+                    vec![CustomFieldDefinition::new(
+                        None,
+                        CustomTypeTemplate::Parameter(CustomTypeParameterId(0)),
+                    )],
+                ),
+                CustomConstructorDefinition::new(
+                    "Error".into(),
+                    1,
+                    vec![CustomFieldDefinition::new(
+                        None,
+                        CustomTypeTemplate::Parameter(CustomTypeParameterId(1)),
+                    )],
+                ),
+            ]
+        } else {
+            self.resolve_custom_type_definition(type_)?
+                .constructors()
+                .to_vec()
+        };
+        let count = constructors.len();
+        Ok((
+            resolve_constructor_index(type_, &constructors, index)?.clone(),
+            count,
+        ))
+    }
+
+    fn resolve_custom_type_definition(
+        &self,
+        type_: &CustomType,
+    ) -> Result<&CustomTypeDefinition, PlanError> {
+        let definition = match self.registry {
+            RegistryAccess::Program { registry } => registry.custom_type(type_.type_name()),
+            #[cfg(test)]
+            RegistryAccess::Local { custom_types, .. } => custom_types
+                .iter()
+                .find(|definition| definition.name() == type_.type_name()),
+        };
+        let Some(definition) = definition else {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    package: type_.type_name().package().clone(),
+                    module: type_.type_name().module().clone(),
+                    name: type_.type_name().name().clone(),
+                    reason: Box::new(InvalidCustomTypeReason::MissingDefinition),
+                },
+            });
+        };
+        validate_type_argument_count(type_, definition.parameters().len())?;
+        Ok(definition)
+    }
+}
+
 enum MatchedTemplateShape<'a> {
     Parameter(usize),
     Tuple {
@@ -349,311 +654,6 @@ fn merge_parameter_shape(
                 }),
             },
         })
-}
-
-impl PlanContext<'_> {
-    pub(in crate::planner) fn custom_constructor(
-        &self,
-        constructor: &ValueConstructor,
-    ) -> Result<CustomConstructor, PlanError> {
-        let ValueConstructorVariant::Record {
-            name,
-            module,
-            variant_index,
-            arity,
-            ..
-        } = &constructor.variant
-        else {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::CustomConstructorKind,
-                },
-            });
-        };
-
-        if module != PRELUDE_MODULE_NAME {
-            let _linked_module = self.resolve_module_reference(module, name)?;
-        }
-        let constructor = self.custom_constructor_from_type(
-            constructor.type_.as_ref(),
-            name.clone(),
-            module,
-            usize::from(*variant_index),
-        )?;
-        validate_constructor_arity(
-            constructor.constructor.type_(),
-            constructor.constructor.fields().len(),
-            usize::from(*arity),
-        )?;
-        Ok(constructor.into_constructor())
-    }
-
-    pub(in crate::planner) fn module_custom_constructor(
-        &self,
-        type_: &Type,
-        name: EcoString,
-        module: &EcoString,
-        variant_index: usize,
-        arity: usize,
-    ) -> Result<CustomConstructor, PlanError> {
-        let constructor = self.custom_constructor_from_type(type_, name, module, variant_index)?;
-        validate_constructor_arity(
-            constructor.constructor.type_(),
-            constructor.constructor.fields().len(),
-            arity,
-        )?;
-        Ok(constructor.into_constructor())
-    }
-
-    pub(in crate::planner) fn custom_construction_shape(
-        &self,
-        construction: &CustomConstruction,
-    ) -> Result<CustomValueShape, PlanError> {
-        let constructor = construction.constructor();
-        let fields = construction.fields();
-        let type_ = constructor.type_();
-        let (definition, _) = self.resolve_constructor_metadata(type_, constructor.index())?;
-        validate_constructor_arity(type_, definition.fields().len(), fields.len())?;
-
-        let mut arguments = vec![None; type_.arguments().len()];
-        for (index, (template, field)) in definition.fields().iter().zip(fields).enumerate() {
-            let expected = instantiate_custom_type_template(template.type_(), type_)?;
-            validate_field_type(type_, index, &expected, &field.value_type())?;
-            collect_parameter_shapes(template.type_(), field.value_shape(), &mut arguments, type_)?;
-        }
-        let arguments = arguments
-            .into_iter()
-            .zip(type_.arguments())
-            .map(|(shape, type_)| match shape {
-                Some(shape) => shape,
-                None => ValueShape::from_value_type(type_.clone()),
-            })
-            .collect();
-        Ok(CustomValueShape::new(
-            type_.type_name().clone(),
-            arguments,
-            CustomConstructorRefinement::Exact(constructor.index()),
-        ))
-    }
-
-    pub(in crate::planner) fn custom_expr_from_construction(
-        &self,
-        construction: CustomConstruction,
-    ) -> Result<CustomExpr, PlanError> {
-        let shape = self.custom_construction_shape(&construction)?;
-        Ok(CustomExpr::from_construction(shape, construction))
-    }
-
-    pub(in crate::planner) fn custom_pattern_constructor(
-        &self,
-        type_: &Type,
-        constructor: &PatternConstructor,
-        field_types: Vec<ValueType>,
-    ) -> Result<ResolvedCustomConstructor, PlanError> {
-        let source_shape =
-            self.custom_constructor_source_shape(type_, &constructor.module, &constructor.name)?;
-        let mut constructor = self.custom_constructor_from_parts(
-            source_shape.type_().clone(),
-            constructor.name.clone(),
-            &constructor.module,
-            usize::from(constructor.constructor_index),
-            field_types,
-        )?;
-        constructor.source_shape = source_shape;
-        Ok(constructor)
-    }
-
-    pub(in crate::planner) fn custom_field_access(
-        &self,
-        source: CustomExpr,
-        index: usize,
-        label: Option<EcoString>,
-        expected: &ValueType,
-    ) -> Result<(CustomFieldAccess, ValueShape), PlanError> {
-        let custom_type = source.type_();
-        let custom_shape = source.shape();
-        let type_definition = self.resolve_custom_type_definition(custom_type)?;
-        let constructors = match custom_shape.constructor() {
-            CustomConstructorRefinement::Exact(index) => vec![resolve_constructor_index(
-                custom_type,
-                type_definition.constructors(),
-                index,
-            )?],
-            CustomConstructorRefinement::Any => type_definition.constructors().iter().collect(),
-        };
-        let fields = resolve_shared_fields(custom_type, &constructors, index)?;
-        let (first_constructor, first_field) = fields.first;
-        validate_field_label(custom_type, index, first_field.label(), label.as_ref())?;
-        let mut result_shape =
-            instantiate_custom_shape_template(first_field.type_(), custom_shape)?;
-        validate_field_type(custom_type, index, expected, &result_shape.value_type())?;
-        validate_constructor_templates(first_constructor, custom_type)?;
-
-        for (constructor, field) in fields.rest {
-            validate_field_label(custom_type, index, field.label(), label.as_ref())?;
-            let field_shape = instantiate_custom_shape_template(field.type_(), custom_shape)?;
-            validate_field_type(custom_type, index, expected, &field_shape.value_type())?;
-            result_shape = merge_field_shape(custom_type, index, result_shape, &field_shape)?;
-            validate_constructor_templates(constructor, custom_type)?;
-        }
-        Ok((CustomFieldAccess::new(source, index, label), result_shape))
-    }
-
-    fn custom_constructor_from_type(
-        &self,
-        constructor_type: &Type,
-        name: EcoString,
-        module: &EcoString,
-        variant_index: usize,
-    ) -> Result<ResolvedCustomConstructor, PlanError> {
-        let signature = constructor_type.fn_types();
-        let return_type = match &signature {
-            Some((_, return_type)) => return_type.as_ref(),
-            None => constructor_type,
-        };
-        let type_ = self
-            .custom_constructor_source_shape(return_type, module, &name)?
-            .type_()
-            .clone();
-        let field_types = match signature {
-            Some((field_types, _)) => field_types,
-            None => Vec::new(),
-        };
-        let mut type_parameters = self.type_parameters.clone();
-        let field_types = field_types
-            .into_iter()
-            .map(|field| {
-                ValueShape::from_gleam_in_with_external(
-                    field.as_ref(),
-                    &mut type_parameters,
-                    &|name| self.registry.is_external_type(name),
-                )
-                .value_type()
-            })
-            .collect();
-
-        self.custom_constructor_from_parts(type_, name, module, variant_index, field_types)
-    }
-
-    fn custom_constructor_source_shape(
-        &self,
-        type_: &Type,
-        module: &EcoString,
-        name: &EcoString,
-    ) -> Result<CustomValueShape, PlanError> {
-        let mut type_parameters = self.type_parameters.clone();
-        let actual =
-            ValueShape::from_gleam_in_with_external(type_, &mut type_parameters, &|name| {
-                self.registry.is_external_type(name)
-            });
-        let ValueShape::Custom(shape) = actual else {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CustomType {
-                    package: EcoString::new(),
-                    module: module.clone(),
-                    name: name.clone(),
-                    reason: Box::new(InvalidCustomTypeReason::ConstructorType {
-                        actual: actual.value_type(),
-                    }),
-                },
-            });
-        };
-        Ok(shape)
-    }
-
-    fn custom_constructor_from_parts(
-        &self,
-        type_: CustomType,
-        name: EcoString,
-        module: &EcoString,
-        variant_index: usize,
-        field_types: Vec<ValueType>,
-    ) -> Result<ResolvedCustomConstructor, PlanError> {
-        validate_constructor_module(&type_, module)?;
-        let (definition, constructor_count) =
-            self.resolve_constructor_metadata(&type_, variant_index)?;
-        validate_constructor_name(&type_, variant_index, definition.name(), &name)?;
-        validate_constructor_arity(&type_, definition.fields().len(), field_types.len())?;
-
-        let mut fields = Vec::with_capacity(definition.fields().len());
-        for (index, (field, actual)) in definition.fields().iter().zip(&field_types).enumerate() {
-            let expected = instantiate_custom_type_template(field.type_(), &type_)?;
-            validate_field_type(&type_, index, &expected, actual)?;
-            fields.push(CustomConstructorField::new(
-                field.label().cloned(),
-                expected,
-            ));
-        }
-
-        let source_shape = CustomValueShape::any(type_.clone());
-        Ok(ResolvedCustomConstructor {
-            constructor: CustomConstructor::new(type_, name, variant_index, fields),
-            constructor_count,
-            source_shape,
-        })
-    }
-
-    fn resolve_constructor_metadata(
-        &self,
-        type_: &CustomType,
-        index: usize,
-    ) -> Result<(CustomConstructorDefinition, usize), PlanError> {
-        let constructors = if is_prelude_result(type_) {
-            validate_type_argument_count(type_, 2)?;
-            vec![
-                CustomConstructorDefinition::new(
-                    "Ok".into(),
-                    0,
-                    vec![CustomFieldDefinition::new(
-                        None,
-                        CustomTypeTemplate::Parameter(CustomTypeParameterId(0)),
-                    )],
-                ),
-                CustomConstructorDefinition::new(
-                    "Error".into(),
-                    1,
-                    vec![CustomFieldDefinition::new(
-                        None,
-                        CustomTypeTemplate::Parameter(CustomTypeParameterId(1)),
-                    )],
-                ),
-            ]
-        } else {
-            self.resolve_custom_type_definition(type_)?
-                .constructors()
-                .to_vec()
-        };
-        let count = constructors.len();
-        Ok((
-            resolve_constructor_index(type_, &constructors, index)?.clone(),
-            count,
-        ))
-    }
-
-    fn resolve_custom_type_definition(
-        &self,
-        type_: &CustomType,
-    ) -> Result<&CustomTypeDefinition, PlanError> {
-        let definition = match self.registry {
-            RegistryAccess::Program { registry } => registry.custom_type(type_.type_name()),
-            #[cfg(test)]
-            RegistryAccess::Local { custom_types, .. } => custom_types
-                .iter()
-                .find(|definition| definition.name() == type_.type_name()),
-        };
-        let Some(definition) = definition else {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CustomType {
-                    package: type_.type_name().package().clone(),
-                    module: type_.type_name().module().clone(),
-                    name: type_.type_name().name().clone(),
-                    reason: Box::new(InvalidCustomTypeReason::MissingDefinition),
-                },
-            });
-        };
-        validate_type_argument_count(type_, definition.parameters().len())?;
-        Ok(definition)
-    }
 }
 
 fn is_prelude_result(type_: &CustomType) -> bool {
