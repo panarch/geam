@@ -1,9 +1,8 @@
+use super::super::conversion::expect_expression;
 use super::CaptureSubstitution;
 use crate::plan::{CallArg, Expr, FunctionExpr, FunctionFunctionExpr, ValueShape};
 use crate::planner::context::PlanContext;
-use crate::planner::error::{
-    InvalidCallShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-};
+use crate::planner::error::{InvalidCallShapeReason, InvalidTypedAstReason, PlanError};
 use gleam_core::ast::{CallArg as GleamCallArg, SrcSpan, TypedExpr};
 use gleam_core::type_::Type;
 use std::sync::Arc;
@@ -24,21 +23,7 @@ pub(super) fn plan_function_value_call(
         });
     }
 
-    let function = {
-        let expression = super::super::plan_expr(fun, context)?;
-        let actual = super::super::expression_type(&expression);
-        match expression.into_function() {
-            Some(function) => function,
-            None => {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::Function,
-                        actual,
-                    },
-                });
-            }
-        }
-    };
+    let function: FunctionExpr = expect_expression(super::super::plan_expr(fun, context)?)?;
     let function_shape = function.shape().clone();
     let function_type = function_shape.type_();
     let return_shape = context.value_shape(type_.as_ref());
@@ -835,9 +820,9 @@ pub fn main() {
         assert_eq!(
             plan_module(argument_type_mismatch_call),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Int,
-                    actual: InvalidExpressionType::String,
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                    expected: ValueType::Int,
+                    actual: ValueType::String,
                 },
             }),
         );
@@ -958,9 +943,12 @@ pub fn main() {
         assert_eq!(
             plan_module(non_function_call),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Function,
-                    actual: InvalidExpressionType::Int,
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                    expected: ValueType::Function(Box::new(FunctionType::new(
+                        vec![ValueType::Int],
+                        ValueType::Int,
+                    ))),
+                    actual: ValueType::Int,
                 },
             }),
         );
@@ -977,8 +965,8 @@ pub fn main() {
 }
 "#,
             typed_int_expr(1),
-            InvalidExpressionType::String,
-            InvalidExpressionType::Int,
+            ValueType::String,
+            ValueType::Int,
         );
         assert_function_value_argument_type_mismatch(
             r#"
@@ -992,8 +980,8 @@ pub fn main() {
 }
 "#,
             typed_int_expr(1),
-            InvalidExpressionType::Bool,
-            InvalidExpressionType::Int,
+            ValueType::Bool,
+            ValueType::Int,
         );
         assert_function_value_argument_type_mismatch(
             r#"
@@ -1007,8 +995,8 @@ pub fn main() {
 }
 "#,
             typed_int_expr(1),
-            InvalidExpressionType::Nil,
-            InvalidExpressionType::Int,
+            ValueType::Nil,
+            ValueType::Int,
         );
     }
 
@@ -1497,8 +1485,8 @@ pub fn main() {
     fn assert_function_value_argument_type_mismatch(
         src: &str,
         value: gleam_core::ast::TypedExpr,
-        expected: InvalidExpressionType,
-        actual: InvalidExpressionType,
+        expected: ValueType,
+        actual: ValueType,
     ) {
         let mut module = compile(src);
         let (_, _, arguments) =
@@ -1508,7 +1496,7 @@ pub fn main() {
         assert_eq!(
             plan_module(module),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType { expected, actual },
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch { expected, actual },
             }),
         );
     }

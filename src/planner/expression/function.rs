@@ -3,8 +3,7 @@ mod free_variables;
 use crate::plan::{CaptureArg, Expr, FunctionExpr, FunctionShape, FunctionType, ValueShape};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
-    InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
-    InvalidTypedAstReason, PlanError,
+    InvalidExpressionShapeKind, InvalidFunctionShapeReason, InvalidTypedAstReason, PlanError,
 };
 use crate::planner::function::{anonymous_function_plan, plan_anonymous_function_body};
 use crate::planner::module::function_params_in;
@@ -35,11 +34,12 @@ pub(super) fn plan_anonymous(
     }
 
     let mut type_parameters = context.type_parameters().clone();
+    let error_name = context.anonymous_function_error_name();
     let function_shape = anonymous_function_shape(
+        error_name.clone(),
         context.value_shape_with_parameters(type_.as_ref(), &mut type_parameters),
     )?;
     let function_type = function_shape.type_();
-    let error_name = context.anonymous_function_error_name();
     let params = function_params_in(
         error_name.clone(),
         &arguments,
@@ -60,7 +60,7 @@ pub(super) fn plan_anonymous(
 fn invalid_function_literal_kind_error() -> PlanError {
     PlanError::InvalidTypedAst {
         reason: InvalidTypedAstReason::ExpressionShape {
-            kind: InvalidExpressionShapeKind::Invalid,
+            kind: InvalidExpressionShapeKind::FunctionLiteralKind,
         },
     }
 }
@@ -118,34 +118,21 @@ fn is_capture_literal_local(expression: &TypedExpr) -> bool {
     )
 }
 
-fn anonymous_function_shape(shape: ValueShape) -> Result<FunctionShape, PlanError> {
-    let actual = match shape {
-        ValueShape::Function(shape) => return Ok(*shape),
-        ValueShape::Int => InvalidExpressionType::Int,
-        ValueShape::Float => InvalidExpressionType::Float,
-        ValueShape::String => InvalidExpressionType::String,
-        ValueShape::BitArray => InvalidExpressionType::BitArray,
-        ValueShape::UtfCodepoint => InvalidExpressionType::UtfCodepoint,
-        ValueShape::Custom(_) => InvalidExpressionType::Custom,
-        ValueShape::External(_) => InvalidExpressionType::External,
-        ValueShape::Bool => InvalidExpressionType::Bool,
-        ValueShape::Nil => InvalidExpressionType::Nil,
-        ValueShape::Tuple(_) => InvalidExpressionType::Tuple,
-        ValueShape::List(_) => InvalidExpressionType::List,
-        ValueShape::Parameter(_) => {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
+fn anonymous_function_shape(
+    name: ecow::EcoString,
+    shape: ValueShape,
+) -> Result<FunctionShape, PlanError> {
+    match shape {
+        ValueShape::Function(shape) => Ok(*shape),
+        actual => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::FunctionShape {
+                name,
+                reason: InvalidFunctionShapeReason::ExpressionType {
+                    actual: actual.value_type(),
                 },
-            });
-        }
-    };
-    Err(PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionType {
-            expected: InvalidExpressionType::Function,
-            actual,
-        },
-    })
+            },
+        }),
+    }
 }
 
 fn validate_argument_types(
@@ -327,8 +314,8 @@ mod tests {
         tuple_function_closure,
     };
     use crate::planner::error::{
-        InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
-        InvalidModuleReferenceReason, InvalidPipelineShapeReason, InvalidTypedAstReason, PlanError,
+        InvalidExpressionShapeKind, InvalidFunctionShapeReason, InvalidModuleReferenceReason,
+        InvalidPipelineShapeReason, InvalidTypedAstReason, PlanError,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
@@ -833,19 +820,16 @@ pub fn main() {
     #[test]
     fn reject_margin_non_function_literal_type() {
         for (type_, actual) in [
-            (gleam_core::type_::int(), InvalidExpressionType::Int),
-            (gleam_core::type_::string(), InvalidExpressionType::String),
-            (
-                gleam_core::type_::bit_array(),
-                InvalidExpressionType::BitArray,
-            ),
-            (utf_codepoint_type(), InvalidExpressionType::UtfCodepoint),
-            (gleam_core::type_::float(), InvalidExpressionType::Float),
-            (gleam_core::type_::bool(), InvalidExpressionType::Bool),
-            (gleam_core::type_::nil(), InvalidExpressionType::Nil),
+            (gleam_core::type_::int(), ValueType::Int),
+            (gleam_core::type_::string(), ValueType::String),
+            (gleam_core::type_::bit_array(), ValueType::BitArray),
+            (utf_codepoint_type(), ValueType::UtfCodepoint),
+            (gleam_core::type_::float(), ValueType::Float),
+            (gleam_core::type_::bool(), ValueType::Bool),
+            (gleam_core::type_::nil(), ValueType::Nil),
             (
                 gleam_core::type_::tuple(vec![gleam_core::type_::int()]),
-                InvalidExpressionType::Tuple,
+                ValueType::Tuple(vec![ValueType::Int]),
             ),
         ] {
             let mut module = anonymous_function_module();
@@ -855,23 +839,29 @@ pub fn main() {
             assert_eq!(
                 plan_module(module),
                 Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::Function,
-                        actual,
+                    reason: InvalidTypedAstReason::FunctionShape {
+                        name: "<anonymous:0>".into(),
+                        reason: InvalidFunctionShapeReason::ExpressionType { actual },
                     },
                 }),
             );
         }
 
+        let external = ExternalValueShape::new(
+            ExternalTypeName::new("geam".into(), "main".into(), "Token".into()),
+            Vec::new(),
+        );
         assert_eq!(
-            super::anonymous_function_shape(ValueShape::External(ExternalValueShape::new(
-                ExternalTypeName::new("geam".into(), "main".into(), "Token".into()),
-                Vec::new(),
-            ))),
+            super::anonymous_function_shape(
+                "<anonymous:0>".into(),
+                ValueShape::External(external.clone())
+            ),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Function,
-                    actual: InvalidExpressionType::External,
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: "<anonymous:0>".into(),
+                    reason: InvalidFunctionShapeReason::ExpressionType {
+                        actual: ValueType::External(external.type_().clone()),
+                    },
                 },
             }),
         );
@@ -948,9 +938,11 @@ pub fn main() { 0 }
         assert_eq!(
             plan_module(module),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Function,
-                    actual: InvalidExpressionType::List,
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: "<anonymous:0>".into(),
+                    reason: InvalidFunctionShapeReason::ExpressionType {
+                        actual: ValueType::List(Box::new(ValueType::Int)),
+                    },
                 },
             }),
         );
@@ -962,9 +954,18 @@ pub fn main() { 0 }
         assert_eq!(
             plan_module(invalid_shape),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Function,
-                    actual: InvalidExpressionType::Custom,
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: "<anonymous:0>".into(),
+                    reason: InvalidFunctionShapeReason::ExpressionType {
+                        actual: ValueType::Custom(crate::plan::CustomType::new(
+                            crate::plan::CustomTypeName::new(
+                                "".into(),
+                                "gleam".into(),
+                                "Result".into(),
+                            ),
+                            vec![ValueType::Int, ValueType::Nil],
+                        )),
+                    },
                 },
             }),
         );
@@ -976,8 +977,11 @@ pub fn main() { 0 }
         assert_eq!(
             plan_module(invalid_type),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
+                reason: InvalidTypedAstReason::FunctionShape {
+                    name: "<anonymous:0>".into(),
+                    reason: InvalidFunctionShapeReason::ExpressionType {
+                        actual: ValueType::Parameter(crate::plan::TypeParameterId(0)),
+                    },
                 },
             }),
         );
@@ -1089,7 +1093,7 @@ pub fn main() {
             plan_module(module),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
+                    kind: InvalidExpressionShapeKind::FunctionLiteralKind,
                 },
             }),
         );

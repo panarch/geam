@@ -1,8 +1,10 @@
-use super::super::super::plan_expr_with_expected_source_stop_shape;
+use super::super::super::{
+    conversion::expect_expression, plan_expr_with_expected_source_stop_shape,
+};
 use super::{CaseClause, OrderedCaseClauseInput};
-use crate::plan::{BoolExpr, Expr, ExprKind, GenericExpr, Step, TypeParameterId, ValueShape};
+use crate::plan::{BoolExpr, Expr, GenericExpr, Step, TypeParameterId, ValueShape};
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidExpressionType, InvalidTypedAstReason, PlanError};
+use crate::planner::error::PlanError;
 use ecow::EcoString;
 use gleam_core::ast::{Pattern, TypedExpr};
 use gleam_core::type_::Type;
@@ -22,15 +24,7 @@ pub(super) fn plan(
     )?;
     let return_shape = context.value_shape(type_.as_ref());
 
-    let actual = InvalidExpressionType::from_value_type(subject.value_type());
-    let ExprKind::Generic(subject) = subject.into_kind() else {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::TypeParameter,
-                actual,
-            },
-        });
-    };
+    let subject: GenericExpr = expect_expression(subject)?;
     let (subject_step, subject) = bind_generic_case_subject(subject, parameter, context);
     let mut ordered_clauses = Vec::new();
     for clause in clauses {

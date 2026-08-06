@@ -1,9 +1,8 @@
 use super::CaptureSubstitution;
 use crate::plan::{CallArg, CustomConstructor, Expr, ValueShape, ValueType};
 use crate::planner::context::PlanContext;
-use crate::planner::error::{
-    InvalidCallShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-};
+use crate::planner::error::{InvalidCallShapeReason, InvalidTypedAstReason, PlanError};
+use crate::planner::expression::conversion::validate_expression_value_type;
 use gleam_core::ast::{CallArg as GleamCallArg, TypedExpr};
 
 pub(super) fn plan_instantiated_call_args(
@@ -18,9 +17,7 @@ pub(super) fn plan_instantiated_call_args(
             plan_argument_value(argument, instantiated_shape.clone(), capture, context)?;
         let actual = expression.value_type();
         let expected = instantiated_shape.value_type();
-        if actual != expected {
-            return Err(call_arg_type_mismatch(expected, actual));
-        }
+        validate_call_arg_type(&expected, &actual)?;
         if !expression.shape().can_flow_to(instantiated_shape) {
             return Err(call_arg_shape_mismatch());
         }
@@ -43,9 +40,7 @@ pub(super) fn plan_function_call_args(
         if actual == expected && !expression.shape().can_flow_to(shape) {
             return Err(call_arg_shape_mismatch());
         }
-        if actual != expected {
-            return Err(call_arg_type_mismatch(expected, actual));
-        }
+        validate_call_arg_type(&expected, &actual)?;
         args.push(CallArg::new(expression));
     }
     Ok(args)
@@ -87,12 +82,7 @@ pub(super) fn plan_custom_constructor_args(
                 capture,
                 context,
             )?;
-            if expression.value_type() != *field.type_() {
-                return Err(call_arg_type_mismatch(
-                    field.type_().clone(),
-                    expression.value_type(),
-                ));
-            }
+            validate_call_arg_type(field.type_(), &expression.value_type())?;
             Ok(expression)
         })
         .collect()
@@ -113,20 +103,18 @@ fn plan_argument_value(
     super::super::plan_expr_with_expected_source_stop_shape(argument.value, expected, context)
 }
 
-fn call_arg_type_mismatch(expected: ValueType, actual: ValueType) -> PlanError {
+fn validate_call_arg_type(expected: &ValueType, actual: &ValueType) -> Result<(), PlanError> {
+    if expected == actual {
+        return Ok(());
+    }
     if matches!(expected, ValueType::Function(_)) && matches!(actual, ValueType::Function(_)) {
-        PlanError::InvalidTypedAst {
+        Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::CallShape {
                 reason: InvalidCallShapeReason::FunctionCallArgumentTypeMismatch,
             },
-        }
+        })
     } else {
-        PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::from_value_type(expected),
-                actual: InvalidExpressionType::from_value_type(actual),
-            },
-        }
+        validate_expression_value_type(expected, actual)
     }
 }
 

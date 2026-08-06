@@ -1045,7 +1045,7 @@ mod tests {
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: crate::planner::InvalidExpressionShapeKind::Invalid,
+                    kind: crate::planner::InvalidExpressionShapeKind::LocalBindingShape,
                 },
             }),
         );

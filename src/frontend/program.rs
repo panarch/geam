@@ -1413,7 +1413,7 @@ pub fn main() {
             plan_host_program(program).err(),
             Some(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
+                    kind: InvalidExpressionShapeKind::ModuleConstantStorageShape,
                 },
             }),
         );

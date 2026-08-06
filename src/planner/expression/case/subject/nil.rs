@@ -1,8 +1,10 @@
-use super::super::super::plan_expr_with_expected_source_stop_type;
+use super::super::super::{
+    conversion::expect_expression, plan_expr_with_expected_source_stop_type,
+};
 use super::{CaseClause, OrderedCaseClauseInput};
-use crate::plan::{BoolExpr, Expr, ExprKind, NilExpr, NilLocalId, Step, ValueType};
+use crate::plan::{BoolExpr, Expr, NilExpr, NilLocalId, Step, ValueType};
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidExpressionType, InvalidTypedAstReason, PlanError};
+use crate::planner::error::PlanError;
 use ecow::EcoString;
 use gleam_core::ast::{Pattern, TypedExpr};
 use gleam_core::type_::Type;
@@ -17,15 +19,7 @@ pub(super) fn plan(
     let subject = plan_expr_with_expected_source_stop_type(subject, ValueType::Nil, context)?;
     let return_shape = context.value_shape(type_.as_ref());
 
-    let actual = InvalidExpressionType::from_value_type(subject.value_type());
-    let ExprKind::Nil(subject) = subject.into_kind() else {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Nil,
-                actual,
-            },
-        });
-    };
+    let subject: NilExpr = expect_expression(subject)?;
     let (subject_step, subject) = bind_nil_case_subject(subject, context);
     let mut ordered_clauses = Vec::new();
     for clause in clauses {

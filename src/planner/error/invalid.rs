@@ -20,6 +20,13 @@ pub enum InvalidTypedAstReason {
     GeneratedAssignment,
     #[error("use statement")]
     UseStatement,
+    #[error("invalid expression node")]
+    InvalidExpressionNode,
+    #[error("expression shape refinement: expected {expected:?}, got {actual:?}")]
+    ExpressionShapeRefinement {
+        expected: ValueType,
+        actual: ValueType,
+    },
     #[error("pattern shape: {reason}")]
     PatternShape { reason: InvalidPatternShapeReason },
     #[error("expression shape: {kind}")]
@@ -29,6 +36,13 @@ pub enum InvalidTypedAstReason {
         expected: InvalidExpressionType,
         actual: InvalidExpressionType,
     },
+    #[error("expression value type: expected {expected:?}, got {actual:?}")]
+    ExpressionValueTypeMismatch {
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("expression type has no supported runtime family; expected {expected}")]
+    UnsupportedExpressionType { expected: InvalidExpressionType },
     #[error("call shape: {reason}")]
     CallShape { reason: InvalidCallShapeReason },
     #[error("case shape: {reason}")]
@@ -250,7 +264,7 @@ pub enum InvalidCustomTypeReason {
     FieldShapeConflict { index: usize, type_: ValueType },
 }
 
-#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum InvalidFunctionShapeReason {
     #[error("function argument types do not match signature")]
     ArgumentTypeMismatch,
@@ -260,20 +274,77 @@ pub enum InvalidFunctionShapeReason {
     EmptyBody,
     #[error("labelled function argument")]
     LabelledArgument,
+    #[error("function expression has type {actual:?}")]
+    ExpressionType { actual: ValueType },
     #[error("function return type does not match body")]
     ReturnTypeMismatch,
 }
 
-#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum InvalidExpressionShapeKind {
     #[error("bit array segment option")]
     BitArraySegmentOption,
+    #[error("constant local variable")]
+    ConstantLocalVariable,
+    #[error("constant variable has no constructor metadata")]
+    ConstantMissingConstructor,
+    #[error("invalid constant node")]
+    ConstantNode,
+    #[error("constant record constructor kind")]
+    ConstantRecordConstructorKind,
+    #[error("constant record kind")]
+    ConstantRecordKind,
     #[error("constant list element type")]
     ConstantListElementType,
-    #[error("invalid")]
-    Invalid,
+    #[error("constant list type: got {actual:?}")]
+    ConstantListType { actual: Option<ValueType> },
+    #[error("constant tuple elements: expected {expected:?}, got {actual:?}")]
+    ConstantTupleElements {
+        expected: Vec<ValueType>,
+        actual: Vec<ValueType>,
+    },
+    #[error("constant tuple type: got {actual:?}")]
+    ConstantTupleType { actual: Option<ValueType> },
+    #[error("echo expression is missing")]
+    EchoExpressionMissing,
     #[error("function capture literal")]
     FunctionCaptureLiteral,
+    #[error("function literal kind")]
+    FunctionLiteralKind,
+    #[error("generated todo message")]
+    GeneratedTodoMessage,
+    #[error("invalid guard node")]
+    GuardNode,
+    #[error("guard local shape")]
+    GuardLocalShape,
+    #[error("guard function local shape")]
+    GuardFunctionLocalShape,
+    #[error("list spread has no prefix elements")]
+    ListSpreadEmptyPrefix,
+    #[error("list expression type: got {actual:?}")]
+    ListType { actual: ValueType },
+    #[error("list index expression shape for {type_:?}")]
+    ListIndexShape { type_: ValueType },
+    #[error("local binding shape")]
+    LocalBindingShape,
+    #[error("invalid module constant node")]
+    ModuleConstantNode,
+    #[error("module constant list spread has no prefix elements")]
+    ModuleConstantListSpreadEmptyPrefix,
+    #[error("module constant list type: got {actual:?}")]
+    ModuleConstantListType { actual: ValueType },
+    #[error("module constant local variable")]
+    ModuleConstantLocalVariable,
+    #[error("module constant variable has no constructor metadata")]
+    ModuleConstantMissingConstructor,
+    #[error("module constant record kind")]
+    ModuleConstantRecordKind,
+    #[error("module constant storage shape")]
+    ModuleConstantStorageShape,
+    #[error("module constant tuple arity: expected {expected}, got {actual}")]
+    ModuleConstantTupleArity { expected: usize, actual: usize },
+    #[error("module constant tuple type: got {actual:?}")]
+    ModuleConstantTupleType { actual: ValueType },
     #[error("positional access")]
     PositionalAccess,
     #[error("prelude constructor")]
@@ -282,8 +353,20 @@ pub enum InvalidExpressionShapeKind {
     RecordConstructor,
     #[error("record access")]
     RecordAccess,
+    #[error("record access index cannot be represented on this target")]
+    RecordAccessIndexOverflow,
     #[error("record update")]
     RecordUpdate,
+    #[error("tuple expression arity: expected {expected}, got {actual}")]
+    TupleArity { expected: usize, actual: usize },
+    #[error("tuple index {index} is outside {available} elements")]
+    TupleIndex { index: usize, available: usize },
+    #[error("tuple index cannot be represented on this target")]
+    TupleIndexOverflow,
+    #[error("tuple expression type: got {actual:?}")]
+    TupleType { actual: ValueType },
+    #[error("variable function local shape")]
+    VariableFunctionLocalShape,
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -315,8 +398,6 @@ pub enum InvalidRecordUpdateShapeReason {
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum InvalidExpressionType {
-    #[error("unsupported")]
-    Unsupported,
     #[error("type parameter")]
     TypeParameter,
     #[error("Int")]

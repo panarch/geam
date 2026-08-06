@@ -1,8 +1,10 @@
-use super::super::super::plan_expr_with_expected_source_stop_type;
+use super::super::super::{
+    conversion::expect_expression, plan_expr_with_expected_source_stop_type,
+};
 use super::{CaseClause, OrderedCaseCandidateInput, OrderedCasePattern};
-use crate::plan::{BitArrayExpr, BitArrayLocalId, BoolExpr, Expr, ExprKind, Step, ValueType};
+use crate::plan::{BitArrayExpr, BitArrayLocalId, BoolExpr, Expr, Step, ValueType};
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidExpressionType, InvalidTypedAstReason, PlanError};
+use crate::planner::error::PlanError;
 use crate::planner::pattern::plan_bit_array_pattern;
 use ecow::EcoString;
 use gleam_core::ast::{BitArrayOption, BitArraySegment, Pattern, TypedExpr};
@@ -17,15 +19,7 @@ pub(super) fn plan(
 ) -> Result<Expr, PlanError> {
     let subject = plan_expr_with_expected_source_stop_type(subject, ValueType::BitArray, context)?;
     let return_shape = context.value_shape(type_.as_ref());
-    let actual = InvalidExpressionType::from_value_type(subject.value_type());
-    let ExprKind::BitArray(subject) = subject.into_kind() else {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::BitArray,
-                actual,
-            },
-        });
-    };
+    let subject: BitArrayExpr = expect_expression(subject)?;
     let (subject_step, subject) = bind_subject(subject, context);
     let mut ordered_clauses = Vec::new();
     for clause in clauses {
@@ -541,7 +535,7 @@ pub fn main() {
             plan_module(invalid_guard),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
+                    kind: InvalidExpressionShapeKind::GuardNode,
                 },
             }),
         );
@@ -566,9 +560,7 @@ pub fn main() {
         assert_eq!(
             plan_module(invalid_branch),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
-                },
+                reason: InvalidTypedAstReason::InvalidExpressionNode,
             }),
         );
 

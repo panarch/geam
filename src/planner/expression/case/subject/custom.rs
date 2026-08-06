@@ -1,8 +1,10 @@
-use super::super::super::plan_expr_with_expected_source_stop_shape;
+use super::super::super::{
+    conversion::expect_expression, plan_expr_with_expected_source_stop_shape,
+};
 use super::{CaseClause, OrderedCaseCandidateInput, OrderedCasePattern};
 use crate::plan::{BoolExpr, CustomExpr, CustomLocalId, Expr, Step, ValueShape};
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidExpressionType, InvalidTypedAstReason, PlanError};
+use crate::planner::error::PlanError;
 use crate::planner::pattern::{PlannedCustomBinding, plan_custom_subject_pattern};
 use ecow::EcoString;
 use gleam_core::ast::{TypedExpr, TypedPattern};
@@ -18,15 +20,7 @@ pub(super) fn plan(
 ) -> Result<Expr, PlanError> {
     let subject = plan_expr_with_expected_source_stop_shape(subject, subject_shape, context)?;
     let return_shape = context.value_shape(type_.as_ref());
-    let actual = InvalidExpressionType::from_value_type(subject.value_type());
-    let Some(subject) = subject.into_custom() else {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Custom,
-                actual,
-            },
-        });
-    };
+    let subject: CustomExpr = expect_expression(subject)?;
     let (subject_step, subject_local, subject) = bind_subject(subject, context);
     let mut ordered_clauses = Vec::new();
     for clause in clauses {

@@ -214,7 +214,7 @@ fn function_local_get(
         .map(Expr::function)
         .ok_or(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::Invalid,
+                kind: InvalidExpressionShapeKind::VariableFunctionLocalShape,
             },
         })
 }
@@ -1051,7 +1051,7 @@ pub fn main() {
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
+                    kind: InvalidExpressionShapeKind::VariableFunctionLocalShape,
                 },
             }),
         );

@@ -738,9 +738,7 @@ mod tests {
                 &mut context,
             ),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
-                },
+                reason: InvalidTypedAstReason::InvalidExpressionNode,
             }),
         );
         assert_eq!(
@@ -762,9 +760,7 @@ mod tests {
                 &mut context,
             ),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
-                },
+                reason: InvalidTypedAstReason::InvalidExpressionNode,
             }),
         );
         assert_eq!(
@@ -902,7 +898,7 @@ pub fn main() { 0 }
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
+                    kind: InvalidExpressionShapeKind::ConstantNode,
                 },
             }),
         );

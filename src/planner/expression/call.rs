@@ -707,9 +707,9 @@ pub fn main() { Boxed(1) }
         assert_eq!(
             plan_module(constructor_field_type_mismatch),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: crate::planner::InvalidExpressionType::Int,
-                    actual: crate::planner::InvalidExpressionType::String,
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                    expected: crate::plan::ValueType::Int,
+                    actual: crate::plan::ValueType::String,
                 },
             }),
         );
@@ -883,9 +883,9 @@ pub fn main() {
         assert_eq!(
             plan_module(constructor_argument_type_mismatch),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: crate::planner::InvalidExpressionType::Int,
-                    actual: crate::planner::InvalidExpressionType::String,
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                    expected: crate::plan::ValueType::Int,
+                    actual: crate::plan::ValueType::String,
                 },
             }),
         );

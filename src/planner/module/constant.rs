@@ -6,8 +6,9 @@ use crate::plan::{
 };
 use crate::planner::bit_array::{fixed_bit_size, validate_supported_endianness_option};
 use crate::planner::context::{AnonymousFunctions, ModuleFunctionTarget, PlanContext};
-use crate::planner::error::{
-    InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
+use crate::planner::error::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
+use crate::planner::expression::conversion::{
+    expect_value_type_result, validate_expression_shape_flow, validate_expression_value_type,
 };
 use crate::planner::type_parameter::TypeParameterScope;
 use ecow::EcoString;
@@ -120,13 +121,16 @@ pub(in crate::planner) fn reserve_constants_with_external_types(
 
     for (index, constant) in constants.into_iter().enumerate() {
         let mut type_parameters = TypeParameterScope::default();
-        let storage_shape =
-            ConstantStorageShape::try_from_shape(ValueShape::from_gleam_in_with_external(
+        let storage_shape = ConstantStorageShape::try_from_shape(
+            ValueShape::from_gleam_in_with_external(
                 &constant.type_,
                 &mut type_parameters,
                 &|name| external_types.contains(name),
-            ))
-            .ok_or_else(invalid_constant_shape_error)?;
+            ),
+        )
+        .ok_or_else(|| {
+            invalid_expression_shape_error(InvalidExpressionShapeKind::ModuleConstantStorageShape)
+        })?;
         let storage_index = storage_indices.reserve(storage_shape.family());
         let id = ConstantTemplateId::in_module(module, index);
         let signature = storage_shape.into_signature(id, storage_index, type_parameters.scheme());
@@ -163,12 +167,7 @@ pub(in crate::planner) fn plan_constant_bodies(
         context.set_current_function(seed.name.clone());
         context.set_type_parameters(seed.type_parameters);
         let value = plan_value(seed.value, &mut context)?;
-        if !value.shape().can_flow_to(signature.shape()) {
-            return Err(invalid_expression_type_for_value(
-                signature.shape().value_type(),
-                value.shape().value_type(),
-            ));
-        }
+        validate_expression_shape_flow(&value.shape(), signature.shape())?;
         entries.push((ConstantTemplate::new(signature.clone(), seed.name), value));
     }
 
@@ -322,13 +321,19 @@ fn plan_value(
         }
         Constant::Tuple { elements, .. } => {
             let ValueShape::Tuple(element_shapes) = shape else {
-                return Err(invalid_expression_type_for_value(
-                    ValueType::Tuple(Vec::new()),
-                    shape.value_type(),
+                return Err(invalid_expression_shape_error(
+                    InvalidExpressionShapeKind::ModuleConstantTupleType {
+                        actual: shape.value_type(),
+                    },
                 ));
             };
             if elements.len() != element_shapes.len() {
-                return Err(invalid_constant_shape_error());
+                return Err(invalid_expression_shape_error(
+                    InvalidExpressionShapeKind::ModuleConstantTupleArity {
+                        expected: element_shapes.len(),
+                        actual: elements.len(),
+                    },
+                ));
             }
             let mut planned_elements = Vec::with_capacity(elements.len());
             for (element, expected) in elements.into_iter().zip(&element_shapes) {
@@ -343,9 +348,10 @@ fn plan_value(
         }
         Constant::List { elements, tail, .. } => {
             let ValueShape::List(item_shape) = shape else {
-                return Err(invalid_expression_type_for_value(
-                    ValueType::List(Box::new(ValueType::Nil)),
-                    shape.value_type(),
+                return Err(invalid_expression_shape_error(
+                    InvalidExpressionShapeKind::ModuleConstantListType {
+                        actual: shape.value_type(),
+                    },
                 ));
             };
             let elements = elements
@@ -356,10 +362,12 @@ fn plan_value(
             match ConstantValue::try_list(*item_shape, elements, tail) {
                 Ok(value) => Ok(value),
                 Err(ConstantListConstructionError::TypeMismatch { expected, actual }) => {
-                    Err(invalid_expression_type_for_value(expected, actual))
+                    expect_value_type_result(Err((expected, actual)), |types| types)
                 }
                 Err(ConstantListConstructionError::SpreadWithoutElements) => {
-                    Err(invalid_constant_shape_error())
+                    Err(invalid_expression_shape_error(
+                        InvalidExpressionShapeKind::ModuleConstantListSpreadEmptyPrefix,
+                    ))
                 }
             }
         }
@@ -391,7 +399,9 @@ fn plan_value(
         Constant::RecordUpdate { .. } => Err(invalid_expression_shape_error(
             InvalidExpressionShapeKind::RecordUpdate,
         )),
-        Constant::Todo { .. } | Constant::Invalid { .. } => Err(invalid_constant_shape_error()),
+        Constant::Todo { .. } | Constant::Invalid { .. } => Err(invalid_expression_shape_error(
+            InvalidExpressionShapeKind::ModuleConstantNode,
+        )),
     }
 }
 
@@ -402,7 +412,9 @@ fn plan_var(
     context: &mut PlanContext<'_>,
 ) -> Result<ConstantValue, PlanError> {
     let Some(constructor) = constructor else {
-        return Err(invalid_constant_shape_error());
+        return Err(invalid_expression_shape_error(
+            InvalidExpressionShapeKind::ModuleConstantMissingConstructor,
+        ));
     };
 
     match &constructor.variant {
@@ -434,7 +446,9 @@ fn plan_var(
         ValueConstructorVariant::Record { .. } => {
             plan_record(None, Some(constructor), shape, context)
         }
-        ValueConstructorVariant::LocalVariable { .. } => Err(invalid_constant_shape_error()),
+        ValueConstructorVariant::LocalVariable { .. } => Err(invalid_expression_shape_error(
+            InvalidExpressionShapeKind::ModuleConstantLocalVariable,
+        )),
     }
 }
 
@@ -456,7 +470,9 @@ fn plan_record(
         ..
     } = &constructor.variant
     else {
-        return Err(invalid_constant_shape_error());
+        return Err(invalid_expression_shape_error(
+            InvalidExpressionShapeKind::ModuleConstantRecordKind,
+        ));
     };
 
     if module == PRELUDE_MODULE_NAME && *arity == 0 {
@@ -518,12 +534,7 @@ fn plan_record(
             ));
         }
         let value = plan_value(argument.value, context)?;
-        if value.shape().value_type() != *field.type_() {
-            return Err(invalid_expression_type_for_value(
-                field.type_().clone(),
-                value.shape().value_type(),
-            ));
-        }
+        validate_expression_value_type(field.type_(), &value.shape().value_type())?;
         fields.push(value);
     }
     let ValueShape::Custom(custom) = shape else {
@@ -708,71 +719,47 @@ fn float_bit_size(bit_size: usize) -> Result<FloatBitSize, PlanError> {
 }
 
 fn require_shape(value: &ConstantValue, expected: &ValueShape) -> Result<(), PlanError> {
-    if value.shape().can_flow_to(expected) {
-        Ok(())
-    } else {
-        Err(invalid_expression_type_for_value(
-            expected.value_type(),
-            value.shape().value_type(),
-        ))
-    }
+    validate_expression_shape_flow(&value.shape(), expected)
 }
 
 fn into_int(value: ConstantValue) -> Result<crate::plan::ConstantIntValue, PlanError> {
     let actual = value.shape().value_type();
-    match value.into_int() {
-        Some(value) => Ok(value),
-        None => Err(invalid_expression_type_for_value(ValueType::Int, actual)),
-    }
+    expect_value_type_result(value.into_int().ok_or((ValueType::Int, actual)), |types| {
+        types
+    })
 }
 
 fn into_float(value: ConstantValue) -> Result<crate::plan::ConstantFloatValue, PlanError> {
     let actual = value.shape().value_type();
-    match value.into_float() {
-        Some(value) => Ok(value),
-        None => Err(invalid_expression_type_for_value(ValueType::Float, actual)),
-    }
+    expect_value_type_result(
+        value.into_float().ok_or((ValueType::Float, actual)),
+        |types| types,
+    )
 }
 
 fn into_string(value: ConstantValue) -> Result<crate::plan::ConstantStringValue, PlanError> {
     let actual = value.shape().value_type();
-    match value.into_string() {
-        Some(value) => Ok(value),
-        None => Err(invalid_expression_type_for_value(ValueType::String, actual)),
-    }
+    expect_value_type_result(
+        value.into_string().ok_or((ValueType::String, actual)),
+        |types| types,
+    )
 }
 
 fn into_bit_array(value: ConstantValue) -> Result<crate::plan::ConstantBitArrayValue, PlanError> {
     let actual = value.shape().value_type();
-    match value.into_bit_array() {
-        Some(value) => Ok(value),
-        None => Err(invalid_expression_type_for_value(
-            ValueType::BitArray,
-            actual,
-        )),
-    }
+    expect_value_type_result(
+        value.into_bit_array().ok_or((ValueType::BitArray, actual)),
+        |types| types,
+    )
 }
 
 fn invalid_bit_array_option_error() -> PlanError {
     invalid_expression_shape_error(InvalidExpressionShapeKind::BitArraySegmentOption)
 }
 
-fn invalid_constant_shape_error() -> PlanError {
-    invalid_expression_shape_error(InvalidExpressionShapeKind::Invalid)
-}
-
 fn invalid_expression_shape_error(kind: InvalidExpressionShapeKind) -> PlanError {
     PlanError::InvalidTypedAst {
         reason: InvalidTypedAstReason::ExpressionShape { kind },
-    }
-}
-
-fn invalid_expression_type_for_value(expected: ValueType, actual: ValueType) -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionType {
-            expected: InvalidExpressionType::from_value_type(expected),
-            actual: InvalidExpressionType::from_value_type(actual),
-        },
     }
 }
 
@@ -788,12 +775,12 @@ mod tests {
         ConstantBitArraySegment, CustomType, CustomTypeName, CustomValueShape, Endianness,
         FunctionShape, FunctionTemplateId, FunctionTemplateSignature, IntLocalId, PanicSite,
         ParamBinding, ParamLocal, SourceSpan, StringEncoding, TypeParameterId, TypeScheme,
-        ValueShape,
+        ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, FunctionParam, PlanContext};
     use crate::planner::error::{
-        InvalidExpressionShapeKind, InvalidExpressionType, InvalidModuleReferenceReason,
-        InvalidTypedAstReason, PlanError, UnsupportedBitArraySegmentReason,
+        InvalidExpressionShapeKind, InvalidModuleReferenceReason, InvalidTypedAstReason, PlanError,
+        UnsupportedBitArraySegmentReason,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
@@ -832,9 +819,9 @@ mod tests {
         assert_eq!(
             plan_module(module),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::String,
-                    actual: InvalidExpressionType::Int,
+                reason: InvalidTypedAstReason::ExpressionShapeRefinement {
+                    expected: ValueType::String,
+                    actual: ValueType::Int,
                 },
             }),
         );
@@ -845,7 +832,7 @@ mod tests {
             plan_module(module),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
+                    kind: InvalidExpressionShapeKind::ModuleConstantStorageShape,
                 },
             }),
         );
@@ -966,7 +953,7 @@ mod tests {
     fn reject_margin_constant_container_shapes() {
         let invalid_shape = PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::Invalid,
+                kind: InvalidExpressionShapeKind::ModuleConstantNode,
             },
         };
         let invalid = || Constant::Invalid {
@@ -1005,9 +992,10 @@ mod tests {
                 type_: type_::int(),
             }),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Tuple,
-                    actual: InvalidExpressionType::Int,
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleConstantTupleType {
+                        actual: ValueType::Int,
+                    },
                 },
             }),
         );
@@ -1017,7 +1005,14 @@ mod tests {
                 elements: Vec::new(),
                 type_: type_::tuple(vec![type_::int()]),
             }),
-            Err(invalid_shape.clone()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleConstantTupleArity {
+                        expected: 1,
+                        actual: 0,
+                    },
+                },
+            }),
         );
         assert_eq!(
             plan_fixture(Constant::Tuple {
@@ -1034,9 +1029,9 @@ mod tests {
                 type_: type_::tuple(vec![type_::string()]),
             }),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::String,
-                    actual: InvalidExpressionType::Int,
+                reason: InvalidTypedAstReason::ExpressionShapeRefinement {
+                    expected: ValueType::String,
+                    actual: ValueType::Int,
                 },
             }),
         );
@@ -1048,9 +1043,10 @@ mod tests {
                 tail: None,
             }),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::List,
-                    actual: InvalidExpressionType::Int,
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleConstantListType {
+                        actual: ValueType::Int,
+                    },
                 },
             }),
         );
@@ -1080,9 +1076,9 @@ mod tests {
                 tail: None,
             }),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::String,
-                    actual: InvalidExpressionType::Int,
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                    expected: ValueType::String,
+                    actual: ValueType::Int,
                 },
             }),
         );
@@ -1098,7 +1094,11 @@ mod tests {
                     tail: None,
                 })),
             }),
-            Err(invalid_shape.clone()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleConstantListSpreadEmptyPrefix,
+                },
+            }),
         );
         assert_eq!(
             plan_fixture(Constant::RecordUpdate {
@@ -1126,7 +1126,7 @@ mod tests {
     fn reject_margin_constant_reference_and_constructor_shapes() {
         let invalid_shape = PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::Invalid,
+                kind: InvalidExpressionShapeKind::ModuleConstantMissingConstructor,
             },
         };
         let record_shape = PlanError::InvalidTypedAst {
@@ -1278,7 +1278,11 @@ pub fn main() {
                 ))),
                 type_: type_::int(),
             }),
-            Err(invalid_shape.clone()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleConstantLocalVariable,
+                },
+            }),
         );
         assert_eq!(
             plan_fixture(Constant::Var {
@@ -1324,7 +1328,11 @@ pub fn main() {
                     type_::int(),
                 ))),
             }),
-            Err(invalid_shape),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleConstantRecordKind,
+                },
+            }),
         );
         assert_eq!(
             plan_fixture(Constant::Var {
@@ -1477,9 +1485,9 @@ pub fn main() {
                 result_type.clone(),
             )),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Int,
-                    actual: InvalidExpressionType::String,
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                    expected: ValueType::Int,
+                    actual: ValueType::String,
                 },
             }),
         );
@@ -1500,7 +1508,7 @@ pub fn main() {
             )),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
+                    kind: InvalidExpressionShapeKind::ModuleConstantNode,
                 },
             }),
         );
@@ -1557,7 +1565,7 @@ pub fn main() {
                 Vec::new(),
                 PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::ExpressionShape {
-                        kind: InvalidExpressionShapeKind::Invalid,
+                        kind: InvalidExpressionShapeKind::ModuleConstantNode,
                     },
                 },
             ),
@@ -1632,9 +1640,9 @@ pub fn main() {
                     location: dummy_span(),
                 }],
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::Int,
-                        actual: InvalidExpressionType::String,
+                    reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                        expected: ValueType::Int,
+                        actual: ValueType::String,
                     },
                 },
             ),
@@ -1647,9 +1655,9 @@ pub fn main() {
                     location: dummy_span(),
                 }],
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::Float,
-                        actual: InvalidExpressionType::String,
+                    reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                        expected: ValueType::Float,
+                        actual: ValueType::String,
                     },
                 },
             ),
@@ -1662,9 +1670,9 @@ pub fn main() {
                     size(int(8)),
                 ],
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::BitArray,
-                        actual: InvalidExpressionType::Int,
+                    reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                        expected: ValueType::BitArray,
+                        actual: ValueType::Int,
                     },
                 },
             ),
@@ -1674,9 +1682,9 @@ pub fn main() {
                     location: dummy_span(),
                 }],
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::BitArray,
-                        actual: InvalidExpressionType::Int,
+                    reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                        expected: ValueType::BitArray,
+                        actual: ValueType::Int,
                     },
                 },
             ),
@@ -1686,9 +1694,9 @@ pub fn main() {
                     location: dummy_span(),
                 }],
                 PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::String,
-                        actual: InvalidExpressionType::Int,
+                    reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                        expected: ValueType::String,
+                        actual: ValueType::Int,
                     },
                 },
             ),

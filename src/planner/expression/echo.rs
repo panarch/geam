@@ -21,7 +21,7 @@ pub(super) fn plan(
     let Some(expression) = expression else {
         return Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::Invalid,
+                kind: InvalidExpressionShapeKind::EchoExpressionMissing,
             },
         });
     };
@@ -346,7 +346,7 @@ mod tests {
             plan(dummy_span(), None, None, &mut context),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
+                    kind: InvalidExpressionShapeKind::EchoExpressionMissing,
                 },
             }),
         );
@@ -375,9 +375,7 @@ mod tests {
                 &mut context,
             ),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
-                },
+                reason: InvalidTypedAstReason::InvalidExpressionNode,
             }),
         );
     }

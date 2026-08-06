@@ -1,14 +1,14 @@
 use super::{
     BindingPattern, PlannedAssignment, plan_assignment_steps, plan_bound_assignment,
-    plan_ordinary_assignment_value, value_type_expression_type,
+    plan_ordinary_assignment_value,
 };
 use crate::plan::{
     AssertSubject, BitArrayExpr, BoolExpr, CustomExpr, CustomLocal, Expr, ExprKind, FloatExpr,
     IntExpr, ListExpr, ListLocal, NilExpr, Step, StringExpr, TupleExpr, ValueType,
 };
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidExpressionType, InvalidTypedAstReason, PlanError};
-use crate::planner::expression::plan_expr;
+use crate::planner::error::{InvalidTypedAstReason, PlanError};
+use crate::planner::expression::{conversion::expect_expression, plan_expr};
 use ecow::EcoString;
 use gleam_core::ast::{SrcSpan, TypedExpr, TypedPattern};
 
@@ -292,16 +292,7 @@ fn plan_assert_message(
     message: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<StringExpr, PlanError> {
-    let value = plan_expr(message, context)?;
-    let actual = value.value_type();
-    value
-        .into_string()
-        .ok_or_else(|| PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::String,
-                actual: value_type_expression_type(actual),
-            },
-        })
+    expect_expression(plan_expr(message, context)?)
 }
 
 fn internal_list_name(local: &ListLocal) -> EcoString {
@@ -340,9 +331,7 @@ mod tests {
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
-    use crate::planner::{
-        InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-    };
+    use crate::planner::{InvalidTypedAstReason, PlanError};
     use gleam_core::analyse::Inferred;
     use gleam_core::ast::{
         AssignmentKind, BitArraySegment as BitArrayPatternSegmentAst, Pattern, Statement,
@@ -932,17 +921,13 @@ pub fn main() {
         assert_eq!(
             plan_module(invalid_value),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
-                },
+                reason: InvalidTypedAstReason::InvalidExpressionNode,
             }),
         );
         assert_eq!(
             plan_module(invalid_final_value),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
-                },
+                reason: InvalidTypedAstReason::InvalidExpressionNode,
             }),
         );
         assert_eq!(plan_module(invalid_message), plan_module(compile(source)));
@@ -1355,9 +1340,7 @@ pub fn main() {
             assert_eq!(
                 plan_module(invalid),
                 Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionShape {
-                        kind: InvalidExpressionShapeKind::Invalid,
-                    },
+                    reason: InvalidTypedAstReason::InvalidExpressionNode,
                 }),
             );
         }
@@ -1431,8 +1414,8 @@ pub fn main() {
             .err(),
             Some(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::String,
-                    actual: InvalidExpressionType::Int,
+                    expected: crate::planner::InvalidExpressionType::String,
+                    actual: crate::planner::InvalidExpressionType::Int,
                 },
             }),
         );
@@ -1493,9 +1476,7 @@ pub fn main() {
             )
             .err(),
             Some(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
-                },
+                reason: InvalidTypedAstReason::InvalidExpressionNode,
             }),
         );
     }
@@ -1566,9 +1547,7 @@ pub fn main() {
             )
             .err(),
             Some(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
-                },
+                reason: InvalidTypedAstReason::InvalidExpressionNode,
             }),
         );
     }
@@ -1657,9 +1636,7 @@ pub fn main() {
                 &mut context,
             ),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
-                },
+                reason: InvalidTypedAstReason::InvalidExpressionNode,
             }),
         );
     }
@@ -1685,9 +1662,7 @@ pub fn main() {
             )
             .err(),
             Some(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
-                },
+                reason: InvalidTypedAstReason::InvalidExpressionNode,
             }),
         );
     }

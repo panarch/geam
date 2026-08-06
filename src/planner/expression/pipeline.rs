@@ -122,7 +122,7 @@ fn invalid_pipeline_shape(reason: InvalidPipelineShapeReason) -> PlanError {
 
 #[cfg(test)]
 mod tests {
-    use crate::plan::{EchoSite, EchoSubject, IntLocalId, LocalId, SourceSpan, Step};
+    use crate::plan::{EchoSite, EchoSubject, IntLocalId, LocalId, SourceSpan, Step, ValueType};
     use crate::planner::dsl::{
         block_int, bool_, bool_arg, bool_return_block, bool_return_tail_call_at, call_int_at,
         call_int_function_at, function, host_call_site, host_call_site_in, int, int_arg,
@@ -136,8 +136,7 @@ mod tests {
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span, expect_plan_error};
     use crate::planner::{
-        InvalidCallShapeReason, InvalidExpressionShapeKind, InvalidExpressionType,
-        InvalidPipelineShapeReason, InvalidTypedAstReason, PlanError,
+        InvalidCallShapeReason, InvalidPipelineShapeReason, InvalidTypedAstReason, PlanError,
         UnsupportedBitArraySegmentReason,
     };
     use gleam_core::ast::{
@@ -719,9 +718,7 @@ pub fn main() {
         assert_eq!(
             plan_module(unsupported_first_assignment),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
-                },
+                reason: InvalidTypedAstReason::InvalidExpressionNode,
             }),
         );
 
@@ -897,9 +894,9 @@ pub fn main() {
         assert_eq!(
             plan_module(unsupported_pipe_value),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Int,
-                    actual: InvalidExpressionType::List,
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                    expected: ValueType::Int,
+                    actual: ValueType::List(Box::new(ValueType::Int)),
                 },
             }),
         );

@@ -1,11 +1,12 @@
-use super::{plan_expr, plan_expr_with_expected_source_stop_type, record_access};
+use super::{
+    conversion::{expect_expression, validate_expression_value_type},
+    plan_expr, plan_expr_with_expected_source_stop_type, record_access,
+};
 use crate::plan::{
     CustomConstructor, CustomExpr, CustomLocalId, CustomType, Expr, Step, ValueType,
 };
 use crate::planner::context::PlanContext;
-use crate::planner::error::{
-    InvalidExpressionType, InvalidRecordUpdateShapeReason, InvalidTypedAstReason, PlanError,
-};
+use crate::planner::error::{InvalidRecordUpdateShapeReason, InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
 use gleam_core::ast::{CallArg, ImplicitCallArgOrigin, TypedExpr};
 use gleam_core::type_::error::VariableOrigin;
@@ -36,16 +37,7 @@ pub(super) fn plan(
             },
         });
     }
-    let source = plan_expr(updated_record, context)?;
-    let actual = source.value_type();
-    let Some(source) = source.into_custom() else {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Custom,
-                actual: InvalidExpressionType::from_value_type(actual),
-            },
-        });
-    };
+    let source: CustomExpr = expect_expression(plan_expr(updated_record, context)?)?;
     if source.type_() != &source_custom_type {
         return Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::RecordUpdateShape {
@@ -125,14 +117,7 @@ fn plan_arguments(
                 });
             }
         };
-        if expression.value_type() != *field.type_() {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::from_value_type(field.type_().clone()),
-                    actual: InvalidExpressionType::from_value_type(expression.value_type()),
-                },
-            });
-        }
+        validate_expression_value_type(field.type_(), &expression.value_type())?;
         planned.push(expression);
     }
     Ok(planned)
@@ -930,9 +915,7 @@ pub fn main() {
         assert_eq!(
             plan_module(invalid_base_expression),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: crate::planner::InvalidExpressionShapeKind::Invalid,
-                },
+                reason: InvalidTypedAstReason::InvalidExpressionNode,
             }),
         );
     }
@@ -1033,9 +1016,9 @@ pub fn main() {
         assert_eq!(
             plan_module(wrong_explicit_type),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Int,
-                    actual: InvalidExpressionType::String,
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                    expected: ValueType::Int,
+                    actual: ValueType::String,
                 },
             }),
         );
@@ -1055,9 +1038,7 @@ pub fn main() {
         assert_eq!(
             plan_module(invalid_explicit_expression),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: crate::planner::InvalidExpressionShapeKind::Invalid,
-                },
+                reason: InvalidTypedAstReason::InvalidExpressionNode,
             }),
         );
     }

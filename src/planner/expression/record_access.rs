@@ -1,7 +1,10 @@
-use super::{expression_type, plan_expr};
-use crate::plan::Expr;
+use super::{
+    conversion::{expect_expression, refine_value_shape},
+    plan_expr,
+};
+use crate::plan::{CustomExpr, Expr};
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidExpressionType, InvalidTypedAstReason, PlanError};
+use crate::planner::error::PlanError;
 use ecow::EcoString;
 use gleam_core::ast::TypedExpr;
 use gleam_core::type_::Type;
@@ -29,32 +32,16 @@ pub(super) fn plan_from_expr(
     let index = index as usize;
     #[cfg(not(target_pointer_width = "64"))]
     let index = usize::try_from(index).map_err(|_| PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionType {
-            expected: InvalidExpressionType::Custom,
-            actual: InvalidExpressionType::Custom,
+        reason: crate::planner::InvalidTypedAstReason::ExpressionShape {
+            kind: crate::planner::InvalidExpressionShapeKind::RecordAccessIndexOverflow,
         },
     })?;
 
-    let actual = expression_type(&record);
-    let Some(record) = record.into_custom() else {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Custom,
-                actual,
-            },
-        });
-    };
+    let record: CustomExpr = expect_expression(record)?;
     let expected_shape = context.value_shape(type_.as_ref());
     let expected = expected_shape.value_type();
     let (access, source_shape) = context.custom_field_access(record, index, label, &expected)?;
-    let Some(resolved_shape) = source_shape.refine(&expected_shape) else {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::from_value_type(expected),
-                actual: InvalidExpressionType::from_value_type(source_shape.value_type()),
-            },
-        });
-    };
+    let resolved_shape = refine_value_shape(source_shape, expected_shape)?;
 
     Ok(Expr::custom_field_shape(access, resolved_shape))
 }
@@ -109,9 +96,7 @@ mod tests {
                 &mut context,
             ),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: crate::planner::InvalidExpressionShapeKind::Invalid,
-                },
+                reason: InvalidTypedAstReason::InvalidExpressionNode,
             }),
         );
         assert_eq!(
@@ -527,9 +512,9 @@ mod tests {
         assert_eq!(
             plan_from_expr(expected, Some("value".into()), 0, source, &mut context,),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Custom,
-                    actual: InvalidExpressionType::Custom,
+                reason: InvalidTypedAstReason::ExpressionShapeRefinement {
+                    expected: ValueType::Custom(choice.clone()),
+                    actual: ValueType::Custom(choice),
                 },
             }),
         );

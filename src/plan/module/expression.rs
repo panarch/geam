@@ -770,6 +770,7 @@ impl Expr {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn into_custom(self) -> Option<CustomExpr> {
         match self.kind {
             ExprKind::Custom(expression) => Some(expression),
@@ -784,6 +785,7 @@ impl Expr {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn into_bool(self) -> Option<BoolExpr> {
         match self.kind {
             ExprKind::Bool(expression) => Some(expression),
@@ -791,6 +793,7 @@ impl Expr {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn into_tuple(self) -> Option<TupleExpr> {
         match self.kind {
             ExprKind::Tuple(expression) => Some(expression),
@@ -798,6 +801,7 @@ impl Expr {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn into_list(self) -> Option<ListExpr> {
         match self.kind {
             ExprKind::List(expression) => Some(expression),
@@ -805,6 +809,7 @@ impl Expr {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn into_function(self) -> Option<FunctionExpr> {
         match self.kind {
             ExprKind::Function(expression) => Some(expression),

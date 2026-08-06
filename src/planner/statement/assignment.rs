@@ -10,11 +10,10 @@ use crate::plan::{
     UtfCodepointFunctionExpr, ValueShape, ValueType,
 };
 use crate::planner::context::PlanContext;
-use crate::planner::error::{
-    InvalidExpressionType, InvalidTypedAstReason, PlanError, UnsupportedPatternKind,
-};
+use crate::planner::error::{InvalidTypedAstReason, PlanError, UnsupportedPatternKind};
 use crate::planner::expression::{
-    plan_expr, plan_expr_with_expected_source_stop_type, tuple_index_expr,
+    conversion::expect_expression, plan_expr, plan_expr_with_expected_source_stop_type,
+    tuple_index_expr,
 };
 use ecow::EcoString;
 use gleam_core::ast::{AssignmentKind, Pattern, TypedAssignment, TypedExpr, TypedPattern};
@@ -245,10 +244,7 @@ fn plan_list_tail_assignment(
     value: Expr,
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedAssignment, PlanError> {
-    let actual = value.value_type();
-    let Some(value) = value.into_list() else {
-        return Err(list_assignment_value_must_be_list(actual));
-    };
+    let value: ListExpr = expect_expression(value)?;
     if value.element_type() != element_type {
         crate::planner::pattern::validate_pattern_value_type(
             ValueType::List(Box::new(element_type.clone())),
@@ -279,10 +275,7 @@ fn plan_custom_assignment(
     value: Expr,
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedAssignment, PlanError> {
-    let actual = value.value_type();
-    let Some(value) = value.into_custom() else {
-        return Err(custom_assignment_value_must_be_custom(actual));
-    };
+    let value: CustomExpr = expect_expression(value)?;
     crate::planner::pattern::validate_pattern_value_type(
         ValueType::Custom(constructor.type_().clone()),
         ValueType::Custom(value.type_().clone()),
@@ -483,10 +476,7 @@ fn plan_tuple_assignment(
     value: Expr,
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedAssignment, PlanError> {
-    let actual = value.value_type();
-    let Some(value) = value.into_tuple() else {
-        return Err(tuple_assignment_value_must_be_tuple(actual));
-    };
+    let value: TupleExpr = expect_expression(value)?;
     let shape = value.shape().to_vec().into_boxed_slice();
     let type_ = value.type_().to_vec();
     crate::planner::pattern::validate_tuple_arity(type_.len(), elements.len())?;
@@ -513,51 +503,6 @@ fn internal_tuple_name(local: TupleLocalId) -> EcoString {
 
 fn internal_custom_name(local: crate::plan::CustomLocalId) -> EcoString {
     format!("<custom:{}>", local.0).into()
-}
-
-fn list_assignment_value_must_be_list(actual: ValueType) -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionType {
-            expected: InvalidExpressionType::List,
-            actual: value_type_expression_type(actual),
-        },
-    }
-}
-
-fn custom_assignment_value_must_be_custom(actual: ValueType) -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionType {
-            expected: InvalidExpressionType::Custom,
-            actual: value_type_expression_type(actual),
-        },
-    }
-}
-
-fn tuple_assignment_value_must_be_tuple(actual: ValueType) -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionType {
-            expected: InvalidExpressionType::Tuple,
-            actual: value_type_expression_type(actual),
-        },
-    }
-}
-
-fn value_type_expression_type(type_: ValueType) -> InvalidExpressionType {
-    match type_ {
-        ValueType::Parameter(_) => InvalidExpressionType::TypeParameter,
-        ValueType::Int => InvalidExpressionType::Int,
-        ValueType::String => InvalidExpressionType::String,
-        ValueType::BitArray => InvalidExpressionType::BitArray,
-        ValueType::UtfCodepoint => InvalidExpressionType::UtfCodepoint,
-        ValueType::Custom(_) => InvalidExpressionType::Custom,
-        ValueType::External(_) => InvalidExpressionType::External,
-        ValueType::Float => InvalidExpressionType::Float,
-        ValueType::Bool => InvalidExpressionType::Bool,
-        ValueType::Nil => InvalidExpressionType::Nil,
-        ValueType::Tuple(_) => InvalidExpressionType::Tuple,
-        ValueType::List(_) => InvalidExpressionType::List,
-        ValueType::Function(_) => InvalidExpressionType::Function,
-    }
 }
 
 pub(in crate::planner) fn plan_variable_runtime_step(
@@ -1271,9 +1216,9 @@ mod tests {
         AssertBinding, BoolLocalId, CustomBindingPattern, CustomConstructor,
         CustomConstructorDefinition, CustomConstructorField, CustomExpr, CustomLocal,
         CustomLocalId, CustomType, CustomTypeDefinition, CustomTypeName, CustomTypePublicity,
-        CustomValueShape, Expr, ExternalType, ExternalTypeName, FunctionType, IntListLocalId,
-        IntLocalId, ListAssertTail, ListExpr, ListLocal, LocalId, NilLocalId, ParamLocal,
-        StringLocalId, TotalBindingPattern, TypeParameterId, ValueShape, ValueType,
+        CustomValueShape, Expr, IntListLocalId, IntLocalId, ListAssertTail, ListExpr, ListLocal,
+        LocalId, NilLocalId, ParamLocal, StringLocalId, TotalBindingPattern, TypeParameterId,
+        ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
     use crate::planner::dsl::{
@@ -2425,13 +2370,6 @@ pub fn main() {
         )
     }
 
-    fn external_type(name: &str) -> ExternalType {
-        ExternalType::new(
-            ExternalTypeName::new("geam".into(), "main".into(), name.into()),
-            Vec::new(),
-        )
-    }
-
     #[test]
     fn plan_tuple_assignment_binds_projected_elements_from_internal_local() {
         let actual = plan_module(compile(
@@ -2999,9 +2937,9 @@ pub fn main() {
             super::plan_tuple_assignment(vec![super::BindingPattern::Discard], value, &mut context)
                 .map(|_| ()),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Int,
-                    actual: InvalidExpressionType::String,
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                    expected: ValueType::Int,
+                    actual: ValueType::String,
                 },
             }),
         );
@@ -3054,69 +2992,7 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_margin_tuple_assignment_value_type_error_preserves_actual_family() {
-        let cases = [
-            (
-                ValueType::Parameter(TypeParameterId(0)),
-                InvalidExpressionType::TypeParameter,
-            ),
-            (ValueType::Int, InvalidExpressionType::Int),
-            (ValueType::String, InvalidExpressionType::String),
-            (ValueType::BitArray, InvalidExpressionType::BitArray),
-            (ValueType::UtfCodepoint, InvalidExpressionType::UtfCodepoint),
-            (
-                ValueType::Custom(custom_type("Boxed")),
-                InvalidExpressionType::Custom,
-            ),
-            (
-                ValueType::External(external_type("Token")),
-                InvalidExpressionType::External,
-            ),
-            (ValueType::Float, InvalidExpressionType::Float),
-            (ValueType::Bool, InvalidExpressionType::Bool),
-            (ValueType::Nil, InvalidExpressionType::Nil),
-            (
-                ValueType::Tuple(vec![ValueType::Int]),
-                InvalidExpressionType::Tuple,
-            ),
-            (
-                ValueType::List(Box::new(ValueType::Int)),
-                InvalidExpressionType::List,
-            ),
-            (
-                ValueType::Function(Box::new(FunctionType::new(
-                    vec![ValueType::Int],
-                    ValueType::Int,
-                ))),
-                InvalidExpressionType::Function,
-            ),
-        ];
-
-        for (actual_type, actual) in cases {
-            assert_eq!(
-                super::tuple_assignment_value_must_be_tuple(actual_type),
-                PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::Tuple,
-                        actual,
-                    },
-                },
-            );
-        }
-    }
-
-    #[test]
     fn reject_margin_list_tail_assignment_value_type_error_preserves_actual_family() {
-        assert_eq!(
-            super::list_assignment_value_must_be_list(ValueType::Int),
-            PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::List,
-                    actual: InvalidExpressionType::Int,
-                },
-            },
-        );
-
         let module_name = "main".into();
         let functions = std::collections::HashMap::new();
         let mut anonymous = crate::planner::context::AnonymousFunctions::default();

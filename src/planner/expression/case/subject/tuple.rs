@@ -1,12 +1,14 @@
-use super::super::super::plan_expr_with_expected_source_stop_shape;
 use super::super::super::tuple_index_expr;
+use super::super::super::{
+    conversion::expect_expression, plan_expr_with_expected_source_stop_shape,
+};
 use super::{CaseClause, OrderedCaseCandidateInput, OrderedCasePattern};
 use crate::plan::{
-    BoolExpr, CustomBindingPattern, CustomExpr, Expr, ExprKind, FloatExpr, IntExpr, Step,
-    StringExpr, TupleExpr, TupleLocalId, ValueShape, ValueType,
+    BoolExpr, CustomBindingPattern, CustomExpr, Expr, FloatExpr, IntExpr, Step, StringExpr,
+    TupleExpr, TupleLocalId, ValueShape, ValueType,
 };
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidExpressionType, InvalidTypedAstReason, PlanError};
+use crate::planner::error::PlanError;
 use crate::planner::pattern::plan_custom_subject_pattern;
 use ecow::EcoString;
 use gleam_core::ast::{AssignName, Pattern, SrcSpan, TypedExpr};
@@ -26,15 +28,7 @@ pub(super) fn plan(
     let subject = plan_expr_with_expected_source_stop_shape(subject, subject_shape, context)?;
     let return_shape = context.value_shape(type_.as_ref());
 
-    let actual = InvalidExpressionType::from_value_type(subject.value_type());
-    let ExprKind::Tuple(subject) = subject.into_kind() else {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Tuple,
-                actual,
-            },
-        });
-    };
+    let subject: TupleExpr = expect_expression(subject)?;
     let (subject_step, subject) = bind_tuple_case_subject(subject, context);
     let mut ordered_clauses = Vec::new();
     for clause in clauses {
@@ -106,15 +100,7 @@ impl TupleCasePattern {
         left_side_assignment: Option<(EcoString, SrcSpan)>,
         right_side_assignment: AssignName,
     ) -> Result<Self, PlanError> {
-        let actual = InvalidExpressionType::from_value_type(value.value_type());
-        let Some(value) = value.into_string() else {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::String,
-                    actual,
-                },
-            });
-        };
+        let value: StringExpr = expect_expression(value)?;
         let mut pattern = Self {
             match_condition: Some(BoolExpr::string_starts_with(value.clone(), prefix.clone())),
             branch_bindings: Vec::new(),
@@ -270,15 +256,7 @@ fn plan_tuple_case_pattern_with_context(
         } if matches!(&subject_type, ValueType::Custom(_))
             && matches_type(pattern_type.as_ref(), &subject_type, context) =>
         {
-            let actual = InvalidExpressionType::from_value_type(value.value_type());
-            let Some(value) = value.into_custom() else {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::Custom,
-                        actual,
-                    },
-                });
-            };
+            let value: CustomExpr = expect_expression(value)?;
             let pattern =
                 plan_custom_subject_pattern(pattern.clone(), value.shape().clone(), context)?;
             let total_branch_steps = pattern
@@ -320,15 +298,7 @@ fn plan_tuple_case_pattern_with_context(
             right_side_assignment,
         ),
         Pattern::BitArray { segments, .. } if subject_type == ValueType::BitArray => {
-            let actual = InvalidExpressionType::from_value_type(value.value_type());
-            let Some(value) = value.into_bit_array() else {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::ExpressionType {
-                        expected: InvalidExpressionType::BitArray,
-                        actual,
-                    },
-                });
-            };
+            let value = expect_expression(value)?;
             super::bit_array::plan_structural_pattern(segments, value, context)
                 .map(TupleCasePattern::from_bit_array_pattern)
         }
@@ -368,15 +338,7 @@ fn plan_tuple_structural_case_pattern(
         .iter()
         .map(ValueShape::value_type)
         .collect::<Vec<_>>();
-    let actual = InvalidExpressionType::from_value_type(value.value_type());
-    let Some(tuple) = value.into_tuple() else {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::Tuple,
-                actual,
-            },
-        });
-    };
+    let tuple: TupleExpr = expect_expression(value)?;
 
     let mut patterns = Vec::with_capacity(elements.len());
     for (index, (pattern, type_)) in elements.into_iter().zip(element_types).enumerate() {
@@ -1455,9 +1417,9 @@ pub fn main() {
                 ValueType::Tuple(vec![ValueType::Int]),
             ),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: crate::planner::InvalidExpressionType::Int,
-                    actual: crate::planner::InvalidExpressionType::String,
+                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                    expected: ValueType::Int,
+                    actual: ValueType::String,
                 },
             }),
         );

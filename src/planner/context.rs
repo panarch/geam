@@ -302,7 +302,7 @@ impl PlannedCaptures {
 fn invalid_local_shape() -> PlanError {
     PlanError::InvalidTypedAst {
         reason: InvalidTypedAstReason::ExpressionShape {
-            kind: InvalidExpressionShapeKind::Invalid,
+            kind: InvalidExpressionShapeKind::LocalBindingShape,
         },
     }
 }
@@ -3345,7 +3345,7 @@ mod tests {
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: crate::planner::InvalidExpressionShapeKind::Invalid,
+                    kind: crate::planner::InvalidExpressionShapeKind::LocalBindingShape,
                 },
             }),
         );

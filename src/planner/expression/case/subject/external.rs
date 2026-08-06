@@ -1,10 +1,10 @@
-use super::super::super::plan_expr_with_expected_source_stop_shape;
-use super::{CaseClause, OrderedCaseClauseInput};
-use crate::plan::{
-    BoolExpr, Expr, ExprKind, ExternalExpr, ExternalLocal, ExternalValueShape, Step,
+use super::super::super::{
+    conversion::expect_expression, plan_expr_with_expected_source_stop_shape,
 };
+use super::{CaseClause, OrderedCaseClauseInput};
+use crate::plan::{BoolExpr, Expr, ExternalExpr, ExternalLocal, ExternalValueShape, Step};
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidExpressionType, InvalidTypedAstReason, PlanError};
+use crate::planner::error::PlanError;
 use ecow::EcoString;
 use gleam_core::ast::{Pattern, TypedExpr};
 use gleam_core::type_::Type;
@@ -23,15 +23,7 @@ pub(super) fn plan(
         context,
     )?;
     let return_shape = context.value_shape(type_.as_ref());
-    let actual = InvalidExpressionType::from_value_type(subject.value_type());
-    let ExprKind::External(subject) = subject.into_kind() else {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionType {
-                expected: InvalidExpressionType::External,
-                actual,
-            },
-        });
-    };
+    let subject: ExternalExpr = expect_expression(subject)?;
     let (subject_step, subject) = bind_subject(subject, shape.clone(), context);
     let mut ordered_clauses = Vec::new();
     for clause in clauses {
@@ -128,8 +120,7 @@ mod tests {
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::support::dummy_span;
     use crate::planner::{
-        InvalidCaseShapeReason, InvalidExpressionShapeKind, InvalidExpressionType,
-        InvalidTypedAstReason, PlanError,
+        InvalidCaseShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
     };
     use crate::{ModuleSource, PackageSource};
     use ecow::EcoString;
@@ -255,9 +246,7 @@ mod tests {
                 &mut context,
             ),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::Invalid,
-                },
+                reason: InvalidTypedAstReason::InvalidExpressionNode,
             }),
         );
         assert_eq!(
