@@ -46,12 +46,15 @@ definitions must not import them outside the consuming lowering modules.
 Source spans/sites and immutable value/function type metadata are the narrow
 shared domains; runtime `Value` and evaluated captures are not plan data.
 
-`ExecutionError` separates two allowed domains:
+`ExecutionError` separates three failure domains:
 
 - Source-reachable execution stops accepted by the Geam profile use
   `ExecutionError::Panic(Panic)`, with `PanicKind` as the source-level tag.
   Cover them with execution-error fixtures that compile and plan successfully
   before failing at runtime. Do not add speculative `PanicKind` variants.
+- Host provider failures use `ExecutionError::Host(Box<HostError>)`. They
+  preserve the provider that actually failed and any host caller origin rather
+  than becoming source panics or runtime invariants.
 - Runtime invariant failures that Rust cannot encode in the current plan shape
   use `ExecutionError::Invariant(InvariantError)`. Adding an invariant
   kind requires explicit design review.
