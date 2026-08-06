@@ -7,6 +7,25 @@ use gleam_core::ast::{PIPE_VARIABLE, PipelineAssignmentKind, TypedExpr, TypedPip
 use gleam_core::type_::ValueConstructor;
 use gleam_core::type_::error::VariableOrigin;
 
+struct PipelineCall {
+    location: gleam_core::ast::SrcSpan,
+    type_: std::sync::Arc<gleam_core::type_::Type>,
+    fun: Box<TypedExpr>,
+    arguments: Vec<gleam_core::ast::CallArg<TypedExpr>>,
+}
+
+struct PipelineEcho {
+    location: gleam_core::ast::SrcSpan,
+    message: Option<Box<TypedExpr>>,
+    type_: std::sync::Arc<gleam_core::type_::Type>,
+}
+
+enum NormalizedPipelineStep {
+    Direct(PipelineCall),
+    Hole(PipelineCall),
+    Echo(PipelineEcho),
+}
+
 pub(super) fn plan(
     first_value: TypedPipelineAssignment,
     assignments: Vec<(TypedPipelineAssignment, PipelineAssignmentKind)>,
@@ -50,74 +69,96 @@ fn plan_pipeline_value(
     kind: PipelineAssignmentKind,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
+    match normalize_pipeline_step(expression, kind)? {
+        NormalizedPipelineStep::Direct(call) => call::plan_pipeline_direct_call(
+            call.location,
+            call.type_,
+            *call.fun,
+            call.arguments,
+            context,
+        ),
+        NormalizedPipelineStep::Hole(call) => call::plan_pipeline_hole_call(
+            call.location,
+            call.type_,
+            *call.fun,
+            call.arguments,
+            context,
+        ),
+        NormalizedPipelineStep::Echo(echo) => plan_echo(echo, context),
+    }
+}
+
+fn normalize_pipeline_step(
+    expression: TypedExpr,
+    kind: PipelineAssignmentKind,
+) -> Result<NormalizedPipelineStep, PlanError> {
     match kind {
         PipelineAssignmentKind::FirstArgument { .. } | PipelineAssignmentKind::FunctionCall => {
-            plan_direct_call(expression, context)
+            normalize_pipeline_call(expression).map(NormalizedPipelineStep::Direct)
         }
-        PipelineAssignmentKind::Hole { .. } => plan_hole_call(expression, context),
-        PipelineAssignmentKind::Echo => plan_echo(expression, context),
+        PipelineAssignmentKind::Hole { .. } => {
+            normalize_pipeline_call(expression).map(NormalizedPipelineStep::Hole)
+        }
+        PipelineAssignmentKind::Echo => {
+            normalize_pipeline_echo(expression).map(NormalizedPipelineStep::Echo)
+        }
     }
 }
 
-fn plan_direct_call(
-    expression: TypedExpr,
-    context: &mut PlanContext<'_>,
-) -> Result<Expr, PlanError> {
-    let TypedExpr::Call {
-        location,
-        type_,
-        fun,
-        arguments,
-        ..
-    } = expression
-    else {
-        return Err(invalid_pipeline_shape(
-            InvalidPipelineShapeReason::NonCallStep,
-        ));
-    };
-
-    call::plan_pipeline_direct_call(location, type_, *fun, arguments, context)
+fn normalize_pipeline_call(expression: TypedExpr) -> Result<PipelineCall, PlanError> {
+    match expression {
+        TypedExpr::Call {
+            location,
+            type_,
+            fun,
+            arguments,
+            ..
+        } => Ok(PipelineCall {
+            location,
+            type_,
+            fun,
+            arguments,
+        }),
+        _ => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::PipelineShape {
+                reason: InvalidPipelineShapeReason::NonCallStep,
+            },
+        }),
+    }
 }
 
-fn plan_hole_call(expression: TypedExpr, context: &mut PlanContext<'_>) -> Result<Expr, PlanError> {
-    let TypedExpr::Call {
-        location,
-        type_,
-        fun,
-        arguments,
-        ..
-    } = expression
-    else {
-        return Err(invalid_pipeline_shape(
-            InvalidPipelineShapeReason::NonCallStep,
-        ));
-    };
-
-    call::plan_pipeline_hole_call(location, type_, *fun, arguments, context)
+fn normalize_pipeline_echo(expression: TypedExpr) -> Result<PipelineEcho, PlanError> {
+    match expression {
+        TypedExpr::Echo {
+            location,
+            expression: None,
+            message,
+            type_,
+        } => Ok(PipelineEcho {
+            location,
+            message,
+            type_,
+        }),
+        _ => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::PipelineShape {
+                reason: InvalidPipelineShapeReason::EchoStep,
+            },
+        }),
+    }
 }
 
-fn plan_echo(expression: TypedExpr, context: &mut PlanContext<'_>) -> Result<Expr, PlanError> {
-    let TypedExpr::Echo {
-        location,
-        expression: None,
-        message,
-        type_,
-    } = expression
-    else {
-        return Err(invalid_pipeline_shape(InvalidPipelineShapeReason::EchoStep));
-    };
-    let shape = context.value_shape(&type_);
+fn plan_echo(echo: PipelineEcho, context: &mut PlanContext<'_>) -> Result<Expr, PlanError> {
+    let shape = context.value_shape(&echo.type_);
     let constructor =
-        ValueConstructor::local_variable(location, VariableOrigin::generated(), type_);
+        ValueConstructor::local_variable(echo.location, VariableOrigin::generated(), echo.type_);
     let value = var::plan_var(PIPE_VARIABLE.into(), constructor, shape, context)?;
 
-    echo::plan_value(location, value, message.map(|message| *message), context)
-}
-
-fn invalid_pipeline_shape(reason: InvalidPipelineShapeReason) -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::PipelineShape { reason },
-    }
+    echo::plan_value(
+        echo.location,
+        value,
+        echo.message.map(|message| *message),
+        context,
+    )
 }
 
 #[cfg(test)]
@@ -755,7 +796,10 @@ pub fn main() {
         assert_eq!(
             plan_module(multiple_pipe_arguments),
             Err(invalid_pipeline_shape(
-                InvalidPipelineShapeReason::MultiplePipeArguments,
+                InvalidPipelineShapeReason::MultiplePipeArguments {
+                    first: 0,
+                    second: 1,
+                },
             )),
         );
 
@@ -768,7 +812,7 @@ pub fn main() {
         assert_eq!(
             plan_module(unsupported_implicit_argument),
             Err(invalid_pipeline_shape(
-                InvalidPipelineShapeReason::UnsupportedImplicitArgument,
+                InvalidPipelineShapeReason::UnsupportedPipeArgument { index: 0 },
             )),
         );
 
@@ -782,7 +826,10 @@ pub fn main() {
             plan_module(return_type_mismatch),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::LocalFunctionCallReturnTypeMismatch,
+                    reason: InvalidCallShapeReason::FunctionInstantiationReturnShape {
+                        expected: ValueType::Int,
+                        actual: ValueType::Bool,
+                    },
                 },
             }),
         );
@@ -841,7 +888,11 @@ pub fn main() {
             plan_module(labelled_argument),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CallShape {
-                    reason: InvalidCallShapeReason::LabelledArguments,
+                    reason: InvalidCallShapeReason::ArgumentLabel {
+                        index: 0,
+                        expected: None,
+                        actual: "value".into(),
+                    },
                 },
             }),
         );
@@ -857,7 +908,7 @@ pub fn main() {
         assert_eq!(
             plan_module(invalid_hole_capture),
             Err(invalid_pipeline_shape(
-                InvalidPipelineShapeReason::InvalidHoleCapture,
+                InvalidPipelineShapeReason::HoleCaptureFunction,
             )),
         );
     }
@@ -894,11 +945,31 @@ pub fn main() {
         assert_eq!(
             plan_module(unsupported_pipe_value),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
-                    expected: ValueType::Int,
-                    actual: ValueType::List(Box::new(ValueType::Int)),
+                reason: InvalidTypedAstReason::CallShape {
+                    reason: InvalidCallShapeReason::ArgumentShape {
+                        index: 1,
+                        type_: ValueType::Int,
+                    },
                 },
             }),
+        );
+
+        let mut extra_wrapper_argument = compile_hole_pipeline_module();
+        let (_, _, finally, _) = expect_pipeline_statement_mut(
+            &mut extra_wrapper_argument.definitions.functions[1].body[0],
+        );
+        let arguments = expect_call_arguments_mut(finally);
+        arguments.push(CallArg {
+            label: None,
+            location: dummy_span(),
+            value: super::super::typed_int_expr(2),
+            implicit: None,
+        });
+        assert_eq!(
+            plan_module(extra_wrapper_argument),
+            Err(invalid_pipeline_shape(
+                InvalidPipelineShapeReason::HoleWrapperArgumentCount { actual: 2 },
+            )),
         );
 
         let mut missing_capture_arg = compile_hole_pipeline_module();
@@ -909,7 +980,7 @@ pub fn main() {
         assert_eq!(
             plan_module(missing_capture_arg),
             Err(invalid_pipeline_shape(
-                InvalidPipelineShapeReason::InvalidHoleCapture,
+                InvalidPipelineShapeReason::HoleCaptureArgumentCount { actual: 0 },
             )),
         );
 
@@ -921,7 +992,7 @@ pub fn main() {
         assert_eq!(
             plan_module(non_capture_function_kind),
             Err(invalid_pipeline_shape(
-                InvalidPipelineShapeReason::InvalidHoleCapture,
+                InvalidPipelineShapeReason::HoleCaptureLiteralKind,
             )),
         );
 
@@ -936,7 +1007,7 @@ pub fn main() {
         assert_eq!(
             plan_module(discard_capture_arg),
             Err(invalid_pipeline_shape(
-                InvalidPipelineShapeReason::InvalidHoleCapture,
+                InvalidPipelineShapeReason::HoleCaptureBinding,
             )),
         );
 
@@ -947,7 +1018,7 @@ pub fn main() {
         assert_eq!(
             plan_module(non_call_body),
             Err(invalid_pipeline_shape(
-                InvalidPipelineShapeReason::NonCallStep,
+                InvalidPipelineShapeReason::HoleBodyNotCall,
             )),
         );
 
@@ -959,7 +1030,7 @@ pub fn main() {
         assert_eq!(
             plan_module(extra_body_statement),
             Err(invalid_pipeline_shape(
-                InvalidPipelineShapeReason::InvalidHoleCapture,
+                InvalidPipelineShapeReason::HoleBodyStatementCount { actual: 2 },
             )),
         );
 
@@ -972,7 +1043,7 @@ pub fn main() {
         assert_eq!(
             plan_module(implicit_inner_argument),
             Err(invalid_pipeline_shape(
-                InvalidPipelineShapeReason::UnsupportedImplicitArgument,
+                InvalidPipelineShapeReason::HoleBodyImplicitArgument { index: 0 },
             )),
         );
 
@@ -985,7 +1056,7 @@ pub fn main() {
         assert_eq!(
             plan_module(missing_capture_usage),
             Err(invalid_pipeline_shape(
-                InvalidPipelineShapeReason::InvalidHoleCapture,
+                InvalidPipelineShapeReason::HoleCaptureUseCount { actual: 0 },
             )),
         );
 
@@ -998,7 +1069,7 @@ pub fn main() {
         assert_eq!(
             plan_module(duplicate_capture_usage),
             Err(invalid_pipeline_shape(
-                InvalidPipelineShapeReason::InvalidHoleCapture,
+                InvalidPipelineShapeReason::HoleCaptureUseCount { actual: 2 },
             )),
         );
 
@@ -1021,7 +1092,7 @@ pub fn main() {
         assert_eq!(
             plan_module(non_local_capture_argument),
             Err(invalid_pipeline_shape(
-                InvalidPipelineShapeReason::InvalidHoleCapture,
+                InvalidPipelineShapeReason::HoleCaptureUseCount { actual: 0 },
             )),
         );
     }

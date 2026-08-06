@@ -2370,11 +2370,10 @@ mod tests {
         let custom_function_type =
             plan::CustomFunctionType::from_shapes(Vec::new(), boxed_parameter_shape.clone());
         let custom_expressions = [
-            plan::CustomExpr::try_function_call(
+            plan::CustomExpr::function_call(
                 plan::CustomFunctionExpr::panic(source_stop(), custom_function_type),
                 Vec::new(),
-            )
-            .expect("the zero-argument custom function call is exact"),
+            ),
             plan::CustomExpr::tuple_index_shape(
                 plan::TupleExpr::value(
                     vec![plan::Expr::int(plan::IntExpr::value(1.into()))],

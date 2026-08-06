@@ -465,26 +465,48 @@ mod tests {
     }
 }
 
-#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum InvalidCallShapeReason {
-    #[error("function value call arity mismatch")]
-    FunctionCallArityMismatch,
-    #[error("function value call argument type mismatch")]
-    FunctionCallArgumentTypeMismatch,
-    #[error("function value call return type mismatch")]
-    FunctionCallReturnTypeMismatch,
-    #[error("implicit call arguments")]
-    ImplicitArguments,
-    #[error("labelled call arguments")]
-    LabelledArguments,
-    #[error("local function call arity mismatch")]
-    LocalFunctionCallArityMismatch,
-    #[error("local function call return type does not match function table")]
-    LocalFunctionCallReturnTypeMismatch,
-    #[error("record constructor has extra arguments: expected {expected}, got {actual}")]
-    RecordConstructorExtraArguments { expected: usize, actual: usize },
-    #[error("record constructor has missing arguments: expected {expected}, got {actual}")]
-    RecordConstructorMissingArguments { expected: usize, actual: usize },
+    #[error("call argument count: expected {expected}, got {actual}")]
+    ArgumentCount { expected: usize, actual: usize },
+    #[error("call argument {index} label: expected {expected:?}, got {actual}")]
+    ArgumentLabel {
+        index: usize,
+        expected: Option<EcoString>,
+        actual: EcoString,
+    },
+    #[error("call argument {index} shape is incompatible with {type_:?}")]
+    ArgumentShape { index: usize, type_: ValueType },
+    #[error("call argument {index} type: expected {expected:?}, got {actual:?}")]
+    ArgumentType {
+        index: usize,
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("function instantiation argument count: expected {expected}, got {actual}")]
+    FunctionInstantiationArgumentCount { expected: usize, actual: usize },
+    #[error("function instantiation argument {index}: expected {expected:?}, got {actual:?}")]
+    FunctionInstantiationArgumentShape {
+        index: usize,
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("function instantiation return shape: expected {expected:?}, got {actual:?}")]
+    FunctionInstantiationReturnShape {
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("function instantiation has an unresolved type parameter")]
+    FunctionInstantiationUnresolvedParameter,
+    #[error("function value return type: expected {expected:?}, got {actual:?}")]
+    FunctionValueReturnType {
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("implicit call argument at index {index}")]
+    ImplicitArgument { index: usize },
+    #[error("record constructor argument count: expected {expected}, got {actual}")]
+    RecordConstructorArgumentCount { expected: usize, actual: usize },
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -562,36 +584,52 @@ pub enum InvalidCaseShapeReason {
 pub enum InvalidPipelineShapeReason {
     #[error("invalid echo step")]
     EchoStep,
-    #[error("invalid hole capture")]
-    InvalidHoleCapture,
+    #[error("hole capture argument is not a variable binding")]
+    HoleCaptureBinding,
+    #[error("hole capture argument count: expected 1, got {actual}")]
+    HoleCaptureArgumentCount { actual: usize },
+    #[error("hole capture is not a function literal")]
+    HoleCaptureFunction,
+    #[error("hole capture function has the wrong literal kind")]
+    HoleCaptureLiteralKind,
+    #[error("hole capture use count: expected 1, got {actual}")]
+    HoleCaptureUseCount { actual: usize },
+    #[error("hole body has an implicit argument at index {index}")]
+    HoleBodyImplicitArgument { index: usize },
+    #[error("hole body is not a call")]
+    HoleBodyNotCall,
+    #[error("hole body statement count: expected 1, got {actual}")]
+    HoleBodyStatementCount { actual: usize },
+    #[error("hole wrapper argument count: expected 1, got {actual}")]
+    HoleWrapperArgumentCount { actual: usize },
     #[error("missing pipe argument")]
     MissingPipeArgument,
-    #[error("multiple pipe arguments")]
-    MultiplePipeArguments,
+    #[error("multiple pipe arguments at indices {first} and {second}")]
+    MultiplePipeArguments { first: usize, second: usize },
     #[error("non-call pipeline step")]
     NonCallStep,
-    #[error("unsupported implicit argument")]
-    UnsupportedImplicitArgument,
+    #[error("unsupported pipe argument at index {index}")]
+    UnsupportedPipeArgument { index: usize },
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum InvalidUseShapeReason {
     #[error("callback literal kind is not use")]
-    CallbackLiteralKindNotUse,
+    CallbackLiteralKindNotUse { index: usize },
     #[error("callback is not the last argument")]
-    CallbackNotLast,
+    CallbackNotLast { index: usize, arguments: usize },
     #[error("callback argument is not a function literal")]
-    CallbackNotFunctionLiteral,
+    CallbackNotFunctionLiteral { index: usize },
     #[error("invalid generated assignment")]
-    InvalidGeneratedAssignment,
+    InvalidGeneratedAssignment { index: usize },
     #[error("missing callback")]
     MissingCallback,
-    #[error("multiple callbacks")]
-    MultipleCallbacks,
+    #[error("multiple callbacks at indices {first} and {second}")]
+    MultipleCallbacks { first: usize, second: usize },
     #[error("non-call use right hand side")]
     NonCallRhs,
-    #[error("unexpected variable use assignment")]
-    UnexpectedVariableAssignment,
-    #[error("unsupported implicit argument")]
-    UnsupportedImplicitArgument,
+    #[error("unexpected variable use assignment at index {index}")]
+    UnexpectedVariableAssignment { index: usize },
+    #[error("unsupported implicit use argument at index {index}")]
+    UnsupportedImplicitArgument { index: usize },
 }

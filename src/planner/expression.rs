@@ -215,14 +215,14 @@ pub(super) fn plan_expr_with_expected_source_stop_shape(
     }
 }
 
-pub(super) use call::UseAssignmentNormalization;
-
 pub(super) fn plan_use_call(
-    call: TypedExpr,
-    use_assignments: Vec<UseAssignmentNormalization>,
+    location: gleam_core::ast::SrcSpan,
+    type_: std::sync::Arc<gleam_core::type_::Type>,
+    fun: TypedExpr,
+    arguments: Vec<gleam_core::ast::CallArg<TypedExpr>>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    call::plan_use_call(call, use_assignments, context)
+    call::plan_use_call(location, type_, fun, arguments, context)
 }
 
 fn plan_todo_expr(

@@ -1,4 +1,3 @@
-use super::returning_function::FunctionFunctionCallMismatch;
 use crate::plan::{
     BoolExpr, CaptureArg, ConstantCustomFunctionInstantiation, CustomConstructor,
     CustomFieldAccess, CustomFunctionLocal, CustomFunctionReference, CustomFunctionType, FloatExpr,
@@ -158,41 +157,28 @@ impl CustomFunctionExpr {
     }
 
     #[cfg(test)]
-    pub(crate) fn try_function_call(
+    pub(crate) fn function_call(
         function: FunctionFunctionExpr,
         args: Vec<crate::plan::CallArg>,
-    ) -> Result<Self, FunctionFunctionCallMismatch> {
-        Self::try_function_call_at(function, args, crate::plan::HostCallSite::unknown())
+        type_: CustomFunctionType,
+    ) -> Self {
+        Self::function_call_at(function, args, type_, crate::plan::HostCallSite::unknown())
     }
 
-    pub(crate) fn try_function_call_at(
+    pub(crate) fn function_call_at(
         function: FunctionFunctionExpr,
         args: Vec<crate::plan::CallArg>,
+        type_: CustomFunctionType,
         site: crate::plan::HostCallSite,
-    ) -> Result<Self, FunctionFunctionCallMismatch> {
-        let expected = function.function_function_type().argument_types().len();
-        if expected != args.len() {
-            return Err(FunctionFunctionCallMismatch::ArgumentCount {
-                expected,
-                actual: args.len(),
-            });
-        }
-
-        let returned = function.function_function_type().return_shape();
-        let crate::plan::ValueShape::Custom(return_) = returned.return_shape() else {
-            return Err(FunctionFunctionCallMismatch::ReturnFamily);
-        };
-        let type_ =
-            CustomFunctionType::from_shapes(returned.argument_shapes().to_vec(), return_.clone());
-
-        Ok(Self {
+    ) -> Self {
+        Self {
             type_,
             kind: CustomFunctionExprKind::FunctionCall {
                 function: Box::new(function),
                 args,
                 site,
             },
-        })
+        }
     }
 
     pub(crate) fn tuple_index(tuple: TupleExpr, index: usize, type_: CustomFunctionType) -> Self {
@@ -339,9 +325,8 @@ mod tests {
     use crate::plan::{
         BoolExpr, CallArg, CustomConstructorRefinement, CustomFunctionReference,
         CustomFunctionType, CustomType, CustomTypeName, CustomValueShape, FunctionExpr,
-        FunctionFunctionCallMismatch, FunctionFunctionExpr, FunctionFunctionReference,
-        FunctionInstantiation, FunctionShape, FunctionType, IntExpr, ValueShape, ValueType,
-        monomorphic_function_instantiation,
+        FunctionFunctionExpr, FunctionFunctionReference, FunctionInstantiation, FunctionShape,
+        IntExpr, ValueShape, monomorphic_function_instantiation,
     };
 
     #[test]
@@ -372,12 +357,14 @@ mod tests {
     }
 
     #[test]
-    fn function_call_derives_custom_type_and_checks_argument_count() {
+    fn function_call_stores_the_validated_custom_callable_type() {
         let function = function_call_callee();
         let argument = CallArg::new(crate::plan::Expr::int(IntExpr::value(1.into())));
-        let expression =
-            CustomFunctionExpr::try_function_call(function.clone(), vec![argument.clone()])
-                .expect("exact custom function call");
+        let expression = CustomFunctionExpr::function_call(
+            function.clone(),
+            vec![argument.clone()],
+            function_type(),
+        );
 
         assert_eq!(
             expression.into_parts(),
@@ -389,17 +376,6 @@ mod tests {
                     site: crate::plan::HostCallSite::unknown(),
                 },
             ),
-        );
-        assert_eq!(
-            CustomFunctionExpr::try_function_call(function, Vec::new()),
-            Err(FunctionFunctionCallMismatch::ArgumentCount {
-                expected: 1,
-                actual: 0,
-            }),
-        );
-        assert_eq!(
-            CustomFunctionExpr::try_function_call(wrong_return_family_callee(), vec![argument]),
-            Err(FunctionFunctionCallMismatch::ReturnFamily),
         );
     }
 
@@ -523,13 +499,6 @@ mod tests {
         )
     }
 
-    fn wrong_return_family_callee() -> FunctionFunctionExpr {
-        FunctionFunctionExpr::reference(
-            FunctionFunctionReference::new(wrong_return_family_instantiation()),
-            FunctionType::new(Vec::new(), ValueType::Int),
-        )
-    }
-
     fn function_type() -> CustomFunctionType {
         CustomFunctionType::new(Vec::new(), custom_type())
     }
@@ -562,16 +531,6 @@ mod tests {
             FunctionShape::new(
                 vec![ValueShape::Int],
                 ValueShape::Function(Box::new(custom_function_shape())),
-            ),
-        )
-    }
-
-    fn wrong_return_family_instantiation() -> FunctionInstantiation {
-        monomorphic_function_instantiation(
-            2,
-            FunctionShape::new(
-                vec![ValueShape::Int],
-                ValueShape::Function(Box::new(FunctionShape::new(Vec::new(), ValueShape::Int))),
             ),
         )
     }

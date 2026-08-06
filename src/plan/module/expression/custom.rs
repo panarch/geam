@@ -183,21 +183,18 @@ impl CustomExpr {
     }
 
     #[cfg(test)]
-    pub(crate) fn try_function_call(
-        function: CustomFunctionExpr,
-        args: Vec<CallArg>,
-    ) -> Result<Self, CustomArgumentCountMismatch> {
-        Self::try_function_call_at(function, args, crate::plan::HostCallSite::unknown())
+    pub(crate) fn function_call(function: CustomFunctionExpr, args: Vec<CallArg>) -> Self {
+        Self::function_call_at(function, args, crate::plan::HostCallSite::unknown())
     }
 
-    pub(crate) fn try_function_call_at(
+    pub(crate) fn function_call_at(
         function: CustomFunctionExpr,
         args: Vec<CallArg>,
         site: crate::plan::HostCallSite,
-    ) -> Result<Self, CustomArgumentCountMismatch> {
+    ) -> Self {
         let shape = function.custom_function_type().return_().clone();
-        CustomFunctionCall::try_new(function, args, site)
-            .map(|call| Self::new(shape, CustomExprKind::FunctionCall(call)))
+        let call = CustomFunctionCall::new(function, args, site);
+        Self::new(shape, CustomExprKind::FunctionCall(call))
     }
 
     pub(crate) fn tuple_index_shape(
@@ -408,6 +405,13 @@ pub(super) fn custom_constructor_shape(constructor: &CustomConstructor) -> Custo
 }
 
 impl CustomConstruction {
+    pub(crate) fn from_validated(constructor: CustomConstructor, fields: Vec<super::Expr>) -> Self {
+        Self {
+            constructor,
+            fields: fields.into_boxed_slice(),
+        }
+    }
+
     pub(crate) fn try_new(
         constructor: CustomConstructor,
         fields: Vec<super::Expr>,
@@ -435,26 +439,18 @@ impl CustomConstruction {
 }
 
 impl CustomFunctionCall {
-    pub(crate) fn try_new(
+    pub(crate) fn new(
         function: CustomFunctionExpr,
         arguments: Vec<CallArg>,
         site: crate::plan::HostCallSite,
-    ) -> Result<Self, CustomArgumentCountMismatch> {
-        let expected = function.custom_function_type().argument_types().len();
-        if expected != arguments.len() {
-            return Err(CustomArgumentCountMismatch {
-                expected,
-                actual: arguments.len(),
-            });
-        }
-
-        Ok(Self {
+    ) -> Self {
+        Self {
             function: Box::new(function),
             arguments: CustomCallArguments {
                 values: arguments.into_boxed_slice(),
             },
             site,
-        })
+        }
     }
 
     pub(crate) fn function(&self) -> &CustomFunctionExpr {
@@ -540,7 +536,7 @@ mod tests {
     }
 
     #[test]
-    fn custom_function_call_owns_an_exact_argument_pack() {
+    fn custom_function_call_owns_its_validated_argument_pack() {
         let type_ = CustomType::new(
             CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
             Vec::new(),
@@ -554,37 +550,15 @@ mod tests {
         let function = CustomFunctionExpr::constructor(constructor);
         let argument = CallArg::new(crate::plan::Expr::int(IntExpr::value(1.into())));
 
-        assert_eq!(
-            CustomExpr::try_function_call(function.clone(), Vec::new()),
-            Err(CustomArgumentCountMismatch {
-                expected: 1,
-                actual: 0,
-            }),
-        );
-        assert_eq!(
-            CustomExpr::try_function_call(
-                function.clone(),
-                vec![argument.clone(), argument.clone()],
-            ),
-            Err(CustomArgumentCountMismatch {
-                expected: 1,
-                actual: 2,
-            }),
-        );
-
-        let expression = CustomExpr::try_function_call(function.clone(), vec![argument.clone()])
-            .expect("exact custom function call should be valid");
+        let expression = CustomExpr::function_call(function.clone(), vec![argument.clone()]);
         assert_eq!(expression.type_(), &type_);
         assert_eq!(
             expression.kind(),
-            &CustomExprKind::FunctionCall(
-                super::CustomFunctionCall::try_new(
-                    function,
-                    vec![argument],
-                    crate::plan::HostCallSite::unknown(),
-                )
-                .expect("exact custom function call should be valid"),
-            ),
+            &CustomExprKind::FunctionCall(super::CustomFunctionCall::new(
+                function,
+                vec![argument],
+                crate::plan::HostCallSite::unknown(),
+            ),),
         );
     }
 

@@ -919,14 +919,14 @@ mod tests {
                 vec![diverging_argument(parameter)],
                 callable_type.clone(),
             ),
-            CustomFunctionExpr::try_function_call(
+            CustomFunctionExpr::function_call(
                 FunctionFunctionExpr::panic(
                     source_stop(),
                     FunctionFunctionType::from_shapes(Vec::new(), callable_shape.clone()),
                 ),
                 Vec::new(),
-            )
-            .expect("the callable argument pack is exact"),
+                callable_type.clone(),
+            ),
             CustomFunctionExpr::tuple_index(
                 TupleExpr::panic(
                     source_stop(),

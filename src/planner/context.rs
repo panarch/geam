@@ -272,6 +272,39 @@ enum LocalBinding {
     },
 }
 
+pub(super) enum ResolvedLocal {
+    Primitive(LocalId),
+    Custom(crate::plan::CustomLocal),
+    External(crate::plan::ExternalLocal),
+    Tuple {
+        local: TupleLocalId,
+        shape: Box<[ValueShape]>,
+    },
+    List {
+        local: ListLocal,
+        item_shape: ValueShape,
+    },
+    Function {
+        binding: FunctionLocalBinding,
+        shape: FunctionShape,
+    },
+}
+
+impl ResolvedLocal {
+    pub(super) fn value_type(&self) -> ValueType {
+        match self {
+            Self::Primitive(local) => local.value_type(),
+            Self::Custom(local) => ValueType::Custom(local.type_().clone()),
+            Self::External(local) => ValueType::External(local.type_().clone()),
+            Self::Tuple { shape, .. } => {
+                ValueType::Tuple(shape.iter().map(ValueShape::value_type).collect())
+            }
+            Self::List { item_shape, .. } => ValueType::List(Box::new(item_shape.value_type())),
+            Self::Function { shape, .. } => ValueType::Function(Box::new(shape.type_())),
+        }
+    }
+}
+
 pub(super) struct CaptureBinding {
     name: EcoString,
     binding: LocalBinding,
@@ -1909,6 +1942,7 @@ impl<'a> PlanContext<'a> {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn lookup_local(&self, name: &EcoString) -> Option<(LocalId, ValueType)> {
         match self.bindings.get(name)? {
             LocalBinding::Primitive(local) => Some((*local, local.value_type())),
@@ -1920,17 +1954,7 @@ impl<'a> PlanContext<'a> {
         }
     }
 
-    pub(super) fn lookup_custom_local(&self, name: &EcoString) -> Option<crate::plan::CustomLocal> {
-        match self.bindings.get(name)? {
-            LocalBinding::Custom(local) => Some(local.clone()),
-            LocalBinding::Primitive(_)
-            | LocalBinding::External(_)
-            | LocalBinding::Tuple { .. }
-            | LocalBinding::List { .. }
-            | LocalBinding::Function { .. } => None,
-        }
-    }
-
+    #[cfg(test)]
     pub(super) fn lookup_tuple_local(
         &self,
         name: &EcoString,
@@ -1945,6 +1969,7 @@ impl<'a> PlanContext<'a> {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn lookup_list_local(&self, name: &EcoString) -> Option<(ListLocal, ValueShape)> {
         match self.bindings.get(name)? {
             LocalBinding::List { local, item_shape } => Some((local.clone(), item_shape.clone())),
@@ -1956,6 +1981,7 @@ impl<'a> PlanContext<'a> {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn lookup_external_local(
         &self,
         name: &EcoString,
@@ -2068,6 +2094,7 @@ impl<'a> PlanContext<'a> {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn lookup_function_local(
         &self,
         name: &EcoString,
@@ -2080,6 +2107,34 @@ impl<'a> PlanContext<'a> {
             | LocalBinding::Tuple { .. }
             | LocalBinding::List { .. } => None,
         }
+    }
+
+    pub(super) fn resolve_local(&self, name: &EcoString) -> Result<ResolvedLocal, PlanError> {
+        Ok(match self.require_local_binding(name)? {
+            LocalBinding::Primitive(local) => ResolvedLocal::Primitive(*local),
+            LocalBinding::Custom(local) => ResolvedLocal::Custom(local.clone()),
+            LocalBinding::External(local) => ResolvedLocal::External(local.clone()),
+            LocalBinding::Tuple { local, shape } => ResolvedLocal::Tuple {
+                local: *local,
+                shape: shape.clone(),
+            },
+            LocalBinding::List { local, item_shape } => ResolvedLocal::List {
+                local: local.clone(),
+                item_shape: item_shape.clone(),
+            },
+            LocalBinding::Function { binding, shape } => ResolvedLocal::Function {
+                binding: binding.clone(),
+                shape: shape.clone(),
+            },
+        })
+    }
+
+    fn require_local_binding(&self, name: &EcoString) -> Result<&LocalBinding, PlanError> {
+        self.bindings
+            .get(name)
+            .ok_or_else(|| PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::UnknownLocal { name: name.clone() },
+            })
     }
 
     pub(super) fn anonymous_function_error_name(&self) -> EcoString {
@@ -2164,11 +2219,7 @@ impl<'a> PlanContext<'a> {
         names
             .iter()
             .map(|name| {
-                let Some(binding) = self.bindings.get(name).cloned() else {
-                    return Err(PlanError::InvalidTypedAst {
-                        reason: InvalidTypedAstReason::UnknownLocal { name: name.clone() },
-                    });
-                };
+                let binding = self.require_local_binding(name)?.clone();
 
                 Ok(CaptureBinding {
                     name: name.clone(),
@@ -2564,10 +2615,6 @@ impl Default for AnonymousFunctions {
 }
 
 impl FunctionInfo {
-    pub(super) fn arity(&self) -> usize {
-        self.params.len()
-    }
-
     pub(super) fn return_shape(&self) -> ValueShape {
         self.return_shape.clone()
     }
@@ -2600,7 +2647,7 @@ mod tests {
     use crate::plan::{
         BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
         BoolListLocalId, BoolLocalId, CaptureArg, CustomFunctionLocal, CustomFunctionLocalId,
-        CustomFunctionType, CustomType, CustomTypeName, ExternalFunctionLocal,
+        CustomFunctionType, CustomType, CustomTypeName, CustomValueShape, ExternalFunctionLocal,
         ExternalFunctionLocalId, ExternalFunctionType, ExternalListLocalId, ExternalLocalId,
         ExternalTypeName, ExternalValueShape, FloatFunctionLocalId, FloatListLocalId, FloatLocalId,
         FunctionFunctionLocal, FunctionFunctionLocalId, FunctionFunctionType, FunctionListLocalId,
@@ -2871,6 +2918,57 @@ mod tests {
         assert_eq!(context.lookup_external_local(&"missing".into()), None);
         assert_eq!(context.lookup_external_local(&"count".into()), None);
         assert_eq!(context.lookup_local(&"resource".into()), None);
+    }
+
+    #[test]
+    fn resolved_locals_report_every_compound_value_type() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let custom_shape = CustomValueShape::any(custom_type());
+        let external_shape = ExternalValueShape::new(
+            ExternalTypeName::new(
+                "dependency".into(),
+                "dependency/resource".into(),
+                "Resource".into(),
+            ),
+            vec![ValueShape::Int],
+        );
+        let function_type = FunctionType::new(vec![ValueType::Int], ValueType::String);
+
+        context.define_custom_local_shape("custom".into(), custom_shape.clone());
+        context.define_external_local_shape("external".into(), external_shape.clone());
+        context.define_tuple_local("tuple".into(), vec![ValueType::Int]);
+        context.define_list_local("list".into(), ValueType::String);
+        context.define_string_function_local("function".into(), function_type.clone());
+
+        for (name, expected) in [
+            (
+                "custom",
+                ValueShape::Custom(custom_shape.clone()).value_type(),
+            ),
+            (
+                "external",
+                ValueShape::External(external_shape.clone()).value_type(),
+            ),
+            ("tuple", ValueType::Tuple(vec![ValueType::Int])),
+            ("list", ValueType::List(Box::new(ValueType::String))),
+            (
+                "function",
+                ValueType::Function(Box::new(function_type.clone())),
+            ),
+        ] {
+            assert_eq!(
+                context
+                    .resolve_local(&name.into())
+                    .expect("local should resolve")
+                    .value_type(),
+                expected,
+            );
+        }
+        assert_eq!(context.lookup_tuple_local(&"function".into()), None);
+        assert_eq!(context.lookup_list_local(&"function".into()), None);
     }
 
     #[test]

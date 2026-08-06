@@ -332,13 +332,12 @@ fn plan_size_variable(
 ) -> Result<BitArrayPatternSizeExpr, PlanError> {
     let source = match constructor.variant {
         ValueConstructorVariant::LocalVariable { .. } => {
-            let Some((local, actual)) = context.lookup_local(&name) else {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::UnknownLocal { name },
-                });
-            };
-            match local {
-                LocalId::Int(local) => Some(BitArraySizeSource::Local(local)),
+            let binding = context.resolve_local(&name)?;
+            let actual = binding.value_type();
+            match binding {
+                crate::planner::context::ResolvedLocal::Primitive(LocalId::Int(local)) => {
+                    Some(BitArraySizeSource::Local(local))
+                }
                 _ => return Err(super::pattern_type_mismatch(ValueType::Int, actual)),
             }
         }

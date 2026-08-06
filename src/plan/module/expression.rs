@@ -57,10 +57,9 @@ pub(crate) use self::{
     function::{
         BitArrayFunctionExprKind, BoolFunctionExprKind, CustomFunctionExprKind,
         ExternalFunctionExprKind, FloatFunctionExprKind, FunctionExprKind,
-        FunctionFunctionCallMismatch, FunctionFunctionExprKind, GenericFunctionExpr,
-        GenericFunctionExprKind, IntFunctionExprKind, ListFunctionExprKind, NilFunctionExprKind,
-        StringFunctionExprKind, TupleFunctionExprKind, TypedFunctionExprKind,
-        UtfCodepointFunctionExprKind,
+        FunctionFunctionExprKind, GenericFunctionExpr, GenericFunctionExprKind,
+        IntFunctionExprKind, ListFunctionExprKind, NilFunctionExprKind, StringFunctionExprKind,
+        TupleFunctionExprKind, TypedFunctionExprKind, UtfCodepointFunctionExprKind,
     },
     generic::{GenericExpr, GenericExprKind},
     int::IntExprKind,

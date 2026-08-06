@@ -1,4 +1,3 @@
-use super::returning_function::FunctionFunctionCallMismatch;
 use crate::plan::{
     BoolExpr, CaptureArg, ConstantExternalFunctionInstantiation, CustomFieldAccess,
     ExternalFunctionLocal, ExternalFunctionReference, ExternalFunctionType, ExternalValueShape,
@@ -132,33 +131,20 @@ impl ExternalFunctionExpr {
         }
     }
 
-    pub(crate) fn try_function_call_at(
+    pub(crate) fn function_call_at(
         function: FunctionFunctionExpr,
         args: Vec<crate::plan::CallArg>,
+        type_: ExternalFunctionType,
         site: crate::plan::HostCallSite,
-    ) -> Result<Self, FunctionFunctionCallMismatch> {
-        let expected = function.function_function_type().argument_types().len();
-        if expected != args.len() {
-            return Err(FunctionFunctionCallMismatch::ArgumentCount {
-                expected,
-                actual: args.len(),
-            });
-        }
-
-        let returned = function.function_function_type().return_shape();
-        let crate::plan::ValueShape::External(return_) = returned.return_shape() else {
-            return Err(FunctionFunctionCallMismatch::ReturnFamily);
-        };
-        let type_ =
-            ExternalFunctionType::from_shapes(returned.argument_shapes().to_vec(), return_.clone());
-        Ok(Self {
+    ) -> Self {
+        Self {
             type_,
             kind: ExternalFunctionExprKind::FunctionCall {
                 function: Box::new(function),
                 args,
                 site,
             },
-        })
+        }
     }
 
     pub(crate) fn tuple_index(tuple: TupleExpr, index: usize, type_: ExternalFunctionType) -> Self {
@@ -305,13 +291,13 @@ impl ExternalFunctionExpr {
 mod tests {
     use super::ExternalFunctionExpr;
     use crate::plan::{
-        CallArg, Expr, ExternalTypeName, ExternalValueShape, FunctionFunctionCallMismatch,
+        CallArg, Expr, ExternalFunctionType, ExternalTypeName, ExternalValueShape,
         FunctionFunctionExpr, FunctionFunctionReference, FunctionShape, FunctionType, IntExpr,
         ValueShape, ValueType, monomorphic_function_instantiation,
     };
 
     #[test]
-    fn function_call_derives_external_callable_type_and_checks_its_boundaries() {
+    fn function_call_stores_the_validated_external_callable_type() {
         let external = ExternalValueShape::new(
             ExternalTypeName::new("geam".into(), "main".into(), "Resource".into()),
             Vec::new(),
@@ -331,43 +317,14 @@ mod tests {
         );
         let argument = CallArg::new(Expr::int(IntExpr::value(1.into())));
 
-        let expression = ExternalFunctionExpr::try_function_call_at(
+        let type_ = ExternalFunctionType::from_shapes(Vec::new(), external);
+        let expression = ExternalFunctionExpr::function_call_at(
             callee.clone(),
             vec![argument.clone()],
+            type_,
             crate::plan::HostCallSite::unknown(),
-        )
-        .expect("one argument and an external-returning function should match");
-
-        assert_eq!(expression.type_(), returned_type,);
-        assert_eq!(
-            ExternalFunctionExpr::try_function_call_at(
-                callee,
-                Vec::new(),
-                crate::plan::HostCallSite::unknown(),
-            ),
-            Err(FunctionFunctionCallMismatch::ArgumentCount {
-                expected: 1,
-                actual: 0,
-            }),
         );
 
-        let wrong_return = FunctionFunctionExpr::reference(
-            FunctionFunctionReference::new(monomorphic_function_instantiation(
-                1,
-                FunctionShape::new(
-                    vec![ValueShape::Int],
-                    ValueShape::Function(Box::new(FunctionShape::new(Vec::new(), ValueShape::Int))),
-                ),
-            )),
-            FunctionType::new(Vec::new(), ValueType::Int),
-        );
-        assert_eq!(
-            ExternalFunctionExpr::try_function_call_at(
-                wrong_return,
-                vec![argument],
-                crate::plan::HostCallSite::unknown(),
-            ),
-            Err(FunctionFunctionCallMismatch::ReturnFamily),
-        );
+        assert_eq!(expression.type_(), returned_type);
     }
 }

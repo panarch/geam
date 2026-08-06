@@ -5,7 +5,9 @@ use crate::plan::{
     ListFunctionExpr, LocalId, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
     TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
 };
-use crate::planner::context::{FunctionLocalBinding, ModuleFunctionTarget, PlanContext};
+use crate::planner::context::{
+    FunctionLocalBinding, ModuleFunctionTarget, PlanContext, ResolvedLocal,
+};
 use crate::planner::error::{
     InvalidExpressionShapeKind, InvalidModuleReferenceReason, InvalidTypedAstReason, PlanError,
 };
@@ -23,26 +25,25 @@ pub(super) fn plan_var(
 ) -> Result<Expr, PlanError> {
     match constructor.variant {
         ValueConstructorVariant::LocalVariable { .. } => {
-            let expression = if let Some((local, _)) = context.lookup_local(&name) {
-                local_get(local, name)
-            } else if let Some((local, shape)) = context.lookup_tuple_local(&name) {
-                let type_ = shape
-                    .iter()
-                    .map(crate::plan::ValueShape::value_type)
-                    .collect();
-                Expr::tuple(TupleExpr::local_get(local, name, type_).with_shape(shape))
-            } else if let Some(local) = context.lookup_custom_local(&name) {
-                Expr::custom(CustomExpr::local_get(local, name))
-            } else if let Some(local) = context.lookup_external_local(&name) {
-                Expr::external(ExternalExpr::local_get(local, name))
-            } else if let Some((local, item_shape)) = context.lookup_list_local(&name) {
-                Expr::list(ListExpr::local_get(local, name).with_item_shape(item_shape))
-            } else if let Some((binding, shape)) = context.lookup_function_local(&name) {
-                function_local_get(binding, name, shape)?
-            } else {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::UnknownLocal { name },
-                });
+            let expression = match context.resolve_local(&name)? {
+                ResolvedLocal::Primitive(local) => local_get(local, name),
+                ResolvedLocal::Custom(local) => Expr::custom(CustomExpr::local_get(local, name)),
+                ResolvedLocal::External(local) => {
+                    Expr::external(ExternalExpr::local_get(local, name))
+                }
+                ResolvedLocal::Tuple { local, shape } => {
+                    let type_ = shape
+                        .iter()
+                        .map(crate::plan::ValueShape::value_type)
+                        .collect();
+                    Expr::tuple(TupleExpr::local_get(local, name, type_).with_shape(shape))
+                }
+                ResolvedLocal::List { local, item_shape } => {
+                    Expr::list(ListExpr::local_get(local, name).with_item_shape(item_shape))
+                }
+                ResolvedLocal::Function { binding, shape } => {
+                    function_local_get(binding, name, shape)?
+                }
             };
 
             Ok(expression)

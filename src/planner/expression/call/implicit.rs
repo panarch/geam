@@ -1,137 +1,11 @@
 use super::CaptureSubstitution;
 use crate::plan::Expr;
 use crate::planner::context::PlanContext;
-use crate::planner::error::{
-    InvalidPipelineShapeReason, InvalidTypedAstReason, InvalidUseShapeReason, PlanError,
-};
+use crate::planner::error::{InvalidPipelineShapeReason, InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
 use gleam_core::ast::{
-    AssignmentKind, CallArg as GleamCallArg, FunctionLiteralKind, ImplicitCallArgOrigin, Statement,
-    TypedArg, TypedExpr, TypedStatement,
+    CallArg as GleamCallArg, FunctionLiteralKind, ImplicitCallArgOrigin, Statement, TypedExpr,
 };
-use vec1::Vec1;
-
-pub(super) fn plan_use_call(
-    call: TypedExpr,
-    use_assignments: Vec<super::UseAssignmentNormalization>,
-    context: &mut PlanContext<'_>,
-) -> Result<Expr, PlanError> {
-    match call {
-        TypedExpr::Call {
-            location,
-            type_,
-            fun,
-            arguments,
-            ..
-        } => {
-            let arguments = normalize_use_call_arguments(arguments, use_assignments)?;
-            super::plan_call_expression(location, type_, *fun, arguments, context, None)
-        }
-        _ => Err(super::invalid_use_shape(InvalidUseShapeReason::NonCallRhs)),
-    }
-}
-
-fn normalize_use_call_arguments(
-    mut arguments: Vec<GleamCallArg<TypedExpr>>,
-    use_assignments: Vec<super::UseAssignmentNormalization>,
-) -> Result<Vec<GleamCallArg<TypedExpr>>, PlanError> {
-    let mut callback_index = None;
-    for (index, argument) in arguments.iter().enumerate() {
-        match argument.implicit {
-            None => {}
-            Some(ImplicitCallArgOrigin::Use) => {
-                if callback_index.replace(index).is_some() {
-                    return Err(super::invalid_use_shape(
-                        InvalidUseShapeReason::MultipleCallbacks,
-                    ));
-                }
-            }
-            Some(
-                ImplicitCallArgOrigin::Pipe
-                | ImplicitCallArgOrigin::PatternFieldSpread
-                | ImplicitCallArgOrigin::IncorrectArityUse
-                | ImplicitCallArgOrigin::RecordUpdate,
-            ) => {
-                return Err(super::invalid_use_shape(
-                    InvalidUseShapeReason::UnsupportedImplicitArgument,
-                ));
-            }
-        }
-    }
-
-    let callback_index = match callback_index {
-        Some(index) if index + 1 == arguments.len() => index,
-        Some(_) => Err(super::invalid_use_shape(
-            InvalidUseShapeReason::CallbackNotLast,
-        ))?,
-        None => Err(super::invalid_use_shape(
-            InvalidUseShapeReason::MissingCallback,
-        ))?,
-    };
-
-    let callback = &mut arguments[callback_index];
-    callback.implicit = None;
-    normalize_use_callback(&mut callback.value, use_assignments)?;
-
-    Ok(arguments)
-}
-
-fn normalize_use_callback(
-    callback: &mut TypedExpr,
-    use_assignments: Vec<super::UseAssignmentNormalization>,
-) -> Result<(), PlanError> {
-    match callback {
-        TypedExpr::Fn { kind, body, .. } => match kind {
-            FunctionLiteralKind::Use { location } => {
-                normalize_use_generated_assignments(body, use_assignments)?;
-                *kind = FunctionLiteralKind::Anonymous { head: *location };
-                Ok(())
-            }
-            FunctionLiteralKind::Anonymous { .. } | FunctionLiteralKind::Capture { .. } => Err(
-                super::invalid_use_shape(InvalidUseShapeReason::CallbackLiteralKindNotUse),
-            ),
-        },
-        _ => Err(super::invalid_use_shape(
-            InvalidUseShapeReason::CallbackNotFunctionLiteral,
-        )),
-    }
-}
-
-fn normalize_use_generated_assignments(
-    body: &mut Vec1<TypedStatement>,
-    use_assignments: Vec<super::UseAssignmentNormalization>,
-) -> Result<(), PlanError> {
-    let statements = body.as_mut_slice();
-    let use_assignment_count = use_assignments.len();
-    if statements.len() < use_assignment_count {
-        return Err(super::invalid_use_shape(
-            InvalidUseShapeReason::InvalidGeneratedAssignment,
-        ));
-    }
-
-    for (statement, use_assignment) in statements[..use_assignment_count]
-        .iter_mut()
-        .zip(use_assignments)
-    {
-        let (expected, normalized) = use_assignment.into_parts();
-        match statement {
-            Statement::Assignment(assignment)
-                if matches!(assignment.kind, AssignmentKind::Generated)
-                    && assignment.pattern == expected =>
-            {
-                assignment.kind = AssignmentKind::Let;
-                assignment.pattern = normalized;
-            }
-            _ => {
-                return Err(super::invalid_use_shape(
-                    InvalidUseShapeReason::InvalidGeneratedAssignment,
-                ));
-            }
-        }
-    }
-
-    Ok(())
-}
 
 pub(super) fn plan_pipeline_direct_call(
     location: gleam_core::ast::SrcSpan,
@@ -141,20 +15,24 @@ pub(super) fn plan_pipeline_direct_call(
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     pipe_argument(&arguments)?;
+    let arguments = super::argument::NormalizedCallArguments::specialized(arguments);
 
     super::plan_call_expression(location, type_, fun, arguments, context, None)
 }
 
 fn pipe_argument(arguments: &[GleamCallArg<TypedExpr>]) -> Result<&TypedExpr, PlanError> {
     let mut pipe_argument = None;
-    for argument in arguments {
+    for (index, argument) in arguments.iter().enumerate() {
         match argument.implicit {
             None => {}
             Some(ImplicitCallArgOrigin::Pipe) => {
-                if pipe_argument.replace(&argument.value).is_some() {
+                if let Some((first, _)) = pipe_argument.replace((index, &argument.value)) {
                     return Err(PlanError::InvalidTypedAst {
                         reason: InvalidTypedAstReason::PipelineShape {
-                            reason: InvalidPipelineShapeReason::MultiplePipeArguments,
+                            reason: InvalidPipelineShapeReason::MultiplePipeArguments {
+                                first,
+                                second: index,
+                            },
                         },
                     });
                 }
@@ -167,7 +45,7 @@ fn pipe_argument(arguments: &[GleamCallArg<TypedExpr>]) -> Result<&TypedExpr, Pl
             ) => {
                 return Err(PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::PipelineShape {
-                        reason: InvalidPipelineShapeReason::UnsupportedImplicitArgument,
+                        reason: InvalidPipelineShapeReason::UnsupportedPipeArgument { index },
                     },
                 });
             }
@@ -175,7 +53,7 @@ fn pipe_argument(arguments: &[GleamCallArg<TypedExpr>]) -> Result<&TypedExpr, Pl
     }
 
     match pipe_argument {
-        Some(pipe_argument) => Ok(pipe_argument),
+        Some((_, pipe_argument)) => Ok(pipe_argument),
         None => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::PipelineShape {
                 reason: InvalidPipelineShapeReason::MissingPipeArgument,
@@ -191,37 +69,24 @@ pub(super) fn plan_pipeline_hole_call(
     arguments: Vec<GleamCallArg<TypedExpr>>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    let pipe_value = super::super::plan_expr(pipe_argument(&arguments)?.clone(), context)?;
-
-    let (kind, capture_args, body) = pipeline_capture_function_parts(fun)?;
-    if !matches!(kind, FunctionLiteralKind::Capture { .. }) {
-        return Err(invalid_hole_capture());
+    let pipe_argument = pipe_argument(&arguments)?.clone();
+    if arguments.len() != 1 {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::PipelineShape {
+                reason: InvalidPipelineShapeReason::HoleWrapperArgumentCount {
+                    actual: arguments.len(),
+                },
+            },
+        });
     }
-    let capture_arg = single_capture_argument(&capture_args)?;
-    let capture_name = match capture_arg.names.get_variable_name().cloned() {
-        Some(capture_name) => capture_name,
-        None => return Err(invalid_hole_capture()),
-    };
-
-    let mut body = body.into_iter();
+    let pipe_value = super::super::plan_expr(pipe_argument, context)?;
     let PipelineHoleBodyCall {
         location: call_location,
         fun,
         arguments,
-    } = pipeline_hole_body_call(body.next())?;
-    if body.next().is_some() {
-        return Err(invalid_hole_capture());
-    }
-    if arguments.iter().any(|argument| argument.implicit.is_some()) {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::PipelineShape {
-                reason: InvalidPipelineShapeReason::UnsupportedImplicitArgument,
-            },
-        });
-    }
-    if count_capture_arguments(&arguments, &capture_name) != 1 {
-        return Err(invalid_hole_capture());
-    }
+        capture_name,
+    } = normalize_pipeline_hole_call(fun)?;
+    let arguments = super::argument::NormalizedCallArguments::specialized(arguments);
 
     super::plan_call_expression(
         call_location,
@@ -236,72 +101,110 @@ pub(super) fn plan_pipeline_hole_call(
     )
 }
 
-fn pipeline_capture_function_parts(
-    fun: TypedExpr,
-) -> Result<(FunctionLiteralKind, Vec<TypedArg>, Vec1<TypedStatement>), PlanError> {
-    match fun {
-        TypedExpr::Fn {
-            kind,
-            arguments,
-            body,
-            ..
-        } => Ok((kind, arguments, body)),
-        _ => Err(invalid_hole_capture()),
-    }
-}
-
-fn single_capture_argument(capture_args: &[TypedArg]) -> Result<&TypedArg, PlanError> {
-    if capture_args.len() == 1 {
-        Ok(&capture_args[0])
-    } else {
-        Err(invalid_hole_capture())
-    }
-}
-
 struct PipelineHoleBodyCall {
     location: gleam_core::ast::SrcSpan,
     fun: Box<TypedExpr>,
     arguments: Vec<GleamCallArg<TypedExpr>>,
+    capture_name: EcoString,
 }
 
-fn pipeline_hole_body_call(
-    statement: Option<TypedStatement>,
-) -> Result<PipelineHoleBodyCall, PlanError> {
-    match statement {
-        Some(Statement::Expression(TypedExpr::Call {
-            location,
-            fun,
-            arguments,
-            ..
-        })) => Ok(PipelineHoleBodyCall {
-            location,
-            fun,
-            arguments,
-        }),
-        _ => Err(PlanError::InvalidTypedAst {
+fn normalize_pipeline_hole_call(fun: TypedExpr) -> Result<PipelineHoleBodyCall, PlanError> {
+    let TypedExpr::Fn {
+        kind,
+        arguments: capture_args,
+        body,
+        ..
+    } = fun
+    else {
+        return Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::PipelineShape {
-                reason: InvalidPipelineShapeReason::NonCallStep,
+                reason: InvalidPipelineShapeReason::HoleCaptureFunction,
             },
-        }),
+        });
+    };
+    if !matches!(kind, FunctionLiteralKind::Capture { .. }) {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::PipelineShape {
+                reason: InvalidPipelineShapeReason::HoleCaptureLiteralKind,
+            },
+        });
     }
-}
+    if capture_args.len() != 1 {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::PipelineShape {
+                reason: InvalidPipelineShapeReason::HoleCaptureArgumentCount {
+                    actual: capture_args.len(),
+                },
+            },
+        });
+    }
+    let Some(capture_name) = capture_args[0].names.get_variable_name().cloned() else {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::PipelineShape {
+                reason: InvalidPipelineShapeReason::HoleCaptureBinding,
+            },
+        });
+    };
 
-fn count_capture_arguments(
-    arguments: &[GleamCallArg<TypedExpr>],
-    capture_name: &EcoString,
-) -> usize {
-    arguments
+    let mut body = body.into_iter();
+    let first = body.next();
+    let second = body.next();
+    let statement = match (first, second) {
+        (Some(statement), None) => statement,
+        (first, second) => {
+            let actual =
+                usize::from(first.is_some()) + usize::from(second.is_some()) + body.count();
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::PipelineShape {
+                    reason: InvalidPipelineShapeReason::HoleBodyStatementCount { actual },
+                },
+            });
+        }
+    };
+    let Statement::Expression(TypedExpr::Call {
+        location,
+        fun,
+        arguments,
+        ..
+    }) = statement
+    else {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::PipelineShape {
+                reason: InvalidPipelineShapeReason::HoleBodyNotCall,
+            },
+        });
+    };
+    if let Some((index, _)) = arguments
         .iter()
-        .filter(|argument| super::is_capture_local(&argument.value, capture_name))
-        .count()
-}
-
-fn invalid_hole_capture() -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::PipelineShape {
-            reason: InvalidPipelineShapeReason::InvalidHoleCapture,
-        },
+        .enumerate()
+        .find(|(_, argument)| argument.implicit.is_some())
+    {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::PipelineShape {
+                reason: InvalidPipelineShapeReason::HoleBodyImplicitArgument { index },
+            },
+        });
     }
+    let capture_uses = arguments
+        .iter()
+        .filter(|argument| super::is_capture_local(&argument.value, &capture_name))
+        .count();
+    if capture_uses != 1 {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::PipelineShape {
+                reason: InvalidPipelineShapeReason::HoleCaptureUseCount {
+                    actual: capture_uses,
+                },
+            },
+        });
+    }
+
+    Ok(PipelineHoleBodyCall {
+        location,
+        fun,
+        arguments,
+        capture_name,
+    })
 }
 
 #[cfg(test)]

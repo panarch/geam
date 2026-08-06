@@ -37,7 +37,7 @@ pub(crate) use self::{
     int::IntFunctionExprKind,
     list::ListFunctionExprKind,
     nil::NilFunctionExprKind,
-    returning_function::{FunctionFunctionCallMismatch, FunctionFunctionExprKind},
+    returning_function::FunctionFunctionExprKind,
     string::StringFunctionExprKind,
     tuple::TupleFunctionExprKind,
     typed::TypedFunctionExpr,

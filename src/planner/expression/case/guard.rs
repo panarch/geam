@@ -5,7 +5,7 @@ use crate::plan::{
     NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr, TupleFunctionExpr,
     UtfCodepointExpr, UtfCodepointFunctionExpr, ValueType,
 };
-use crate::planner::context::{FunctionLocalBinding, PlanContext};
+use crate::planner::context::{FunctionLocalBinding, PlanContext, ResolvedLocal};
 use crate::planner::error::{
     InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
 };
@@ -225,36 +225,24 @@ fn plan_tuple_index(
 }
 
 fn plan_local(name: EcoString, context: &PlanContext<'_>) -> Result<Expr, PlanError> {
-    if let Some((local, type_)) = context.lookup_local(&name) {
-        return local_get(local, name, type_);
-    }
-    if let Some(local) = context.lookup_custom_local(&name) {
-        return Ok(Expr::custom(CustomExpr::local_get(local, name)));
-    }
-    if let Some(local) = context.lookup_external_local(&name) {
-        return Ok(Expr::external(ExternalExpr::local_get(local, name)));
-    }
-    if let Some((local, shape)) = context.lookup_tuple_local(&name) {
-        let type_ = shape
-            .iter()
-            .map(crate::plan::ValueShape::value_type)
-            .collect();
-        return Ok(Expr::tuple(
-            TupleExpr::local_get(local, name, type_).with_shape(shape),
-        ));
-    }
-    if let Some((local, item_shape)) = context.lookup_list_local(&name) {
-        return Ok(Expr::list(
+    match context.resolve_local(&name)? {
+        ResolvedLocal::Primitive(local) => local_get(local, name, local.value_type()),
+        ResolvedLocal::Custom(local) => Ok(Expr::custom(CustomExpr::local_get(local, name))),
+        ResolvedLocal::External(local) => Ok(Expr::external(ExternalExpr::local_get(local, name))),
+        ResolvedLocal::Tuple { local, shape } => {
+            let type_ = shape
+                .iter()
+                .map(crate::plan::ValueShape::value_type)
+                .collect();
+            Ok(Expr::tuple(
+                TupleExpr::local_get(local, name, type_).with_shape(shape),
+            ))
+        }
+        ResolvedLocal::List { local, item_shape } => Ok(Expr::list(
             ListExpr::local_get(local, name).with_item_shape(item_shape),
-        ));
+        )),
+        ResolvedLocal::Function { binding, shape } => function_local_get(binding, name, shape),
     }
-    if let Some((binding, shape)) = context.lookup_function_local(&name) {
-        return function_local_get(binding, name, shape);
-    }
-
-    Err(PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::UnknownLocal { name },
-    })
 }
 
 fn local_get(local: LocalId, name: EcoString, type_: ValueType) -> Result<Expr, PlanError> {
