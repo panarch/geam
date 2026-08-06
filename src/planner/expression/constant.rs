@@ -1450,8 +1450,12 @@ pub fn main() {
             }),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "".into(),
+                    module: "main".into(),
                     name: "Boxed".into(),
-                    reason: InvalidCustomTypeReason::ConstructorType,
+                    reason: Box::new(InvalidCustomTypeReason::ConstructorType {
+                        actual: ValueType::Int,
+                    }),
                 },
             }),
         );
@@ -1494,8 +1498,12 @@ pub fn main() {
             }),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "".into(),
+                    module: "main".into(),
                     name: "Boxed".into(),
-                    reason: InvalidCustomTypeReason::ConstructorType,
+                    reason: Box::new(InvalidCustomTypeReason::ConstructorType {
+                        actual: ValueType::Int,
+                    }),
                 },
             }),
         );
@@ -1521,8 +1529,12 @@ pub fn main() {
             }),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "".into(),
+                    module: "gleam".into(),
                     name: "True".into(),
-                    reason: InvalidCustomTypeReason::ConstructorType,
+                    reason: Box::new(InvalidCustomTypeReason::ConstructorType {
+                        actual: ValueType::Int,
+                    }),
                 },
             }),
         );
@@ -1698,8 +1710,13 @@ pub fn main() {
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "".into(),
+                    module: "gleam".into(),
                     name: "Result".into(),
-                    reason: crate::planner::InvalidCustomTypeReason::ConstructorArity,
+                    reason: Box::new(crate::planner::InvalidCustomTypeReason::ConstructorArity {
+                        expected: 1,
+                        actual: 2,
+                    }),
                 },
             }),
         );
@@ -1820,8 +1837,13 @@ pub fn main() {
             plan_record_constructor(mismatched_result_constructor, &context),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "".into(),
+                    module: "gleam".into(),
                     name: "Result".into(),
-                    reason: crate::planner::InvalidCustomTypeReason::ConstructorArity,
+                    reason: Box::new(crate::planner::InvalidCustomTypeReason::ConstructorArity {
+                        expected: 1,
+                        actual: 2,
+                    }),
                 },
             }),
         );
@@ -1879,8 +1901,13 @@ pub fn main() { pair }
             plan_module(module),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Pair".into(),
-                    reason: crate::planner::InvalidCustomTypeReason::ConstructorArity,
+                    reason: Box::new(crate::planner::InvalidCustomTypeReason::ConstructorArity {
+                        expected: 2,
+                        actual: 1,
+                    }),
                 },
             }),
         );

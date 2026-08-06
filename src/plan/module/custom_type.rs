@@ -109,10 +109,6 @@ impl CustomTypeDefinition {
     pub fn constructors(&self) -> &[CustomConstructorDefinition] {
         &self.constructors
     }
-
-    pub(crate) fn constructor(&self, index: usize) -> Option<&CustomConstructorDefinition> {
-        self.constructors.get(index)
-    }
 }
 
 impl CustomConstructorDefinition {

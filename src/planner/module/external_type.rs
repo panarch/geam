@@ -581,8 +581,10 @@ pub fn main() {
             .err(),
             Some(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Box".into(),
-                    reason: InvalidCustomTypeReason::ParameterType,
+                    reason: Box::new(InvalidCustomTypeReason::DefinitionParameter { index: 0 }),
                 },
             }),
         );

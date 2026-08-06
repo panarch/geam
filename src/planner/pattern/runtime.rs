@@ -1021,8 +1021,12 @@ mod tests {
             .map(|_| ()),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "".into(),
+                    module: "gleam".into(),
                     name: "Ok".into(),
-                    reason: InvalidCustomTypeReason::ConstructorType,
+                    reason: Box::new(InvalidCustomTypeReason::ConstructorType {
+                        actual: ValueType::Parameter(crate::plan::TypeParameterId(0)),
+                    }),
                 },
             }),
         );

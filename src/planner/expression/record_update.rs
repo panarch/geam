@@ -603,8 +603,12 @@ pub fn main() {
             plan_module(variable_type_mismatch),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "".into(),
+                    module: "main".into(),
                     name: "Person".into(),
-                    reason: InvalidCustomTypeReason::ConstructorType,
+                    reason: Box::new(InvalidCustomTypeReason::ConstructorType {
+                        actual: ValueType::Int,
+                    }),
                 },
             }),
         );
@@ -634,8 +638,13 @@ pub fn main() {
             plan_module(module_constructor),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Person".into(),
-                    reason: InvalidCustomTypeReason::ConstructorArity,
+                    reason: Box::new(InvalidCustomTypeReason::ConstructorArity {
+                        expected: 2,
+                        actual: 1,
+                    }),
                 },
             }),
         );
@@ -665,8 +674,13 @@ pub fn main() {
             plan_module(module_mismatch),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Person".into(),
-                    reason: InvalidCustomTypeReason::ConstructorModule,
+                    reason: Box::new(InvalidCustomTypeReason::ConstructorModule {
+                        expected: "main".into(),
+                        actual: "other".into(),
+                    }),
                 },
             }),
         );

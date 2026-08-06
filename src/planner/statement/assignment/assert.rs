@@ -694,8 +694,14 @@ pub fn main() {
             plan_module(nominal_mismatch),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Second".into(),
-                    reason: crate::planner::InvalidCustomTypeReason::ConstructorName,
+                    reason: Box::new(crate::planner::InvalidCustomTypeReason::ConstructorName {
+                        index: 0,
+                        expected: "Second".into(),
+                        actual: "First".into(),
+                    }),
                 },
             }),
         );
@@ -722,8 +728,14 @@ pub fn main() {
             plan_module(final_nominal_mismatch),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Second".into(),
-                    reason: crate::planner::InvalidCustomTypeReason::ConstructorName,
+                    reason: Box::new(crate::planner::InvalidCustomTypeReason::ConstructorName {
+                        index: 0,
+                        expected: "Second".into(),
+                        actual: "First".into(),
+                    }),
                 },
             }),
         );

@@ -4,10 +4,12 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum InvalidTypedAstReason {
-    #[error("custom type {name}: {reason}")]
+    #[error("custom type {package}:{module}.{name}: {reason}")]
     CustomType {
+        package: EcoString,
+        module: EcoString,
         name: EcoString,
-        reason: InvalidCustomTypeReason,
+        reason: Box<InvalidCustomTypeReason>,
     },
     #[error("function shape {name}: {reason}")]
     FunctionShape {
@@ -49,30 +51,65 @@ pub enum InvalidTypedAstReason {
     UnknownLocal { name: EcoString },
 }
 
-#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum InvalidCustomTypeReason {
-    #[error("type argument count does not match definition")]
-    TypeArgumentCount,
-    #[error("constructor index is out of range")]
-    ConstructorIndex,
-    #[error("constructor name does not match definition")]
-    ConstructorName,
-    #[error("constructor module does not match custom type")]
-    ConstructorModule,
-    #[error("constructor field count does not match definition")]
-    ConstructorArity,
-    #[error("constructor type is not a custom type")]
-    ConstructorType,
-    #[error("constructor field type is invalid")]
-    FieldType,
-    #[error("constructor field index is invalid")]
-    FieldIndex,
-    #[error("constructor field label is invalid")]
-    FieldLabel,
-    #[error("type parameter is not generic")]
-    ParameterType,
+    #[error("type parameter {index} is not a generic parameter")]
+    DefinitionParameter { index: usize },
+    #[error("field {field} of constructor {constructor} has no supported type template")]
+    DefinitionField {
+        constructor: EcoString,
+        field: usize,
+    },
+    #[error("template parameter {index} is outside {available} type arguments")]
+    TemplateParameterIndex { index: usize, available: usize },
+    #[error("template shape expected {expected:?}, got {actual:?}")]
+    TemplateShapeMismatch {
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("parameter {parameter} inferred incompatible shapes {previous:?} and {actual:?}")]
+    ConflictingParameterShape {
+        parameter: usize,
+        previous: ValueType,
+        actual: ValueType,
+    },
     #[error("custom type definition is missing")]
-    UnknownDefinition,
+    MissingDefinition,
+    #[error("type argument count: expected {expected}, got {actual}")]
+    TypeArgumentCount { expected: usize, actual: usize },
+    #[error("constructor index {index} is outside {available} constructors")]
+    ConstructorIndex { index: usize, available: usize },
+    #[error("constructor {index} name: expected {expected}, got {actual}")]
+    ConstructorName {
+        index: usize,
+        expected: EcoString,
+        actual: EcoString,
+    },
+    #[error("constructor module: expected {expected}, got {actual}")]
+    ConstructorModule {
+        expected: EcoString,
+        actual: EcoString,
+    },
+    #[error("constructor arity: expected {expected}, got {actual}")]
+    ConstructorArity { expected: usize, actual: usize },
+    #[error("constructor result is {actual:?}, not a custom type")]
+    ConstructorType { actual: ValueType },
+    #[error("field index {index} is outside {available} fields")]
+    FieldIndex { index: usize, available: usize },
+    #[error("field {index} label: expected {expected:?}, got {actual:?}")]
+    FieldLabel {
+        index: usize,
+        expected: Option<EcoString>,
+        actual: Option<EcoString>,
+    },
+    #[error("field {index} type: expected {expected:?}, got {actual:?}")]
+    FieldType {
+        index: usize,
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("field {index} has incompatible result shape for {type_:?}")]
+    FieldShapeConflict { index: usize, type_: ValueType },
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]

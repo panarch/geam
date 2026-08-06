@@ -1394,8 +1394,12 @@ pub fn main() {
             )),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "".into(),
+                    module: "main".into(),
                     name: "Missing".into(),
-                    reason: crate::planner::InvalidCustomTypeReason::ConstructorType,
+                    reason: Box::new(crate::planner::InvalidCustomTypeReason::ConstructorType {
+                        actual: crate::plan::ValueType::Int,
+                    }),
                 },
             }),
         );
@@ -1523,8 +1527,13 @@ pub fn main() {
             )),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "".into(),
+                    module: "gleam".into(),
                     name: "Result".into(),
-                    reason: crate::planner::InvalidCustomTypeReason::ConstructorArity,
+                    reason: Box::new(crate::planner::InvalidCustomTypeReason::ConstructorArity {
+                        expected: 1,
+                        actual: 2,
+                    }),
                 },
             }),
         );

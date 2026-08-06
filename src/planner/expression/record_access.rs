@@ -139,8 +139,14 @@ mod tests {
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Generic".into(),
-                    reason: InvalidCustomTypeReason::FieldType,
+                    reason: Box::new(InvalidCustomTypeReason::FieldType {
+                        index: 0,
+                        expected: ValueType::Parameter(crate::plan::TypeParameterId(0)),
+                        actual: ValueType::Int,
+                    }),
                 },
             }),
         );
@@ -158,7 +164,7 @@ mod tests {
             ),
             Err(custom_error(
                 &missing,
-                InvalidCustomTypeReason::UnknownDefinition,
+                InvalidCustomTypeReason::MissingDefinition,
             )),
         );
     }
@@ -191,7 +197,7 @@ mod tests {
             ),
             Err(custom_error(
                 &missing,
-                InvalidCustomTypeReason::UnknownDefinition,
+                InvalidCustomTypeReason::MissingDefinition,
             )),
         );
         assert_eq!(
@@ -203,7 +209,10 @@ mod tests {
             ),
             Err(custom_error(
                 &generic_without_arguments,
-                InvalidCustomTypeReason::TypeArgumentCount,
+                InvalidCustomTypeReason::TypeArgumentCount {
+                    expected: 1,
+                    actual: 0,
+                },
             )),
         );
         assert_eq!(
@@ -225,7 +234,10 @@ mod tests {
             ),
             Err(custom_error(
                 &generic_int,
-                InvalidCustomTypeReason::ConstructorIndex,
+                InvalidCustomTypeReason::ConstructorIndex {
+                    index: 1,
+                    available: 1,
+                },
             )),
         );
         assert_eq!(
@@ -237,7 +249,10 @@ mod tests {
             ),
             Err(custom_error(
                 &generic_int,
-                InvalidCustomTypeReason::FieldIndex,
+                InvalidCustomTypeReason::FieldIndex {
+                    index: 1,
+                    available: 1,
+                },
             )),
         );
         assert_eq!(
@@ -249,7 +264,11 @@ mod tests {
             ),
             Err(custom_error(
                 &generic_int,
-                InvalidCustomTypeReason::FieldLabel,
+                InvalidCustomTypeReason::FieldLabel {
+                    index: 0,
+                    expected: Some("value".into()),
+                    actual: Some("wrong".into()),
+                },
             )),
         );
         assert_eq!(
@@ -261,7 +280,11 @@ mod tests {
             ),
             Err(custom_error(
                 &generic_int,
-                InvalidCustomTypeReason::FieldType,
+                InvalidCustomTypeReason::FieldType {
+                    index: 0,
+                    expected: ValueType::String,
+                    actual: ValueType::Int,
+                },
             )),
         );
 
@@ -296,7 +319,10 @@ mod tests {
             ),
             Err(custom_error(
                 &broken,
-                InvalidCustomTypeReason::ParameterType,
+                InvalidCustomTypeReason::TemplateParameterIndex {
+                    index: 1,
+                    available: 1,
+                },
             )),
         );
 
@@ -340,7 +366,10 @@ mod tests {
             ),
             Err(custom_error(
                 &partially_broken,
-                InvalidCustomTypeReason::ParameterType,
+                InvalidCustomTypeReason::TemplateParameterIndex {
+                    index: 1,
+                    available: 1,
+                },
             )),
         );
     }
@@ -396,7 +425,13 @@ mod tests {
                 Some("value".into()),
                 &ValueType::Int,
             ),
-            Err(custom_error(&empty, InvalidCustomTypeReason::FieldIndex,)),
+            Err(custom_error(
+                &empty,
+                InvalidCustomTypeReason::FieldIndex {
+                    index: 0,
+                    available: 0,
+                },
+            )),
         );
 
         let choice = CustomType::new(
@@ -430,9 +465,15 @@ mod tests {
                 source,
                 0,
                 Some("value".into()),
-                &ValueType::Function(Box::new(function_type)),
+                &ValueType::Function(Box::new(function_type.clone())),
             ),
-            Err(custom_error(&shared, InvalidCustomTypeReason::FieldType,)),
+            Err(custom_error(
+                &shared,
+                InvalidCustomTypeReason::FieldShapeConflict {
+                    index: 0,
+                    type_: ValueType::Function(Box::new(function_type)),
+                },
+            )),
         );
     }
 
@@ -547,8 +588,10 @@ mod tests {
     fn custom_error(type_: &CustomType, reason: InvalidCustomTypeReason) -> PlanError {
         PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::CustomType {
+                package: type_.type_name().package().clone(),
+                module: type_.type_name().module().clone(),
                 name: type_.type_name().name().clone(),
-                reason,
+                reason: Box::new(reason),
             },
         }
     }

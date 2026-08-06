@@ -587,8 +587,10 @@ pub fn main() {
             plan_module(record_constructor_call),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Boxed".into(),
-                    reason: InvalidCustomTypeReason::UnknownDefinition,
+                    reason: Box::new(InvalidCustomTypeReason::MissingDefinition),
                 },
             }),
         );
@@ -640,8 +642,13 @@ pub fn main() { Boxed(1) }
             plan_module(constructor_descriptor_arity_mismatch),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Boxed".into(),
-                    reason: InvalidCustomTypeReason::ConstructorArity,
+                    reason: Box::new(InvalidCustomTypeReason::ConstructorArity {
+                        expected: 1,
+                        actual: 0,
+                    }),
                 },
             }),
         );
@@ -748,8 +755,12 @@ pub fn main() { Boxed(1) }
             })),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "".into(),
+                    module: type_::PRELUDE_MODULE_NAME.into(),
                     name: "True".into(),
-                    reason: InvalidCustomTypeReason::ConstructorType,
+                    reason: Box::new(InvalidCustomTypeReason::ConstructorType {
+                        actual: crate::plan::ValueType::Bool,
+                    }),
                 },
             }),
         );
@@ -815,8 +826,13 @@ pub fn main() {
             plan_module(constructor_arity_mismatch),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Boxed".into(),
-                    reason: InvalidCustomTypeReason::ConstructorArity,
+                    reason: Box::new(InvalidCustomTypeReason::ConstructorArity {
+                        expected: 1,
+                        actual: 0,
+                    }),
                 },
             }),
         );
@@ -848,8 +864,12 @@ pub fn main() {
             plan_module(constructor_type_mismatch),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "".into(),
+                    module: "main".into(),
                     name: "Boxed".into(),
-                    reason: InvalidCustomTypeReason::ConstructorType,
+                    reason: Box::new(InvalidCustomTypeReason::ConstructorType {
+                        actual: crate::plan::ValueType::Int,
+                    }),
                 },
             }),
         );

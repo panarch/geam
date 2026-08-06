@@ -1605,8 +1605,10 @@ pub fn main() {
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Choice".into(),
-                    reason: crate::planner::InvalidCustomTypeReason::UnknownDefinition,
+                    reason: Box::new(crate::planner::InvalidCustomTypeReason::MissingDefinition),
                 },
             }),
         );
@@ -1662,8 +1664,10 @@ pub fn main() {
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
+                    package: "geam".into(),
+                    module: "main".into(),
                     name: "Choice".into(),
-                    reason: crate::planner::InvalidCustomTypeReason::UnknownDefinition,
+                    reason: Box::new(crate::planner::InvalidCustomTypeReason::MissingDefinition),
                 },
             }),
         );
