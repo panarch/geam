@@ -7,6 +7,13 @@ pub(super) struct CaseCoverage {
     exhaustive_remainder: Option<usize>,
 }
 
+#[derive(Clone, Copy)]
+pub(super) enum CaseBranchRequirement {
+    True,
+    False,
+    Fallback,
+}
+
 impl CaseCoverage {
     pub(super) fn new(
         compiled: &CompiledCase,
@@ -36,6 +43,19 @@ impl CaseCoverage {
     pub(super) fn is_exhaustive_remainder(&self, clause: usize) -> bool {
         self.exhaustive_remainder == Some(clause)
     }
+}
+
+pub(super) fn require_branch<Value>(
+    branch: Option<Value>,
+    requirement: CaseBranchRequirement,
+) -> Result<Value, PlanError> {
+    branch.ok_or_else(|| {
+        invalid_case_shape(match requirement {
+            CaseBranchRequirement::True => InvalidCaseShapeReason::MissingTruePattern,
+            CaseBranchRequirement::False => InvalidCaseShapeReason::MissingFalsePattern,
+            CaseBranchRequirement::Fallback => InvalidCaseShapeReason::MissingFallbackPattern,
+        })
+    })
 }
 
 fn visit(
@@ -104,10 +124,30 @@ fn mark_body(
 
 #[cfg(test)]
 mod tests {
-    use super::CaseCoverage;
+    use super::{CaseBranchRequirement, CaseCoverage, require_branch};
     use crate::planner::{InvalidCaseShapeReason, InvalidTypedAstReason, PlanError};
     use gleam_core::ast::{Statement, TypedClause, TypedExpr};
     use gleam_core::exhaustiveness::{Body, CompiledCase, Decision};
+
+    #[test]
+    fn owns_required_case_branch_failures() {
+        assert_eq!(
+            require_branch::<()>(None, CaseBranchRequirement::True),
+            Err(case_error(InvalidCaseShapeReason::MissingTruePattern)),
+        );
+        assert_eq!(
+            require_branch::<()>(None, CaseBranchRequirement::False),
+            Err(case_error(InvalidCaseShapeReason::MissingFalsePattern)),
+        );
+        assert_eq!(
+            require_branch::<()>(None, CaseBranchRequirement::Fallback),
+            Err(case_error(InvalidCaseShapeReason::MissingFallbackPattern)),
+        );
+        assert_eq!(
+            require_branch(Some(42), CaseBranchRequirement::Fallback),
+            Ok(42),
+        );
+    }
 
     #[test]
     fn marks_reachable_clauses_and_the_last_source_remainder() {

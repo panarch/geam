@@ -30,7 +30,6 @@ pub(super) fn plan(
             let is_total = clause.guard.is_none();
             ordered_clauses.push(super::plan_ordered_case_clause(
                 OrderedCaseClauseInput {
-                    case_type: type_.as_ref(),
                     return_shape: &return_shape,
                     then: clause.then.clone(),
                     branch_bindings: bindings,
@@ -359,7 +358,10 @@ pub fn main() { 0 }
             plan_module(invalid_return_type),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::BranchReturnTypeMismatch,
+                    reason: InvalidCaseShapeReason::BranchAnnotatedTypeMismatch {
+                        expected: ValueType::Parameter(crate::plan::TypeParameterId(0)),
+                        actual: ValueType::UtfCodepoint,
+                    },
                 },
             }),
         );

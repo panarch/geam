@@ -517,10 +517,23 @@ pub enum InvalidModuleReferenceReason {
     ConstantInstantiation,
 }
 
-#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum InvalidCaseShapeReason {
-    #[error("branch return type does not match case type")]
-    BranchReturnTypeMismatch,
+    #[error("branch annotation type: expected {expected:?}, got {actual:?}")]
+    BranchAnnotatedTypeMismatch {
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("branch shapes are incompatible: expected {expected:?}, got {actual:?}")]
+    BranchShapeIncompatibility {
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("branch family assembly: expected {expected:?}, got {actual:?}")]
+    BranchFamilyAssemblyMismatch {
+        expected: ValueType,
+        actual: ValueType,
+    },
     #[error("empty clauses")]
     EmptyClauses,
     #[error("empty subjects")]

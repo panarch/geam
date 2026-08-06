@@ -874,6 +874,8 @@ mod tests {
     fn expression_shape_updates_reject_incompatible_value_families() {
         let expression = Expr::int(IntExpr::value(BigInt::from(1)));
 
+        assert_eq!(expression.clone().into_bool(), None);
+        assert_eq!(expression.clone().into_tuple(), None);
         assert_eq!(expression.clone().with_shape(ValueShape::String), None);
         assert_eq!(expression.with_resolved_shape(ValueShape::String), None);
 

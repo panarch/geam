@@ -83,19 +83,18 @@ pub(in crate::planner) fn expect_list_spread(
     }
 }
 
+#[cfg(target_pointer_width = "64")]
+pub(in crate::planner) fn tuple_index(index: u64) -> usize {
+    index as usize
+}
+
+#[cfg(not(target_pointer_width = "64"))]
 pub(in crate::planner) fn tuple_index(index: u64) -> Result<usize, PlanError> {
-    #[cfg(target_pointer_width = "64")]
-    {
-        Ok(index as usize)
-    }
-    #[cfg(not(target_pointer_width = "64"))]
-    {
-        usize::try_from(index).map_err(|_| PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionShape {
-                kind: crate::planner::InvalidExpressionShapeKind::TupleIndexOverflow,
-            },
-        })
-    }
+    usize::try_from(index).map_err(|_| PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::ExpressionShape {
+            kind: crate::planner::InvalidExpressionShapeKind::TupleIndexOverflow,
+        },
+    })
 }
 
 pub(in crate::planner) fn expect_value_type_result<Value, Error>(

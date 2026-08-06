@@ -527,6 +527,9 @@ fn plan_tuple_index(
     tuple: TypedExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
+    #[cfg(target_pointer_width = "64")]
+    let index = conversion::tuple_index(index);
+    #[cfg(not(target_pointer_width = "64"))]
     let index = conversion::tuple_index(index)?;
     let tuple: TupleExpr = conversion::expect_expression(plan_expr(tuple, context)?)?;
     let expected = context.value_type(type_.as_ref());
@@ -2804,15 +2807,40 @@ pub fn main() {
     }
 
     #[test]
-    fn reject_margin_list_index_rejects_facade_and_shape_family_conflict() {
+    fn reject_margin_list_index_distinguishes_value_type_and_shape_family_conflicts() {
         let list = ListExpr::value(Vec::new(), ValueType::Int).with_item_shape(ValueShape::String);
 
         assert_eq!(
-            super::list_index_expr(list, 0, ValueType::String),
+            super::list_index_expr(list.clone(), 0, ValueType::String),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
                     expected: ValueType::String,
                     actual: ValueType::Int,
+                },
+            }),
+        );
+        assert_eq!(
+            super::list_index_expr(list, 0, ValueType::Int),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ListIndexShape {
+                        type_: ValueType::List(Box::new(ValueType::Int)),
+                    },
+                },
+            }),
+        );
+
+        let parameter = TypeParameterId(0);
+        let item_type = ValueType::List(Box::new(ValueType::Parameter(parameter)));
+        let parameter_list = ListExpr::value(Vec::new(), item_type.clone())
+            .with_item_shape(ValueShape::List(Box::new(ValueShape::Int)));
+        assert_eq!(
+            super::list_index_expr(parameter_list, 0, item_type.clone()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ListIndexShape {
+                        type_: ValueType::List(Box::new(item_type)),
+                    },
                 },
             }),
         );

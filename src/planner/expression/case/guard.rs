@@ -215,6 +215,9 @@ fn plan_tuple_index(
     type_: Arc<Type>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
+    #[cfg(target_pointer_width = "64")]
+    let index = super::super::conversion::tuple_index(index);
+    #[cfg(not(target_pointer_width = "64"))]
     let index = super::super::conversion::tuple_index(index)?;
     let tuple: TupleExpr = expect_expression(plan_expr(tuple, context)?)?;
     let expected = value_type_from_gleam(type_.as_ref(), InvalidExpressionType::Tuple)?;

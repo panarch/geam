@@ -32,7 +32,6 @@ pub(super) fn plan(
             let bound_names = plan_pattern(pattern, &shape, context)?;
             ordered_clauses.push(super::plan_ordered_case_clause(
                 OrderedCaseClauseInput {
-                    case_type: type_.as_ref(),
                     return_shape: &return_shape,
                     then: clause.then.clone(),
                     branch_bindings: super::branch_bindings(&bound_names, subject.clone()),

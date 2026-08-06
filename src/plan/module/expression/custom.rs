@@ -349,13 +349,16 @@ impl CustomLocalExpr {
 }
 
 impl CustomBoolCaseBranches {
-    pub(crate) fn try_new(true_: CustomExpr, false_: CustomExpr) -> Option<Self> {
-        let shape = true_.shape.merge(&false_.shape)?;
-        Some(Self {
+    pub(crate) fn from_resolved_shape(
+        shape: CustomValueShape,
+        true_: CustomExpr,
+        false_: CustomExpr,
+    ) -> Self {
+        Self {
             shape,
             true_: true_.kind,
             false_: false_.kind,
-        })
+        }
     }
 
     fn into_parts(self) -> (CustomValueShape, CustomExprKind, CustomExprKind) {
@@ -364,21 +367,19 @@ impl CustomBoolCaseBranches {
 }
 
 impl<Pattern> CustomCaseBranches<Pattern> {
-    pub(crate) fn try_new(
+    pub(crate) fn from_resolved_shape(
+        shape: CustomValueShape,
         clauses: Vec<(Pattern, CustomExpr)>,
         fallback: CustomExpr,
-    ) -> Option<Self> {
-        let mut shape = fallback.shape.clone();
-        let mut bodies = Vec::with_capacity(clauses.len());
-        for (pattern, branch) in clauses {
-            shape = shape.merge(&branch.shape)?;
-            bodies.push((pattern, branch.kind));
-        }
-        Some(Self {
+    ) -> Self {
+        Self {
             shape,
-            clauses: bodies,
+            clauses: clauses
+                .into_iter()
+                .map(|(pattern, branch)| (pattern, branch.kind))
+                .collect(),
             fallback: fallback.kind,
-        })
+        }
     }
 
     fn into_parts(
@@ -588,37 +589,6 @@ mod tests {
     }
 
     #[test]
-    fn custom_case_branch_owners_reject_incompatible_nominal_types() {
-        let boxed = CustomType::new(
-            CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
-            Vec::new(),
-        );
-        let other = CustomType::new(
-            CustomTypeName::new("geam".into(), "main".into(), "Other".into()),
-            Vec::new(),
-        );
-        let boxed = CustomExpr::try_constructor(
-            CustomConstructor::new(boxed, "Boxed".into(), 0, Vec::new()),
-            Vec::new(),
-        )
-        .expect("zero-field custom construction should be valid");
-        let other = CustomExpr::try_constructor(
-            CustomConstructor::new(other, "Other".into(), 0, Vec::new()),
-            Vec::new(),
-        )
-        .expect("zero-field custom construction should be valid");
-
-        assert_eq!(
-            super::CustomBoolCaseBranches::try_new(boxed.clone(), other.clone()),
-            None,
-        );
-        assert_eq!(
-            super::CustomCaseBranches::try_new(vec![(1, boxed.clone()), (2, other)], boxed,),
-            None,
-        );
-    }
-
-    #[test]
     fn same_result_children_store_only_custom_bodies() {
         let type_ = CustomType::new(
             CustomTypeName::new("geam".into(), "main".into(), "Boxed".into()),
@@ -635,8 +605,7 @@ mod tests {
             Vec::new(),
             CustomExpr::bool_case(
                 crate::plan::BoolExpr::value(true),
-                super::CustomBoolCaseBranches::try_new(branch, fallback)
-                    .expect("matching custom branches should be valid"),
+                super::CustomBoolCaseBranches::from_resolved_shape(shape.clone(), branch, fallback),
             ),
         );
 

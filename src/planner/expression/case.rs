@@ -1,5 +1,6 @@
 mod coverage;
 mod guard;
+mod result;
 mod subject;
 
 use crate::plan::Expr;
