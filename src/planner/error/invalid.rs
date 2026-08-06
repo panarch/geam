@@ -20,8 +20,8 @@ pub enum InvalidTypedAstReason {
     GeneratedAssignment,
     #[error("use statement")]
     UseStatement,
-    #[error("invalid pattern")]
-    InvalidPattern,
+    #[error("pattern shape: {reason}")]
+    PatternShape { reason: InvalidPatternShapeReason },
     #[error("expression shape: {kind}")]
     ExpressionShape { kind: InvalidExpressionShapeKind },
     #[error("expression type: expected {expected}, got {actual}")]
@@ -49,6 +49,144 @@ pub enum InvalidTypedAstReason {
     UseShape { reason: InvalidUseShapeReason },
     #[error("unknown local variable: {name}")]
     UnknownLocal { name: EcoString },
+}
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum InvalidPatternShapeReason {
+    #[error("pattern type: expected {expected:?}, got {actual:?}")]
+    TypeMismatch {
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("pattern annotation has no supported runtime type")]
+    UnsupportedType,
+    #[error("{actual} pattern cannot represent {expected:?}")]
+    KindMismatch {
+        expected: ValueType,
+        actual: PatternKind,
+    },
+    #[error("tuple pattern arity: expected {expected}, got {actual}")]
+    TupleArity { expected: usize, actual: usize },
+    #[error("list tail must bind or discard, got {actual}")]
+    ListTailKind { actual: PatternKind },
+    #[error("{actual} pattern cannot be used as a total binding")]
+    BindingKind { actual: PatternKind },
+    #[error("binding aliases cannot contain another alias")]
+    NestedBindingAlias,
+    #[error("{actual} binding cannot represent {expected:?}")]
+    BindingShape {
+        expected: ValueType,
+        actual: PatternKind,
+    },
+    #[error("binding shapes for {type_:?} are incompatible")]
+    BindingShapeConflict { type_: ValueType },
+    #[error("binding constructor {expected} does not match {actual:?}")]
+    BindingConstructorRefinement {
+        expected: usize,
+        actual: Option<usize>,
+    },
+    #[error("list binding must not contain elements, got {actual}")]
+    ListBindingElements { actual: usize },
+    #[error("list binding must contain a tail")]
+    ListBindingTailMissing,
+    #[error("constructor binding is refutable across {constructors} constructors")]
+    RefutableBindingConstructor { constructors: usize },
+    #[error("bit-array binding segment count: expected 1, got {actual}")]
+    BitArrayBindingSegmentCount { actual: usize },
+    #[error("bit-array binding segment must not have a size")]
+    BitArrayBindingSegmentSize,
+    #[error("bit-array binding segment must use the bits option")]
+    BitArrayBindingSegmentOptions,
+    #[error("unsized bit-array segment {index} is not the final segment of {count}")]
+    BitArrayUnsizedSegment { index: usize, count: usize },
+    #[error("bit-array segment options: {reason}")]
+    BitArraySegmentOptions {
+        reason: InvalidBitArraySegmentOptionsReason,
+    },
+    #[error("bit-array size must use a size node, got {actual}")]
+    BitArraySizePattern { actual: PatternKind },
+    #[error("bit-array size variable {name} has no constructor metadata")]
+    BitArraySizeUnresolved { name: EcoString },
+    #[error("bit-array size variable {name} has an unsupported source")]
+    BitArraySizeSource { name: EcoString },
+    #[error("bit-array size constant is not an integer expression")]
+    BitArraySizeConstant,
+    #[error("{actual:?} cannot be used as a refutable assertion subject")]
+    AssertSubject { actual: ValueType },
+    #[error("invalid pattern node")]
+    InvalidNode,
+    #[error("bit-array size node used as a pattern")]
+    BitArraySizeNode,
+    #[error("constructor metadata is unresolved")]
+    UnresolvedConstructor,
+    #[error("constructor module: expected {expected}, got {actual}")]
+    ConstructorModule {
+        expected: EcoString,
+        actual: EcoString,
+    },
+    #[error("constructor name: expected {expected}, got {actual}")]
+    ConstructorName {
+        expected: EcoString,
+        actual: EcoString,
+    },
+    #[error("constructor index: expected {expected}, got {actual}")]
+    ConstructorIndex { expected: usize, actual: usize },
+    #[error("constructor arity: expected {expected}, got {actual}")]
+    ConstructorArity { expected: usize, actual: usize },
+    #[error("constructor pattern cannot represent {type_:?}")]
+    ConstructorType { type_: ValueType },
+    #[error("constructor spread is invalid for {type_:?}")]
+    ConstructorSpread { type_: ValueType },
+}
+
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+pub enum InvalidBitArraySegmentOptionsReason {
+    #[error("multiple segment kinds")]
+    MultipleKinds,
+    #[error("multiple signedness options")]
+    MultipleSignedness,
+    #[error("multiple endianness options")]
+    MultipleEndianness,
+    #[error("multiple size options")]
+    MultipleSizes,
+    #[error("multiple unit options")]
+    MultipleUnits,
+    #[error("unit option without a size")]
+    UnitWithoutSize,
+    #[error("zero unit")]
+    ZeroUnit,
+    #[error("options incompatible with the segment kind")]
+    Incompatible,
+}
+
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+pub enum PatternKind {
+    #[error("integer")]
+    Int,
+    #[error("float")]
+    Float,
+    #[error("string")]
+    String,
+    #[error("variable")]
+    Variable,
+    #[error("bit-array size")]
+    BitArraySize,
+    #[error("alias")]
+    Assign,
+    #[error("discard")]
+    Discard,
+    #[error("list")]
+    List,
+    #[error("constructor")]
+    Constructor,
+    #[error("tuple")]
+    Tuple,
+    #[error("bit array")]
+    BitArray,
+    #[error("string prefix")]
+    StringPrefix,
+    #[error("invalid")]
+    Invalid,
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -316,16 +454,12 @@ pub enum InvalidCaseShapeReason {
     CompiledCaseGuard,
     #[error("compiled case subject count does not match case subjects")]
     CompiledCaseSubjectCountMismatch,
-    #[error("invalid pattern")]
-    InvalidPattern,
     #[error("missing false pattern")]
     MissingFalsePattern,
     #[error("missing fallback pattern")]
     MissingFallbackPattern,
     #[error("missing true pattern")]
     MissingTruePattern,
-    #[error("pattern type mismatch")]
-    PatternTypeMismatch,
     #[error("pattern subject count mismatch")]
     PatternSubjectCountMismatch,
 }

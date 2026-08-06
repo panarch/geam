@@ -1,12 +1,9 @@
 use super::super::super::plan_expr_with_expected_source_stop_shape;
-use super::super::invalid_case_shape;
 use super::{CaseClause, OrderedCaseCandidateInput, OrderedCasePattern};
-use crate::plan::{BoolExpr, CustomExpr, CustomLocalId, Expr, Step, ValueShape, ValueType};
+use crate::plan::{BoolExpr, CustomExpr, CustomLocalId, Expr, Step, ValueShape};
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidCaseShapeReason, PlanError};
-use crate::planner::pattern::{
-    PlannedCustomBinding, pattern_value_type, plan_custom_subject_pattern,
-};
+use crate::planner::error::{InvalidExpressionType, InvalidTypedAstReason, PlanError};
+use crate::planner::pattern::{PlannedCustomBinding, plan_custom_subject_pattern};
 use ecow::EcoString;
 use gleam_core::ast::{TypedExpr, TypedPattern};
 use gleam_core::type_::Type;
@@ -21,10 +18,14 @@ pub(super) fn plan(
 ) -> Result<Expr, PlanError> {
     let subject = plan_expr_with_expected_source_stop_shape(subject, subject_shape, context)?;
     let return_shape = context.value_shape(type_.as_ref());
+    let actual = InvalidExpressionType::from_value_type(subject.value_type());
     let Some(subject) = subject.into_custom() else {
-        return Err(invalid_case_shape(
-            InvalidCaseShapeReason::PatternTypeMismatch,
-        ));
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionType {
+                expected: InvalidExpressionType::Custom,
+                actual,
+            },
+        });
     };
     let (subject_step, subject_local, subject) = bind_subject(subject, context);
     let mut ordered_clauses = Vec::new();
@@ -68,11 +69,11 @@ fn plan_pattern(
     subject: CustomExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedCustomPattern, PlanError> {
-    if pattern_value_type(&pattern, context)? != ValueType::Custom(subject.type_().clone()) {
-        return Err(invalid_case_shape(
-            InvalidCaseShapeReason::PatternTypeMismatch,
-        ));
-    }
+    crate::planner::pattern::validate_pattern(
+        &pattern,
+        &ValueShape::Custom(subject.shape().clone()),
+        context,
+    )?;
     let (pattern, mut whole_bindings) = strip_whole_aliases(pattern);
     match pattern {
         gleam_core::ast::Pattern::Variable { name, .. } => {
@@ -154,7 +155,9 @@ mod tests {
     use crate::planner::dsl::{int, int_return_block, int_return_expr, local_int};
     use crate::planner::plan_module;
     use crate::planner::support::dummy_span;
-    use crate::planner::{InvalidCaseShapeReason, InvalidTypedAstReason, PlanError};
+    use crate::planner::{
+        InvalidCaseShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
+    };
     use gleam_core::type_::error::VariableOrigin;
     use num_bigint::BigInt;
     use std::collections::HashMap;
@@ -232,7 +235,13 @@ pub fn main() { 0 }
             int_value: 1.into(),
         };
 
-        assert_eq!(plan_module(module), Err(pattern_type_mismatch()));
+        assert_eq!(
+            plan_module(module),
+            Err(super::super::expression_type_mismatch(
+                InvalidExpressionType::Custom,
+                InvalidExpressionType::Int,
+            )),
+        );
     }
 
     #[test]
@@ -261,7 +270,13 @@ pub fn main() { 0 }
             ),
         };
 
-        assert_eq!(plan_module(module), Err(pattern_type_mismatch()));
+        assert_eq!(
+            plan_module(module),
+            Err(super::super::pattern_type_mismatch(
+                custom_value_type("Choice"),
+                custom_value_type("Missing"),
+            )),
+        );
     }
 
     #[test]
@@ -316,7 +331,10 @@ pub fn main() { 0 }
                 &mut context,
             )
             .map(|_| ()),
-            Err(pattern_type_mismatch()),
+            Err(super::super::pattern_type_mismatch(
+                custom_value_type("Choice"),
+                custom_value_type("Other"),
+            )),
         );
         assert_eq!(
             super::plan_pattern(
@@ -330,7 +348,9 @@ pub fn main() { 0 }
             )
             .map(|_| ()),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::BitArraySizeNode,
+                },
             }),
         );
     }
@@ -378,7 +398,27 @@ pub fn main() { 0 }
         assert_eq!(
             plan_module(invalid_pattern),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::InvalidNode,
+                },
+            }),
+        );
+
+        assert_eq!(
+            plan_module(crate::planner::support::compile(
+                r#"
+pub type Choice { Choice(BitArray) }
+fn identity(value: Choice) -> Int {
+  case value {
+    Choice(<<rest:native>>) -> 1
+    Choice(_) -> 0
+  }
+}
+pub fn main() { 0 }
+"#,
+            )),
+            Err(PlanError::UnsupportedBitArraySegment {
+                reason: crate::planner::UnsupportedBitArraySegmentReason::NativeEndianness,
             }),
         );
     }
@@ -534,11 +574,10 @@ pub fn main() { 0 }
             .clone()
     }
 
-    fn pattern_type_mismatch() -> PlanError {
-        PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::CaseShape {
-                reason: InvalidCaseShapeReason::PatternTypeMismatch,
-            },
-        }
+    fn custom_value_type(name: &str) -> ValueType {
+        ValueType::Custom(CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), name.into()),
+            Vec::new(),
+        ))
     }
 }

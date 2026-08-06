@@ -22,7 +22,7 @@ use crate::planner::error::{InvalidCaseShapeReason, PlanError};
 use crate::planner::statement::plan_variable_runtime_step;
 use ecow::EcoString;
 use gleam_core::ast::{Pattern, SrcSpan, TypedClause, TypedClauseGuard, TypedExpr};
-use gleam_core::type_::{Type, TypeVar};
+use gleam_core::type_::Type;
 use std::sync::Arc;
 
 use super::coverage::CaseCoverage;
@@ -30,80 +30,31 @@ use super::coverage::CaseCoverage;
 #[cfg(test)]
 use crate::plan::ValueType;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum CaseSubjectVariants {
-    Other,
-    Custom,
-    Tuple(Vec<CaseSubjectVariants>),
-    List(Box<CaseSubjectVariants>),
+#[cfg(test)]
+fn pattern_kind_mismatch(expected: ValueType, actual: crate::planner::PatternKind) -> PlanError {
+    PlanError::InvalidTypedAst {
+        reason: crate::planner::InvalidTypedAstReason::PatternShape {
+            reason: crate::planner::InvalidPatternShapeReason::KindMismatch { expected, actual },
+        },
+    }
 }
 
-impl CaseSubjectVariants {
-    fn from_gleam(type_: &Type) -> Self {
-        match type_ {
-            Type::Var { type_ } => match &*type_.borrow() {
-                TypeVar::Link { type_ } => Self::from_gleam(type_.as_ref()),
-                TypeVar::Unbound { .. } | TypeVar::Generic { .. } => Self::Other,
-            },
-            Type::Tuple { elements } => Self::Tuple(
-                elements
-                    .iter()
-                    .map(|element| Self::from_gleam(element.as_ref()))
-                    .collect(),
-            ),
-            Type::Named { .. } => {
-                if let Some(element) = type_.list_type() {
-                    Self::List(Box::new(Self::from_gleam(element.as_ref())))
-                } else if type_.is_int()
-                    || type_.is_float()
-                    || type_.is_string()
-                    || type_.is_bit_array()
-                    || type_.is_utf_codepoint()
-                    || type_.is_bool()
-                    || type_.is_nil()
-                {
-                    Self::Other
-                } else {
-                    Self::Custom
-                }
-            }
-            Type::Fn { .. } => Self::Other,
-        }
+#[cfg(test)]
+fn pattern_type_mismatch(expected: ValueType, actual: ValueType) -> PlanError {
+    PlanError::InvalidTypedAst {
+        reason: crate::planner::InvalidTypedAstReason::PatternShape {
+            reason: crate::planner::InvalidPatternShapeReason::TypeMismatch { expected, actual },
+        },
     }
+}
 
-    #[cfg(test)]
-    fn from_value_type(value_type: &ValueType) -> Self {
-        match value_type {
-            ValueType::Parameter(_) => Self::Other,
-            ValueType::Custom(_) => Self::Custom,
-            ValueType::External(_) => Self::Other,
-            ValueType::Tuple(elements) => {
-                Self::Tuple(elements.iter().map(Self::from_value_type).collect())
-            }
-            ValueType::List(element) => Self::List(Box::new(Self::from_value_type(element))),
-            ValueType::Int
-            | ValueType::Float
-            | ValueType::String
-            | ValueType::BitArray
-            | ValueType::UtfCodepoint
-            | ValueType::Bool
-            | ValueType::Nil
-            | ValueType::Function(_) => Self::Other,
-        }
-    }
-
-    fn into_tuple(self) -> Option<Vec<Self>> {
-        match self {
-            Self::Tuple(elements) => Some(elements),
-            Self::Other | Self::Custom | Self::List(_) => None,
-        }
-    }
-
-    fn into_list(self) -> Option<Self> {
-        match self {
-            Self::List(element) => Some(*element),
-            Self::Other | Self::Custom | Self::Tuple(_) => None,
-        }
+#[cfg(test)]
+fn expression_type_mismatch(
+    expected: crate::planner::InvalidExpressionType,
+    actual: crate::planner::InvalidExpressionType,
+) -> PlanError {
+    PlanError::InvalidTypedAst {
+        reason: crate::planner::InvalidTypedAstReason::ExpressionType { expected, actual },
     }
 }
 
@@ -117,7 +68,6 @@ pub(super) fn plan(
     let clauses = case_clauses(clauses, &coverage)?;
     let source_type = subject.type_();
     let subject_shape = context.value_shape(source_type.as_ref());
-    let subject_variants = CaseSubjectVariants::from_gleam(source_type.as_ref());
     match subject_shape {
         ValueShape::Parameter(parameter) => {
             generic::plan(type_, subject, parameter, clauses, context)
@@ -140,7 +90,6 @@ pub(super) fn plan(
                 subject,
                 subject_type,
                 ValueShape::Tuple(subject_shape),
-                subject_variants,
                 clauses,
                 context,
             )
@@ -152,7 +101,6 @@ pub(super) fn plan(
                 subject,
                 subject_type,
                 ValueShape::List(subject_shape),
-                subject_variants,
                 clauses,
                 context,
             )
@@ -180,11 +128,9 @@ pub(super) fn plan_multi(
 ) -> Result<Expr, PlanError> {
     let mut subject_types = Vec::with_capacity(subjects.len());
     let mut subject_shapes = Vec::with_capacity(subjects.len());
-    let mut subject_variants = Vec::with_capacity(subjects.len());
     for subject in &subjects {
         let source_type = subject.type_();
         let shape = context.value_shape(source_type.as_ref());
-        subject_variants.push(CaseSubjectVariants::from_gleam(source_type.as_ref()));
         subject_types.push(shape.value_type());
         subject_shapes.push(shape);
     }
@@ -200,13 +146,13 @@ pub(super) fn plan_multi(
         elements: subjects,
     };
     let clauses = multi_subject_case_clauses(clauses, subject_types.len(), &coverage)?;
+    let subject_shape = ValueShape::Tuple(subject_shapes.into_boxed_slice());
 
     tuple::plan(
         type_,
         subject,
         subject_types,
-        ValueShape::Tuple(subject_shapes.into_boxed_slice()),
-        CaseSubjectVariants::Tuple(subject_variants),
+        subject_shape,
         clauses,
         context,
     )
@@ -963,10 +909,8 @@ mod tests {
     use crate::planner::{InvalidCaseShapeReason, InvalidTypedAstReason, PlanError};
     use ecow::EcoString;
     use gleam_core::ast::TypedExpr;
-    use gleam_core::type_::{self, Type, TypeVar};
-    use std::cell::RefCell;
+    use gleam_core::type_;
     use std::collections::HashMap;
-    use std::sync::Arc;
 
     #[test]
     fn reject_margin_generic_bool_case_handoffs() {
@@ -1265,77 +1209,6 @@ mod tests {
                 InvalidCaseShapeReason::BranchReturnTypeMismatch,
             )),
         );
-    }
-
-    #[test]
-    fn case_subject_variants_follow_the_gleam_type_shape() {
-        assert_eq!(
-            super::CaseSubjectVariants::from_value_type(&ValueType::Parameter(
-                crate::plan::TypeParameterId(0),
-            )),
-            super::CaseSubjectVariants::Other,
-        );
-        assert_eq!(
-            super::CaseSubjectVariants::from_value_type(&ValueType::External(
-                crate::plan::ExternalType::new(
-                    crate::plan::ExternalTypeName::new(
-                        "application".into(),
-                        "main".into(),
-                        "Counter".into(),
-                    ),
-                    Vec::new(),
-                ),
-            )),
-            super::CaseSubjectVariants::Other,
-        );
-        assert_eq!(
-            super::CaseSubjectVariants::from_gleam(type_::int().as_ref()),
-            super::CaseSubjectVariants::Other,
-        );
-        assert_eq!(
-            super::CaseSubjectVariants::from_gleam(
-                type_::tuple(vec![
-                    type_::int(),
-                    type_::list(type_::result(type_::int(), type_::string())),
-                ])
-                .as_ref(),
-            ),
-            super::CaseSubjectVariants::Tuple(vec![
-                super::CaseSubjectVariants::Other,
-                super::CaseSubjectVariants::List(Box::new(super::CaseSubjectVariants::Custom)),
-            ]),
-        );
-        assert_eq!(
-            super::CaseSubjectVariants::from_gleam(type_::generic_var(0).as_ref()),
-            super::CaseSubjectVariants::Other,
-        );
-        assert_eq!(
-            super::CaseSubjectVariants::from_gleam(type_::unbound_var(0).as_ref()),
-            super::CaseSubjectVariants::Other,
-        );
-
-        let linked = Arc::new(Type::Var {
-            type_: Arc::new(RefCell::new(TypeVar::Link {
-                type_: type_::list(type_::result(type_::int(), type_::string())),
-            })),
-        });
-        assert_eq!(
-            super::CaseSubjectVariants::from_gleam(linked.as_ref()),
-            super::CaseSubjectVariants::List(Box::new(super::CaseSubjectVariants::Custom)),
-        );
-    }
-
-    #[test]
-    fn case_subject_variant_accessors_reject_other_shapes() {
-        use super::CaseSubjectVariants as Variants;
-
-        assert_eq!(Variants::Other.into_tuple(), None);
-        assert_eq!(Variants::Custom.into_tuple(), None);
-        assert_eq!(Variants::List(Box::new(Variants::Other)).into_tuple(), None);
-
-        assert_eq!(Variants::Other.into_list(), None);
-        assert_eq!(Variants::Custom.into_list(), None);
-        assert_eq!(Variants::Tuple(Vec::new()).into_list(), None);
     }
 
     #[test]

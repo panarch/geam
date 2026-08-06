@@ -1,11 +1,10 @@
 use super::super::super::plan_expr_with_expected_source_stop_shape;
-use super::super::invalid_case_shape;
 use super::{CaseClause, OrderedCaseClauseInput};
 use crate::plan::{
     BoolExpr, Expr, ExprKind, ExternalExpr, ExternalLocal, ExternalValueShape, Step,
 };
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidCaseShapeReason, PlanError};
+use crate::planner::error::{InvalidExpressionType, InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
 use gleam_core::ast::{Pattern, TypedExpr};
 use gleam_core::type_::Type;
@@ -24,10 +23,14 @@ pub(super) fn plan(
         context,
     )?;
     let return_shape = context.value_shape(type_.as_ref());
+    let actual = InvalidExpressionType::from_value_type(subject.value_type());
     let ExprKind::External(subject) = subject.into_kind() else {
-        return Err(invalid_case_shape(
-            InvalidCaseShapeReason::PatternTypeMismatch,
-        ));
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionType {
+                expected: InvalidExpressionType::External,
+                actual,
+            },
+        });
     };
     let (subject_step, subject) = bind_subject(subject, shape.clone(), context);
     let mut ordered_clauses = Vec::new();
@@ -62,16 +65,20 @@ fn plan_pattern(
     context: &mut PlanContext<'_>,
 ) -> Result<Vec<EcoString>, PlanError> {
     match pattern {
-        Pattern::Variable { name, type_, .. }
-            if context.value_shape(type_.as_ref())
-                == crate::plan::ValueShape::External(shape.clone()) =>
-        {
-            Ok(vec![name])
+        ref pattern @ Pattern::Variable { ref name, .. } => {
+            crate::planner::pattern::validate_pattern(
+                pattern,
+                &crate::plan::ValueShape::External(shape.clone()),
+                context,
+            )?;
+            Ok(vec![name.clone()])
         }
-        Pattern::Discard { type_, .. }
-            if context.value_shape(type_.as_ref())
-                == crate::plan::ValueShape::External(shape.clone()) =>
-        {
+        ref pattern @ Pattern::Discard { .. } => {
+            crate::planner::pattern::validate_pattern(
+                pattern,
+                &crate::plan::ValueShape::External(shape.clone()),
+                context,
+            )?;
             Ok(Vec::new())
         }
         Pattern::Assign { name, pattern, .. } => {
@@ -79,10 +86,7 @@ fn plan_pattern(
             names.push(name);
             Ok(names)
         }
-        Pattern::Invalid { .. } => Err(invalid_case_shape(InvalidCaseShapeReason::InvalidPattern)),
-        Pattern::Variable { .. }
-        | Pattern::Discard { .. }
-        | Pattern::Int { .. }
+        pattern @ (Pattern::Int { .. }
         | Pattern::Float { .. }
         | Pattern::String { .. }
         | Pattern::BitArraySize(_)
@@ -90,8 +94,11 @@ fn plan_pattern(
         | Pattern::Constructor { .. }
         | Pattern::Tuple { .. }
         | Pattern::BitArray { .. }
-        | Pattern::StringPrefix { .. } => Err(invalid_case_shape(
-            InvalidCaseShapeReason::PatternTypeMismatch,
+        | Pattern::StringPrefix { .. }
+        | Pattern::Invalid { .. }) => Err(crate::planner::pattern::unexpected_pattern(
+            &pattern,
+            &crate::plan::ValueShape::External(shape.clone()),
+            context,
         )),
     }
 }
@@ -117,11 +124,12 @@ mod tests {
         HostExternalBinding, HostExternalSchema, HostExternalStorage, HostExternalStore,
         HostExternalType, HostProvider, HostProviderModule, HostProviderSet,
     };
-    use crate::plan::{ExternalTypeName, ExternalValueShape};
+    use crate::plan::{ExternalTypeName, ExternalValueShape, ValueType};
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::support::dummy_span;
     use crate::planner::{
-        InvalidCaseShapeReason, InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError,
+        InvalidCaseShapeReason, InvalidExpressionShapeKind, InvalidExpressionType,
+        InvalidTypedAstReason, PlanError,
     };
     use crate::{ModuleSource, PackageSource};
     use ecow::EcoString;
@@ -229,11 +237,10 @@ mod tests {
                 Vec::new(),
                 &mut context,
             ),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::expression_type_mismatch(
+                InvalidExpressionType::External,
+                InvalidExpressionType::Int,
+            )),
         );
         assert_eq!(
             super::plan(
@@ -263,8 +270,8 @@ mod tests {
                 &mut context,
             ),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::InvalidNode,
                 },
             }),
         );
@@ -318,8 +325,8 @@ mod tests {
                 &mut context,
             ),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::InvalidNode,
                 },
             }),
         );
@@ -334,11 +341,25 @@ mod tests {
                 &shape,
                 &mut context,
             ),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
+            Err(super::super::pattern_type_mismatch(
+                ValueType::External(shape.type_().clone()),
+                ValueType::Bool,
+            )),
+        );
+        assert_eq!(
+            super::plan_pattern(
+                Pattern::Discard {
+                    location: dummy_span(),
+                    name: "_".into(),
+                    type_: type_::bool(),
                 },
-            }),
+                &shape,
+                &mut context,
+            ),
+            Err(super::super::pattern_type_mismatch(
+                ValueType::External(shape.type_().clone()),
+                ValueType::Bool,
+            )),
         );
     }
 

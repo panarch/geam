@@ -5,7 +5,7 @@ use crate::plan::{
     ValueShape, ValueType,
 };
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidTypedAstReason, PlanError};
+use crate::planner::error::PlanError;
 use ecow::EcoString;
 use gleam_core::analyse::Inferred;
 use gleam_core::ast::{AssignName, Pattern, TailPattern, TypedPattern};
@@ -99,11 +99,37 @@ fn plan_runtime_pattern(
     pattern: TypedPattern,
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedRuntimePattern, PlanError> {
-    let source_shape = pattern_value_shape(&pattern, context)?;
+    let source_shape = super::pattern_value_shape(&pattern, context)?;
     plan_runtime_pattern_with_source_shape(pattern, source_shape, context)
 }
 
 pub(in crate::planner) fn plan_runtime_pattern_with_source_shape(
+    pattern: TypedPattern,
+    source_shape: ValueShape,
+    context: &mut PlanContext<'_>,
+) -> Result<PlannedRuntimePattern, PlanError> {
+    let validate_before_planning = match &pattern {
+        Pattern::Assign { .. }
+        | Pattern::Tuple { .. }
+        | Pattern::List { .. }
+        | Pattern::BitArray { .. }
+        | Pattern::BitArraySize(_)
+        | Pattern::Invalid { .. } => false,
+        Pattern::Constructor { type_, .. } => type_.is_bool() || type_.is_nil(),
+        Pattern::Int { .. }
+        | Pattern::Float { .. }
+        | Pattern::String { .. }
+        | Pattern::Variable { .. }
+        | Pattern::Discard { .. }
+        | Pattern::StringPrefix { .. } => true,
+    };
+    if validate_before_planning {
+        super::validate_pattern(&pattern, &source_shape, context)?;
+    }
+    plan_validated_runtime_pattern(pattern, source_shape, context)
+}
+
+fn plan_validated_runtime_pattern(
     pattern: TypedPattern,
     source_shape: ValueShape,
     context: &mut PlanContext<'_>,
@@ -145,13 +171,13 @@ pub(in crate::planner) fn plan_runtime_pattern_with_source_shape(
             total_binding: None,
             custom_binding: None,
         }),
-        Pattern::Tuple { elements, .. } => {
-            let ValueShape::Tuple(source_shapes) = source_shape else {
-                return Err(invalid_pattern());
+        Pattern::Tuple { location, elements } => {
+            let ValueShape::Tuple(source_shapes) = &source_shape else {
+                let pattern = Pattern::Tuple { location, elements };
+                return Err(super::unexpected_pattern(&pattern, &source_shape, context));
             };
-            if elements.len() != source_shapes.len() {
-                return Err(invalid_pattern());
-            }
+            let source_shapes = source_shapes.clone();
+            super::validate_tuple_arity(source_shapes.len(), elements.len())?;
             let mut patterns = Vec::with_capacity(elements.len());
             let mut bindings = Vec::with_capacity(elements.len());
             let mut is_total = true;
@@ -171,11 +197,35 @@ pub(in crate::planner) fn plan_runtime_pattern_with_source_shape(
                 custom_binding: None,
             })
         }
-        Pattern::List { elements, tail, .. } => {
-            plan_list_pattern(elements, tail.map(|tail| *tail), source_shape, context)
+        Pattern::List {
+            location,
+            elements,
+            tail,
+            type_,
+        } => {
+            let ValueShape::List(item_shape) = &source_shape else {
+                let pattern = Pattern::List {
+                    location,
+                    elements,
+                    tail,
+                    type_,
+                };
+                return Err(super::unexpected_pattern(&pattern, &source_shape, context));
+            };
+            super::validation::validate_pattern_type(
+                &source_shape,
+                context.value_shape_in_scope(type_.as_ref()),
+            )?;
+            plan_list_pattern(
+                elements,
+                tail.map(|tail| *tail),
+                item_shape.as_ref().clone(),
+                context,
+            )
         }
-        Pattern::BitArray { segments, .. } => {
-            let (pattern, is_total) = super::plan_bit_array_pattern(segments, context)?;
+        Pattern::BitArray { ref segments, .. } => {
+            super::validation::validate_pattern_type(&source_shape, ValueShape::BitArray)?;
+            let (pattern, is_total) = super::plan_bit_array_pattern(segments.clone(), context)?;
             Ok(PlannedRuntimePattern {
                 total_binding: if is_total {
                     total_bit_array_binding(&pattern)
@@ -188,28 +238,34 @@ pub(in crate::planner) fn plan_runtime_pattern_with_source_shape(
             })
         }
         Pattern::Constructor {
-            arguments,
-            constructor,
+            arguments: _,
+            name,
             type_,
             ..
-        } if type_.is_bool() => plan_bool_pattern(constructor, arguments),
+        } if type_.is_bool() => Ok(plan_bool_pattern(name == "True")),
         Pattern::Constructor {
-            arguments,
-            constructor,
+            arguments: _,
+            constructor: _,
             type_,
             ..
-        } if type_.is_nil() => plan_nil_pattern(constructor, arguments),
-        Pattern::Constructor {
-            arguments,
-            constructor,
-            type_,
+        } if type_.is_nil() => Ok(plan_nil_pattern()),
+        ref pattern @ Pattern::Constructor {
+            ref arguments,
+            ref constructor,
+            ref type_,
             ..
         } => {
-            let ValueShape::Custom(source_shape) = source_shape else {
-                return Err(invalid_pattern());
+            let ValueShape::Custom(custom_source_shape) = &source_shape else {
+                return Err(super::unexpected_pattern(pattern, &source_shape, context));
             };
-            plan_custom_pattern(arguments, constructor, type_, source_shape, context)
-                .map(PlannedCustomPattern::into_runtime)
+            plan_custom_pattern(
+                arguments.clone(),
+                constructor.clone(),
+                type_.clone(),
+                custom_source_shape.clone(),
+                context,
+            )
+            .map(PlannedCustomPattern::into_runtime)
         }
         Pattern::StringPrefix {
             left_side_string,
@@ -246,7 +302,9 @@ pub(in crate::planner) fn plan_runtime_pattern_with_source_shape(
                 custom_binding: planned.custom_binding,
             })
         }
-        Pattern::BitArraySize(_) | Pattern::Invalid { .. } => Err(invalid_pattern()),
+        pattern @ (Pattern::BitArraySize(_) | Pattern::Invalid { .. }) => {
+            Err(super::unexpected_pattern(&pattern, &source_shape, context))
+        }
     }
 }
 
@@ -255,90 +313,47 @@ pub(in crate::planner) fn plan_custom_subject_pattern(
     source_shape: CustomValueShape,
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedCustomPattern, PlanError> {
-    let Pattern::Constructor {
-        arguments,
-        constructor,
-        type_,
-        ..
-    } = pattern
-    else {
-        return Err(invalid_pattern());
+    let (arguments, constructor, type_) = match pattern {
+        Pattern::Constructor {
+            arguments,
+            constructor,
+            type_,
+            ..
+        } => (arguments, constructor, type_),
+        pattern => {
+            return Err(super::unexpected_pattern(
+                &pattern,
+                &ValueShape::Custom(source_shape),
+                context,
+            ));
+        }
     };
     plan_custom_pattern(arguments, constructor, type_, source_shape, context)
-}
-
-pub(in crate::planner) fn pattern_value_type(
-    pattern: &TypedPattern,
-    context: &mut PlanContext<'_>,
-) -> Result<ValueType, PlanError> {
-    let mut value_shape = |type_: &Type| context.value_shape(type_);
-    pattern_value_shape_with(pattern, &mut value_shape).map(|shape| shape.value_type())
 }
 
 pub(in crate::planner) fn pattern_value_type_in_context(
     pattern: &TypedPattern,
     context: &PlanContext<'_>,
 ) -> Result<ValueType, PlanError> {
-    let mut value_shape = |type_: &Type| context.value_shape_in_scope(type_);
-    pattern_value_shape_with(pattern, &mut value_shape).map(|shape| shape.value_type())
-}
-
-#[cfg(test)]
-fn pattern_value_shape(
-    pattern: &TypedPattern,
-    context: &mut PlanContext<'_>,
-) -> Result<ValueShape, PlanError> {
-    let mut value_shape = |type_: &Type| context.value_shape(type_);
-    pattern_value_shape_with(pattern, &mut value_shape)
-}
-
-fn pattern_value_shape_with(
-    pattern: &TypedPattern,
-    value_shape: &mut impl FnMut(&Type) -> ValueShape,
-) -> Result<ValueShape, PlanError> {
-    let shape = match pattern {
-        Pattern::Int { .. } => ValueShape::Int,
-        Pattern::Float { .. } => ValueShape::Float,
-        Pattern::String { .. } | Pattern::StringPrefix { .. } => ValueShape::String,
-        Pattern::Variable { type_, .. }
-        | Pattern::Discard { type_, .. }
-        | Pattern::List { type_, .. }
-        | Pattern::Constructor { type_, .. }
-        | Pattern::Invalid { type_, .. } => value_shape(type_.as_ref()),
-        Pattern::Tuple { elements, .. } => ValueShape::Tuple(
-            elements
-                .iter()
-                .map(|element| pattern_value_shape_with(element, value_shape))
-                .collect::<Result<Vec<_>, _>>()?
-                .into_boxed_slice(),
-        ),
-        Pattern::BitArray { .. } => ValueShape::BitArray,
-        Pattern::Assign { pattern, .. } => pattern_value_shape_with(pattern, value_shape)?,
-        Pattern::BitArraySize(_) => return Err(invalid_pattern()),
-    };
-    Ok(shape)
+    super::pattern_value_shape(pattern, context).map(|shape| shape.value_type())
 }
 
 fn plan_list_pattern(
     elements: Vec<TypedPattern>,
     tail: Option<TailPattern<Arc<Type>>>,
-    source_shape: ValueShape,
+    item_shape: ValueShape,
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedRuntimePattern, PlanError> {
-    let ValueShape::List(item_shape) = source_shape else {
-        return Err(invalid_pattern());
-    };
     let element_type = item_shape.value_type();
     let has_no_elements = elements.is_empty();
     let mut patterns = Vec::with_capacity(elements.len());
     for element in elements {
         patterns.push(
-            plan_runtime_pattern_with_source_shape(element, item_shape.as_ref().clone(), context)?
-                .pattern,
+            plan_runtime_pattern_with_source_shape(element, item_shape.clone(), context)?.pattern,
         );
     }
     let tail = tail
-        .map(|tail| plan_list_tail(tail, item_shape.as_ref(), context))
+        .map(|tail| plan_list_tail(tail, &item_shape, context))
         .transpose()?;
     let is_total = has_no_elements && tail.is_some();
     let total_binding = if is_total {
@@ -360,65 +375,32 @@ fn plan_list_tail(
     item_shape: &ValueShape,
     context: &mut PlanContext<'_>,
 ) -> Result<ListAssertTail, PlanError> {
-    match tail.pattern {
-        Pattern::Variable { name, type_, .. }
-            if context.value_type(type_.as_ref())
-                == ValueType::List(Box::new(item_shape.value_type())) =>
-        {
-            Ok(ListAssertTail::bind(
-                context.define_list_local_shape(name.clone(), item_shape.clone()),
-                name,
-            ))
-        }
-        Pattern::Discard { type_, .. }
-            if context.value_type(type_.as_ref())
-                == ValueType::List(Box::new(item_shape.value_type())) =>
-        {
-            Ok(ListAssertTail::Ignore)
-        }
-        _ => Err(invalid_pattern()),
+    let expected = ValueShape::List(Box::new(item_shape.clone()));
+    match super::validate_list_tail(&tail.pattern, &expected, context)? {
+        super::ValidatedListTail::Named(name) => Ok(ListAssertTail::bind(
+            context.define_list_local_shape(name.clone(), item_shape.clone()),
+            name,
+        )),
+        super::ValidatedListTail::Discard => Ok(ListAssertTail::Ignore),
     }
 }
 
-fn plan_bool_pattern(
-    constructor: Inferred<gleam_core::type_::PatternConstructor>,
-    arguments: Vec<gleam_core::ast::CallArg<TypedPattern>>,
-) -> Result<PlannedRuntimePattern, PlanError> {
-    let Inferred::Known(constructor) = constructor else {
-        return Err(invalid_pattern());
-    };
-    if !arguments.is_empty() {
-        return Err(invalid_pattern());
-    }
-    let value = match constructor.name.as_str() {
-        "True" => true,
-        "False" => false,
-        _ => return Err(invalid_pattern()),
-    };
-    Ok(PlannedRuntimePattern {
+fn plan_bool_pattern(value: bool) -> PlannedRuntimePattern {
+    PlannedRuntimePattern {
         pattern: AssertPattern::Bool(value),
         is_total: false,
         total_binding: None,
         custom_binding: None,
-    })
+    }
 }
 
-fn plan_nil_pattern(
-    constructor: Inferred<gleam_core::type_::PatternConstructor>,
-    arguments: Vec<gleam_core::ast::CallArg<TypedPattern>>,
-) -> Result<PlannedRuntimePattern, PlanError> {
-    let Inferred::Known(constructor) = constructor else {
-        return Err(invalid_pattern());
-    };
-    if constructor.name != "Nil" || !arguments.is_empty() {
-        return Err(invalid_pattern());
-    }
-    Ok(PlannedRuntimePattern {
+fn plan_nil_pattern() -> PlannedRuntimePattern {
+    PlannedRuntimePattern {
         pattern: AssertPattern::Nil,
         is_total: true,
         total_binding: Some(TotalBindingPattern::discard(ValueType::Nil)),
         custom_binding: None,
-    })
+    }
 }
 
 fn plan_custom_pattern(
@@ -428,15 +410,13 @@ fn plan_custom_pattern(
     source_shape: CustomValueShape,
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedCustomPattern, PlanError> {
-    let Inferred::Known(constructor) = constructor else {
-        return Err(invalid_pattern());
-    };
+    let constructor = super::resolved_constructor(&constructor)?;
     let field_types = arguments
         .iter()
-        .map(|argument| pattern_value_type(&argument.value, context))
+        .map(|argument| pattern_value_type_in_context(&argument.value, context))
         .collect::<Result<Vec<_>, _>>()?;
     let resolved_constructor =
-        context.custom_pattern_constructor(type_.as_ref(), &constructor, field_types)?;
+        context.custom_pattern_constructor(type_.as_ref(), constructor, field_types)?;
     let pattern_source_shape = resolved_constructor.source_shape().clone();
     let constructor_count = resolved_constructor.constructor_count();
     let custom_constructor = resolved_constructor.into_constructor();
@@ -547,19 +527,13 @@ fn define_string_binding(
     crate::plan::StringAssertBinding::new(context.define_string_local(name.clone()), name)
 }
 
-fn invalid_pattern() -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::InvalidPattern,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{CustomConstructorRefinement, CustomValueShape};
     use super::{
-        invalid_pattern, pattern_value_shape, pattern_value_type, pattern_value_type_in_context,
-        plan_bool_pattern, plan_custom_pattern, plan_list_tail, plan_nil_pattern,
-        plan_runtime_pattern, plan_runtime_pattern_with_source_shape, total_bit_array_binding,
+        pattern_value_type_in_context, plan_bool_pattern, plan_custom_pattern,
+        plan_custom_subject_pattern, plan_runtime_pattern, plan_runtime_pattern_with_source_shape,
+        total_bit_array_binding,
     };
     use crate::plan::{
         AssertBinding, AssertPattern, BitArrayBindingPattern, BitArrayLocalId, BitArrayPattern,
@@ -568,7 +542,10 @@ mod tests {
         PatternBinding, TotalBindingPattern, TypeParameterId, ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
-    use crate::planner::{InvalidCustomTypeReason, InvalidTypedAstReason, PlanError};
+    use crate::planner::{
+        InvalidBitArraySegmentOptionsReason, InvalidCustomTypeReason, InvalidPatternShapeReason,
+        InvalidTypedAstReason, PatternKind, PlanError,
+    };
     use ecow::EcoString;
     use gleam_core::analyse::Inferred;
     use gleam_core::ast::{
@@ -621,8 +598,7 @@ mod tests {
         );
         assert!(planned.custom_binding.is_none());
 
-        let planned = plan_bool_pattern(Inferred::Known(pattern_constructor("False")), Vec::new())
-            .expect("the False pattern should plan");
+        let planned = plan_bool_pattern(false);
         assert_eq!(planned.pattern, AssertPattern::Bool(false));
         assert!(!planned.is_total);
         assert!(planned.total_binding.is_none());
@@ -729,7 +705,7 @@ mod tests {
         let module = EcoString::from("main");
         let functions = HashMap::<EcoString, FunctionInfo>::new();
         let mut anonymous = AnonymousFunctions::default();
-        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let context = PlanContext::new(&module, &functions, &mut anonymous);
         let span = crate::planner::support::dummy_span();
         let pattern = Pattern::Assign {
             location: span,
@@ -768,7 +744,7 @@ mod tests {
         );
 
         assert_eq!(
-            pattern_value_shape(&pattern, &mut context),
+            super::super::pattern_value_shape(&pattern, &context),
             Ok(expected.clone())
         );
         assert_eq!(
@@ -778,29 +754,14 @@ mod tests {
     }
 
     #[test]
-    fn runtime_pattern_rejects_invalid_typed_ast_shapes_exactly() {
+    fn runtime_pattern_preserves_generic_bindings_and_custom_resolution_errors() {
         let module = EcoString::from("main");
         let functions = HashMap::<EcoString, FunctionInfo>::new();
         let mut anonymous = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module, &functions, &mut anonymous);
         let span = crate::planner::support::dummy_span();
-
-        assert_invalid(plan_runtime_pattern(
-            Pattern::Invalid {
-                location: span,
-                type_: type_::int(),
-            },
-            &mut context,
-        ));
-        assert_invalid(plan_runtime_pattern(
-            Pattern::BitArraySize(BitArraySize::Int {
-                location: span,
-                value: "1".into(),
-                int_value: BigInt::from(1),
-            }),
-            &mut context,
-        ));
         let parameter = TypeParameterId(0);
+
         let generic_binding = plan_runtime_pattern(
             Pattern::Variable {
                 location: span,
@@ -845,177 +806,18 @@ mod tests {
             ))),
         );
         assert!(generic_discard.custom_binding.is_none());
-        assert_invalid(plan_runtime_pattern(
-            Pattern::Tuple {
-                location: span,
-                elements: vec![Pattern::BitArraySize(BitArraySize::Int {
-                    location: span,
-                    value: "1".into(),
-                    int_value: BigInt::from(1),
-                })],
-            },
-            &mut context,
-        ));
-        let tuple = Pattern::Tuple {
-            location: span,
-            elements: vec![Pattern::Discard {
-                name: "_".into(),
-                location: span,
-                type_: type_::int(),
-            }],
-        };
-        assert_invalid(plan_runtime_pattern_with_source_shape(
-            tuple.clone(),
-            ValueShape::Int,
-            &mut context,
-        ));
-        assert_invalid(plan_runtime_pattern_with_source_shape(
-            tuple,
-            ValueShape::Tuple(Vec::new().into_boxed_slice()),
-            &mut context,
-        ));
-        assert_invalid(plan_runtime_pattern_with_source_shape(
-            Pattern::Tuple {
-                location: span,
-                elements: vec![Pattern::Invalid {
-                    location: span,
-                    type_: type_::int(),
-                }],
-            },
-            ValueShape::Tuple(vec![ValueShape::Int].into_boxed_slice()),
-            &mut context,
-        ));
-        assert_invalid(plan_runtime_pattern(
-            Pattern::Assign {
-                location: span,
-                name: "alias".into(),
-                pattern: Box::new(Pattern::BitArraySize(BitArraySize::Int {
-                    location: span,
-                    value: "1".into(),
-                    int_value: BigInt::from(1),
-                })),
-            },
-            &mut context,
-        ));
-        assert_invalid(plan_runtime_pattern(
-            Pattern::Assign {
-                location: span,
-                name: "alias".into(),
-                pattern: Box::new(Pattern::Invalid {
-                    location: span,
-                    type_: type_::int(),
-                }),
-            },
-            &mut context,
-        ));
-        assert_invalid(plan_runtime_pattern(
-            Pattern::List {
-                location: span,
-                elements: Vec::new(),
-                tail: None,
-                type_: type_::int(),
-            },
-            &mut context,
-        ));
-        assert_invalid(plan_runtime_pattern(
-            Pattern::List {
-                location: span,
-                elements: vec![Pattern::Invalid {
-                    location: span,
-                    type_: type_::int(),
-                }],
-                tail: None,
-                type_: type_::list(type_::int()),
-            },
-            &mut context,
-        ));
-        assert_invalid(plan_runtime_pattern(
-            Pattern::List {
-                location: span,
-                elements: Vec::new(),
-                tail: Some(Box::new(TailPattern {
-                    location: span,
-                    pattern: Pattern::Int {
-                        location: span,
-                        value: "1".into(),
-                        int_value: BigInt::from(1),
-                    },
-                })),
-                type_: type_::list(type_::int()),
-            },
-            &mut context,
-        ));
-        assert_eq!(
-            plan_list_tail(
-                TailPattern {
-                    location: span,
-                    pattern: Pattern::Int {
-                        location: span,
-                        value: "1".into(),
-                        int_value: BigInt::from(1),
-                    },
-                },
-                &ValueShape::Int,
-                &mut context,
-            ),
-            Err(invalid_pattern()),
-        );
 
-        let argument = CallArg {
-            label: None,
-            location: span,
-            value: Pattern::Discard {
-                name: "_".into(),
-                location: span,
-                type_: type_::bool(),
-            },
-            implicit: None,
-        };
-        assert_invalid(plan_bool_pattern(Inferred::Unknown, Vec::new()));
-        assert_invalid(plan_bool_pattern(
-            Inferred::Known(pattern_constructor("True")),
-            vec![argument],
-        ));
-        assert_invalid(plan_bool_pattern(
-            Inferred::Known(pattern_constructor("Other")),
-            Vec::new(),
-        ));
-        assert_invalid(plan_nil_pattern(Inferred::Unknown, Vec::new()));
-        assert_invalid(plan_nil_pattern(
-            Inferred::Known(pattern_constructor("Other")),
-            Vec::new(),
-        ));
-        assert_invalid(plan_runtime_pattern(
-            Pattern::Constructor {
-                location: span,
-                name_location: span,
-                name: "Invalid".into(),
-                arguments: Vec::new(),
-                module: None,
-                constructor: Inferred::Known(pattern_constructor("Invalid")),
-                spread: None,
-                type_: type_::generic_var(0),
-            },
-            &mut context,
-        ));
         let result_shape = CustomValueShape::new(
             CustomTypeName::new("".into(), "gleam".into(), "Result".into()),
             vec![ValueShape::Int, ValueShape::String],
             CustomConstructorRefinement::Any,
         );
-        assert_invalid(plan_custom_pattern(
-            Vec::new(),
-            Inferred::Unknown,
-            type_::result(type_::int(), type_::string()),
-            result_shape.clone(),
-            &mut context,
-        ));
         assert_eq!(
             plan_custom_pattern(
                 Vec::new(),
                 Inferred::Known(pattern_constructor("Ok")),
                 type_::generic_var(0),
-                result_shape.clone(),
+                result_shape,
                 &mut context,
             )
             .map(|_| ()),
@@ -1025,111 +827,29 @@ mod tests {
                     module: "gleam".into(),
                     name: "Ok".into(),
                     reason: Box::new(InvalidCustomTypeReason::ConstructorType {
-                        actual: ValueType::Parameter(crate::plan::TypeParameterId(0)),
+                        actual: ValueType::Parameter(parameter),
                     }),
                 },
             }),
         );
-        assert_invalid(plan_custom_pattern(
-            vec![CallArg {
-                label: None,
-                location: span,
-                value: Pattern::BitArraySize(BitArraySize::Int {
-                    location: span,
-                    value: "1".into(),
-                    int_value: BigInt::from(1),
-                }),
-                implicit: None,
-            }],
-            Inferred::Known(pattern_constructor("Ok")),
-            type_::result(type_::int(), type_::string()),
-            result_shape.clone(),
-            &mut context,
-        ));
-        assert_invalid(plan_custom_pattern(
-            vec![CallArg {
-                label: None,
-                location: span,
-                value: Pattern::Invalid {
-                    location: span,
-                    type_: type_::int(),
-                },
-                implicit: None,
-            }],
-            Inferred::Known(pattern_constructor("Ok")),
-            type_::result(type_::int(), type_::string()),
-            result_shape,
-            &mut context,
-        ));
 
         assert_eq!(
             total_bit_array_binding(&BitArrayPattern::new(Vec::new())),
             None
         );
         assert_eq!(
-            pattern_value_type(
+            pattern_value_type_in_context(
                 &Pattern::Variable {
                     location: span,
-                    name: "value".into(),
+                    name: "other".into(),
                     type_: type_::generic_var(0),
                     origin: VariableOrigin::generated(),
                 },
-                &mut context
+                &context,
             ),
             Ok(ValueType::Parameter(parameter)),
         );
-        assert_eq!(
-            pattern_value_type(
-                &Pattern::Invalid {
-                    location: span,
-                    type_: type_::int(),
-                },
-                &mut context
-            ),
-            Ok(ValueType::Int),
-        );
-        assert_eq!(
-            pattern_value_type(
-                &Pattern::BitArraySize(BitArraySize::Int {
-                    location: span,
-                    value: "1".into(),
-                    int_value: BigInt::from(1),
-                }),
-                &mut context
-            ),
-            Err(invalid_pattern()),
-        );
-        assert_eq!(
-            pattern_value_type(
-                &Pattern::Tuple {
-                    location: span,
-                    elements: vec![Pattern::BitArraySize(BitArraySize::Int {
-                        location: span,
-                        value: "1".into(),
-                        int_value: BigInt::from(1),
-                    })],
-                },
-                &mut context
-            ),
-            Err(invalid_pattern()),
-        );
-        assert_eq!(
-            pattern_value_type(
-                &Pattern::Assign {
-                    location: span,
-                    name: "alias".into(),
-                    pattern: Box::new(Pattern::BitArraySize(BitArraySize::Int {
-                        location: span,
-                        value: "1".into(),
-                        int_value: BigInt::from(1),
-                    })),
-                },
-                &mut context
-            ),
-            Err(invalid_pattern()),
-        );
     }
-
     #[test]
     fn inferred_custom_variant_is_a_total_runtime_pattern() {
         let module = EcoString::from("main");
@@ -1306,8 +1026,391 @@ mod tests {
         );
     }
 
-    fn assert_invalid<T>(result: Result<T, crate::planner::PlanError>) {
-        assert_eq!(result.map(|_| ()), Err(invalid_pattern()));
+    #[test]
+    fn runtime_pattern_boundaries_reject_malformed_structural_shapes() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let span = crate::planner::support::dummy_span();
+        let result_type = crate::plan::CustomType::new(
+            CustomTypeName::new("".into(), "gleam".into(), "Result".into()),
+            vec![ValueType::Int, ValueType::String],
+        );
+        let result_shape = CustomValueShape::any(result_type.clone());
+
+        let malformed = [
+            (
+                Pattern::Tuple {
+                    location: span,
+                    elements: Vec::new(),
+                },
+                ValueShape::Int,
+                InvalidPatternShapeReason::TypeMismatch {
+                    expected: ValueType::Int,
+                    actual: ValueType::Tuple(Vec::new()),
+                },
+            ),
+            (
+                Pattern::List {
+                    location: span,
+                    elements: Vec::new(),
+                    tail: None,
+                    type_: type_::list(type_::int()),
+                },
+                ValueShape::Int,
+                InvalidPatternShapeReason::KindMismatch {
+                    expected: ValueType::Int,
+                    actual: PatternKind::List,
+                },
+            ),
+            (
+                Pattern::List {
+                    location: span,
+                    elements: Vec::new(),
+                    tail: None,
+                    type_: type_::list(type_::string()),
+                },
+                ValueShape::List(Box::new(ValueShape::Int)),
+                InvalidPatternShapeReason::TypeMismatch {
+                    expected: ValueType::List(Box::new(ValueType::Int)),
+                    actual: ValueType::List(Box::new(ValueType::String)),
+                },
+            ),
+            (
+                Pattern::Constructor {
+                    location: span,
+                    name_location: span,
+                    name: "Ok".into(),
+                    arguments: Vec::new(),
+                    module: None,
+                    constructor: Inferred::Known(pattern_constructor("Ok")),
+                    spread: None,
+                    type_: type_::result(type_::int(), type_::string()),
+                },
+                ValueShape::Int,
+                InvalidPatternShapeReason::TypeMismatch {
+                    expected: ValueType::Int,
+                    actual: ValueType::Custom(result_type.clone()),
+                },
+            ),
+        ];
+        for (pattern, source_shape, reason) in malformed {
+            assert_eq!(
+                plan_runtime_pattern_with_source_shape(pattern, source_shape, &mut context)
+                    .map(|_| ()),
+                Err(pattern_shape_error(reason)),
+            );
+        }
+
+        for (pattern, reason) in [
+            (
+                Pattern::Invalid {
+                    location: span,
+                    type_: type_::int(),
+                },
+                InvalidPatternShapeReason::InvalidNode,
+            ),
+            (
+                Pattern::BitArraySize(BitArraySize::Int {
+                    location: span,
+                    value: "1".into(),
+                    int_value: BigInt::from(1),
+                }),
+                InvalidPatternShapeReason::BitArraySizeNode,
+            ),
+        ] {
+            assert_eq!(
+                plan_runtime_pattern_with_source_shape(pattern, ValueShape::Int, &mut context)
+                    .map(|_| ()),
+                Err(pattern_shape_error(reason)),
+            );
+        }
+
+        assert_eq!(
+            plan_custom_subject_pattern(
+                Pattern::Discard {
+                    name: "_".into(),
+                    location: span,
+                    type_: type_::result(type_::int(), type_::string()),
+                },
+                result_shape,
+                &mut context,
+            )
+            .map(|_| ()),
+            Err(pattern_shape_error(
+                InvalidPatternShapeReason::KindMismatch {
+                    expected: ValueType::Custom(result_type.clone()),
+                    actual: PatternKind::Discard,
+                }
+            )),
+        );
+
+        assert_eq!(
+            plan_runtime_pattern(
+                Pattern::Invalid {
+                    location: span,
+                    type_: type_::int(),
+                },
+                &mut context,
+            )
+            .map(|_| ()),
+            Err(pattern_shape_error(InvalidPatternShapeReason::InvalidNode,)),
+        );
+
+        assert_eq!(
+            plan_runtime_pattern_with_source_shape(
+                Pattern::Variable {
+                    location: span,
+                    name: "value".into(),
+                    type_: type_::string(),
+                    origin: VariableOrigin::generated(),
+                },
+                ValueShape::Int,
+                &mut context,
+            )
+            .map(|_| ()),
+            Err(pattern_shape_error(
+                InvalidPatternShapeReason::TypeMismatch {
+                    expected: ValueType::Int,
+                    actual: ValueType::String,
+                },
+            )),
+        );
+
+        assert_eq!(
+            plan_runtime_pattern_with_source_shape(
+                Pattern::Tuple {
+                    location: span,
+                    elements: Vec::new(),
+                },
+                ValueShape::Tuple(vec![ValueShape::Int].into_boxed_slice()),
+                &mut context,
+            )
+            .map(|_| ()),
+            Err(pattern_shape_error(InvalidPatternShapeReason::TupleArity {
+                expected: 1,
+                actual: 0,
+            },)),
+        );
+
+        assert_eq!(
+            plan_runtime_pattern_with_source_shape(
+                Pattern::Tuple {
+                    location: span,
+                    elements: vec![Pattern::Variable {
+                        location: span,
+                        name: "value".into(),
+                        type_: type_::string(),
+                        origin: VariableOrigin::generated(),
+                    }],
+                },
+                ValueShape::Tuple(vec![ValueShape::Int].into_boxed_slice()),
+                &mut context,
+            )
+            .map(|_| ()),
+            Err(pattern_shape_error(
+                InvalidPatternShapeReason::TypeMismatch {
+                    expected: ValueType::Int,
+                    actual: ValueType::String,
+                },
+            )),
+        );
+
+        let malformed_bits = Pattern::BitArray {
+            location: span,
+            segments: vec![AstBitArraySegment {
+                location: span,
+                value: Box::new(Pattern::Discard {
+                    name: "_".into(),
+                    location: span,
+                    type_: type_::int(),
+                }),
+                options: vec![
+                    BitArrayOption::Bits { location: span },
+                    BitArrayOption::Bytes { location: span },
+                ],
+                type_: type_::int(),
+            }],
+        };
+        assert_eq!(
+            plan_runtime_pattern_with_source_shape(
+                malformed_bits.clone(),
+                ValueShape::Int,
+                &mut context,
+            )
+            .map(|_| ()),
+            Err(pattern_shape_error(
+                InvalidPatternShapeReason::TypeMismatch {
+                    expected: ValueType::Int,
+                    actual: ValueType::BitArray,
+                },
+            )),
+        );
+        assert_eq!(
+            plan_runtime_pattern_with_source_shape(
+                malformed_bits,
+                ValueShape::BitArray,
+                &mut context,
+            )
+            .map(|_| ()),
+            Err(pattern_shape_error(
+                InvalidPatternShapeReason::BitArraySegmentOptions {
+                    reason: InvalidBitArraySegmentOptionsReason::MultipleKinds,
+                },
+            )),
+        );
+
+        assert_eq!(
+            plan_runtime_pattern_with_source_shape(
+                Pattern::Constructor {
+                    location: span,
+                    name_location: span,
+                    name: "True".into(),
+                    arguments: Vec::new(),
+                    module: None,
+                    constructor: Inferred::Unknown,
+                    spread: None,
+                    type_: type_::bool(),
+                },
+                ValueShape::Bool,
+                &mut context,
+            )
+            .map(|_| ()),
+            Err(pattern_shape_error(
+                InvalidPatternShapeReason::UnresolvedConstructor,
+            )),
+        );
+
+        assert_eq!(
+            plan_runtime_pattern_with_source_shape(
+                Pattern::Assign {
+                    location: span,
+                    name: "whole".into(),
+                    pattern: Box::new(Pattern::Invalid {
+                        location: span,
+                        type_: type_::int(),
+                    }),
+                },
+                ValueShape::Int,
+                &mut context,
+            )
+            .map(|_| ()),
+            Err(pattern_shape_error(InvalidPatternShapeReason::InvalidNode,)),
+        );
+
+        let malformed_list = Pattern::List {
+            location: span,
+            elements: vec![Pattern::Variable {
+                location: span,
+                name: "item".into(),
+                type_: type_::string(),
+                origin: VariableOrigin::generated(),
+            }],
+            tail: Some(Box::new(TailPattern {
+                location: span,
+                pattern: Pattern::Int {
+                    location: span,
+                    value: "1".into(),
+                    int_value: BigInt::from(1),
+                },
+            })),
+            type_: type_::list(type_::int()),
+        };
+        assert_eq!(
+            plan_runtime_pattern_with_source_shape(
+                malformed_list,
+                ValueShape::List(Box::new(ValueShape::Int)),
+                &mut context,
+            )
+            .map(|_| ()),
+            Err(pattern_shape_error(
+                InvalidPatternShapeReason::TypeMismatch {
+                    expected: ValueType::Int,
+                    actual: ValueType::String,
+                },
+            )),
+        );
+
+        let malformed_tail = Pattern::List {
+            location: span,
+            elements: Vec::new(),
+            tail: Some(Box::new(TailPattern {
+                location: span,
+                pattern: Pattern::Int {
+                    location: span,
+                    value: "1".into(),
+                    int_value: BigInt::from(1),
+                },
+            })),
+            type_: type_::list(type_::int()),
+        };
+        assert_eq!(
+            plan_runtime_pattern_with_source_shape(
+                malformed_tail,
+                ValueShape::List(Box::new(ValueShape::Int)),
+                &mut context,
+            )
+            .map(|_| ()),
+            Err(pattern_shape_error(
+                InvalidPatternShapeReason::ListTailKind {
+                    actual: PatternKind::Int,
+                },
+            )),
+        );
+
+        assert_eq!(
+            plan_custom_pattern(
+                Vec::new(),
+                Inferred::Unknown,
+                type_::result(type_::int(), type_::string()),
+                CustomValueShape::any(result_type.clone()),
+                &mut context,
+            )
+            .map(|_| ()),
+            Err(pattern_shape_error(
+                InvalidPatternShapeReason::UnresolvedConstructor,
+            )),
+        );
+
+        assert_eq!(
+            plan_custom_pattern(
+                vec![CallArg {
+                    label: None,
+                    location: span,
+                    value: Pattern::List {
+                        location: span,
+                        elements: vec![Pattern::String {
+                            location: span,
+                            value: "wrong".into(),
+                        }],
+                        tail: None,
+                        type_: type_::list(type_::int()),
+                    },
+                    implicit: None,
+                }],
+                Inferred::Known(pattern_constructor("Ok")),
+                type_::result(type_::list(type_::int()), type_::string()),
+                CustomValueShape::any(crate::plan::CustomType::new(
+                    CustomTypeName::new("".into(), "gleam".into(), "Result".into()),
+                    vec![ValueType::List(Box::new(ValueType::Int)), ValueType::String],
+                )),
+                &mut context,
+            )
+            .map(|_| ()),
+            Err(pattern_shape_error(
+                InvalidPatternShapeReason::TypeMismatch {
+                    expected: ValueType::Int,
+                    actual: ValueType::String,
+                },
+            )),
+        );
+    }
+
+    fn pattern_shape_error(reason: InvalidPatternShapeReason) -> PlanError {
+        PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::PatternShape { reason },
+        }
     }
 
     fn pattern_constructor(name: &str) -> PatternConstructor {

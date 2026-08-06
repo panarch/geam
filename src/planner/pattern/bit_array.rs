@@ -6,7 +6,10 @@ use crate::plan::{
 };
 use crate::planner::bit_array::validate_supported_endianness_option;
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidTypedAstReason, PlanError};
+use crate::planner::error::{
+    InvalidBitArraySegmentOptionsReason, InvalidPatternShapeReason, InvalidTypedAstReason,
+    PlanError,
+};
 use gleam_core::ast::{
     BitArrayOption, BitArraySegment, BitArraySize, Constant, IntOperator, Pattern,
 };
@@ -23,11 +26,7 @@ pub(in crate::planner) fn plan_bit_array_pattern(
     let segment_count = segments.len();
     for (index, segment) in segments.into_iter().enumerate() {
         let segment = plan_segment(segment, context)?;
-        if index + 1 < segment_count
-            && matches!(segment, BitArrayPatternSegment::Bits { size: None, .. })
-        {
-            return Err(invalid_pattern());
-        }
+        validate_segment_position(index, segment_count, &segment)?;
         planned.push(segment);
     }
     Ok((BitArrayPattern::new(planned), is_total))
@@ -40,8 +39,7 @@ fn plan_segment(
     for option in &segment.options {
         validate_supported_endianness_option(option)?;
     }
-    let kind = segment_kind(&segment)?;
-    validate_segment_options(&segment, kind)?;
+    let kind = validate_segment_options(&segment)?;
     let endianness = segment_endianness(&segment);
     let unit = segment.unit();
     let explicit_size = segment
@@ -74,7 +72,7 @@ fn plan_segment(
             unit,
         }),
         SegmentKind::String(encoding) => Ok(BitArrayPatternSegment::String {
-            pattern: plan_string_pattern(*segment.value)?,
+            pattern: plan_string_pattern(*segment.value, context)?,
             encoding,
         }),
         SegmentKind::UtfCodepoint(encoding) => Ok(BitArrayPatternSegment::UtfCodepoint {
@@ -93,60 +91,10 @@ enum SegmentKind {
     UtfCodepoint(StringEncoding),
 }
 
-fn segment_kind(
+fn validate_segment_options(
     segment: &BitArraySegment<Pattern<Arc<Type>>, Arc<Type>>,
 ) -> Result<SegmentKind, PlanError> {
     let mut kind = None;
-    for option in &segment.options {
-        let next = match option {
-            BitArrayOption::Bytes { .. } | BitArrayOption::Bits { .. } => Some(SegmentKind::Bits),
-            BitArrayOption::Int { .. } => Some(SegmentKind::Int),
-            BitArrayOption::Float { .. } => Some(SegmentKind::Float),
-            BitArrayOption::Utf8 { .. } => Some(SegmentKind::String(StringEncoding::Utf8)),
-            BitArrayOption::Utf16 { .. } => Some(SegmentKind::String(StringEncoding::Utf16(
-                segment_endianness(segment),
-            ))),
-            BitArrayOption::Utf32 { .. } => Some(SegmentKind::String(StringEncoding::Utf32(
-                segment_endianness(segment),
-            ))),
-            BitArrayOption::Utf8Codepoint { .. } => {
-                Some(SegmentKind::UtfCodepoint(StringEncoding::Utf8))
-            }
-            BitArrayOption::Utf16Codepoint { .. } => Some(SegmentKind::UtfCodepoint(
-                StringEncoding::Utf16(segment_endianness(segment)),
-            )),
-            BitArrayOption::Utf32Codepoint { .. } => Some(SegmentKind::UtfCodepoint(
-                StringEncoding::Utf32(segment_endianness(segment)),
-            )),
-            BitArrayOption::Signed { .. }
-            | BitArrayOption::Unsigned { .. }
-            | BitArrayOption::Big { .. }
-            | BitArrayOption::Little { .. }
-            | BitArrayOption::Native { .. }
-            | BitArrayOption::Size { .. }
-            | BitArrayOption::Unit { .. } => None,
-        };
-        if let Some(next) = next {
-            if kind.is_some() {
-                return Err(invalid_pattern());
-            }
-            kind = Some(next);
-        }
-    }
-    if let Some(kind) = kind {
-        return Ok(kind);
-    }
-    if matches!(segment.value_unwrapping_assign(), Pattern::String { .. }) {
-        Ok(SegmentKind::String(StringEncoding::Utf8))
-    } else {
-        Ok(SegmentKind::Int)
-    }
-}
-
-fn validate_segment_options(
-    segment: &BitArraySegment<Pattern<Arc<Type>>, Arc<Type>>,
-    kind: SegmentKind,
-) -> Result<(), PlanError> {
     let mut kind_count = 0;
     let mut signedness_count = 0;
     let mut endianness_count = 0;
@@ -156,16 +104,50 @@ fn validate_segment_options(
 
     for option in &segment.options {
         match option {
-            BitArrayOption::Bytes { .. }
-            | BitArrayOption::Bits { .. }
-            | BitArrayOption::Int { .. }
-            | BitArrayOption::Float { .. }
-            | BitArrayOption::Utf8 { .. }
-            | BitArrayOption::Utf16 { .. }
-            | BitArrayOption::Utf32 { .. }
-            | BitArrayOption::Utf8Codepoint { .. }
-            | BitArrayOption::Utf16Codepoint { .. }
-            | BitArrayOption::Utf32Codepoint { .. } => kind_count += 1,
+            BitArrayOption::Bytes { .. } | BitArrayOption::Bits { .. } => {
+                kind_count += 1;
+                kind = Some(SegmentKind::Bits);
+            }
+            BitArrayOption::Int { .. } => {
+                kind_count += 1;
+                kind = Some(SegmentKind::Int);
+            }
+            BitArrayOption::Float { .. } => {
+                kind_count += 1;
+                kind = Some(SegmentKind::Float);
+            }
+            BitArrayOption::Utf8 { .. } => {
+                kind_count += 1;
+                kind = Some(SegmentKind::String(StringEncoding::Utf8));
+            }
+            BitArrayOption::Utf16 { .. } => {
+                kind_count += 1;
+                kind = Some(SegmentKind::String(StringEncoding::Utf16(
+                    segment_endianness(segment),
+                )));
+            }
+            BitArrayOption::Utf32 { .. } => {
+                kind_count += 1;
+                kind = Some(SegmentKind::String(StringEncoding::Utf32(
+                    segment_endianness(segment),
+                )));
+            }
+            BitArrayOption::Utf8Codepoint { .. } => {
+                kind_count += 1;
+                kind = Some(SegmentKind::UtfCodepoint(StringEncoding::Utf8));
+            }
+            BitArrayOption::Utf16Codepoint { .. } => {
+                kind_count += 1;
+                kind = Some(SegmentKind::UtfCodepoint(StringEncoding::Utf16(
+                    segment_endianness(segment),
+                )));
+            }
+            BitArrayOption::Utf32Codepoint { .. } => {
+                kind_count += 1;
+                kind = Some(SegmentKind::UtfCodepoint(StringEncoding::Utf32(
+                    segment_endianness(segment),
+                )));
+            }
             BitArrayOption::Signed { .. } | BitArrayOption::Unsigned { .. } => {
                 signedness_count += 1;
             }
@@ -180,13 +162,61 @@ fn validate_segment_options(
         }
     }
 
-    let duplicate_option = kind_count
-        .max(signedness_count)
-        .max(endianness_count)
-        .max(size_count)
-        .max(unit_count)
-        > 1;
-    let invalid_unit = [unit_count > size_count, zero_unit].contains(&true);
+    for (count, reason) in [
+        (
+            kind_count,
+            InvalidBitArraySegmentOptionsReason::MultipleKinds,
+        ),
+        (
+            signedness_count,
+            InvalidBitArraySegmentOptionsReason::MultipleSignedness,
+        ),
+        (
+            endianness_count,
+            InvalidBitArraySegmentOptionsReason::MultipleEndianness,
+        ),
+        (
+            size_count,
+            InvalidBitArraySegmentOptionsReason::MultipleSizes,
+        ),
+        (
+            unit_count,
+            InvalidBitArraySegmentOptionsReason::MultipleUnits,
+        ),
+    ] {
+        if count > 1 {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: InvalidPatternShapeReason::BitArraySegmentOptions { reason },
+                },
+            });
+        }
+    }
+    if unit_count > size_count {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::PatternShape {
+                reason: InvalidPatternShapeReason::BitArraySegmentOptions {
+                    reason: InvalidBitArraySegmentOptionsReason::UnitWithoutSize,
+                },
+            },
+        });
+    }
+    if zero_unit {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::PatternShape {
+                reason: InvalidPatternShapeReason::BitArraySegmentOptions {
+                    reason: InvalidBitArraySegmentOptionsReason::ZeroUnit,
+                },
+            },
+        });
+    }
+    let kind = kind.unwrap_or_else(|| {
+        if matches!(segment.value_unwrapping_assign(), Pattern::String { .. }) {
+            SegmentKind::String(StringEncoding::Utf8)
+        } else {
+            SegmentKind::Int
+        }
+    });
     let incompatible_modifier = match kind {
         SegmentKind::Int => false,
         SegmentKind::Float => signedness_count != 0,
@@ -205,11 +235,31 @@ fn validate_segment_options(
         }
     };
 
-    if [duplicate_option, invalid_unit, incompatible_modifier].contains(&true) {
-        Err(invalid_pattern())
-    } else {
-        Ok(())
+    if incompatible_modifier {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::PatternShape {
+                reason: InvalidPatternShapeReason::BitArraySegmentOptions {
+                    reason: InvalidBitArraySegmentOptionsReason::Incompatible,
+                },
+            },
+        });
     }
+    Ok(kind)
+}
+
+fn validate_segment_position(
+    index: usize,
+    count: usize,
+    segment: &BitArrayPatternSegment,
+) -> Result<(), PlanError> {
+    if index + 1 < count && matches!(segment, BitArrayPatternSegment::Bits { size: None, .. }) {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::PatternShape {
+                reason: InvalidPatternShapeReason::BitArrayUnsizedSegment { index, count },
+            },
+        });
+    }
+    Ok(())
 }
 
 fn segment_endianness(segment: &BitArraySegment<Pattern<Arc<Type>>, Arc<Type>>) -> Endianness {
@@ -230,7 +280,13 @@ fn plan_segment_size(
     context: &mut PlanContext<'_>,
 ) -> Result<BitArrayPatternSize, PlanError> {
     let Pattern::BitArraySize(size) = pattern else {
-        return Err(invalid_pattern());
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::PatternShape {
+                reason: InvalidPatternShapeReason::BitArraySizePattern {
+                    actual: super::pattern_kind(pattern),
+                },
+            },
+        });
     };
     Ok(BitArrayPatternSize::new(plan_size(size, context)?, unit))
 }
@@ -246,10 +302,7 @@ fn plan_size(
         BitArraySize::Variable {
             name, constructor, ..
         } => {
-            let constructor = constructor
-                .as_deref()
-                .cloned()
-                .ok_or_else(invalid_pattern)?;
+            let constructor = resolved_size_constructor(name, constructor.as_deref().cloned())?;
             plan_size_variable(name.clone(), constructor, context)
         }
         BitArraySize::BinaryOperator {
@@ -277,16 +330,18 @@ fn plan_size_variable(
     constructor: ValueConstructor,
     context: &PlanContext<'_>,
 ) -> Result<BitArrayPatternSizeExpr, PlanError> {
-    match constructor.variant {
-        ValueConstructorVariant::LocalVariable { .. } => match context.lookup_local(&name) {
-            Some((LocalId::Int(local), ValueType::Int)) => {
-                Ok(BitArrayPatternSizeExpr::local_get(local, name))
+    let source = match constructor.variant {
+        ValueConstructorVariant::LocalVariable { .. } => {
+            let Some((local, actual)) = context.lookup_local(&name) else {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::UnknownLocal { name },
+                });
+            };
+            match local {
+                LocalId::Int(local) => Some(BitArraySizeSource::Local(local)),
+                _ => return Err(super::pattern_type_mismatch(ValueType::Int, actual)),
             }
-            Some(_) => Err(invalid_pattern()),
-            None => Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::UnknownLocal { name },
-            }),
-        },
+        }
         ValueConstructorVariant::ModuleConstant {
             module,
             name: constant_name,
@@ -298,10 +353,26 @@ fn plan_size_variable(
                 &constant_name,
                 &crate::plan::ValueShape::Int,
             )?;
-            plan_size_constant(literal, context)
+            Some(BitArraySizeSource::Constant(literal))
         }
-        _ => Err(invalid_pattern()),
+        _ => None,
+    };
+    let Some(source) = source else {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::PatternShape {
+                reason: InvalidPatternShapeReason::BitArraySizeSource { name },
+            },
+        });
+    };
+    match source {
+        BitArraySizeSource::Local(local) => Ok(BitArrayPatternSizeExpr::local_get(local, name)),
+        BitArraySizeSource::Constant(constant) => plan_size_constant(constant, context),
     }
+}
+
+enum BitArraySizeSource {
+    Local(IntLocalId),
+    Constant(Constant<Arc<Type>>),
 }
 
 fn plan_size_constant(
@@ -313,13 +384,26 @@ fn plan_size_constant(
         Constant::Var {
             name, constructor, ..
         } => {
-            let constructor = constructor
-                .map(|constructor| *constructor)
-                .ok_or_else(invalid_pattern)?;
+            let constructor = resolved_size_constructor(&name, constructor.map(|value| *value))?;
             plan_size_variable(name, constructor, context)
         }
-        _ => Err(invalid_pattern()),
+        _ => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::PatternShape {
+                reason: InvalidPatternShapeReason::BitArraySizeConstant,
+            },
+        }),
     }
+}
+
+fn resolved_size_constructor(
+    name: &ecow::EcoString,
+    constructor: Option<ValueConstructor>,
+) -> Result<ValueConstructor, PlanError> {
+    constructor.ok_or_else(|| PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::PatternShape {
+            reason: InvalidPatternShapeReason::BitArraySizeUnresolved { name: name.clone() },
+        },
+    })
 }
 
 fn size_value(value: u8) -> BitArrayPatternSizeExpr {
@@ -345,7 +429,11 @@ fn plan_int_pattern(
                 binding: PatternBinding::new(local, name),
             })
         }
-        _ => Err(invalid_pattern()),
+        pattern => Err(super::unexpected_pattern(
+            &pattern,
+            &crate::plan::ValueShape::Int,
+            context,
+        )),
     }
 }
 
@@ -370,7 +458,11 @@ fn plan_float_pattern(
                 binding: PatternBinding::new(local, name),
             })
         }
-        _ => Err(invalid_pattern()),
+        pattern => Err(super::unexpected_pattern(
+            &pattern,
+            &crate::plan::ValueShape::Float,
+            context,
+        )),
     }
 }
 
@@ -396,18 +488,28 @@ fn plan_bits_pattern(
                 binding: PatternBinding::new(local, name),
             })
         }
-        _ => Err(invalid_pattern()),
+        pattern => Err(super::unexpected_pattern(
+            &pattern,
+            &crate::plan::ValueShape::BitArray,
+            context,
+        )),
     }
 }
 
-fn plan_string_pattern(pattern: Pattern<Arc<Type>>) -> Result<BitArrayStringPattern, PlanError> {
+fn plan_string_pattern(
+    pattern: Pattern<Arc<Type>>,
+    context: &PlanContext<'_>,
+) -> Result<BitArrayStringPattern, PlanError> {
     match pattern {
         Pattern::String { value, .. } => Ok(BitArrayStringPattern::Literal(
             convert_string_escape_chars(&value),
         )),
-        Pattern::Discard { .. } => Ok(BitArrayStringPattern::Discard),
-        Pattern::Variable { .. } | Pattern::Assign { .. } => Err(invalid_pattern()),
-        _ => Err(invalid_pattern()),
+        Pattern::Discard { type_, .. } if type_.is_string() => Ok(BitArrayStringPattern::Discard),
+        pattern => Err(super::unexpected_pattern(
+            &pattern,
+            &crate::plan::ValueShape::String,
+            context,
+        )),
     }
 }
 
@@ -433,7 +535,11 @@ fn plan_utf_codepoint_pattern(
                 binding: PatternBinding::new(local, name),
             })
         }
-        _ => Err(invalid_pattern()),
+        pattern => Err(super::unexpected_pattern(
+            &pattern,
+            &crate::plan::ValueShape::UtfCodepoint,
+            context,
+        )),
     }
 }
 
@@ -446,22 +552,17 @@ fn is_total_pattern(segments: &[BitArraySegment<Pattern<Arc<Type>>, Arc<Type>>])
         )
 }
 
-fn invalid_pattern() -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::InvalidPattern,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::plan::{
         BitArrayBindingPattern, BitArrayLocalId, BitArrayPattern, BitArrayPatternSegment,
         BitArrayPatternSizeExpr, BitArrayStringPattern, Endianness, FloatLocalId, IntLocalId,
-        PatternBinding, Signedness, StringEncoding, UtfCodepointLocalId,
+        PatternBinding, Signedness, StringEncoding, UtfCodepointLocalId, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::error::{
-        InvalidModuleReferenceReason, InvalidTypedAstReason, PlanError,
+        InvalidBitArraySegmentOptionsReason, InvalidModuleReferenceReason,
+        InvalidPatternShapeReason, InvalidTypedAstReason, PatternKind, PlanError,
         UnsupportedBitArraySegmentReason,
     };
     use crate::planner::support::{compile, dummy_span, expect_plan_error};
@@ -535,9 +636,9 @@ pub fn main() {
             constructor: None,
             type_: type_::int(),
         };
-        let invalid = || {
+        let invalid = |reason| {
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape { reason },
             })
         };
         let mut cases = Vec::new();
@@ -550,7 +651,10 @@ pub fn main() {
                 }],
                 type_::int(),
             )],
-            invalid(),
+            invalid(InvalidPatternShapeReason::TypeMismatch {
+                expected: ValueType::UtfCodepoint,
+                actual: ValueType::Int,
+            }),
         ));
         cases.push((
             vec![segment(
@@ -560,7 +664,10 @@ pub fn main() {
                 }],
                 type_::utf_codepoint(),
             )],
-            invalid(),
+            invalid(InvalidPatternShapeReason::TypeMismatch {
+                expected: ValueType::UtfCodepoint,
+                actual: ValueType::Int,
+            }),
         ));
         for options in [
             vec![
@@ -592,74 +699,99 @@ pub fn main() {
                     options,
                     type_::utf_codepoint(),
                 )],
-                invalid(),
+                invalid(InvalidPatternShapeReason::BitArraySegmentOptions {
+                    reason: InvalidBitArraySegmentOptionsReason::Incompatible,
+                }),
             ));
         }
 
-        for options in [
-            vec![
-                BitArrayOption::Int {
-                    location: dummy_span(),
-                },
-                BitArrayOption::Int {
-                    location: dummy_span(),
-                },
-            ],
-            vec![BitArrayOption::Unit {
-                location: dummy_span(),
-                value: 2,
-            }],
-            vec![
-                BitArrayOption::Size {
-                    location: dummy_span(),
-                    value: Box::new(Pattern::BitArraySize(gleam_core::ast::BitArraySize::Int {
+        for (options, reason) in [
+            (
+                vec![
+                    BitArrayOption::Int {
                         location: dummy_span(),
-                        value: "1".into(),
-                        int_value: 1.into(),
-                    })),
-                    short_form: false,
-                },
-                BitArrayOption::Unit {
+                    },
+                    BitArrayOption::Int {
+                        location: dummy_span(),
+                    },
+                ],
+                InvalidBitArraySegmentOptionsReason::MultipleKinds,
+            ),
+            (
+                vec![BitArrayOption::Unit {
                     location: dummy_span(),
-                    value: 0,
-                },
-            ],
-            vec![
-                BitArrayOption::Float {
-                    location: dummy_span(),
-                },
-                BitArrayOption::Signed {
-                    location: dummy_span(),
-                },
-            ],
-            vec![
-                BitArrayOption::Bits {
-                    location: dummy_span(),
-                },
-                BitArrayOption::Little {
-                    location: dummy_span(),
-                },
-            ],
-            vec![
-                BitArrayOption::Utf8 {
-                    location: dummy_span(),
-                },
-                BitArrayOption::Big {
-                    location: dummy_span(),
-                },
-            ],
-            vec![
-                BitArrayOption::Utf16 {
-                    location: dummy_span(),
-                },
-                BitArrayOption::Signed {
-                    location: dummy_span(),
-                },
-            ],
+                    value: 2,
+                }],
+                InvalidBitArraySegmentOptionsReason::UnitWithoutSize,
+            ),
+            (
+                vec![
+                    BitArrayOption::Size {
+                        location: dummy_span(),
+                        value: Box::new(Pattern::BitArraySize(
+                            gleam_core::ast::BitArraySize::Int {
+                                location: dummy_span(),
+                                value: "1".into(),
+                                int_value: 1.into(),
+                            },
+                        )),
+                        short_form: false,
+                    },
+                    BitArrayOption::Unit {
+                        location: dummy_span(),
+                        value: 0,
+                    },
+                ],
+                InvalidBitArraySegmentOptionsReason::ZeroUnit,
+            ),
+            (
+                vec![
+                    BitArrayOption::Float {
+                        location: dummy_span(),
+                    },
+                    BitArrayOption::Signed {
+                        location: dummy_span(),
+                    },
+                ],
+                InvalidBitArraySegmentOptionsReason::Incompatible,
+            ),
+            (
+                vec![
+                    BitArrayOption::Bits {
+                        location: dummy_span(),
+                    },
+                    BitArrayOption::Little {
+                        location: dummy_span(),
+                    },
+                ],
+                InvalidBitArraySegmentOptionsReason::Incompatible,
+            ),
+            (
+                vec![
+                    BitArrayOption::Utf8 {
+                        location: dummy_span(),
+                    },
+                    BitArrayOption::Big {
+                        location: dummy_span(),
+                    },
+                ],
+                InvalidBitArraySegmentOptionsReason::Incompatible,
+            ),
+            (
+                vec![
+                    BitArrayOption::Utf16 {
+                        location: dummy_span(),
+                    },
+                    BitArrayOption::Signed {
+                        location: dummy_span(),
+                    },
+                ],
+                InvalidBitArraySegmentOptionsReason::Incompatible,
+            ),
         ] {
             cases.push((
                 vec![segment(discard(type_::int()), options, type_::int())],
-                invalid(),
+                invalid(InvalidPatternShapeReason::BitArraySegmentOptions { reason }),
             ));
         }
         cases.push((
@@ -675,7 +807,10 @@ pub fn main() {
                 }],
                 type_::string(),
             )],
-            invalid(),
+            invalid(InvalidPatternShapeReason::KindMismatch {
+                expected: ValueType::String,
+                actual: PatternKind::Variable,
+            }),
         ));
         cases.push((
             vec![
@@ -694,7 +829,7 @@ pub fn main() {
                     type_::int(),
                 ),
             ],
-            invalid(),
+            invalid(InvalidPatternShapeReason::BitArrayUnsizedSegment { index: 0, count: 2 }),
         ));
 
         for (value, options, type_, expected) in [
@@ -706,7 +841,13 @@ pub fn main() {
                     short_form: false,
                 }],
                 type_::int(),
-                super::invalid_pattern(),
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::PatternShape {
+                        reason: InvalidPatternShapeReason::BitArraySizePattern {
+                            actual: PatternKind::Discard,
+                        },
+                    },
+                },
             ),
             (
                 discard(type_::string()),
@@ -714,7 +855,14 @@ pub fn main() {
                     location: dummy_span(),
                 }],
                 type_::int(),
-                super::invalid_pattern(),
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::PatternShape {
+                        reason: InvalidPatternShapeReason::TypeMismatch {
+                            expected: ValueType::Int,
+                            actual: ValueType::String,
+                        },
+                    },
+                },
             ),
             (
                 discard(type_::int()),
@@ -722,7 +870,14 @@ pub fn main() {
                     location: dummy_span(),
                 }],
                 type_::float(),
-                super::invalid_pattern(),
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::PatternShape {
+                        reason: InvalidPatternShapeReason::TypeMismatch {
+                            expected: ValueType::Float,
+                            actual: ValueType::Int,
+                        },
+                    },
+                },
             ),
             (
                 discard(type_::int()),
@@ -730,7 +885,14 @@ pub fn main() {
                     location: dummy_span(),
                 }],
                 type_::bit_array(),
-                super::invalid_pattern(),
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::PatternShape {
+                        reason: InvalidPatternShapeReason::TypeMismatch {
+                            expected: ValueType::BitArray,
+                            actual: ValueType::Int,
+                        },
+                    },
+                },
             ),
             (
                 Pattern::Int {
@@ -742,7 +904,14 @@ pub fn main() {
                     location: dummy_span(),
                 }],
                 type_::string(),
-                super::invalid_pattern(),
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::PatternShape {
+                        reason: InvalidPatternShapeReason::TypeMismatch {
+                            expected: ValueType::String,
+                            actual: ValueType::Int,
+                        },
+                    },
+                },
             ),
             (
                 alias("int_alias", discard(type_::string())),
@@ -750,7 +919,14 @@ pub fn main() {
                     location: dummy_span(),
                 }],
                 type_::int(),
-                super::invalid_pattern(),
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::PatternShape {
+                        reason: InvalidPatternShapeReason::TypeMismatch {
+                            expected: ValueType::Int,
+                            actual: ValueType::String,
+                        },
+                    },
+                },
             ),
             (
                 alias("float_alias", discard(type_::int())),
@@ -758,7 +934,14 @@ pub fn main() {
                     location: dummy_span(),
                 }],
                 type_::float(),
-                super::invalid_pattern(),
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::PatternShape {
+                        reason: InvalidPatternShapeReason::TypeMismatch {
+                            expected: ValueType::Float,
+                            actual: ValueType::Int,
+                        },
+                    },
+                },
             ),
             (
                 alias("bits_alias", discard(type_::int())),
@@ -766,13 +949,26 @@ pub fn main() {
                     location: dummy_span(),
                 }],
                 type_::bit_array(),
-                super::invalid_pattern(),
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::PatternShape {
+                        reason: InvalidPatternShapeReason::TypeMismatch {
+                            expected: ValueType::BitArray,
+                            actual: ValueType::Int,
+                        },
+                    },
+                },
             ),
             (
                 discard(type_::int()),
                 vec![size(missing_constructor())],
                 type_::int(),
-                super::invalid_pattern(),
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::PatternShape {
+                        reason: InvalidPatternShapeReason::BitArraySizeUnresolved {
+                            name: "missing".into(),
+                        },
+                    },
+                },
             ),
             (
                 discard(type_::int()),
@@ -798,7 +994,14 @@ pub fn main() {
                     type_: type_::int(),
                 })],
                 type_::int(),
-                super::invalid_pattern(),
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::PatternShape {
+                        reason: InvalidPatternShapeReason::TypeMismatch {
+                            expected: ValueType::Int,
+                            actual: ValueType::String,
+                        },
+                    },
+                },
             ),
             (
                 discard(type_::int()),
@@ -809,7 +1012,13 @@ pub fn main() {
                     right: Box::new(int_size()),
                 })],
                 type_::int(),
-                super::invalid_pattern(),
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::PatternShape {
+                        reason: InvalidPatternShapeReason::BitArraySizeUnresolved {
+                            name: "missing".into(),
+                        },
+                    },
+                },
             ),
             (
                 discard(type_::int()),
@@ -820,7 +1029,13 @@ pub fn main() {
                     right: Box::new(missing_constructor()),
                 })],
                 type_::int(),
-                super::invalid_pattern(),
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::PatternShape {
+                        reason: InvalidPatternShapeReason::BitArraySizeUnresolved {
+                            name: "missing".into(),
+                        },
+                    },
+                },
             ),
         ] {
             cases.push((vec![segment(value, options, type_)], Err(expected)));
@@ -1496,7 +1711,13 @@ pub fn main() { 0 }
                 },
                 &context,
             ),
-            Err(super::invalid_pattern()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: InvalidPatternShapeReason::BitArraySizeSource {
+                        name: "record".into(),
+                    },
+                },
+            }),
         );
         assert_eq!(
             super::plan_size_constant(
@@ -1506,7 +1727,11 @@ pub fn main() { 0 }
                 },
                 &context,
             ),
-            Err(super::invalid_pattern()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: InvalidPatternShapeReason::BitArraySizeConstant,
+                },
+            }),
         );
         assert_eq!(
             super::plan_size_constant(
@@ -1519,7 +1744,13 @@ pub fn main() { 0 }
                 },
                 &context,
             ),
-            Err(super::invalid_pattern()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: InvalidPatternShapeReason::BitArraySizeUnresolved {
+                        name: "missing".into(),
+                    },
+                },
+            }),
         );
     }
 }

@@ -35,7 +35,7 @@ pub(super) fn plan(
     let mut true_branch = None;
     let mut false_branch = None;
     for clause in clauses {
-        let pattern = plan_bool_case_pattern(clause.pattern)?;
+        let pattern = plan_bool_case_pattern(clause.pattern, context)?;
         let bindings = super::branch_bindings(pattern.bound_names(), Expr::bool(subject.clone()));
         let branch = super::plan_case_branch(
             type_.as_ref(),
@@ -84,7 +84,7 @@ fn plan_guarded_bool_case(
     for clause in clauses {
         for pattern in clause.patterns() {
             let (pattern, reachable, exhaustive_remainder) = pattern.into_parts();
-            let pattern = plan_bool_case_pattern(pattern)?;
+            let pattern = plan_bool_case_pattern(pattern, context)?;
             let bindings =
                 super::branch_bindings(pattern.bound_names(), Expr::bool(subject.clone()));
             let is_total = clause.guard.is_none();
@@ -165,46 +165,49 @@ impl BoolCasePattern {
     }
 }
 
-fn plan_bool_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<BoolCasePattern, PlanError> {
+fn plan_bool_case_pattern(
+    pattern: Pattern<Arc<Type>>,
+    context: &PlanContext<'_>,
+) -> Result<BoolCasePattern, PlanError> {
     match pattern {
-        Pattern::Constructor {
-            name,
-            arguments,
-            spread,
-            type_,
+        ref pattern @ Pattern::Constructor {
+            ref name,
+            ref arguments,
+            ref spread,
+            ref type_,
             ..
         } if arguments.is_empty() && spread.is_none() && type_.is_bool() => match name.as_str() {
-            "True" => Ok(BoolCasePattern::Literal {
-                value: true,
-                bound_names: Vec::new(),
-            }),
-            "False" => Ok(BoolCasePattern::Literal {
-                value: false,
-                bound_names: Vec::new(),
-            }),
-            _ => Err(invalid_case_shape(
-                InvalidCaseShapeReason::PatternTypeMismatch,
+            "True" | "False" => {
+                crate::planner::pattern::validate_pattern(pattern, &ValueShape::Bool, context)?;
+                Ok(BoolCasePattern::Literal {
+                    value: name == "True",
+                    bound_names: Vec::new(),
+                })
+            }
+            _ => Err(crate::planner::pattern::unexpected_pattern(
+                pattern,
+                &ValueShape::Bool,
+                context,
             )),
         },
-        Pattern::Variable { name, type_, .. } if type_.is_bool() => Ok(BoolCasePattern::Any {
-            bound_names: vec![name],
-        }),
-        Pattern::Variable { .. } => Err(invalid_case_shape(
-            InvalidCaseShapeReason::PatternTypeMismatch,
-        )),
-        Pattern::Discard { type_, .. } if type_.is_bool() => Ok(BoolCasePattern::Any {
-            bound_names: Vec::new(),
-        }),
-        Pattern::Discard { .. } => Err(invalid_case_shape(
-            InvalidCaseShapeReason::PatternTypeMismatch,
-        )),
+        ref pattern @ Pattern::Variable { ref name, .. } => {
+            crate::planner::pattern::validate_pattern(pattern, &ValueShape::Bool, context)?;
+            Ok(BoolCasePattern::Any {
+                bound_names: vec![name.clone()],
+            })
+        }
+        ref pattern @ Pattern::Discard { .. } => {
+            crate::planner::pattern::validate_pattern(pattern, &ValueShape::Bool, context)?;
+            Ok(BoolCasePattern::Any {
+                bound_names: Vec::new(),
+            })
+        }
         Pattern::Assign { name, pattern, .. } => {
-            let mut pattern = plan_bool_case_pattern(*pattern)?;
+            let mut pattern = plan_bool_case_pattern(*pattern, context)?;
             pattern.add_bound_name(name);
             Ok(pattern)
         }
-        Pattern::Invalid { .. } => Err(invalid_case_shape(InvalidCaseShapeReason::InvalidPattern)),
-        Pattern::Int { .. }
+        pattern @ (Pattern::Int { .. }
         | Pattern::Float { .. }
         | Pattern::String { .. }
         | Pattern::BitArraySize(_)
@@ -212,10 +215,24 @@ fn plan_bool_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<BoolCasePattern
         | Pattern::Constructor { .. }
         | Pattern::Tuple { .. }
         | Pattern::BitArray { .. }
-        | Pattern::StringPrefix { .. } => Err(invalid_case_shape(
-            InvalidCaseShapeReason::PatternTypeMismatch,
+        | Pattern::StringPrefix { .. }
+        | Pattern::Invalid { .. }) => Err(crate::planner::pattern::unexpected_pattern(
+            &pattern,
+            &ValueShape::Bool,
+            context,
         )),
     }
+}
+
+#[cfg(test)]
+fn plan_bool_case_pattern_for_test(
+    pattern: Pattern<Arc<Type>>,
+) -> Result<BoolCasePattern, PlanError> {
+    let module = EcoString::from("main");
+    let functions = std::collections::HashMap::new();
+    let mut anonymous = crate::planner::context::AnonymousFunctions::default();
+    let context = PlanContext::new(&module, &functions, &mut anonymous);
+    plan_bool_case_pattern(pattern, &context)
 }
 
 fn clause_has_bool_bound_name(clause: &CaseClause) -> bool {
@@ -919,6 +936,41 @@ pub fn main() {
 
     #[test]
     fn reject_margin_bool_case_pattern_shapes() {
+        assert_eq!(
+            super::plan_bool_case_pattern_for_test(Pattern::Constructor {
+                location: dummy_span(),
+                name_location: dummy_span(),
+                name: "True".into(),
+                arguments: Vec::new(),
+                module: None,
+                constructor: Default::default(),
+                spread: None,
+                type_: type_::bool(),
+            }),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::UnresolvedConstructor,
+                },
+            }),
+        );
+        assert_eq!(
+            super::plan_bool_case_pattern_for_test(Pattern::Constructor {
+                location: dummy_span(),
+                name_location: dummy_span(),
+                name: "Other".into(),
+                arguments: Vec::new(),
+                module: None,
+                constructor: Default::default(),
+                spread: None,
+                type_: type_::bool(),
+            }),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::UnresolvedConstructor,
+                },
+            }),
+        );
+
         let mut invalid_pattern = super::super::super::compile_bool_case_module();
         let (_, _, clauses) = super::super::super::expect_case_statement_mut(
             &mut invalid_pattern.definitions.functions[0].body[0],
@@ -930,8 +982,8 @@ pub fn main() {
         assert_eq!(
             plan_module(invalid_pattern),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::InvalidNode,
                 },
             }),
         );
@@ -947,11 +999,10 @@ pub fn main() {
         };
         assert_eq!(
             plan_module(pattern_type_mismatch),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::pattern_type_mismatch(
+                ValueType::Bool,
+                ValueType::Int,
+            )),
         );
 
         let mut variable_type_mismatch = super::super::super::compile_bool_case_module();
@@ -966,11 +1017,10 @@ pub fn main() {
         };
         assert_eq!(
             plan_module(variable_type_mismatch),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::pattern_type_mismatch(
+                ValueType::Bool,
+                ValueType::Int,
+            )),
         );
 
         let mut discard_type_mismatch = super::super::super::compile_bool_case_module();
@@ -984,11 +1034,10 @@ pub fn main() {
         };
         assert_eq!(
             plan_module(discard_type_mismatch),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::pattern_type_mismatch(
+                ValueType::Bool,
+                ValueType::Int,
+            )),
         );
 
         let mut assign_type_mismatch = super::super::super::compile_bool_case_module();
@@ -1006,11 +1055,10 @@ pub fn main() {
         };
         assert_eq!(
             plan_module(assign_type_mismatch),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::pattern_type_mismatch(
+                ValueType::Bool,
+                ValueType::Int,
+            )),
         );
 
         let mut assign_constructor_name_mismatch = super::super::super::compile_bool_case_module();
@@ -1034,8 +1082,8 @@ pub fn main() {
         assert_eq!(
             plan_module(assign_constructor_name_mismatch),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::UnresolvedConstructor,
                 },
             }),
         );
@@ -1055,8 +1103,8 @@ pub fn main() {
         assert_eq!(
             plan_module(assign_invalid_pattern),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::InvalidNode,
                 },
             }),
         );
@@ -1078,8 +1126,8 @@ pub fn main() {
         assert_eq!(
             plan_module(bool_constructor_name_mismatch),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::UnresolvedConstructor,
                 },
             }),
         );
@@ -1142,11 +1190,10 @@ pub fn main() {
         };
         assert_eq!(
             plan_module(pattern_type_mismatch),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::pattern_type_mismatch(
+                ValueType::Bool,
+                ValueType::Int,
+            )),
         );
     }
 

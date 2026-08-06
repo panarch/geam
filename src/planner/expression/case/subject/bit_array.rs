@@ -1,9 +1,8 @@
 use super::super::super::plan_expr_with_expected_source_stop_type;
-use super::super::invalid_case_shape;
 use super::{CaseClause, OrderedCaseCandidateInput, OrderedCasePattern};
 use crate::plan::{BitArrayExpr, BitArrayLocalId, BoolExpr, Expr, ExprKind, Step, ValueType};
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidCaseShapeReason, InvalidTypedAstReason, PlanError};
+use crate::planner::error::{InvalidExpressionType, InvalidTypedAstReason, PlanError};
 use crate::planner::pattern::plan_bit_array_pattern;
 use ecow::EcoString;
 use gleam_core::ast::{BitArrayOption, BitArraySegment, Pattern, TypedExpr};
@@ -18,10 +17,14 @@ pub(super) fn plan(
 ) -> Result<Expr, PlanError> {
     let subject = plan_expr_with_expected_source_stop_type(subject, ValueType::BitArray, context)?;
     let return_shape = context.value_shape(type_.as_ref());
+    let actual = InvalidExpressionType::from_value_type(subject.value_type());
     let ExprKind::BitArray(subject) = subject.into_kind() else {
-        return Err(invalid_case_shape(
-            InvalidCaseShapeReason::PatternTypeMismatch,
-        ));
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionType {
+                expected: InvalidExpressionType::BitArray,
+                actual,
+            },
+        });
     };
     let (subject_step, subject) = bind_subject(subject, context);
     let mut ordered_clauses = Vec::new();
@@ -73,16 +76,30 @@ fn plan_pattern(
     context: &mut PlanContext<'_>,
 ) -> Result<BitArrayCasePattern, PlanError> {
     match pattern {
-        Pattern::Variable { name, type_, .. } if type_.is_bit_array() => Ok(BitArrayCasePattern {
-            match_condition: BoolExpr::value(true),
-            branch_bindings: vec![(name, Expr::bit_array(subject))],
-            is_total: true,
-        }),
-        Pattern::Discard { type_, .. } if type_.is_bit_array() => Ok(BitArrayCasePattern {
-            match_condition: BoolExpr::value(true),
-            branch_bindings: Vec::new(),
-            is_total: true,
-        }),
+        ref pattern @ Pattern::Variable { ref name, .. } => {
+            crate::planner::pattern::validate_pattern(
+                pattern,
+                &crate::plan::ValueShape::BitArray,
+                context,
+            )?;
+            Ok(BitArrayCasePattern {
+                match_condition: BoolExpr::value(true),
+                branch_bindings: vec![(name.clone(), Expr::bit_array(subject))],
+                is_total: true,
+            })
+        }
+        ref pattern @ Pattern::Discard { .. } => {
+            crate::planner::pattern::validate_pattern(
+                pattern,
+                &crate::plan::ValueShape::BitArray,
+                context,
+            )?;
+            Ok(BitArrayCasePattern {
+                match_condition: BoolExpr::value(true),
+                branch_bindings: Vec::new(),
+                is_total: true,
+            })
+        }
         Pattern::Assign { name, pattern, .. } => {
             let mut pattern = plan_pattern(*pattern, subject.clone(), context)?;
             pattern
@@ -91,18 +108,18 @@ fn plan_pattern(
             Ok(pattern)
         }
         Pattern::BitArray { segments, .. } => plan_structural_pattern(segments, subject, context),
-        Pattern::Invalid { .. } => Err(invalid_case_shape(InvalidCaseShapeReason::InvalidPattern)),
-        Pattern::BitArraySize(_) => Err(invalid_case_shape(InvalidCaseShapeReason::InvalidPattern)),
-        Pattern::Variable { .. }
-        | Pattern::Discard { .. }
-        | Pattern::Int { .. }
+        pattern @ (Pattern::Int { .. }
         | Pattern::Float { .. }
         | Pattern::String { .. }
         | Pattern::List { .. }
         | Pattern::Constructor { .. }
         | Pattern::Tuple { .. }
-        | Pattern::StringPrefix { .. } => Err(invalid_case_shape(
-            InvalidCaseShapeReason::PatternTypeMismatch,
+        | Pattern::StringPrefix { .. }
+        | Pattern::BitArraySize(_)
+        | Pattern::Invalid { .. }) => Err(crate::planner::pattern::unexpected_pattern(
+            &pattern,
+            &crate::plan::ValueShape::BitArray,
+            context,
         )),
     }
 }
@@ -112,7 +129,7 @@ pub(super) fn plan_structural_pattern(
     subject: BitArrayExpr,
     context: &mut PlanContext<'_>,
 ) -> Result<BitArrayCasePattern, PlanError> {
-    if let Some(branch_bindings) = plan_total_bits_pattern(&segments, subject.clone())? {
+    if let Some(branch_bindings) = plan_total_bits_pattern(&segments, subject.clone(), context)? {
         return Ok(BitArrayCasePattern {
             match_condition: BoolExpr::value(true),
             branch_bindings,
@@ -130,6 +147,7 @@ pub(super) fn plan_structural_pattern(
 fn plan_total_bits_pattern(
     segments: &[BitArraySegment<Pattern<Arc<Type>>, Arc<Type>>],
     subject: BitArrayExpr,
+    context: &PlanContext<'_>,
 ) -> Result<Option<Vec<(EcoString, Expr)>>, PlanError> {
     let [segment] = segments else {
         return Ok(None);
@@ -141,7 +159,7 @@ fn plan_total_bits_pattern(
     }
 
     let mut names = Vec::new();
-    collect_total_bits_bindings(segment.value.as_ref(), &mut names)?;
+    collect_total_bits_bindings_with_context(segment.value.as_ref(), &mut names, context)?;
     let subject = Expr::bit_array(subject);
     Ok(Some(
         names
@@ -151,25 +169,49 @@ fn plan_total_bits_pattern(
     ))
 }
 
+fn collect_total_bits_bindings_with_context(
+    pattern: &Pattern<Arc<Type>>,
+    names: &mut Vec<EcoString>,
+    context: &PlanContext<'_>,
+) -> Result<(), PlanError> {
+    match pattern {
+        pattern @ Pattern::Variable { name, .. } => {
+            crate::planner::pattern::validate_pattern(
+                pattern,
+                &crate::plan::ValueShape::BitArray,
+                context,
+            )?;
+            names.push(name.clone());
+            Ok(())
+        }
+        pattern @ Pattern::Discard { .. } => crate::planner::pattern::validate_pattern(
+            pattern,
+            &crate::plan::ValueShape::BitArray,
+            context,
+        ),
+        Pattern::Assign { name, pattern, .. } => {
+            collect_total_bits_bindings_with_context(pattern, names, context)?;
+            names.push(name.clone());
+            Ok(())
+        }
+        pattern => Err(crate::planner::pattern::unexpected_pattern(
+            pattern,
+            &crate::plan::ValueShape::BitArray,
+            context,
+        )),
+    }
+}
+
+#[cfg(test)]
 fn collect_total_bits_bindings(
     pattern: &Pattern<Arc<Type>>,
     names: &mut Vec<EcoString>,
 ) -> Result<(), PlanError> {
-    match pattern {
-        Pattern::Variable { name, type_, .. } if type_.is_bit_array() => {
-            names.push(name.clone());
-            Ok(())
-        }
-        Pattern::Discard { type_, .. } if type_.is_bit_array() => Ok(()),
-        Pattern::Assign { name, pattern, .. } => {
-            collect_total_bits_bindings(pattern, names)?;
-            names.push(name.clone());
-            Ok(())
-        }
-        _ => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::InvalidPattern,
-        }),
-    }
+    let module_name = EcoString::from("main");
+    let functions = std::collections::HashMap::new();
+    let mut anonymous = crate::planner::context::AnonymousFunctions::default();
+    let context = PlanContext::new(&module_name, &functions, &mut anonymous);
+    collect_total_bits_bindings_with_context(pattern, names, &context)
 }
 
 fn bind_subject(subject: BitArrayExpr, context: &mut PlanContext<'_>) -> (Step, BitArrayExpr) {
@@ -191,21 +233,24 @@ mod tests {
         BitArrayExpr, BitArrayLocalId, BitArrayPattern, BitArrayPatternSegment,
         BitArrayPatternSize, BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayReturn,
         BitArraySegment, BoolExpr, Endianness, Expr, IntExpr, IntLocalId, PatternBinding,
-        Signedness, Step,
+        Signedness, Step, ValueType,
     };
+    use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
         function, int, int_return_block, int_return_expr, local_int, module,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{dummy_span, expect_plan_error};
     use crate::planner::{
-        InvalidCaseShapeReason, InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError,
+        InvalidCaseShapeReason, InvalidExpressionShapeKind, InvalidExpressionType,
+        InvalidTypedAstReason, PlanError,
     };
     use gleam_core::ast::{
         BitArrayOption, BitArraySegment as PatternBitArraySegment, BitArraySize, ClauseGuard,
         Pattern, TypedExpr,
     };
     use gleam_core::type_;
+    use std::collections::HashMap;
 
     #[test]
     fn plan_bit_array_subject_alias_binds_inner_then_alias_after_single_subject_eval() {
@@ -259,6 +304,33 @@ pub fn main() {
     }
 
     #[test]
+    fn total_bit_array_binding_rejects_a_mismatched_variable_annotation() {
+        let module = "main".into();
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let context = PlanContext::new(&module, &functions, &mut anonymous);
+        let mut names = Vec::new();
+
+        assert_eq!(
+            super::collect_total_bits_bindings_with_context(
+                &Pattern::Variable {
+                    location: dummy_span(),
+                    name: "bits".into(),
+                    type_: type_::int(),
+                    origin: gleam_core::type_::error::VariableOrigin::generated(),
+                },
+                &mut names,
+                &context,
+            ),
+            Err(crate::planner::pattern::pattern_type_mismatch(
+                ValueType::BitArray,
+                ValueType::Int,
+            )),
+        );
+        assert!(names.is_empty());
+    }
+
+    #[test]
     fn reject_margin_bit_array_subject_invalid_and_mismatched_patterns() {
         let mut unsupported_case_type = crate::planner::support::compile(
             r#"
@@ -301,8 +373,8 @@ pub fn main() {
         assert_eq!(
             plan_module(invalid),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::InvalidNode,
                 },
             }),
         );
@@ -326,12 +398,46 @@ pub fn main() {
         };
         assert_eq!(
             plan_module(mismatch),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::pattern_type_mismatch(
+                ValueType::BitArray,
+                ValueType::Int,
+            )),
         );
+
+        for mismatched_binding in [
+            Pattern::Variable {
+                location: dummy_span(),
+                name: "value".into(),
+                type_: type_::int(),
+                origin: gleam_core::type_::error::VariableOrigin::generated(),
+            },
+            Pattern::Discard {
+                location: dummy_span(),
+                name: "_".into(),
+                type_: type_::int(),
+            },
+        ] {
+            let mut mismatch = crate::planner::support::compile(
+                r#"
+pub fn main() {
+  case <<1>> {
+    _ -> 1
+  }
+}
+"#,
+            );
+            let (_, _, clauses) = super::super::super::expect_case_statement_mut(
+                &mut mismatch.definitions.functions[0].body[0],
+            );
+            clauses[0].pattern[0] = mismatched_binding;
+            assert_eq!(
+                plan_module(mismatch),
+                Err(super::super::pattern_type_mismatch(
+                    ValueType::BitArray,
+                    ValueType::Int,
+                )),
+            );
+        }
 
         let mut invalid_alias = crate::planner::support::compile(
             r#"
@@ -356,8 +462,8 @@ pub fn main() {
         assert_eq!(
             plan_module(invalid_alias),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::InvalidNode,
                 },
             }),
         );
@@ -382,11 +488,10 @@ pub fn main() {
         };
         assert_eq!(
             plan_module(subject_mismatch),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::expression_type_mismatch(
+                InvalidExpressionType::BitArray,
+                InvalidExpressionType::Int,
+            )),
         );
 
         let mut invalid_size = crate::planner::support::compile(
@@ -409,8 +514,8 @@ pub fn main() {
         assert_eq!(
             plan_module(invalid_size),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::BitArraySizeNode,
                 },
             }),
         );
@@ -535,9 +640,10 @@ pub fn main() {
 
             assert_eq!(
                 plan_module(invalid),
-                Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::InvalidPattern,
-                }),
+                Err(super::super::pattern_type_mismatch(
+                    ValueType::BitArray,
+                    ValueType::Int,
+                )),
             );
         }
     }

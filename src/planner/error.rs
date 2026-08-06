@@ -7,10 +7,11 @@ mod unsupported;
 
 pub use host::{ExternalTypeProviderLinkReason, HostProviderLinkReason};
 pub use invalid::{
-    InvalidCallShapeReason, InvalidCaseShapeReason, InvalidCustomTypeReason,
-    InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
-    InvalidModuleReferenceReason, InvalidPipelineShapeReason, InvalidRecordUpdateShapeReason,
-    InvalidTypedAstReason, InvalidUseShapeReason,
+    InvalidBitArraySegmentOptionsReason, InvalidCallShapeReason, InvalidCaseShapeReason,
+    InvalidCustomTypeReason, InvalidExpressionShapeKind, InvalidExpressionType,
+    InvalidFunctionShapeReason, InvalidModuleReferenceReason, InvalidPatternShapeReason,
+    InvalidPipelineShapeReason, InvalidRecordUpdateShapeReason, InvalidTypedAstReason,
+    InvalidUseShapeReason, PatternKind,
 };
 pub use unsupported::{
     UnsupportedBitArraySegmentReason, UnsupportedFunctionReason, UnsupportedPatternKind,

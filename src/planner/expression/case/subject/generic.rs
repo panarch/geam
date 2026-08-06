@@ -1,9 +1,8 @@
 use super::super::super::plan_expr_with_expected_source_stop_shape;
-use super::super::invalid_case_shape;
 use super::{CaseClause, OrderedCaseClauseInput};
 use crate::plan::{BoolExpr, Expr, ExprKind, GenericExpr, Step, TypeParameterId, ValueShape};
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidCaseShapeReason, PlanError};
+use crate::planner::error::{InvalidExpressionType, InvalidTypedAstReason, PlanError};
 use ecow::EcoString;
 use gleam_core::ast::{Pattern, TypedExpr};
 use gleam_core::type_::Type;
@@ -23,10 +22,14 @@ pub(super) fn plan(
     )?;
     let return_shape = context.value_shape(type_.as_ref());
 
+    let actual = InvalidExpressionType::from_value_type(subject.value_type());
     let ExprKind::Generic(subject) = subject.into_kind() else {
-        return Err(invalid_case_shape(
-            InvalidCaseShapeReason::PatternTypeMismatch,
-        ));
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionType {
+                expected: InvalidExpressionType::TypeParameter,
+                actual,
+            },
+        });
     };
     let (subject_step, subject) = bind_generic_case_subject(subject, parameter, context);
     let mut ordered_clauses = Vec::new();
@@ -78,16 +81,22 @@ fn plan_generic_case_pattern(
     context: &mut PlanContext<'_>,
 ) -> Result<GenericCasePattern, PlanError> {
     match pattern {
-        Pattern::Variable { name, type_, .. }
-            if context.value_shape(type_.as_ref()) == ValueShape::Parameter(parameter) =>
-        {
+        ref pattern @ Pattern::Variable { ref name, .. } => {
+            crate::planner::pattern::validate_pattern(
+                pattern,
+                &ValueShape::Parameter(parameter),
+                context,
+            )?;
             Ok(GenericCasePattern {
-                bound_names: vec![name],
+                bound_names: vec![name.clone()],
             })
         }
-        Pattern::Discard { type_, .. }
-            if context.value_shape(type_.as_ref()) == ValueShape::Parameter(parameter) =>
-        {
+        ref pattern @ Pattern::Discard { .. } => {
+            crate::planner::pattern::validate_pattern(
+                pattern,
+                &ValueShape::Parameter(parameter),
+                context,
+            )?;
             Ok(GenericCasePattern {
                 bound_names: Vec::new(),
             })
@@ -97,10 +106,7 @@ fn plan_generic_case_pattern(
             pattern.add_bound_name(name);
             Ok(pattern)
         }
-        Pattern::Invalid { .. } => Err(invalid_case_shape(InvalidCaseShapeReason::InvalidPattern)),
-        Pattern::Variable { .. }
-        | Pattern::Discard { .. }
-        | Pattern::Int { .. }
+        pattern @ (Pattern::Int { .. }
         | Pattern::Float { .. }
         | Pattern::String { .. }
         | Pattern::BitArraySize(_)
@@ -108,8 +114,11 @@ fn plan_generic_case_pattern(
         | Pattern::Constructor { .. }
         | Pattern::Tuple { .. }
         | Pattern::BitArray { .. }
-        | Pattern::StringPrefix { .. } => Err(invalid_case_shape(
-            InvalidCaseShapeReason::PatternTypeMismatch,
+        | Pattern::StringPrefix { .. }
+        | Pattern::Invalid { .. }) => Err(crate::planner::pattern::unexpected_pattern(
+            &pattern,
+            &ValueShape::Parameter(parameter),
+            context,
         )),
     }
 }
@@ -132,13 +141,15 @@ mod tests {
     use super::{GenericCasePattern, bind_generic_case_subject, plan, plan_generic_case_pattern};
     use crate::plan::{
         Expr, GenericExpr, GenericLocal, GenericLocalId, GenericReturn, ReturnExpr, Step,
-        TypeParameterId,
+        TypeParameterId, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
     use crate::planner::expression::typed_int_expr;
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
-    use crate::planner::{InvalidCaseShapeReason, InvalidTypedAstReason, PlanError};
+    use crate::planner::{
+        InvalidCaseShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
+    };
     use ecow::EcoString;
     use gleam_core::ast::{BinOp, ClauseGuard, Constant, Pattern};
     use gleam_core::type_::{self, error::VariableOrigin};
@@ -204,8 +215,8 @@ mod tests {
                 &mut context,
             ),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::InvalidNode,
                 },
             }),
         );
@@ -223,8 +234,8 @@ mod tests {
                 &mut context,
             ),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::InvalidNode,
                 },
             }),
         );
@@ -238,12 +249,32 @@ mod tests {
                 parameter,
                 &mut context,
             ),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::pattern_type_mismatch(
+                ValueType::Parameter(parameter),
+                ValueType::Int,
+            )),
         );
+        for pattern in [
+            Pattern::Variable {
+                location: dummy_span(),
+                name: "mismatched".into(),
+                type_: type_::int(),
+                origin: VariableOrigin::generated(),
+            },
+            Pattern::Discard {
+                location: dummy_span(),
+                name: "_".into(),
+                type_: type_::int(),
+            },
+        ] {
+            assert_eq!(
+                plan_generic_case_pattern(pattern, parameter, &mut context),
+                Err(super::super::pattern_type_mismatch(
+                    ValueType::Parameter(parameter),
+                    ValueType::Int,
+                )),
+            );
+        }
     }
 
     #[test]
@@ -315,11 +346,10 @@ pub fn main() { 1 }
                 Vec::new(),
                 &mut context,
             ),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::expression_type_mismatch(
+                InvalidExpressionType::TypeParameter,
+                InvalidExpressionType::Int,
+            )),
         );
     }
 
@@ -378,8 +408,8 @@ pub fn main() { 1 }
         assert_eq!(
             plan_module(module),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::InvalidNode,
                 },
             }),
         );

@@ -612,7 +612,11 @@ pub fn main() {
                 &context
             ),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::BindingKind {
+                        actual: crate::planner::PatternKind::Int,
+                    },
+                },
             }),
         );
         assert_eq!(
@@ -639,7 +643,11 @@ pub fn main() {
                 &context
             ),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::ListBindingElements {
+                        actual: 1,
+                    },
+                },
             }),
         );
 

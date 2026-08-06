@@ -25,8 +25,11 @@ pub(super) fn plan_assignment(
 ) -> Result<Vec<Step>, PlanError> {
     match assignment.kind {
         AssignmentKind::Let => {
+            let source_shape = context.value_shape_in_scope(assignment.value.type_().as_ref());
+            let typed_pattern = assignment.pattern.clone();
             let pattern = plan_binding_pattern_in_context(assignment.pattern, context)?;
             let value = plan_ordinary_assignment_value(&pattern, assignment.value, context)?;
+            crate::planner::pattern::validate_pattern(&typed_pattern, &source_shape, context)?;
             plan_assignment_steps(pattern, value, context)
         }
         AssignmentKind::Assert {
@@ -55,8 +58,11 @@ pub(super) fn plan_final_assignment(
 ) -> Result<PlannedAssignment, PlanError> {
     let (pattern, value) = match assignment.kind {
         AssignmentKind::Let => {
+            let source_shape = context.value_shape_in_scope(assignment.value.type_().as_ref());
+            let typed_pattern = assignment.pattern.clone();
             let pattern = plan_binding_pattern_in_context(assignment.pattern, context)?;
             let value = plan_ordinary_assignment_value(&pattern, assignment.value, context)?;
+            crate::planner::pattern::validate_pattern(&typed_pattern, &source_shape, context)?;
             (pattern, value)
         }
         AssignmentKind::Assert {
@@ -207,10 +213,8 @@ fn plan_alias_assignment(
             constructor,
             fields,
         } => plan_custom_assignment(constructor_count, constructor, fields, value, context)?,
-        BindingPattern::Alias { .. } => {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
-            });
+        BindingPattern::Alias { pattern, name } => {
+            plan_alias_assignment(*pattern, name, value, context)?
         }
     };
     let (step, value) = plan_variable_runtime_step_and_return(name, planned.value, context);
@@ -242,13 +246,14 @@ fn plan_list_tail_assignment(
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedAssignment, PlanError> {
     let actual = value.value_type();
-    let value = value
-        .into_list()
-        .ok_or_else(|| list_assignment_value_must_be_list(actual))?;
+    let Some(value) = value.into_list() else {
+        return Err(list_assignment_value_must_be_list(actual));
+    };
     if value.element_type() != element_type {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::InvalidPattern,
-        });
+        crate::planner::pattern::validate_pattern_value_type(
+            ValueType::List(Box::new(element_type.clone())),
+            ValueType::List(Box::new(value.element_type().clone())),
+        )?;
     }
 
     match tail {
@@ -275,12 +280,14 @@ fn plan_custom_assignment(
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedAssignment, PlanError> {
     let actual = value.value_type();
-    let value = value
-        .into_custom()
-        .ok_or_else(|| custom_assignment_value_must_be_custom(actual))?;
-    if value.type_() != constructor.type_() || fields.len() != constructor.fields().len() {
-        return Err(invalid_binding_pattern());
-    }
+    let Some(value) = value.into_custom() else {
+        return Err(custom_assignment_value_must_be_custom(actual));
+    };
+    crate::planner::pattern::validate_pattern_value_type(
+        ValueType::Custom(constructor.type_().clone()),
+        ValueType::Custom(value.type_().clone()),
+    )?;
+    crate::planner::pattern::validate_constructor_arity(constructor.fields().len(), fields.len())?;
 
     let local = context.define_internal_custom_local();
     let typed_local = crate::plan::CustomLocal::from_shape(local, value.shape().clone());
@@ -318,8 +325,8 @@ fn plan_total_binding_pattern(
     expected: ValueShape,
     context: &mut PlanContext<'_>,
 ) -> Result<TotalBindingPattern, PlanError> {
-    match pattern {
-        BindingPattern::Named(name) => {
+    match (pattern, expected) {
+        (BindingPattern::Named(name), expected) => {
             let binding = AssertBinding::new(
                 context.define_param_local_shape(name.clone(), expected.clone()),
                 name,
@@ -327,14 +334,11 @@ fn plan_total_binding_pattern(
             );
             Ok(TotalBindingPattern::bind(binding))
         }
-        BindingPattern::Discard => Ok(TotalBindingPattern::discard(expected.value_type())),
-        BindingPattern::Tuple(patterns) => {
-            let ValueShape::Tuple(shapes) = expected else {
-                return Err(invalid_binding_pattern());
-            };
-            if patterns.len() != shapes.len() {
-                return Err(invalid_binding_pattern());
-            }
+        (BindingPattern::Discard, expected) => {
+            Ok(TotalBindingPattern::discard(expected.value_type()))
+        }
+        (BindingPattern::Tuple(patterns), ValueShape::Tuple(shapes)) => {
+            crate::planner::pattern::validate_tuple_arity(shapes.len(), patterns.len())?;
             patterns
                 .into_iter()
                 .zip(shapes)
@@ -342,10 +346,11 @@ fn plan_total_binding_pattern(
                 .collect::<Result<Vec<_>, _>>()
                 .map(TotalBindingPattern::tuple)
         }
-        BindingPattern::ListTail { tail, element_type } => {
-            if expected.value_type() != ValueType::List(Box::new(element_type.clone())) {
-                return Err(invalid_binding_pattern());
-            }
+        (BindingPattern::ListTail { tail, element_type }, expected @ ValueShape::List(_)) => {
+            crate::planner::pattern::validate_pattern_value_type(
+                ValueType::List(Box::new(element_type.clone())),
+                expected.value_type(),
+            )?;
             let tail = match tail {
                 ListTailBinding::Named(name) => ListAssertTail::bind(
                     context.define_list_local(name.clone(), element_type.clone()),
@@ -355,25 +360,24 @@ fn plan_total_binding_pattern(
             };
             Ok(TotalBindingPattern::list(element_type, tail))
         }
-        BindingPattern::Custom {
-            source_shape,
-            constructor_count,
-            constructor,
-            fields,
-        } => {
-            let ValueShape::Custom(expected_shape) = expected else {
-                return Err(invalid_binding_pattern());
-            };
-            if expected_shape.type_() != constructor.type_()
-                || fields.len() != constructor.fields().len()
-            {
-                return Err(invalid_binding_pattern());
-            }
-            let Some(ValueShape::Custom(source_shape)) =
-                ValueShape::Custom(expected_shape).refine(&ValueShape::Custom(source_shape))
-            else {
-                return Err(invalid_binding_pattern());
-            };
+        (
+            BindingPattern::Custom {
+                source_shape,
+                constructor_count,
+                constructor,
+                fields,
+            },
+            ValueShape::Custom(expected_shape),
+        ) => {
+            crate::planner::pattern::validate_pattern_value_type(
+                ValueType::Custom(constructor.type_().clone()),
+                ValueType::Custom(expected_shape.type_().clone()),
+            )?;
+            crate::planner::pattern::validate_constructor_arity(
+                constructor.fields().len(),
+                fields.len(),
+            )?;
+            let source_shape = refine_custom_binding_shape(expected_shape, source_shape)?;
             let fields = fields
                 .into_iter()
                 .zip(constructor.fields())
@@ -388,7 +392,7 @@ fn plan_total_binding_pattern(
             total_custom_binding(source_shape, constructor_count, constructor, fields)
                 .map(TotalBindingPattern::custom)
         }
-        BindingPattern::Alias { pattern, name } => {
+        (BindingPattern::Alias { pattern, name }, expected) => {
             let pattern = plan_total_binding_pattern(*pattern, expected.clone(), context)?;
             let binding = AssertBinding::new(
                 context.define_param_local_shape(name.clone(), expected.clone()),
@@ -397,6 +401,18 @@ fn plan_total_binding_pattern(
             );
             Ok(TotalBindingPattern::alias(pattern, binding))
         }
+        (BindingPattern::Tuple(_), expected) => Err(binding_shape_mismatch(
+            crate::planner::PatternKind::Tuple,
+            &expected,
+        )),
+        (BindingPattern::ListTail { .. }, expected) => Err(binding_shape_mismatch(
+            crate::planner::PatternKind::List,
+            &expected,
+        )),
+        (BindingPattern::Custom { .. }, expected) => Err(binding_shape_mismatch(
+            crate::planner::PatternKind::Constructor,
+            &expected,
+        )),
     }
 }
 
@@ -418,7 +434,47 @@ fn total_custom_binding(
             CustomBindingPattern::only_constructor(source_shape, constructor, fields),
         ),
         crate::plan::CustomConstructorRefinement::Any
-        | crate::plan::CustomConstructorRefinement::Exact(_) => Err(invalid_binding_pattern()),
+        | crate::plan::CustomConstructorRefinement::Exact(_) => {
+            let actual = match source_shape.constructor() {
+                crate::plan::CustomConstructorRefinement::Any => None,
+                crate::plan::CustomConstructorRefinement::Exact(index) => Some(index),
+            };
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason:
+                        crate::planner::InvalidPatternShapeReason::BindingConstructorRefinement {
+                            expected: constructor.index(),
+                            actual,
+                        },
+                },
+            })
+        }
+    }
+}
+
+fn refine_custom_binding_shape(
+    expected: crate::plan::CustomValueShape,
+    actual: crate::plan::CustomValueShape,
+) -> Result<crate::plan::CustomValueShape, PlanError> {
+    let type_ = ValueType::Custom(expected.type_().clone());
+    match ValueShape::Custom(expected).refine(&ValueShape::Custom(actual)) {
+        Some(ValueShape::Custom(shape)) => Ok(shape),
+        Some(_) | None => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::PatternShape {
+                reason: crate::planner::InvalidPatternShapeReason::BindingShapeConflict { type_ },
+            },
+        }),
+    }
+}
+
+fn binding_shape_mismatch(actual: crate::planner::PatternKind, expected: &ValueShape) -> PlanError {
+    PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::PatternShape {
+            reason: crate::planner::InvalidPatternShapeReason::BindingShape {
+                expected: expected.value_type(),
+                actual,
+            },
+        },
     }
 }
 
@@ -428,16 +484,12 @@ fn plan_tuple_assignment(
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedAssignment, PlanError> {
     let actual = value.value_type();
-    let value = value
-        .into_tuple()
-        .ok_or_else(|| tuple_assignment_value_must_be_tuple(actual))?;
+    let Some(value) = value.into_tuple() else {
+        return Err(tuple_assignment_value_must_be_tuple(actual));
+    };
     let shape = value.shape().to_vec().into_boxed_slice();
     let type_ = value.type_().to_vec();
-    if elements.len() != type_.len() {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::InvalidPattern,
-        });
-    }
+    crate::planner::pattern::validate_tuple_arity(type_.len(), elements.len())?;
 
     let local = context.define_internal_tuple_local();
     let name = internal_tuple_name(local);
@@ -820,84 +872,175 @@ fn plan_variable_runtime_step_and_return(
     }
 }
 
+#[cfg(test)]
 pub(super) fn plan_binding_pattern(pattern: TypedPattern) -> Result<BindingPattern, PlanError> {
-    match pattern {
-        Pattern::Variable { name, .. } => Ok(BindingPattern::Named(name)),
-        Pattern::Discard { .. } => Ok(BindingPattern::Discard),
-        Pattern::Tuple { elements, .. } => elements
-            .into_iter()
-            .map(plan_binding_pattern)
-            .collect::<Result<Vec<_>, _>>()
-            .map(BindingPattern::Tuple),
-        Pattern::List {
-            elements,
-            tail,
-            type_,
-            ..
-        } => plan_tail_only_list_binding_pattern(elements, tail.map(|tail| *tail), type_),
-        Pattern::BitArray { segments, .. } => plan_total_bit_array_binding_pattern(segments),
-        Pattern::Assign { name, pattern, .. } => Ok(BindingPattern::Alias {
-            pattern: Box::new(plan_binding_pattern(*pattern)?),
-            name,
-        }),
-        pattern => Err(non_variable_pattern_error(&pattern)),
-    }
+    let module = EcoString::from("main");
+    let functions = std::collections::HashMap::new();
+    let mut anonymous = crate::planner::context::AnonymousFunctions::default();
+    let context = PlanContext::new(&module, &functions, &mut anonymous);
+    plan_binding_pattern_in_context(pattern, &context)
 }
 
 pub(super) fn plan_binding_pattern_in_context(
     pattern: TypedPattern,
     context: &PlanContext<'_>,
 ) -> Result<BindingPattern, PlanError> {
+    plan_binding_pattern_in_context_with_alias(pattern, context, true)
+}
+
+pub(super) fn is_total_binding_pattern(
+    pattern: &TypedPattern,
+    context: &PlanContext<'_>,
+) -> Result<bool, PlanError> {
     match pattern {
-        Pattern::Tuple { elements, .. } => elements
-            .into_iter()
-            .map(|element| plan_binding_pattern_in_context(element, context))
-            .collect::<Result<Vec<_>, _>>()
-            .map(BindingPattern::Tuple),
-        Pattern::List {
-            elements,
-            tail,
-            type_,
-            ..
-        } => plan_tail_only_list_binding_pattern_in_context(
-            elements,
-            tail.map(|tail| *tail),
-            type_,
-            context,
-        ),
+        Pattern::Variable { .. } | Pattern::Discard { .. } => Ok(true),
+        Pattern::Assign { pattern, .. } => is_total_binding_pattern(pattern, context),
+        Pattern::Tuple { elements, .. } => {
+            for element in elements {
+                if !is_total_binding_pattern(element, context)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        }
+        Pattern::List { elements, tail, .. } => {
+            if !elements.is_empty() {
+                return Ok(false);
+            }
+            match tail.as_deref() {
+                Some(gleam_core::ast::TailPattern {
+                    pattern: Pattern::Variable { .. } | Pattern::Discard { .. },
+                    ..
+                }) => Ok(true),
+                Some(_) | None => Ok(false),
+            }
+        }
+        Pattern::BitArray { segments, .. } => Ok(is_total_bit_array_binding(segments)),
         Pattern::Constructor {
             arguments,
             constructor,
             type_,
             ..
         } if !type_.is_bool() && !type_.is_nil() => {
-            let gleam_core::analyse::Inferred::Known(constructor) = constructor else {
-                return Err(invalid_binding_pattern());
-            };
-            let ValueShape::Custom(source_shape) = context.value_shape_in_scope(type_.as_ref())
-            else {
-                return Err(invalid_binding_pattern());
-            };
-            let matches_exact_constructor = source_shape.constructor()
+            let constructor = crate::planner::pattern::resolved_constructor(constructor)?;
+            let field_types = arguments
+                .iter()
+                .map(|argument| {
+                    crate::planner::pattern::pattern_value_shape(&argument.value, context)
+                        .map(|shape| shape.value_type())
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let resolved =
+                context.custom_pattern_constructor(type_.as_ref(), constructor, field_types)?;
+            let source_is_exact = resolved.source_shape().constructor()
                 == crate::plan::CustomConstructorRefinement::Exact(usize::from(
                     constructor.constructor_index,
                 ));
+            if !source_is_exact && resolved.constructor_count() != 1 {
+                return Ok(false);
+            }
+            for argument in arguments {
+                if !is_total_binding_pattern(&argument.value, context)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        }
+        Pattern::Int { .. }
+        | Pattern::Float { .. }
+        | Pattern::String { .. }
+        | Pattern::BitArraySize(_)
+        | Pattern::Constructor { .. }
+        | Pattern::StringPrefix { .. }
+        | Pattern::Invalid { .. } => Ok(false),
+    }
+}
+
+fn plan_binding_pattern_in_context_with_alias(
+    pattern: TypedPattern,
+    context: &PlanContext<'_>,
+    allow_alias: bool,
+) -> Result<BindingPattern, PlanError> {
+    let shape = crate::planner::pattern::pattern_value_shape(&pattern, context)?;
+    match (pattern, shape) {
+        (Pattern::Variable { name, .. }, _) => Ok(BindingPattern::Named(name)),
+        (Pattern::Discard { .. }, _) => Ok(BindingPattern::Discard),
+        (Pattern::Tuple { elements, .. }, _) => elements
+            .into_iter()
+            .map(|element| plan_binding_pattern_in_context_with_alias(element, context, true))
+            .collect::<Result<Vec<_>, _>>()
+            .map(BindingPattern::Tuple),
+        (
+            Pattern::List {
+                location,
+                elements,
+                tail,
+                type_,
+            },
+            shape,
+        ) => plan_tail_only_list_binding_pattern_in_context(
+            location, elements, tail, type_, shape, context,
+        ),
+        (Pattern::BitArray { location, segments }, shape) => {
+            crate::planner::pattern::validate_pattern(
+                &Pattern::BitArray {
+                    location,
+                    segments: segments.clone(),
+                },
+                &shape,
+                context,
+            )?;
+            plan_total_bit_array_binding_pattern(segments)
+        }
+        (
+            Pattern::Constructor {
+                arguments,
+                constructor,
+                type_,
+                ..
+            },
+            ValueShape::Custom(source_shape),
+        ) if !type_.is_bool() && !type_.is_nil() => {
+            let constructor = crate::planner::pattern::resolved_constructor(&constructor)?;
             let field_types = arguments
                 .iter()
                 .map(|argument| {
                     crate::planner::pattern::pattern_value_type_in_context(&argument.value, context)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            let constructor =
-                context.custom_pattern_constructor(type_.as_ref(), &constructor, field_types)?;
-            let constructor_count = constructor.constructor_count();
-            if !matches_exact_constructor && constructor_count != 1 {
-                return Err(invalid_binding_pattern());
+            let resolved =
+                context.custom_pattern_constructor(type_.as_ref(), constructor, field_types)?;
+            let constructor_count = resolved.constructor_count();
+            let source_is_exact = resolved.source_shape().constructor()
+                == crate::plan::CustomConstructorRefinement::Exact(usize::from(
+                    constructor.constructor_index,
+                ));
+            let constructor_is_total = source_is_exact || constructor_count == 1;
+            let fields_are_total = if constructor_is_total {
+                let mut fields_are_total = true;
+                for argument in &arguments {
+                    fields_are_total &= is_total_binding_pattern(&argument.value, context)?;
+                }
+                fields_are_total
+            } else {
+                false
+            };
+            if !fields_are_total {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::PatternShape {
+                        reason:
+                            crate::planner::InvalidPatternShapeReason::RefutableBindingConstructor {
+                                constructors: constructor_count,
+                            },
+                    },
+                });
             }
-            let constructor = constructor.into_constructor();
+            let constructor = resolved.into_constructor();
             let fields = arguments
                 .into_iter()
-                .map(|argument| plan_binding_pattern_in_context(argument.value, context))
+                .map(|argument| {
+                    plan_binding_pattern_in_context_with_alias(argument.value, context, true)
+                })
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(BindingPattern::Custom {
                 source_shape,
@@ -906,11 +1049,21 @@ pub(super) fn plan_binding_pattern_in_context(
                 fields,
             })
         }
-        Pattern::Assign { name, pattern, .. } => Ok(BindingPattern::Alias {
-            pattern: Box::new(plan_binding_pattern_in_context(*pattern, context)?),
+        (Pattern::Assign { name, pattern, .. }, _) if allow_alias => Ok(BindingPattern::Alias {
+            pattern: Box::new(plan_binding_pattern_in_context_with_alias(
+                *pattern, context, false,
+            )?),
             name,
         }),
-        pattern => plan_binding_pattern(pattern),
+        (Pattern::Assign { .. }, _) => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::PatternShape {
+                reason: crate::planner::InvalidPatternShapeReason::NestedBindingAlias,
+            },
+        }),
+        (pattern, shape) => {
+            crate::planner::pattern::validate_pattern(&pattern, &shape, context)?;
+            Err(non_variable_pattern_error(&pattern))
+        }
     }
 }
 
@@ -931,7 +1084,11 @@ pub(super) fn non_variable_pattern_error(pattern: &TypedPattern) -> PlanError {
         | Pattern::Variable { .. }
         | Pattern::Assign { .. }
         | Pattern::Tuple { .. } => PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::InvalidPattern,
+            reason: InvalidTypedAstReason::PatternShape {
+                reason: crate::planner::InvalidPatternShapeReason::BindingKind {
+                    actual: crate::planner::pattern::pattern_kind(pattern),
+                },
+            },
         },
     }
 }
@@ -941,19 +1098,90 @@ fn plan_total_bit_array_binding_pattern(
         gleam_core::ast::BitArraySegment<TypedPattern, std::sync::Arc<gleam_core::type_::Type>>,
     >,
 ) -> Result<BindingPattern, PlanError> {
-    let mut segments = segments.into_iter();
-    let segment = segments.next().ok_or_else(invalid_binding_pattern)?;
-    if segments.next().is_some()
-        || !segment.type_.is_bit_array()
-        || segment.size().is_some()
-        || !matches!(
+    let segment = take_bit_array_binding_segment(segments)?;
+    if !segment.type_.is_bit_array() {
+        crate::planner::pattern::validate_pattern_value_type(
+            ValueType::BitArray,
+            crate::planner::pattern::pattern_value_type_from_gleam(segment.type_.as_ref())?,
+        )?;
+    }
+    if segment.size().is_some() {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::PatternShape {
+                reason: crate::planner::InvalidPatternShapeReason::BitArrayBindingSegmentSize,
+            },
+        });
+    }
+    if !matches!(
+        segment.options.as_slice(),
+        [gleam_core::ast::BitArrayOption::Bits { .. }]
+    ) {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::PatternShape {
+                reason: crate::planner::InvalidPatternShapeReason::BitArrayBindingSegmentOptions,
+            },
+        });
+    }
+    plan_total_bit_array_binding_value_pattern(*segment.value)
+}
+
+fn take_bit_array_binding_segment(
+    segments: Vec<
+        gleam_core::ast::BitArraySegment<TypedPattern, std::sync::Arc<gleam_core::type_::Type>>,
+    >,
+) -> Result<
+    gleam_core::ast::BitArraySegment<TypedPattern, std::sync::Arc<gleam_core::type_::Type>>,
+    PlanError,
+> {
+    let [segment] = match <[_; 1]>::try_from(segments) {
+        Ok(segments) => segments,
+        Err(segments) => {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason:
+                        crate::planner::InvalidPatternShapeReason::BitArrayBindingSegmentCount {
+                            actual: segments.len(),
+                        },
+                },
+            });
+        }
+    };
+    Ok(segment)
+}
+
+fn is_total_bit_array_binding(
+    segments: &[gleam_core::ast::BitArraySegment<
+        TypedPattern,
+        std::sync::Arc<gleam_core::type_::Type>,
+    >],
+) -> bool {
+    let [segment] = segments else {
+        return false;
+    };
+    segment.type_.is_bit_array()
+        && segment.size().is_none()
+        && matches!(
             segment.options.as_slice(),
             [gleam_core::ast::BitArrayOption::Bits { .. }]
         )
-    {
-        return Err(invalid_binding_pattern());
+        && is_total_bit_array_binding_value(segment.value.as_ref())
+}
+
+fn is_total_bit_array_binding_value(pattern: &TypedPattern) -> bool {
+    match pattern {
+        Pattern::Variable { type_, .. } | Pattern::Discard { type_, .. } => type_.is_bit_array(),
+        Pattern::Assign { pattern, .. } => is_total_bit_array_binding_value(pattern),
+        Pattern::Int { .. }
+        | Pattern::Float { .. }
+        | Pattern::String { .. }
+        | Pattern::BitArraySize(_)
+        | Pattern::List { .. }
+        | Pattern::Constructor { .. }
+        | Pattern::Tuple { .. }
+        | Pattern::BitArray { .. }
+        | Pattern::StringPrefix { .. }
+        | Pattern::Invalid { .. } => false,
     }
-    plan_total_bit_array_binding_value_pattern(*segment.value)
 }
 
 fn plan_total_bit_array_binding_value_pattern(
@@ -972,118 +1200,72 @@ fn plan_total_bit_array_binding_value_pattern(
                 }
             })
         }
-        _ => Err(invalid_binding_pattern()),
+        pattern => Err(non_variable_pattern_error(&pattern)),
     }
-}
-
-fn invalid_binding_pattern() -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::InvalidPattern,
-    }
-}
-
-fn plan_tail_only_list_binding_pattern(
-    elements: Vec<TypedPattern>,
-    tail: Option<gleam_core::ast::TailPattern<std::sync::Arc<gleam_core::type_::Type>>>,
-    type_: std::sync::Arc<gleam_core::type_::Type>,
-) -> Result<BindingPattern, PlanError> {
-    if !elements.is_empty() {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::InvalidPattern,
-        });
-    }
-
-    let Some(tail) = tail else {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::InvalidPattern,
-        });
-    };
-
-    let ValueType::List(element_type) =
-        ValueType::from_gleam(type_.as_ref()).ok_or_else(invalid_binding_pattern)?
-    else {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::InvalidPattern,
-        });
-    };
-    let element_type = *element_type;
-    let tail = plan_list_tail_binding(tail, element_type.clone())?;
-
-    Ok(BindingPattern::ListTail { tail, element_type })
 }
 
 fn plan_tail_only_list_binding_pattern_in_context(
+    location: gleam_core::ast::SrcSpan,
     elements: Vec<TypedPattern>,
-    tail: Option<gleam_core::ast::TailPattern<std::sync::Arc<gleam_core::type_::Type>>>,
+    tail: Option<Box<gleam_core::ast::TailPattern<std::sync::Arc<gleam_core::type_::Type>>>>,
     type_: std::sync::Arc<gleam_core::type_::Type>,
+    source_shape: ValueShape,
     context: &PlanContext<'_>,
 ) -> Result<BindingPattern, PlanError> {
     if !elements.is_empty() {
-        return Err(invalid_binding_pattern());
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::PatternShape {
+                reason: crate::planner::InvalidPatternShapeReason::ListBindingElements {
+                    actual: elements.len(),
+                },
+            },
+        });
     }
 
-    let tail = tail.ok_or_else(invalid_binding_pattern)?;
-    let ValueShape::List(element_shape) = context.value_shape_in_scope(type_.as_ref()) else {
-        return Err(invalid_binding_pattern());
-    };
-    let expected_tail_shape = ValueShape::List(element_shape.clone());
-    let element_type = element_shape.value_type();
-    let tail = match tail.pattern {
-        Pattern::Variable { name, type_, .. }
-            if context.value_shape_in_scope(type_.as_ref()) == expected_tail_shape =>
-        {
+    let validated = crate::planner::pattern::validate_list_pattern(
+        &Pattern::List {
+            location,
+            elements,
+            tail,
+            type_,
+        },
+        &source_shape,
+        context,
+    )?;
+    let element_type = validated.item_shape.value_type();
+    let tail = match validated.tail {
+        Some(crate::planner::pattern::ValidatedListTail::Named(name)) => {
             ListTailBinding::Named(name)
         }
-        Pattern::Discard { type_, .. }
-            if context.value_shape_in_scope(type_.as_ref()) == expected_tail_shape =>
-        {
-            ListTailBinding::Discard
+        Some(crate::planner::pattern::ValidatedListTail::Discard) => ListTailBinding::Discard,
+        None => {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::ListBindingTailMissing,
+                },
+            });
         }
-        _ => return Err(invalid_binding_pattern()),
     };
 
     Ok(BindingPattern::ListTail { tail, element_type })
 }
 
-fn plan_list_tail_binding(
-    tail: gleam_core::ast::TailPattern<std::sync::Arc<gleam_core::type_::Type>>,
-    element_type: ValueType,
-) -> Result<ListTailBinding, PlanError> {
-    match tail.pattern {
-        Pattern::Variable { name, type_, .. } => {
-            list_tail_type_matches(type_.as_ref(), &element_type)?;
-            Ok(ListTailBinding::Named(name))
-        }
-        Pattern::Discard { type_, .. } => {
-            list_tail_type_matches(type_.as_ref(), &element_type)?;
-            Ok(ListTailBinding::Discard)
-        }
-        _ => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::InvalidPattern,
-        }),
-    }
-}
-
-fn list_tail_type_matches(
-    type_: &gleam_core::type_::Type,
-    element_type: &ValueType,
-) -> Result<(), PlanError> {
-    if ValueType::from_gleam(type_) == Some(ValueType::List(Box::new(element_type.clone()))) {
-        Ok(())
-    } else {
-        Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::InvalidPattern,
-        })
+#[cfg(test)]
+fn pattern_shape_error(reason: crate::planner::InvalidPatternShapeReason) -> PlanError {
+    PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::PatternShape { reason },
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        BindingPattern, ListTailBinding, invalid_binding_pattern, plan_alias_assignment,
+        BindingPattern, ListTailBinding, is_total_binding_pattern,
+        is_total_bit_array_binding_value, pattern_shape_error, plan_alias_assignment,
         plan_assignment_steps, plan_binding_pattern, plan_binding_pattern_in_context,
-        plan_custom_assignment, plan_tail_only_list_binding_pattern_in_context,
-        plan_total_binding_pattern, plan_total_bit_array_binding_pattern,
+        plan_custom_assignment, plan_final_assignment,
+        plan_tail_only_list_binding_pattern_in_context, plan_total_binding_pattern,
+        plan_total_bit_array_binding_pattern, plan_tuple_assignment, total_custom_binding,
     };
     use crate::plan::{
         AssertBinding, BoolLocalId, CustomBindingPattern, CustomConstructor,
@@ -1240,6 +1422,62 @@ mod tests {
                 ListAssertTail::Ignore,
             )),
         );
+
+        let total_list = Pattern::List {
+            location: dummy_span(),
+            elements: Vec::new(),
+            tail: Some(Box::new(TailPattern {
+                location: dummy_span(),
+                pattern: Pattern::Discard {
+                    location: dummy_span(),
+                    name: "_".into(),
+                    type_: type_::list(type_::int()),
+                },
+            })),
+            type_: type_::list(type_::int()),
+        };
+        assert_eq!(is_total_binding_pattern(&total_list, &context), Ok(true));
+        let non_total_list = Pattern::List {
+            location: dummy_span(),
+            elements: Vec::new(),
+            tail: Some(Box::new(TailPattern {
+                location: dummy_span(),
+                pattern: Pattern::Int {
+                    location: dummy_span(),
+                    value: "1".into(),
+                    int_value: BigInt::from(1),
+                },
+            })),
+            type_: type_::list(type_::int()),
+        };
+        assert_eq!(
+            is_total_binding_pattern(&non_total_list, &context),
+            Ok(false),
+        );
+    }
+
+    #[test]
+    fn total_bit_array_binding_accepts_variables_discards_and_aliases() {
+        let variable = Pattern::Variable {
+            location: dummy_span(),
+            name: "bits".into(),
+            type_: type_::bit_array(),
+            origin: VariableOrigin::generated(),
+        };
+        let discard = Pattern::Discard {
+            location: dummy_span(),
+            name: "_".into(),
+            type_: type_::bit_array(),
+        };
+        let alias = Pattern::Assign {
+            location: dummy_span(),
+            name: "whole".into(),
+            pattern: Box::new(discard.clone()),
+        };
+
+        assert!(is_total_bit_array_binding_value(&variable));
+        assert!(is_total_bit_array_binding_value(&discard));
+        assert!(is_total_bit_array_binding_value(&alias));
     }
 
     #[test]
@@ -1251,16 +1489,159 @@ mod tests {
 
         assert_eq!(
             plan_tail_only_list_binding_pattern_in_context(
+                crate::planner::support::dummy_span(),
                 Vec::new(),
                 None,
                 type_::list(type_::int()),
+                ValueShape::List(Box::new(ValueShape::Int)),
                 &context,
             ),
-            Err(invalid_binding_pattern()),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::ListBindingTailMissing,
+            )),
         );
         assert_eq!(
             plan_total_bit_array_binding_pattern(Vec::new()),
-            Err(invalid_binding_pattern()),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::BitArrayBindingSegmentCount {
+                    actual: 0,
+                },
+            )),
+        );
+
+        assert_eq!(
+            plan_total_binding_pattern(
+                BindingPattern::ListTail {
+                    tail: ListTailBinding::Discard,
+                    element_type: ValueType::String,
+                },
+                ValueShape::List(Box::new(ValueShape::Int)),
+                &mut PlanContext::new(&module, &functions, &mut AnonymousFunctions::default(),),
+            ),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::TypeMismatch {
+                    expected: ValueType::List(Box::new(ValueType::String)),
+                    actual: ValueType::List(Box::new(ValueType::Int)),
+                },
+            )),
+        );
+
+        let constructor = custom_constructor("Boxed", vec![ValueType::Int]);
+        let source_shape = CustomValueShape::any(constructor.type_().clone());
+        assert_eq!(
+            plan_total_binding_pattern(
+                BindingPattern::Custom {
+                    source_shape: source_shape.clone(),
+                    constructor_count: 1,
+                    constructor: constructor.clone(),
+                    fields: Vec::new(),
+                },
+                ValueShape::Custom(source_shape),
+                &mut PlanContext::new(&module, &functions, &mut AnonymousFunctions::default(),),
+            ),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::ConstructorArity {
+                    expected: 1,
+                    actual: 0,
+                },
+            )),
+        );
+
+        let exact_other = CustomValueShape::new(
+            constructor.type_().type_name().clone(),
+            Vec::new(),
+            crate::plan::CustomConstructorRefinement::Exact(1),
+        );
+        assert_eq!(
+            total_custom_binding(
+                exact_other,
+                2,
+                constructor.clone(),
+                vec![TotalBindingPattern::discard(ValueType::Int)],
+            ),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::BindingConstructorRefinement {
+                    expected: constructor.index(),
+                    actual: Some(1),
+                },
+            )),
+        );
+
+        let bit_array_discard = || Pattern::Discard {
+            location: dummy_span(),
+            name: "_".into(),
+            type_: type_::bit_array(),
+        };
+        assert_eq!(
+            plan_total_bit_array_binding_pattern(vec![BitArraySegment {
+                location: dummy_span(),
+                value: Box::new(bit_array_discard()),
+                options: vec![BitArrayOption::Bits {
+                    location: dummy_span(),
+                }],
+                type_: type_::int(),
+            }]),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::TypeMismatch {
+                    expected: ValueType::BitArray,
+                    actual: ValueType::Int,
+                },
+            )),
+        );
+        assert_eq!(
+            plan_total_bit_array_binding_pattern(vec![BitArraySegment {
+                location: dummy_span(),
+                value: Box::new(bit_array_discard()),
+                options: vec![BitArrayOption::Bits {
+                    location: dummy_span(),
+                }],
+                type_: type_::generic_var(0),
+            }]),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::UnsupportedType,
+            )),
+        );
+        assert_eq!(
+            plan_total_bit_array_binding_pattern(vec![BitArraySegment {
+                location: dummy_span(),
+                value: Box::new(bit_array_discard()),
+                options: vec![
+                    BitArrayOption::Bits {
+                        location: dummy_span(),
+                    },
+                    BitArrayOption::Size {
+                        location: dummy_span(),
+                        value: Box::new(Pattern::BitArraySize(BitArraySize::Int {
+                            location: dummy_span(),
+                            value: "8".into(),
+                            int_value: BigInt::from(8),
+                        })),
+                        short_form: false,
+                    },
+                ],
+                type_: type_::bit_array(),
+            }]),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::BitArrayBindingSegmentSize,
+            )),
+        );
+        assert_eq!(
+            plan_total_bit_array_binding_pattern(vec![BitArraySegment {
+                location: dummy_span(),
+                value: Box::new(Pattern::BitArray {
+                    location: dummy_span(),
+                    segments: Vec::new(),
+                }),
+                options: vec![BitArrayOption::Bits {
+                    location: dummy_span(),
+                }],
+                type_: type_::bit_array(),
+            }]),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::BindingKind {
+                    actual: crate::planner::PatternKind::BitArray,
+                },
+            )),
         );
     }
 
@@ -1342,7 +1723,12 @@ pub fn main() {
                 &mut context,
             )
             .map(|_| ()),
-            Err(invalid_binding_pattern()),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::TypeMismatch {
+                    expected: ValueType::Custom(custom_type("Boxed")),
+                    actual: ValueType::Custom(custom_type("Other")),
+                },
+            )),
         );
         assert_eq!(
             plan_custom_assignment(
@@ -1356,7 +1742,12 @@ pub fn main() {
                 &mut context,
             )
             .map(|_| ()),
-            Err(invalid_binding_pattern()),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::BindingConstructorRefinement {
+                    expected: 0,
+                    actual: None,
+                },
+            )),
         );
 
         let invalid_custom_value = Expr::custom(
@@ -1374,7 +1765,12 @@ pub fn main() {
                 invalid_custom_value.clone(),
                 &mut context,
             ),
-            Err(invalid_binding_pattern()),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::TypeMismatch {
+                    expected: ValueType::Custom(custom_type("Boxed")),
+                    actual: ValueType::Custom(custom_type("Other")),
+                },
+            )),
         );
         assert_eq!(
             plan_alias_assignment(
@@ -1389,7 +1785,12 @@ pub fn main() {
                 &mut context,
             )
             .map(|_| ()),
-            Err(invalid_binding_pattern()),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::TypeMismatch {
+                    expected: ValueType::Custom(custom_type("Boxed")),
+                    actual: ValueType::Custom(custom_type("Other")),
+                },
+            )),
         );
 
         let tuple_field =
@@ -1415,7 +1816,12 @@ pub fn main() {
                 &mut context,
             )
             .map(|_| ()),
-            Err(invalid_binding_pattern()),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::TupleArity {
+                    expected: 1,
+                    actual: 2,
+                },
+            )),
         );
         assert_eq!(
             plan_custom_assignment(
@@ -1429,7 +1835,12 @@ pub fn main() {
                 &mut context,
             )
             .map(|_| ()),
-            Err(invalid_binding_pattern()),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::ConstructorArity {
+                    expected: 1,
+                    actual: 0,
+                },
+            )),
         );
 
         assert_eq!(
@@ -1438,7 +1849,12 @@ pub fn main() {
                 ValueShape::Int,
                 &mut context,
             ),
-            Err(invalid_binding_pattern()),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::BindingShape {
+                    expected: ValueType::Int,
+                    actual: crate::planner::PatternKind::Tuple,
+                },
+            )),
         );
         assert_eq!(
             plan_total_binding_pattern(
@@ -1446,7 +1862,12 @@ pub fn main() {
                 ValueShape::Tuple(vec![ValueShape::Int, ValueShape::String].into_boxed_slice()),
                 &mut context,
             ),
-            Err(invalid_binding_pattern()),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::TupleArity {
+                    expected: 2,
+                    actual: 1,
+                },
+            )),
         );
         assert_eq!(
             plan_total_binding_pattern(
@@ -1457,7 +1878,12 @@ pub fn main() {
                 ValueShape::String,
                 &mut context,
             ),
-            Err(invalid_binding_pattern()),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::BindingShape {
+                    expected: ValueType::String,
+                    actual: crate::planner::PatternKind::List,
+                },
+            )),
         );
         assert_eq!(
             plan_total_binding_pattern(
@@ -1470,7 +1896,12 @@ pub fn main() {
                 ValueShape::Custom(crate::plan::CustomValueShape::any(custom_type("Other"))),
                 &mut context,
             ),
-            Err(invalid_binding_pattern()),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::TypeMismatch {
+                    expected: ValueType::Custom(custom_type("Boxed")),
+                    actual: ValueType::Custom(custom_type("Other")),
+                },
+            )),
         );
         assert_eq!(
             plan_total_binding_pattern(
@@ -1483,7 +1914,12 @@ pub fn main() {
                 ValueShape::Int,
                 &mut context,
             ),
-            Err(invalid_binding_pattern()),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::BindingShape {
+                    expected: ValueType::Int,
+                    actual: crate::planner::PatternKind::Constructor,
+                },
+            )),
         );
         assert_eq!(
             plan_total_binding_pattern(
@@ -1500,7 +1936,11 @@ pub fn main() {
                 )),
                 &mut context,
             ),
-            Err(invalid_binding_pattern()),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::BindingShapeConflict {
+                    type_: ValueType::Custom(custom_type("Boxed")),
+                },
+            )),
         );
         assert_eq!(
             plan_total_binding_pattern(
@@ -1513,7 +1953,12 @@ pub fn main() {
                 ValueShape::Custom(crate::plan::CustomValueShape::any(custom_type("Boxed"))),
                 &mut context,
             ),
-            Err(invalid_binding_pattern()),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::BindingShape {
+                    expected: ValueType::Int,
+                    actual: crate::planner::PatternKind::Tuple,
+                },
+            )),
         );
         assert_eq!(
             plan_total_binding_pattern(
@@ -1524,7 +1969,12 @@ pub fn main() {
                 ValueShape::Int,
                 &mut context,
             ),
-            Err(invalid_binding_pattern()),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::BindingShape {
+                    expected: ValueType::Int,
+                    actual: crate::planner::PatternKind::Tuple,
+                },
+            )),
         );
     }
 
@@ -1557,7 +2007,202 @@ pub fn main() {
                 },
                 &context,
             ),
-            Err(invalid_binding_pattern()),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::UnresolvedConstructor,
+            )),
+        );
+
+        let unknown_result = || Pattern::Constructor {
+            location: span,
+            name_location: span,
+            name: "Ok".into(),
+            arguments: Vec::new(),
+            module: None,
+            constructor: Inferred::Unknown,
+            spread: None,
+            type_: type_::result(type_::int(), type_::string()),
+        };
+        assert_eq!(
+            is_total_binding_pattern(
+                &Pattern::Tuple {
+                    location: span,
+                    elements: vec![unknown_result()],
+                },
+                &context,
+            ),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::UnresolvedConstructor,
+            )),
+        );
+
+        let result_constructor = || gleam_core::type_::PatternConstructor {
+            name: "Ok".into(),
+            field_map: None,
+            documentation: None,
+            module: "gleam".into(),
+            location: span,
+            constructor_index: 0,
+        };
+        let nested_result = type_::result(type_::int(), type_::string());
+        let mut exact_outer_result = type_::result(nested_result.clone(), type_::string());
+        std::sync::Arc::make_mut(&mut exact_outer_result).set_custom_type_variant(0);
+        assert_eq!(
+            is_total_binding_pattern(
+                &Pattern::Constructor {
+                    location: span,
+                    name_location: span,
+                    name: "Ok".into(),
+                    arguments: vec![gleam_core::ast::CallArg {
+                        label: None,
+                        location: span,
+                        value: Pattern::Constructor {
+                            location: span,
+                            name_location: span,
+                            name: "Ok".into(),
+                            arguments: Vec::new(),
+                            module: None,
+                            constructor: Inferred::Unknown,
+                            spread: None,
+                            type_: nested_result,
+                        },
+                        implicit: None,
+                    }],
+                    module: None,
+                    constructor: Inferred::Known(result_constructor()),
+                    spread: None,
+                    type_: exact_outer_result,
+                },
+                &context,
+            ),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::UnresolvedConstructor,
+            )),
+        );
+
+        let nested_result = type_::result(type_::int(), type_::string());
+        let mut exact_outer_result = type_::result(nested_result.clone(), type_::string());
+        std::sync::Arc::make_mut(&mut exact_outer_result).set_custom_type_variant(0);
+        assert_eq!(
+            plan_binding_pattern_in_context(
+                Pattern::Constructor {
+                    location: span,
+                    name_location: span,
+                    name: "Ok".into(),
+                    arguments: vec![gleam_core::ast::CallArg {
+                        label: None,
+                        location: span,
+                        value: Pattern::Constructor {
+                            location: span,
+                            name_location: span,
+                            name: "Ok".into(),
+                            arguments: Vec::new(),
+                            module: None,
+                            constructor: Inferred::Unknown,
+                            spread: None,
+                            type_: nested_result,
+                        },
+                        implicit: None,
+                    }],
+                    module: None,
+                    constructor: Inferred::Known(result_constructor()),
+                    spread: None,
+                    type_: exact_outer_result,
+                },
+                &context,
+            ),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::UnresolvedConstructor,
+            )),
+        );
+
+        let mut exact_result = type_::result(type_::int(), type_::string());
+        std::sync::Arc::make_mut(&mut exact_result).set_custom_type_variant(0);
+        assert_eq!(
+            plan_binding_pattern_in_context(
+                Pattern::Constructor {
+                    location: span,
+                    name_location: span,
+                    name: "Ok".into(),
+                    arguments: vec![gleam_core::ast::CallArg {
+                        label: None,
+                        location: span,
+                        value: Pattern::Invalid {
+                            location: span,
+                            type_: type_::int(),
+                        },
+                        implicit: None,
+                    }],
+                    module: None,
+                    constructor: Inferred::Known(result_constructor()),
+                    spread: None,
+                    type_: exact_result.clone(),
+                },
+                &context,
+            ),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::InvalidNode,
+            )),
+        );
+        assert_eq!(
+            plan_binding_pattern_in_context(
+                Pattern::Constructor {
+                    location: span,
+                    name_location: span,
+                    name: "Ok".into(),
+                    arguments: Vec::new(),
+                    module: None,
+                    constructor: Inferred::Known(result_constructor()),
+                    spread: None,
+                    type_: exact_result.clone(),
+                },
+                &context,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CustomType {
+                    package: "".into(),
+                    module: "gleam".into(),
+                    name: "Result".into(),
+                    reason: Box::new(crate::planner::InvalidCustomTypeReason::ConstructorArity {
+                        expected: 1,
+                        actual: 0,
+                    }),
+                },
+            }),
+        );
+        assert_eq!(
+            plan_binding_pattern_in_context(
+                Pattern::Constructor {
+                    location: span,
+                    name_location: span,
+                    name: "Ok".into(),
+                    arguments: vec![gleam_core::ast::CallArg {
+                        label: None,
+                        location: span,
+                        value: Pattern::Assign {
+                            location: span,
+                            name: "outer".into(),
+                            pattern: Box::new(Pattern::Assign {
+                                location: span,
+                                name: "inner".into(),
+                                pattern: Box::new(Pattern::Discard {
+                                    location: span,
+                                    name: "_".into(),
+                                    type_: type_::int(),
+                                }),
+                            }),
+                        },
+                        implicit: None,
+                    }],
+                    module: None,
+                    constructor: Inferred::Known(result_constructor()),
+                    spread: None,
+                    type_: exact_result,
+                },
+                &context,
+            ),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::NestedBindingAlias,
+            )),
         );
         assert_eq!(
             plan_binding_pattern_in_context(
@@ -1580,7 +2225,11 @@ pub fn main() {
                 },
                 &context,
             ),
-            Err(invalid_binding_pattern()),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::ConstructorType {
+                    type_: ValueType::Parameter(TypeParameterId(0)),
+                },
+            )),
         );
         assert_eq!(
             plan_binding_pattern_in_context(
@@ -1646,7 +2295,9 @@ pub fn main() {
                 },
                 &context,
             ),
-            Err(invalid_binding_pattern()),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::BitArraySizeNode,
+            )),
         );
         assert_eq!(
             plan_binding_pattern_in_context(
@@ -1704,7 +2355,11 @@ pub fn main() {
                 },
                 &context,
             ),
-            Err(invalid_binding_pattern()),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::RefutableBindingConstructor {
+                    constructors: 2,
+                },
+            )),
         );
 
         let definitions = vec![CustomTypeDefinition::new(
@@ -1720,28 +2375,34 @@ pub fn main() {
         let mut anonymous = AnonymousFunctions::default();
         let context =
             PlanContext::new_with_custom_types(&module, &functions, &definitions, &mut anonymous);
+        let first_pattern = Pattern::Constructor {
+            location: span,
+            name_location: span,
+            name: "First".into(),
+            arguments: Vec::new(),
+            module: None,
+            constructor: Inferred::Known(gleam_core::type_::PatternConstructor {
+                name: "First".into(),
+                field_map: None,
+                documentation: None,
+                module: "main".into(),
+                location: span,
+                constructor_index: 0,
+            }),
+            spread: None,
+            type_: type_.clone(),
+        };
         assert_eq!(
-            plan_binding_pattern_in_context(
-                Pattern::Constructor {
-                    location: span,
-                    name_location: span,
-                    name: "First".into(),
-                    arguments: Vec::new(),
-                    module: None,
-                    constructor: Inferred::Known(gleam_core::type_::PatternConstructor {
-                        name: "First".into(),
-                        field_map: None,
-                        documentation: None,
-                        module: "main".into(),
-                        location: span,
-                        constructor_index: 0,
-                    }),
-                    spread: None,
-                    type_,
+            is_total_binding_pattern(&first_pattern, &context),
+            Ok(false)
+        );
+        assert_eq!(
+            plan_binding_pattern_in_context(first_pattern, &context),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::RefutableBindingConstructor {
+                    constructors: 2,
                 },
-                &context,
-            ),
-            Err(invalid_binding_pattern()),
+            )),
         );
     }
 
@@ -1971,7 +2632,9 @@ pub fn main() {
         assert_eq!(
             plan_module(module),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::NestedBindingAlias,
+                },
             }),
         );
     }
@@ -2009,9 +2672,11 @@ pub fn main() {
         assert_eq!(
             plan_module(module),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Tuple,
-                    actual: InvalidExpressionType::Int,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::TypeMismatch {
+                        expected: ValueType::Int,
+                        actual: ValueType::Tuple(vec![ValueType::Int]),
+                    },
                 },
             }),
         );
@@ -2205,9 +2870,34 @@ pub fn main() {
 
         assert_eq!(
             plan_module(module),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
-            }),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::TupleArity {
+                    expected: 1,
+                    actual: 2,
+                },
+            )),
+        );
+
+        let module_name = "main".into();
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
+        assert_eq!(
+            plan_tuple_assignment(
+                vec![BindingPattern::Discard, BindingPattern::Discard],
+                Expr::tuple(crate::plan::TupleExpr::value(
+                    vec![Expr::from(int(1))],
+                    vec![ValueType::Int],
+                )),
+                &mut context,
+            )
+            .map(|_| ()),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::TupleArity {
+                    expected: 1,
+                    actual: 2,
+                },
+            )),
         );
     }
 
@@ -2237,9 +2927,11 @@ pub fn main() {
         assert_eq!(
             plan_module(module),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: crate::planner::InvalidExpressionType::Tuple,
-                    actual: crate::planner::InvalidExpressionType::Int,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::TypeMismatch {
+                        expected: ValueType::Int,
+                        actual: ValueType::Tuple(vec![ValueType::Int]),
+                    },
                 },
             }),
         );
@@ -2278,9 +2970,11 @@ pub fn main() {
         assert_eq!(
             plan_module(module),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Tuple,
-                    actual: InvalidExpressionType::Int,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::TypeMismatch {
+                        expected: ValueType::Int,
+                        actual: ValueType::Tuple(vec![ValueType::Int]),
+                    },
                 },
             }),
         );
@@ -2308,6 +3002,52 @@ pub fn main() {
                 reason: InvalidTypedAstReason::ExpressionType {
                     expected: InvalidExpressionType::Int,
                     actual: InvalidExpressionType::String,
+                },
+            }),
+        );
+
+        let expected_tuple_error = PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionType {
+                expected: InvalidExpressionType::Tuple,
+                actual: InvalidExpressionType::Int,
+            },
+        };
+        assert_eq!(
+            super::plan_assignment_steps(
+                BindingPattern::Tuple(Vec::new()),
+                Expr::from(int(1)),
+                &mut context,
+            ),
+            Err(expected_tuple_error.clone()),
+        );
+        assert_eq!(
+            super::plan_alias_assignment(
+                BindingPattern::Tuple(Vec::new()),
+                "whole".into(),
+                Expr::from(int(1)),
+                &mut context,
+            )
+            .err(),
+            Some(expected_tuple_error),
+        );
+
+        assert_eq!(
+            super::plan_tuple_assignment(
+                vec![BindingPattern::ListTail {
+                    tail: ListTailBinding::Discard,
+                    element_type: ValueType::Int,
+                }],
+                Expr::tuple(crate::plan::TupleExpr::value(
+                    vec![Expr::from(int(1))],
+                    vec![ValueType::Int],
+                )),
+                &mut context,
+            )
+            .map(|_| ()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::List,
+                    actual: InvalidExpressionType::Int,
                 },
             }),
         );
@@ -2417,7 +3157,12 @@ pub fn main() {
             )
             .err(),
             Some(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::TypeMismatch {
+                        expected: ValueType::List(Box::new(ValueType::String)),
+                        actual: ValueType::List(Box::new(ValueType::Int)),
+                    },
+                },
             }),
         );
     }
@@ -2450,7 +3195,11 @@ pub fn main() {
                 &mut context,
             ),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::BindingKind {
+                        actual: crate::planner::PatternKind::Int,
+                    },
+                },
             }),
         );
     }
@@ -2474,7 +3223,12 @@ pub fn main() {
             )
             .err(),
             Some(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::TypeMismatch {
+                        expected: ValueType::List(Box::new(ValueType::String)),
+                        actual: ValueType::List(Box::new(ValueType::Int)),
+                    },
+                },
             }),
         );
     }
@@ -2499,7 +3253,37 @@ pub fn main() {
             )
             .err(),
             Some(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::TypeMismatch {
+                        expected: ValueType::List(Box::new(ValueType::String)),
+                        actual: ValueType::List(Box::new(ValueType::Int)),
+                    },
+                },
+            }),
+        );
+        assert_eq!(
+            super::plan_assignment_steps(
+                BindingPattern::Alias {
+                    pattern: Box::new(BindingPattern::Alias {
+                        pattern: Box::new(BindingPattern::ListTail {
+                            tail: ListTailBinding::Named("rest".into()),
+                            element_type: ValueType::String,
+                        }),
+                        name: "inner".into(),
+                    }),
+                    name: "values".into(),
+                },
+                Expr::list(ListExpr::value(Vec::new(), ValueType::Int)),
+                &mut context,
+            )
+            .err(),
+            Some(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::TypeMismatch {
+                        expected: ValueType::List(Box::new(ValueType::String)),
+                        actual: ValueType::List(Box::new(ValueType::Int)),
+                    },
+                },
             }),
         );
     }
@@ -2734,6 +3518,42 @@ pub fn main() {
     }
 
     #[test]
+    fn final_assignment_validates_the_pattern_against_the_value_shape() {
+        let module_name = "main".into();
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
+
+        assert_eq!(
+            plan_final_assignment(
+                TypedAssignment {
+                    location: dummy_span(),
+                    value: typed_int_expr(1),
+                    pattern: Pattern::Discard {
+                        location: dummy_span(),
+                        name: "_".into(),
+                        type_: type_::string(),
+                    },
+                    kind: AssignmentKind::Let,
+                    compiled_case: CompiledCase::simple_variable_assignment(
+                        "_".into(),
+                        type_::string(),
+                    ),
+                    annotation: None,
+                },
+                &mut context,
+            )
+            .err(),
+            Some(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::TypeMismatch {
+                    expected: ValueType::Int,
+                    actual: ValueType::String,
+                },
+            )),
+        );
+    }
+
+    #[test]
     fn reject_margin_generated_assignment() {
         let mut generated = compile_minimal_module();
         generated.definitions.functions[0].body = vec![
@@ -2929,9 +3749,9 @@ pub fn main() {
                     type_: type_::list(type_::int()),
                 }),
             }),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
-            }),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::ListBindingElements { actual: 1 },
+            )),
         );
         assert_eq!(
             plan_binding_pattern(Pattern::List {
@@ -2948,9 +3768,12 @@ pub fn main() {
                 })),
                 type_: type_::list(type_::int()),
             }),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
-            }),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::TypeMismatch {
+                    expected: ValueType::List(Box::new(ValueType::Int)),
+                    actual: ValueType::Int,
+                },
+            )),
         );
         assert_eq!(
             plan_binding_pattern(Pattern::List {
@@ -2966,9 +3789,12 @@ pub fn main() {
                 })),
                 type_: type_::list(type_::int()),
             }),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
-            }),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::TypeMismatch {
+                    expected: ValueType::List(Box::new(ValueType::Int)),
+                    actual: ValueType::Int,
+                },
+            )),
         );
         assert_eq!(
             plan_binding_pattern(Pattern::List {
@@ -2977,9 +3803,9 @@ pub fn main() {
                 tail: None,
                 type_: type_::list(type_::int()),
             }),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
-            }),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::ListBindingTailMissing,
+            )),
         );
         assert_eq!(
             plan_binding_pattern(Pattern::List {
@@ -2996,9 +3822,12 @@ pub fn main() {
                 })),
                 type_: type_::int(),
             }),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
-            }),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::KindMismatch {
+                    expected: ValueType::Int,
+                    actual: crate::planner::PatternKind::List,
+                },
+            )),
         );
         assert_eq!(
             plan_binding_pattern(Pattern::List {
@@ -3014,66 +3843,102 @@ pub fn main() {
                 })),
                 type_: type_::list(type_::int()),
             }),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
-            }),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::ListTailKind {
+                    actual: crate::planner::PatternKind::Int,
+                },
+            )),
         );
         let patterns = [
-            Pattern::Int {
-                location: dummy_span(),
-                value: "1".into(),
-                int_value: BigInt::from(1),
-            },
-            Pattern::Float {
-                location: dummy_span(),
-                value: "1.0".into(),
-                float_value: LiteralFloatValue::ONE,
-            },
-            Pattern::String {
-                location: dummy_span(),
-                value: "a".into(),
-            },
-            Pattern::BitArraySize(BitArraySize::Int {
-                location: dummy_span(),
-                value: "1".into(),
-                int_value: BigInt::from(1),
-            }),
-            Pattern::BitArray {
-                location: dummy_span(),
-                segments: Vec::new(),
-            },
-            Pattern::Constructor {
-                location: dummy_span(),
-                name_location: dummy_span(),
-                name: "Boxed".into(),
-                arguments: Vec::new(),
-                module: None,
-                constructor: Inferred::Unknown,
-                spread: None,
-                type_: type_::int(),
-            },
-            Pattern::StringPrefix {
-                location: dummy_span(),
-                left_location: dummy_span(),
-                left_side_assignment: None,
-                right_location: dummy_span(),
-                left_side_string: "pre".into(),
-                right_side_assignment: AssignName::Variable("rest".into()),
-            },
-            Pattern::Invalid {
-                location: dummy_span(),
-                type_: type_::int(),
-            },
+            (
+                Pattern::Int {
+                    location: dummy_span(),
+                    value: "1".into(),
+                    int_value: BigInt::from(1),
+                },
+                crate::planner::InvalidPatternShapeReason::BindingKind {
+                    actual: crate::planner::PatternKind::Int,
+                },
+            ),
+            (
+                Pattern::Float {
+                    location: dummy_span(),
+                    value: "1.0".into(),
+                    float_value: LiteralFloatValue::ONE,
+                },
+                crate::planner::InvalidPatternShapeReason::BindingKind {
+                    actual: crate::planner::PatternKind::Float,
+                },
+            ),
+            (
+                Pattern::String {
+                    location: dummy_span(),
+                    value: "a".into(),
+                },
+                crate::planner::InvalidPatternShapeReason::BindingKind {
+                    actual: crate::planner::PatternKind::String,
+                },
+            ),
+            (
+                Pattern::BitArraySize(BitArraySize::Int {
+                    location: dummy_span(),
+                    value: "1".into(),
+                    int_value: BigInt::from(1),
+                }),
+                crate::planner::InvalidPatternShapeReason::BitArraySizeNode,
+            ),
+            (
+                Pattern::Constructor {
+                    location: dummy_span(),
+                    name_location: dummy_span(),
+                    name: "Boxed".into(),
+                    arguments: Vec::new(),
+                    module: None,
+                    constructor: Inferred::Unknown,
+                    spread: None,
+                    type_: type_::int(),
+                },
+                crate::planner::InvalidPatternShapeReason::UnresolvedConstructor,
+            ),
+            (
+                Pattern::StringPrefix {
+                    location: dummy_span(),
+                    left_location: dummy_span(),
+                    left_side_assignment: None,
+                    right_location: dummy_span(),
+                    left_side_string: "pre".into(),
+                    right_side_assignment: AssignName::Variable("rest".into()),
+                },
+                crate::planner::InvalidPatternShapeReason::BindingKind {
+                    actual: crate::planner::PatternKind::StringPrefix,
+                },
+            ),
+            (
+                Pattern::Invalid {
+                    location: dummy_span(),
+                    type_: type_::int(),
+                },
+                crate::planner::InvalidPatternShapeReason::InvalidNode,
+            ),
         ];
 
-        for pattern in patterns {
+        for (pattern, reason) in patterns {
             assert_eq!(
                 plan_binding_pattern(pattern),
-                Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::InvalidPattern,
-                }),
+                Err(pattern_shape_error(reason)),
             );
         }
+        assert_eq!(
+            plan_binding_pattern(Pattern::BitArray {
+                location: dummy_span(),
+                segments: Vec::new(),
+            }),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::BitArrayBindingSegmentCount {
+                    actual: 0,
+                },
+            )),
+        );
         assert_eq!(
             plan_binding_pattern(Pattern::BitArray {
                 location: dummy_span(),
@@ -3095,13 +3960,27 @@ pub fn main() {
                     type_: type_::bit_array(),
                 }],
             }),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
-            }),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::BitArrayBindingSegmentOptions,
+            )),
         );
-        for (segment_type, binding_type) in [
-            (type_::int(), type_::bit_array()),
-            (type_::bit_array(), type_::int()),
+        for (segment_type, binding_type, reason) in [
+            (
+                type_::int(),
+                type_::bit_array(),
+                crate::planner::InvalidPatternShapeReason::TypeMismatch {
+                    expected: ValueType::Int,
+                    actual: ValueType::BitArray,
+                },
+            ),
+            (
+                type_::bit_array(),
+                type_::int(),
+                crate::planner::InvalidPatternShapeReason::TypeMismatch {
+                    expected: ValueType::BitArray,
+                    actual: ValueType::Int,
+                },
+            ),
         ] {
             assert_eq!(
                 plan_binding_pattern(Pattern::BitArray {
@@ -3120,9 +3999,7 @@ pub fn main() {
                         type_: segment_type,
                     }],
                 }),
-                Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::InvalidPattern,
-                }),
+                Err(pattern_shape_error(reason)),
             );
         }
         assert_eq!(
@@ -3146,9 +4023,12 @@ pub fn main() {
                     type_: type_::bit_array(),
                 }],
             }),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::InvalidPattern,
-            }),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::TypeMismatch {
+                    expected: ValueType::BitArray,
+                    actual: ValueType::Int,
+                },
+            )),
         );
     }
 
@@ -3179,7 +4059,12 @@ pub fn main() {
                 },
                 &context,
             ),
-            Err(invalid_binding_pattern()),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::KindMismatch {
+                    expected: ValueType::Int,
+                    actual: crate::planner::PatternKind::List,
+                },
+            )),
         );
         assert_eq!(
             plan_binding_pattern_in_context(
@@ -3195,12 +4080,16 @@ pub fn main() {
                 },
                 &context,
             ),
-            Err(invalid_binding_pattern()),
+            Err(pattern_shape_error(
+                crate::planner::InvalidPatternShapeReason::ListTailKind {
+                    actual: crate::planner::PatternKind::Int,
+                },
+            )),
         );
     }
 
     #[test]
-    fn tail_only_list_binding_propagates_unsupported_element_type() {
+    fn tail_only_list_binding_preserves_parameter_element_type() {
         let list_type = type_::list(type_::generic_var(0));
         let tail = TailPattern {
             location: dummy_span(),
@@ -3212,8 +4101,16 @@ pub fn main() {
         };
 
         assert_eq!(
-            super::plan_tail_only_list_binding_pattern(Vec::new(), Some(tail), list_type),
-            Err(invalid_binding_pattern()),
+            plan_binding_pattern(Pattern::List {
+                location: dummy_span(),
+                elements: Vec::new(),
+                tail: Some(Box::new(tail)),
+                type_: list_type,
+            }),
+            Ok(BindingPattern::ListTail {
+                tail: ListTailBinding::Discard,
+                element_type: ValueType::Parameter(crate::plan::TypeParameterId(0)),
+            }),
         );
     }
 

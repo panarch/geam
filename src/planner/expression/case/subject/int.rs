@@ -36,7 +36,7 @@ pub(super) fn plan(
     let mut literal_clauses = Vec::new();
     let mut fallback = None;
     for clause in clauses {
-        let pattern = plan_int_case_pattern(clause.pattern)?;
+        let pattern = plan_int_case_pattern(clause.pattern, context)?;
         let bindings = super::branch_bindings(pattern.bound_names(), Expr::int(subject.clone()));
         let branch = super::plan_case_branch(
             type_.as_ref(),
@@ -85,7 +85,7 @@ fn plan_guarded_int_case(
     for clause in clauses {
         for pattern in clause.patterns() {
             let (pattern, reachable, exhaustive_remainder) = pattern.into_parts();
-            let pattern = plan_int_case_pattern(pattern)?;
+            let pattern = plan_int_case_pattern(pattern, context)?;
             let bindings =
                 super::branch_bindings(pattern.bound_names(), Expr::int(subject.clone()));
             let is_total = matches!(pattern, IntCasePattern::Any { .. }) && clause.guard.is_none();
@@ -144,39 +144,44 @@ impl IntCasePattern {
     }
 }
 
-fn plan_int_case_pattern(pattern: Pattern<Arc<Type>>) -> Result<IntCasePattern, PlanError> {
+fn plan_int_case_pattern(
+    pattern: Pattern<Arc<Type>>,
+    context: &PlanContext<'_>,
+) -> Result<IntCasePattern, PlanError> {
     match pattern {
         Pattern::Int { int_value, .. } => Ok(IntCasePattern::Literal {
             value: int_value,
             bound_names: Vec::new(),
         }),
-        Pattern::Variable { name, type_, .. } if type_.is_int() => Ok(IntCasePattern::Any {
-            bound_names: vec![name],
-        }),
-        Pattern::Variable { .. } => Err(invalid_case_shape(
-            InvalidCaseShapeReason::PatternTypeMismatch,
-        )),
-        Pattern::Discard { type_, .. } if type_.is_int() => Ok(IntCasePattern::Any {
-            bound_names: Vec::new(),
-        }),
-        Pattern::Discard { .. } => Err(invalid_case_shape(
-            InvalidCaseShapeReason::PatternTypeMismatch,
-        )),
+        ref pattern @ Pattern::Variable { ref name, .. } => {
+            crate::planner::pattern::validate_pattern(pattern, &ValueShape::Int, context)?;
+            Ok(IntCasePattern::Any {
+                bound_names: vec![name.clone()],
+            })
+        }
+        ref pattern @ Pattern::Discard { .. } => {
+            crate::planner::pattern::validate_pattern(pattern, &ValueShape::Int, context)?;
+            Ok(IntCasePattern::Any {
+                bound_names: Vec::new(),
+            })
+        }
         Pattern::Assign { name, pattern, .. } => {
-            let mut pattern = plan_int_case_pattern(*pattern)?;
+            let mut pattern = plan_int_case_pattern(*pattern, context)?;
             pattern.add_bound_name(name);
             Ok(pattern)
         }
-        Pattern::Invalid { .. } => Err(invalid_case_shape(InvalidCaseShapeReason::InvalidPattern)),
-        Pattern::Float { .. }
+        pattern @ (Pattern::Float { .. }
         | Pattern::String { .. }
         | Pattern::BitArraySize(_)
         | Pattern::List { .. }
         | Pattern::Constructor { .. }
         | Pattern::Tuple { .. }
         | Pattern::BitArray { .. }
-        | Pattern::StringPrefix { .. } => Err(invalid_case_shape(
-            InvalidCaseShapeReason::PatternTypeMismatch,
+        | Pattern::StringPrefix { .. }
+        | Pattern::Invalid { .. }) => Err(crate::planner::pattern::unexpected_pattern(
+            &pattern,
+            &ValueShape::Int,
+            context,
         )),
     }
 }
@@ -1967,11 +1972,10 @@ pub fn main() {
         };
         assert_eq!(
             plan_module(variable_type_mismatch),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::pattern_type_mismatch(
+                ValueType::Int,
+                ValueType::Bool,
+            )),
         );
 
         let mut discard_type_mismatch = compile_int_case_module();
@@ -1985,11 +1989,10 @@ pub fn main() {
         };
         assert_eq!(
             plan_module(discard_type_mismatch),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::pattern_type_mismatch(
+                ValueType::Int,
+                ValueType::Bool,
+            )),
         );
 
         let mut invalid_pattern = compile_int_case_module();
@@ -2003,8 +2006,8 @@ pub fn main() {
         assert_eq!(
             plan_module(invalid_pattern),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::InvalidNode,
                 },
             }),
         );
@@ -2019,11 +2022,10 @@ pub fn main() {
         };
         assert_eq!(
             plan_module(pattern_type_mismatch),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::pattern_type_mismatch(
+                ValueType::Int,
+                ValueType::String,
+            )),
         );
 
         let mut assign_invalid_pattern = compile_int_case_module();
@@ -2041,8 +2043,8 @@ pub fn main() {
         assert_eq!(
             plan_module(assign_invalid_pattern),
             Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::InvalidPattern,
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: crate::planner::InvalidPatternShapeReason::InvalidNode,
                 },
             }),
         );
@@ -2061,11 +2063,10 @@ pub fn main() {
         };
         assert_eq!(
             plan_module(assign_type_mismatch),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::pattern_type_mismatch(
+                ValueType::Int,
+                ValueType::String,
+            )),
         );
 
         let mut empty_pattern = compile_int_case_module();
@@ -2210,11 +2211,10 @@ fn add_one(value: Int) {
         };
         assert_eq!(
             plan_module(pattern_type_mismatch),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternTypeMismatch,
-                },
-            }),
+            Err(super::super::pattern_type_mismatch(
+                ValueType::Int,
+                ValueType::String,
+            )),
         );
     }
 
