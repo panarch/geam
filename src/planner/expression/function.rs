@@ -29,7 +29,11 @@ pub(super) fn plan_anonymous(
             validate_capture_literal(&arguments, &body)?;
         }
         FunctionLiteralKind::Use { .. } => {
-            return Err(invalid_function_literal_kind_error());
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::FunctionLiteralKind,
+                },
+            });
         }
     }
 
@@ -57,43 +61,33 @@ pub(super) fn plan_anonymous(
     )
 }
 
-fn invalid_function_literal_kind_error() -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionShape {
-            kind: InvalidExpressionShapeKind::FunctionLiteralKind,
-        },
-    }
-}
-
 fn validate_capture_literal(
     arguments: &[TypedArg],
     body: &Vec1<TypedStatement>,
 ) -> Result<(), PlanError> {
-    let [argument] = arguments else {
-        return Err(invalid_capture_literal_shape());
+    let valid = match (arguments, body.as_slice()) {
+        (
+            [argument],
+            [
+                Statement::Expression(TypedExpr::Call {
+                    arguments: call_arguments,
+                    ..
+                }),
+            ],
+        ) => {
+            argument.get_variable_name().map(|name| name.as_str()) == Some(CAPTURE_VARIABLE)
+                && count_capture_literal_arguments(call_arguments) == 1
+        }
+        _ => false,
     };
-
-    if argument.get_variable_name().map(|name| name.as_str()) != Some(CAPTURE_VARIABLE) {
-        return Err(invalid_capture_literal_shape());
+    if !valid {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::FunctionCaptureLiteral,
+            },
+        });
     }
-
-    let [Statement::Expression(TypedExpr::Call { arguments, .. })] = body.as_slice() else {
-        return Err(invalid_capture_literal_shape());
-    };
-
-    if count_capture_literal_arguments(arguments) == 1 {
-        Ok(())
-    } else {
-        Err(invalid_capture_literal_shape())
-    }
-}
-
-fn invalid_capture_literal_shape() -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionShape {
-            kind: InvalidExpressionShapeKind::FunctionCaptureLiteral,
-        },
-    }
+    Ok(())
 }
 
 fn count_capture_literal_arguments(arguments: &[GleamCallArg<TypedExpr>]) -> usize {
@@ -211,10 +205,9 @@ fn plan_anonymous_with_captures(
     let (function, captures) = anonymous_function_plan(info, name, planned);
     let value = closure_expr(instantiation, captures, &function_shape);
     context.push_anonymous_function(function);
-    value
-        .with_resolved_shape(function_shape)
-        .map(Expr::function)
-        .ok_or_else(invalid_function_literal_kind_error)
+    Ok(Expr::function(
+        value.resolve_constructed_shape(function_shape),
+    ))
 }
 
 fn closure_expr(

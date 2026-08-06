@@ -332,14 +332,6 @@ impl PlannedCaptures {
     }
 }
 
-fn invalid_local_shape() -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionShape {
-            kind: InvalidExpressionShapeKind::LocalBindingShape,
-        },
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum FunctionLocalBinding {
     Generic(crate::plan::GenericFunctionLocal),
@@ -952,7 +944,13 @@ impl<'a> PlanContext<'a> {
                     },
                 );
             }
-            _ => return Err(invalid_local_shape()),
+            _ => {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::LocalBindingShape,
+                    },
+                });
+            }
         }
         Ok(())
     }

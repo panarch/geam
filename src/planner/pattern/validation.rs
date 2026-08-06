@@ -75,8 +75,9 @@ pub(in crate::planner) fn validate_pattern(
             }
             Ok(())
         }
-        Pattern::BitArraySize(_) => Err(invalid_pattern_node(InvalidPatternNode::BitArraySize)),
-        Pattern::Invalid { .. } => Err(invalid_pattern_node(InvalidPatternNode::Invalid)),
+        Pattern::BitArraySize(_) | Pattern::Invalid { .. } => {
+            pattern_value_shape(pattern, context).map(drop)
+        }
     }
 }
 
@@ -107,26 +108,21 @@ pub(in crate::planner) fn pattern_value_shape(
         Pattern::BitArray { .. } => ValueShape::BitArray,
         Pattern::Assign { pattern, .. } => pattern_value_shape(pattern, context)?,
         Pattern::BitArraySize(_) => {
-            return Err(invalid_pattern_node(InvalidPatternNode::BitArraySize));
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: InvalidPatternShapeReason::BitArraySizeNode,
+                },
+            });
         }
-        Pattern::Invalid { .. } => return Err(invalid_pattern_node(InvalidPatternNode::Invalid)),
+        Pattern::Invalid { .. } => {
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::PatternShape {
+                    reason: InvalidPatternShapeReason::InvalidNode,
+                },
+            });
+        }
     };
     Ok(shape)
-}
-
-enum InvalidPatternNode {
-    BitArraySize,
-    Invalid,
-}
-
-fn invalid_pattern_node(node: InvalidPatternNode) -> PlanError {
-    let reason = match node {
-        InvalidPatternNode::BitArraySize => InvalidPatternShapeReason::BitArraySizeNode,
-        InvalidPatternNode::Invalid => InvalidPatternShapeReason::InvalidNode,
-    };
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::PatternShape { reason },
-    }
 }
 
 pub(in crate::planner) fn pattern_kind(pattern: &TypedPattern) -> PatternKind {

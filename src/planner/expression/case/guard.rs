@@ -70,12 +70,16 @@ fn plan_expr(
                 context,
             )
         }
-        ClauseGuard::FieldAccess { index: None, .. } => {
-            invalid_expression_shape(InvalidExpressionShapeKind::RecordAccess)
-        }
-        ClauseGuard::Invalid { .. } => {
-            invalid_expression_shape(InvalidExpressionShapeKind::GuardNode)
-        }
+        ClauseGuard::FieldAccess { index: None, .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::RecordAccess,
+            },
+        }),
+        ClauseGuard::Invalid { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::GuardNode,
+            },
+        }),
     }
 }
 
@@ -269,7 +273,11 @@ fn local_get(local: LocalId, name: EcoString, type_: ValueType) -> Result<Expr, 
         )),
         (LocalId::Bool(local), ValueType::Bool) => Ok(Expr::bool(BoolExpr::local_get(local, name))),
         (LocalId::Nil(local), ValueType::Nil) => Ok(Expr::nil(NilExpr::local_get(local, name))),
-        _ => invalid_expression_shape(InvalidExpressionShapeKind::GuardLocalShape),
+        _ => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::GuardLocalShape,
+            },
+        }),
     }
 }
 
@@ -327,12 +335,6 @@ fn function_local_get(
                 kind: InvalidExpressionShapeKind::GuardFunctionLocalShape,
             },
         })
-}
-
-fn invalid_expression_shape(kind: InvalidExpressionShapeKind) -> Result<Expr, PlanError> {
-    Err(PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionShape { kind },
-    })
 }
 
 #[cfg(test)]

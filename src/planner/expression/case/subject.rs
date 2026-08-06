@@ -17,7 +17,7 @@ use crate::plan::{
     StringLocalId, ValueShape,
 };
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidCaseShapeReason, PlanError};
+use crate::planner::error::{InvalidCaseShapeReason, InvalidTypedAstReason, PlanError};
 use crate::planner::statement::plan_variable_runtime_step;
 use ecow::EcoString;
 use gleam_core::ast::{Pattern, SrcSpan, TypedClause, TypedClauseGuard, TypedExpr};
@@ -284,33 +284,37 @@ fn multi_subject_case_clauses(
 }
 
 fn single_case_pattern(patterns: Vec<Pattern<Arc<Type>>>) -> Result<Pattern<Arc<Type>>, PlanError> {
-    let mut patterns = patterns.into_iter();
-    let pattern = patterns.next().ok_or(super::invalid_case_shape(
-        InvalidCaseShapeReason::PatternSubjectCountMismatch,
-    ))?;
-    if patterns.next().is_some() {
-        return Err(super::invalid_case_shape(
-            InvalidCaseShapeReason::PatternSubjectCountMismatch,
-        ));
-    }
-
-    Ok(pattern)
+    validate_case_pattern_count(&patterns, 1)?;
+    let mut patterns = patterns;
+    Ok(patterns.remove(0))
 }
 
 fn tuple_case_pattern(
     patterns: Vec<Pattern<Arc<Type>>>,
     subject_count: usize,
 ) -> Result<Pattern<Arc<Type>>, PlanError> {
-    if patterns.len() != subject_count {
-        return Err(super::invalid_case_shape(
-            InvalidCaseShapeReason::PatternSubjectCountMismatch,
-        ));
-    }
+    validate_case_pattern_count(&patterns, subject_count)?;
 
     Ok(Pattern::Tuple {
         location: pattern_group_location(&patterns),
         elements: patterns,
     })
+}
+
+fn validate_case_pattern_count(
+    patterns: &[Pattern<Arc<Type>>],
+    expected: usize,
+) -> Result<(), PlanError> {
+    let actual = patterns.len();
+    if actual != expected {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CaseShape {
+                reason: InvalidCaseShapeReason::PatternSubjectCountMismatch { expected, actual },
+            },
+        });
+    }
+
+    Ok(())
 }
 
 fn subject_group_location(subjects: &[TypedExpr]) -> SrcSpan {
@@ -688,7 +692,10 @@ pub fn main() {
             plan_module(empty_pattern),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch,
+                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch {
+                        expected: 1,
+                        actual: 0,
+                    },
                 },
             }),
         );
@@ -703,7 +710,10 @@ pub fn main() {
             plan_module(extra_pattern),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch,
+                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch {
+                        expected: 1,
+                        actual: 2,
+                    },
                 },
             }),
         );
@@ -717,7 +727,10 @@ pub fn main() {
             plan_module(empty_alternative_pattern),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch,
+                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch {
+                        expected: 1,
+                        actual: 0,
+                    },
                 },
             }),
         );
@@ -734,7 +747,10 @@ pub fn main() {
             plan_module(extra_alternative_pattern),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch,
+                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch {
+                        expected: 1,
+                        actual: 2,
+                    },
                 },
             }),
         );
@@ -799,7 +815,10 @@ pub fn main() {
             plan_module(primary_mismatch),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch,
+                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch {
+                        expected: 2,
+                        actual: 1,
+                    },
                 },
             }),
         );
@@ -822,7 +841,10 @@ pub fn main() {
             plan_module(alternative_mismatch),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch,
+                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch {
+                        expected: 2,
+                        actual: 1,
+                    },
                 },
             }),
         );

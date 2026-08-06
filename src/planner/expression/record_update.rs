@@ -1,16 +1,11 @@
-use super::{
-    conversion::{expect_expression, validate_expression_value_type},
-    plan_expr, plan_expr_with_expected_source_stop_type, record_access,
-};
-use crate::plan::{
-    CustomConstructor, CustomExpr, CustomLocalId, CustomType, Expr, Step, ValueType,
-};
+mod validation;
+
+use crate::plan::{CustomExpr, CustomLocalId, Expr, Step};
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidRecordUpdateShapeReason, InvalidTypedAstReason, PlanError};
+use crate::planner::error::PlanError;
 use ecow::EcoString;
-use gleam_core::ast::{CallArg, ImplicitCallArgOrigin, TypedExpr};
-use gleam_core::type_::error::VariableOrigin;
-use gleam_core::type_::{ModuleValueConstructor, Type, ValueConstructor, ValueConstructorVariant};
+use gleam_core::ast::{CallArg, TypedExpr};
+use gleam_core::type_::Type;
 use std::sync::Arc;
 
 pub(super) fn plan(
@@ -21,337 +16,26 @@ pub(super) fn plan(
     arguments: Vec<CallArg<TypedExpr>>,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
-    let source_type = updated_record.type_();
-    let source_custom_type = custom_type(source_type.as_ref(), context)?;
-    let implicit_target = implicit_target(
-        &updated_record,
+    let validated = validation::validate(
+        type_,
+        updated_record,
         updated_record_assigned_name,
-        &source_custom_type,
+        constructor,
+        arguments,
+        context,
     )?;
-    let constructor = record_constructor(constructor, context)?;
-    let result_type = custom_type(type_.as_ref(), context)?;
-    if constructor.type_() != &result_type {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::RecordUpdateShape {
-                reason: InvalidRecordUpdateShapeReason::Type,
-            },
-        });
-    }
-    let source: CustomExpr = expect_expression(plan_expr(updated_record, context)?)?;
-    if source.type_() != &source_custom_type {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::RecordUpdateShape {
-                reason: InvalidRecordUpdateShapeReason::Type,
-            },
-        });
-    }
+    let (source, constructor, arguments) = validated.into_parts();
 
     let local = context.define_internal_custom_local();
     let typed_local = crate::plan::CustomLocal::from_shape(local, source.shape().clone());
     let local_name = internal_local_name(local);
     let step = Step::let_custom(local, local_name.clone(), source);
     let local_get = CustomExpr::local_get(typed_local, local_name);
-    let arguments = plan_arguments(
-        arguments,
-        &constructor,
-        local_get,
-        &implicit_target,
-        context,
-    )?;
-    let construction =
-        crate::plan::CustomConstruction::try_new(constructor, arguments).map_err(|_| {
-            PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::RecordUpdateShape {
-                    reason: InvalidRecordUpdateShapeReason::ArgumentCount,
-                },
-            }
-        })?;
+    let arguments = arguments.plan(local_get, context)?;
+    let construction = crate::plan::CustomConstruction::from_validated(constructor, arguments);
     context
         .custom_expr_from_construction(construction)
         .map(|result| Expr::custom(CustomExpr::block(vec![step], result)))
-}
-
-fn plan_arguments(
-    arguments: Vec<CallArg<TypedExpr>>,
-    constructor: &CustomConstructor,
-    source: CustomExpr,
-    implicit_target: &ImplicitTarget,
-    context: &mut PlanContext<'_>,
-) -> Result<Vec<Expr>, PlanError> {
-    let mut planned = Vec::with_capacity(arguments.len());
-    for (index, argument) in arguments.into_iter().enumerate() {
-        let Some(field) = constructor.fields().get(index) else {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::RecordUpdateShape {
-                    reason: InvalidRecordUpdateShapeReason::ArgumentCount,
-                },
-            });
-        };
-        if argument.label.as_ref() != field.label() {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::RecordUpdateShape {
-                    reason: InvalidRecordUpdateShapeReason::ArgumentLabel,
-                },
-            });
-        }
-        let expression = match argument.implicit {
-            None => plan_expr_with_expected_source_stop_type(
-                argument.value,
-                field.type_().clone(),
-                context,
-            )?,
-            Some(ImplicitCallArgOrigin::RecordUpdate) => plan_implicit_argument(
-                argument.value,
-                index,
-                field.label().cloned(),
-                field.type_(),
-                source.clone(),
-                implicit_target,
-                context,
-            )?,
-            Some(_) => {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::RecordUpdateShape {
-                        reason: InvalidRecordUpdateShapeReason::ImplicitArgumentOrigin,
-                    },
-                });
-            }
-        };
-        validate_expression_value_type(field.type_(), &expression.value_type())?;
-        planned.push(expression);
-    }
-    Ok(planned)
-}
-
-fn plan_implicit_argument(
-    expression: TypedExpr,
-    expected_index: usize,
-    expected_label: Option<EcoString>,
-    expected_type: &ValueType,
-    source: CustomExpr,
-    implicit_target: &ImplicitTarget,
-    context: &mut PlanContext<'_>,
-) -> Result<Expr, PlanError> {
-    let (type_, label, index, record) = match expression {
-        TypedExpr::RecordAccess {
-            type_,
-            label,
-            index,
-            record,
-            ..
-        } => (type_, Some(label), index, *record),
-        TypedExpr::PositionalAccess {
-            type_,
-            index,
-            record,
-            ..
-        } => (type_, None, index, *record),
-        _ => {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::RecordUpdateShape {
-                    reason: InvalidRecordUpdateShapeReason::ImplicitFieldAccess,
-                },
-            });
-        }
-    };
-    if index != expected_index as u64
-        || label != expected_label
-        || context.value_type(type_.as_ref()) != *expected_type
-    {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::RecordUpdateShape {
-                reason: InvalidRecordUpdateShapeReason::ImplicitFieldAccess,
-            },
-        });
-    }
-    if !implicit_target.matches(&record, context) {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::RecordUpdateShape {
-                reason: InvalidRecordUpdateShapeReason::ImplicitFieldTarget,
-            },
-        });
-    }
-    record_access::plan_from_expr(type_, label, index, Expr::custom(source), context)
-}
-
-enum RecordUpdateConstructorSource {
-    Direct(Box<ValueConstructor>),
-    Selected {
-        module_name: EcoString,
-        label: EcoString,
-        name: EcoString,
-        variant_index: usize,
-        arity: usize,
-        type_: Arc<Type>,
-    },
-}
-
-fn record_constructor(
-    expression: TypedExpr,
-    context: &PlanContext<'_>,
-) -> Result<CustomConstructor, PlanError> {
-    let source = match expression {
-        TypedExpr::Var { constructor, .. } => match &constructor.variant {
-            ValueConstructorVariant::Record { .. } => {
-                Some(RecordUpdateConstructorSource::Direct(Box::new(constructor)))
-            }
-            ValueConstructorVariant::LocalVariable { .. }
-            | ValueConstructorVariant::ModuleConstant { .. }
-            | ValueConstructorVariant::ModuleFn { .. } => None,
-        },
-        TypedExpr::ModuleSelect {
-            module_name,
-            label,
-            constructor,
-            ..
-        } => match constructor {
-            ModuleValueConstructor::Record {
-                name,
-                variant_index,
-                arity,
-                type_,
-                ..
-            } => Some(RecordUpdateConstructorSource::Selected {
-                module_name,
-                label,
-                name,
-                variant_index: usize::from(variant_index),
-                arity: usize::from(arity),
-                type_,
-            }),
-            ModuleValueConstructor::Constant { .. } | ModuleValueConstructor::Fn { .. } => None,
-        },
-        _ => {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::RecordUpdateShape {
-                    reason: InvalidRecordUpdateShapeReason::ConstructorExpression,
-                },
-            });
-        }
-    };
-    let Some(source) = source else {
-        return Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::RecordUpdateShape {
-                reason: InvalidRecordUpdateShapeReason::ConstructorKind,
-            },
-        });
-    };
-
-    match source {
-        RecordUpdateConstructorSource::Direct(constructor) => {
-            context.custom_constructor(constructor.as_ref())
-        }
-        RecordUpdateConstructorSource::Selected {
-            module_name,
-            label,
-            name,
-            variant_index,
-            arity,
-            type_,
-        } => {
-            if label != name {
-                return Err(PlanError::InvalidTypedAst {
-                    reason: InvalidTypedAstReason::RecordUpdateShape {
-                        reason: InvalidRecordUpdateShapeReason::ConstructorName {
-                            expected: label,
-                            actual: name,
-                        },
-                    },
-                });
-            }
-            context.module_custom_constructor(
-                type_.as_ref(),
-                name,
-                &module_name,
-                variant_index,
-                arity,
-            )
-        }
-    }
-}
-
-fn custom_type(type_: &Type, context: &mut PlanContext<'_>) -> Result<CustomType, PlanError> {
-    match context.value_type(type_) {
-        ValueType::Custom(type_) => Ok(type_),
-        _ => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::RecordUpdateShape {
-                reason: InvalidRecordUpdateShapeReason::Type,
-            },
-        }),
-    }
-}
-
-enum ImplicitTarget {
-    OriginalVariable {
-        name: EcoString,
-        constructor: Box<ValueConstructor>,
-    },
-    GeneratedVariable {
-        name: EcoString,
-        type_: ValueType,
-    },
-}
-
-impl ImplicitTarget {
-    fn matches(&self, expression: &TypedExpr, context: &PlanContext<'_>) -> bool {
-        let TypedExpr::Var {
-            name, constructor, ..
-        } = expression
-        else {
-            return false;
-        };
-        match self {
-            Self::OriginalVariable {
-                name: expected_name,
-                constructor: expected_constructor,
-            } => name == expected_name && constructor == expected_constructor.as_ref(),
-            Self::GeneratedVariable {
-                name: expected_name,
-                type_: expected_type,
-            } => {
-                name == expected_name
-                    && context
-                        .value_shape_in_scope(constructor.type_.as_ref())
-                        .value_type()
-                        == *expected_type
-                    && is_generated_local_variable(constructor)
-            }
-        }
-    }
-}
-
-fn is_generated_local_variable(constructor: &ValueConstructor) -> bool {
-    let ValueConstructorVariant::LocalVariable { origin, .. } = &constructor.variant else {
-        return false;
-    };
-    origin == &VariableOrigin::generated()
-}
-
-fn implicit_target(
-    updated_record: &TypedExpr,
-    assigned_name: Option<EcoString>,
-    source_type: &CustomType,
-) -> Result<ImplicitTarget, PlanError> {
-    match (updated_record, assigned_name) {
-        (
-            TypedExpr::Var {
-                name, constructor, ..
-            },
-            None,
-        ) => Ok(ImplicitTarget::OriginalVariable {
-            name: name.clone(),
-            constructor: Box::new(constructor.clone()),
-        }),
-        (TypedExpr::Var { .. }, Some(_)) | (_, None) => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::RecordUpdateShape {
-                reason: InvalidRecordUpdateShapeReason::BaseAssignment,
-            },
-        }),
-        (_, Some(name)) => Ok(ImplicitTarget::GeneratedVariable {
-            name,
-            type_: ValueType::Custom(source_type.clone()),
-        }),
-    }
 }
 
 fn internal_local_name(local: CustomLocalId) -> EcoString {
@@ -367,8 +51,8 @@ mod tests {
     };
     use crate::planner::support::{compile, dummy_span};
     use crate::planner::{
-        InvalidCustomTypeReason, InvalidExpressionType, InvalidRecordUpdateShapeReason,
-        InvalidTypedAstReason, PlanError, plan_module, plan_program,
+        InvalidCustomTypeReason, InvalidRecordUpdateShapeReason, InvalidTypedAstReason, PlanError,
+        RecordUpdateArgumentOrigin, plan_module, plan_program,
     };
     use crate::{ModuleSource, compile_typed_program};
     use gleam_core::ast::{CallArg, ImplicitCallArgOrigin, Statement, TypedExpr, TypedStatement};
@@ -432,6 +116,27 @@ pub fn main() {
         }
     }
 
+    fn person_type() -> ValueType {
+        ValueType::Custom(CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Person".into()),
+            Vec::new(),
+        ))
+    }
+
+    fn other_type() -> ValueType {
+        ValueType::Custom(CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Other".into()),
+            Vec::new(),
+        ))
+    }
+
+    fn result_type() -> ValueType {
+        ValueType::Custom(CustomType::new(
+            CustomTypeName::new("".into(), "gleam".into(), "Result".into()),
+            vec![ValueType::Int, ValueType::Nil],
+        ))
+    }
+
     #[test]
     fn plan_record_update_binds_base_once_and_projects_existing_field() {
         let plan = plan_module(compile(SOURCE)).expect("record update should plan");
@@ -469,11 +174,10 @@ pub fn main() {
         )));
         let updated = CustomExpr::from_construction(
             shape,
-            crate::plan::CustomConstruction::try_new(
+            crate::plan::CustomConstruction::from_validated(
                 constructor,
                 vec![projected_name, Expr::int(IntExpr::value(31.into()))],
-            )
-            .expect("test record construction should be valid"),
+            ),
         );
 
         assert_eq!(
@@ -565,6 +269,25 @@ pub fn main() {
                 documentation: None,
             },
         };
+
+        assert_eq!(
+            plan_module(module),
+            Err(invalid_shape(
+                InvalidRecordUpdateShapeReason::ConstructorName {
+                    expected: "Other".into(),
+                    actual: "Person".into(),
+                },
+            )),
+        );
+    }
+
+    #[test]
+    fn reject_margin_record_update_direct_constructor_name_mismatch() {
+        let mut module = compile(SOURCE);
+        let (_, _, _, constructor, _) =
+            record_update_parts_mut(&mut module.definitions.functions[0].body[1]);
+        let (name, _) = variable_parts_mut(constructor);
+        *name = "Other".into();
 
         assert_eq!(
             plan_module(module),
@@ -708,14 +431,13 @@ pub fn main() {
         )));
         let updated = CustomExpr::from_construction(
             shape,
-            crate::plan::CustomConstruction::try_new(
+            crate::plan::CustomConstruction::from_validated(
                 constructor,
                 vec![
                     projected_value,
                     Expr::string(StringExpr::value("two".into())),
                 ],
-            )
-            .expect("test record construction should be valid"),
+            ),
         );
 
         assert_eq!(
@@ -759,14 +481,13 @@ pub fn main() {
         let local_name = ecow::EcoString::from("<record:update:1>");
         let updated = CustomExpr::from_construction(
             shape,
-            crate::plan::CustomConstruction::try_new(
+            crate::plan::CustomConstruction::from_validated(
                 constructor,
                 vec![
                     Expr::string(StringExpr::value("Mia".into())),
                     Expr::int(IntExpr::value(31.into())),
                 ],
-            )
-            .expect("test record construction should be valid"),
+            ),
         );
 
         assert_eq!(
@@ -782,6 +503,56 @@ pub fn main() {
     }
 
     #[test]
+    fn plan_record_update_changes_generic_result_type() {
+        let plan = plan_module(compile(
+            r#"
+pub type Pair(first, second) {
+  Pair(first: first, second: second)
+}
+
+fn replace_first(pair: Pair(first, second), value: replacement) -> Pair(replacement, second) {
+  Pair(..pair, first: value)
+}
+
+pub fn main() {
+  replace_first(Pair(first: 1, second: True), "one")
+}
+"#,
+        ))
+        .expect("generic type-changing record update should plan");
+        let replace_first = plan
+            .functions()
+            .iter()
+            .find(|function| function.name() == "replace_first")
+            .expect("replace_first should be planned");
+        let pair_type = |first, second| {
+            ValueType::Custom(CustomType::new(
+                CustomTypeName::new("geam".into(), "main".into(), "Pair".into()),
+                vec![ValueType::Parameter(first), ValueType::Parameter(second)],
+            ))
+        };
+
+        assert_eq!(
+            replace_first.params()[0].shape().value_type(),
+            pair_type(
+                crate::plan::TypeParameterId(2),
+                crate::plan::TypeParameterId(1),
+            ),
+        );
+        assert_eq!(
+            replace_first.params()[1].shape().value_type(),
+            ValueType::Parameter(crate::plan::TypeParameterId(0)),
+        );
+        assert_eq!(
+            replace_first.return_().value_type(),
+            pair_type(
+                crate::plan::TypeParameterId(0),
+                crate::plan::TypeParameterId(1),
+            ),
+        );
+    }
+
+    #[test]
     fn reject_margin_record_update_base_assignment() {
         let mut assigned_variable = compile(SOURCE);
         let (_, _, assigned_name, _, _) =
@@ -790,7 +561,24 @@ pub fn main() {
         assert_eq!(
             plan_module(assigned_variable),
             Err(invalid_shape(
-                InvalidRecordUpdateShapeReason::BaseAssignment,
+                InvalidRecordUpdateShapeReason::BaseAssignment {
+                    requires_assignment: false,
+                    has_assignment: true,
+                }
+            )),
+        );
+
+        let mut unassigned_expression = compile(NON_VARIABLE_SOURCE);
+        let (_, _, assigned_name, _, _) =
+            record_update_parts_mut(&mut unassigned_expression.definitions.functions[1].body[1]);
+        *assigned_name = None;
+        assert_eq!(
+            plan_module(unassigned_expression),
+            Err(invalid_shape(
+                InvalidRecordUpdateShapeReason::BaseAssignment {
+                    requires_assignment: true,
+                    has_assignment: false,
+                }
             )),
         );
     }
@@ -822,7 +610,12 @@ pub fn main() {
         *type_ = type_::int();
         assert_eq!(
             plan_module(wrong_result_type),
-            Err(invalid_shape(InvalidRecordUpdateShapeReason::Type)),
+            Err(invalid_shape(
+                InvalidRecordUpdateShapeReason::ConstructorResultType {
+                    expected: person_type(),
+                    actual: ValueType::Int,
+                },
+            )),
         );
     }
 
@@ -834,7 +627,12 @@ pub fn main() {
         *type_ = type_::result(type_::int(), type_::nil());
         assert_eq!(
             plan_module(mismatched_result_type),
-            Err(invalid_shape(InvalidRecordUpdateShapeReason::Type)),
+            Err(invalid_shape(
+                InvalidRecordUpdateShapeReason::ConstructorResultType {
+                    expected: person_type(),
+                    actual: result_type(),
+                },
+            )),
         );
     }
 
@@ -896,22 +694,25 @@ pub fn main() {
         };
         assert_eq!(
             plan_module(unsupported_base_type),
-            Err(invalid_shape(InvalidRecordUpdateShapeReason::Type)),
+            Err(invalid_shape(
+                InvalidRecordUpdateShapeReason::UpdatedSourceFamily {
+                    actual: ValueType::Int,
+                },
+            )),
         );
     }
 
     #[test]
     fn reject_margin_record_update_invalid_base_expression() {
-        let mut invalid_base_expression = compile(SOURCE);
-        let (_, updated_record, assigned_name, _, _) =
-            record_update_parts_mut(&mut invalid_base_expression.definitions.functions[0].body[1]);
+        let mut invalid_base_expression = compile(NON_VARIABLE_SOURCE);
+        let (_, updated_record, _, _, _) =
+            record_update_parts_mut(&mut invalid_base_expression.definitions.functions[1].body[1]);
         let type_ = updated_record.type_();
         *updated_record = TypedExpr::Invalid {
             location: dummy_span(),
             type_,
             extra_information: None,
         };
-        *assigned_name = Some("_record".into());
         assert_eq!(
             plan_module(invalid_base_expression),
             Err(PlanError::InvalidTypedAst {
@@ -932,18 +733,21 @@ pub fn main() {
 }
 "#,
         );
-        let (_, updated_record, _, _, _) =
+        let (_, updated_record, _, _, arguments) =
             record_update_parts_mut(&mut non_custom_local.definitions.functions[0].body[2]);
         let (name, _) = variable_parts_mut(updated_record);
         *name = "number".into();
+        let (_, _, _, target) = implicit_record_access_parts_mut(&mut arguments[0].value);
+        let (name, _) = variable_parts_mut(target);
+        *name = "number".into();
         assert_eq!(
             plan_module(non_custom_local),
-            Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionType {
-                    expected: InvalidExpressionType::Custom,
-                    actual: InvalidExpressionType::Int,
+            Err(invalid_shape(
+                InvalidRecordUpdateShapeReason::UpdatedSourceType {
+                    expected: person_type(),
+                    actual: ValueType::Int,
                 },
-            }),
+            )),
         );
     }
 
@@ -960,13 +764,21 @@ pub fn main() {
 }
 "#,
         );
-        let (_, updated_record, _, _, _) =
+        let (_, updated_record, _, _, arguments) =
             record_update_parts_mut(&mut wrong_custom_local.definitions.functions[0].body[2]);
         let (name, _) = variable_parts_mut(updated_record);
         *name = "other".into();
+        let (_, _, _, target) = implicit_record_access_parts_mut(&mut arguments[0].value);
+        let (name, _) = variable_parts_mut(target);
+        *name = "other".into();
         assert_eq!(
             plan_module(wrong_custom_local),
-            Err(invalid_shape(InvalidRecordUpdateShapeReason::Type)),
+            Err(invalid_shape(
+                InvalidRecordUpdateShapeReason::UpdatedSourceType {
+                    expected: person_type(),
+                    actual: other_type(),
+                },
+            )),
         );
     }
 
@@ -978,7 +790,12 @@ pub fn main() {
         arguments.pop();
         assert_eq!(
             plan_module(wrong_count),
-            Err(invalid_shape(InvalidRecordUpdateShapeReason::ArgumentCount,)),
+            Err(invalid_shape(
+                InvalidRecordUpdateShapeReason::ArgumentCount {
+                    expected: 2,
+                    actual: 1,
+                }
+            )),
         );
 
         let mut extra_argument = compile(SOURCE);
@@ -987,7 +804,12 @@ pub fn main() {
         arguments.push(arguments[0].clone());
         assert_eq!(
             plan_module(extra_argument),
-            Err(invalid_shape(InvalidRecordUpdateShapeReason::ArgumentCount,)),
+            Err(invalid_shape(
+                InvalidRecordUpdateShapeReason::ArgumentCount {
+                    expected: 2,
+                    actual: 3,
+                }
+            )),
         );
     }
 
@@ -999,7 +821,13 @@ pub fn main() {
         arguments[0].label = Some("wrong".into());
         assert_eq!(
             plan_module(wrong_label),
-            Err(invalid_shape(InvalidRecordUpdateShapeReason::ArgumentLabel,)),
+            Err(invalid_shape(
+                InvalidRecordUpdateShapeReason::ArgumentLabel {
+                    index: 0,
+                    expected: Some("name".into()),
+                    actual: Some("wrong".into()),
+                }
+            )),
         );
     }
 
@@ -1045,16 +873,35 @@ pub fn main() {
 
     #[test]
     fn reject_margin_record_update_implicit_argument_origin() {
-        let mut wrong_origin = compile(SOURCE);
-        let (_, _, _, _, arguments) =
-            record_update_parts_mut(&mut wrong_origin.definitions.functions[0].body[1]);
-        arguments[0].implicit = Some(ImplicitCallArgOrigin::Pipe);
-        assert_eq!(
-            plan_module(wrong_origin),
-            Err(invalid_shape(
-                InvalidRecordUpdateShapeReason::ImplicitArgumentOrigin,
-            )),
-        );
+        for (origin, expected) in [
+            (
+                ImplicitCallArgOrigin::IncorrectArityUse,
+                RecordUpdateArgumentOrigin::IncorrectArityUse,
+            ),
+            (
+                ImplicitCallArgOrigin::PatternFieldSpread,
+                RecordUpdateArgumentOrigin::PatternFieldSpread,
+            ),
+            (
+                ImplicitCallArgOrigin::Pipe,
+                RecordUpdateArgumentOrigin::Pipe,
+            ),
+            (ImplicitCallArgOrigin::Use, RecordUpdateArgumentOrigin::Use),
+        ] {
+            let mut wrong_origin = compile(SOURCE);
+            let (_, _, _, _, arguments) =
+                record_update_parts_mut(&mut wrong_origin.definitions.functions[0].body[1]);
+            arguments[0].implicit = Some(origin);
+            assert_eq!(
+                plan_module(wrong_origin),
+                Err(invalid_shape(
+                    InvalidRecordUpdateShapeReason::ImplicitArgumentOrigin {
+                        index: 0,
+                        actual: expected,
+                    },
+                )),
+            );
+        }
     }
 
     #[test]
@@ -1070,7 +917,7 @@ pub fn main() {
         assert_eq!(
             plan_module(wrong_expression),
             Err(invalid_shape(
-                InvalidRecordUpdateShapeReason::ImplicitFieldAccess,
+                InvalidRecordUpdateShapeReason::ImplicitFieldExpression { argument: 0 },
             )),
         );
     }
@@ -1085,7 +932,11 @@ pub fn main() {
         assert_eq!(
             plan_module(wrong_index),
             Err(invalid_shape(
-                InvalidRecordUpdateShapeReason::ImplicitFieldAccess,
+                InvalidRecordUpdateShapeReason::ImplicitFieldIndex {
+                    argument: 0,
+                    expected: 0,
+                    actual: 1,
+                }
             )),
         );
     }
@@ -1100,7 +951,11 @@ pub fn main() {
         assert_eq!(
             plan_module(wrong_label),
             Err(invalid_shape(
-                InvalidRecordUpdateShapeReason::ImplicitFieldAccess,
+                InvalidRecordUpdateShapeReason::ImplicitFieldLabel {
+                    argument: 0,
+                    expected: Some("name".into()),
+                    actual: Some("wrong".into()),
+                }
             )),
         );
     }
@@ -1115,7 +970,11 @@ pub fn main() {
         assert_eq!(
             plan_module(wrong_type),
             Err(invalid_shape(
-                InvalidRecordUpdateShapeReason::ImplicitFieldAccess,
+                InvalidRecordUpdateShapeReason::ImplicitFieldType {
+                    argument: 0,
+                    expected: ValueType::String,
+                    actual: ValueType::Int,
+                }
             )),
         );
     }
@@ -1131,7 +990,11 @@ pub fn main() {
         assert_eq!(
             plan_module(wrong_target),
             Err(invalid_shape(
-                InvalidRecordUpdateShapeReason::ImplicitFieldTarget,
+                InvalidRecordUpdateShapeReason::ImplicitTargetName {
+                    argument: 0,
+                    expected: "person".into(),
+                    actual: "wrong".into(),
+                }
             )),
         );
     }
@@ -1148,7 +1011,7 @@ pub fn main() {
         assert_eq!(
             plan_module(wrong_original_constructor),
             Err(invalid_shape(
-                InvalidRecordUpdateShapeReason::ImplicitFieldTarget,
+                InvalidRecordUpdateShapeReason::ImplicitOriginalTargetConstructor { argument: 0 },
             )),
         );
     }
@@ -1164,7 +1027,11 @@ pub fn main() {
         assert_eq!(
             plan_module(wrong_generated_name),
             Err(invalid_shape(
-                InvalidRecordUpdateShapeReason::ImplicitFieldTarget,
+                InvalidRecordUpdateShapeReason::ImplicitTargetName {
+                    argument: 0,
+                    expected: "_record".into(),
+                    actual: "wrong".into(),
+                }
             )),
         );
     }
@@ -1180,7 +1047,11 @@ pub fn main() {
         assert_eq!(
             plan_module(wrong_generated_type),
             Err(invalid_shape(
-                InvalidRecordUpdateShapeReason::ImplicitFieldTarget,
+                InvalidRecordUpdateShapeReason::ImplicitGeneratedTargetType {
+                    argument: 0,
+                    expected: person_type(),
+                    actual: ValueType::Int,
+                },
             )),
         );
     }
@@ -1202,7 +1073,7 @@ pub fn main() {
         assert_eq!(
             plan_module(wrong_generated_origin),
             Err(invalid_shape(
-                InvalidRecordUpdateShapeReason::ImplicitFieldTarget,
+                InvalidRecordUpdateShapeReason::ImplicitGeneratedTargetOrigin { argument: 0 },
             )),
         );
     }
@@ -1227,7 +1098,7 @@ pub fn main() {
         assert_eq!(
             plan_module(wrong_generated_variant),
             Err(invalid_shape(
-                InvalidRecordUpdateShapeReason::ImplicitFieldTarget,
+                InvalidRecordUpdateShapeReason::ImplicitGeneratedTargetKind { argument: 0 },
             )),
         );
     }
@@ -1247,7 +1118,7 @@ pub fn main() {
         assert_eq!(
             plan_module(non_variable_target),
             Err(invalid_shape(
-                InvalidRecordUpdateShapeReason::ImplicitFieldTarget,
+                InvalidRecordUpdateShapeReason::ImplicitTargetExpression { argument: 0 },
             )),
         );
     }

@@ -65,7 +65,11 @@ pub(super) fn plan_var(
             if module == PRELUDE_MODULE_NAME && !matches!(name.as_str(), "Ok" | "Error") {
                 return Err(PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::ExpressionShape {
-                        kind: InvalidExpressionShapeKind::PreludeConstructor,
+                        kind: InvalidExpressionShapeKind::VariablePreludeConstructor {
+                            name: name.clone(),
+                            arity: usize::from(arity),
+                            actual: constructor_shape.value_type(),
+                        },
                     },
                 });
             }
@@ -694,7 +698,11 @@ pub fn main() { Boxed }
             ))),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::PreludeConstructor,
+                    kind: InvalidExpressionShapeKind::VariablePreludeConstructor {
+                        name: "Other".into(),
+                        arity: 0,
+                        actual: crate::plan::ValueType::Bool,
+                    },
                 },
             }),
         );

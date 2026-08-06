@@ -366,7 +366,7 @@ impl PlanContext<'_> {
         else {
             return Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                    kind: InvalidExpressionShapeKind::CustomConstructorKind,
                 },
             });
         };
@@ -1412,7 +1412,7 @@ mod tests {
             ),
             vec![ValueType::Int, ValueType::String],
         );
-        let invalid_result = CustomConstruction::try_new(
+        let invalid_result = CustomConstruction::from_validated(
             CustomConstructor::new(
                 result.clone(),
                 "Invalid".into(),
@@ -1420,8 +1420,7 @@ mod tests {
                 vec![CustomConstructorField::new(None, ValueType::Int)],
             ),
             vec![Expr::int(IntExpr::value(1.into()))],
-        )
-        .expect("test construction has exact descriptor arity");
+        );
         assert_eq!(
             context.custom_construction_shape(&invalid_result),
             Err(invalid_custom_constructor_error(
@@ -1445,7 +1444,7 @@ mod tests {
             )),
         );
 
-        let error = CustomConstruction::try_new(
+        let error = CustomConstruction::from_validated(
             CustomConstructor::new(
                 result.clone(),
                 "Error".into(),
@@ -1453,8 +1452,7 @@ mod tests {
                 vec![CustomConstructorField::new(None, ValueType::String)],
             ),
             vec![Expr::string(StringExpr::value("error".into()))],
-        )
-        .expect("test construction has exact descriptor arity");
+        );
         assert_eq!(
             context.custom_construction_shape(&error),
             Ok(CustomValueShape::new(
@@ -1468,11 +1466,10 @@ mod tests {
             CustomTypeName::new("geam".into(), module.clone(), "Missing".into()),
             Vec::new(),
         );
-        let unknown = CustomConstruction::try_new(
+        let unknown = CustomConstruction::from_validated(
             CustomConstructor::new(missing.clone(), "Missing".into(), 0, Vec::new()),
             Vec::new(),
-        )
-        .expect("test construction has exact descriptor arity");
+        );
         assert_eq!(
             context.custom_construction_shape(&unknown),
             Err(invalid_custom_constructor_error(
@@ -1482,11 +1479,10 @@ mod tests {
         );
 
         let boxed = CustomType::new(boxed_name, Vec::new());
-        let missing_field = CustomConstruction::try_new(
+        let missing_field = CustomConstruction::from_validated(
             CustomConstructor::new(boxed.clone(), "Boxed".into(), 0, Vec::new()),
             Vec::new(),
-        )
-        .expect("test construction has exact descriptor arity");
+        );
         assert_eq!(
             context.custom_construction_shape(&missing_field),
             Err(invalid_custom_constructor_error(
@@ -1497,7 +1493,7 @@ mod tests {
                 },
             )),
         );
-        let invalid_constructor = CustomConstruction::try_new(
+        let invalid_constructor = CustomConstruction::from_validated(
             CustomConstructor::new(
                 boxed.clone(),
                 "Invalid".into(),
@@ -1505,8 +1501,7 @@ mod tests {
                 vec![CustomConstructorField::new(None, ValueType::Int)],
             ),
             vec![Expr::int(IntExpr::value(1.into()))],
-        )
-        .expect("test construction has exact descriptor arity");
+        );
         assert_eq!(
             context.custom_construction_shape(&invalid_constructor),
             Err(invalid_custom_constructor_error(
@@ -1518,7 +1513,7 @@ mod tests {
             )),
         );
 
-        let invalid_field = CustomConstruction::try_new(
+        let invalid_field = CustomConstruction::from_validated(
             CustomConstructor::new(
                 boxed.clone(),
                 "Boxed".into(),
@@ -1526,8 +1521,7 @@ mod tests {
                 vec![CustomConstructorField::new(None, ValueType::String)],
             ),
             vec![Expr::string(StringExpr::value("wrong".into()))],
-        )
-        .expect("test construction has exact descriptor arity");
+        );
         assert_eq!(
             context.custom_construction_shape(&invalid_field),
             Err(invalid_custom_field_error(
@@ -1539,7 +1533,7 @@ mod tests {
         );
 
         let broken = CustomType::new(broken_name, vec![ValueType::Int]);
-        let invalid_template = CustomConstruction::try_new(
+        let invalid_template = CustomConstruction::from_validated(
             CustomConstructor::new(
                 broken.clone(),
                 "Broken".into(),
@@ -1547,8 +1541,7 @@ mod tests {
                 vec![CustomConstructorField::new(None, ValueType::Int)],
             ),
             vec![Expr::int(IntExpr::value(1.into()))],
-        )
-        .expect("test construction has exact descriptor arity");
+        );
         assert_eq!(
             context.custom_construction_shape(&invalid_template),
             Err(invalid_custom_constructor_error(
@@ -1588,7 +1581,7 @@ mod tests {
                 .expect("function shape has the same nominal type"),
             )
         };
-        let conflicting_fields = CustomConstruction::try_new(
+        let conflicting_fields = CustomConstruction::from_validated(
             CustomConstructor::new(
                 repeated.clone(),
                 "Repeated".into(),
@@ -1605,8 +1598,7 @@ mod tests {
                 ],
             ),
             vec![field(0, 0), field(1, 1)],
-        )
-        .expect("test construction has exact descriptor arity");
+        );
         assert_eq!(
             context.custom_construction_shape(&conflicting_fields),
             Err(invalid_custom_constructor_error(
@@ -2476,7 +2468,7 @@ mod tests {
             context.custom_constructor(&local),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: crate::planner::InvalidExpressionShapeKind::RecordConstructor,
+                    kind: crate::planner::InvalidExpressionShapeKind::CustomConstructorKind,
                 },
             }),
         );

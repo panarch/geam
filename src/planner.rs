@@ -17,8 +17,8 @@ pub use error::{
     InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
     InvalidModuleReferenceReason, InvalidPatternShapeReason, InvalidPipelineShapeReason,
     InvalidRecordUpdateShapeReason, InvalidTypedAstReason, InvalidUseShapeReason, PatternKind,
-    PlanError, UnsupportedBitArraySegmentReason, UnsupportedFunctionReason, UnsupportedPatternKind,
-    UnsupportedTopLevelKind,
+    PlanError, RecordUpdateArgumentOrigin, UnsupportedBitArraySegmentReason,
+    UnsupportedFunctionReason, UnsupportedPatternKind, UnsupportedTopLevelKind,
 };
 pub use module::{plan_host_program, plan_module, plan_module_with_source, plan_program};
 

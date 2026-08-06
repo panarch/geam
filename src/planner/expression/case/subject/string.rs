@@ -1087,7 +1087,10 @@ pub fn main() {
             plan_module(empty_pattern),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch,
+                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch {
+                        expected: 1,
+                        actual: 0,
+                    },
                 },
             }),
         );
@@ -1247,7 +1250,10 @@ fn return_value(value: String) {
             plan_module(empty_pattern),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CaseShape {
-                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch,
+                    reason: InvalidCaseShapeReason::PatternSubjectCountMismatch {
+                        expected: 1,
+                        actual: 0,
+                    },
                 },
             }),
         );

@@ -121,16 +121,17 @@ pub(in crate::planner) fn reserve_constants_with_external_types(
 
     for (index, constant) in constants.into_iter().enumerate() {
         let mut type_parameters = TypeParameterScope::default();
-        let storage_shape = ConstantStorageShape::try_from_shape(
-            ValueShape::from_gleam_in_with_external(
+        let storage_shape =
+            ConstantStorageShape::try_from_shape(ValueShape::from_gleam_in_with_external(
                 &constant.type_,
                 &mut type_parameters,
                 &|name| external_types.contains(name),
-            ),
-        )
-        .ok_or_else(|| {
-            invalid_expression_shape_error(InvalidExpressionShapeKind::ModuleConstantStorageShape)
-        })?;
+            ))
+            .ok_or(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleConstantStorageShape,
+                },
+            })?;
         let storage_index = storage_indices.reserve(storage_shape.family());
         let id = ConstantTemplateId::in_module(module, index);
         let signature = storage_shape.into_signature(id, storage_index, type_parameters.scheme());
@@ -321,19 +322,23 @@ fn plan_value(
         }
         Constant::Tuple { elements, .. } => {
             let ValueShape::Tuple(element_shapes) = shape else {
-                return Err(invalid_expression_shape_error(
-                    InvalidExpressionShapeKind::ModuleConstantTupleType {
-                        actual: shape.value_type(),
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::ModuleConstantTupleType {
+                            actual: shape.value_type(),
+                        },
                     },
-                ));
+                });
             };
             if elements.len() != element_shapes.len() {
-                return Err(invalid_expression_shape_error(
-                    InvalidExpressionShapeKind::ModuleConstantTupleArity {
-                        expected: element_shapes.len(),
-                        actual: elements.len(),
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::ModuleConstantTupleArity {
+                            expected: element_shapes.len(),
+                            actual: elements.len(),
+                        },
                     },
-                ));
+                });
             }
             let mut planned_elements = Vec::with_capacity(elements.len());
             for (element, expected) in elements.into_iter().zip(&element_shapes) {
@@ -348,11 +353,13 @@ fn plan_value(
         }
         Constant::List { elements, tail, .. } => {
             let ValueShape::List(item_shape) = shape else {
-                return Err(invalid_expression_shape_error(
-                    InvalidExpressionShapeKind::ModuleConstantListType {
-                        actual: shape.value_type(),
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::ModuleConstantListType {
+                            actual: shape.value_type(),
+                        },
                     },
-                ));
+                });
             };
             let elements = elements
                 .into_iter()
@@ -365,9 +372,11 @@ fn plan_value(
                     expect_value_type_result(Err((expected, actual)), |types| types)
                 }
                 Err(ConstantListConstructionError::SpreadWithoutElements) => {
-                    Err(invalid_expression_shape_error(
-                        InvalidExpressionShapeKind::ModuleConstantListSpreadEmptyPrefix,
-                    ))
+                    Err(PlanError::InvalidTypedAst {
+                        reason: InvalidTypedAstReason::ExpressionShape {
+                            kind: InvalidExpressionShapeKind::ModuleConstantListSpreadEmptyPrefix,
+                        },
+                    })
                 }
             }
         }
@@ -396,12 +405,16 @@ fn plan_value(
             shape,
             context,
         ),
-        Constant::RecordUpdate { .. } => Err(invalid_expression_shape_error(
-            InvalidExpressionShapeKind::RecordUpdate,
-        )),
-        Constant::Todo { .. } | Constant::Invalid { .. } => Err(invalid_expression_shape_error(
-            InvalidExpressionShapeKind::ModuleConstantNode,
-        )),
+        Constant::RecordUpdate { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ModuleConstantRecordUpdate,
+            },
+        }),
+        Constant::Todo { .. } | Constant::Invalid { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ModuleConstantNode,
+            },
+        }),
     }
 }
 
@@ -412,9 +425,11 @@ fn plan_var(
     context: &mut PlanContext<'_>,
 ) -> Result<ConstantValue, PlanError> {
     let Some(constructor) = constructor else {
-        return Err(invalid_expression_shape_error(
-            InvalidExpressionShapeKind::ModuleConstantMissingConstructor,
-        ));
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ModuleConstantMissingConstructor,
+            },
+        });
     };
 
     match &constructor.variant {
@@ -446,9 +461,11 @@ fn plan_var(
         ValueConstructorVariant::Record { .. } => {
             plan_record(None, Some(constructor), shape, context)
         }
-        ValueConstructorVariant::LocalVariable { .. } => Err(invalid_expression_shape_error(
-            InvalidExpressionShapeKind::ModuleConstantLocalVariable,
-        )),
+        ValueConstructorVariant::LocalVariable { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ModuleConstantLocalVariable,
+            },
+        }),
     }
 }
 
@@ -459,9 +476,11 @@ fn plan_record(
     context: &mut PlanContext<'_>,
 ) -> Result<ConstantValue, PlanError> {
     let Some(constructor) = constructor else {
-        return Err(invalid_expression_shape_error(
-            InvalidExpressionShapeKind::RecordConstructor,
-        ));
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ModuleConstantRecordMissingConstructor,
+            },
+        });
     };
     let ValueConstructorVariant::Record {
         name,
@@ -470,83 +489,109 @@ fn plan_record(
         ..
     } = &constructor.variant
     else {
-        return Err(invalid_expression_shape_error(
-            InvalidExpressionShapeKind::ModuleConstantRecordKind,
-        ));
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ModuleConstantRecordKind,
+            },
+        });
     };
 
-    if module == PRELUDE_MODULE_NAME && *arity == 0 {
-        return match (name.as_str(), &shape) {
-            ("True", ValueShape::Bool) => Ok(ConstantValue::bool(true)),
-            ("False", ValueShape::Bool) => Ok(ConstantValue::bool(false)),
-            ("Nil", ValueShape::Nil) => Ok(ConstantValue::nil()),
-            _ => Err(invalid_expression_shape_error(
-                InvalidExpressionShapeKind::PreludeConstructor,
-            )),
-        };
-    }
     if module == PRELUDE_MODULE_NAME && !matches!(name.as_str(), "Ok" | "Error") {
-        return Err(invalid_expression_shape_error(
-            InvalidExpressionShapeKind::RecordConstructor,
-        ));
+        return match (name.as_str(), &shape) {
+            ("True", ValueShape::Bool) if *arity == 0 => Ok(ConstantValue::bool(true)),
+            ("False", ValueShape::Bool) if *arity == 0 => Ok(ConstantValue::bool(false)),
+            ("Nil", ValueShape::Nil) if *arity == 0 => Ok(ConstantValue::nil()),
+            _ => Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleConstantPreludeConstructor {
+                        name: name.clone(),
+                        arity: usize::from(*arity),
+                        actual: shape.value_type(),
+                    },
+                },
+            }),
+        };
     }
     let constructor = context.custom_constructor(&constructor)?;
 
     let Some(arguments) = arguments else {
-        return match shape {
-            ValueShape::Custom(custom) if constructor.fields().is_empty() => {
-                Ok(ConstantValue::custom(
-                    exact_constructor_shape(custom, constructor.index()),
-                    constructor,
-                    Vec::new().into_boxed_slice(),
-                ))
-            }
-            ValueShape::Function(shape) if !constructor.fields().is_empty() => {
-                let ValueShape::Custom(return_) = shape.return_shape().clone() else {
-                    return Err(invalid_expression_shape_error(
-                        InvalidExpressionShapeKind::RecordConstructor,
-                    ));
-                };
-                Ok(ConstantValue::constructor_function(
-                    *shape,
-                    return_,
-                    constructor,
-                ))
-            }
-            _ => Err(invalid_expression_shape_error(
-                InvalidExpressionShapeKind::RecordConstructor,
-            )),
+        return if constructor.fields().is_empty() {
+            let custom = expect_module_constant_custom_shape(shape)?;
+            Ok(ConstantValue::custom(
+                exact_constructor_shape(custom, constructor.index()),
+                constructor,
+                Vec::new().into_boxed_slice(),
+            ))
+        } else {
+            let shape = expect_module_constant_function_shape(shape)?;
+            let return_ = expect_module_constant_custom_shape(shape.return_shape().clone())?;
+            Ok(ConstantValue::constructor_function(
+                shape,
+                return_,
+                constructor,
+            ))
         };
     };
 
     if arguments.len() != constructor.fields().len() {
-        return Err(invalid_expression_shape_error(
-            InvalidExpressionShapeKind::RecordConstructor,
-        ));
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ModuleConstantRecordArgumentCount {
+                    expected: constructor.fields().len(),
+                    actual: arguments.len(),
+                },
+            },
+        });
     }
     let mut fields = Vec::with_capacity(arguments.len());
-    for (argument, field) in arguments.into_iter().zip(constructor.fields()) {
+    for (index, (argument, field)) in arguments.into_iter().zip(constructor.fields()).enumerate() {
         if let Some(label) = &argument.label
             && field.label() != Some(label)
         {
-            return Err(invalid_expression_shape_error(
-                InvalidExpressionShapeKind::RecordConstructor,
-            ));
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleConstantRecordArgumentLabel {
+                        index,
+                        expected: field.label().cloned(),
+                        actual: argument.label.clone(),
+                    },
+                },
+            });
         }
         let value = plan_value(argument.value, context)?;
         validate_expression_value_type(field.type_(), &value.shape().value_type())?;
         fields.push(value);
     }
-    let ValueShape::Custom(custom) = shape else {
-        return Err(invalid_expression_shape_error(
-            InvalidExpressionShapeKind::RecordConstructor,
-        ));
-    };
+    let custom = expect_module_constant_custom_shape(shape)?;
     Ok(ConstantValue::custom(
         exact_constructor_shape(custom, constructor.index()),
         constructor,
         fields.into_boxed_slice(),
     ))
+}
+
+fn expect_module_constant_custom_shape(shape: ValueShape) -> Result<CustomValueShape, PlanError> {
+    let actual = shape.value_type();
+    match shape {
+        ValueShape::Custom(shape) => Ok(shape),
+        _ => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ModuleConstantRecordCustomShape { actual },
+            },
+        }),
+    }
+}
+
+fn expect_module_constant_function_shape(shape: ValueShape) -> Result<FunctionShape, PlanError> {
+    let actual = shape.value_type();
+    match shape {
+        ValueShape::Function(shape) => Ok(*shape),
+        _ => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ModuleConstantRecordFunctionShape { actual },
+            },
+        }),
+    }
 }
 
 fn exact_constructor_shape(shape: CustomValueShape, index: usize) -> CustomValueShape {
@@ -569,7 +614,15 @@ fn plan_bit_array_segment(
         None => match value.shape().value_type() {
             ValueType::Int => StaticSegmentKind::Int,
             ValueType::Float => StaticSegmentKind::Float,
-            _ => return Err(invalid_bit_array_option_error()),
+            actual => {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::ModuleConstantBitArrayImplicitKind {
+                            actual,
+                        },
+                    },
+                });
+            }
         },
     };
 
@@ -606,7 +659,11 @@ fn plan_bit_array_segment(
         },
         StaticSegmentKind::String(encoding) => {
             if options.size.is_some() || options.unit != 1 {
-                return Err(invalid_bit_array_option_error());
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::ModuleConstantBitArrayStringOptions,
+                    },
+                });
             }
             Ok(ConstantBitArraySegment::String {
                 value: into_string(value)?,
@@ -667,14 +724,22 @@ fn static_segment_options(
             BitArrayOption::Utf8Codepoint { .. }
             | BitArrayOption::Utf16Codepoint { .. }
             | BitArrayOption::Utf32Codepoint { .. } => {
-                return Err(invalid_bit_array_option_error());
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::ModuleConstantBitArrayCodepointOption,
+                    },
+                });
             }
             BitArrayOption::Big { .. } => planned.endianness = Endianness::Big,
             BitArrayOption::Little { .. } => planned.endianness = Endianness::Little,
             BitArrayOption::Unit { value, .. } => planned.unit = value,
             BitArrayOption::Size { value, .. } => {
                 let Constant::Int { int_value, .. } = *value else {
-                    return Err(invalid_bit_array_option_error());
+                    return Err(PlanError::InvalidTypedAst {
+                        reason: InvalidTypedAstReason::ExpressionShape {
+                            kind: InvalidExpressionShapeKind::ModuleConstantBitArraySize,
+                        },
+                    });
                 };
                 planned.size = Some(int_value);
             }
@@ -684,7 +749,11 @@ fn static_segment_options(
             BitArrayOption::Bytes { .. }
             | BitArrayOption::Signed { .. }
             | BitArrayOption::Unsigned { .. } => {
-                return Err(invalid_bit_array_option_error());
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::ModuleConstantBitArrayUnsupportedOption,
+                    },
+                });
             }
         }
     }
@@ -696,7 +765,11 @@ fn set_segment_kind(
     kind: StaticSegmentKind,
 ) -> Result<(), PlanError> {
     if current.replace(kind).is_some() {
-        return Err(invalid_bit_array_option_error());
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ModuleConstantBitArrayMultipleKinds,
+            },
+        });
     }
     Ok(())
 }
@@ -714,7 +787,11 @@ fn float_bit_size(bit_size: usize) -> Result<FloatBitSize, PlanError> {
         16 => Ok(FloatBitSize::Sixteen),
         32 => Ok(FloatBitSize::ThirtyTwo),
         64 => Ok(FloatBitSize::SixtyFour),
-        _ => Err(invalid_bit_array_option_error()),
+        actual => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ModuleConstantBitArrayFloatSize { actual },
+            },
+        }),
     }
 }
 
@@ -751,16 +828,6 @@ fn into_bit_array(value: ConstantValue) -> Result<crate::plan::ConstantBitArrayV
         value.into_bit_array().ok_or((ValueType::BitArray, actual)),
         |types| types,
     )
-}
-
-fn invalid_bit_array_option_error() -> PlanError {
-    invalid_expression_shape_error(InvalidExpressionShapeKind::BitArraySegmentOption)
-}
-
-fn invalid_expression_shape_error(kind: InvalidExpressionShapeKind) -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionShape { kind },
-    }
 }
 
 #[cfg(test)]
@@ -1116,7 +1183,7 @@ mod tests {
             }),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordUpdate,
+                    kind: InvalidExpressionShapeKind::ModuleConstantRecordUpdate,
                 },
             }),
         );
@@ -1129,12 +1196,6 @@ mod tests {
                 kind: InvalidExpressionShapeKind::ModuleConstantMissingConstructor,
             },
         };
-        let record_shape = PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::RecordConstructor,
-            },
-        };
-
         assert_eq!(
             plan_fixture(Constant::Var {
                 location: dummy_span(),
@@ -1311,7 +1372,11 @@ pub fn main() {
                 field_map: Inferred::Unknown,
                 record_constructor: None,
             }),
-            Err(record_shape.clone()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleConstantRecordMissingConstructor,
+                },
+            }),
         );
         assert_eq!(
             plan_fixture(Constant::Record {
@@ -1349,7 +1414,11 @@ pub fn main() {
             }),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::PreludeConstructor,
+                    kind: InvalidExpressionShapeKind::ModuleConstantPreludeConstructor {
+                        name: "Other".into(),
+                        arity: 0,
+                        actual: ValueType::Bool,
+                    },
                 },
             }),
         );
@@ -1390,7 +1459,11 @@ pub fn main() {
             )),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                    kind: InvalidExpressionShapeKind::ModuleConstantPreludeConstructor {
+                        name: "Other".into(),
+                        arity: 1,
+                        actual: ValueType::Bool,
+                    },
                 },
             }),
         );
@@ -1415,12 +1488,11 @@ pub fn main() {
 
     #[test]
     fn reject_margin_constant_record_payload_shapes() {
-        let record_shape = PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::RecordConstructor,
-            },
-        };
         let result_type = type_::result(type_::int(), type_::string());
+        let result_value_type = ValueType::Custom(CustomType::new(
+            CustomTypeName::new("".into(), "gleam".into(), "Result".into()),
+            vec![ValueType::Int, ValueType::String],
+        ));
         let result_constructor = || {
             record_constructor(
                 "Ok",
@@ -1430,13 +1502,47 @@ pub fn main() {
             )
         };
 
+        let mut zero_field = compile(
+            r#"
+pub type Empty { Empty }
+const value = Empty
+pub fn main() { value }
+"#,
+        );
+        *zero_field.definitions.constants[0].value = record_constant(
+            None,
+            record_constructor(
+                "Empty",
+                "main",
+                0,
+                type_::named("geam", "main", "Empty", Publicity::Public, Vec::new()),
+            ),
+            type_::int(),
+        );
+        assert_eq!(
+            plan_module(zero_field),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleConstantRecordCustomShape {
+                        actual: ValueType::Int,
+                    },
+                },
+            }),
+        );
+
         assert_eq!(
             plan_fixture(record_constant(
                 None,
                 result_constructor(),
                 result_type.clone()
             )),
-            Err(record_shape.clone()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleConstantRecordFunctionShape {
+                        actual: result_value_type,
+                    },
+                },
+            }),
         );
         assert_eq!(
             plan_fixture(record_constant(
@@ -1444,7 +1550,13 @@ pub fn main() {
                 result_constructor(),
                 type_::fn_(vec![type_::int()], type_::int()),
             )),
-            Err(record_shape.clone()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleConstantRecordCustomShape {
+                        actual: ValueType::Int,
+                    },
+                },
+            }),
         );
         assert_eq!(
             plan_fixture(record_constant(
@@ -1452,7 +1564,14 @@ pub fn main() {
                 result_constructor(),
                 result_type.clone(),
             )),
-            Err(record_shape.clone()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleConstantRecordArgumentCount {
+                        expected: 1,
+                        actual: 0,
+                    },
+                },
+            }),
         );
         assert_eq!(
             plan_fixture(record_constant(
@@ -1460,7 +1579,14 @@ pub fn main() {
                 result_constructor(),
                 result_type.clone(),
             )),
-            Err(record_shape.clone()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleConstantRecordArgumentCount {
+                        expected: 1,
+                        actual: 2,
+                    },
+                },
+            }),
         );
         assert_eq!(
             plan_fixture(record_constant(
@@ -1468,7 +1594,15 @@ pub fn main() {
                 result_constructor(),
                 result_type.clone(),
             )),
-            Err(record_shape.clone()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleConstantRecordArgumentLabel {
+                        index: 0,
+                        expected: None,
+                        actual: Some("wrong".into()),
+                    },
+                },
+            }),
         );
         assert_eq!(
             plan_fixture(record_constant(
@@ -1518,7 +1652,13 @@ pub fn main() {
                 result_constructor(),
                 type_::int(),
             )),
-            Err(record_shape.clone()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleConstantRecordCustomShape {
+                        actual: ValueType::Int,
+                    },
+                },
+            }),
         );
 
         let arity_mismatch = record_constructor(
@@ -1549,12 +1689,6 @@ pub fn main() {
 
     #[test]
     fn reject_margin_constant_bit_array_segment_shapes() {
-        let invalid_option = PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::BitArraySegmentOption,
-            },
-        };
-
         for (value, options, expected) in [
             (
                 Constant::Invalid {
@@ -1575,7 +1709,13 @@ pub fn main() {
                     value: "value".into(),
                 },
                 Vec::new(),
-                invalid_option.clone(),
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::ModuleConstantBitArrayImplicitKind {
+                            actual: ValueType::String,
+                        },
+                    },
+                },
             ),
             (
                 Constant::String {
@@ -1588,14 +1728,22 @@ pub fn main() {
                     },
                     size(int(8)),
                 ],
-                invalid_option.clone(),
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::ModuleConstantBitArrayStringOptions,
+                    },
+                },
             ),
             (
                 int(1),
                 vec![BitArrayOption::Utf8Codepoint {
                     location: dummy_span(),
                 }],
-                invalid_option.clone(),
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::ModuleConstantBitArrayCodepointOption,
+                    },
+                },
             ),
             (
                 int(1),
@@ -1607,7 +1755,11 @@ pub fn main() {
                     }),
                     short_form: false,
                 }],
-                invalid_option.clone(),
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::ModuleConstantBitArraySize,
+                    },
+                },
             ),
             (
                 int(1),
@@ -1619,7 +1771,11 @@ pub fn main() {
                         location: dummy_span(),
                     },
                 ],
-                invalid_option.clone(),
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::ModuleConstantBitArrayMultipleKinds,
+                    },
+                },
             ),
             (
                 int(1),
@@ -1629,7 +1785,13 @@ pub fn main() {
                     },
                     size(int(24)),
                 ],
-                invalid_option.clone(),
+                PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::ModuleConstantBitArrayFloatSize {
+                            actual: 24,
+                        },
+                    },
+                },
             ),
             (
                 Constant::String {
@@ -1717,7 +1879,11 @@ pub fn main() {
         ] {
             assert_eq!(
                 plan_fixture(bit_array(int(1), vec![option])),
-                Err(invalid_option.clone())
+                Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::ModuleConstantBitArrayUnsupportedOption,
+                    },
+                })
             );
         }
 
@@ -1896,7 +2062,14 @@ pub fn main() {
                 },
             ],
         ] {
-            assert_eq!(static_segment_options(options), Err(invalid_option.clone()));
+            assert_eq!(
+                static_segment_options(options),
+                Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::ModuleConstantBitArrayMultipleKinds,
+                    },
+                }),
+            );
         }
 
         assert_eq!(
@@ -1908,7 +2081,11 @@ pub fn main() {
                     location: dummy_span(),
                 },
             ]),
-            Err(invalid_option),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ModuleConstantBitArrayUnsupportedOption,
+                },
+            }),
         );
     }
 

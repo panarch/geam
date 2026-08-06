@@ -282,8 +282,20 @@ pub enum InvalidFunctionShapeReason {
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum InvalidExpressionShapeKind {
-    #[error("bit array segment option")]
-    BitArraySegmentOption,
+    #[error("bit-array constant size is not an integer")]
+    BitArrayConstantSize,
+    #[error("bit-array float size: got {actual}")]
+    BitArrayFloatSize { actual: usize },
+    #[error("bit-array segment has multiple kinds")]
+    BitArrayMultipleKinds,
+    #[error("bit-array segment cannot infer a kind from {actual:?}")]
+    BitArrayImplicitKind { actual: ValueType },
+    #[error("bit-array string segment has a size or non-default unit")]
+    BitArrayStringOptions,
+    #[error("bit-array codepoint segment has incompatible options")]
+    BitArrayUtfCodepointOptions,
+    #[error("unsupported bit-array segment option")]
+    BitArrayUnsupportedOption,
     #[error("constant local variable")]
     ConstantLocalVariable,
     #[error("constant variable has no constructor metadata")]
@@ -294,6 +306,26 @@ pub enum InvalidExpressionShapeKind {
     ConstantRecordConstructorKind,
     #[error("constant record kind")]
     ConstantRecordKind,
+    #[error("constant record constructor metadata is missing")]
+    ConstantRecordMissingConstructor,
+    #[error("constant record argument count: expected {expected}, got {actual}")]
+    ConstantRecordArgumentCount { expected: usize, actual: usize },
+    #[error("constant record argument {index} label: expected {expected:?}, got {actual:?}")]
+    ConstantRecordArgumentLabel {
+        index: usize,
+        expected: Option<EcoString>,
+        actual: Option<EcoString>,
+    },
+    #[error("constant record constructor type: got {actual:?}")]
+    ConstantRecordConstructorType { actual: Option<ValueType> },
+    #[error("constant prelude constructor {name}/{arity}: got {actual:?}")]
+    ConstantPreludeConstructor {
+        name: EcoString,
+        arity: usize,
+        actual: Option<ValueType>,
+    },
+    #[error("constant record update")]
+    ConstantRecordUpdate,
     #[error("constant list element type")]
     ConstantListElementType,
     #[error("constant list type: got {actual:?}")]
@@ -329,6 +361,20 @@ pub enum InvalidExpressionShapeKind {
     LocalBindingShape,
     #[error("invalid module constant node")]
     ModuleConstantNode,
+    #[error("module constant bit-array float size: got {actual}")]
+    ModuleConstantBitArrayFloatSize { actual: usize },
+    #[error("module constant bit-array segment cannot infer a kind from {actual:?}")]
+    ModuleConstantBitArrayImplicitKind { actual: ValueType },
+    #[error("module constant bit-array segment has multiple kinds")]
+    ModuleConstantBitArrayMultipleKinds,
+    #[error("module constant bit-array size is not an integer")]
+    ModuleConstantBitArraySize,
+    #[error("module constant bit-array string segment has a size or non-default unit")]
+    ModuleConstantBitArrayStringOptions,
+    #[error("module constant bit-array codepoint option")]
+    ModuleConstantBitArrayCodepointOption,
+    #[error("unsupported module constant bit-array segment option")]
+    ModuleConstantBitArrayUnsupportedOption,
     #[error("module constant list spread has no prefix elements")]
     ModuleConstantListSpreadEmptyPrefix,
     #[error("module constant list type: got {actual:?}")]
@@ -339,6 +385,28 @@ pub enum InvalidExpressionShapeKind {
     ModuleConstantMissingConstructor,
     #[error("module constant record kind")]
     ModuleConstantRecordKind,
+    #[error("module constant record constructor metadata is missing")]
+    ModuleConstantRecordMissingConstructor,
+    #[error("module constant record argument count: expected {expected}, got {actual}")]
+    ModuleConstantRecordArgumentCount { expected: usize, actual: usize },
+    #[error("module constant record argument {index} label: expected {expected:?}, got {actual:?}")]
+    ModuleConstantRecordArgumentLabel {
+        index: usize,
+        expected: Option<EcoString>,
+        actual: Option<EcoString>,
+    },
+    #[error("module constant record value must be custom, got {actual:?}")]
+    ModuleConstantRecordCustomShape { actual: ValueType },
+    #[error("module constant record reference must be a function, got {actual:?}")]
+    ModuleConstantRecordFunctionShape { actual: ValueType },
+    #[error("module constant prelude constructor {name}/{arity}: got {actual:?}")]
+    ModuleConstantPreludeConstructor {
+        name: EcoString,
+        arity: usize,
+        actual: ValueType,
+    },
+    #[error("module constant record update")]
+    ModuleConstantRecordUpdate,
     #[error("module constant storage shape")]
     ModuleConstantStorageShape,
     #[error("module constant tuple arity: expected {expected}, got {actual}")]
@@ -347,16 +415,12 @@ pub enum InvalidExpressionShapeKind {
     ModuleConstantTupleType { actual: ValueType },
     #[error("positional access")]
     PositionalAccess,
-    #[error("prelude constructor")]
-    PreludeConstructor,
-    #[error("record constructor")]
-    RecordConstructor,
+    #[error("custom constructor metadata is not a record")]
+    CustomConstructorKind,
     #[error("record access")]
     RecordAccess,
     #[error("record access index cannot be represented on this target")]
     RecordAccessIndexOverflow,
-    #[error("record update")]
-    RecordUpdate,
     #[error("tuple expression arity: expected {expected}, got {actual}")]
     TupleArity { expected: usize, actual: usize },
     #[error("tuple index {index} is outside {available} elements")]
@@ -367,10 +431,31 @@ pub enum InvalidExpressionShapeKind {
     TupleType { actual: ValueType },
     #[error("variable function local shape")]
     VariableFunctionLocalShape,
+    #[error("variable prelude constructor {name}/{arity}: got {actual:?}")]
+    VariablePreludeConstructor {
+        name: EcoString,
+        arity: usize,
+        actual: ValueType,
+    },
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum InvalidRecordUpdateShapeReason {
+    #[error("record constructor argument count: expected {expected}, got {actual}")]
+    ArgumentCount { expected: usize, actual: usize },
+    #[error("record constructor argument {index} label: expected {expected:?}, got {actual:?}")]
+    ArgumentLabel {
+        index: usize,
+        expected: Option<EcoString>,
+        actual: Option<EcoString>,
+    },
+    #[error(
+        "record update base assignment: requires assignment {requires_assignment}, got {has_assignment}"
+    )]
+    BaseAssignment {
+        requires_assignment: bool,
+        has_assignment: bool,
+    },
     #[error("record constructor expression")]
     ConstructorExpression,
     #[error("record constructor kind")]
@@ -380,20 +465,87 @@ pub enum InvalidRecordUpdateShapeReason {
         expected: EcoString,
         actual: EcoString,
     },
-    #[error("record constructor argument count")]
-    ArgumentCount,
-    #[error("record constructor argument label")]
-    ArgumentLabel,
-    #[error("record update base assignment")]
-    BaseAssignment,
-    #[error("record update implicit argument origin")]
-    ImplicitArgumentOrigin,
-    #[error("record update implicit field access")]
-    ImplicitFieldAccess,
-    #[error("record update implicit field target")]
-    ImplicitFieldTarget,
-    #[error("record update type")]
-    Type,
+    #[error("record constructor result type: expected {expected:?}, got {actual:?}")]
+    ConstructorResultType {
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("record update implicit argument {index} origin: got {actual}")]
+    ImplicitArgumentOrigin {
+        index: usize,
+        actual: RecordUpdateArgumentOrigin,
+    },
+    #[error("record update implicit argument {argument} is not a field access")]
+    ImplicitFieldExpression { argument: usize },
+    #[error(
+        "record update implicit argument {argument} field index: expected {expected}, got {actual}"
+    )]
+    ImplicitFieldIndex {
+        argument: usize,
+        expected: usize,
+        actual: u64,
+    },
+    #[error(
+        "record update implicit argument {argument} field label: expected {expected:?}, got {actual:?}"
+    )]
+    ImplicitFieldLabel {
+        argument: usize,
+        expected: Option<EcoString>,
+        actual: Option<EcoString>,
+    },
+    #[error(
+        "record update implicit argument {argument} field type: expected {expected:?}, got {actual:?}"
+    )]
+    ImplicitFieldType {
+        argument: usize,
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("record update implicit argument {argument} generated target kind")]
+    ImplicitGeneratedTargetKind { argument: usize },
+    #[error("record update implicit argument {argument} generated target origin")]
+    ImplicitGeneratedTargetOrigin { argument: usize },
+    #[error(
+        "record update implicit argument {argument} generated target type: expected {expected:?}, got {actual:?}"
+    )]
+    ImplicitGeneratedTargetType {
+        argument: usize,
+        expected: ValueType,
+        actual: ValueType,
+    },
+    #[error("record update implicit argument {argument} original target constructor")]
+    ImplicitOriginalTargetConstructor { argument: usize },
+    #[error("record update implicit argument {argument} target is not a variable")]
+    ImplicitTargetExpression { argument: usize },
+    #[error(
+        "record update implicit argument {argument} target name: expected {expected}, got {actual}"
+    )]
+    ImplicitTargetName {
+        argument: usize,
+        expected: EcoString,
+        actual: EcoString,
+    },
+    #[error("record update source is not a custom type: got {actual:?}")]
+    UpdatedSourceFamily { actual: ValueType },
+    #[error("record update source type: expected {expected:?}, got {actual:?}")]
+    UpdatedSourceType {
+        expected: ValueType,
+        actual: ValueType,
+    },
+}
+
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+pub enum RecordUpdateArgumentOrigin {
+    #[error("incorrect-arity use")]
+    IncorrectArityUse,
+    #[error("pattern field spread")]
+    PatternFieldSpread,
+    #[error("pipe")]
+    Pipe,
+    #[error("record update")]
+    RecordUpdate,
+    #[error("use")]
+    Use,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
@@ -576,8 +728,8 @@ pub enum InvalidCaseShapeReason {
     MissingFallbackPattern,
     #[error("missing true pattern")]
     MissingTruePattern,
-    #[error("pattern subject count mismatch")]
-    PatternSubjectCountMismatch,
+    #[error("case pattern count: expected {expected}, got {actual}")]
+    PatternSubjectCountMismatch { expected: usize, actual: usize },
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]

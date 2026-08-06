@@ -741,6 +741,7 @@ impl Expr {
         self.kind
     }
 
+    #[cfg(test)]
     pub(crate) fn into_int(self) -> Option<IntExpr> {
         match self.kind {
             ExprKind::Int(expression) => Some(expression),
@@ -748,6 +749,7 @@ impl Expr {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn into_string(self) -> Option<StringExpr> {
         match self.kind {
             ExprKind::String(expression) => Some(expression),
@@ -755,13 +757,7 @@ impl Expr {
         }
     }
 
-    pub(crate) fn into_bit_array(self) -> Option<BitArrayExpr> {
-        match self.kind {
-            ExprKind::BitArray(expression) => Some(expression),
-            _ => None,
-        }
-    }
-
+    #[cfg(test)]
     pub(crate) fn into_utf_codepoint(self) -> Option<UtfCodepointExpr> {
         match self.kind {
             ExprKind::UtfCodepoint(expression) => Some(expression),
@@ -777,6 +773,7 @@ impl Expr {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn into_float(self) -> Option<FloatExpr> {
         match self.kind {
             ExprKind::Float(expression) => Some(expression),
@@ -1571,6 +1568,10 @@ mod tests {
         assert_eq!(
             Expr::string(StringExpr::value("geam".into())).into_string(),
             Some(StringExpr::value("geam".into())),
+        );
+        assert_eq!(
+            Expr::int(IntExpr::value(BigInt::from(1))).into_string(),
+            None,
         );
         let codepoint = UtfCodepointExpr::local_get(UtfCodepointLocalId(0), "codepoint".into());
         assert_eq!(

@@ -11,7 +11,7 @@ pub use invalid::{
     InvalidCustomTypeReason, InvalidExpressionShapeKind, InvalidExpressionType,
     InvalidFunctionShapeReason, InvalidModuleReferenceReason, InvalidPatternShapeReason,
     InvalidPipelineShapeReason, InvalidRecordUpdateShapeReason, InvalidTypedAstReason,
-    InvalidUseShapeReason, PatternKind,
+    InvalidUseShapeReason, PatternKind, RecordUpdateArgumentOrigin,
 };
 pub use unsupported::{
     UnsupportedBitArraySegmentReason, UnsupportedFunctionReason, UnsupportedPatternKind,

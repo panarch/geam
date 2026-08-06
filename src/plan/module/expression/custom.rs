@@ -36,6 +36,7 @@ pub(crate) struct CustomLocalExpr {
     value: CustomExpr,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CustomArgumentCountMismatch {
     pub(crate) expected: usize,
@@ -412,6 +413,7 @@ impl CustomConstruction {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn try_new(
         constructor: CustomConstructor,
         fields: Vec<super::Expr>,
@@ -423,10 +425,7 @@ impl CustomConstruction {
             });
         }
 
-        Ok(Self {
-            constructor,
-            fields: fields.into_boxed_slice(),
-        })
+        Ok(Self::from_validated(constructor, fields))
     }
 
     pub(crate) fn constructor(&self) -> &CustomConstructor {
@@ -508,10 +507,10 @@ mod tests {
         assert_eq!(expression.type_(), &type_);
         assert_eq!(
             expression.kind(),
-            &CustomExprKind::Constructor(
-                super::CustomConstruction::try_new(constructor, vec![field])
-                    .expect("exact custom construction should be valid"),
-            ),
+            &CustomExprKind::Constructor(super::CustomConstruction::from_validated(
+                constructor,
+                vec![field]
+            ),),
         );
     }
 
@@ -522,16 +521,15 @@ mod tests {
             Vec::new(),
         );
         let constructor = CustomConstructor::new(type_.clone(), "Empty".into(), 0, Vec::new());
-        let expression = CustomExpr::try_constructor(constructor.clone(), Vec::new())
-            .expect("zero-field custom construction should be valid");
+        let expression = validated_custom_expr(constructor.clone(), Vec::new());
 
         assert_eq!(expression.type_(), &type_);
         assert_eq!(
             expression.kind(),
-            &CustomExprKind::Constructor(
-                super::CustomConstruction::try_new(constructor, Vec::new())
-                    .expect("zero-field custom construction should be valid"),
-            ),
+            &CustomExprKind::Constructor(super::CustomConstruction::from_validated(
+                constructor,
+                Vec::new()
+            ),),
         );
     }
 
@@ -569,11 +567,9 @@ mod tests {
             Vec::new(),
         );
         let constructor = CustomConstructor::new(type_.clone(), "Boxed".into(), 0, Vec::new());
-        let branch = CustomExpr::try_constructor(constructor.clone(), Vec::new())
-            .expect("zero-field custom construction should be valid");
+        let branch = validated_custom_expr(constructor.clone(), Vec::new());
         let shape = branch.shape().clone();
-        let fallback = CustomExpr::try_constructor(constructor.clone(), Vec::new())
-            .expect("zero-field custom construction should be valid");
+        let fallback = validated_custom_expr(constructor.clone(), Vec::new());
 
         let expression = CustomExpr::block(
             Vec::new(),
@@ -592,16 +588,23 @@ mod tests {
                     return_: Box::new(CustomExprKind::BoolCase {
                         subject: Box::new(crate::plan::BoolExpr::value(true)),
                         true_: Box::new(CustomExprKind::Constructor(
-                            super::CustomConstruction::try_new(constructor.clone(), Vec::new())
-                                .expect("zero-field custom construction should be valid"),
+                            super::CustomConstruction::from_validated(
+                                constructor.clone(),
+                                Vec::new(),
+                            ),
                         )),
                         false_: Box::new(CustomExprKind::Constructor(
-                            super::CustomConstruction::try_new(constructor, Vec::new())
-                                .expect("zero-field custom construction should be valid"),
+                            super::CustomConstruction::from_validated(constructor, Vec::new()),
                         )),
                     }),
                 },
             ),
         );
+    }
+
+    fn validated_custom_expr(constructor: CustomConstructor, fields: Vec<Expr>) -> CustomExpr {
+        let shape = super::custom_constructor_shape(&constructor);
+        let construction = super::CustomConstruction::from_validated(constructor, fields);
+        CustomExpr::from_construction(shape, construction)
     }
 }

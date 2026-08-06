@@ -16,14 +16,14 @@ use crate::planner::expression::{
     tuple_index_expr,
 };
 use ecow::EcoString;
-use gleam_core::ast::{AssignmentKind, Pattern, TypedAssignment, TypedExpr, TypedPattern};
+use gleam_core::ast::{AssignmentKind, Pattern, SrcSpan, TypedAssignment, TypedExpr, TypedPattern};
 
 pub(super) fn plan_assignment(
     assignment: TypedAssignment,
     context: &mut PlanContext<'_>,
 ) -> Result<Vec<Step>, PlanError> {
-    match assignment.kind {
-        AssignmentKind::Let => {
+    match validate_assignment_kind(assignment.kind)? {
+        ValidatedAssignmentKind::Let => {
             let source_shape = context.value_shape_in_scope(assignment.value.type_().as_ref());
             let typed_pattern = assignment.pattern.clone();
             let pattern = plan_binding_pattern_in_context(assignment.pattern, context)?;
@@ -31,18 +31,15 @@ pub(super) fn plan_assignment(
             crate::planner::pattern::validate_pattern(&typed_pattern, &source_shape, context)?;
             plan_assignment_steps(pattern, value, context)
         }
-        AssignmentKind::Assert {
-            location, message, ..
-        } => assert::plan_assert_assignment_steps(
-            location,
-            assignment.pattern,
-            assignment.value,
-            message,
-            context,
-        ),
-        AssignmentKind::Generated => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::GeneratedAssignment,
-        }),
+        ValidatedAssignmentKind::Assert { location, message } => {
+            assert::plan_assert_assignment_steps(
+                location,
+                assignment.pattern,
+                assignment.value,
+                message.map(|message| *message),
+                context,
+            )
+        }
     }
 }
 
@@ -55,8 +52,8 @@ pub(super) fn plan_final_assignment(
     assignment: TypedAssignment,
     context: &mut PlanContext<'_>,
 ) -> Result<PlannedAssignment, PlanError> {
-    let (pattern, value) = match assignment.kind {
-        AssignmentKind::Let => {
+    let (pattern, value) = match validate_assignment_kind(assignment.kind)? {
+        ValidatedAssignmentKind::Let => {
             let source_shape = context.value_shape_in_scope(assignment.value.type_().as_ref());
             let typed_pattern = assignment.pattern.clone();
             let pattern = plan_binding_pattern_in_context(assignment.pattern, context)?;
@@ -64,24 +61,42 @@ pub(super) fn plan_final_assignment(
             crate::planner::pattern::validate_pattern(&typed_pattern, &source_shape, context)?;
             (pattern, value)
         }
-        AssignmentKind::Assert {
-            location, message, ..
-        } => {
+        ValidatedAssignmentKind::Assert { location, message } => {
             return assert::plan_assert_assignment(
                 location,
                 assignment.pattern,
                 assignment.value,
-                message,
+                message.map(|message| *message),
                 context,
             );
         }
-        AssignmentKind::Generated => {
-            return Err(PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::GeneratedAssignment,
-            });
-        }
     };
     plan_bound_assignment(pattern, value, context)
+}
+
+enum ValidatedAssignmentKind {
+    Let,
+    Assert {
+        location: SrcSpan,
+        message: Option<Box<TypedExpr>>,
+    },
+}
+
+fn validate_assignment_kind(
+    kind: AssignmentKind<TypedExpr>,
+) -> Result<ValidatedAssignmentKind, PlanError> {
+    match kind {
+        AssignmentKind::Let => Ok(ValidatedAssignmentKind::Let),
+        AssignmentKind::Assert {
+            location, message, ..
+        } => Ok(ValidatedAssignmentKind::Assert {
+            location,
+            message: message.map(Box::new),
+        }),
+        AssignmentKind::Generated => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::GeneratedAssignment,
+        }),
+    }
 }
 
 fn plan_ordinary_assignment_value(

@@ -1,4 +1,4 @@
-use super::{InvalidCaseShapeReason, PlanError, invalid_case_shape};
+use super::{InvalidCaseShapeReason, InvalidTypedAstReason, PlanError};
 use gleam_core::ast::TypedClause;
 use gleam_core::exhaustiveness::{CompiledCase, Decision, FallbackCheck};
 
@@ -21,9 +21,11 @@ impl CaseCoverage {
         clauses: &[TypedClause],
     ) -> Result<Self, PlanError> {
         if compiled.subject_variables.len() != subject_count {
-            return Err(invalid_case_shape(
-                InvalidCaseShapeReason::CompiledCaseSubjectCountMismatch,
-            ));
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::CaseShape {
+                    reason: InvalidCaseShapeReason::CompiledCaseSubjectCountMismatch,
+                },
+            });
         }
 
         let mut reachable = vec![false; clauses.len()];
@@ -49,12 +51,14 @@ pub(super) fn require_branch<Value>(
     branch: Option<Value>,
     requirement: CaseBranchRequirement,
 ) -> Result<Value, PlanError> {
-    branch.ok_or_else(|| {
-        invalid_case_shape(match requirement {
-            CaseBranchRequirement::True => InvalidCaseShapeReason::MissingTruePattern,
-            CaseBranchRequirement::False => InvalidCaseShapeReason::MissingFalsePattern,
-            CaseBranchRequirement::Fallback => InvalidCaseShapeReason::MissingFallbackPattern,
-        })
+    branch.ok_or_else(|| PlanError::InvalidTypedAst {
+        reason: InvalidTypedAstReason::CaseShape {
+            reason: match requirement {
+                CaseBranchRequirement::True => InvalidCaseShapeReason::MissingTruePattern,
+                CaseBranchRequirement::False => InvalidCaseShapeReason::MissingFalsePattern,
+                CaseBranchRequirement::Fallback => InvalidCaseShapeReason::MissingFallbackPattern,
+            },
+        },
     })
 }
 
@@ -74,14 +78,18 @@ fn visit(
             if_false,
         } => {
             let Some(clause) = clauses.get(*guard) else {
-                return Err(invalid_case_shape(
-                    InvalidCaseShapeReason::CompiledCaseGuardIndex,
-                ));
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::CaseShape {
+                        reason: InvalidCaseShapeReason::CompiledCaseGuardIndex,
+                    },
+                });
             };
             if clause.guard.is_none() || if_true.clause_index != *guard {
-                return Err(invalid_case_shape(
-                    InvalidCaseShapeReason::CompiledCaseGuard,
-                ));
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::CaseShape {
+                        reason: InvalidCaseShapeReason::CompiledCaseGuard,
+                    },
+                });
             }
             reachable[*guard] = true;
             visit(if_false, clauses, reachable)
@@ -102,9 +110,11 @@ fn visit(
             }
             visit(fallback, clauses, reachable)
         }
-        Decision::Fail => Err(invalid_case_shape(
-            InvalidCaseShapeReason::CompiledCaseFailure,
-        )),
+        Decision::Fail => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CaseShape {
+                reason: InvalidCaseShapeReason::CompiledCaseFailure,
+            },
+        }),
     }
 }
 
@@ -114,9 +124,11 @@ fn mark_body(
     reachable: &mut [bool],
 ) -> Result<(), PlanError> {
     if clauses.get(clause).is_none() {
-        return Err(invalid_case_shape(
-            InvalidCaseShapeReason::CompiledCaseClauseIndex,
-        ));
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::CaseShape {
+                reason: InvalidCaseShapeReason::CompiledCaseClauseIndex,
+            },
+        });
     }
     reachable[clause] = true;
     Ok(())

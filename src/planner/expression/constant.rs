@@ -53,12 +53,16 @@ pub(in crate::planner::expression) fn plan(
         Constant::BitArray { segments, .. } => {
             super::bit_array::plan_constant(segments, context).map(Expr::bit_array)
         }
-        Constant::RecordUpdate { .. } => {
-            invalid_expression_shape(InvalidExpressionShapeKind::RecordUpdate)
-        }
-        Constant::Todo { .. } | Constant::Invalid { .. } => {
-            invalid_expression_shape(InvalidExpressionShapeKind::ConstantNode)
-        }
+        Constant::RecordUpdate { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ConstantRecordUpdate,
+            },
+        }),
+        Constant::Todo { .. } | Constant::Invalid { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ConstantNode,
+            },
+        }),
     }
 }
 
@@ -168,7 +172,11 @@ fn plan_var(
     context: &PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let Some(constructor) = constructor else {
-        return invalid_expression_shape(InvalidExpressionShapeKind::ConstantMissingConstructor);
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ConstantMissingConstructor,
+            },
+        });
     };
 
     match constructor.variant {
@@ -196,9 +204,11 @@ fn plan_var(
             )))
         }
         ValueConstructorVariant::Record { .. } => plan_record_constructor(constructor, context),
-        ValueConstructorVariant::LocalVariable { .. } => {
-            invalid_expression_shape(InvalidExpressionShapeKind::ConstantLocalVariable)
-        }
+        ValueConstructorVariant::LocalVariable { .. } => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ConstantLocalVariable,
+            },
+        }),
     }
 }
 
@@ -208,11 +218,19 @@ fn plan_record(
     context: &PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let Some(constructor) = constructor else {
-        return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ConstantRecordMissingConstructor,
+            },
+        });
     };
 
     let ValueConstructorVariant::Record { .. } = &constructor.variant else {
-        return invalid_expression_shape(InvalidExpressionShapeKind::ConstantRecordKind);
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ConstantRecordKind,
+            },
+        });
     };
     let Some(arguments) = arguments else {
         return plan_record_constructor(constructor, context);
@@ -232,17 +250,33 @@ fn plan_record(
         return plan_record_constructor(constructor, context);
     }
     let constructor = context.custom_constructor(&constructor)?;
+    if arguments.len() != constructor.fields().len() {
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ConstantRecordArgumentCount {
+                    expected: constructor.fields().len(),
+                    actual: arguments.len(),
+                },
+            },
+        });
+    }
     let arguments = arguments
         .into_iter()
+        .zip(constructor.fields())
         .enumerate()
-        .map(|(index, argument)| {
-            let Some(field) = constructor.fields().get(index) else {
-                return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
-            };
+        .map(|(index, (argument, field))| {
             if let Some(label) = &argument.label
                 && field.label() != Some(label)
             {
-                return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::ConstantRecordArgumentLabel {
+                            index,
+                            expected: field.label().cloned(),
+                            actual: argument.label.clone(),
+                        },
+                    },
+                });
             }
             let argument = plan(argument.value, context)?;
             super::conversion::validate_expression_value_type(
@@ -252,14 +286,7 @@ fn plan_record(
             Ok(argument)
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let construction =
-        crate::plan::CustomConstruction::try_new(constructor, arguments).map_err(|_| {
-            PlanError::InvalidTypedAst {
-                reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
-                },
-            }
-        })?;
+    let construction = crate::plan::CustomConstruction::from_validated(constructor, arguments);
     context
         .custom_expr_from_construction(construction)
         .map(Expr::custom)
@@ -276,37 +303,44 @@ fn plan_record_constructor(
         ..
     } = &constructor.variant
     else {
-        return invalid_expression_shape(InvalidExpressionShapeKind::ConstantRecordConstructorKind);
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ConstantRecordConstructorKind,
+            },
+        });
     };
-    if module == PRELUDE_MODULE_NAME && *arity == 0 {
-        match name.as_str() {
-            "True" => return Ok(Expr::bool(BoolExpr::value(true))),
-            "False" => return Ok(Expr::bool(BoolExpr::value(false))),
-            "Nil" => return Ok(Expr::nil(NilExpr::value())),
-            _ => {
-                return invalid_expression_shape(InvalidExpressionShapeKind::PreludeConstructor);
-            }
-        }
-    }
     if module == PRELUDE_MODULE_NAME && !matches!(name.as_str(), "Ok" | "Error") {
-        return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
+        return match (name.as_str(), *arity) {
+            ("True", 0) => Ok(Expr::bool(BoolExpr::value(true))),
+            ("False", 0) => Ok(Expr::bool(BoolExpr::value(false))),
+            ("Nil", 0) => Ok(Expr::nil(NilExpr::value())),
+            _ => Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ConstantPreludeConstructor {
+                        name: name.clone(),
+                        arity: usize::from(*arity),
+                        actual: ValueType::from_gleam(constructor.type_.as_ref()),
+                    },
+                },
+            }),
+        };
     }
     if module != PRELUDE_MODULE_NAME {
         let _linked_module = context.resolve_module_reference(module, name)?;
     }
     let Some(shape) = crate::plan::ValueShape::from_gleam(constructor.type_.as_ref()) else {
-        return invalid_expression_shape(InvalidExpressionShapeKind::RecordConstructor);
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::ConstantRecordConstructorType {
+                    actual: ValueType::from_gleam(constructor.type_.as_ref()),
+                },
+            },
+        });
     };
     let module = module.clone();
     let name = name.clone();
     let constructor = context.custom_constructor(&constructor)?;
     ResolvedRecordConstructor::direct(module, name, constructor).plan_reference(shape)
-}
-
-fn invalid_expression_shape(kind: InvalidExpressionShapeKind) -> Result<Expr, PlanError> {
-    Err(PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionShape { kind },
-    })
 }
 
 #[cfg(test)]
@@ -826,7 +860,9 @@ pub fn main() {
             plan_record_constructor(generic_constructor, &context),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                    kind: InvalidExpressionShapeKind::ConstantRecordConstructorType {
+                        actual: None,
+                    },
                 },
             }),
         );
@@ -1382,7 +1418,11 @@ pub fn main() {
             }),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::PreludeConstructor,
+                    kind: InvalidExpressionShapeKind::ConstantPreludeConstructor {
+                        name: "Other".into(),
+                        arity: 0,
+                        actual: Some(ValueType::Int),
+                    },
                 },
             }),
         );
@@ -1418,7 +1458,7 @@ pub fn main() {
             }),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                    kind: InvalidExpressionShapeKind::ConstantRecordMissingConstructor,
                 },
             }),
         );
@@ -1537,7 +1577,7 @@ pub fn main() {
             }),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordUpdate,
+                    kind: InvalidExpressionShapeKind::ConstantRecordUpdate,
                 },
             }),
         );
@@ -1627,7 +1667,10 @@ pub fn main() {
             plan_record(Some(Vec::new()), Some(result_constructor()), &context,),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                    kind: InvalidExpressionShapeKind::ConstantRecordArgumentCount {
+                        expected: 1,
+                        actual: 0,
+                    },
                 },
             }),
         );
@@ -1639,7 +1682,10 @@ pub fn main() {
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                    kind: InvalidExpressionShapeKind::ConstantRecordArgumentCount {
+                        expected: 1,
+                        actual: 2,
+                    },
                 },
             }),
         );
@@ -1674,7 +1720,11 @@ pub fn main() {
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                    kind: InvalidExpressionShapeKind::ConstantRecordArgumentLabel {
+                        index: 0,
+                        expected: None,
+                        actual: Some("wrong".into()),
+                    },
                 },
             }),
         );
@@ -1770,7 +1820,11 @@ pub fn main() {
             plan_record_constructor(record_constructor("External", "gleam", 1), &context),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::RecordConstructor,
+                    kind: InvalidExpressionShapeKind::ConstantPreludeConstructor {
+                        name: "External".into(),
+                        arity: 1,
+                        actual: Some(ValueType::Int),
+                    },
                 },
             }),
         );

@@ -5,6 +5,7 @@ use crate::plan::{
 use crate::planner::bit_array::{fixed_bit_size, validate_supported_endianness_option};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
+use crate::planner::expression::conversion::expect_expression;
 use gleam_core::ast::{
     BitArrayOption, BitArraySegment as GleamBitArraySegment, Constant, TypedExpr,
 };
@@ -125,7 +126,13 @@ fn plan_options<Value>(
             }
             BitArrayOption::Bytes { .. }
             | BitArrayOption::Signed { .. }
-            | BitArrayOption::Unsigned { .. } => return invalid_segment_option(),
+            | BitArrayOption::Unsigned { .. } => {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::BitArrayUnsupportedOption,
+                    },
+                });
+            }
         }
     }
 
@@ -159,25 +166,19 @@ fn plan_segment(
         None => match value_type {
             ValueType::Int => SegmentKind::Int,
             ValueType::Float => SegmentKind::Float,
-            ValueType::Parameter(_)
-            | ValueType::String
-            | ValueType::BitArray
-            | ValueType::UtfCodepoint
-            | ValueType::Custom(_)
-            | ValueType::External(_)
-            | ValueType::Bool
-            | ValueType::Nil
-            | ValueType::Tuple(_)
-            | ValueType::List(_)
-            | ValueType::Function(_) => return invalid_segment_option(),
+            actual => {
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::BitArrayImplicitKind { actual },
+                    },
+                });
+            }
         },
     };
 
     match kind {
         SegmentKind::Int => {
-            let Some(value) = value.into_int() else {
-                return invalid_segment_option();
-            };
+            let value = expect_expression(value)?;
             match size {
                 None => Ok(BitArraySegment::Int {
                     value,
@@ -198,9 +199,7 @@ fn plan_segment(
             }
         }
         SegmentKind::Float => {
-            let Some(value) = value.into_float() else {
-                return invalid_segment_option();
-            };
+            let value = expect_expression(value)?;
             match size {
                 None => Ok(BitArraySegment::Float {
                     value,
@@ -221,9 +220,7 @@ fn plan_segment(
             }
         }
         SegmentKind::Bits => {
-            let Some(value) = value.into_bit_array() else {
-                return invalid_segment_option();
-            };
+            let value = expect_expression(value)?;
             match size {
                 None => Ok(BitArraySegment::Bits(value)),
                 Some(SegmentSize::Fixed(size)) => Ok(BitArraySegment::SizedBits {
@@ -240,11 +237,13 @@ fn plan_segment(
         }
         SegmentKind::String(encoding) => {
             if size.is_some() || unit != 1 {
-                return invalid_segment_option();
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::BitArrayStringOptions,
+                    },
+                });
             }
-            let Some(value) = value.into_string() else {
-                return invalid_segment_option();
-            };
+            let value = expect_expression(value)?;
             let encoding = match encoding {
                 StringEncoding::Utf8 => StringEncoding::Utf8,
                 StringEncoding::Utf16(_) => StringEncoding::Utf16(endianness),
@@ -257,11 +256,13 @@ fn plan_segment(
                 || explicit_unit
                 || matches!(encoding, StringEncoding::Utf8) && explicit_endianness
             {
-                return invalid_segment_option();
+                return Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::BitArrayUtfCodepointOptions,
+                    },
+                });
             }
-            let Some(value) = value.into_utf_codepoint() else {
-                return invalid_segment_option();
-            };
+            let value = expect_expression(value)?;
             let encoding = match encoding {
                 StringEncoding::Utf8 => StringEncoding::Utf8,
                 StringEncoding::Utf16(_) => StringEncoding::Utf16(endianness),
@@ -280,16 +281,18 @@ fn plan_expression_size(
         return Ok(SegmentSize::Fixed(value));
     }
     let value = super::plan_expr(value, context)?;
-    let Some(value) = value.into_int() else {
-        return invalid_segment_option();
-    };
+    let value = expect_expression(value)?;
     Ok(SegmentSize::Evaluated(value))
 }
 
 fn plan_constant_size(value: Constant<Arc<Type>>) -> Result<SegmentSize, PlanError> {
     constant_int_literal(&value)
         .map(SegmentSize::Fixed)
-        .ok_or_else(invalid_segment_option_error)
+        .ok_or(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::BitArrayConstantSize,
+            },
+        })
 }
 
 fn float_bit_size(bit_size: usize) -> Result<FloatBitSize, PlanError> {
@@ -297,13 +300,21 @@ fn float_bit_size(bit_size: usize) -> Result<FloatBitSize, PlanError> {
         16 => Ok(FloatBitSize::Sixteen),
         32 => Ok(FloatBitSize::ThirtyTwo),
         64 => Ok(FloatBitSize::SixtyFour),
-        _ => invalid_segment_option(),
+        actual => Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::BitArrayFloatSize { actual },
+            },
+        }),
     }
 }
 
 fn set_kind(kind: &mut Option<SegmentKind>, value: SegmentKind) -> Result<(), PlanError> {
     if kind.replace(value).is_some() {
-        return invalid_segment_option();
+        return Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionShape {
+                kind: InvalidExpressionShapeKind::BitArrayMultipleKinds,
+            },
+        });
     }
     Ok(())
 }
@@ -322,18 +333,6 @@ fn constant_int_literal(value: &Constant<Arc<Type>>) -> Option<BigInt> {
     }
 }
 
-fn invalid_segment_option<T>() -> Result<T, PlanError> {
-    Err(invalid_segment_option_error())
-}
-
-fn invalid_segment_option_error() -> PlanError {
-    PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::ExpressionShape {
-            kind: InvalidExpressionShapeKind::BitArraySegmentOption,
-        },
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -347,7 +346,7 @@ mod tests {
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::error::{
-        InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError,
+        InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
         UnsupportedBitArraySegmentReason,
     };
     use gleam_core::ast::{
@@ -366,17 +365,13 @@ mod tests {
         let options = plan_options(options, |_| {
             size.clone()
                 .map(SegmentSize::Fixed)
-                .ok_or_else(invalid_segment_option_error)
+                .ok_or(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::BitArrayConstantSize,
+                    },
+                })
         })?;
         plan_segment_with_options(value, options, site.clone())
-    }
-
-    fn invalid_segment_option_error() -> PlanError {
-        PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::BitArraySegmentOption,
-            },
-        }
     }
 
     #[test]
@@ -640,7 +635,9 @@ mod tests {
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::BitArraySegmentOption,
+                    kind: InvalidExpressionShapeKind::BitArrayImplicitKind {
+                        actual: crate::plan::ValueType::UtfCodepoint,
+                    },
                 },
             }),
         );
@@ -660,7 +657,7 @@ mod tests {
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::BitArraySegmentOption,
+                    kind: InvalidExpressionShapeKind::BitArrayUtfCodepointOptions,
                 },
             }),
         );
@@ -676,7 +673,7 @@ mod tests {
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::BitArraySegmentOption,
+                    kind: InvalidExpressionShapeKind::BitArrayUtfCodepointOptions,
                 },
             }),
         );
@@ -692,7 +689,7 @@ mod tests {
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::BitArraySegmentOption,
+                    kind: InvalidExpressionShapeKind::BitArrayUtfCodepointOptions,
                 },
             }),
         );
@@ -705,7 +702,6 @@ mod tests {
         let functions = std::collections::HashMap::new();
         let mut anonymous = AnonymousFunctions::default();
         let mut context = PlanContext::new(&module_name, &functions, &mut anonymous);
-        let invalid = Err(invalid_segment_option_error());
 
         assert_eq!(
             plan_expression(
@@ -721,7 +717,13 @@ mod tests {
                 }],
                 &mut context,
             ),
-            invalid,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::BitArrayImplicitKind {
+                        actual: crate::plan::ValueType::String,
+                    },
+                },
+            }),
         );
         assert_eq!(
             plan_expression(
@@ -781,7 +783,12 @@ mod tests {
                 }],
                 &mut context,
             ),
-            invalid,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Int,
+                    actual: InvalidExpressionType::String,
+                },
+            }),
         );
     }
 
@@ -865,7 +872,11 @@ pub fn main() { 0 }
                 }],
                 &context,
             ),
-            Err(invalid_segment_option_error()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::BitArrayConstantSize,
+                },
+            }),
         );
         assert_eq!(
             plan_constant(
@@ -880,7 +891,13 @@ pub fn main() { 0 }
                 }],
                 &context,
             ),
-            Err(invalid_segment_option_error()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::BitArrayImplicitKind {
+                        actual: crate::plan::ValueType::String,
+                    },
+                },
+            }),
         );
         assert_eq!(
             plan_constant(
@@ -924,7 +941,11 @@ pub fn main() { 0 }
                 }],
                 &context,
             ),
-            Err(invalid_segment_option_error()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::BitArrayConstantSize,
+                },
+            }),
         );
         assert_eq!(
             plan_constant(
@@ -944,7 +965,11 @@ pub fn main() { 0 }
                 }],
                 &context,
             ),
-            Err(invalid_segment_option_error()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::BitArrayConstantSize,
+                },
+            }),
         );
     }
 
@@ -954,7 +979,7 @@ pub fn main() { 0 }
         let site = PanicSite::unknown();
         let invalid = Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::BitArraySegmentOption,
+                kind: InvalidExpressionShapeKind::BitArrayMultipleKinds,
             },
         });
 
@@ -978,13 +1003,6 @@ pub fn main() { 0 }
             vec![
                 BitArrayOption::Int { location },
                 BitArrayOption::Utf16 { location },
-            ],
-            vec![BitArrayOption::Float { location }],
-            vec![BitArrayOption::Bits { location }],
-            vec![BitArrayOption::Utf8 { location }],
-            vec![
-                BitArrayOption::Utf16 { location },
-                BitArrayOption::Unit { location, value: 2 },
             ],
             vec![
                 BitArrayOption::Utf16 { location },
@@ -1024,7 +1042,11 @@ pub fn main() { 0 }
                 Some(24.into()),
                 &site,
             ),
-            invalid,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::BitArrayFloatSize { actual: 24 },
+                },
+            }),
         );
         assert_eq!(
             plan_fixed_segment_fixture(
@@ -1033,8 +1055,83 @@ pub fn main() { 0 }
                 None,
                 &site,
             ),
-            invalid,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Int,
+                    actual: InvalidExpressionType::String,
+                },
+            }),
         );
+        assert_eq!(
+            plan_fixed_segment_fixture(
+                Expr::int(IntExpr::value(1.into())),
+                vec![BitArrayOption::Float { location }],
+                None,
+                &site,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::Float,
+                    actual: InvalidExpressionType::Int,
+                },
+            }),
+        );
+        assert_eq!(
+            plan_fixed_segment_fixture(
+                Expr::int(IntExpr::value(1.into())),
+                vec![BitArrayOption::Bits { location }],
+                None,
+                &site,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::BitArray,
+                    actual: InvalidExpressionType::Int,
+                },
+            }),
+        );
+        assert_eq!(
+            plan_fixed_segment_fixture(
+                Expr::int(IntExpr::value(1.into())),
+                vec![BitArrayOption::Utf8 { location }],
+                None,
+                &site,
+            ),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::String,
+                    actual: InvalidExpressionType::Int,
+                },
+            }),
+        );
+        for options in [
+            vec![
+                BitArrayOption::Utf8 { location },
+                BitArrayOption::Size {
+                    location,
+                    value: Box::new(()),
+                    short_form: false,
+                },
+            ],
+            vec![
+                BitArrayOption::Utf8 { location },
+                BitArrayOption::Unit { location, value: 2 },
+            ],
+        ] {
+            assert_eq!(
+                plan_fixed_segment_fixture(
+                    Expr::string(StringExpr::value("value".into())),
+                    options,
+                    Some(8.into()),
+                    &site,
+                ),
+                Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShape {
+                        kind: InvalidExpressionShapeKind::BitArrayStringOptions,
+                    },
+                }),
+            );
+        }
         assert_eq!(
             plan_fixed_segment_fixture(
                 Expr::utf_codepoint(UtfCodepointExpr::local_get(
@@ -1048,7 +1145,11 @@ pub fn main() { 0 }
                 None,
                 &site,
             ),
-            invalid,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::BitArrayUtfCodepointOptions,
+                },
+            }),
         );
         assert_eq!(
             plan_fixed_segment_fixture(
@@ -1057,7 +1158,12 @@ pub fn main() { 0 }
                 None,
                 &site,
             ),
-            invalid,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionType {
+                    expected: InvalidExpressionType::UtfCodepoint,
+                    actual: InvalidExpressionType::Int,
+                },
+            }),
         );
         assert_eq!(
             plan_fixed_segment_fixture(
@@ -1071,7 +1177,15 @@ pub fn main() { 0 }
                 None,
                 &site,
             ),
-            invalid,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::BitArrayImplicitKind {
+                        actual: crate::plan::ValueType::Function(Box::new(
+                            crate::plan::FunctionType::new(Vec::new(), crate::plan::ValueType::Int,),
+                        )),
+                    },
+                },
+            }),
         );
         assert_eq!(
             plan_fixed_segment_fixture(
@@ -1196,7 +1310,11 @@ pub fn main() { 0 }
                 None,
                 &site,
             ),
-            Err(invalid_segment_option_error()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::BitArrayUnsupportedOption,
+                },
+            }),
         );
     }
 
@@ -1233,7 +1351,7 @@ pub fn main() { 0 }
                 ),
                 Err(PlanError::InvalidTypedAst {
                     reason: InvalidTypedAstReason::ExpressionShape {
-                        kind: InvalidExpressionShapeKind::BitArraySegmentOption,
+                        kind: InvalidExpressionShapeKind::BitArrayUnsupportedOption,
                     },
                 }),
             );
@@ -1250,7 +1368,11 @@ pub fn main() { 0 }
                 None,
                 &site,
             ),
-            Err(invalid_segment_option_error()),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::BitArrayConstantSize,
+                },
+            }),
         );
     }
 
