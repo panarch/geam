@@ -4,8 +4,9 @@ use crate::plan::{
     Endianness, FloatLocalId, IntLocalId, LocalId, PatternBinding, Signedness, StringEncoding,
     UtfCodepointLocalId, ValueType,
 };
+use crate::planner::bit_array::validate_supported_endianness_option;
 use crate::planner::context::PlanContext;
-use crate::planner::error::{InvalidTypedAstReason, PlanError, UnsupportedBitArraySegmentReason};
+use crate::planner::error::{InvalidTypedAstReason, PlanError};
 use gleam_core::ast::{
     BitArrayOption, BitArraySegment, BitArraySize, Constant, IntOperator, Pattern,
 };
@@ -36,12 +37,8 @@ fn plan_segment(
     segment: BitArraySegment<Pattern<Arc<Type>>, Arc<Type>>,
     context: &mut PlanContext<'_>,
 ) -> Result<BitArrayPatternSegment, PlanError> {
-    if segment
-        .options
-        .iter()
-        .any(|option| matches!(option, BitArrayOption::Native { .. }))
-    {
-        return unsupported_segment(UnsupportedBitArraySegmentReason::NativeEndianness);
+    for option in &segment.options {
+        validate_supported_endianness_option(option)?;
     }
     let kind = segment_kind(&segment)?;
     validate_segment_options(&segment, kind)?;
@@ -447,10 +444,6 @@ fn is_total_pattern(segments: &[BitArraySegment<Pattern<Arc<Type>>, Arc<Type>>])
             segments[0].options.as_slice(),
             [BitArrayOption::Bits { .. }]
         )
-}
-
-fn unsupported_segment<T>(reason: UnsupportedBitArraySegmentReason) -> Result<T, PlanError> {
-    Err(PlanError::UnsupportedBitArraySegment { reason })
 }
 
 fn invalid_pattern() -> PlanError {

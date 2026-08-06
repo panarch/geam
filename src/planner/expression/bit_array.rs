@@ -2,10 +2,9 @@ use crate::plan::{
     BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayExpr, BitArraySegment, Endianness, Expr,
     FloatBitSize, IntExpr, PanicSite, StringEncoding, ValueType,
 };
+use crate::planner::bit_array::{fixed_bit_size, validate_supported_endianness_option};
 use crate::planner::context::PlanContext;
-use crate::planner::error::{
-    InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError, UnsupportedBitArraySegmentReason,
-};
+use crate::planner::error::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
 use gleam_core::ast::{
     BitArrayOption, BitArraySegment as GleamBitArraySegment, Constant, TypedExpr,
 };
@@ -121,8 +120,8 @@ fn plan_options<Value>(
                 explicit_unit = true;
             }
             BitArrayOption::Size { value, .. } => size = Some(plan_size(*value)?),
-            BitArrayOption::Native { .. } => {
-                return unsupported(UnsupportedBitArraySegmentReason::NativeEndianness);
+            option @ BitArrayOption::Native { .. } => {
+                validate_supported_endianness_option(&option)?
             }
             BitArrayOption::Bytes { .. }
             | BitArrayOption::Signed { .. }
@@ -293,16 +292,6 @@ fn plan_constant_size(value: Constant<Arc<Type>>) -> Result<SegmentSize, PlanErr
         .ok_or_else(invalid_segment_option_error)
 }
 
-fn fixed_bit_size(value: BigInt, unit: u8) -> Result<usize, PlanError> {
-    let value = if value < BigInt::from(0) {
-        BigInt::from(0)
-    } else {
-        value
-    };
-    usize::try_from(value * BigInt::from(unit))
-        .map_err(|_| unsupported_error(UnsupportedBitArraySegmentReason::SizeOutOfRange))
-}
-
 fn float_bit_size(bit_size: usize) -> Result<FloatBitSize, PlanError> {
     match bit_size {
         16 => Ok(FloatBitSize::Sixteen),
@@ -343,14 +332,6 @@ fn invalid_segment_option_error() -> PlanError {
             kind: InvalidExpressionShapeKind::BitArraySegmentOption,
         },
     }
-}
-
-fn unsupported<T>(reason: UnsupportedBitArraySegmentReason) -> Result<T, PlanError> {
-    Err(unsupported_error(reason))
-}
-
-fn unsupported_error(reason: UnsupportedBitArraySegmentReason) -> PlanError {
-    PlanError::UnsupportedBitArraySegment { reason }
 }
 
 #[cfg(test)]
@@ -1204,6 +1185,22 @@ pub fn main() { 0 }
             Err(PlanError::UnsupportedBitArraySegment {
                 reason: UnsupportedBitArraySegmentReason::NativeEndianness,
             }),
+        );
+        assert_eq!(
+            plan_fixed_segment_fixture(
+                Expr::int(IntExpr::value(1.into())),
+                vec![
+                    BitArrayOption::Bytes {
+                        location: SrcSpan::new(0, 0),
+                    },
+                    BitArrayOption::Native {
+                        location: SrcSpan::new(0, 0),
+                    },
+                ],
+                None,
+                &site,
+            ),
+            Err(invalid_segment_option_error()),
         );
     }
 

@@ -93,6 +93,8 @@ pub enum InvalidFunctionShapeReason {
 pub enum InvalidExpressionShapeKind {
     #[error("bit array segment option")]
     BitArraySegmentOption,
+    #[error("constant list element type")]
+    ConstantListElementType,
     #[error("invalid")]
     Invalid,
     #[error("function capture literal")]

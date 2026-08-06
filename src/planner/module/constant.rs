@@ -4,10 +4,10 @@ use crate::plan::{
     CustomValueShape, Endianness, FloatBitSize, FunctionShape, StringEncoding, TypeScheme,
     ValueShape, ValueType,
 };
+use crate::planner::bit_array::{fixed_bit_size, validate_supported_endianness_option};
 use crate::planner::context::{AnonymousFunctions, ModuleFunctionTarget, PlanContext};
 use crate::planner::error::{
     InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-    UnsupportedBitArraySegmentReason,
 };
 use crate::planner::type_parameter::TypeParameterScope;
 use ecow::EcoString;
@@ -667,10 +667,8 @@ fn static_segment_options(
                 };
                 planned.size = Some(int_value);
             }
-            BitArrayOption::Native { .. } => {
-                return Err(PlanError::UnsupportedBitArraySegment {
-                    reason: UnsupportedBitArraySegmentReason::NativeEndianness,
-                });
+            option @ BitArrayOption::Native { .. } => {
+                validate_supported_endianness_option(&option)?
             }
             BitArrayOption::Bytes { .. }
             | BitArrayOption::Signed { .. }
@@ -697,20 +695,6 @@ fn encoding_with_endianness(encoding: StringEncoding, endianness: Endianness) ->
         StringEncoding::Utf8 => StringEncoding::Utf8,
         StringEncoding::Utf16(_) => StringEncoding::Utf16(endianness),
         StringEncoding::Utf32(_) => StringEncoding::Utf32(endianness),
-    }
-}
-
-fn fixed_bit_size(value: BigInt, unit: u8) -> Result<usize, PlanError> {
-    let value = if value < BigInt::from(0) {
-        BigInt::from(0)
-    } else {
-        value
-    };
-    match usize::try_from(value * BigInt::from(unit)) {
-        Ok(bit_size) => Ok(bit_size),
-        Err(_) => Err(PlanError::UnsupportedBitArraySegment {
-            reason: UnsupportedBitArraySegmentReason::SizeOutOfRange,
-        }),
     }
 }
 
@@ -1897,6 +1881,18 @@ pub fn main() {
         ] {
             assert_eq!(static_segment_options(options), Err(invalid_option.clone()));
         }
+
+        assert_eq!(
+            static_segment_options(vec![
+                BitArrayOption::Bytes {
+                    location: dummy_span(),
+                },
+                BitArrayOption::Native {
+                    location: dummy_span(),
+                },
+            ]),
+            Err(invalid_option),
+        );
     }
 
     #[test]

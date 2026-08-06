@@ -13,8 +13,7 @@ pub use invalid::{
     InvalidTypedAstReason, InvalidUseShapeReason,
 };
 pub use unsupported::{
-    UnsupportedArgumentReason, UnsupportedBitArraySegmentReason, UnsupportedCaseReason,
-    UnsupportedExpressionKind, UnsupportedFunctionReason, UnsupportedPatternKind,
+    UnsupportedBitArraySegmentReason, UnsupportedFunctionReason, UnsupportedPatternKind,
     UnsupportedTopLevelKind,
 };
 
@@ -52,25 +51,13 @@ pub enum PlanError {
         reason: UnsupportedFunctionReason,
     },
 
-    #[error("unsupported argument in function {function}: {reason}")]
-    UnsupportedArgument {
-        function: EcoString,
-        reason: UnsupportedArgumentReason,
-    },
-
     #[error("unsupported pattern: {kind}")]
     UnsupportedPattern { kind: UnsupportedPatternKind },
-
-    #[error("unsupported expression: {kind}")]
-    UnsupportedExpression { kind: UnsupportedExpressionKind },
 
     #[error("unsupported bit array segment: {reason}")]
     UnsupportedBitArraySegment {
         reason: UnsupportedBitArraySegmentReason,
     },
-
-    #[error("unsupported case: {reason}")]
-    UnsupportedCase { reason: UnsupportedCaseReason },
 
     #[error("invalid Gleam typed AST: {reason}")]
     InvalidTypedAst { reason: InvalidTypedAstReason },

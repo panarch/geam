@@ -160,47 +160,35 @@ pub(super) fn validate_host_external_schema(
             ),
         });
     }
-    for shape in signature
+    let parameter_count = definition.parameters().len();
+    let invalid_argument_count = signature
         .shape()
         .argument_shapes()
         .iter()
         .chain([signature.shape().return_shape()])
-    {
-        if let Some(actual) =
-            invalid_host_external_type_argument_count(shape, &name, definition.parameters().len())
-        {
-            return Err(PlanError::HostProviderLink {
-                package: package.clone(),
-                module: site.module().clone(),
-                function: site.function().clone(),
-                reason: Box::new(
-                    crate::planner::error::HostProviderLinkReason::ExternalTypeArgumentCount {
-                        external_type: name,
-                        expected: definition.parameters().len(),
-                        actual,
-                    },
-                ),
-            });
-        }
-    }
-    for construction in constructions {
-        let shape = construction.value_shape();
-        if let Some(actual) =
-            invalid_host_external_type_argument_count(&shape, &name, definition.parameters().len())
-        {
-            return Err(PlanError::HostProviderLink {
-                package: package.clone(),
-                module: site.module().clone(),
-                function: site.function().clone(),
-                reason: Box::new(
-                    crate::planner::error::HostProviderLinkReason::ExternalTypeArgumentCount {
-                        external_type: name,
-                        expected: definition.parameters().len(),
-                        actual,
-                    },
-                ),
-            });
-        }
+        .find_map(|shape| invalid_host_external_type_argument_count(shape, &name, parameter_count))
+        .or_else(|| {
+            constructions.iter().find_map(|construction| {
+                invalid_host_external_type_argument_count(
+                    &construction.value_shape(),
+                    &name,
+                    parameter_count,
+                )
+            })
+        });
+    if let Some(actual) = invalid_argument_count {
+        return Err(PlanError::HostProviderLink {
+            package: package.clone(),
+            module: site.module().clone(),
+            function: site.function().clone(),
+            reason: Box::new(
+                crate::planner::error::HostProviderLinkReason::ExternalTypeArgumentCount {
+                    external_type: name,
+                    expected: parameter_count,
+                    actual,
+                },
+            ),
+        });
     }
     Ok(())
 }

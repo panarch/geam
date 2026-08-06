@@ -11,8 +11,7 @@ use crate::plan::{
 };
 use crate::planner::context::PlanContext;
 use crate::planner::error::{
-    InvalidExpressionType, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
-    UnsupportedPatternKind,
+    InvalidExpressionType, InvalidTypedAstReason, PlanError, UnsupportedPatternKind,
 };
 use crate::planner::expression::{
     plan_expr, plan_expr_with_expected_source_stop_type, tuple_index_expr,
@@ -1001,9 +1000,7 @@ fn plan_tail_only_list_binding_pattern(
     };
 
     let ValueType::List(element_type) =
-        ValueType::from_gleam(type_.as_ref()).ok_or(PlanError::UnsupportedExpression {
-            kind: UnsupportedExpressionKind::UnsupportedListElementType,
-        })?
+        ValueType::from_gleam(type_.as_ref()).ok_or_else(invalid_binding_pattern)?
     else {
         return Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::InvalidPattern,
@@ -1106,8 +1103,7 @@ mod tests {
     use crate::planner::plan_module;
     use crate::planner::support::{compile, compile_minimal_module, dummy_span, expect_plan_error};
     use crate::planner::{
-        InvalidExpressionType, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
-        UnsupportedPatternKind,
+        InvalidExpressionType, InvalidTypedAstReason, PlanError, UnsupportedPatternKind,
     };
     use gleam_core::analyse::Inferred;
     use gleam_core::ast::{
@@ -3213,9 +3209,7 @@ pub fn main() {
 
         assert_eq!(
             super::plan_tail_only_list_binding_pattern(Vec::new(), Some(tail), list_type),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::UnsupportedListElementType,
-            }),
+            Err(invalid_binding_pattern()),
         );
     }
 

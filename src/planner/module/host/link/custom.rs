@@ -167,42 +167,32 @@ fn validate_host_custom_schema_with_constructions(
             }),
         });
     }
-    for shape in signature
+    let invalid_argument_count = signature
         .shape()
         .argument_shapes()
         .iter()
         .chain([signature.shape().return_shape()])
-    {
-        if let Some(actual) = invalid_host_custom_type_argument_count(shape, &name, parameter_count)
-        {
-            return Err(PlanError::HostProviderLink {
-                package: package.clone(),
-                module: site.module().clone(),
-                function: site.function().clone(),
-                reason: Box::new(HostProviderLinkReason::CustomTypeArgumentCount {
-                    custom_type: name,
-                    expected: parameter_count,
-                    actual,
-                }),
-            });
-        }
-    }
-    for construction in constructions.types() {
-        let shape = construction.value_shape();
-        if let Some(actual) =
-            invalid_host_custom_type_argument_count(&shape, &name, parameter_count)
-        {
-            return Err(PlanError::HostProviderLink {
-                package: package.clone(),
-                module: site.module().clone(),
-                function: site.function().clone(),
-                reason: Box::new(HostProviderLinkReason::CustomTypeArgumentCount {
-                    custom_type: name,
-                    expected: parameter_count,
-                    actual,
-                }),
-            });
-        }
+        .find_map(|shape| invalid_host_custom_type_argument_count(shape, &name, parameter_count))
+        .or_else(|| {
+            constructions.types().iter().find_map(|construction| {
+                invalid_host_custom_type_argument_count(
+                    &construction.value_shape(),
+                    &name,
+                    parameter_count,
+                )
+            })
+        });
+    if let Some(actual) = invalid_argument_count {
+        return Err(PlanError::HostProviderLink {
+            package: package.clone(),
+            module: site.module().clone(),
+            function: site.function().clone(),
+            reason: Box::new(HostProviderLinkReason::CustomTypeArgumentCount {
+                custom_type: name,
+                expected: parameter_count,
+                actual,
+            }),
+        });
     }
     Ok(())
 }

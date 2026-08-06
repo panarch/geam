@@ -5,7 +5,6 @@ use crate::plan::{
 use crate::planner::context::{ModuleFunctionTarget, PlanContext};
 use crate::planner::error::{
     InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
-    UnsupportedExpressionKind,
 };
 use crate::planner::expression::record_constructor::ResolvedRecordConstructor;
 use gleam_core::ast::Constant;
@@ -159,8 +158,10 @@ fn plan_list(
     let expected_element_type = match ValueType::from_gleam(list_element_type.as_ref()) {
         Some(type_) => type_,
         None => {
-            return Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::UnsupportedListElementType,
+            return Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ConstantListElementType,
+                },
             });
         }
     };
@@ -388,7 +389,7 @@ mod tests {
     };
     use crate::planner::error::{
         InvalidCustomTypeReason, InvalidExpressionShapeKind, InvalidExpressionType,
-        InvalidModuleReferenceReason, InvalidTypedAstReason, PlanError, UnsupportedExpressionKind,
+        InvalidModuleReferenceReason, InvalidTypedAstReason, PlanError,
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
@@ -1197,8 +1198,10 @@ pub fn main() {
                 type_: type_::list(type_::generic_var(0)),
                 tail: None,
             }),
-            Err(PlanError::UnsupportedExpression {
-                kind: UnsupportedExpressionKind::UnsupportedListElementType,
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ConstantListElementType,
+                },
             }),
         );
         assert_eq!(

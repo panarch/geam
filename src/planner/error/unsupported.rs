@@ -14,32 +14,12 @@ pub enum UnsupportedFunctionReason {
     MissingMain,
     #[error("main must not take arguments")]
     MainWithArguments,
-    #[error("function return type is not supported")]
-    UnsupportedReturnType,
-}
-
-#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
-pub enum UnsupportedArgumentReason {
-    #[error("argument type is not supported")]
-    UnsupportedType,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedPatternKind {
     #[error("list")]
     List,
-    #[error("literal")]
-    Literal,
-    #[error("constructor")]
-    Constructor,
-    #[error("string prefix")]
-    StringPrefix,
-}
-
-#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
-pub enum UnsupportedExpressionKind {
-    #[error("list element type is not supported")]
-    UnsupportedListElementType,
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
@@ -48,10 +28,4 @@ pub enum UnsupportedBitArraySegmentReason {
     NativeEndianness,
     #[error("bit array segment size exceeds the supported host range")]
     SizeOutOfRange,
-}
-
-#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
-pub enum UnsupportedCaseReason {
-    #[error("case subject type is not supported")]
-    UnsupportedSubjectType,
 }

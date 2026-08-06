@@ -1,3 +1,4 @@
+mod bit_array;
 mod context;
 #[cfg(test)]
 mod dsl;
@@ -15,8 +16,7 @@ pub use error::{
     InvalidCaseShapeReason, InvalidCustomTypeReason, InvalidExpressionShapeKind,
     InvalidExpressionType, InvalidFunctionShapeReason, InvalidModuleReferenceReason,
     InvalidPipelineShapeReason, InvalidRecordUpdateShapeReason, InvalidTypedAstReason,
-    InvalidUseShapeReason, PlanError, UnsupportedArgumentReason, UnsupportedBitArraySegmentReason,
-    UnsupportedCaseReason, UnsupportedExpressionKind, UnsupportedFunctionReason,
+    InvalidUseShapeReason, PlanError, UnsupportedBitArraySegmentReason, UnsupportedFunctionReason,
     UnsupportedPatternKind, UnsupportedTopLevelKind,
 };
 pub use module::{plan_host_program, plan_module, plan_module_with_source, plan_program};
