@@ -1354,3 +1354,306 @@ fn freeze_list_function_function_target(
         }),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::draft::instruction::{
+        DraftBitArrayInstruction, DraftBoolInstruction, DraftCustomInstruction,
+        DraftExternalInstruction, DraftFloatInstruction, DraftFunctionInstruction,
+        DraftFunctionTarget, DraftIntInstruction, DraftListInstruction, DraftNilInstruction,
+        DraftStringInstruction, DraftTupleInstruction, DraftTypedListInstruction,
+        DraftUtfCodepointInstruction,
+    };
+    use super::super::super::draft::{DraftGraphBuilder, DraftNil};
+    use crate::plan::execution::function::{
+        ExternalFunctionId, ExternalListFunctionId, HostedExecutionGraph, IntFunctionId,
+        UtfCodepointFunctionId,
+    };
+    use crate::plan::execution::graph::{
+        BlockId, ExternalInstruction, FunctionInstructionKind, InstructionKind, NilInstruction,
+        ProfiledInstruction, ProfiledInstructionKind,
+    };
+    use crate::plan::execution::lowering::specialization::{
+        SpecializedCustomValueShape, SpecializedExternalValueShape, SpecializedFunctionShape,
+        SpecializedTypeSubstitution, SpecializedValueShape,
+    };
+    use crate::plan::execution::type_::{CustomConstructorId, CustomTypeId};
+    use crate::plan::{
+        CustomConstructorDefinition, CustomConstructorRefinement, CustomTypeDefinition,
+        CustomTypeName, CustomTypePublicity, ExternalTypeName, ExternalValueShape,
+    };
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum InstructionFamily {
+        Int,
+        Float,
+        String,
+        BitArray,
+        UtfCodepoint,
+        Custom,
+        External,
+        Bool,
+        Nil,
+        Tuple,
+        List,
+        Function,
+    }
+
+    #[test]
+    fn freezes_every_top_level_instruction_family_with_exact_payloads() {
+        let (custom_definition, custom_shape) = custom_shape();
+        let external_shape = external_shape();
+        let mut context = crate::plan::execution::lowering::test_support::lowering_context(vec![
+            custom_definition,
+        ]);
+        let external_type = context.types.external_type(&external_shape);
+        let int_list_type = context.types.int_list_type();
+        let function_shape = SpecializedFunctionShape::new(Vec::new(), SpecializedValueShape::Int);
+        let (mut draft, mut entry) =
+            DraftGraphBuilder::<DraftNil, usize>::new(Vec::new(), Vec::new());
+
+        draft.int_instruction(&mut entry, DraftIntInstruction::Value(1.into()));
+        draft.float_instruction(&mut entry, DraftFloatInstruction::Value(2.5));
+        draft.string_instruction(&mut entry, DraftStringInstruction::Value("three".into()));
+        draft.bit_array_instruction(&mut entry, DraftBitArrayInstruction::Value(Vec::new()));
+        draft.utf_codepoint_instruction(
+            &mut entry,
+            DraftUtfCodepointInstruction::Call {
+                function: UtfCodepointFunctionId(4),
+                args: Vec::new(),
+                site: crate::plan::HostCallSite::unknown(),
+            },
+        );
+        let constructor = CustomConstructorId::new(CustomTypeId::new(0), 5);
+        draft.custom_instruction(
+            &mut entry,
+            custom_shape.clone(),
+            DraftCustomInstruction::Construct {
+                constructor,
+                fields: Vec::new(),
+            },
+        );
+        let external_function = ExternalFunctionId::new(6, external_type);
+        draft.external_instruction(
+            &mut entry,
+            external_shape.clone(),
+            DraftExternalInstruction::Call {
+                function: external_function,
+                args: Vec::new(),
+                site: crate::plan::HostCallSite::unknown(),
+            },
+        );
+        draft.bool_instruction(&mut entry, DraftBoolInstruction::Value(true));
+        let nil = draft.nil_instruction(&mut entry, DraftNilInstruction::Value);
+        draft.tuple_instruction(
+            &mut entry,
+            Box::new([]),
+            DraftTupleInstruction::Value(Vec::new()),
+        );
+        draft.list_instruction(
+            &mut entry,
+            SpecializedValueShape::Int,
+            DraftListInstruction::Int(int_list_type, DraftTypedListInstruction::Value(Vec::new())),
+        );
+        draft.function_instruction(
+            &mut entry,
+            function_shape,
+            DraftFunctionInstruction::Reference(DraftFunctionTarget::Int(IntFunctionId(7))),
+        );
+        let external_list_type = context.types.external_list_type(&external_shape);
+        draft.list_instruction(
+            &mut entry,
+            SpecializedValueShape::External(external_shape.clone()),
+            DraftListInstruction::External(
+                external_list_type,
+                DraftTypedListInstruction::Call {
+                    function: ExternalListFunctionId::new(8, external_list_type),
+                    args: Vec::new(),
+                    site: crate::plan::HostCallSite::unknown(),
+                },
+            ),
+        );
+        draft.function_instruction(
+            &mut entry,
+            SpecializedFunctionShape::new(
+                Vec::new(),
+                SpecializedValueShape::External(external_shape),
+            ),
+            DraftFunctionInstruction::Reference(DraftFunctionTarget::External(external_function)),
+        );
+        draft.function_instruction(
+            &mut entry,
+            SpecializedFunctionShape::new(Vec::new(), SpecializedValueShape::Custom(custom_shape)),
+            DraftFunctionInstruction::Constructor(constructor),
+        );
+        draft.finish_return(entry, nil);
+
+        let lowered = super::super::freeze(draft, &mut context);
+        let instructions = lowered
+            .body
+            .block_graph()
+            .block(BlockId::new(0))
+            .instructions();
+        assert_eq!(
+            instructions
+                .iter()
+                .map(instruction_family)
+                .collect::<Vec<_>>(),
+            vec![
+                InstructionFamily::Int,
+                InstructionFamily::Float,
+                InstructionFamily::String,
+                InstructionFamily::BitArray,
+                InstructionFamily::UtfCodepoint,
+                InstructionFamily::Custom,
+                InstructionFamily::External,
+                InstructionFamily::Bool,
+                InstructionFamily::Nil,
+                InstructionFamily::Tuple,
+                InstructionFamily::List,
+                InstructionFamily::Function,
+                InstructionFamily::List,
+                InstructionFamily::Function,
+                InstructionFamily::Function,
+            ],
+        );
+
+        assert_eq!(int_value(&instructions[0]), &1.into());
+        assert_eq!(
+            utf_codepoint_call(&instructions[4]),
+            (UtfCodepointFunctionId(4), 0),
+        );
+        assert_eq!(custom_construct(&instructions[5]), (constructor, 0));
+        assert_eq!(external_call(&instructions[6]), (external_function, 0),);
+        assert_eq!(int_function_reference(&instructions[11]), IntFunctionId(7));
+        nil_value(&instructions[8]);
+
+        assert!(std::panic::catch_unwind(|| int_value(&instructions[1])).is_err());
+        assert!(std::panic::catch_unwind(|| utf_codepoint_call(&instructions[0])).is_err());
+        assert!(std::panic::catch_unwind(|| custom_construct(&instructions[0])).is_err());
+        assert!(std::panic::catch_unwind(|| external_call(&instructions[0])).is_err());
+        assert!(std::panic::catch_unwind(|| nil_value(&instructions[0])).is_err());
+        assert!(std::panic::catch_unwind(|| int_function_reference(&instructions[0])).is_err());
+        assert!(std::panic::catch_unwind(|| int_function_reference(&instructions[14])).is_err());
+    }
+
+    fn int_value(instruction: &ProfiledInstruction<HostedExecutionGraph>) -> &num_bigint::BigInt {
+        match instruction.kind() {
+            InstructionKind::Int(crate::plan::execution::graph::IntInstruction::Value(value)) => {
+                value
+            }
+            _ => panic!("Int draft instruction should freeze as an Int value"),
+        }
+    }
+
+    fn utf_codepoint_call(
+        instruction: &ProfiledInstruction<HostedExecutionGraph>,
+    ) -> (UtfCodepointFunctionId, usize) {
+        match instruction.kind() {
+            InstructionKind::UtfCodepoint(
+                crate::plan::execution::graph::UtfCodepointInstruction::Call {
+                    function, args, ..
+                },
+            ) => (*function, args.len()),
+            _ => panic!("UtfCodepoint draft instruction should preserve its call"),
+        }
+    }
+
+    fn custom_construct(
+        instruction: &ProfiledInstruction<HostedExecutionGraph>,
+    ) -> (CustomConstructorId, usize) {
+        match instruction.kind() {
+            InstructionKind::Custom(
+                crate::plan::execution::graph::CustomInstruction::Construct {
+                    constructor,
+                    fields,
+                },
+            ) => (*constructor, fields.len()),
+            _ => panic!("Custom draft instruction should preserve construction metadata"),
+        }
+    }
+
+    fn external_call(
+        instruction: &ProfiledInstruction<HostedExecutionGraph>,
+    ) -> (ExternalFunctionId, usize) {
+        match instruction.kind() {
+            InstructionKind::External(ExternalInstruction::Call { function, args, .. }) => {
+                (*function, args.len())
+            }
+            _ => panic!("External draft instruction should preserve its typed call"),
+        }
+    }
+
+    fn nil_value(instruction: &ProfiledInstruction<HostedExecutionGraph>) {
+        match instruction.kind() {
+            InstructionKind::Nil(NilInstruction::Value) => {}
+            _ => panic!("Nil draft instruction should freeze as a Nil value"),
+        }
+    }
+
+    fn int_function_reference(
+        instruction: &ProfiledInstruction<HostedExecutionGraph>,
+    ) -> IntFunctionId {
+        match instruction.kind() {
+            InstructionKind::Function(function) => match function.kind() {
+                FunctionInstructionKind::Reference(
+                    crate::plan::execution::graph::FunctionTarget::Int(target),
+                ) => *target,
+                _ => panic!("Function draft instruction should preserve its target"),
+            },
+            _ => panic!("Function draft instruction should preserve its target"),
+        }
+    }
+
+    fn instruction_family(
+        instruction: &ProfiledInstruction<HostedExecutionGraph>,
+    ) -> InstructionFamily {
+        match instruction.kind() {
+            ProfiledInstructionKind::Int(_) => InstructionFamily::Int,
+            ProfiledInstructionKind::Float(_) => InstructionFamily::Float,
+            ProfiledInstructionKind::String(_) => InstructionFamily::String,
+            ProfiledInstructionKind::BitArray(_) => InstructionFamily::BitArray,
+            ProfiledInstructionKind::UtfCodepoint(_) => InstructionFamily::UtfCodepoint,
+            ProfiledInstructionKind::Custom(_) => InstructionFamily::Custom,
+            ProfiledInstructionKind::External(_) => InstructionFamily::External,
+            ProfiledInstructionKind::ExternalList(_) => InstructionFamily::List,
+            ProfiledInstructionKind::ExternalFunction(_) => InstructionFamily::Function,
+            ProfiledInstructionKind::Bool(_) => InstructionFamily::Bool,
+            ProfiledInstructionKind::Nil(_) => InstructionFamily::Nil,
+            ProfiledInstructionKind::Tuple(_) => InstructionFamily::Tuple,
+            ProfiledInstructionKind::List(_) => InstructionFamily::List,
+            ProfiledInstructionKind::Function(_) => InstructionFamily::Function,
+        }
+    }
+
+    fn custom_shape() -> (CustomTypeDefinition, SpecializedCustomValueShape) {
+        let name = CustomTypeName::new("geam".into(), "main".into(), "Boxed".into());
+        let definition = CustomTypeDefinition::new(
+            name.clone(),
+            CustomTypePublicity::Private,
+            false,
+            Vec::new(),
+            vec![CustomConstructorDefinition::new(
+                "Boxed".into(),
+                0,
+                Vec::new(),
+            )],
+        );
+        let shape = SpecializedCustomValueShape::new(
+            name,
+            Vec::new(),
+            CustomConstructorRefinement::Exact(0),
+        );
+        (definition, shape)
+    }
+
+    fn external_shape() -> SpecializedExternalValueShape {
+        SpecializedExternalValueShape::instantiate(
+            &ExternalValueShape::new(
+                ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into()),
+                Vec::new(),
+            ),
+            &SpecializedTypeSubstitution::empty(),
+        )
+    }
+}

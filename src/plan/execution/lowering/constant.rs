@@ -1599,3 +1599,546 @@ impl LoweringContext {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{ConstantFamily, ConstantLocation, ConstantLowering, LoweredConstantValue};
+    use crate::plan::execution::ExecutionPlan;
+    use crate::plan::execution::constant::{ConstantId, ConstantValue, ProfiledConstantProgram};
+    use crate::plan::execution::function::{
+        ExecutionGraphProfile, ExternalFunctionId, FunctionReturnFamily, HostedExecutionGraph,
+    };
+    use crate::plan::execution::graph::{
+        BitArrayListLocalId, BitArrayLocalId, BlockGraphExitId, BlockId, BoolListLocalId,
+        BoolLocalId, CustomListLocalId, CustomLocal, ExternalFunctionInstruction,
+        ExternalFunctionInstructionKind, ExternalFunctionInstructionView, ExternalFunctionLocal,
+        ExternalFunctionLocalId, ExternalFunctionTarget, ExternalListLocalId, FloatListLocalId,
+        FloatLocalId, FunctionListLocalId, FunctionLocal, IntInstruction, IntListLocalId,
+        IntLocalId, ListListLocalId, NilListLocalId, NilLocalId, ParamLocal, ParamSlot,
+        ParameterListListLocalId, ParameterListLocalId, ProfiledBlock, ProfiledBlockGraph,
+        ProfiledInstruction, ProfiledInstructionKind, SourceStop, SourceStopKind,
+        StringListLocalId, StringLocalId, Terminator, TupleListLocalId, TupleLocalId,
+        UtfCodepointListLocalId,
+    };
+    use crate::plan::execution::lowering::specialization::SpecializationKey;
+    use crate::plan::execution::type_::{
+        ExternalFunctionType, ExternalTypeId, FunctionType, ValueShapeId, ValueType,
+    };
+    use num_bigint::BigInt;
+    use std::collections::HashSet;
+
+    #[test]
+    fn constant_entry_is_a_reusable_zero_argument_typed_graph_program() {
+        let plan = execution_plan("const one = 1 pub fn main() { one + one }");
+        let program = plan.constant(ConstantId::<IntLocalId>::new(0));
+        let block_graph = program.block_graph();
+
+        assert_eq!(block_graph.entry(), BlockId::new(0));
+        assert_eq!(block_graph.blocks().len(), 1);
+        let block = block_graph.block(BlockId::new(0));
+        assert!(block.params().is_empty());
+        assert_eq!(block.instructions().len(), 1);
+        let instruction = &block.instructions()[0];
+        assert_eq!(
+            instruction.output().local(),
+            &ParamLocal::Int(IntLocalId(0))
+        );
+        assert_eq!(int_literal(instruction), &1.into());
+        assert_eq!(returned_int(program, block.terminator()), IntLocalId(0));
+
+        let main = plan.int_function(crate::plan::execution::function::IntFunctionId(0));
+        let block = main.body().block_graph().block(BlockId::new(0));
+        assert_eq!(block.instructions().len(), 3);
+        for (index, instruction) in block.instructions()[..2].iter().enumerate() {
+            let output = IntLocalId(index);
+            assert_eq!(instruction.output().local(), &ParamLocal::Int(output));
+            assert_eq!(int_constant(instruction), ConstantId::new(0));
+        }
+    }
+
+    #[test]
+    fn constant_return_types_select_every_independent_table_family() {
+        fn family<Return: LoweredConstantValue>() -> ConstantFamily {
+            Return::FAMILY
+        }
+
+        assert_eq!(
+            [
+                family::<IntLocalId>(),
+                family::<StringLocalId>(),
+                family::<BitArrayLocalId>(),
+                family::<CustomLocal>(),
+                family::<FloatLocalId>(),
+                family::<BoolLocalId>(),
+                family::<NilLocalId>(),
+                family::<TupleLocalId>(),
+                family::<ParameterListLocalId>(),
+                family::<ParameterListListLocalId>(),
+                family::<IntListLocalId>(),
+                family::<StringListLocalId>(),
+                family::<BitArrayListLocalId>(),
+                family::<UtfCodepointListLocalId>(),
+                family::<CustomListLocalId>(),
+                family::<ExternalListLocalId>(),
+                family::<FloatListLocalId>(),
+                family::<BoolListLocalId>(),
+                family::<NilListLocalId>(),
+                family::<TupleListLocalId>(),
+                family::<ListListLocalId>(),
+                family::<FunctionListLocalId>(),
+                family::<FunctionLocal>(),
+            ],
+            [
+                ConstantFamily::Int,
+                ConstantFamily::String,
+                ConstantFamily::BitArray,
+                ConstantFamily::Custom,
+                ConstantFamily::Float,
+                ConstantFamily::Bool,
+                ConstantFamily::Nil,
+                ConstantFamily::Tuple,
+                ConstantFamily::ParameterList,
+                ConstantFamily::ParameterListList,
+                ConstantFamily::IntList,
+                ConstantFamily::StringList,
+                ConstantFamily::BitArrayList,
+                ConstantFamily::UtfCodepointList,
+                ConstantFamily::CustomList,
+                ConstantFamily::ExternalList,
+                ConstantFamily::FloatList,
+                ConstantFamily::BoolList,
+                ConstantFamily::NilList,
+                ConstantFamily::TupleList,
+                ConstantFamily::ListList,
+                ConstantFamily::FunctionList,
+                ConstantFamily::Function,
+            ]
+        );
+    }
+
+    #[test]
+    fn repeated_instantiations_deduplicate_with_family_local_ids() {
+        let source = r#"
+const one = 1
+const two = 2
+const label = "selected"
+
+pub fn main() {
+  #(one, one, two, label, label)
+}
+"#;
+        let plan = execution_plan(source);
+        let constants = &plan.program.common.constants;
+
+        assert_eq!(<IntLocalId as ConstantValue>::programs(constants).len(), 2);
+        assert_eq!(
+            <StringLocalId as ConstantValue>::programs(constants).len(),
+            1
+        );
+
+        let main = plan.tuple_function(crate::plan::execution::function::TupleFunctionId(0));
+        let instructions = main.body().block_graph().blocks()[0].instructions();
+        assert_eq!(
+            instructions[..3]
+                .iter()
+                .map(int_constant)
+                .collect::<Vec<_>>(),
+            vec![ConstantId::new(0), ConstantId::new(0), ConstantId::new(1)]
+        );
+        assert_eq!(
+            instructions[3..5]
+                .iter()
+                .map(string_constant)
+                .collect::<Vec<_>>(),
+            vec![ConstantId::new(0), ConstantId::new(0)]
+        );
+    }
+
+    #[test]
+    fn function_constant_specializations_preserve_concrete_symbolic_and_never_representations() {
+        let sources = [
+            r#"
+fn identity(value: value) { value }
+const selected = identity
+pub fn main() { selected(1) }
+"#,
+            r#"
+pub type Never
+fn selected(_value: Never) { 1 }
+const selected_constant = selected
+pub fn main() { selected_constant }
+"#,
+            r#"
+pub type Never
+fn selected(_value: Int) -> Never { panic as "never" }
+const selected_constant = selected
+pub fn main() { selected_constant }
+"#,
+        ];
+        let plans = sources.map(execution_plan);
+
+        assert_eq!(
+            returned_int_function_constant(&plans[0]),
+            crate::plan::execution::graph::IntFunctionLocalId(0)
+        );
+        assert_eq!(
+            returned_generic_function_constant(&plans[1]),
+            crate::plan::execution::graph::GenericFunctionLocalId(0)
+        );
+        assert_eq!(
+            returned_never_function_constant(&plans[2]),
+            crate::plan::execution::graph::NeverFunctionLocalId(0)
+        );
+    }
+
+    #[test]
+    fn constant_profile_completion_retains_hosted_external_nodes_and_erases_plain_owners() {
+        let owner = SpecializationKey::monomorphic(crate::plan::FunctionTemplateId::new(3));
+        let hosted = external_constant_lowering(owner.clone()).finish_hosted();
+        let program = hosted.get(ConstantId::<FunctionLocal>::new(0));
+        let graph = program.block_graph();
+        let block = graph.block(graph.entry());
+
+        assert_eq!(
+            external_function_local(returned_function(program, block.terminator())),
+            ExternalFunctionLocalId(0)
+        );
+        assert_eq!(
+            external_function_reference(&block.instructions()[0]),
+            ExternalFunctionId::new(2, ExternalTypeId::new(0))
+        );
+        assert_eq!(
+            external_constant_lowering(owner.clone())
+                .finish_plain()
+                .erased_specializations(),
+            HashSet::from([owner])
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "constant fixture should contain an Int literal")]
+    fn int_literal_guard_rejects_other_instructions() {
+        let plan = execution_plan("const one = 1 pub fn main() { one }");
+        let graph = plan
+            .int_function(crate::plan::execution::function::IntFunctionId(0))
+            .body()
+            .block_graph();
+        int_literal(&graph.block(graph.entry()).instructions()[0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "constant fixture should return an Int local")]
+    fn returned_int_guard_rejects_other_terminators() {
+        let plan = execution_plan("const one = 1 pub fn main() { one }");
+        let program = plan.constant(ConstantId::<IntLocalId>::new(0));
+        returned_int(
+            program,
+            &Terminator::SourceStop(SourceStop::new(
+                SourceStopKind::Panic,
+                None,
+                crate::plan::PanicSite::unknown(),
+            )),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "constant fixture should return a function local")]
+    fn returned_plain_function_guard_rejects_other_terminators() {
+        let plan = execution_plan(
+            r#"
+fn identity(value: value) { value }
+const selected = identity
+pub fn main() { selected(1) }
+"#,
+        );
+        let program = plan.constant(ConstantId::<FunctionLocal>::new(0));
+        returned_function(
+            program,
+            &Terminator::SourceStop(SourceStop::new(
+                SourceStopKind::Panic,
+                None,
+                crate::plan::PanicSite::unknown(),
+            )),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "constant fixture should return a function local")]
+    fn returned_hosted_function_guard_rejects_other_terminators() {
+        let owner = SpecializationKey::monomorphic(crate::plan::FunctionTemplateId::new(3));
+        let hosted = external_constant_lowering(owner).finish_hosted();
+        let program = hosted.get(ConstantId::<FunctionLocal>::new(0));
+        returned_function(
+            program,
+            &Terminator::SourceStop(SourceStop::new(
+                SourceStopKind::Panic,
+                None,
+                crate::plan::PanicSite::unknown(),
+            )),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "constant fixture should reference an Int constant")]
+    fn int_constant_guard_rejects_other_instructions() {
+        let plan = execution_plan("const one = 1 pub fn main() { one }");
+        let graph = plan
+            .constant(ConstantId::<IntLocalId>::new(0))
+            .block_graph();
+        int_constant(&graph.block(graph.entry()).instructions()[0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "constant fixture should reference a String constant")]
+    fn string_constant_guard_rejects_other_instructions() {
+        let plan = execution_plan("const one = 1 pub fn main() { one }");
+        let graph = plan
+            .constant(ConstantId::<IntLocalId>::new(0))
+            .block_graph();
+        string_constant(&graph.block(graph.entry()).instructions()[0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "constant fixture should return an Int function local")]
+    fn int_function_constant_guard_rejects_symbolic_functions() {
+        let plan = execution_plan(
+            r#"
+pub type Never
+fn selected(_value: Never) { 1 }
+const selected_constant = selected
+pub fn main() { selected_constant }
+"#,
+        );
+        returned_int_function_constant(&plan);
+    }
+
+    #[test]
+    #[should_panic(expected = "constant fixture should return a generic function local")]
+    fn generic_function_constant_guard_rejects_concrete_functions() {
+        let plan = execution_plan(
+            r#"
+fn identity(value: value) { value }
+const selected = identity
+pub fn main() { selected(1) }
+"#,
+        );
+        returned_generic_function_constant(&plan);
+    }
+
+    #[test]
+    #[should_panic(expected = "constant fixture should return a never function local")]
+    fn never_function_constant_guard_rejects_concrete_functions() {
+        let plan = execution_plan(
+            r#"
+fn identity(value: value) { value }
+const selected = identity
+pub fn main() { selected(1) }
+"#,
+        );
+        returned_never_function_constant(&plan);
+    }
+
+    #[test]
+    #[should_panic(expected = "constant fixture should return an external function local")]
+    fn external_function_constant_guard_rejects_concrete_functions() {
+        let plan = execution_plan(
+            r#"
+fn identity(value: value) { value }
+const selected = identity
+pub fn main() { selected(1) }
+"#,
+        );
+        external_function_local(returned_function_constant(&plan));
+    }
+
+    #[test]
+    #[should_panic(expected = "constant fixture should reference an external function")]
+    fn external_function_reference_guard_rejects_other_instructions() {
+        external_function_reference(&ProfiledInstruction::<HostedExecutionGraph>::new(
+            ParamSlot::new(ParamLocal::Int(IntLocalId(0)), ValueShapeId::new(0)),
+            ProfiledInstructionKind::Int(IntInstruction::Value(1.into())),
+        ));
+    }
+
+    #[test]
+    #[should_panic(expected = "constant fixture should reference an external function")]
+    fn external_function_reference_guard_rejects_other_external_instruction_kinds() {
+        let (_, instruction) =
+            external_function_instruction(ExternalFunctionInstructionKind::Closure {
+                target: ExternalFunctionTarget::Value(ExternalFunctionId::new(
+                    2,
+                    ExternalTypeId::new(0),
+                )),
+                captures: Box::new([]),
+            });
+        external_function_reference(&instruction);
+    }
+
+    fn int_literal<Graph: ExecutionGraphProfile>(
+        instruction: &ProfiledInstruction<Graph>,
+    ) -> &BigInt {
+        match instruction.kind() {
+            ProfiledInstructionKind::Int(IntInstruction::Value(value)) => value,
+            _ => panic!("constant fixture should contain an Int literal"),
+        }
+    }
+
+    fn returned_int<Graph: ExecutionGraphProfile>(
+        program: &crate::plan::execution::constant::ProfiledConstantProgram<IntLocalId, Graph>,
+        terminator: &Terminator,
+    ) -> IntLocalId {
+        match terminator {
+            Terminator::Exit(exit) => *program.return_(*exit),
+            _ => panic!("constant fixture should return an Int local"),
+        }
+    }
+
+    fn returned_function<'a, Graph: ExecutionGraphProfile>(
+        program: &'a crate::plan::execution::constant::ProfiledConstantProgram<
+            FunctionLocal,
+            Graph,
+        >,
+        terminator: &Terminator,
+    ) -> &'a FunctionLocal {
+        match terminator {
+            Terminator::Exit(exit) => program.return_(*exit),
+            _ => panic!("constant fixture should return a function local"),
+        }
+    }
+
+    fn returned_int_function_constant(
+        plan: &ExecutionPlan,
+    ) -> crate::plan::execution::graph::IntFunctionLocalId {
+        match returned_function_constant(plan) {
+            FunctionLocal::Int(local) => *local,
+            _ => panic!("constant fixture should return an Int function local"),
+        }
+    }
+
+    fn returned_generic_function_constant(
+        plan: &ExecutionPlan,
+    ) -> crate::plan::execution::graph::GenericFunctionLocalId {
+        match returned_function_constant(plan) {
+            FunctionLocal::Generic(local) => local.id(),
+            _ => panic!("constant fixture should return a generic function local"),
+        }
+    }
+
+    fn returned_never_function_constant(
+        plan: &ExecutionPlan,
+    ) -> crate::plan::execution::graph::NeverFunctionLocalId {
+        match returned_function_constant(plan) {
+            FunctionLocal::Never(local) => local.id(),
+            _ => panic!("constant fixture should return a never function local"),
+        }
+    }
+
+    fn returned_function_constant(plan: &ExecutionPlan) -> &FunctionLocal {
+        let program = plan.constant(ConstantId::<FunctionLocal>::new(0));
+        let graph = program.block_graph();
+        returned_function(program, graph.block(graph.entry()).terminator())
+    }
+
+    fn external_function_local(local: &FunctionLocal) -> ExternalFunctionLocalId {
+        match local {
+            FunctionLocal::External(local) => local.id(),
+            _ => panic!("constant fixture should return an external function local"),
+        }
+    }
+
+    fn external_function_reference(
+        instruction: &ProfiledInstruction<HostedExecutionGraph>,
+    ) -> ExternalFunctionId {
+        match instruction.kind() {
+            ProfiledInstructionKind::ExternalFunction(instruction) => {
+                match instruction.instruction().kind() {
+                    ExternalFunctionInstructionKind::Reference(ExternalFunctionTarget::Value(
+                        function,
+                    )) => *function,
+                    _ => panic!("constant fixture should reference an external function"),
+                }
+            }
+            _ => panic!("constant fixture should reference an external function"),
+        }
+    }
+
+    fn external_constant_lowering(owner: SpecializationKey) -> ConstantLowering {
+        let (local, instruction) =
+            external_function_instruction(ExternalFunctionInstructionKind::Reference(
+                ExternalFunctionTarget::Value(ExternalFunctionId::new(2, ExternalTypeId::new(0))),
+            ));
+        let program = ProfiledConstantProgram::from_parts(
+            ProfiledBlockGraph::<HostedExecutionGraph>::from_parts(
+                BlockId::new(0),
+                vec![ProfiledBlock::new(
+                    Vec::new(),
+                    vec![instruction],
+                    Terminator::Exit(BlockGraphExitId::new(0)),
+                )],
+            ),
+            vec![FunctionLocal::External(local)],
+        );
+        let mut lowering = ConstantLowering::default();
+        let id = lowering.table.push(program);
+        lowering.owners.insert(
+            ConstantLocation {
+                family: ConstantFamily::Function,
+                index: id.index(),
+            },
+            owner,
+        );
+        lowering
+    }
+
+    fn external_function_instruction(
+        kind: ExternalFunctionInstructionKind,
+    ) -> (
+        ExternalFunctionLocal,
+        ProfiledInstruction<HostedExecutionGraph>,
+    ) {
+        let external_type = ExternalTypeId::new(0);
+        let function_type = FunctionType::new(Vec::new(), ValueType::External(external_type));
+        let external_function_type =
+            ExternalFunctionType::from_shapes(function_type.clone(), Vec::new(), external_type);
+        let local = ExternalFunctionLocal::new(ExternalFunctionLocalId(0), external_function_type);
+        let instruction = ProfiledInstruction::new(
+            ParamSlot::new(
+                ParamLocal::ExternalFunction(local.clone()),
+                ValueShapeId::new(0),
+            ),
+            ProfiledInstructionKind::ExternalFunction(ExternalFunctionInstruction::new(
+                function_type,
+                FunctionReturnFamily::External,
+                kind,
+            )),
+        );
+        (local, instruction)
+    }
+
+    fn int_constant<Graph: ExecutionGraphProfile>(
+        instruction: &ProfiledInstruction<Graph>,
+    ) -> ConstantId<IntLocalId> {
+        match instruction.kind() {
+            ProfiledInstructionKind::Int(IntInstruction::Constant(id)) => *id,
+            _ => panic!("constant fixture should reference an Int constant"),
+        }
+    }
+
+    fn string_constant<Graph: ExecutionGraphProfile>(
+        instruction: &ProfiledInstruction<Graph>,
+    ) -> ConstantId<StringLocalId> {
+        match instruction.kind() {
+            ProfiledInstructionKind::String(
+                crate::plan::execution::graph::StringInstruction::Constant(id),
+            ) => *id,
+            _ => panic!("constant fixture should reference a String constant"),
+        }
+    }
+
+    fn execution_plan(source: &str) -> ExecutionPlan {
+        let typed = crate::compile_typed_module("main", "main.gleam", source)
+            .expect("source should compile");
+        let module_plan = crate::plan_module(typed).expect("source should plan");
+        ExecutionPlan::from_module_plan(module_plan)
+    }
+}

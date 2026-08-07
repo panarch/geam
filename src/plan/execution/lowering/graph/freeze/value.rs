@@ -1035,3 +1035,482 @@ impl FreezeGraphValue for DraftNeverReturn {
         match *self {}
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::super::specialization::{
+        SpecializedFunctionShape, SpecializedValueShape, StoredValueShape,
+    };
+    use super::super::super::draft::{DraftFunction, DraftGraphBuilder, DraftList, DraftValueRef};
+    use super::BlockValues;
+    use crate::plan::execution::graph::{
+        FunctionFunctionLocal, FunctionLocal, ListFunctionLocal, ListLocal, ParamLocal,
+    };
+    use crate::plan::{
+        CustomConstructorDefinition, CustomConstructorRefinement, CustomType, CustomTypeDefinition,
+        CustomTypeName, CustomTypePublicity, CustomValueShape, ExternalTypeName,
+        ExternalValueShape, TypeParameterId,
+    };
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum FrozenFamily {
+        Int,
+        Float,
+        String,
+        BitArray,
+        UtfCodepoint,
+        Custom,
+        External,
+        Bool,
+        Nil,
+        Tuple,
+        ParameterList,
+        ParameterListList,
+        IntList,
+        StringList,
+        BitArrayList,
+        UtfCodepointList,
+        CustomList,
+        ExternalList,
+        FloatList,
+        BoolList,
+        NilList,
+        TupleList,
+        ListList,
+        FunctionList,
+        GenericFunction,
+        NeverFunction,
+        IntFunction,
+        FloatFunction,
+        StringFunction,
+        BitArrayFunction,
+        UtfCodepointFunction,
+        CustomFunction,
+        ExternalFunction,
+        BoolFunction,
+        NilFunction,
+        TupleFunction,
+        ParameterListFunction,
+        ParameterListListFunction,
+        IntListFunction,
+        StringListFunction,
+        BitArrayListFunction,
+        UtfCodepointListFunction,
+        CustomListFunction,
+        ExternalListFunction,
+        FloatListFunction,
+        BoolListFunction,
+        NilListFunction,
+        TupleListFunction,
+        ListListFunction,
+        FunctionListFunction,
+        FunctionFunction,
+        ExternalFunctionFunction,
+    }
+
+    #[test]
+    fn allocates_every_stored_family_with_independent_local_counters_and_shape_ids() {
+        let (custom_definition, custom_type) = custom_type();
+        let mut context =
+            super::super::super::super::test_support::lowering_context(vec![custom_definition]);
+        let custom = context.concrete_custom_value_shape(&CustomValueShape::new(
+            custom_type.type_name().clone(),
+            Vec::new(),
+            CustomConstructorRefinement::Any,
+        ));
+        let external = context.concrete_external_value_shape(&ExternalValueShape::new(
+            ExternalTypeName::new("domain".into(), "domain/resource".into(), "Resource".into()),
+            Vec::new(),
+        ));
+        let parameter = TypeParameterId(0);
+        let tuple_elements =
+            vec![SpecializedValueShape::Int, SpecializedValueShape::String].into_boxed_slice();
+        let tuple = SpecializedValueShape::Tuple(tuple_elements.clone());
+        let callback = SpecializedValueShape::Function(Box::new(SpecializedFunctionShape::new(
+            vec![SpecializedValueShape::Int],
+            SpecializedValueShape::Int,
+        )));
+        let list_items = vec![
+            (
+                SpecializedValueShape::Parameter(parameter),
+                FrozenFamily::ParameterList,
+                FrozenFamily::ParameterListFunction,
+            ),
+            (
+                SpecializedValueShape::List(Box::new(SpecializedValueShape::Parameter(parameter))),
+                FrozenFamily::ParameterListList,
+                FrozenFamily::ParameterListListFunction,
+            ),
+            (
+                SpecializedValueShape::Int,
+                FrozenFamily::IntList,
+                FrozenFamily::IntListFunction,
+            ),
+            (
+                SpecializedValueShape::String,
+                FrozenFamily::StringList,
+                FrozenFamily::StringListFunction,
+            ),
+            (
+                SpecializedValueShape::BitArray,
+                FrozenFamily::BitArrayList,
+                FrozenFamily::BitArrayListFunction,
+            ),
+            (
+                SpecializedValueShape::UtfCodepoint,
+                FrozenFamily::UtfCodepointList,
+                FrozenFamily::UtfCodepointListFunction,
+            ),
+            (
+                SpecializedValueShape::Custom(custom.clone()),
+                FrozenFamily::CustomList,
+                FrozenFamily::CustomListFunction,
+            ),
+            (
+                SpecializedValueShape::External(external.clone()),
+                FrozenFamily::ExternalList,
+                FrozenFamily::ExternalListFunction,
+            ),
+            (
+                SpecializedValueShape::Float,
+                FrozenFamily::FloatList,
+                FrozenFamily::FloatListFunction,
+            ),
+            (
+                SpecializedValueShape::Bool,
+                FrozenFamily::BoolList,
+                FrozenFamily::BoolListFunction,
+            ),
+            (
+                SpecializedValueShape::Nil,
+                FrozenFamily::NilList,
+                FrozenFamily::NilListFunction,
+            ),
+            (
+                tuple.clone(),
+                FrozenFamily::TupleList,
+                FrozenFamily::TupleListFunction,
+            ),
+            (
+                SpecializedValueShape::List(Box::new(SpecializedValueShape::Int)),
+                FrozenFamily::ListList,
+                FrozenFamily::ListListFunction,
+            ),
+            (
+                callback.clone(),
+                FrozenFamily::FunctionList,
+                FrozenFamily::FunctionListFunction,
+            ),
+        ];
+        let mut shapes = vec![
+            (StoredValueShape::Int, FrozenFamily::Int),
+            (StoredValueShape::Float, FrozenFamily::Float),
+            (StoredValueShape::String, FrozenFamily::String),
+            (StoredValueShape::BitArray, FrozenFamily::BitArray),
+            (StoredValueShape::UtfCodepoint, FrozenFamily::UtfCodepoint),
+            (
+                StoredValueShape::Custom(custom.clone()),
+                FrozenFamily::Custom,
+            ),
+            (
+                StoredValueShape::External(external.clone()),
+                FrozenFamily::External,
+            ),
+            (StoredValueShape::Bool, FrozenFamily::Bool),
+            (StoredValueShape::Nil, FrozenFamily::Nil),
+            (StoredValueShape::Tuple(tuple_elements), FrozenFamily::Tuple),
+        ];
+        shapes.extend(
+            list_items
+                .iter()
+                .cloned()
+                .map(|(item, family, _)| (StoredValueShape::List(Box::new(item)), family)),
+        );
+        shapes.extend([
+            (
+                function_shape(
+                    vec![SpecializedValueShape::Parameter(parameter)],
+                    SpecializedValueShape::Int,
+                ),
+                FrozenFamily::GenericFunction,
+            ),
+            (
+                function_shape(
+                    vec![SpecializedValueShape::Int],
+                    SpecializedValueShape::Parameter(parameter),
+                ),
+                FrozenFamily::NeverFunction,
+            ),
+        ]);
+        shapes.extend(
+            [
+                (SpecializedValueShape::Int, FrozenFamily::IntFunction),
+                (SpecializedValueShape::Float, FrozenFamily::FloatFunction),
+                (SpecializedValueShape::String, FrozenFamily::StringFunction),
+                (
+                    SpecializedValueShape::BitArray,
+                    FrozenFamily::BitArrayFunction,
+                ),
+                (
+                    SpecializedValueShape::UtfCodepoint,
+                    FrozenFamily::UtfCodepointFunction,
+                ),
+                (
+                    SpecializedValueShape::Custom(custom.clone()),
+                    FrozenFamily::CustomFunction,
+                ),
+                (
+                    SpecializedValueShape::External(external.clone()),
+                    FrozenFamily::ExternalFunction,
+                ),
+                (SpecializedValueShape::Bool, FrozenFamily::BoolFunction),
+                (SpecializedValueShape::Nil, FrozenFamily::NilFunction),
+                (tuple.clone(), FrozenFamily::TupleFunction),
+            ]
+            .into_iter()
+            .map(|(return_, family)| {
+                (
+                    function_shape(vec![SpecializedValueShape::Int], return_),
+                    family,
+                )
+            }),
+        );
+        shapes.extend(list_items.into_iter().map(|(item, _, function_family)| {
+            (
+                function_shape(
+                    vec![SpecializedValueShape::Int],
+                    SpecializedValueShape::List(Box::new(item)),
+                ),
+                function_family,
+            )
+        }));
+        shapes.extend([
+            (
+                function_shape(
+                    vec![SpecializedValueShape::Int],
+                    SpecializedValueShape::Function(Box::new(SpecializedFunctionShape::new(
+                        Vec::new(),
+                        SpecializedValueShape::Int,
+                    ))),
+                ),
+                FrozenFamily::FunctionFunction,
+            ),
+            (
+                function_shape(
+                    vec![SpecializedValueShape::Int],
+                    SpecializedValueShape::Function(Box::new(SpecializedFunctionShape::new(
+                        Vec::new(),
+                        SpecializedValueShape::External(external),
+                    ))),
+                ),
+                FrozenFamily::ExternalFunctionFunction,
+            ),
+        ]);
+
+        let (mut builder, _) = DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
+        let mut values = BlockValues::default();
+        for (shape, family) in shapes {
+            assert_allocation(&mut builder, &mut values, &mut context, shape, family, 0);
+        }
+        for (shape, family) in [
+            (StoredValueShape::Int, FrozenFamily::Int),
+            (
+                StoredValueShape::List(Box::new(SpecializedValueShape::Int)),
+                FrozenFamily::IntList,
+            ),
+            (
+                function_shape(vec![SpecializedValueShape::Int], SpecializedValueShape::Int),
+                FrozenFamily::IntFunction,
+            ),
+        ] {
+            assert_allocation(&mut builder, &mut values, &mut context, shape, family, 1);
+        }
+    }
+
+    fn assert_allocation(
+        builder: &mut DraftGraphBuilder<DraftValueRef, ()>,
+        values: &mut BlockValues,
+        context: &mut super::super::super::super::LoweringContext,
+        shape: StoredValueShape,
+        family: FrozenFamily,
+        index: usize,
+    ) {
+        let value = builder.value_ref(shape.clone());
+        let slot = values.allocate(&value, context);
+        let expected_shape = context.types.value_shape(&shape.to_specialized());
+
+        assert_eq!(slot.shape(), expected_shape);
+        assert_eq!(values.slot(&value), slot);
+        assert_eq!(values.any(&value), slot.local().clone());
+        assert_eq!(frozen_family(slot.local()), (family, index));
+
+        match slot.local() {
+            ParamLocal::List(_) => assert_eq!(
+                frozen_list_family(&values.list(&DraftList::from_ref(&value))),
+                (family, index),
+            ),
+            ParamLocal::GenericFunction(_)
+            | ParamLocal::NeverFunction(_)
+            | ParamLocal::IntFunction { .. }
+            | ParamLocal::FloatFunction { .. }
+            | ParamLocal::StringFunction { .. }
+            | ParamLocal::BitArrayFunction { .. }
+            | ParamLocal::UtfCodepointFunction { .. }
+            | ParamLocal::CustomFunction(_)
+            | ParamLocal::ExternalFunction(_)
+            | ParamLocal::BoolFunction { .. }
+            | ParamLocal::NilFunction { .. }
+            | ParamLocal::TupleFunction { .. }
+            | ParamLocal::ListFunction(_)
+            | ParamLocal::FunctionFunction(_) => assert_eq!(
+                frozen_function_family(&values.function(&DraftFunction::from_ref(&value))),
+                (family, index),
+            ),
+            ParamLocal::Int(_)
+            | ParamLocal::Float(_)
+            | ParamLocal::String(_)
+            | ParamLocal::BitArray(_)
+            | ParamLocal::UtfCodepoint(_)
+            | ParamLocal::Custom(_)
+            | ParamLocal::External(_)
+            | ParamLocal::Bool(_)
+            | ParamLocal::Nil(_)
+            | ParamLocal::Tuple { .. } => {}
+        }
+    }
+
+    fn frozen_family(local: &ParamLocal) -> (FrozenFamily, usize) {
+        match local {
+            ParamLocal::Int(local) => (FrozenFamily::Int, local.0),
+            ParamLocal::Float(local) => (FrozenFamily::Float, local.0),
+            ParamLocal::String(local) => (FrozenFamily::String, local.0),
+            ParamLocal::BitArray(local) => (FrozenFamily::BitArray, local.0),
+            ParamLocal::UtfCodepoint(local) => (FrozenFamily::UtfCodepoint, local.0),
+            ParamLocal::Custom(local) => (FrozenFamily::Custom, local.id().0),
+            ParamLocal::External(local) => (FrozenFamily::External, local.id().0),
+            ParamLocal::Bool(local) => (FrozenFamily::Bool, local.0),
+            ParamLocal::Nil(local) => (FrozenFamily::Nil, local.0),
+            ParamLocal::Tuple { local, .. } => (FrozenFamily::Tuple, local.0),
+            ParamLocal::List(local) => frozen_list_family(local),
+            ParamLocal::GenericFunction(local) => (FrozenFamily::GenericFunction, local.id().0),
+            ParamLocal::NeverFunction(local) => (FrozenFamily::NeverFunction, local.id().0),
+            ParamLocal::IntFunction { local, .. } => (FrozenFamily::IntFunction, local.0),
+            ParamLocal::FloatFunction { local, .. } => (FrozenFamily::FloatFunction, local.0),
+            ParamLocal::StringFunction { local, .. } => (FrozenFamily::StringFunction, local.0),
+            ParamLocal::BitArrayFunction { local, .. } => (FrozenFamily::BitArrayFunction, local.0),
+            ParamLocal::UtfCodepointFunction { local, .. } => {
+                (FrozenFamily::UtfCodepointFunction, local.0)
+            }
+            ParamLocal::CustomFunction(local) => (FrozenFamily::CustomFunction, local.id().0),
+            ParamLocal::ExternalFunction(local) => (FrozenFamily::ExternalFunction, local.id().0),
+            ParamLocal::BoolFunction { local, .. } => (FrozenFamily::BoolFunction, local.0),
+            ParamLocal::NilFunction { local, .. } => (FrozenFamily::NilFunction, local.0),
+            ParamLocal::TupleFunction { local, .. } => (FrozenFamily::TupleFunction, local.0),
+            ParamLocal::ListFunction(local) => frozen_list_function_family(local),
+            ParamLocal::FunctionFunction(local) => frozen_function_function_family(local),
+        }
+    }
+
+    fn frozen_list_family(local: &ListLocal) -> (FrozenFamily, usize) {
+        match local {
+            ListLocal::Parameter { local, .. } => (FrozenFamily::ParameterList, local.0),
+            ListLocal::ParameterList { local, .. } => (FrozenFamily::ParameterListList, local.0),
+            ListLocal::Int { local, .. } => (FrozenFamily::IntList, local.0),
+            ListLocal::String { local, .. } => (FrozenFamily::StringList, local.0),
+            ListLocal::BitArray { local, .. } => (FrozenFamily::BitArrayList, local.0),
+            ListLocal::UtfCodepoint { local, .. } => (FrozenFamily::UtfCodepointList, local.0),
+            ListLocal::Custom { local, .. } => (FrozenFamily::CustomList, local.0),
+            ListLocal::External { local, .. } => (FrozenFamily::ExternalList, local.0),
+            ListLocal::Float { local, .. } => (FrozenFamily::FloatList, local.0),
+            ListLocal::Bool { local, .. } => (FrozenFamily::BoolList, local.0),
+            ListLocal::Nil { local, .. } => (FrozenFamily::NilList, local.0),
+            ListLocal::Tuple { local, .. } => (FrozenFamily::TupleList, local.0),
+            ListLocal::List { local, .. } => (FrozenFamily::ListList, local.0),
+            ListLocal::Function { local, .. } => (FrozenFamily::FunctionList, local.0),
+        }
+    }
+
+    fn frozen_function_family(local: &FunctionLocal) -> (FrozenFamily, usize) {
+        match local {
+            FunctionLocal::Generic(local) => (FrozenFamily::GenericFunction, local.id().0),
+            FunctionLocal::Never(local) => (FrozenFamily::NeverFunction, local.id().0),
+            FunctionLocal::Int(local) => (FrozenFamily::IntFunction, local.0),
+            FunctionLocal::Float(local) => (FrozenFamily::FloatFunction, local.0),
+            FunctionLocal::String(local) => (FrozenFamily::StringFunction, local.0),
+            FunctionLocal::BitArray(local) => (FrozenFamily::BitArrayFunction, local.0),
+            FunctionLocal::UtfCodepoint(local) => (FrozenFamily::UtfCodepointFunction, local.0),
+            FunctionLocal::Custom(local) => (FrozenFamily::CustomFunction, local.id().0),
+            FunctionLocal::External(local) => (FrozenFamily::ExternalFunction, local.id().0),
+            FunctionLocal::Bool(local) => (FrozenFamily::BoolFunction, local.0),
+            FunctionLocal::Nil(local) => (FrozenFamily::NilFunction, local.0),
+            FunctionLocal::Tuple(local) => (FrozenFamily::TupleFunction, local.0),
+            FunctionLocal::List(local) => frozen_list_function_family(local),
+            FunctionLocal::Function(local) => frozen_function_function_family(local),
+        }
+    }
+
+    fn frozen_list_function_family(local: &ListFunctionLocal) -> (FrozenFamily, usize) {
+        match local {
+            ListFunctionLocal::Parameter { local, .. } => {
+                (FrozenFamily::ParameterListFunction, local.0)
+            }
+            ListFunctionLocal::ParameterList { local, .. } => {
+                (FrozenFamily::ParameterListListFunction, local.0)
+            }
+            ListFunctionLocal::Int { local, .. } => (FrozenFamily::IntListFunction, local.0),
+            ListFunctionLocal::String { local, .. } => (FrozenFamily::StringListFunction, local.0),
+            ListFunctionLocal::BitArray { local, .. } => {
+                (FrozenFamily::BitArrayListFunction, local.0)
+            }
+            ListFunctionLocal::UtfCodepoint { local, .. } => {
+                (FrozenFamily::UtfCodepointListFunction, local.0)
+            }
+            ListFunctionLocal::Custom { local, .. } => (FrozenFamily::CustomListFunction, local.0),
+            ListFunctionLocal::External { local, .. } => {
+                (FrozenFamily::ExternalListFunction, local.0)
+            }
+            ListFunctionLocal::Float { local, .. } => (FrozenFamily::FloatListFunction, local.0),
+            ListFunctionLocal::Bool { local, .. } => (FrozenFamily::BoolListFunction, local.0),
+            ListFunctionLocal::Nil { local, .. } => (FrozenFamily::NilListFunction, local.0),
+            ListFunctionLocal::Tuple { local, .. } => (FrozenFamily::TupleListFunction, local.0),
+            ListFunctionLocal::List { local, .. } => (FrozenFamily::ListListFunction, local.0),
+            ListFunctionLocal::Function { local, .. } => {
+                (FrozenFamily::FunctionListFunction, local.0)
+            }
+        }
+    }
+
+    fn frozen_function_function_family(local: &FunctionFunctionLocal) -> (FrozenFamily, usize) {
+        match local {
+            FunctionFunctionLocal::Core(local) => (FrozenFamily::FunctionFunction, local.id().0),
+            FunctionFunctionLocal::External(local) => {
+                (FrozenFamily::ExternalFunctionFunction, local.id().0)
+            }
+        }
+    }
+
+    fn function_shape(
+        arguments: Vec<SpecializedValueShape>,
+        return_: SpecializedValueShape,
+    ) -> StoredValueShape {
+        StoredValueShape::Function(Box::new(SpecializedFunctionShape::new(arguments, return_)))
+    }
+
+    fn custom_type() -> (CustomTypeDefinition, CustomType) {
+        let name = CustomTypeName::new("geam".into(), "main".into(), "Boxed".into());
+        (
+            CustomTypeDefinition::new(
+                name.clone(),
+                CustomTypePublicity::Private,
+                false,
+                Vec::new(),
+                vec![CustomConstructorDefinition::new(
+                    "Boxed".into(),
+                    0,
+                    Vec::new(),
+                )],
+            ),
+            CustomType::new(name, Vec::new()),
+        )
+    }
+}

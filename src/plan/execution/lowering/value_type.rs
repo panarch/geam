@@ -590,10 +590,315 @@ impl TypeInterner {
 mod tests {
     use crate::plan::execution::ExecutionPlan;
     use crate::plan::execution::type_::{
-        CustomConstructorId, CustomListTypeId, CustomTypeId, ListStorageTypeId, ListTypeId,
-        ValueType as ExecutionValueType,
+        CustomConstructorId, CustomConstructorRefinement, CustomListTypeId, CustomTypeId,
+        CustomValueShapeDescriptor, CustomValueShapeId, ListStorageTypeId, ListTypeId,
+        ValueShapeDescriptor, ValueShapeId, ValueShapeTable, ValueType as ExecutionValueType,
     };
     use crate::plan::{CustomType, CustomTypeName, FunctionType, ValueType};
+
+    #[test]
+    fn lowering_preserves_exact_and_widened_custom_shapes() {
+        let exact = execution_plan(
+            r#"
+pub type Choice { First(Int) Second(Int) }
+pub fn main() { First(1) }
+"#,
+        );
+        let widened = execution_plan(
+            r#"
+pub type Choice { First(Int) Second(Int) }
+pub fn main() {
+  let flag = True
+  case flag { True -> First(1) False -> Second(2) }
+}
+"#,
+        );
+
+        let exact_shape = exact
+            .custom_function(exact.custom_function_id(0))
+            .body()
+            .body_shape()
+            .shape_id();
+        let widened_shape = widened
+            .custom_function(widened.custom_function_id(0))
+            .body()
+            .body_shape()
+            .shape_id();
+        assert_eq!(
+            exact
+                .program
+                .common
+                .value_shapes
+                .custom(exact_shape)
+                .constructor(),
+            CustomConstructorRefinement::Exact(0),
+        );
+        assert_eq!(
+            widened
+                .program
+                .common
+                .value_shapes
+                .custom(widened_shape)
+                .constructor(),
+            CustomConstructorRefinement::Any,
+        );
+    }
+
+    #[test]
+    fn lowering_preserves_nested_shapes_without_splitting_nominal_list_storage() {
+        let plan = execution_plan(
+            r#"
+pub type Choice { First(Int) Second(Int) }
+pub type Wrapper(a) { Wrapper(value: a) }
+
+pub fn main() {
+  let flag = True
+  Wrapper(#(
+    Wrapper(First(1)),
+    [First(2)],
+    case flag { True -> [First(3)] False -> [Second(4)] },
+    fn() { First(5) },
+  ))
+}
+"#,
+        );
+        assert_value_shapes(
+            &plan.program.common.value_shapes,
+            &[
+                ValueShapeDescriptor::Custom(CustomValueShapeId::new(0)),
+                ValueShapeDescriptor::Custom(CustomValueShapeId::new(1)),
+                ValueShapeDescriptor::List(ValueShapeId::new(0)),
+                ValueShapeDescriptor::Function {
+                    arguments: Vec::new().into_boxed_slice(),
+                    return_: ValueShapeId::new(0),
+                },
+                ValueShapeDescriptor::Tuple(
+                    vec![
+                        ValueShapeId::new(1),
+                        ValueShapeId::new(2),
+                        ValueShapeId::new(2),
+                        ValueShapeId::new(3),
+                    ]
+                    .into_boxed_slice(),
+                ),
+                ValueShapeDescriptor::Custom(CustomValueShapeId::new(3)),
+                ValueShapeDescriptor::Custom(CustomValueShapeId::new(4)),
+                ValueShapeDescriptor::List(ValueShapeId::new(5)),
+                ValueShapeDescriptor::Function {
+                    arguments: Vec::new().into_boxed_slice(),
+                    return_: ValueShapeId::new(5),
+                },
+                ValueShapeDescriptor::Tuple(
+                    vec![
+                        ValueShapeId::new(6),
+                        ValueShapeId::new(7),
+                        ValueShapeId::new(2),
+                        ValueShapeId::new(8),
+                    ]
+                    .into_boxed_slice(),
+                ),
+                ValueShapeDescriptor::Bool,
+                ValueShapeDescriptor::Int,
+                ValueShapeDescriptor::Custom(CustomValueShapeId::new(5)),
+                ValueShapeDescriptor::Custom(CustomValueShapeId::new(6)),
+            ],
+        );
+        assert_custom_shapes(
+            &plan.program.common.value_shapes,
+            &[
+                CustomValueShapeDescriptor::new(
+                    CustomTypeId::new(2),
+                    Vec::new().into_boxed_slice(),
+                    CustomConstructorRefinement::Any,
+                ),
+                CustomValueShapeDescriptor::new(
+                    CustomTypeId::new(1),
+                    vec![ValueShapeId::new(0)].into_boxed_slice(),
+                    CustomConstructorRefinement::Any,
+                ),
+                CustomValueShapeDescriptor::new(
+                    CustomTypeId::new(0),
+                    vec![ValueShapeId::new(4)].into_boxed_slice(),
+                    CustomConstructorRefinement::Any,
+                ),
+                CustomValueShapeDescriptor::new(
+                    CustomTypeId::new(2),
+                    Vec::new().into_boxed_slice(),
+                    CustomConstructorRefinement::Exact(0),
+                ),
+                CustomValueShapeDescriptor::new(
+                    CustomTypeId::new(1),
+                    vec![ValueShapeId::new(5)].into_boxed_slice(),
+                    CustomConstructorRefinement::Exact(0),
+                ),
+                CustomValueShapeDescriptor::new(
+                    CustomTypeId::new(0),
+                    vec![ValueShapeId::new(9)].into_boxed_slice(),
+                    CustomConstructorRefinement::Exact(0),
+                ),
+                CustomValueShapeDescriptor::new(
+                    CustomTypeId::new(2),
+                    Vec::new().into_boxed_slice(),
+                    CustomConstructorRefinement::Exact(1),
+                ),
+            ],
+        );
+    }
+
+    #[test]
+    fn lowering_preserves_refinements_through_projections_calls_and_captures() {
+        let plan = execution_plan(
+            r#"
+pub type Choice { First(Int) Second(Int) }
+pub type Wrapper(a) { Wrapper(value: a, label: String) }
+pub type Factory(a) { Factory(make: fn() -> a, label: String) }
+
+fn direct() { First(3) }
+
+pub fn main() {
+  let tuple_value = #(First(1)).0
+  let record_value = Wrapper(First(2), "record").value
+  let captured = First(4)
+  let closure = fn() { captured }
+  let constructor = First
+  let captured_constructor = fn() { constructor(6) }
+  let factory = Factory(fn() { First(5) }, "factory")
+  Wrapper(#(
+    tuple_value,
+    record_value,
+    direct(),
+    closure(),
+    factory.make(),
+    captured_constructor(),
+  ), "result")
+}
+"#,
+        );
+        assert_value_shapes(
+            &plan.program.common.value_shapes,
+            &[
+                ValueShapeDescriptor::Custom(CustomValueShapeId::new(0)),
+                ValueShapeDescriptor::Tuple(vec![ValueShapeId::new(0); 6].into_boxed_slice()),
+                ValueShapeDescriptor::Custom(CustomValueShapeId::new(2)),
+                ValueShapeDescriptor::Tuple(
+                    vec![
+                        ValueShapeId::new(2),
+                        ValueShapeId::new(2),
+                        ValueShapeId::new(0),
+                        ValueShapeId::new(2),
+                        ValueShapeId::new(2),
+                        ValueShapeId::new(2),
+                    ]
+                    .into_boxed_slice(),
+                ),
+                ValueShapeDescriptor::Int,
+                ValueShapeDescriptor::Tuple(vec![ValueShapeId::new(2)].into_boxed_slice()),
+                ValueShapeDescriptor::String,
+                ValueShapeDescriptor::Custom(CustomValueShapeId::new(4)),
+                ValueShapeDescriptor::Function {
+                    arguments: Vec::new().into_boxed_slice(),
+                    return_: ValueShapeId::new(0),
+                },
+                ValueShapeDescriptor::Function {
+                    arguments: vec![ValueShapeId::new(4)].into_boxed_slice(),
+                    return_: ValueShapeId::new(0),
+                },
+                ValueShapeDescriptor::Custom(CustomValueShapeId::new(5)),
+                ValueShapeDescriptor::Custom(CustomValueShapeId::new(3)),
+                ValueShapeDescriptor::Function {
+                    arguments: vec![ValueShapeId::new(4)].into_boxed_slice(),
+                    return_: ValueShapeId::new(2),
+                },
+            ],
+        );
+        assert_custom_shapes(
+            &plan.program.common.value_shapes,
+            &[
+                CustomValueShapeDescriptor::new(
+                    CustomTypeId::new(1),
+                    Vec::new().into_boxed_slice(),
+                    CustomConstructorRefinement::Any,
+                ),
+                CustomValueShapeDescriptor::new(
+                    CustomTypeId::new(0),
+                    vec![ValueShapeId::new(1)].into_boxed_slice(),
+                    CustomConstructorRefinement::Any,
+                ),
+                CustomValueShapeDescriptor::new(
+                    CustomTypeId::new(1),
+                    Vec::new().into_boxed_slice(),
+                    CustomConstructorRefinement::Exact(0),
+                ),
+                CustomValueShapeDescriptor::new(
+                    CustomTypeId::new(0),
+                    vec![ValueShapeId::new(3)].into_boxed_slice(),
+                    CustomConstructorRefinement::Exact(0),
+                ),
+                CustomValueShapeDescriptor::new(
+                    CustomTypeId::new(2),
+                    vec![ValueShapeId::new(2)].into_boxed_slice(),
+                    CustomConstructorRefinement::Exact(0),
+                ),
+                CustomValueShapeDescriptor::new(
+                    CustomTypeId::new(3),
+                    vec![ValueShapeId::new(2)].into_boxed_slice(),
+                    CustomConstructorRefinement::Exact(0),
+                ),
+            ],
+        );
+    }
+
+    #[test]
+    fn lowering_preserves_refinements_through_function_returning_function_types() {
+        let plan = execution_plan(
+            r#"
+pub type Choice { First(Int) Second(Int) }
+pub type Boxed(a) { Boxed(value: a) }
+
+pub fn main() { Boxed(fn() { fn() { First(1) } }).value }
+"#,
+        );
+        let main = plan.function_function_function_id(0);
+        let type_ = main.type_();
+        assert_eq!(type_.argument_shapes(), []);
+        let returned = type_.return_shape();
+        let (arguments, return_) =
+            function_shape(&plan.program.common.value_shapes, returned.shape_id());
+        assert_eq!(arguments, &[]);
+        let custom = custom_shape(&plan.program.common.value_shapes, return_);
+        assert_eq!(
+            plan.program
+                .common
+                .value_shapes
+                .custom(custom)
+                .constructor(),
+            CustomConstructorRefinement::Exact(0),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a function value shape")]
+    fn function_shape_fixture_guard_rejects_int_shape() {
+        let table = ValueShapeTable::new(
+            vec![ValueShapeDescriptor::Int],
+            vec![ExecutionValueType::Int],
+            Vec::new(),
+        );
+
+        let _ = function_shape(&table, ValueShapeId::new(0));
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a custom value shape")]
+    fn custom_shape_fixture_guard_rejects_int_shape() {
+        let table = ValueShapeTable::new(
+            vec![ValueShapeDescriptor::Int],
+            vec![ExecutionValueType::Int],
+            Vec::new(),
+        );
+
+        let _ = custom_shape(&table, ValueShapeId::new(0));
+    }
 
     #[test]
     fn lowering_interns_recursive_list_types_child_first_and_deduplicates_them() {
@@ -852,5 +1157,58 @@ pub fn main() -> Grow(Int) {
         let nested = plan.custom_constructor(CustomConstructorId::new(CustomTypeId::new(1), 0));
         assert_eq!(nested.name(), "Stop");
         assert_eq!(nested.fields().len(), 0);
+    }
+
+    fn execution_plan(source: &str) -> ExecutionPlan {
+        let typed = crate::compile_typed_module("main", "main.gleam", source)
+            .expect("source should compile");
+        let module = crate::plan_module(typed).expect("source should plan");
+        ExecutionPlan::from_module_plan(module)
+    }
+
+    fn assert_value_shapes(table: &ValueShapeTable, expected: &[ValueShapeDescriptor]) {
+        for (index, expected) in expected.iter().enumerate() {
+            assert_eq!(
+                table.get(ValueShapeId::new(index)),
+                expected,
+                "shape {index}"
+            );
+        }
+        assert!(
+            std::panic::catch_unwind(|| table.get(ValueShapeId::new(expected.len()))).is_err(),
+            "unexpected trailing value shape",
+        );
+    }
+
+    fn assert_custom_shapes(table: &ValueShapeTable, expected: &[CustomValueShapeDescriptor]) {
+        for (index, expected) in expected.iter().enumerate() {
+            assert_eq!(
+                table.custom(CustomValueShapeId::new(index)),
+                expected,
+                "custom shape {index}",
+            );
+        }
+        assert!(
+            std::panic::catch_unwind(|| { table.custom(CustomValueShapeId::new(expected.len())) })
+                .is_err(),
+            "unexpected trailing custom value shape",
+        );
+    }
+
+    fn function_shape(
+        table: &ValueShapeTable,
+        shape: ValueShapeId,
+    ) -> (&[ValueShapeId], ValueShapeId) {
+        match table.get(shape) {
+            ValueShapeDescriptor::Function { arguments, return_ } => (arguments, *return_),
+            _ => panic!("expected a function value shape"),
+        }
+    }
+
+    fn custom_shape(table: &ValueShapeTable, shape: ValueShapeId) -> CustomValueShapeId {
+        match table.get(shape) {
+            ValueShapeDescriptor::Custom(custom) => *custom,
+            _ => panic!("expected a custom value shape"),
+        }
     }
 }

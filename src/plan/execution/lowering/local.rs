@@ -853,3 +853,446 @@ pub(super) fn function_local_as_param(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::specialization::{
+        SpecializedFunctionShape, SpecializedTypeSubstitution, SpecializedValueShape,
+        StoredValueShape,
+    };
+    use super::{
+        FunctionEntryTemplate, LocalKey, LocalKind, ParameterPrefix, function_local_as_param,
+        function_local_at, param_local_key, stored_value_local_at,
+    };
+    use crate::plan::execution::{graph, type_ as execution_type};
+    use crate::plan::{
+        BitArrayFunctionLocalId, BitArrayListLocalId, BitArrayLocalId, BoolFunctionLocalId,
+        BoolListLocalId, BoolLocalId, CustomConstructorDefinition, CustomFunctionLocal,
+        CustomFunctionLocalId, CustomFunctionType, CustomListLocalId, CustomLocalId, CustomType,
+        CustomTypeDefinition, CustomTypeName, CustomTypePublicity, CustomValueShape,
+        ExternalFunctionLocal, ExternalFunctionLocalId, ExternalFunctionType, ExternalListLocalId,
+        ExternalLocalId, ExternalType, ExternalTypeName, ExternalValueShape, FloatFunctionLocalId,
+        FloatListLocalId, FloatLocalId, FunctionFunctionLocal, FunctionFunctionLocalId,
+        FunctionFunctionType, FunctionListLocalId, FunctionType, GenericFunctionLocal,
+        GenericFunctionLocalId, GenericFunctionType, GenericListLocalId, GenericLocal,
+        GenericLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId, ListFunctionLocal,
+        ListListLocalId, ListLocal, NilFunctionLocalId, NilListLocalId, NilLocalId, ParamLocal,
+        StringFunctionLocalId, StringListLocalId, StringLocalId, TupleFunctionLocalId,
+        TupleListLocalId, TupleLocalId, TypeParameterId, TypeScheme, UtfCodepointFunctionLocalId,
+        UtfCodepointListLocalId, UtfCodepointLocalId, ValueShape, ValueType,
+    };
+
+    #[test]
+    fn source_parameter_locals_map_to_distinct_lowering_keys() {
+        let index = 7;
+        let parameter = TypeParameterId(0);
+        let custom = custom_type();
+        let external = external_type();
+        let function = FunctionType::new(vec![ValueType::Int], ValueType::String);
+        let custom_function = CustomFunctionType::new(vec![ValueType::Int], custom.clone());
+        let external_shape = ExternalValueShape::new(
+            external.type_name().clone(),
+            external
+                .arguments()
+                .iter()
+                .cloned()
+                .map(ValueShape::from_value_type)
+                .collect(),
+        );
+        let external_function =
+            ExternalFunctionType::from_shapes(vec![ValueShape::Int], external_shape.clone());
+        let function_function = FunctionFunctionType::new(vec![ValueType::Int], function.clone());
+        let generic_function = GenericFunctionType::new(vec![ValueShape::Int], parameter);
+
+        let list_locals = vec![
+            ListLocal::generic(GenericListLocalId(index), parameter),
+            ListLocal::int(IntListLocalId(index)),
+            ListLocal::string(StringListLocalId(index)),
+            ListLocal::bit_array(BitArrayListLocalId(index)),
+            ListLocal::utf_codepoint(UtfCodepointListLocalId(index)),
+            ListLocal::custom(CustomListLocalId(index), custom.clone()),
+            ListLocal::external(ExternalListLocalId(index), external.clone()),
+            ListLocal::float(FloatListLocalId(index)),
+            ListLocal::bool(BoolListLocalId(index)),
+            ListLocal::nil(NilListLocalId(index)),
+            ListLocal::tuple(TupleListLocalId(index), vec![ValueType::Int]),
+            ListLocal::list(ListListLocalId(index), ValueType::Int),
+            ListLocal::function(FunctionListLocalId(index), function.clone()),
+        ];
+        let list_function_locals = [
+            ValueType::Parameter(parameter),
+            ValueType::Int,
+            ValueType::String,
+            ValueType::BitArray,
+            ValueType::UtfCodepoint,
+            ValueType::Custom(custom.clone()),
+            ValueType::External(external.clone()),
+            ValueType::Float,
+            ValueType::Bool,
+            ValueType::Nil,
+            ValueType::Tuple(vec![ValueType::Int]),
+            ValueType::List(Box::new(ValueType::Int)),
+            ValueType::Function(Box::new(function.clone())),
+        ]
+        .into_iter()
+        .map(|item| ListFunctionLocal::from_item_type(index, function.clone(), item));
+
+        let mut locals = vec![
+            ParamLocal::generic(GenericLocal::new(GenericLocalId(index), parameter)),
+            ParamLocal::int(IntLocalId(index)),
+            ParamLocal::float(FloatLocalId(index)),
+            ParamLocal::string(StringLocalId(index)),
+            ParamLocal::bit_array(BitArrayLocalId(index)),
+            ParamLocal::utf_codepoint(UtfCodepointLocalId(index)),
+            ParamLocal::custom(CustomLocalId(index), custom),
+            ParamLocal::external_shape(ExternalLocalId(index), external_shape),
+            ParamLocal::bool(BoolLocalId(index)),
+            ParamLocal::nil(NilLocalId(index)),
+            ParamLocal::tuple(TupleLocalId(index), vec![ValueType::Int]),
+        ];
+        locals.extend(list_locals.into_iter().map(ParamLocal::list));
+        locals.extend([
+            ParamLocal::int_function(IntFunctionLocalId(index), function.clone()),
+            ParamLocal::float_function(FloatFunctionLocalId(index), function.clone()),
+            ParamLocal::string_function(StringFunctionLocalId(index), function.clone()),
+            ParamLocal::bit_array_function(BitArrayFunctionLocalId(index), function.clone()),
+            ParamLocal::utf_codepoint_function(
+                UtfCodepointFunctionLocalId(index),
+                function.clone(),
+            ),
+            ParamLocal::custom_function(CustomFunctionLocal::new(
+                CustomFunctionLocalId(index),
+                custom_function,
+            )),
+            ParamLocal::external_function(ExternalFunctionLocal::new(
+                ExternalFunctionLocalId(index),
+                external_function,
+            )),
+            ParamLocal::bool_function(BoolFunctionLocalId(index), function.clone()),
+            ParamLocal::nil_function(NilFunctionLocalId(index), function.clone()),
+            ParamLocal::tuple_function(TupleFunctionLocalId(index), function.clone()),
+        ]);
+        locals.extend(list_function_locals.map(ParamLocal::list_function));
+        locals.extend([
+            ParamLocal::function_function(FunctionFunctionLocal::new(
+                FunctionFunctionLocalId(index),
+                function_function,
+            )),
+            ParamLocal::generic_function(GenericFunctionLocal::new(
+                GenericFunctionLocalId(index),
+                generic_function,
+            )),
+        ]);
+
+        let expected_kinds = [
+            LocalKind::Generic,
+            LocalKind::Int,
+            LocalKind::Float,
+            LocalKind::String,
+            LocalKind::BitArray,
+            LocalKind::UtfCodepoint,
+            LocalKind::Custom,
+            LocalKind::External,
+            LocalKind::Bool,
+            LocalKind::Nil,
+            LocalKind::Tuple,
+            LocalKind::GenericList,
+            LocalKind::IntList,
+            LocalKind::StringList,
+            LocalKind::BitArrayList,
+            LocalKind::UtfCodepointList,
+            LocalKind::CustomList,
+            LocalKind::ExternalList,
+            LocalKind::FloatList,
+            LocalKind::BoolList,
+            LocalKind::NilList,
+            LocalKind::TupleList,
+            LocalKind::ListList,
+            LocalKind::FunctionList,
+            LocalKind::IntFunction,
+            LocalKind::FloatFunction,
+            LocalKind::StringFunction,
+            LocalKind::BitArrayFunction,
+            LocalKind::UtfCodepointFunction,
+            LocalKind::CustomFunction,
+            LocalKind::ExternalFunction,
+            LocalKind::BoolFunction,
+            LocalKind::NilFunction,
+            LocalKind::TupleFunction,
+            LocalKind::GenericListFunction,
+            LocalKind::IntListFunction,
+            LocalKind::StringListFunction,
+            LocalKind::BitArrayListFunction,
+            LocalKind::UtfCodepointListFunction,
+            LocalKind::CustomListFunction,
+            LocalKind::ExternalListFunction,
+            LocalKind::FloatListFunction,
+            LocalKind::BoolListFunction,
+            LocalKind::NilListFunction,
+            LocalKind::TupleListFunction,
+            LocalKind::ListListFunction,
+            LocalKind::FunctionListFunction,
+            LocalKind::FunctionFunction,
+            LocalKind::GenericFunction,
+        ];
+
+        assert_eq!(
+            locals.iter().map(param_local_key).collect::<Vec<_>>(),
+            expected_kinds
+                .into_iter()
+                .map(|kind| LocalKey::new(kind, index))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn parameter_prefix_counts_each_storage_family_and_capture_in_entry_order() {
+        let context = super::super::test_support::lowering_context(Vec::new());
+        let mut prefix = ParameterPrefix::default();
+
+        assert_eq!(
+            prefix.allocate_stored(StoredValueShape::Int, &context.representations),
+            (0, StoredValueShape::Int)
+        );
+        assert_eq!(
+            prefix.allocate_stored(StoredValueShape::String, &context.representations),
+            (0, StoredValueShape::String)
+        );
+        assert_eq!(
+            prefix.allocate_stored(StoredValueShape::Int, &context.representations),
+            (1, StoredValueShape::Int)
+        );
+        assert_eq!(
+            prefix.allocate_stored(
+                StoredValueShape::List(Box::new(SpecializedValueShape::Int)),
+                &context.representations,
+            ),
+            (
+                0,
+                StoredValueShape::List(Box::new(SpecializedValueShape::Int))
+            )
+        );
+
+        let substitution = TypeScheme::new(1)
+            .try_substitution(vec![ValueShape::Int])
+            .expect("one type argument should match the capture template");
+        let substitution = SpecializedTypeSubstitution::instantiate(
+            &substitution,
+            &SpecializedTypeSubstitution::empty(),
+        );
+        let entry = context
+            .entry_templates
+            .get(&crate::plan::FunctionTemplateId::new(1))
+            .cloned()
+            .expect("the lowering fixture should contain the capture target");
+
+        assert_eq!(
+            entry.stored_parameters(&substitution, &context.representations),
+            super::super::specialization::Representability::Inhabited(
+                vec![StoredValueShape::Int].into_boxed_slice()
+            )
+        );
+        assert_eq!(
+            entry.capture_target(
+                crate::plan::CapturePosition::new(1),
+                StoredValueShape::Int,
+                &substitution,
+                &context.representations,
+            ),
+            (2, StoredValueShape::Int)
+        );
+
+        let direct = FunctionEntryTemplate::from_shapes(vec![
+            ValueShape::Int,
+            ValueShape::String,
+            ValueShape::Int,
+        ]);
+        assert_eq!(
+            direct.stored_parameters(
+                &SpecializedTypeSubstitution::empty(),
+                &context.representations,
+            ),
+            super::super::specialization::Representability::Inhabited(
+                vec![
+                    StoredValueShape::Int,
+                    StoredValueShape::String,
+                    StoredValueShape::Int,
+                ]
+                .into_boxed_slice()
+            )
+        );
+    }
+
+    #[test]
+    fn specialized_shapes_lower_to_exact_execution_local_families() {
+        let custom_name = CustomTypeName::new("geam".into(), "main".into(), "Boxed".into());
+        let custom = CustomType::new(custom_name.clone(), Vec::new());
+        let custom_definition = CustomTypeDefinition::new(
+            custom_name,
+            CustomTypePublicity::Private,
+            false,
+            Vec::new(),
+            vec![CustomConstructorDefinition::new(
+                "Boxed".into(),
+                0,
+                Vec::new(),
+            )],
+        );
+        let external = external_type();
+        let mut context = super::super::test_support::lowering_context(vec![custom_definition]);
+
+        assert_eq!(
+            stored_value_local_at(&StoredValueShape::Int, 3, &mut context),
+            graph::ParamLocal::Int(graph::IntLocalId(3))
+        );
+        assert_eq!(
+            stored_value_local_at(
+                &StoredValueShape::Tuple(
+                    vec![SpecializedValueShape::Int, SpecializedValueShape::String]
+                        .into_boxed_slice(),
+                ),
+                4,
+                &mut context,
+            ),
+            graph::ParamLocal::Tuple {
+                local: graph::TupleLocalId(4),
+                type_: vec![
+                    execution_type::ValueType::Int,
+                    execution_type::ValueType::String
+                ],
+            }
+        );
+
+        for (index, item) in [
+            SpecializedValueShape::Int,
+            SpecializedValueShape::Parameter(TypeParameterId(0)),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let index = index + 5;
+            let expected = match context.specialized_list_list_type(&item) {
+                super::super::value_type::NestedListTypeId::Parameter(type_id) => {
+                    graph::ListLocal::ParameterList {
+                        local: graph::ParameterListListLocalId(index),
+                        type_id,
+                    }
+                }
+                super::super::value_type::NestedListTypeId::Stored(type_id) => {
+                    graph::ListLocal::List {
+                        local: graph::ListListLocalId(index),
+                        type_id,
+                    }
+                }
+            };
+            assert_eq!(
+                stored_value_local_at(
+                    &StoredValueShape::List(Box::new(SpecializedValueShape::List(Box::new(item,)))),
+                    index,
+                    &mut context,
+                ),
+                graph::ParamLocal::List(expected)
+            );
+        }
+
+        let custom_shape = context.concrete_custom_value_shape(&CustomValueShape::any(custom));
+        let expected_custom = context.lower_concrete_custom_shape(&custom_shape);
+        assert_eq!(
+            stored_value_local_at(&StoredValueShape::Custom(custom_shape), 6, &mut context,),
+            graph::ParamLocal::Custom(graph::CustomLocal::new(
+                graph::CustomLocalId(6),
+                expected_custom,
+            ))
+        );
+
+        let external_shape = context.concrete_external_value_shape(&ExternalValueShape::new(
+            external.type_name().clone(),
+            Vec::new(),
+        ));
+        let expected_external = context.lower_concrete_external_type(&external_shape);
+        assert_eq!(
+            stored_value_local_at(
+                &StoredValueShape::External(external_shape.clone()),
+                7,
+                &mut context,
+            ),
+            graph::ParamLocal::External(graph::ExternalLocal::new(
+                graph::ExternalLocalId(7),
+                expected_external,
+            ))
+        );
+
+        let symbolic = SpecializedFunctionShape::new(
+            vec![SpecializedValueShape::Parameter(TypeParameterId(0))],
+            SpecializedValueShape::Int,
+        );
+        let symbolic_type = context.generic_function_type(&symbolic);
+        assert_eq!(
+            function_local_as_param(function_local_at(&symbolic, 8, &mut context)),
+            graph::ParamLocal::GenericFunction(graph::GenericFunctionLocal::new(
+                graph::GenericFunctionLocalId(8),
+                symbolic_type,
+            ))
+        );
+
+        let never = SpecializedFunctionShape::new(
+            vec![SpecializedValueShape::Int],
+            SpecializedValueShape::Parameter(TypeParameterId(0)),
+        );
+        let never_type = context.generic_function_type(&never);
+        assert_eq!(
+            function_local_as_param(function_local_at(&never, 9, &mut context)),
+            graph::ParamLocal::NeverFunction(graph::NeverFunctionLocal::new(
+                graph::NeverFunctionLocalId(9),
+                never_type,
+            ))
+        );
+
+        let scalar = SpecializedFunctionShape::new(
+            vec![SpecializedValueShape::Int],
+            SpecializedValueShape::String,
+        );
+        let scalar_type = context.lower_concrete_function_type(&scalar);
+        assert_eq!(
+            function_local_as_param(function_local_at(&scalar, 10, &mut context)),
+            graph::ParamLocal::StringFunction {
+                local: graph::StringFunctionLocalId(10),
+                type_: scalar_type,
+            }
+        );
+
+        let returning_external = SpecializedFunctionShape::new(
+            Vec::new(),
+            SpecializedValueShape::External(external_shape),
+        );
+        let callable = SpecializedFunctionShape::new(
+            vec![SpecializedValueShape::Int],
+            SpecializedValueShape::Function(Box::new(returning_external.clone())),
+        );
+        let callable_type =
+            context.specialized_function_function_type(callable.arguments(), &returning_external);
+        assert_eq!(
+            function_local_as_param(function_local_at(&callable, 11, &mut context)),
+            graph::ParamLocal::FunctionFunction(graph::FunctionFunctionLocal::External(
+                graph::ExternalFunctionFunctionLocal::new(
+                    graph::ExternalFunctionFunctionLocalId(11),
+                    callable_type,
+                ),
+            ))
+        );
+    }
+
+    fn custom_type() -> CustomType {
+        CustomType::new(
+            CustomTypeName::new("geam".into(), "main".into(), "Custom".into()),
+            Vec::new(),
+        )
+    }
+
+    fn external_type() -> ExternalType {
+        ExternalType::new(
+            ExternalTypeName::new("geam".into(), "main".into(), "External".into()),
+            Vec::new(),
+        )
+    }
+}
